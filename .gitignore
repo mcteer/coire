@@ -1,0 +1,76 @@
+# --- macOS ---
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# --- Secrets (Constitution IV: secrets live in Keychain, never in the repo) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+!**/testdata/**/*.key
+secrets/
+.cloudflared/
+cert.pem
+
+# --- Python / uv workspace ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.eggs/
+# uv.lock and pyproject.toml are committed on purpose (pinned deps, Constitution).
+
+# --- Test / lint / type caches ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+
+# --- Node / Vite (apps/coire-web) ---
+node_modules/
+apps/coire-web/dist/
+apps/coire-web/.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+# package-lock.json / pnpm-lock.yaml are committed on purpose.
+
+# --- Local model + engine artifacts (never in git; these are data, not source) ---
+models/
+adapters/
+checkpoints/
+*.safetensors
+*.gguf
+*.npz
+outputs/
+generated/
+
+# --- Runtime / local state ---
+*.log
+logs/
+*.sqlite
+*.sqlite3
+*.db
+.pgdata/
+tmp/
+.scratch/
+
+# --- Editors / tooling ---
+.idea/
+*.swp
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# --- Claude Code local overrides ---
+.claude/settings.local.json
