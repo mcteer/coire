@@ -2,6 +2,43 @@
 
 Each entry is one `/speckit.specify` run producing `specs/NNN-<slug>/`. The one-line prompt is a starting point for the specify command; the "done when" is the acceptance bar. Ordering is chosen so every feature is testable on a single Mac with a tiny model before the cluster-only features arrive.
 
+## Spec directory mapping
+
+Specs were generated 2026-08-29. Spec directories are numbered sequentially in build
+order, because the tooling requires an integer `NNN-` prefix and cannot express the
+letter-suffixed roadmap labels below. Each spec records its roadmap ID in its header.
+
+| Spec directory | Roadmap ID | Phase |
+|---|---|---|
+| `specs/000-bootstrap/` | 000 | 0 |
+| `specs/001-model-registry-node-agent/` | 001 | 1 |
+| `specs/002-acquisition-pipeline/` | 001b | 1 |
+| `specs/003-gateway-openai-v1/` | 002 | 1 |
+| `specs/004-placement-scheduler/` | 003 | 1 |
+| `specs/005-instances-cluster-state/` | 003a | 1 |
+| `specs/006-sharded-serving-jaccl/` | 004 | 1 |
+| `specs/007-auth-users-keys-audit/` | 005 | 2 |
+| `specs/008-admin-console/` | 006 | 2 |
+| `specs/009-observability-stack/` | 007 | 2 |
+| `specs/010-agent-harness-profiles/` | 008 | 3 |
+| `specs/011-container-run-orchestration/` | 009 | 3 |
+| `specs/012-coire-ops-confirmed-mutations/` | 010 | 3 |
+| `specs/013-mcp-server/` | 011 | 3 |
+| `specs/014-chat-web-ui/` | 012 | 4 |
+| `specs/015-image-generation/` | 013 | 4 |
+| `specs/016-sft-training-jobs/` | 014 | 4 |
+| `specs/017-evaluation-verbs/` | 014a | 4 |
+| `specs/018-preference-optimisation/` | 014b | 4 |
+| `specs/019-upgrades-rollback/` | 015 | 4 |
+| `specs/020-control-plane-failover/` | 016 | 5 |
+| `specs/021-node-self-healing/` | 017 | 5 |
+
+Roadmap 000a (network prep) has no spec: it is manual UDM/RDMA work.
+
+Features 016 and 017 were added on 2026-08-29 after the original roadmap was written.
+016 is **blocked on a constitutional amendment** — see that spec's Constitutional Conflict
+section. 017 is not blocked but should be re-checked against Principle II during planning.
+
 ## Phase 0 — Foundation
 
 **000 · bootstrap** — `specify init coire`, `/speckit.constitution` from `.specify/memory/constitution.md`, uv workspace with `coire-core`, `coire-api`, `coire-node`, `coire-agent`, `coire-web` stubs, distroless multi-stage Dockerfiles for api/mcp/scheduler/migrate/web/agent, `deploy/compose/` bringing up every service as its own container on per-concern networks with the docker-socket-proxy, CI building, scanning, and SBOM-ing images and running lint + tests.
@@ -9,8 +46,8 @@ Each entry is one `/speckit.specify` run producing `specs/NNN-<slug>/`. The one-
 
 ## Phase 1 — Single-node inference works end to end
 
-**000a · network prep (manual, no spec needed)** — Create the `lab` VLAN and firewall rules on the UDM SE, static reservations + DNS names for core/studio-a/studio-b, split-horizon override for the public hostname, VPN or Tailscale break-glass, Thunderbolt mesh cabled and RDMA enabled on both Studios, `mlx.distributed_config --backend jaccl --auto-setup` producing the hostfile committed to `deploy/cluster/`. Decide on the 10GbE switch.
-*Done when:* the three nodes resolve by name from each other, nothing in `lab` can reach other VLANs, and a 2-rank JACCL all-reduce test passes.
+**000a · network prep (manual, no spec needed)** — **Thunderbolt mesh (DONE 2026-08-29):** macOS-managed Thunderbolt Bridge on all three hosts, static addresses on a flat `192.168.100.0/24` (core .10, edge-a .11, edge-b .12), no router, no DNS. Cabled as a **chain** `core — edge-a — edge-b`, deliberately not a triangle: bridging a triangle creates an L2 loop that collapses throughput and breaks external DNS. Measured 12.6 Gb/s / 0.85 ms Studio-to-Studio, 12.0 Gb/s / 0.89 ms core-to-edge-a, 12.4 Gb/s / 1.37 ms across the bridged hop to edge-b. Studio-to-Studio SSH keys in place and verified. Wi-Fi retained as an alerted fallback if the middle node fails. **Remaining:** RDMA enabled on both Studios and `mlx.distributed_config --backend jaccl --auto-setup` producing the hostfile committed to `deploy/cluster/`; and on the Wi-Fi/egress path, the `lab` VLAN and firewall rules on the UDM SE, static reservations, split-horizon override, VPN or Tailscale break-glass. No 10GbE switch needed — the mesh is faster.
+*Done when:* each node reaches the others over the mesh by a stable address, platform traffic verifiably takes the mesh rather than Wi-Fi, losing Wi-Fi does not remove a node from the cluster, nothing in `lab` can reach other VLANs, and a 2-rank JACCL all-reduce test passes.
 
 **001 · model registry & node agent** — "Admin-only model registry with placement policy, memory estimate, idle TTL, visibility/entitlement, and capability profile; download job that pulls once from HF, verifies, and peer-replicates so the model is `ready` only when both Studios hold it; node agent that can load (`mlx_lm.server`), health-check, report memory and disk, and unload."
 *Done when:* `coire model add` (admin key) works and a user key gets 403; `ready` implies two verified copies; `load`/`unload` work; the registry reflects true process state after a node-agent restart.
@@ -74,6 +111,15 @@ Each entry is one `/speckit.specify` run producing `specs/NNN-<slug>/`. The one-
 
 **015 · upgrades & rollback** — "Versioned engine envs on nodes, smoke test, symlink flip, rollback; control-plane image/`uv sync` upgrade job; admin UI trigger."
 *Done when:* an intentionally broken mlx-lm pin rolls back automatically and leaves the node serving.
+
+## Phase 5 — Resilience
+
+**016 · control-plane failover** — "Poller on all three hosts electing a frontend host when core is unavailable; priority core → coire-edge-a → coire-edge-b; quorum-gated promotion; stateless inference-only degraded tier with no database on a Studio; capability tiers degrading with healthy membership; automatic demotion when core returns."
+*Done when:* powering off core yields inference service from a Studio within the failover threshold; a minority partition never promotes; no database or admin surface ever runs on a Studio; core returning restores full service with no operator action.
+*Blocked on:* an amendment to Principle II, which currently forbids a web tier on a Studio.
+
+**017 · node self-healing** — "Two-layer health agent per node: a minimal native supervisor running as an OS service outside the container runtime, plus a containerised diagnostic agent. Its entire mandate is restoring cluster membership — node-agent liveness, network reachability, registration — and nothing else; capacity concerns are escalated, and engines and engine environments are excluded because 004/005/019 own them. Deterministic symptom-to-action remediation, quorum-aware conservatism, circuit breaker with backoff, escalation for anything unlisted. Built on the agent framework's slim distribution with the model unbound, so the disconnected path needs no model."
+*Done when:* killing the node agent on a Studio rejoins it automatically; every autonomous action maps to membership restoration and nothing else; a crashed engine produces zero supervisor actions; a minority-partitioned node takes only local non-destructive actions; a persistent fault opens the circuit breaker.
 
 ## Later / backlog
 

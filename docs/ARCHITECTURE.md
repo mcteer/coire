@@ -30,7 +30,7 @@ Verified facts the design leans on (as of August 2026): `mlx_lm.server` natively
 ┌───────────────────────┼──────────────────────────────────────────────┐
 │ LAN / Tailscale       │                                              │
 │                       ▼                                              │
-│  ┌─────────────── Mac Mini M4 Pro 24 GB  ─  "core" ───────────────┐  │
+│  ┌───────────── Mac Mini M4 Pro 24 GB  ─  coire-core ─────────────┐  │
 │  │ OrbStack (compose project "coire"):                             │  │
 │  │   cloudflared │ coire-api (FastAPI gateway + control plane +    │  │
 │  │   Postgres    │            /mcp)                                 │  │
@@ -41,7 +41,7 @@ Verified facts the design leans on (as of August 2026): `mlx_lm.server` natively
 │                           │ 10 GbE LAN                               │
 │          ┌────────────────┴────────────────┐                        │
 │          ▼                                 ▼                        │
-│  ┌─ Mac Studio A (80-GPU) ─┐   TB5 mesh  ┌─ Mac Studio B (60-GPU) ─┐│
+│  ┌─ coire-edge-a (80-GPU) ─┐   TB5 mesh  ┌─ coire-edge-b (60-GPU) ─┐│
 │  │ coire-node (agent)      │◄══RDMA/JACCL══►│ coire-node (agent)   ││
 │  │ mlx_lm.server ×N        │              │ mlx_lm.server ×N       ││
 │  │ rank 0 of sharded runs  │              │ rank 1 of sharded runs ││
@@ -58,11 +58,77 @@ Studio A (the 80-core-GPU unit) is rank 0 for every sharded run and the default 
 
 The site sits behind a Ubiquiti Dream Machine SE on a gigabit fiber connection. That shapes three things.
 
-**Segmentation.** Coire gets its own VLAN (`lab`, say 10.10.0.0/24) containing core and both Studios, with UniFi firewall rules that allow `lab → internet` (Cloudflare Tunnel, Hugging Face, package registries), allow `trusted-LAN → lab` on 443 only, and block `lab → other VLANs` entirely, so a compromised agent container can't pivot to the rest of the house. The Thunderbolt mesh is a separate, unrouted link-local network that never touches the UDM. Enable mDNS reflection only if you want `.local` discovery from other VLANs; otherwise pin static DHCP reservations for the three nodes and create UniFi DNS records (`core.lab`, `studio-a.lab`, `studio-b.lab`) so hostfiles and compose configs never hard-code IPs.
+**Two fabrics, separate jobs.** Coire runs on two distinct networks and the split is deliberate.
+
+The **Thunderbolt 5 mesh is the platform fabric**: every byte of internal platform traffic rides it — gateway↔node requests, model replication between Studios, health heartbeats and quorum, and JACCL collectives for sharded serving. It is a full triangle (core↔A, core↔B, A↔B) with each active link negotiating 80 Gb/s. It is unrouted, never touches the UDM, and carries no internet traffic.
+
+The **Wi-Fi interface (`en1`, 192.168.4.0/24) exists only for internet egress** — pulling from Hugging Face, package registries, and the Cloudflare Tunnel. No platform service should depend on it for node-to-node communication, and a node losing Wi-Fi should lose the ability to download, not the ability to participate in the cluster.
+
+*Measured state, 2026-08-29.* The mesh is a **chain, not a triangle**, and that is deliberate:
+
+```
+coire-core ──── coire-edge-a ──── coire-edge-b
+   .10             .11               .12
+```
+
+Each host runs the macOS-managed Thunderbolt Bridge service with a static address on one flat
+`192.168.100.0/24`, no router and no DNS. `coire-edge-a` sits in the middle and bridges its two
+ports. That ordering keeps the Studio-to-Studio link direct — it carries model replication and JACCL
+collectives — and keeps `core ↔ edge-a` direct too, since edge-a is rank 0 and the default home for
+the largest single-node model. `core ↔ edge-b` takes the hop, and edge-b's traffic is dominated by
+small utility calls to the pinned admin model, where half a millisecond is immaterial.
+
+| Host | Wi-Fi (egress only) | Thunderbolt mesh (platform) |
+|---|---|---|
+| `coire-core` | 192.168.4.10 | **192.168.100.10** |
+| `coire-edge-a` | 192.168.4.11 | **192.168.100.11** |
+| `coire-edge-b` | 192.168.4.12 | **192.168.100.12** |
+
+Measured on this exact topology:
+
+| Path | Throughput | Latency | 300 GB replication |
+|---|---|---|---|
+| `edge-a ↔ edge-b` (direct) | **1614 MiB/s — 12.6 Gb/s** | 0.85 ms | 3.2 min |
+| `core ↔ edge-b` (one bridge hop) | 1591 MiB/s — 12.4 Gb/s | 1.37 ms | 3.2 min |
+| `core ↔ edge-a` (direct) | 1536 MiB/s — 12.0 Gb/s | 0.89 ms | 3.3 min |
+| Wi-Fi, for comparison | 49 MiB/s — 0.4 Gb/s | 23–29 ms, high jitter | 104 min |
+
+The mesh is roughly 33× faster than Wi-Fi for bulk transfer and ~30× better on latency. Note that a
+bridged hop costs essentially nothing on throughput — within run-to-run variance — and about 0.5 ms
+on latency, so chain ordering is a latency decision rather than a bandwidth one.
+
+**Resilience, and the accepted cost.** A chain has a middle node, and losing it partitions the mesh:
+the two outer hosts can no longer reach each other over Thunderbolt. This is accepted rather than
+engineered around, because Wi-Fi remains as a fallback and the workload that matters during a Studio
+outage — streaming tokens from the surviving Studio — needs almost no bandwidth. The mesh's 12 Gb/s
+matters for model replication, which is maintenance work nobody runs mid-incident. Platform
+components therefore *prefer* the mesh and *fall back* to the egress path when a peer is unreachable
+over it, recording and alerting on the fallback so sustained slow-path operation is never silent.
+
+Restoring the third cable would need spanning tree to break the loop. macOS's bridge reports legacy
+802.1D (`proto stp`) with no documented RSTP option, so convergence would be 30–50 seconds — and an
+untested STP path on hardware that has already been destabilised once is a poor trade for a failure
+mode Wi-Fi already covers.
+
+**Why a chain and not a mesh.** Cabling all three into a triangle and bridging each host creates a
+layer-2 loop. macOS's bridge does not run STP by default, so flooded ARP and multicast circulate the
+ring indefinitely; the observed result was collapsed inter-node throughput *and* broken external DNS
+and connectivity on all three machines. The third cable buys nothing that justifies that risk, and
+STP would only break the loop by blocking a port — losing the same link while adding 30–50 s
+convergence to every topology change. Leave the triangle open.
+
+Two further notes for anyone reconfiguring this. Use the **macOS-managed Thunderbolt Bridge service**,
+not a hand-built `ifconfig bridge0`; the two share a name and nothing else, and a raw bridge measured
+37 MiB/s against the managed service's 1486 MiB/s. And do not use `nc` to benchmark these links — it
+truncates at ~133 KB reproducibly here regardless of topology; `ssh` transfers measure correctly.
+
+**Segmentation.** The Wi-Fi/egress path is the only one the UDM sees. Give it its own VLAN with UniFi firewall rules allowing `lab → internet`, allowing `trusted-LAN → lab` on 443 only, and blocking `lab → other VLANs`, so a compromised agent container cannot pivot to the rest of the house. Pin static DHCP reservations for the three nodes. The Thunderbolt mesh needs no UDM configuration at all, because it never reaches it. The nodes are named `coire-core`, `coire-edge-a`, and `coire-edge-b`.
 
 **Ingress.** Because the public path is Cloudflare Tunnel, the UDM needs no port forwards and no DDNS; nothing inbound is opened. Keep the UDM's IDS/IPS and country blocking on for the WAN side, and use the UDM's built-in WireGuard/Teleport VPN or Tailscale (either on the UDM as a subnet router or on core directly) as the break-glass admin path that bypasses Cloudflare Access. A local DNS override on the UDM for your public `coire.<domain>` hostname pointing at core lets LAN clients skip the tunnel round-trip (split-horizon), which matters for SSE latency when you're at home.
 
-**Bandwidth.** Gigabit symmetric is plenty for token streams and image downloads (a 2 MP PNG is ~3 MB), but it is the ceiling on model acquisition: a 300 GB sharded model takes roughly 45 minutes to pull from Hugging Face, and a sharded placement needs the weights on both Studios. Coire-node therefore pulls once to whichever Studio is idle and replicates to the peer over the LAN rather than downloading twice. That peer copy is where the LAN matters: the UDM SE has a single 10G SFP+ LAN port, so plan on a small 10GbE switch (USW-Aggregation or a Flex 10GbE-class unit) between core and the Studios; the M3 Ultra Studios have 10GbE on board and the M4 Pro Mini can be configured with it. At 1 GbE a 300 GB replication is another ~45 minutes; at 10 GbE it's ~5 minutes and gateway↔node request traffic has headroom while a copy runs. JACCL traffic stays on Thunderbolt regardless, so the Ethernet upgrade is about model movement and control traffic, not inference speed.
+**Bandwidth.** The gigabit fiber link is the ceiling on *acquisition only*: a 300 GB model takes roughly 45 minutes to pull from Hugging Face over Wi-Fi, and a sharded placement needs the weights on both Studios. Coire-node pulls once to whichever Studio is idle and replicates to the peer **over the Thunderbolt mesh**, so the second copy costs about 3.2 minutes at a measured 12.6 Gb/s rather than 45 minutes at 1 GbE. Gateway↔node request traffic rides the same mesh and has enormous headroom while a copy runs.
+
+This removes the 10GbE switch from the plan. An earlier draft recommended a USW-Aggregation or Flex 10GbE-class unit between core and the Studios to make replication and control traffic tolerable; with all internal traffic on the mesh, 10GbE would be slower than the ~12.6 Gb/s measured on the fabric already in place and would add a component whose only remaining job is internet egress, which gigabit already serves. Buy it only if a fourth node ever joins that cannot be reached by Thunderbolt.
 
 Prometheus can scrape the UDM (via the UniFi Poller/`unpoller` exporter) so WAN saturation during a model pull and tunnel health show up on the Cluster dashboard next to node memory.
 
@@ -143,9 +209,9 @@ Placement is a policy, not a hard-coded host:
 
 | Placement | Meaning | Used for |
 |---|---|---|
-| `pinned:studio-b` | pinned, `idle_ttl: never`, always resident | the admin model backing `coire-ops` and cheap utilities; core never hosts it |
+| `pinned:coire-edge-b` | pinned, `idle_ttl: never`, always resident | the admin model backing `coire-ops` and cheap utilities; core never hosts it |
 | `single:auto` | any Studio with enough free budget, preferring A | ≤ ~200 GB models |
-| `single:studio-b` | pin | image model, small coder models kept warm next to a large sharded run |
+| `single:coire-edge-b` | pin | image model, small coder models kept warm next to a large sharded run |
 | `sharded:tp` | tensor parallel across A+B via JACCL | 200–~480 GB models, throughput matters |
 | `sharded:pp` | pipeline parallel across A+B | same size class when bandwidth-bound or TP unsupported for the architecture |
 
