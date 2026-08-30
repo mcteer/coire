@@ -64,7 +64,10 @@ class NodeRegistration(BaseModel):
     name: str = Field(pattern=r"^coire-[a-z0-9-]+$")
     token: SecretStr
     mesh_address: IPv4Address
-    egress_address: IPv4Address
+    egress_address: IPv4Address | None = None
+    """Optional: a node may have no route off the mesh at all, which is a legitimate and
+    rather hardened configuration. It is used only for the alerted Wi-Fi fallback listener
+    (feature 000 FR-013a), so its absence costs that fallback and nothing else."""
     memory_total_bytes: int = Field(gt=0)
     disk_total_bytes: int = Field(gt=0)
     gpu_cores: int | None = Field(default=None, ge=0)
@@ -82,7 +85,7 @@ class Node(BaseModel):
     name: str
     role: NodeRole
     mesh_address: IPv4Address
-    egress_address: IPv4Address
+    egress_address: IPv4Address | None = None
     memory_total_bytes: int
     disk_total_bytes: int
     gpu_cores: int | None = None

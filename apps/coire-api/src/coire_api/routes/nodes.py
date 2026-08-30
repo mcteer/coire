@@ -84,7 +84,7 @@ async def register_node(
         session.add(row)
 
     row.mesh_address = str(registration.mesh_address)
-    row.egress_address = str(registration.egress_address)
+    row.egress_address = str(registration.egress_address) if registration.egress_address else None
     row.memory_total_bytes = registration.memory_total_bytes
     row.disk_total_bytes = registration.disk_total_bytes
     row.gpu_cores = registration.gpu_cores

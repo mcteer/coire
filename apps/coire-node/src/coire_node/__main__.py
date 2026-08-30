@@ -48,11 +48,19 @@ async def _run() -> None:
     mesh = resolve_mesh_address(hostname, settings.mesh_hosts_file)
     egress = resolve_egress_address()
     registrar: Registrar | None = None
-    if mesh and egress:
+    if mesh:
+        # Egress is optional: it only carries the alerted Wi-Fi fallback listener. A node with
+        # no route off the mesh is a legitimate configuration and must still join the cluster.
+        if egress is None:
+            logger.info("no egress interface; the fallback listener will not be started")
         registrar = Registrar(settings, build_registration(settings, mesh, egress))
         await registrar.start()
     else:
-        logger.error("not registering: mesh=%s egress=%s", mesh, egress)
+        logger.error(
+            "not registering: no mesh address for this host in %s. Run "
+            "scripts/apply-mesh-hosts.sh.",
+            settings.mesh_hosts_file,
+        )
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

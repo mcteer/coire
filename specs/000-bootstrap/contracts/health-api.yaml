@@ -137,12 +137,14 @@ components:
     NodeRegistration:
       type: object
       additionalProperties: false
-      required: [name, token, mesh_address, egress_address, memory_total_bytes, disk_total_bytes, agent_version]
+      required: [name, token, mesh_address, memory_total_bytes, disk_total_bytes, agent_version]
       properties:
         name: { type: string, pattern: "^coire-[a-z0-9-]+$" }
         token: { type: string, format: password }
         mesh_address: { type: string, format: ipv4 }
-        egress_address: { type: string, format: ipv4 }
+        # Optional since feature 001: a node may have no route off the mesh, which costs it
+        # only the alerted Wi-Fi fallback listener.
+        egress_address: { type: [string, "null"], format: ipv4 }
         memory_total_bytes: { type: integer, minimum: 1 }
         disk_total_bytes: { type: integer, minimum: 1 }
         gpu_cores: { type: [integer, "null"], minimum: 0 }
@@ -151,13 +153,13 @@ components:
     Node:
       type: object
       additionalProperties: false
-      required: [id, name, role, mesh_address, egress_address, memory_total_bytes, disk_total_bytes, agent_version, registered_at, last_seen_at, reachability]
+      required: [id, name, role, mesh_address, memory_total_bytes, disk_total_bytes, agent_version, registered_at, last_seen_at, reachability]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         role: { type: string, enum: [studio, core] }
         mesh_address: { type: string, format: ipv4 }
-        egress_address: { type: string, format: ipv4 }
+        egress_address: { type: [string, "null"], format: ipv4 }
         memory_total_bytes: { type: integer }
         disk_total_bytes: { type: integer }
         gpu_cores: { type: [integer, "null"] }

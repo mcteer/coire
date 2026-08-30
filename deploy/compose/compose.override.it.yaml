@@ -20,6 +20,11 @@
 
 services:
   coire-api:
+    environment:
+      # The Studios keep 50 GiB free; the test tmpfs is 4 GiB, so the production default
+      # would refuse every model on fit. The check itself is exercised by its own test.
+      DISK_RESERVE_BYTES: "268435456"
+      REGISTRY_RECONCILE_INTERVAL_S: "2"
     networks:
       coire-mesh-sim:
         ipv4_address: 192.168.100.10
@@ -49,16 +54,22 @@ services:
       MESH_HOSTS_FILE: /etc/hosts
       NODE_PROBE_INTERVAL_S: "2"
       NODE_ENGINE_HEALTH_INTERVAL_S: "2"
+      # The overlay attaches coire-api to the mesh directly, so the node reaches uvicorn
+      # rather than nginx. Production goes through nginx on 8080.
+      CORE_API_PORT: "8000"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       # Selects the fake engine (research R9). The real one is Apple-Silicon only.
       COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
       HF_TOKEN: ${HF_TOKEN:-}
       HF_HUB_DISABLE_XET: "1"
+      DISK_RESERVE_BYTES: "268435456"
       OTLP_ENDPOINT: http://otel-collector:4317
     tmpfs:
       - /opt/coire:size=4g
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:9400/ready"]
+      # The agent binds its mesh address, not loopback, so the probe must use that address —
+      # exactly as it does on a Studio.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://192.168.100.11:9400/ready"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -85,14 +96,18 @@ services:
       MESH_HOSTS_FILE: /etc/hosts
       NODE_PROBE_INTERVAL_S: "2"
       NODE_ENGINE_HEALTH_INTERVAL_S: "2"
+      # The overlay attaches coire-api to the mesh directly, so the node reaches uvicorn
+      # rather than nginx. Production goes through nginx on 8080.
+      CORE_API_PORT: "8000"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
       HF_HUB_DISABLE_XET: "1"
+      DISK_RESERVE_BYTES: "268435456"
       OTLP_ENDPOINT: http://otel-collector:4317
     tmpfs:
       - /opt/coire:size=4g
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:9400/ready"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://192.168.100.12:9400/ready"]
       interval: 3s
       timeout: 3s
       retries: 20

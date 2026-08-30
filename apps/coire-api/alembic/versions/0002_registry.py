@@ -54,6 +54,11 @@ _ALL = (
 
 
 def upgrade() -> None:
+    # A node may have no route off the mesh — the egress address only carries the alerted
+    # Wi-Fi fallback listener (feature 000 FR-013a), and a mesh-only node is a legitimate,
+    # more hardened configuration that must still be able to register.
+    op.alter_column("nodes", "egress_address", nullable=True)
+
     bind = op.get_bind()
     for name, values in _ALL:
         postgresql.ENUM(*values, name=name).create(bind, checkfirst=True)
@@ -230,6 +235,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.alter_column("nodes", "egress_address", nullable=False)
     for table in (
         "audit_log",
         "engine_processes",

@@ -122,6 +122,12 @@ class Settings(BaseSettings):
     node_token: SecretStr = SecretStr("")
     node_listen_port: int = 9400
     core_mesh_host: str = "coire-core"
+    core_api_port: int = 8080
+    """Port the node reaches the control plane on over the mesh.
+
+    8080 is nginx, the sole ingress. Without this the agent posted to the default HTTP port,
+    where nothing on core listens — registration could never have succeeded on the real
+    cluster, and was not caught because feature 000's T063 install was never run."""
 
     @property
     def database_url(self) -> str:

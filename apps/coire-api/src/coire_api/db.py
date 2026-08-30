@@ -69,7 +69,7 @@ class NodeRow(Base):
         SAEnum(NodeRole, name="node_role", values_callable=lambda e: [m.value for m in e])
     )
     mesh_address: Mapped[str] = mapped_column(INET)
-    egress_address: Mapped[str] = mapped_column(INET)
+    egress_address: Mapped[str | None] = mapped_column(INET, nullable=True)
     # 256 GB of RAM and 1.8 TB of disk both overflow a 32-bit column.
     memory_total_bytes: Mapped[int] = mapped_column(BigInteger)
     disk_total_bytes: Mapped[int] = mapped_column(BigInteger)
