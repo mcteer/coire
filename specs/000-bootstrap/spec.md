@@ -19,9 +19,9 @@ This feature establishes the skeleton every later feature builds on: a `uv` work
 ### Session 2026-08-29
 
 - Q: Does the bootstrap include a working `coire-node` on a Studio, or only the package stub? → A: A minimal but genuinely running node agent — a launchd-managed FastAPI process serving `/health` and reporting node identity, memory total/free, and disk free. It spawns no engines in this feature; engine lifecycle arrives in 001.
-- Q: What authenticates the control plane in this feature, given auth is feature 007? → A: Nothing user-facing. `/health` and `/ready` are unauthenticated; no other route exists. `coire-node` registration uses a static per-node token read from Keychain, which 005 replaces with issued registration tokens. This is recorded as a time-boxed exception to Principle IV in the plan's Constitution Check.
+- Q: What authenticates the control plane in this feature, given auth is feature 007? → A: Nothing (confirmed 2026-08-29: no auth until people are ready to use it). `/health`, `/ready` and node registration are the only control-plane routes (the node agent's own `/node/health` is the one bearer-authenticated surface — FR-013, ADR-0001). The application MUST be built so auth wires in without restructuring — one declared auth dependency that every route uses and that 007 replaces — but MUST NOT ship a placeholder that looks like protection. `coire-node` registration uses a static per-node token from the Studio's System keychain, which 005 replaces with issued registration tokens. Recorded as a time-boxed exception to Principle IV in ADR-0001.
 - Q: Must the observability stack be part of bootstrap, or does it wait for feature 009? → A: Only the OTel Collector container plus OTLP export wiring from `coire-api` ships here, so every later feature has somewhere to send spans. Prometheus/Loki/Tempo/Grafana/Alertmanager and dashboards are feature 009.
-- Q: Does `cloudflared` and public exposure belong in bootstrap? → A: No. The tunnel is stood up but pointed only at `coire-web`'s `/health`; Access policies, WAF, and any public route land with feature 007. LAN-only verification is sufficient to close this feature.
+- Q: Does `cloudflared` and public exposure belong in bootstrap? → A: No, and there is no tunnel at all yet (confirmed 2026-08-29). `cloudflared` is absent from the compose project until the platform is ready for external traffic; `coire-web` publishes only on core's loopback. Access policies, WAF, and any public route land with feature 007. Verification is LAN/mesh-only. Recorded in ADR-0001.
 - Q: How is "no production image contains `/bin/sh`" verified? → A: A CI job runs `docker run --rm --entrypoint /bin/sh <image> -c true` per image and requires a non-zero exit, plus an image-filesystem scan asserting absence of `/bin/sh`, `/bin/bash`, and any package manager. The check is a required status on every image tag.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -84,7 +84,7 @@ An operator installs the node agent on a Studio, and it starts under launchd, su
 
 **Acceptance Scenarios**:
 
-1. **Given** a Studio with the node agent installed, **When** the operator queries its health endpoint from core by DNS name, **Then** it returns 200 with node id, total and free memory, and free disk.
+1. **Given** a Studio with the node agent installed, **When** the operator queries its health endpoint from core by mesh name with the per-node token, **Then** it returns 200 with node id, live CPU and GPU utilisation, total and free memory, and free disk; without the token it returns 401.
 2. **Given** a running node agent, **When** the Studio is rebooted, **Then** the agent is running again without manual intervention.
 3. **Given** a peer reachable over the mesh, **When** a platform component contacts it, **Then** the mesh path is used.
 4. **Given** the mesh path to a peer is unavailable, **When** a platform component contacts it, **Then** the egress path is used, the fallback is recorded, and an alert is raised.
@@ -95,7 +95,7 @@ An operator installs the node agent on a Studio, and it starts under launchd, su
 
 - The bring-up command runs when a required secret is missing from Keychain: bring-up MUST abort with a message naming the missing secret, and MUST NOT start a partially-configured control plane.
 - Postgres is slow to accept connections on first boot: dependent services MUST wait on the health condition rather than crash-looping, and MUST reach healthy once Postgres is ready.
-- The temporary env file written from Keychain during bring-up MUST be mode 0600 and MUST be deleted after bring-up, including on a failed bring-up.
+- Bring-up MUST NOT write any secret to host disk at any point, including on failure; a `file:`-sourced compose secret is a defect (verified to break `docker compose restart` on OrbStack — research R4).
 - Two operators run bring-up concurrently: the second MUST fail cleanly rather than produce a half-migrated database.
 - A migration fails: the one-shot migrate service MUST exit non-zero, and the API MUST NOT start against a partially-migrated schema.
 - The node agent starts before the network is up after a reboot: it MUST retry registration rather than exit.
@@ -109,22 +109,22 @@ An operator installs the node agent on a Studio, and it starts under launchd, su
 - **FR-001**: The repository MUST be a single `uv` workspace containing `packages/coire-core`, `apps/coire-api`, `apps/coire-node`, `apps/coire-agent`, and `apps/coire-web`, with a committed lockfile.
 - **FR-002**: `coire-core` MUST define the shared settings and health-response models used by the API and node agent, and MUST be the only place those shapes are declared.
 - **FR-003**: Each control-plane service — API, MCP, scheduler, migrate, web — MUST build to its own image with its own tag; no image may serve two roles.
-- **FR-004**: Every production image MUST run as a non-root user, with a read-only root filesystem, all capabilities dropped, and no shell or package manager present.
+- **FR-004**: Every first-party image (`coire-api`, `coire-mcp`, `coire-scheduler`, `coire-migrate`, `coire-web`, `coire-agent`) MUST run as a non-root user, with a read-only root filesystem, all capabilities dropped, and no shell or package manager present. Third-party images (Postgres, socket proxy, collector) MUST be pinned by digest, CVE-scanned, and hardened through compose to the extent the upstream supports; their upstream shells are accepted because the constitution pins Postgres 17 and no shell-less, version-pinnable Postgres 17 image is available.
 - **FR-005**: Every long-lived service MUST declare a healthcheck, and dependents MUST start only once their dependencies report healthy.
 - **FR-006**: The compose project MUST place each container only on the networks its role requires, with separate networks for edge, database, internal, docker-socket, and telemetry concerns.
 - **FR-007**: The Docker socket MUST be reachable only through a socket proxy with an explicit allowlist, and only by the scheduler.
 - **FR-008**: nginx MUST be the sole ingress, serving the built SPA and reverse-proxying API routes, with response buffering disabled on streaming paths.
 - **FR-009**: The system MUST expose an unauthenticated `/health` reporting per-service status and a `/ready` distinguishing "process up" from "dependencies ready".
 - **FR-010**: Database migrations MUST run in a one-shot service that exits zero on success, and MUST NOT run inside a long-lived service.
-- **FR-011**: Secrets MUST be read from the macOS Keychain at bring-up into a mode-0600 file consumed as a compose secret, and that file MUST be deleted after bring-up including on failure.
+- **FR-011**: Secrets MUST be read from the macOS Keychain at bring-up into the bring-up process's own environment and passed to compose as environment-sourced secrets, which containers consume as files under `/run/secrets/`. No secret MUST ever be written to host disk, and `docker compose restart` of any service MUST work afterwards without re-running bring-up. (Amended 2026-08-29: the original file-based wording was tested and breaks service restart on OrbStack — see research R4.)
 - **FR-012**: `coire-node` MUST run under launchd on each Studio, survive reboot, and serve a health endpoint reporting node identity, live CPU and GPU utilisation, memory total and free, and disk free.
 - **FR-012a**: Node preparation MUST install only what the node agent and engines require, into a self-contained versioned location, and MUST NOT install general-purpose developer tooling, background services, or anything not required to serve inference. The Studios' compute is reserved for inference.
 - **FR-012b**: Anything installed on a Studio MUST be enumerable and removable, so the node's footprint can be audited against what the platform actually needs.
 - **FR-012c**: The node agent's own steady-state resource use MUST stay within a configured budget and MUST be reported alongside the node's metrics.
-- **FR-013**: `coire-node` MUST authenticate callers with a per-node token and MUST serve platform traffic on the Thunderbolt mesh interface, rejecting platform requests arriving on the internet-egress interface.
+- **FR-013**: `coire-node` MUST authenticate callers of its own endpoints by requiring the per-node token as a bearer credential (the same static token it presents to core at registration), and MUST serve platform traffic on the Thunderbolt mesh interface, rejecting platform requests arriving on the internet-egress interface unless they carry the explicit fallback marker (FR-013b).
 - **FR-013a**: Platform components MUST prefer the Thunderbolt mesh for all node-to-node traffic and MUST use it whenever the mesh path to a peer is available.
 - **FR-013b**: When a peer is unreachable over the mesh, a component MUST be able to fall back to the egress interface rather than treat the peer as lost. The mesh is a chain, so a middle-node failure partitions it, and an absolute prohibition would convert a survivable partition into total loss.
-- **FR-013c**: Any fallback to the egress path MUST be recorded and MUST raise an alert; it MUST NOT be silent, because sustained operation on the slow path would otherwise go unnoticed.
+- **FR-013c**: Any fallback to the egress path MUST be recorded as a metric (`coire_fallback_requests_total`) and a WARNING log line, and MUST NOT be silent, because sustained operation on the slow path would otherwise go unnoticed. The alert rule on that metric is delivered by feature 009, which owns the alerting backend (ADR-0003).
 - **FR-014**: `coire-api` MUST export OpenTelemetry traces via OTLP to a local collector container.
 - **FR-015**: CI MUST build every image, scan it and fail on critical findings, publish an SBOM per tag, verify absence of a shell, verify non-root, and run lint and tests.
 - **FR-016**: CI MUST build the arm64 image variant and MUST fail if it is absent.
@@ -143,7 +143,7 @@ An operator installs the node agent on a Studio, and it starts under launchd, su
 - **SC-001**: A clean bring-up on core reaches all-services-healthy within 3 minutes, unattended, from a single documented command.
 - **SC-002**: Restarting any one service leaves every other service healthy throughout, verified for each service in turn.
 - **SC-003**: `coire-web` restarts and returns to serving in under 5 seconds.
-- **SC-004**: No production image contains `/bin/sh`, `/bin/bash`, or a package manager, verified mechanically in CI for 100% of images.
+- **SC-004**: No first-party image contains `/bin/sh`, `/bin/bash`, or a package manager, verified mechanically in CI for 100% of first-party images; 100% of all images are digest-pinned and CVE-scanned.
 - **SC-005**: Every image runs as a non-root user with a read-only root filesystem, verified in CI for 100% of images.
 - **SC-006**: A node agent on a Studio answers a health probe from core by DNS name, and does so again unprompted within 2 minutes of a reboot.
 - **SC-007**: CI completes build, scan, SBOM, lint, and tests on a pull request, and fails closed on any critical CVE.
@@ -168,9 +168,10 @@ An operator installs the node agent on a Studio, and it starts under launchd, su
 - Hosts are addressed by the names above, which are the deployed machine names and are used consistently across the architecture doc, the roadmap, and these specs.
 - Network preparation (roadmap 000a) is only partly complete. Done: the Thunderbolt mesh is cabled and the three nodes resolve each other by their `.local` names. Not done: all three sit on a flat 192.168.4.0/24 rather than the planned `lab` VLAN, and RDMA enablement plus the JACCL hostfile are outstanding. This feature depends on none of those; feature 006 depends on the RDMA work.
 - OrbStack is installed and running on core and on both Studios (verified 2026-08-29). This feature therefore does not install it; feature 011's container runtime prerequisite is already satisfied. This feature starts no containers on a Studio.
-- The Cloudflare tunnel is stood up pointing only at the web health path. Access policies, WAF rules, and any public route are feature 007.
+- There is no Cloudflare tunnel and no authentication in this feature (user decision, 2026-08-29). Both are deferred until the platform is ready for external traffic and real users, and are recorded in `docs/adr/0001-defer-auth-and-edge-until-external-traffic.md`. The application declares the auth seam so feature 007 wires in without restructuring.
+- Name resolution on the Thunderbolt mesh uses a managed `/etc/hosts` block generated from `deploy/cluster/hosts` (`<host>.mesh` names), because the mesh is unrouted and mDNS was measured to be non-deterministic. Recorded in `docs/adr/0002-mesh-name-resolution-via-managed-hosts-file.md`.
 - No authentication exists on control-plane routes in this feature; only `/health` and `/ready` are served. This is a deliberate, time-boxed exception to Principle IV to be recorded as an ADR.
 - Postgres runs as a container on core with a named volume. Backups are out of scope until operations work lands.
 - The observability stack beyond the OTel Collector is feature 009; this feature only guarantees spans have somewhere to go.
 - No model, engine, or inference code is in scope. `coire-node` spawns no engines here.
-- The Studios are kept deliberately bare so their compute is fully dedicated to inference. Node preparation installs the minimum required — a pinned Python runtime, the node agent, and later the engine environments — and nothing else. This is a standing constraint on every feature that touches a Studio, not a one-off preference for this feature.
+- The Studios are kept deliberately bare so their compute is fully dedicated to inference (normative statement: FR-012a/b). This is a standing constraint on every feature that touches a Studio, not a one-off preference for this feature.
