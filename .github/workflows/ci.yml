@@ -163,9 +163,14 @@ jobs:
           export COIRE_SECRET_KEY_SIGNING_SECRET="$(openssl rand -base64 32)"
           export COIRE_SECRET_NODE_TOKENS='{"coire-edge-a":"ci-a","coire-edge-b":"ci-b"}'
           COIRE_INTEGRATION=1 uv run pytest -m integration -q
-      - name: control-plane logs on failure
+      - name: control-plane state on failure
         if: failure()
-        run: docker compose -f deploy/compose/compose.yaml logs --tail=100
+        working-directory: deploy/compose
+        env:
+          COIRE_SECRETS_DIR: ${{ runner.temp }}/coire-secrets
+        run: |
+          docker compose -p coire-it ps -a || true
+          docker compose -p coire-it logs --no-color --tail=100 || true
 
   publish:
     # Only tagged releases publish. Pull requests never push an image.

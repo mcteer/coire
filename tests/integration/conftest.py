@@ -60,7 +60,34 @@ def stack() -> Iterator[None]:
         env=env,
         capture_output=True,
     )
-    subprocess.run([str(UP), "--secrets-from-env", "--no-build"], env=env, check=True)
+    up = subprocess.run(
+        [str(UP), "--secrets-from-env", "--no-build"],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    if up.returncode != 0:
+        # Dump everything needed to diagnose without a second CI run.
+        logs = subprocess.run(
+            ["docker", "compose", "-p", PROJECT, "logs", "--no-color", "--tail=60"],
+            cwd=COMPOSE_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        ps = subprocess.run(
+            ["docker", "compose", "-p", PROJECT, "ps", "-a"],
+            cwd=COMPOSE_DIR,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        pytest.fail(
+            "coire-up failed (exit "
+            f"{up.returncode})\n--- stdout ---\n{up.stdout}\n--- stderr ---\n{up.stderr}"
+            f"\n--- ps ---\n{ps.stdout}\n--- logs ---\n{logs.stdout}",
+            pytrace=False,
+        )
     try:
         yield
     finally:
