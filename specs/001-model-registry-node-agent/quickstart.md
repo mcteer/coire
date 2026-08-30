@@ -167,6 +167,8 @@ removes it immediately and leaves the engine and files untouched. `ModelListing`
 paths or copies. Publishing a non-`ready` model returns 409. Setting `capability_profile.verified`
 returns 422.
 
+**Chat template override**: `scripts/coire model update $ID '{"chat_template":"{{ messages[0].content }}"}'` → the running engine is unchanged (`chat_template_sha256: null`); unload, load again → `ps` on the Studio shows `--chat-template /opt/coire/models/<slug>.chat_template.jinja` and the engine reports the digest. `'{"chat_template":null}'` restores the repository's own on the next load.
+
 **Retire**: `scripts/coire model retire $ID` → 202; engines stop, both Studios' store
 directories disappear, `state: retired`, and `scripts/coire model show $ID` still returns the
 row with its transitions. `scripts/coire audit` shows `model.retire`.

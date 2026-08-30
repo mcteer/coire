@@ -35,7 +35,7 @@ and will hang off this row rather than duplicate it.
 | `file_count` | int | > 0 | |
 | `memory_estimate_bytes` | int | > 0 | `weight_bytes × overhead(precision)` + KV headroom (research R6), computed at add time (FR-010) |
 | `idle_ttl_seconds` | int \| null | ≥ 60 or null | null = never. Stored only; feature 004 acts on it |
-| `chat_template` | str \| null | JSONB text, default null | admin-supplied Jinja override passed to the engine as `--chat-template`; null = the repository's own template (Principle V) |
+| `chat_template` | str \| null | `text`, default null | admin-supplied Jinja override passed to the engine as `--chat-template`; null = the repository's own template (Principle V). A change takes effect on the **next** load; engines already running are unaffected (drain-and-restart semantics are feature 005's) and `EngineStatus.chat_template_sha256` records which template each was started with |
 | `capability_profile` | CapabilityProfile | JSONB | see below |
 | `context_window` | int \| null | | from `max_position_embeddings`; duplicated into the profile for the picker |
 | `manifest_sha256` | str \| null | hex | digest of the checksum manifest document once the pull verifies |
@@ -203,6 +203,7 @@ Append-only; no route deletes or modifies it (feature 007 FR-018 is honoured fro
 | `engines.json` | list of `{engine_id, slug, port, pid, create_time, started_at}` | adoption after agent restart (FR-015). Rewritten atomically on every spawn/stop |
 | `jobs/<job_id>.json` | `{job_id, kind, stage, params, bytes_done, error}` | resume after agent restart or node reboot (edge case 3). Removed on `done` after the control plane has read it |
 | `models/<slug>.manifest.json` | ChecksumManifest | verification and export |
+| `models/<slug>.chat_template.jinja` | the override text, if any | written at engine start from the registry value; outside the copy so the manifest is unaffected; removed with the copy |
 | `store/` | the models themselves: `/opt/coire/models/<slug>/…` | plain files (no cache symlinks) so an engine can be pointed at the directory |
 
 ## Node status extension *(wire; `NodeStatus` gains additive fields)*

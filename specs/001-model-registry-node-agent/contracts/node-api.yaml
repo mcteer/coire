@@ -518,6 +518,7 @@ components:
         state_reason: { type: [string, "null"] }
         exit_code: { type: [integer, "null"] }
         exit_output: { type: [string, "null"], description: "Last 4 KiB of stderr on failure." }
+        chat_template_sha256: { type: [string, "null"], description: "Digest of the override the engine was started with; null when using the repository's own." }
         estimate_bytes: { type: integer }
         resident_bytes: { type: [integer, "null"], description: "Measured footprint (research R6)." }
         resident_delta_bytes: { type: [integer, "null"] }
