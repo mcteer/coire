@@ -328,6 +328,7 @@ components:
         tags: { type: array, items: { $ref: "#/components/schemas/Tag" } }
         placement_policy: { $ref: "#/components/schemas/PlacementPolicy" }
         idle_ttl_seconds: { type: [integer, "null"], minimum: 60 }
+        chat_template: { type: [string, "null"], maxLength: 65536, description: "Jinja override; null restores the repository's own." }
         capability_profile:
           type: object
           additionalProperties: false
@@ -401,6 +402,7 @@ components:
         memory_estimate_bytes: { type: integer }
         idle_ttl_seconds: { type: [integer, "null"] }
         context_window: { type: [integer, "null"] }
+        chat_template: { type: [string, "null"] }
         capability_profile: { $ref: "#/components/schemas/CapabilityProfile" }
         manifest_sha256: { type: [string, "null"] }
         created_at: { type: string, format: date-time }

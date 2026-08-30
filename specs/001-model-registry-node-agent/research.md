@@ -206,6 +206,8 @@ for a workflow with no branching and no compensation. Feature 002 wraps **these 
 in DBOS steps; the node contract does not change, and the reconciler is replaced, not extended.
 That is the smallest change that meets the spec's resumption edge cases (Principle VII).
 
+Recorded as **ADR-0005**, time-boxed to feature 002.
+
 **Alternatives considered**: DBOS now — heavier than the problem, and pre-empts 002's design.
 Celery/RQ — a broker on core for one job type; rejected.
 

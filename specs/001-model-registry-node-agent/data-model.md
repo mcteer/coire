@@ -20,7 +20,7 @@ and will hang off this row rather than duplicate it.
 |---|---|---|---|
 | `id` | UUID | PK | the registry id; the only identifier a caller may ever present (FR-017) |
 | `repo_id` | str | unique, `^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$` | Hugging Face `org/name` |
-| `slug` | str | unique, derived | `repo_id` with `/` → `--`; the store directory name on every node |
+| `slug` | str | unique, derived | `repo_id` with `/` → `--`; the **store key**: every node's copy lives at `<node_store_dir>/<slug>` and the absolute path is recorded per node on `ModelCopy.path` (spec FR-001 "store key") |
 | `display_name` | str | non-empty | defaults to the repo name |
 | `description` | str \| null | | the picker's one-line "good for" |
 | `state` | enum `downloading` \| `replicating` \| `ready` \| `failed` \| `retired` | required | FR-002 |
@@ -35,6 +35,7 @@ and will hang off this row rather than duplicate it.
 | `file_count` | int | > 0 | |
 | `memory_estimate_bytes` | int | > 0 | `weight_bytes × overhead(precision)` + KV headroom (research R6), computed at add time (FR-010) |
 | `idle_ttl_seconds` | int \| null | ≥ 60 or null | null = never. Stored only; feature 004 acts on it |
+| `chat_template` | str \| null | JSONB text, default null | admin-supplied Jinja override passed to the engine as `--chat-template`; null = the repository's own template (Principle V) |
 | `capability_profile` | CapabilityProfile | JSONB | see below |
 | `context_window` | int \| null | | from `max_position_embeddings`; duplicated into the profile for the picker |
 | `manifest_sha256` | str \| null | hex | digest of the checksum manifest document once the pull verifies |
@@ -57,6 +58,8 @@ free disk of *both* Studios less a reserve, before any bytes move (FR-010, edge 
                                           └────────────────────────────▶ (DELETE: row removed,
                                                                            allowed only from failed)
 ```
+
+`verify_origin` and `verify_replica` are pass-through stages: the pull already verifies against upstream digests and the import verifies file by file, so the reconciler records them as transitions without issuing a node verb. They stay in the enum so a later feature can make them real (a scheduled re-verify) without a contract change.
 
 `replicating` is entered when the first copy verifies and left only when the second verifies or
 fails. A peer that is unreachable keeps the model in `replicating` with `state_reason` set

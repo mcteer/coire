@@ -6,7 +6,7 @@
 
 **Created**: 2026-08-29
 
-**Status**: Draft
+**Status**: Planned
 
 **Input**: User description: "Admin-only model registry with placement policy, memory estimate, idle TTL, visibility/entitlement, and capability profile; download job that pulls once from HF, verifies, and peer-replicates so the model is `ready` only when both Studios hold it; node agent that can load (`mlx_lm.server`), health-check, report memory and disk, and unload."
 
@@ -22,6 +22,9 @@ This feature makes a model a first-class, admin-curated registry object and give
 - Q: What makes a replicated copy "verified"? → A: A per-file checksum manifest recorded at pull time, re-computed on the peer after replication and compared file-by-file. A mismatch on any file leaves the model `failed` with the offending paths recorded; partial copies are deleted rather than retried in place.
 - Q: How does the registry stay truthful about processes after a node agent restart? → A: The node agent re-adopts running engine processes rather than killing them. On start it enumerates engine processes it owns, matches them to registry instances by a recorded process identity, adopts the matches, and reports any unmatched process as an orphan for the control plane to reconcile. Adoption is what the acceptance bar means by "reflects true process state".
 - Q: Does memory estimation need to be accurate, or is a declared number enough? → A: Both. The registry stores an estimate derived from weight bytes times a per-precision overhead factor, and the node agent reports measured resident memory once loaded. The delta is recorded on the instance so feature 004's ledger has real data and Principle-driven drift alerting has a baseline. This feature does not act on the drift.
+- Q: What distinguishes an admin from a non-admin before feature 007 exists? → A: An interim static admin bearer token (ADR-0004) presented through the auth seam feature 000 declared. Every other caller — no credential, or any credential that is not that token — is the anonymous principal and is refused on every acquisition and curation route. "Non-admin caller" throughout this spec means exactly that.
+- Q: What does "resume" mean for an interrupted pull? → A: Resume at file granularity. The Hugging Face client keeps completed files and re-fetches only files that were incomplete when the interruption happened; a partially transferred file starts over. Hub repositories shard weights at ≤ 5 GB, so an interruption costs at most one shard; a single-file repo restarts that file. Never marks the model `ready` on a partial file set.
+- Q: What is the readiness probe for an engine? → A: A generation request issued by the node agent — a one-token completion — succeeding against the engine's port. The engine's own liveness endpoint answers before the model is loaded and is used only as a "process is listening" gate, never as readiness.
 - Q: Can an admin add a model that fits on neither Studio? → A: Yes, but it is accepted as `failed` with a reason rather than silently queued: the estimate is computed at add time and a model that cannot fit any supported placement is rejected before any bytes are pulled.
 
 ## User Scenarios & Testing *(mandatory)*
@@ -45,15 +48,15 @@ An admin names a Hugging Face repo, and Coire pulls it once to whichever Studio 
 
 ### User Story 2 - Only admins may acquire models (Priority: P1)
 
-A non-admin caller attempting to add, download, or delete a model is refused, and no automation or agent has a path to trigger an acquisition.
+A non-admin caller — no credential, or any credential that is not the admin token (ADR-0004) — attempting to add, download, or delete a model is refused, and no automation or agent has a path to trigger an acquisition.
 
 **Why this priority**: Principle V makes this a constitutional boundary, and it is far cheaper to enforce from the first registry route than to retrofit.
 
-**Independent Test**: Attempt every acquisition route with a user-scoped credential and confirm each returns 403 with no side effect.
+**Independent Test**: Attempt every acquisition route with no credential and with a wrong bearer and confirm each returns 403 with no side effect and one audit record.
 
 **Acceptance Scenarios**:
 
-1. **Given** a user-scoped credential, **When** it calls the model-add route, **Then** the response is 403 and no registry row, job, or download is created.
+1. **Given** a non-admin caller, **When** it calls the model-add route, **Then** the response is 403, an audit record with outcome `refused` is written, and no registry row, job, or download is created.
 2. **Given** any non-admin caller, **When** it attempts to delete or retire a model, **Then** the response is 403 and the model is untouched.
 3. **Given** the Hugging Face credential, **When** any container other than the node agent is inspected, **Then** the credential is absent from its environment and filesystem.
 
@@ -69,7 +72,7 @@ The control plane asks a Studio to load a model; the node agent starts an engine
 
 **Acceptance Scenarios**:
 
-1. **Given** a `ready` model, **When** the control plane issues a load to a node, **Then** an engine process starts and the node reports the model ready to serve only once the engine answers its own health probe.
+1. **Given** a `ready` model, **When** the control plane issues a load to a node, **Then** an engine process starts and the node reports the model ready to serve only once the node agent's generation probe succeeds against it.
 2. **Given** a loaded model, **When** the control plane requests node status, **Then** it receives live node CPU and GPU utilisation, thermal state, node memory used and free, per-process CPU utilisation and resident memory, and free disk.
 3. **Given** a loaded model, **When** the control plane issues an unload, **Then** the process terminates, memory is released, and a subsequent status shows the model not loaded.
 4. **Given** a load that fails because the engine exits during startup, **When** the failure occurs, **Then** the node reports the failure with the engine's exit status and captured output rather than reporting ready.
@@ -111,7 +114,7 @@ An admin sets visibility, entitlement, tags, capability profile, placement polic
 ### Edge Cases
 
 - Both Studios lack the disk to hold a copy: the model MUST be rejected at add time with the required and available figures, before any bytes move.
-- A pull is interrupted by a network failure: it MUST resume rather than restart from zero, and MUST NOT mark the model `ready` on a partial file set.
+- A pull is interrupted by a network failure: it MUST resume at file granularity — completed files are never re-fetched — and MUST NOT mark the model `ready` on a partial file set.
 - A pull is interrupted by a node reboot: the job MUST resume after the node returns rather than stall indefinitely or orphan a partial directory.
 - The peer Studio is unreachable when replication starts: the model MUST remain in a replicating state with the reason recorded, and MUST NOT be marked `ready` on one copy.
 - The repo requires licence acceptance or is gated: the failure MUST name gating specifically rather than presenting as a generic download error.
@@ -124,7 +127,7 @@ An admin sets visibility, entitlement, tags, capability profile, placement polic
 
 ### Functional Requirements
 
-- **FR-001**: The system MUST store each model as a registry record carrying repo id, local store path, state, visibility, entitlement allowlist, tags, description, placement policy, memory estimate, idle TTL, capability profile, and per-node copy status.
+- **FR-001**: The system MUST store each model as a registry record carrying repo id, store key (the slug every node's copy path derives from), state, visibility, entitlement allowlist, tags, description, placement policy, memory estimate, idle TTL, chat template override (null means the repository's own), capability profile, and per-node copy status.
 - **FR-002**: Model state MUST be one of `downloading`, `replicating`, `ready`, `failed`, or `retired`, and transitions MUST be recorded with a timestamp and reason.
 - **FR-003**: Adding, downloading, publishing, unpublishing, retiring, and deleting a model MUST require the admin role; every such mutation MUST write an audit record.
 - **FR-004**: No user request, agent, or automation may trigger a model acquisition; the system MUST expose no such path.
@@ -135,19 +138,19 @@ An admin sets visibility, entitlement, tags, capability profile, placement polic
 - **FR-009**: A checksum mismatch MUST leave the model `failed` with the offending paths recorded, and the partial copy MUST be removed.
 - **FR-010**: The system MUST compute a memory estimate at add time and MUST reject a model that fits no supported placement before transferring any bytes.
 - **FR-011**: The node agent MUST expose load, unload, status, and health verbs to the control plane, and MUST authenticate every caller.
-- **FR-012**: The node agent MUST report a model as ready to serve only after the engine answers its own health probe, never merely on process start.
+- **FR-012**: The node agent MUST report a model as ready to serve only after a generation request it issues succeeds against the engine, never merely on process start or on the engine's liveness endpoint.
 - **FR-013**: The node agent MUST report live node CPU and GPU utilisation, thermal state, node memory used and free, per-process CPU utilisation and resident memory, and free disk.
 - **FR-014**: The node agent MUST record measured resident memory against the registry estimate for each load.
 - **FR-015**: On restart the node agent MUST re-adopt engine processes it owns rather than terminating them, MUST correct registry rows whose engines died, and MUST report unmatched processes as orphans.
 - **FR-016**: The node agent MUST detect an externally-killed engine within its health interval and report the model as not loaded.
 - **FR-017**: The system MUST never pass a caller-supplied string as a model or adapter identifier to an engine; only registry-resolved local paths may be used.
-- **FR-018**: Engine processes MUST be reachable only from the node agent and the gateway, and MUST NOT be exposed on any other interface.
+- **FR-018**: Engine processes MUST bind only the node's Thunderbolt mesh address, so they are reachable only from hosts on the unrouted mesh — the node agent, the control plane, and the peer Studio — and MUST NOT be exposed on the egress interface or any other. Per-host firewall restriction of the engine port to core is feature 005.
 - **FR-019**: A load for a model already loaded on that node MUST be a no-op returning the existing process.
 - **FR-020**: A load that would exceed the node's memory budget MUST be refused with a budget error in this feature.
 
 ### Key Entities
 
-- **Model**: A registry record. Repo id, store path, state, visibility, entitlement, tags, description, placement policy, memory estimate, idle TTL, capability profile, per-node copy status, timestamps.
+- **Model**: A registry record. Repo id, store key (slug), state, visibility, entitlement, tags, description, placement policy, memory estimate, idle TTL, chat template override, capability profile, per-node copy status, timestamps.
 - **Capability Profile**: Declared model behaviour. Tool-calling mode, structured-output mode, context window, reasoning style, parallel-tool support, verification status.
 - **Model Copy**: A model's presence on one node. Node, path, byte size, checksum manifest reference, verified flag, verified-at timestamp.
 - **Download Job**: An acquisition unit of work. Model, target node, stage, bytes transferred and total, resume state, failure reason.
@@ -159,7 +162,7 @@ An admin sets visibility, entitlement, tags, capability profile, placement polic
 ### Measurable Outcomes
 
 - **SC-001**: An admin adds a small MLX-format model and it reaches `ready` with verified copies on both Studios, unattended.
-- **SC-002**: A user-scoped credential receives 403 on 100% of acquisition and curation routes, with no side effect.
+- **SC-002**: Every non-admin caller (no credential, or a credential that is not the admin token) receives 403 on 100% of acquisition and curation routes, with no side effect beyond an audit record.
 - **SC-003**: A model is never `ready` while fewer than two verified copies exist, across all tested failure injections.
 - **SC-004**: Peer replication of a model traverses the Thunderbolt mesh, not the egress interface, and performs exactly one external pull per acquisition.
 - **SC-005**: Load reports ready only after the engine serves; a model that fails to start is never reported ready.
@@ -176,6 +179,6 @@ An admin sets visibility, entitlement, tags, capability profile, placement polic
 - Routing user traffic to a loaded model is feature 003; this feature's load verb is exercised by the control plane and tests only.
 - Eviction, LRU, idle-TTL enforcement, and pinning are feature 004. This feature stores `idle_ttl` and placement policy as data but does not act on them.
 - Sharded placements are feature 006; only single-node loads are exercised here.
-- Auth is not yet feature-complete (feature 007). Admin-versus-user distinction is enforced through whatever credential mechanism feature 000 established, and hardens later without changing these rules.
+- Auth is not yet feature-complete (feature 007). The admin-versus-non-admin distinction is the interim static admin token of ADR-0004, presented through the auth seam feature 000 declared; feature 007 replaces it without changing these rules.
 - Both Studios have 1.8 TB of disk and 256 GB of memory (verified 2026-08-29), so the two-copies rule bounds the roster by the smaller Studio's free disk.
 - Integration tests use a model of 1 GB or less so CI can run on a single Mac, per Principle VII.

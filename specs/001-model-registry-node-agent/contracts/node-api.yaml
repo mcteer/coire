@@ -297,6 +297,7 @@ paths:
                 engine_id: { type: string, format: uuid }
                 slug: { type: string }
                 estimate_bytes: { type: integer, minimum: 1 }
+                chat_template: { type: [string, "null"], description: "Registry-supplied override written to a file beside the copy and passed as --chat-template; never caller-derived." }
       responses:
         "202":
           content:
