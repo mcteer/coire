@@ -103,7 +103,7 @@ class TestErrorMapping:
 
 class TestVerbs:
     async def test_inspect_parses_into_the_model(self) -> None:
-        client, seen = _client(
+        client, _seen = _client(
             lambda r: _json(
                 {
                     "repo_id": "mlx-community/tiny",

@@ -140,9 +140,12 @@ class Store:
         total = 0
         for index, (rel, path) in enumerate(self.iter_files(slug), start=1):
             size = path.stat().st_size
-            digest = sha256_file(
-                path, on_chunk=(lambda n: on_progress(n, index)) if on_progress else None
+            # `index` is bound now, not when the closure runs: a late-binding lambda inside a
+            # loop reports every chunk against the last file.
+            callback = (
+                (lambda n, i=index: on_progress(n, i)) if on_progress is not None else None
             )
+            digest = sha256_file(path, on_chunk=callback)
             files.append(
                 ManifestFile(
                     path=rel,
@@ -206,9 +209,10 @@ class Store:
             if path.stat().st_size != entry.bytes:
                 mismatched.append(rel)
                 continue
-            digest = sha256_file(
-                path, on_chunk=(lambda n: on_progress(n, index)) if on_progress else None
+            callback = (
+                (lambda n, i=index: on_progress(n, i)) if on_progress is not None else None
             )
+            digest = sha256_file(path, on_chunk=callback)
             if digest != entry.sha256:
                 mismatched.append(rel)
 
