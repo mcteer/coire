@@ -1,5 +1,8 @@
 # Coire control plane — the whole of it, on core.
 #
+# The project is named explicitly: without this, compose derives it from the directory
+# ("compose"), which makes every container `compose-*` and reads as nothing in `docker ps`.
+#
 # Brought up by ./coire-up, which sources secrets from the macOS Keychain into its own
 # environment and never writes them to disk (FR-011, research R4).
 #
@@ -10,6 +13,8 @@
 # Absent by design: cloudflared (no tunnel until the platform faces external traffic —
 # ADR-0001), coire-ops (feature 012), coire-agent (built but never run on core — FR-017), and
 # the observability backends (feature 009 — ADR-0003).
+
+name: coire
 
 x-hardening: &hardening
   read_only: true

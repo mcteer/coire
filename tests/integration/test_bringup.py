@@ -89,17 +89,17 @@ def test_health_is_served_through_nginx_not_directly() -> None:
 
 def test_migrate_ran_once_and_exited_zero() -> None:
     """FR-010: migrations run in a one-shot service, not inside a long-lived one."""
-    out = subprocess.run(
-        [
-            "docker",
-            "inspect",
-            "compose-coire-migrate-1",
-            "--format",
-            "{{.State.Status}} {{.State.ExitCode}}",
-        ],
+    cid = subprocess.run(
+        ["docker", "compose", "ps", "-aq", "coire-migrate"],
         capture_output=True,
         text=True,
         cwd=COMPOSE_DIR,
+    ).stdout.strip()
+    assert cid, "coire-migrate container not found"
+    out = subprocess.run(
+        ["docker", "inspect", cid, "--format", "{{.State.Status}} {{.State.ExitCode}}"],
+        capture_output=True,
+        text=True,
     )
     assert out.stdout.strip() == "exited 0", out.stdout
 

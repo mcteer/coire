@@ -22,7 +22,7 @@ def test_repository_is_fully_pinned() -> None:
 def test_check_rejects_an_unpinned_from(tmp_path: Path) -> None:
     """A Dockerfile with a bare tag must fail rule 7."""
     bad = REPO / "apps/coire-api/docker/.tmp-unpinned.Dockerfile"
-    bad.write_text("FROM alpine:3.20\nENTRYPOINT [\"/bin/true\"]\n")
+    bad.write_text('FROM alpine:3.20\nENTRYPOINT ["/bin/true"]\n')
     try:
         proc = run("--check")
         assert proc.returncode != 0

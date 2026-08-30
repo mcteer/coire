@@ -42,19 +42,25 @@ def compose(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def container_health(service: str) -> str:
+def container_id(service: str) -> str:
+    """Resolve a container through compose rather than guessing `<project>-<service>-1`."""
+    return compose("ps", "-q", service).stdout.strip()
+
+
+def inspect(service: str, fmt: str) -> str:
+    cid = container_id(service)
+    if not cid:
+        return ""
     out = subprocess.run(
-        [
-            "docker",
-            "inspect",
-            f"compose-{service}-1",
-            "--format",
-            "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
-        ],
-        capture_output=True,
-        text=True,
+        ["docker", "inspect", cid, "--format", fmt], capture_output=True, text=True
     )
     return out.stdout.strip()
+
+
+def container_health(service: str) -> str:
+    return inspect(
+        service, "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}"
+    )
 
 
 def health_body() -> dict[str, object] | None:
@@ -122,18 +128,10 @@ def test_web_stays_healthy_while_api_restarts() -> None:
 
 def test_api_reconnects_to_postgres_without_a_restart() -> None:
     """US2 scenario 2: a dependency restart must not require restarting its dependents."""
-    api_started_before = subprocess.run(
-        ["docker", "inspect", "compose-coire-api-1", "--format", "{{.State.StartedAt}}"],
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    api_started_before = inspect("coire-api", "{{.State.StartedAt}}")
     compose("restart", "postgres")
     assert wait_all_healthy(), "api did not recover after a postgres restart"
-    api_started_after = subprocess.run(
-        ["docker", "inspect", "compose-coire-api-1", "--format", "{{.State.StartedAt}}"],
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
+    api_started_after = inspect("coire-api", "{{.State.StartedAt}}")
     assert api_started_before == api_started_after, (
         "coire-api restarted; it should have reconnected"
     )
