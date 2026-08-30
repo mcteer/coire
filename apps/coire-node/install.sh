@@ -18,7 +18,7 @@ set -euo pipefail
 PREFIX="${COIRE_PREFIX:-/opt/coire}"
 UV_VERSION="0.12.7"
 PYTHON_VERSION="3.13"
-AGENT_VERSION="0.1.0"
+AGENT_VERSION="0.2.0"
 WHEEL_DIR=""
 DRY_RUN=0
 NODE_NAME="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
@@ -45,8 +45,12 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   say "$ENV_DIR/**                  (agent virtualenv)"
   say "$PREFIX/envs/current         (symlink -> $ENV_DIR)"
   say "$PREFIX/log/                 (launchd stdout/stderr)"
+  say "$PREFIX/models/               (model store: one directory per model slug)"
+  say "$PREFIX/state/                (engine and job state; caches, never truth)"
+  say "$PREFIX/hf-cache/             (Hugging Face metadata scratch; weights are not kept here)"
   say "$PLIST"
   say "keychain:coire-node-token    (System keychain, created by the operator)"
+  say "keychain:coire-hf-token      (System keychain, created by the operator)"
   echo "and nothing under /usr/local, /opt/homebrew, or \$HOME."
   exit 0
 fi
@@ -64,6 +68,9 @@ fi
 
 echo "installing coire-node $AGENT_VERSION into $PREFIX"
 mkdir -p "$PREFIX/bin" "$PREFIX/python" "$PREFIX/log" "$PREFIX/envs"
+# Feature 001: the model store, the agent's own state, and a metadata scratch cache. Weights
+# are written straight into the store (snapshot_download --local-dir), so hf-cache stays small.
+mkdir -p "$PREFIX/models" "$PREFIX/state/jobs" "$PREFIX/hf-cache"
 
 # --- uv, confined to the prefix --------------------------------------------
 if [[ ! -x "$PREFIX/bin/uv" ]]; then
@@ -121,5 +128,9 @@ echo
 echo "and the node token, in the SYSTEM keychain (the login keychain is locked at boot):"
 echo "  sudo security add-generic-password -a coire -s coire-node-token \\"
 echo "       -w '<token for $NODE_NAME>' /Library/Keychains/System.keychain"
+echo
+echo "and the Hugging Face token, which exists ONLY here - never on core (spec FR-005):"
+echo "  sudo security add-generic-password -a coire -s coire-hf-token \\"
+echo "       -w '<hf_...>' /Library/Keychains/System.keychain"
 echo
 echo "rendered plist left at: $RENDERED"

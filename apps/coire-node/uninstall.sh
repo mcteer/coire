@@ -3,7 +3,7 @@
 #
 #   uninstall.sh --dry-run    list exactly what would be removed
 #   uninstall.sh              remove it
-#   uninstall.sh --keychain   also remove the System-keychain token
+#   uninstall.sh --keychain   also remove the System-keychain tokens (node + Hugging Face)
 #
 # The footprint is deliberately small enough to enumerate (FR-012b).
 set -euo pipefail
@@ -23,7 +23,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 targets=()
-for p in "$PREFIX/bin" "$PREFIX/python" "$PREFIX/envs" "$PREFIX/log"; do
+for p in "$PREFIX/bin" "$PREFIX/python" "$PREFIX/envs" "$PREFIX/log" \
+         "$PREFIX/models" "$PREFIX/state" "$PREFIX/hf-cache"; do
   [[ -e "$p" ]] && targets+=("$p")
 done
 [[ -e "$PLIST" ]] && targets+=("$PLIST")
@@ -31,7 +32,11 @@ done
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "uninstall.sh would remove:"
   for t in "${targets[@]:-}"; do [[ -n "$t" ]] && printf '  %s\n' "$t"; done
-  [[ "$KEYCHAIN" -eq 1 ]] && printf '  keychain:coire-node-token (System keychain)\n'
+  if [[ "$KEYCHAIN" -eq 1 ]]; then
+    printf '  keychain:coire-node-token (System keychain)\n'
+    printf '  keychain:coire-hf-token   (System keychain)\n'
+  fi
+  echo "NOTE: $PREFIX/models holds downloaded weights - potentially hundreds of GB."
   echo "and nothing else. $PREFIX itself is left for the operator."
   exit 0
 fi
@@ -42,13 +47,16 @@ if [[ -e "$PLIST" ]]; then
   sudo rm -f "$PLIST"
 fi
 
-for p in "$PREFIX/bin" "$PREFIX/python" "$PREFIX/envs" "$PREFIX/log"; do
+for p in "$PREFIX/bin" "$PREFIX/python" "$PREFIX/envs" "$PREFIX/log" \
+         "$PREFIX/models" "$PREFIX/state" "$PREFIX/hf-cache"; do
   [[ -e "$p" ]] && rm -rf "$p" && echo "removed $p"
 done
 
 if [[ "$KEYCHAIN" -eq 1 ]]; then
   sudo security delete-generic-password -s coire-node-token /Library/Keychains/System.keychain \
     >/dev/null 2>&1 && echo "removed the node token" || true
+  sudo security delete-generic-password -s coire-hf-token /Library/Keychains/System.keychain \
+    >/dev/null 2>&1 && echo "removed the Hugging Face token" || true
 fi
 
 echo "coire-node removed. $PREFIX kept (remove it yourself if you want it gone)."

@@ -67,7 +67,7 @@ services:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
       NODE_INVENTORY_FILE: /app/nodes.yaml
-    secrets: [postgres_password, key_signing_secret, node_tokens]
+    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token]
     depends_on:
       postgres: {condition: service_healthy}
       coire-migrate: {condition: service_completed_successfully}
@@ -245,3 +245,7 @@ secrets:
     file: ${COIRE_SECRETS_DIR}/key_signing_secret
   node_tokens:
     file: ${COIRE_SECRETS_DIR}/node_tokens
+  # The interim admin bearer (ADR-0004). Mounted on coire-api alone: no other service makes
+  # an authorisation decision, and a secret is only as confined as its narrowest mount.
+  admin_token:
+    file: ${COIRE_SECRETS_DIR}/admin_token

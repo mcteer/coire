@@ -14,6 +14,7 @@ import signal
 from coire_core.settings import Settings
 from coire_node import __version__
 from coire_node.agent import resolve_egress_address, resolve_mesh_address, serve
+from coire_node.keychain import load_node_secrets
 from coire_node.metrics import MetricsCollector
 from coire_node.register import Registrar, build_registration
 
@@ -28,6 +29,10 @@ async def _run() -> None:
     import socket as _socket
 
     settings = Settings()
+    # The Studio's two secrets live in the System keychain, which is the only place they exist
+    # (feature 000 research R6; spec FR-005). Anything already set by environment or a mounted
+    # file wins, so containers and CI need no keychain.
+    load_node_secrets(settings)
     hostname = settings.node_name or _socket.gethostname().split(".")[0]
 
     collector = MetricsCollector(

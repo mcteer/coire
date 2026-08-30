@@ -34,9 +34,14 @@ os.environ.setdefault("COMPOSE_PROJECT_NAME", PROJECT)
 # literal here would match its own definition rather than a real leak.
 POSTGRES_PASSWORD = f"it-{secrets.token_urlsafe(24)}"
 
+# The admin bearer for this run (ADR-0004). Generated, not fixed, for the same reason as the
+# password above: the leak test greps the tree for the literal value.
+ADMIN_TOKEN = f"it-admin-{secrets.token_urlsafe(24)}"
+
 INTEGRATION_SECRETS = {
     "COIRE_SECRET_POSTGRES_PASSWORD": POSTGRES_PASSWORD,
     "COIRE_SECRET_KEY_SIGNING_SECRET": f"it-{secrets.token_urlsafe(32)}",
+    "COIRE_SECRET_ADMIN_TOKEN": ADMIN_TOKEN,
     "COIRE_SECRET_NODE_TOKENS": json.dumps({"coire-edge-a": "a", "coire-edge-b": "b"}),
 }
 

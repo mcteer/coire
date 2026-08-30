@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Coire admin CLI — a thin curl+jq wrapper over the admin API.
+#
+# Not a product surface: the console is feature 008. This exists so the quickstart and a human
+# on core can drive the registry without hand-writing bearer headers.
+#
+#   coire model add <repo_id> [json-overrides]   add a model from a Hugging Face repo
+#   coire model list                             every model (admin view)
+#   coire model show <id>                        one model with copies, job, engines
+#   coire model job <id>                         the current or most recent download job
+#   coire model update <id> <json>               curate: visibility, tags, template, ...
+#   coire model load <id> [node]                 load it (admin; user traffic is feature 003)
+#   coire model retry <id>                       re-run a failed acquisition
+#   coire model retire <id>                      unload, delete both copies, keep the row
+#   coire model delete <id>                      remove a failed model outright
+#   coire models                                 the user-facing listing (no admin bearer)
+#   coire engines                                every engine, including orphans
+#   coire engine show <id> | unload <id>
+#   coire nodes                                  declared nodes with live status
+#   coire audit [limit]                          audit records, newest first
+#   coire health                                 control-plane health
+#
+# Environment:
+#   COIRE_API    default http://127.0.0.1:8080
+#   COIRE_ADMIN  admin bearer; falls back to the `coire-admin-token` Keychain item on core
+#
+# bash 3.2 compatible: macOS ships no bash 4.
+set -euo pipefail
+
+API="${COIRE_API:-http://127.0.0.1:8080}"
+
+need() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required" >&2; exit 2; }; }
+need curl; need jq
+
+admin_token() {
+  if [[ -n "${COIRE_ADMIN:-}" ]]; then printf '%s' "$COIRE_ADMIN"; return 0; fi
+  if command -v security >/dev/null 2>&1; then
+    security find-generic-password -w -s coire-admin-token 2>/dev/null && return 0
+  fi
+  echo "error: no admin token. Set COIRE_ADMIN, or create the Keychain item with" >&2
+  echo "       scripts/coire-secrets-init.sh" >&2
+  exit 2
+}
+
+# Emits the body and exits non-zero on an HTTP error, so `set -e` in a caller stops.
+# The status line is separated from the body rather than parsed out of it: an error body is
+# often not JSON, and jq would swallow the reason.
+call() {  # $1 = method, $2 = path, $3 = body (optional), $4 = "anon" to skip the bearer
+  local method="$1" path="$2" body="${3:-}" auth="${4:-admin}"
+  local args=(-sS -X "$method" -w '\n%{http_code}' -H 'Accept: application/json')
+  [[ "$auth" == "admin" ]] && args+=(-H "Authorization: Bearer $(admin_token)")
+  [[ -n "$body" ]] && args+=(-H 'Content-Type: application/json' -d "$body")
+  local out status
+  out="$(curl "${args[@]}" "$API$path")"
+  status="${out##*$'\n'}"
+  out="${out%$'\n'*}"
+  if [[ "$status" -ge 400 ]]; then
+    echo "HTTP $status from $method $path" >&2
+    printf '%s\n' "$out" | jq . 2>/dev/null || printf '%s\n' "$out" >&2
+    exit 1
+  fi
+  printf '%s\n' "$out" | jq .
+}
+
+usage() { sed -n '2,30p' "${BASH_SOURCE[0]}"; exit "${1:-0}"; }
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  model)
+    sub="${1:?usage: coire model <add|list|show|job|update|load|retry|retire|delete>}"; shift || true
+    case "$sub" in
+      add)
+        repo="${1:?usage: coire model add <repo_id> [json]}"; shift || true
+        body="$(jq -n --arg r "$repo" '{repo_id: $r}')"
+        [[ $# -gt 0 ]] && body="$(jq -n --argjson a "$body" --argjson b "$1" '$a * $b')"
+        call POST /api/v1/admin/models "$body" ;;
+      list)   call GET  /api/v1/admin/models ;;
+      show)   call GET  "/api/v1/admin/models/${1:?model id required}" ;;
+      job)    call GET  "/api/v1/admin/models/${1:?model id required}/job" ;;
+      update) call PATCH "/api/v1/admin/models/${1:?model id required}" "${2:?json body required}" ;;
+      retry)  call POST "/api/v1/admin/models/${1:?model id required}/retry" ;;
+      retire) call POST "/api/v1/admin/models/${1:?model id required}/retire" ;;
+      delete) call DELETE "/api/v1/admin/models/${1:?model id required}" ;;
+      load)
+        id="${1:?model id required}"; shift || true
+        body=""
+        [[ $# -gt 0 ]] && body="$(jq -n --arg n "$1" '{node: $n}')"
+        call POST "/api/v1/admin/models/$id/load" "$body" ;;
+      *) echo "unknown: model $sub" >&2; usage 2 ;;
+    esac ;;
+  models)  call GET /api/v1/models "" anon ;;
+  engines) call GET /api/v1/admin/engines ;;
+  engine)
+    sub="${1:?usage: coire engine <show|unload> <id>}"; shift || true
+    case "$sub" in
+      show)   call GET    "/api/v1/admin/engines/${1:?engine id required}" ;;
+      unload) call DELETE "/api/v1/admin/engines/${1:?engine id required}" ;;
+      *) echo "unknown: engine $sub" >&2; usage 2 ;;
+    esac ;;
+  nodes)  call GET /api/v1/admin/nodes ;;
+  audit)  call GET "/api/v1/admin/audit?limit=${1:-100}" ;;
+  health) call GET /health "" anon ;;
+  ""|-h|--help|help) usage 0 ;;
+  *) echo "unknown command: $cmd" >&2; usage 2 ;;
+esac
