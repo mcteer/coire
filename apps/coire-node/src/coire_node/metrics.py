@@ -20,6 +20,8 @@ from datetime import UTC, datetime
 
 import psutil
 
+from coire_core.models.engine import EngineStatus
+from coire_core.models.jobs import JobStatus
 from coire_core.models.node import NodePath, NodeStatus, ThermalState
 
 logger = logging.getLogger(__name__)
@@ -99,11 +101,22 @@ class MetricsCollector:
         self._started = time.monotonic()
         self._lock = threading.Lock()
         self._latest: NodeStatus | None = None
+        # Feature 001 sources, attached by serve(). Absent in unit tests, where the collector
+        # is exercised on its own.
+        self._store: object | None = None
+        self._jobs: object | None = None
+        self._engines: object | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         # Prime psutil's CPU deltas so the first real sample is meaningful, not 0.0.
         psutil.cpu_percent(interval=None)
         self._proc.cpu_percent(interval=None)
+
+    def attach(self, *, store: object, jobs: object, engines: object) -> None:
+        """Give the collector the feature-001 sources for its additive NodeStatus fields."""
+        self._store = store
+        self._jobs = jobs
+        self._engines = engines
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
@@ -149,6 +162,11 @@ class MetricsCollector:
             collection_budget_ok=(agent_cpu <= self._budget_cpu and agent_rss <= self._budget_rss),
             path=NodePath.MESH,
             sampled_at=datetime.now(UTC),
+            engines=self._engine_statuses(),
+            jobs=self._job_statuses(),
+            memory_budget_bytes=self._budget(),
+            memory_committed_bytes=self._committed(),
+            store_free_bytes=self._store_free(),
         )
 
         elapsed = time.perf_counter() - started
@@ -171,6 +189,53 @@ class MetricsCollector:
         with self._lock:
             self._latest = status
         return status
+
+    # -- feature 001 sources ----------------------------------------------
+    #
+    # Each is defensive: a fault in one source must degrade that field, never take out the
+    # whole health response. A node that stops answering /node/health looks unreachable to the
+    # control plane, and losing a node because its job list raised is a bad trade.
+    def _engine_statuses(self) -> list[EngineStatus]:
+        if self._engines is None:
+            return []
+        try:
+            return list(self._engines.statuses())  # type: ignore[attr-defined]
+        except Exception:
+            logger.exception("could not read engine statuses")
+            return []
+
+    def _job_statuses(self) -> list[JobStatus]:
+        if self._jobs is None:
+            return []
+        try:
+            return list(self._jobs.active())  # type: ignore[attr-defined]
+        except Exception:
+            logger.exception("could not read job statuses")
+            return []
+
+    def _budget(self) -> int:
+        if self._engines is None:
+            return 0
+        try:
+            return int(self._engines.budget_bytes())  # type: ignore[attr-defined]
+        except Exception:
+            return 0
+
+    def _committed(self) -> int:
+        if self._engines is None:
+            return 0
+        try:
+            return int(self._engines.committed_bytes())  # type: ignore[attr-defined]
+        except Exception:
+            return 0
+
+    def _store_free(self) -> int:
+        if self._store is None:
+            return 0
+        try:
+            return int(self._store.free_bytes())  # type: ignore[attr-defined]
+        except Exception:
+            return 0
 
     def latest(self, *, path: NodePath = NodePath.MESH) -> NodeStatus:
         with self._lock:

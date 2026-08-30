@@ -152,3 +152,25 @@ class TestNoFallbackClient:
 
         assert resp.status_code == 200
         assert len(attempted) == 2 and ".local" in attempted[1]
+
+
+class TestHostSuffixing:
+    """A caller passes a bare node name; the suffix is added here (ADR-0002)."""
+
+    def test_a_bare_name_gets_the_suffix(self) -> None:
+        from coire_core.net import MESH_SUFFIX, _host_with
+
+        assert _host_with("coire-edge-a", MESH_SUFFIX) == "coire-edge-a.mesh"
+
+    def test_a_literal_address_is_left_alone(self) -> None:
+        """Appending a DNS suffix to an address produces a name that cannot resolve."""
+        from coire_core.net import MESH_SUFFIX, _host_with
+
+        assert _host_with("192.168.100.11", MESH_SUFFIX) == "192.168.100.11"
+        assert _host_with("127.0.0.1", MESH_SUFFIX) == "127.0.0.1"
+
+    def test_an_already_suffixed_name_is_not_doubled(self) -> None:
+        from coire_core.net import EGRESS_SUFFIX, MESH_SUFFIX, _host_with
+
+        assert _host_with("coire-edge-a.mesh", MESH_SUFFIX) == "coire-edge-a.mesh"
+        assert _host_with("coire-edge-a.local", EGRESS_SUFFIX) == "coire-edge-a.local"

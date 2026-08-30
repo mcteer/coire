@@ -28,6 +28,30 @@ fallback_counter = _meter.create_counter(
 
 MESH_SUFFIX = ".mesh"
 EGRESS_SUFFIX = ".local"
+
+
+def _host_with(host: str, suffix: str) -> str:
+    """Append the mesh or egress suffix, unless the host already carries one or is a literal
+    address.
+
+    Callers pass a bare node name (`coire-edge-a`) and the suffix is added here so nothing
+    hard-codes an address (ADR-0002). But appending a DNS suffix to `192.168.100.11` produces
+    a name that cannot resolve, and appending `.mesh` to `coire-edge-a.mesh` produces one that
+    is simply wrong — so neither is done.
+    """
+    import ipaddress
+
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return host
+    if host.endswith((MESH_SUFFIX, EGRESS_SUFFIX)):
+        return host
+    return f"{host}{suffix}"
+
+
 FALLBACK_HEADER = "X-Coire-Path"
 FALLBACK_VALUE = "fallback"
 
@@ -95,7 +119,7 @@ class MeshClient:
         suffix = f":{port}" if port else ""
         base_headers = dict(headers or {})
 
-        mesh_url = f"http://{host}{MESH_SUFFIX}{suffix}{path}"
+        mesh_url = f"http://{_host_with(host, MESH_SUFFIX)}{suffix}{path}"
         try:
             return await self._client.request(method, mesh_url, headers=base_headers, **kwargs)
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
@@ -108,7 +132,7 @@ class MeshClient:
             ) from mesh_error
 
         fallback_headers = {**base_headers, FALLBACK_HEADER: FALLBACK_VALUE}
-        egress_url = f"http://{host}{EGRESS_SUFFIX}{suffix}{path}"
+        egress_url = f"http://{_host_with(host, EGRESS_SUFFIX)}{suffix}{path}"
         fallback_counter.add(1, {"peer": host})
         logger.warning(
             "mesh path to %s unreachable (%s); falling back to egress %s — "
@@ -142,5 +166,5 @@ class MeshClient:
         recovery, it is a much longer failure. Range requests resume it instead.
         """
         suffix = f":{port}" if port else ""
-        url = f"http://{host}{MESH_SUFFIX}{suffix}{path}"
+        url = f"http://{_host_with(host, MESH_SUFFIX)}{suffix}{path}"
         return self._client.stream(method, url, headers=dict(headers or {}), **kwargs)

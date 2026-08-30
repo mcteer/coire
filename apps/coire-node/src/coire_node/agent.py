@@ -28,6 +28,14 @@ from opentelemetry import metrics as otel_metrics
 
 from coire_core.models.node import NodePath, NodeStatus
 from coire_core.settings import Settings
+from coire_node.engines import EngineManager
+from coire_node.grants import Grants
+from coire_node.jobs import JobSupervisor
+from coire_node.routes import engines as engines_routes
+from coire_node.routes import export as export_routes
+from coire_node.routes import jobs as jobs_routes
+from coire_node.routes import models as models_routes
+from coire_node.store import Store
 
 logger = logging.getLogger(__name__)
 
@@ -82,13 +90,29 @@ def resolve_egress_address() -> str | None:
         return None
 
 
-def create_app(settings: Settings, collector: SupportsLatest, *, listener: NodePath) -> FastAPI:
+def create_app(
+    settings: Settings,
+    collector: SupportsLatest,
+    *,
+    listener: NodePath,
+    store: Store | None = None,
+    jobs: JobSupervisor | None = None,
+    engines: EngineManager | None = None,
+    grants: Grants | None = None,
+) -> FastAPI:
     """Build the agent app for one listener.
 
     Two apps are created — one per listener — so the egress instance can enforce the fallback
-    marker without that check running on the mesh path.
+    marker without that check running on the mesh path, and so the **export routes exist only
+    on the mesh app**. A model copy may not cross the egress interface (spec FR-007); the
+    surest way to guarantee that is for the route not to be there.
     """
     app = FastAPI(title=f"coire-node ({listener.value})", docs_url=None, openapi_url=None)
+    app.state.settings = settings
+    app.state.store = store
+    app.state.jobs = jobs
+    app.state.engines = engines
+    app.state.grants = grants
     expected_token = settings.node_token.get_secret_value()
 
     async def require_node_token(credentials: BearerDep) -> None:
@@ -135,6 +159,19 @@ def create_app(settings: Settings, collector: SupportsLatest, *, listener: NodeP
     async def ready() -> dict[str, object]:
         return {"service": "coire-node", "version": settings.service_version, "ready": True}
 
+    # Feature 001 verbs. All bearer-authenticated, like /node/health.
+    if store is not None:
+        guard = [Depends(require_node_token)]
+        app.include_router(models_routes.router, dependencies=guard)
+        app.include_router(jobs_routes.router, dependencies=guard)
+        app.include_router(engines_routes.router, dependencies=guard)
+
+        # The data path for peer replication. Mesh listener only, and authorised by the grant
+        # in the URL rather than the node bearer, because the peer does not hold that token
+        # and should not (spec FR-007, research R3).
+        if listener is NodePath.MESH:
+            app.include_router(export_routes.router)
+
     return app
 
 
@@ -145,12 +182,40 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     egress_addr = resolve_egress_address()
     port = settings.node_listen_port
 
+    # Feature 001's collaborators, built once and shared by both listeners.
+    store = Store(settings.node_store_dir)
+    store.ensure_root()
+    jobs = JobSupervisor(settings, store)
+    grants = Grants()
+    engines = EngineManager(settings, store, mesh_addr or "127.0.0.1")
+
+    # Re-own engines that outlived the previous agent process, and re-attach to jobs that were
+    # running. Both happen before the listeners bind, so the first /node/health after a restart
+    # already tells the truth (spec FR-015, edge case 3).
+    adopted = engines.adopt_from_state()
+    if adopted:
+        logger.info("adopted %d running engine(s) after restart", len(adopted))
+    resumed = jobs.resume_all()
+    if resumed:
+        logger.info("resumed %d acquisition job(s)", resumed)
+    engines.start_health_loop()
+    if hasattr(collector, "attach"):
+        collector.attach(store=store, jobs=jobs, engines=engines)
+
     servers: list[uvicorn.Server] = []
     if mesh_addr:
         servers.append(
             uvicorn.Server(
                 uvicorn.Config(
-                    create_app(settings, collector, listener=NodePath.MESH),
+                    create_app(
+                        settings,
+                        collector,
+                        listener=NodePath.MESH,
+                        store=store,
+                        jobs=jobs,
+                        engines=engines,
+                        grants=grants,
+                    ),
                     host=mesh_addr,
                     port=port,
                     access_log=False,
@@ -172,7 +237,15 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
         servers.append(
             uvicorn.Server(
                 uvicorn.Config(
-                    create_app(settings, collector, listener=NodePath.FALLBACK),
+                    create_app(
+                        settings,
+                        collector,
+                        listener=NodePath.FALLBACK,
+                        store=store,
+                        jobs=jobs,
+                        engines=engines,
+                        grants=grants,
+                    ),
                     host=egress_addr,
                     port=port,
                     access_log=False,
@@ -185,4 +258,10 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     if not servers:
         raise RuntimeError("no address to bind: neither a mesh nor an egress address resolved")
 
-    await asyncio.gather(*(s.serve() for s in servers))
+    try:
+        await asyncio.gather(*(s.serve() for s in servers))
+    finally:
+        # Engines are deliberately left running: the agent is restartable and they are not
+        # (spec FR-015).
+        engines.shutdown()
+        jobs.shutdown()

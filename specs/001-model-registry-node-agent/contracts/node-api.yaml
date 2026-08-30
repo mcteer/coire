@@ -444,6 +444,17 @@ components:
         torch_dtype: { type: [string, "null"] }
         max_position_embeddings: { type: [integer, "null"] }
         chat_template_present: { type: boolean }
+        # Shape keys for the KV-cache term of the memory estimate (research R6). Read from
+        # config["text_config"] when the repository is multimodal — Qwen3.8-27B nests the
+        # language model's shape there, and reading the top level would size the vision tower.
+        num_hidden_layers: { type: [integer, "null"] }
+        num_key_value_heads: { type: [integer, "null"] }
+        num_attention_heads: { type: [integer, "null"] }
+        head_dim: { type: [integer, "null"] }
+        hidden_size: { type: [integer, "null"] }
+        sizing_from_text_config:
+          type: boolean
+          description: Whether the shape keys above came from a nested text_config.
 
     ChecksumManifest:
       type: object

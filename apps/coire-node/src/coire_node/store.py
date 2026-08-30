@@ -142,9 +142,7 @@ class Store:
             size = path.stat().st_size
             # `index` is bound now, not when the closure runs: a late-binding lambda inside a
             # loop reports every chunk against the last file.
-            callback = (
-                (lambda n, i=index: on_progress(n, i)) if on_progress is not None else None
-            )
+            callback = (lambda n, i=index: on_progress(n, i)) if on_progress is not None else None
             digest = sha256_file(path, on_chunk=callback)
             files.append(
                 ManifestFile(
@@ -209,9 +207,7 @@ class Store:
             if path.stat().st_size != entry.bytes:
                 mismatched.append(rel)
                 continue
-            callback = (
-                (lambda n, i=index: on_progress(n, i)) if on_progress is not None else None
-            )
+            callback = (lambda n, i=index: on_progress(n, i)) if on_progress is not None else None
             digest = sha256_file(path, on_chunk=callback)
             if digest != entry.sha256:
                 mismatched.append(rel)

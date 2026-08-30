@@ -20,6 +20,28 @@ def fake_hub(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Iterator[FakeHub]:  #
     """
     with FakeHub() as hub:
         monkeypatch.setenv("HF_ENDPOINT", hub.endpoint)
+        # huggingface_hub reads HF_ENDPOINT once, at import, into module constants. By the
+        # time this fixture runs the library is long imported, so setting the environment
+        # alone redirects only *subprocesses* (the worker) and leaves in-process calls
+        # pointing at the real Hub. Patch the constants the client actually consults.
+        import huggingface_hub
+        import huggingface_hub.constants as hf_constants
+
+        for module in (hf_constants, huggingface_hub.file_download, huggingface_hub.hf_api):
+            if hasattr(module, "ENDPOINT"):
+                monkeypatch.setattr(module, "ENDPOINT", hub.endpoint, raising=False)
+        monkeypatch.setattr(
+            hf_constants,
+            "HUGGINGFACE_CO_URL_TEMPLATE",
+            hub.endpoint + "/{repo_id}/resolve/{revision}/{filename}",
+            raising=False,
+        )
+        monkeypatch.setattr(
+            huggingface_hub.file_download,
+            "HUGGINGFACE_CO_URL_TEMPLATE",
+            hub.endpoint + "/{repo_id}/resolve/{revision}/{filename}",
+            raising=False,
+        )
         monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
         monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hf" / "hub"))
         monkeypatch.setenv("HF_HUB_DISABLE_PROGRESS_BARS", "1")
