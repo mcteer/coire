@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  coire-node LaunchDaemon.
+
+  A LaunchDaemon, not a LaunchAgent: SC-006 requires the agent to answer within two minutes of
+  a reboot with no login session, and a LaunchAgent needs a logged-in user. For the same
+  reason the node token lives in the System keychain, which is unlocked at boot, rather than
+  the login keychain, which is not (research R6).
+
+  Rendered by apps/coire-node/install.sh: __USER__ and __PREFIX__ are substituted.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.coire.node</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PREFIX__/envs/current/bin/python3</string>
+        <string>-m</string>
+        <string>coire_node</string>
+    </array>
+
+    <key>UserName</key>
+    <string>__USER__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>COIRE_ROLE</key>
+        <string>studio</string>
+        <key>NODE_NAME</key>
+        <string>__NODE_NAME__</string>
+        <key>MESH_HOSTS_FILE</key>
+        <string>/etc/hosts</string>
+        <key>OTLP_ENDPOINT</key>
+        <string>http://coire-core.mesh:4317</string>
+        <key>PATH</key>
+        <string>__PREFIX__/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>__PREFIX__/log/coire-node.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__PREFIX__/log/coire-node.err.log</string>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>

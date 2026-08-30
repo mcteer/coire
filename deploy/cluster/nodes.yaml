@@ -1,0 +1,22 @@
+# Declared cluster inventory.
+#
+# Coire's node membership is declared, never discovered: a node whose name is absent here is
+# refused registration whatever token it presents (Principle IV; ARCHITECTURE.md 4.1 rejects
+# exo-style auto-discovery explicitly, so a rogue machine on the network cannot become a
+# worker).
+#
+# Addresses are deliberately absent — they live in deploy/cluster/hosts and reach services as
+# `<name>.mesh` names (ADR-0002). Nothing here or in any service config contains an IP.
+
+nodes:
+  coire-edge-a:
+    role: studio
+    gpu_cores: 80
+    description: >-
+      Studio A. Rank 0 for sharded runs, default home for the largest single-node model.
+      Middle of the mesh chain, so it bridges core to edge-b.
+  coire-edge-b:
+    role: studio
+    gpu_cores: 60
+    description: >-
+      Studio B. Rank 1, pinned admin model, image worker.

@@ -1,0 +1,17 @@
+# Thunderbolt mesh name service (ADR-0002).
+#
+# The mesh is unrouted and never reaches the UDM, so UniFi DNS cannot name it, and mDNS was
+# measured non-deterministic here — `.local` names resolved to 169.254.x link-local addresses
+# that change as interfaces come and go. This file is therefore the single source of mesh
+# addresses; scripts/apply-mesh-hosts.sh writes it into /etc/hosts as a managed block on each
+# host, which is config applied from deploy/, not hand-edited config on a node.
+#
+# Every service configuration references the `.mesh` names below. A raw 192.168.100.x address
+# anywhere else in the repository is a review failure.
+#
+# Topology is a chain, not a triangle: core -- edge-a -- edge-b. Bridging all three into a
+# triangle creates an L2 loop that collapses throughput and breaks external DNS.
+
+192.168.100.10  coire-core.mesh
+192.168.100.11  coire-edge-a.mesh
+192.168.100.12  coire-edge-b.mesh

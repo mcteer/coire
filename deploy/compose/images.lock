@@ -1,0 +1,17 @@
+# Image pins for the Coire control plane.
+#
+# Every FROM in a Dockerfile and every `image:` in compose.yaml must appear here with a
+# sha256 digest. `scripts/pin-images.sh --check` enforces it, and CI fails on a bare tag
+# (contracts/image-policy.md rule 7).
+#
+# Resolved 2026-08-29 on coire-core (linux/arm64).
+#
+# name                   reference
+builder-python           ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca
+runtime-base             gcr.io/distroless/base-debian12:nonroot@sha256:7f0c72cd138b442ae0deeb69c08b1acf5525439ba251a49ad93c320a061567e5
+runtime-nginx            cgr.dev/chainguard/nginx:latest@sha256:f801aa4ac908f6c3847efe81b577e4f34e1f237b5556dfbe698127ad464db269
+builder-node             docker.io/library/node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+builder-go               docker.io/library/golang:1.23-bookworm@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db
+postgres                 docker.io/library/postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+docker-socket-proxy      docker.io/tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
+otel-collector           docker.io/otel/opentelemetry-collector-contrib:latest@sha256:1f2c54a30e713fac6b3ae77a1ec84010c2007e29ced8ec666214fc2f6739c1cc

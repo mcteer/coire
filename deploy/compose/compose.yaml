@@ -1,0 +1,240 @@
+# Coire control plane — the whole of it, on core.
+#
+# Brought up by ./coire-up, which sources secrets from the macOS Keychain into its own
+# environment and never writes them to disk (FR-011, research R4).
+#
+# Networks are per concern, not one flat bridge: a container is attached only to the networks
+# its role requires, so coire-web cannot reach Postgres and only coire-scheduler can reach the
+# Docker socket proxy (FR-006, FR-007).
+#
+# Absent by design: cloudflared (no tunnel until the platform faces external traffic —
+# ADR-0001), coire-ops (feature 012), coire-agent (built but never run on core — FR-017), and
+# the observability backends (feature 009 — ADR-0003).
+
+x-hardening: &hardening
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  stop_grace_period: 5s
+
+x-python-health: &python-health
+  interval: 5s
+  timeout: 2s
+  retries: 3
+  start_period: 10s
+
+services:
+  # ---------------------------------------------------------------- ingress
+  coire-web:
+    image: ${COIRE_REGISTRY:-}coire-web:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-web/Dockerfile
+    # The ONLY published port in feature 000, and only on loopback: nothing on core is
+    # reachable from the LAN. Public exposure arrives with feature 007 (ADR-0001).
+    ports: ["127.0.0.1:8080:8080"]
+    networks: [coire-edge, coire-telemetry]
+    depends_on:
+      coire-api: {condition: service_healthy}
+    <<: *hardening
+    # Declared explicitly rather than inherited from the image, so the topology test can
+    # assert it and a base-image change cannot silently promote this container to root.
+    user: "65532:65532"
+    healthcheck:
+      # Local, non-proxied path: probing /ready would reach coire-api, so an api restart
+      # would mark web unhealthy and break restart isolation (SC-002).
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:8080/nginx-health"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+      start_period: 2s
+
+  # ---------------------------------------------------------------- control plane
+  coire-api:
+    image: ${COIRE_REGISTRY:-}coire-api:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-api/docker/api.Dockerfile
+    networks: [coire-edge, coire-db, coire-internal, coire-telemetry]
+    environment:
+      POSTGRES_HOST: postgres
+      OTLP_ENDPOINT: http://otel-collector:4317
+      NODE_INVENTORY_FILE: /app/nodes.yaml
+    secrets: [postgres_password, key_signing_secret, node_tokens]
+    depends_on:
+      postgres: {condition: service_healthy}
+      coire-migrate: {condition: service_completed_successfully}
+    <<: *hardening
+    user: "65532:65532"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2).status==200 else 1)"]
+      <<: *python-health
+
+  coire-mcp:
+    image: ${COIRE_REGISTRY:-}coire-mcp:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-api/docker/mcp.Dockerfile
+    networks: [coire-edge, coire-telemetry]
+    environment:
+      OTLP_ENDPOINT: http://otel-collector:4317
+    <<: *hardening
+    user: "65532:65532"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/ready',timeout=2).status==200 else 1)"]
+      <<: *python-health
+
+  coire-scheduler:
+    image: ${COIRE_REGISTRY:-}coire-scheduler:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-api/docker/scheduler.Dockerfile
+    # The only service on coire-docker, and it reaches the socket solely through the proxy.
+    networks: [coire-db, coire-internal, coire-docker, coire-telemetry]
+    environment:
+      POSTGRES_HOST: postgres
+      OTLP_ENDPOINT: http://otel-collector:4317
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+    secrets: [postgres_password]
+    depends_on:
+      postgres: {condition: service_healthy}
+    <<: *hardening
+    user: "65532:65532"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8002/ready',timeout=2).status==200 else 1)"]
+      <<: *python-health
+
+  coire-migrate:
+    image: ${COIRE_REGISTRY:-}coire-migrate:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-api/docker/migrate.Dockerfile
+    # One-shot: runs to completion and exits 0. Migrations never run inside a long-lived
+    # service (FR-010), and coire-api waits on service_completed_successfully.
+    networks: [coire-db, coire-telemetry]
+    environment:
+      POSTGRES_HOST: postgres
+    secrets: [postgres_password]
+    depends_on:
+      postgres: {condition: service_healthy}
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    user: "65532:65532"
+    restart: "no"
+
+  # ---------------------------------------------------------------- stateful
+  postgres:
+    image: docker.io/library/postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+    networks: [coire-db]
+    environment:
+      POSTGRES_USER: coire
+      POSTGRES_DB: coire
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    secrets: [postgres_password]
+    volumes: [coire-pgdata:/var/lib/postgresql/data]
+    # Hardened as far as the upstream image supports. Its shell is accepted: the constitution
+    # pins Postgres 17 and no shell-less, version-pinnable Postgres 17 image exists
+    # (research R3; FR-004 as amended). It is reachable only on coire-db.
+    read_only: true
+    tmpfs: [/tmp, /run/postgresql, /var/run/postgresql]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coire -d coire"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # ---------------------------------------------------------------- infrastructure
+  docker-socket-proxy:
+    image: docker.io/tecnativa/docker-socket-proxy:latest@sha256:1f5038b54f06c3e18422902cf00ba21803d1c97805aae032e5e6673d532d3459
+    networks: [coire-docker]
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock:ro"]
+    environment:
+      # Explicit allowlist. Everything not named here is denied, and the proxy exists so the
+      # scheduler manages the control plane's own containers without holding the raw socket.
+      CONTAINERS: "1"
+      IMAGES: "1"
+      POST: "1"
+      NETWORKS: "0"
+      VOLUMES: "0"
+      SERVICES: "0"
+      TASKS: "0"
+      SWARM: "0"
+      SECRETS: "0"
+      CONFIGS: "0"
+      NODES: "0"
+      PLUGINS: "0"
+      SYSTEM: "0"
+      INFO: "0"
+      AUTH: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      DISTRIBUTION: "0"
+      EXEC: "0"
+      SESSION: "0"
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  otel-collector:
+    image: ${COIRE_REGISTRY:-}coire-otel:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/otel.Dockerfile
+    networks: [coire-telemetry]
+    # Nothing depends_on the collector: telemetry loss must never cause a request failure.
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:13133/"]
+      interval: 5s
+      timeout: 2s
+      retries: 3
+      start_period: 5s
+
+networks:
+  # Only coire-edge is non-internal: it is where cloudflared attaches in feature 007. Even so,
+  # nothing is published from it in feature 000 except coire-web on loopback.
+  coire-edge:
+    internal: false
+  coire-db:
+    internal: true
+  coire-internal:
+    internal: true
+  coire-docker:
+    internal: true
+  coire-telemetry:
+    internal: true
+
+volumes:
+  coire-pgdata:
+
+secrets:
+  # File-sourced from a 0700 directory outside the repository, written by coire-up from the
+  # Keychain and removed by coire-down.
+  #
+  # Two measured constraints force exactly this shape (research R4, amended):
+  #   * `environment:` sources are rejected outright for any service with read_only: true
+  #     ("`file` is the sole supported option"), and every first-party service is read-only.
+  #   * A file source is a bind mount, so DELETING it after bring-up makes /run/secrets/<name>
+  #     vanish from the running container and breaks `docker compose restart`. The file must
+  #     therefore live for the lifetime of the stack, not be deleted immediately.
+  #
+  # The secret is never in the repository, never in an image, and never on a Studio.
+  postgres_password:
+    file: ${COIRE_SECRETS_DIR}/postgres_password
+  key_signing_secret:
+    file: ${COIRE_SECRETS_DIR}/key_signing_secret
+  node_tokens:
+    file: ${COIRE_SECRETS_DIR}/node_tokens

@@ -74,3 +74,5 @@ tmp/
 
 # --- Claude Code local overrides ---
 .claude/settings.local.json
+.coire-up.lock/
+deploy/compose/.env
