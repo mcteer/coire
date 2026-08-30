@@ -32,7 +32,14 @@ hard-code addresses. That intent must hold; the mechanism (UniFi DNS) cannot.
   `/etc/hosts` on each host (`# BEGIN coire-mesh` … `# END coire-mesh`), replacing any prior
   block. This is config applied from `deploy/`, not hand-edited config on a node.
 - **Every** service configuration, compose file, launchd plist and client references
-  `<host>.mesh` names. A raw `192.168.100.x` outside `deploy/cluster/hosts` fails review.
+  `<host>.mesh` names. A raw `192.168.100.x` *address* outside `deploy/cluster/hosts` fails
+  review.
+
+  One carve-out, added during implementation: `coire_core.models.node.MESH_SUBNET` names the
+  subnet `192.168.100.0/24` so registration can reject an off-mesh address. That is a
+  validation boundary, not a host address — membership cannot be checked without naming the
+  range — and it is the single place the subnet appears in code. Renumbering the mesh means
+  changing `deploy/cluster/hosts` and that one constant.
 - Wi-Fi addresses are never written anywhere; the egress fallback uses `<host>.local`, which
   is adequate for a path that is explicitly degraded and alerted.
 

@@ -1,0 +1,84 @@
+[tool.uv.workspace]
+members = [
+    "packages/coire-core",
+    "apps/coire-api",
+    "apps/coire-node",
+    "apps/coire-agent",
+]
+
+[tool.uv.sources]
+coire-core = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "mypy>=1.13",
+    "ruff>=0.8",
+    "httpx>=0.28",
+    "jsonschema>=4.23",
+    "pyyaml>=6.0",
+    "types-pyyaml>=6.0",
+    "types-jsonschema>=4.23",
+]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["packages/coire-core/src", "apps/coire-api/src", "apps/coire-node/src", "apps/coire-agent/src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "C4", "SIM", "RUF"]
+ignore = ["E501"]  # line length is handled by the formatter
+
+[tool.ruff.lint.isort]
+# Declared explicitly rather than inferred. Ruff infers first-party from `src`, but once the
+# workspace packages are installed into .venv it can classify them as third-party instead —
+# which made `ruff check` pass locally and fail in CI on the identical commit. Naming them
+# makes the grouping deterministic in both.
+known-first-party = [
+    "coire_core",
+    "coire_api",
+    "coire_mcp",
+    "coire_scheduler",
+    "coire_node",
+    "coire_agent",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+disallow_any_generics = true
+mypy_path = [
+    "packages/coire-core/src",
+    "apps/coire-api/src",
+    "apps/coire-node/src",
+    "apps/coire-agent/src",
+]
+explicit_package_bases = true
+namespace_packages = true
+
+[[tool.mypy.overrides]]
+module = ["psutil.*", "jsonschema.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = [
+    "packages/coire-core/tests",
+    "apps/coire-api/tests",
+    "apps/coire-node/tests",
+    "tests",
+]
+markers = [
+    "integration: requires a running control plane (set COIRE_INTEGRATION=1)",
+]
+filterwarnings = ["error::DeprecationWarning"]

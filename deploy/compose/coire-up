@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# Bring up the Coire control plane on core.
+#
+# Secrets are read from the macOS Keychain and written 0600 into a 0700 directory outside the
+# repository ($HOME/.coire/secrets by default), which compose file-sources into each container
+# at /run/secrets/. coire-down removes them.
+#
+# Two measured constraints force this shape (research R4, amended): compose rejects
+# `environment:` secret sources for any read_only service, and a file source is a bind mount,
+# so deleting it under a running container breaks `docker compose restart`. The secret is
+# never in the repository, never in an image, and never on a Studio.
+#
+#   coire-up                      read secrets from the Keychain (normal path)
+#   coire-up --secrets-from-env   use COIRE_SECRET_* already in the environment (CI)
+#   coire-up --no-build           do not build images first
+#
+# Exit codes: 0 ok, 2 missing Keychain item, 3 another bring-up is already running.
+set -euo pipefail
+
+COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$COMPOSE_DIR/../.." && pwd)"
+LOCKDIR="$COMPOSE_DIR/.coire-up.lock"
+WAIT_TIMEOUT="${COIRE_WAIT_TIMEOUT:-180}"
+
+FROM_ENV=0
+BUILD=1
+for arg in "$@"; do
+  case "$arg" in
+    --secrets-from-env) FROM_ENV=1 ;;
+    --no-build)         BUILD=0 ;;
+    -h|--help)          sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "unknown argument: $arg" >&2; exit 2 ;;
+  esac
+done
+
+# Two operators must not race the migration (spec edge case). macOS ships no flock(1), so the
+# lock is an atomic mkdir plus a PID file; a lock left by a killed run is detected as stale
+# rather than blocking bring-up forever.
+acquire_lock() {
+  if mkdir "$LOCKDIR" 2>/dev/null; then
+    echo "$$" > "$LOCKDIR/pid"
+    trap 'rm -rf "$LOCKDIR"' EXIT
+    return 0
+  fi
+  if [[ -r "$LOCKDIR/pid" ]]; then
+    local holder
+    holder="$(cat "$LOCKDIR/pid" 2>/dev/null || echo)"
+    if [[ -n "$holder" ]] && ! kill -0 "$holder" 2>/dev/null; then
+      echo "removing stale lock from pid $holder" >&2
+      rm -rf "$LOCKDIR"
+      if mkdir "$LOCKDIR" 2>/dev/null; then
+        echo "$$" > "$LOCKDIR/pid"
+        trap 'rm -rf "$LOCKDIR"' EXIT
+        return 0
+      fi
+    fi
+  fi
+  return 1
+}
+
+if ! acquire_lock; then
+  echo "bring-up already running (lock held at $LOCKDIR)" >&2
+  exit 3
+fi
+
+# --- secrets ---------------------------------------------------------------
+# Parallel indexed arrays, not an associative array: macOS ships bash 3.2, where `declare -A`
+# does not exist and silently produces a normal array — which would make this loop iterate
+# over garbage and report success while configuring nothing.
+SECRET_ITEMS=(coire-postgres-password coire-key-signing-secret coire-node-tokens)
+SECRET_VARS=(COIRE_SECRET_POSTGRES_PASSWORD COIRE_SECRET_KEY_SIGNING_SECRET COIRE_SECRET_NODE_TOKENS)
+
+# Where the materialised secrets live: outside the repository, 0700, removed by coire-down.
+SECRETS_DIR="${COIRE_SECRETS_DIR:-$HOME/.coire/secrets}"
+export COIRE_SECRETS_DIR="$SECRETS_DIR"
+SECRET_FILES=(postgres_password key_signing_secret node_tokens)
+
+write_secret() {  # $1 = filename, $2 = value
+  local target="$SECRETS_DIR/$1"
+  printf '%s' "$2" > "$target"
+  # 0644 inside a 0700 directory, deliberately.
+  #
+  # Compose file-secrets are bind mounts that preserve host ownership, and every first-party
+  # service runs as uid 65532. A 0600 file owned by the invoking user is unreadable to them:
+  # macOS hides this behind uid mapping, but on Linux the container gets
+  # "Permission denied: /run/secrets/postgres_password" and the whole control plane fails to
+  # start. Host-side confidentiality comes from the 0700 directory, which no other user can
+  # traverse; the file mode only governs what the container can read once the daemon has
+  # mounted it.
+  chmod 644 "$target"
+}
+
+mkdir -p "$SECRETS_DIR"
+chmod 700 "$SECRETS_DIR"
+
+# Record the resolved path so plain `docker compose ps/logs/restart` in this directory works
+# without the caller re-exporting it. Contains a path, never a secret; gitignored.
+printf 'COIRE_SECRETS_DIR=%s\n' "$SECRETS_DIR" > "$COMPOSE_DIR/.env"
+
+if [[ "$FROM_ENV" -eq 1 ]]; then
+  for i in "${!SECRET_ITEMS[@]}"; do
+    var="${SECRET_VARS[$i]}"
+    if [[ -z "${!var:-}" ]]; then
+      echo "missing environment secret: $var (--secrets-from-env was given)" >&2
+      exit 2
+    fi
+    write_secret "${SECRET_FILES[$i]}" "${!var}"
+  done
+  echo "secrets: taken from the environment (${#SECRET_ITEMS[@]} items)"
+else
+  missing=()
+  for i in "${!SECRET_ITEMS[@]}"; do
+    item="${SECRET_ITEMS[$i]}"
+    var="${SECRET_VARS[$i]}"
+    if value="$(security find-generic-password -w -s "$item" 2>/dev/null)"; then
+      write_secret "${SECRET_FILES[$i]}" "$value"
+      unset value
+    else
+      missing+=("$item")
+    fi
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    # Abort before touching compose: a partially-configured control plane is worse than none.
+    for m in "${missing[@]}"; do echo "missing keychain item: $m" >&2; done
+    echo "create them with scripts/coire-secrets-init.sh, then re-run" >&2
+    exit 2
+  fi
+  echo "secrets: read from the Keychain into $SECRETS_DIR (0700 dir, removed by coire-down)"
+fi
+
+# --- mesh names ------------------------------------------------------------
+if ! "$REPO_ROOT/scripts/apply-mesh-hosts.sh" --check >/dev/null 2>&1; then
+  echo "warning: mesh hosts block is not current in /etc/hosts;" >&2
+  echo "         node probing will fall back to the egress path (FR-013b)." >&2
+  echo "         run: sudo scripts/apply-mesh-hosts.sh" >&2
+fi
+
+# --- bring up --------------------------------------------------------------
+cd "$COMPOSE_DIR"
+if [[ "$BUILD" -eq 1 ]]; then
+  echo "building images..."
+  docker compose build --quiet
+fi
+
+echo "starting control plane (waiting up to ${WAIT_TIMEOUT}s for health)..."
+docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT"
+
+echo
+docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+echo
+echo "control plane up. health: http://127.0.0.1:8080/health"

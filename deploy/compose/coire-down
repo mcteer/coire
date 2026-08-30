@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Stop the Coire control plane.
+#
+#   coire-down            stop and remove containers; the Postgres volume is kept
+#   coire-down --purge    also remove the volume (destroys the system of record)
+set -euo pipefail
+
+COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$COMPOSE_DIR"
+
+# The secrets directory must outlive bring-up (a file: source is a bind mount, so removing it
+# under a running container breaks restart) but must not outlive the stack.
+SECRETS_DIR="${COIRE_SECRETS_DIR:-$HOME/.coire/secrets}"
+export COIRE_SECRETS_DIR="$SECRETS_DIR"
+remove_secrets() {
+  if [[ -d "$SECRETS_DIR" ]]; then
+    rm -f "$SECRETS_DIR"/postgres_password "$SECRETS_DIR"/key_signing_secret "$SECRETS_DIR"/node_tokens
+    rmdir "$SECRETS_DIR" 2>/dev/null || true
+    echo "secrets: removed from $SECRETS_DIR"
+  fi
+}
+
+if [[ "${1:-}" == "--purge" ]]; then
+  echo "This removes the coire-pgdata volume and every row in it."
+  read -r -p "Type 'yes' to confirm: " reply
+  [[ "$reply" == "yes" ]] || { echo "aborted"; exit 1; }
+  docker compose down -v
+  remove_secrets
+  echo "control plane down; volume removed"
+else
+  docker compose down
+  remove_secrets
+  echo "control plane down; coire-pgdata volume kept"
+fi
