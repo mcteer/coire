@@ -1,0 +1,507 @@
+openapi: 3.1.0
+info:
+  title: Coire model registry API (control plane)
+  version: 0.2.0
+  description: >
+    Routes feature 001 adds to coire-api. The served OpenAPI document is generated from the
+    FastAPI app; CI checks the generated document matches this file for these paths. Every
+    /api/v1/admin/* route requires the admin principal (ADR-0004: interim admin bearer token
+    until feature 007); a non-admin caller receives 403 and an audit row with outcome=refused
+    is written (SC-002). /api/v1/models is the one user-facing route and is filtered.
+
+servers:
+  - url: http://127.0.0.1:8080
+    description: via coire-web (nginx) on core
+
+paths:
+  /api/v1/admin/models:
+    post:
+      summary: Add a model from a Hugging Face repo (admin). Starts the acquisition.
+      operationId: addModel
+      security: [{ adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModelAddRequest" }
+      responses:
+        "202":
+          description: Registry row created in `downloading`; a DownloadJob is running.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelDetail" }
+        "403": { description: Caller is not an admin. No side effect other than an audit row. }
+        "409": { description: A model with this repo_id already exists (US1 scenario 4). }
+        "422":
+          description: >
+            Rejected before any bytes moved. `reason` is one of `not_mlx_format`
+            (points at feature 002), `no_fit_memory`, `no_fit_disk` (with required and available
+            figures), `gated` (licence acceptance needed), `not_found`, `inspect_failed`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelRejected" }
+        "503": { description: No node is reachable to inspect the repo. }
+    get:
+      summary: List every model regardless of state or visibility (admin).
+      operationId: listModelsAdmin
+      security: [{ adminToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ModelDetail" }
+        "403": { description: Not an admin. }
+
+  /api/v1/admin/models/{model_id}:
+    parameters:
+      - { in: path, name: model_id, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: One model with its copies, active job, and engines (admin).
+      operationId: getModelAdmin
+      security: [{ adminToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelDetail" }
+        "403": { description: Not an admin. }
+        "404": { description: Unknown id. }
+    patch:
+      summary: Curate (admin) — visibility, entitlement, tags, description, placement, TTL, profile.
+      operationId: updateModel
+      security: [{ adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ModelUpdateRequest" }
+      responses:
+        "200":
+          description: Updated. Publishing/unpublishing never loads, unloads, or deletes anything (US5 scenario 2).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelDetail" }
+        "403": { description: Not an admin. }
+        "404": { description: Unknown id. }
+        "409": { description: Cannot publish a model that is not `ready`, or edit a `retired` one. }
+        "422": { description: Invalid placement policy, tag, or profile value. }
+    delete:
+      summary: Delete a `failed` model outright (admin) — row and any partial copies. Not for `ready` models; use retire.
+      operationId: deleteModel
+      security: [{ adminToken: [] }]
+      responses:
+        "204": { description: Removed. }
+        "403": { description: Not an admin. }
+        "404": { description: Unknown id. }
+        "409": { description: Model is not `failed`. }
+
+  /api/v1/admin/models/{model_id}/retire:
+    parameters:
+      - { in: path, name: model_id, required: true, schema: { type: string, format: uuid } }
+    post:
+      summary: Retire (admin) — unload every engine, delete both copies, keep the row for audit.
+      operationId: retireModel
+      security: [{ adminToken: [] }]
+      responses:
+        "202":
+          description: Retirement started; state becomes `retired` once both nodes confirm deletion.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelDetail" }
+        "403": { description: Not an admin. }
+        "404": { description: Unknown id. }
+        "409": { description: Already retired. }
+
+  /api/v1/admin/models/{model_id}/retry:
+    parameters:
+      - { in: path, name: model_id, required: true, schema: { type: string, format: uuid } }
+    post:
+      summary: Re-run acquisition for a `failed` model (admin). Resumes any partial pull.
+      operationId: retryModel
+      security: [{ adminToken: [] }]
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ModelDetail" }
+        "403": { description: Not an admin. }
+        "404": { description: Unknown id. }
+        "409": { description: Model is not `failed`. }
+
+  /api/v1/admin/models/{model_id}/job:
+    parameters:
+      - { in: path, name: model_id, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: The current or most recent DownloadJob with progress (US1 scenario 2).
+      operationId: getModelJob
+      security: [{ adminToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DownloadJob" }
+        "403": { description: Not an admin. }
+        "404": { description: Unknown id, or no job yet. }
+
+  /api/v1/admin/models/{model_id}/load:
+    parameters:
+      - { in: path, name: model_id, required: true, schema: { type: string, format: uuid } }
+    post:
+      summary: Load the model on a node (admin). Exercised by tests and the console; user traffic is feature 003.
+      operationId: loadModel
+      security: [{ adminToken: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                node: { type: string, description: "Override the placement policy's node choice." }
+      responses:
+        "202":
+          description: Engine starting. Poll the engine until `ready`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineProcess" }
+        "200":
+          description: Already loaded on that node — the existing engine is returned (FR-019).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineProcess" }
+        "403": { description: Not an admin. }
+        "404": { description: Unknown id. }
+        "409":
+          description: "Model is not `ready`, or the node's memory budget would be exceeded (FR-020, reason=budget)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoadRefused" }
+        "503": { description: Chosen node unreachable. }
+
+  /api/v1/admin/engines:
+    get:
+      summary: Every engine the registry knows, including orphans (admin).
+      operationId: listEngines
+      security: [{ adminToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EngineProcess" }
+        "403": { description: Not an admin. }
+
+  /api/v1/admin/engines/{engine_id}:
+    parameters:
+      - { in: path, name: engine_id, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: One engine (admin).
+      operationId: getEngine
+      security: [{ adminToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineProcess" }
+        "403": { description: Not an admin. }
+        "404": { description: Unknown id. }
+    delete:
+      summary: Unload (admin). Terminates the process; the row moves to `stopped` when the node confirms.
+      operationId: unloadEngine
+      security: [{ adminToken: [] }]
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineProcess" }
+        "403": { description: Not an admin. }
+        "404": { description: Unknown id. }
+
+  /api/v1/admin/nodes:
+    get:
+      summary: Declared nodes with their latest live status, engines and jobs (admin).
+      operationId: listNodesAdmin
+      security: [{ adminToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/NodeDetail" }
+        "403": { description: Not an admin. }
+
+  /api/v1/admin/audit:
+    get:
+      summary: Audit records, newest first (admin). Read-only; nothing deletes or edits them.
+      operationId: listAudit
+      security: [{ adminToken: [] }]
+      parameters:
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+        - { in: query, name: target_id, schema: { type: string } }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AuditRecord" }
+        "403": { description: Not an admin. }
+
+  /api/v1/models:
+    get:
+      summary: >
+        Models the caller may see: `published`, `ready`, and entitled — with live load state.
+        Admins see everything. This is what the picker and feature 003's /v1/models read.
+      operationId: listModels
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ModelListing" }
+
+components:
+  securitySchemes:
+    adminToken:
+      type: http
+      scheme: bearer
+      description: >
+        Interim static admin token from core's Keychain (`coire-admin-token`), mounted at
+        /run/secrets/admin_token. ADR-0004; replaced by feature 007's roles.
+
+  schemas:
+    ModelState:
+      type: string
+      enum: [downloading, replicating, ready, failed, retired]
+    Visibility:
+      type: string
+      enum: [admin_only, published]
+    Tag:
+      type: string
+      enum: [coding, general, reasoning, vision, image]
+    PlacementPolicy:
+      type: string
+      pattern: "^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$"
+    LoadState:
+      type: string
+      enum: [loaded, loading, cold]
+
+    CapabilityProfile:
+      type: object
+      additionalProperties: false
+      required: [tool_calling, structured_output, reasoning, parallel_tools, chat_template_present, verified]
+      properties:
+        tool_calling: { type: string, enum: [none, prompted, native] }
+        structured_output: { type: string, enum: [none, json_mode, json_schema] }
+        context_window: { type: [integer, "null"], minimum: 1 }
+        reasoning: { type: string, enum: [none, thinking, hybrid] }
+        parallel_tools: { type: boolean }
+        chat_template_present: { type: boolean }
+        verified: { type: boolean, description: "Set only by feature 017. Not editable here." }
+
+    ModelAddRequest:
+      type: object
+      additionalProperties: false
+      required: [repo_id]
+      properties:
+        repo_id: { type: string, pattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 500 }
+        tags: { type: array, items: { $ref: "#/components/schemas/Tag" } }
+        placement_policy: { $ref: "#/components/schemas/PlacementPolicy" }
+        idle_ttl_seconds: { type: [integer, "null"], minimum: 60 }
+
+    ModelUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: [string, "null"], maxLength: 500 }
+        visibility: { $ref: "#/components/schemas/Visibility" }
+        entitlement: { type: array, items: { type: string } }
+        tags: { type: array, items: { $ref: "#/components/schemas/Tag" } }
+        placement_policy: { $ref: "#/components/schemas/PlacementPolicy" }
+        idle_ttl_seconds: { type: [integer, "null"], minimum: 60 }
+        chat_template: { type: [string, "null"], maxLength: 65536, description: "Jinja override; null restores the repository's own." }
+        capability_profile:
+          type: object
+          additionalProperties: false
+          description: Partial; `verified` is rejected with 422 if present.
+          properties:
+            tool_calling: { type: string, enum: [none, prompted, native] }
+            structured_output: { type: string, enum: [none, json_mode, json_schema] }
+            context_window: { type: [integer, "null"], minimum: 1 }
+            reasoning: { type: string, enum: [none, thinking, hybrid] }
+            parallel_tools: { type: boolean }
+
+    ModelRejected:
+      type: object
+      additionalProperties: false
+      required: [reason, message]
+      properties:
+        reason:
+          type: string
+          enum: [not_mlx_format, no_fit_memory, no_fit_disk, gated, not_found, inspect_failed]
+        message: { type: string }
+        required_bytes: { type: [integer, "null"] }
+        available_bytes: { type: [integer, "null"], description: "Per-node minimum for disk; per-node budget for memory." }
+        detail: { type: object, additionalProperties: true }
+
+    LoadRefused:
+      type: object
+      additionalProperties: false
+      required: [reason, message]
+      properties:
+        reason: { type: string, enum: [not_ready, budget, node_unreachable] }
+        message: { type: string }
+        node: { type: [string, "null"] }
+        required_bytes: { type: [integer, "null"] }
+        committed_bytes: { type: [integer, "null"] }
+        budget_bytes: { type: [integer, "null"] }
+
+    ModelCopy:
+      type: object
+      additionalProperties: false
+      required: [node, path, bytes, verified, role, mismatched_paths]
+      properties:
+        node: { type: string }
+        path: { type: string }
+        bytes: { type: integer }
+        manifest_sha256: { type: [string, "null"] }
+        verified: { type: boolean }
+        verified_at: { type: [string, "null"], format: date-time }
+        mismatched_paths: { type: array, items: { type: string } }
+        role: { type: string, enum: [origin, replica] }
+
+    Model:
+      type: object
+      additionalProperties: false
+      required: [id, repo_id, slug, display_name, state, visibility, entitlement, tags, placement_policy, precision, weight_bytes, total_bytes, file_count, memory_estimate_bytes, capability_profile, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        repo_id: { type: string }
+        slug: { type: string }
+        display_name: { type: string }
+        description: { type: [string, "null"] }
+        state: { $ref: "#/components/schemas/ModelState" }
+        state_reason: { type: [string, "null"] }
+        visibility: { $ref: "#/components/schemas/Visibility" }
+        entitlement: { type: array, items: { type: string } }
+        tags: { type: array, items: { $ref: "#/components/schemas/Tag" } }
+        placement_policy: { $ref: "#/components/schemas/PlacementPolicy" }
+        precision: { type: string }
+        weight_bytes: { type: integer }
+        total_bytes: { type: integer }
+        file_count: { type: integer }
+        memory_estimate_bytes: { type: integer }
+        idle_ttl_seconds: { type: [integer, "null"] }
+        context_window: { type: [integer, "null"] }
+        chat_template: { type: [string, "null"] }
+        capability_profile: { $ref: "#/components/schemas/CapabilityProfile" }
+        manifest_sha256: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        ready_at: { type: [string, "null"], format: date-time }
+
+    ModelDetail:
+      allOf:
+        - { $ref: "#/components/schemas/Model" }
+        - type: object
+          required: [copies, engines]
+          properties:
+            copies: { type: array, items: { $ref: "#/components/schemas/ModelCopy" } }
+            job: { oneOf: [{ $ref: "#/components/schemas/DownloadJob" }, { type: "null" }] }
+            engines: { type: array, items: { $ref: "#/components/schemas/EngineProcess" } }
+
+    ModelListing:
+      type: object
+      additionalProperties: false
+      description: The user-facing shape. Never carries paths, copies, or reasons.
+      required: [id, display_name, tags, load_state, capability_profile]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string }
+        description: { type: [string, "null"] }
+        tags: { type: array, items: { $ref: "#/components/schemas/Tag" } }
+        context_window: { type: [integer, "null"] }
+        precision: { type: string }
+        load_state: { $ref: "#/components/schemas/LoadState" }
+        loaded_on: { type: array, items: { type: string } }
+        estimated_warmup_seconds: { type: [number, "null"], description: "For cold models; null until a load has been measured." }
+        capability_profile: { $ref: "#/components/schemas/CapabilityProfile" }
+
+    DownloadJob:
+      type: object
+      additionalProperties: false
+      required: [id, model_id, origin_node, replica_node, stage, bytes_done, bytes_total, files_done, files_total, attempt, started_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        model_id: { type: string, format: uuid }
+        origin_node: { type: string }
+        replica_node: { type: string }
+        stage: { type: string, enum: [inspect, pull, verify_origin, export, import, verify_replica, done, failed] }
+        bytes_done: { type: integer }
+        bytes_total: { type: integer }
+        files_done: { type: integer }
+        files_total: { type: integer }
+        percent: { type: number, minimum: 0, maximum: 100 }
+        failure_reason: { type: [string, "null"] }
+        attempt: { type: integer, minimum: 1 }
+        started_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }
+
+    EngineProcess:
+      type: object
+      additionalProperties: false
+      required: [id, model_id, node, port, state, estimate_bytes, started_at]
+      properties:
+        id: { type: string, format: uuid }
+        model_id: { type: string, format: uuid }
+        node: { type: string }
+        port: { type: integer }
+        pid: { type: [integer, "null"] }
+        state: { type: string, enum: [starting, ready, stopping, stopped, failed, orphan] }
+        state_reason: { type: [string, "null"] }
+        estimate_bytes: { type: integer }
+        resident_bytes: { type: [integer, "null"] }
+        resident_delta_bytes: { type: [integer, "null"] }
+        cpu_percent: { type: [number, "null"] }
+        chat_template_sha256: { type: [string, "null"] }
+        last_health_at: { type: [string, "null"], format: date-time }
+        started_at: { type: string, format: date-time }
+        stopped_at: { type: [string, "null"], format: date-time }
+
+    NodeDetail:
+      type: object
+      additionalProperties: false
+      required: [name, role, reachability, engines, jobs]
+      properties:
+        name: { type: string }
+        role: { type: string, enum: [studio, core] }
+        reachability: { type: string, enum: [healthy, degraded, unreachable, unknown] }
+        status:
+          description: The latest NodeStatus the prober received (contracts/node-api.yaml), or null.
+          type: [object, "null"]
+        engines: { type: array, items: { $ref: "#/components/schemas/EngineProcess" } }
+        jobs: { type: array, items: { $ref: "#/components/schemas/DownloadJob" } }
+
+    AuditRecord:
+      type: object
+      additionalProperties: false
+      required: [id, at, actor, action, target_type, target_id, outcome]
+      properties:
+        id: { type: string, format: uuid }
+        at: { type: string, format: date-time }
+        actor: { type: string }
+        action: { type: string }
+        target_type: { type: string }
+        target_id: { type: string }
+        outcome: { type: string, enum: [ok, refused, error] }
+        detail: { type: object, additionalProperties: true }

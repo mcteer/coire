@@ -37,3 +37,15 @@ for a panel or a rule to exist yet.
 
 - Pulling Grafana and Prometheus into 000 — turns "skeleton" into half of 009 and duplicates it.
 - Skipping OTLP export until 009 — would force 009 to retrofit instrumentation into every service.
+
+## Extension: feature 001 (2026-08-30)
+
+Feature 001 (model registry and node agent) ships under the same exception. It exports the
+metrics `coire_model_state`, `coire_download_bytes_total`, `coire_engine_state`,
+`coire_engine_resident_bytes` and `coire_engine_load_seconds`, plus spans for every
+download-job stage and node verb, and adds nothing to the (still absent) backends. Feature
+009's acceptance therefore also MUST include a **models and engines panel** (state per model,
+copies verified, engines with resident vs estimate) and two alerts: **download stalled**
+(no byte progress on an unfinished job for a configured window) and **engine failed** (an
+engine leaving `ready` for any reason other than an admin unload). 009 records this ADR as
+closed only once those exist alongside the bootstrap items above.

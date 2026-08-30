@@ -1,0 +1,547 @@
+openapi: 3.1.0
+info:
+  title: Coire node agent API (feature 001)
+  version: 0.2.0
+  description: >
+    Verbs coire-node serves on each Studio, port 9400. Every route except the export data path
+    requires the per-node token as a bearer (FR-011; ADR-0001 static token until feature 005).
+    Served on the mesh listener; on the egress listener only with `X-Coire-Path: fallback`
+    exactly as /node/health in feature 000 — except /node/export/*, which the egress listener
+    never serves, so peer replication cannot traverse Wi-Fi (FR-007, SC-004).
+
+    Every job-creating verb is idempotent on the caller-supplied id: re-issuing it after a
+    control-plane restart returns the existing job (edge cases 2–3, research R7). The agent
+    persists job and engine state under /opt/coire/state so its own restart resumes work; that
+    state is a cache the registry reconciles against, never a source of truth (Principle II).
+
+servers:
+  - url: http://coire-edge-a.mesh:9400
+
+paths:
+  /node/health:
+    get:
+      summary: Node status (feature 000) with the additive fields feature 001 introduces.
+      operationId: getNodeHealth
+      security: [{ nodeToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeStatus" }
+        "401": { description: Bad or missing bearer. }
+
+  /node/models/inspect:
+    post:
+      summary: >
+        Read a Hugging Face repo's metadata — file list, sizes, upstream digests, config.json —
+        without moving weights. The only component that talks to Hugging Face (FR-005).
+      operationId: inspectRepo
+      security: [{ nodeToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [repo_id]
+              properties:
+                repo_id: { type: string }
+                revision: { type: string, default: main }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RepoInspection" }
+        "401": { description: Bad bearer. }
+        "404": { description: Repo not found on Hugging Face. }
+        "423": { description: Repo is gated; `detail` names the licence-acceptance requirement (edge case 5). }
+        "502": { description: Hugging Face unreachable or errored. }
+
+  /node/models:
+    get:
+      summary: Local copies in the store, with manifest digests.
+      operationId: listLocalModels
+      security: [{ nodeToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/LocalCopy" }
+
+  /node/models/{slug}:
+    parameters:
+      - { in: path, name: slug, required: true, schema: { type: string, pattern: "^[A-Za-z0-9_.-]+--[A-Za-z0-9_.-]+$" } }
+    delete:
+      summary: Delete a local copy and its manifest. Refused while an engine serves it.
+      operationId: deleteLocalModel
+      security: [{ nodeToken: [] }]
+      responses:
+        "204": { description: Deleted (or already absent). }
+        "409": { description: An engine is serving this copy; unload first. }
+
+  /node/models/{slug}/export:
+    parameters:
+      - { in: path, name: slug, required: true, schema: { type: string } }
+    post:
+      summary: >
+        Register a transfer grant so a peer may fetch this copy over the mesh. One grant per
+        replication, model-scoped, expiring; revoked by the control plane when the job ends.
+      operationId: grantExport
+      security: [{ nodeToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [grant, expires_at]
+              properties:
+                grant: { type: string, minLength: 32 }
+                expires_at: { type: string, format: date-time }
+      responses:
+        "204": { description: Grant registered (idempotent). }
+        "404": { description: No verified copy of this slug here. }
+    delete:
+      summary: Revoke every grant for this slug.
+      operationId: revokeExport
+      security: [{ nodeToken: [] }]
+      responses:
+        "204": { description: Revoked. }
+
+  /node/export/{grant}/manifest:
+    parameters:
+      - { in: path, name: grant, required: true, schema: { type: string } }
+    get:
+      summary: The ChecksumManifest for the granted copy. Mesh listener only.
+      operationId: exportManifest
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChecksumManifest" }
+        "404": { description: Unknown, expired, or revoked grant. Deliberately indistinguishable. }
+
+  /node/export/{grant}/files/{path}:
+    parameters:
+      - { in: path, name: grant, required: true, schema: { type: string } }
+      - { in: path, name: path, required: true, schema: { type: string }, description: "Relative path inside the copy; `..` is rejected." }
+    get:
+      summary: Stream one file of the granted copy. Supports Range so an interrupted import resumes.
+      operationId: exportFile
+      responses:
+        "200": { description: Whole file. }
+        "206": { description: Requested range. }
+        "404": { description: Unknown grant or path. }
+        "416": { description: Range not satisfiable. }
+
+  /node/jobs:
+    get:
+      summary: Active and recently finished node jobs.
+      operationId: listJobs
+      security: [{ nodeToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/JobStatus" }
+
+  /node/jobs/pull:
+    post:
+      summary: >
+        Pull a repo snapshot from Hugging Face into the store, resuming any partial download,
+        then write the ChecksumManifest. Runs in a worker subprocess at reduced priority so the
+        agent's own budget and the node's inference are not charged for it (research R5).
+      operationId: startPull
+      security: [{ nodeToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [job_id, repo_id, slug]
+              properties:
+                job_id: { type: string, format: uuid }
+                repo_id: { type: string }
+                slug: { type: string }
+                revision: { type: string, default: main }
+                expected_total_bytes: { type: integer, description: "From inspection; the job refuses to start if store_free_bytes < this + reserve." }
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobStatus" }
+        "200":
+          description: Job with this id already exists — returned unchanged (idempotent).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobStatus" }
+        "409": { description: Another job is already writing this slug. }
+        "507": { description: Insufficient store space for `expected_total_bytes` plus the reserve. }
+
+  /node/jobs/import:
+    post:
+      summary: >
+        Fetch a copy from a peer node over the mesh using a transfer grant, then verify it file
+        by file against the manifest supplied here. A mismatch deletes the partial copy and
+        fails the job with the offending paths (FR-009). Never falls back to the egress path
+        (FR-007).
+      operationId: startImport
+      security: [{ nodeToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [job_id, slug, source_node, grant, manifest]
+              properties:
+                job_id: { type: string, format: uuid }
+                slug: { type: string }
+                source_node: { type: string, description: "Bare node name; the agent appends `.mesh` (ADR-0002)." }
+                grant: { type: string }
+                manifest: { $ref: "#/components/schemas/ChecksumManifest" }
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobStatus" }
+        "200": { description: Job already exists (idempotent). }
+        "409": { description: Another job is writing this slug. }
+        "507": { description: Insufficient store space. }
+
+  /node/jobs/verify:
+    post:
+      summary: Recompute checksums of a local copy against its stored manifest (or one supplied).
+      operationId: startVerify
+      security: [{ nodeToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [job_id, slug]
+              properties:
+                job_id: { type: string, format: uuid }
+                slug: { type: string }
+                manifest: { $ref: "#/components/schemas/ChecksumManifest" }
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobStatus" }
+        "200": { description: Job already exists. }
+        "404": { description: No such copy. }
+
+  /node/jobs/{job_id}:
+    parameters:
+      - { in: path, name: job_id, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: Job progress. On `done` for pull/verify jobs, carries the manifest.
+      operationId: getJob
+      security: [{ nodeToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/JobStatus" }
+        "404": { description: Unknown job. }
+    delete:
+      summary: Cancel a running job. Partial pull files are kept for resume; partial imports are deleted.
+      operationId: cancelJob
+      security: [{ nodeToken: [] }]
+      responses:
+        "202": { description: Cancelling. }
+        "404": { description: Unknown job. }
+
+  /node/engines:
+    get:
+      summary: Every engine the agent owns or has found, including orphans.
+      operationId: listEngines
+      security: [{ nodeToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EngineStatus" }
+    post:
+      summary: >
+        Start `mlx_lm.server` for a local copy, bound to the mesh address on a port from the
+        engine range (FR-018). Returns `starting`; the engine is `ready` only once it answers its
+        own health probe (FR-012). A second load of the same slug returns the existing engine
+        with 200 (FR-019). Refused with 409 when `memory_committed_bytes + estimate_bytes` would
+        exceed `memory_budget_bytes` (FR-020).
+      operationId: startEngine
+      security: [{ nodeToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [engine_id, slug, estimate_bytes]
+              properties:
+                engine_id: { type: string, format: uuid }
+                slug: { type: string }
+                estimate_bytes: { type: integer, minimum: 1 }
+                chat_template: { type: [string, "null"], description: "Registry-supplied override written to a file beside the copy and passed as --chat-template; never caller-derived." }
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineStatus" }
+        "200":
+          description: Already loaded — existing engine (FR-019).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineStatus" }
+        "404": { description: No verified copy of this slug here. }
+        "409":
+          description: Budget exceeded (FR-020); body carries required, committed, and budget bytes.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BudgetRefused" }
+        "503": { description: No free port in the engine range. }
+
+  /node/engines/{engine_id}:
+    parameters:
+      - { in: path, name: engine_id, required: true, schema: { type: string, format: uuid } }
+    get:
+      summary: One engine with live per-process CPU and resident memory.
+      operationId: getEngine
+      security: [{ nodeToken: [] }]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineStatus" }
+        "404": { description: Unknown engine. }
+    delete:
+      summary: >
+        Unload: SIGTERM the process group, SIGKILL after a grace period, release the port,
+        remove it from engines.json. Draining semantics are feature 005's; this stops on request.
+      operationId: stopEngine
+      security: [{ nodeToken: [] }]
+      responses:
+        "202":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineStatus" }
+        "404": { description: Unknown engine. }
+
+  /node/engines/reconcile:
+    post:
+      summary: >
+        Reconcile what the agent actually runs against what the registry expects. Called by the
+        control plane after every node registration and on demand. Matches by (pid, create_time)
+        and the store path in the command line; adopts matches, reports the rest (FR-015).
+      operationId: reconcileEngines
+      security: [{ nodeToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expected]
+              properties:
+                expected:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [engine_id, slug, port]
+                    properties:
+                      engine_id: { type: string, format: uuid }
+                      slug: { type: string }
+                      port: { type: integer }
+                      pid: { type: [integer, "null"] }
+                      process_create_time: { type: [number, "null"] }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReconcileResult" }
+
+components:
+  securitySchemes:
+    nodeToken:
+      type: http
+      scheme: bearer
+
+  schemas:
+    NodeStatus:
+      description: Feature 000's shape plus the additive fields below (compatibility note in plan.md).
+      type: object
+      additionalProperties: false
+      required: [name, agent_version, uptime_seconds, cpu_percent, thermal_state, memory_total_bytes, memory_free_bytes, disk_total_bytes, disk_free_bytes, agent_cpu_percent, agent_rss_bytes, collection_budget_ok, path, sampled_at, engines, jobs, memory_budget_bytes, memory_committed_bytes, store_free_bytes]
+      properties:
+        name: { type: string }
+        agent_version: { type: string }
+        uptime_seconds: { type: number }
+        cpu_percent: { type: number, minimum: 0, maximum: 100 }
+        gpu_percent: { type: [number, "null"], minimum: 0, maximum: 100 }
+        thermal_state: { type: string, enum: [nominal, fair, serious, critical, unknown] }
+        memory_total_bytes: { type: integer }
+        memory_free_bytes: { type: integer }
+        disk_total_bytes: { type: integer }
+        disk_free_bytes: { type: integer }
+        agent_cpu_percent: { type: number }
+        agent_rss_bytes: { type: integer }
+        collection_budget_ok: { type: boolean }
+        path: { type: string, enum: [mesh, fallback] }
+        sampled_at: { type: string, format: date-time }
+        engines: { type: array, items: { $ref: "#/components/schemas/EngineStatus" } }
+        jobs: { type: array, items: { $ref: "#/components/schemas/JobStatus" } }
+        memory_budget_bytes: { type: integer }
+        memory_committed_bytes: { type: integer }
+        store_free_bytes: { type: integer }
+
+    RepoInspection:
+      type: object
+      additionalProperties: false
+      required: [repo_id, revision, files, total_bytes, weight_bytes, is_mlx_format, gated, architecture, chat_template_present]
+      properties:
+        repo_id: { type: string }
+        revision: { type: string, description: "Commit sha resolved from the requested revision." }
+        files:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, bytes]
+            properties:
+              path: { type: string }
+              bytes: { type: integer }
+              upstream_sha256: { type: [string, "null"], description: "Hugging Face's LFS digest; null for small non-LFS files." }
+        total_bytes: { type: integer }
+        weight_bytes: { type: integer, description: "Sum of *.safetensors." }
+        is_mlx_format: { type: boolean, description: "config.json carries an MLX `quantization` block, or the repo is tagged `mlx` with safetensors and no PyTorch bins (research R2)." }
+        has_gguf_only: { type: boolean }
+        gated: { type: boolean }
+        architecture: { type: [string, "null"], description: "config.json `architectures[0]` / `model_type`." }
+        quantization:
+          type: [object, "null"]
+          additionalProperties: false
+          properties:
+            bits: { type: integer }
+            group_size: { type: integer }
+            mode: { type: [string, "null"] }
+        torch_dtype: { type: [string, "null"] }
+        max_position_embeddings: { type: [integer, "null"] }
+        chat_template_present: { type: boolean }
+
+    ChecksumManifest:
+      type: object
+      additionalProperties: false
+      required: [slug, repo_id, revision, files, total_bytes, created_at]
+      properties:
+        slug: { type: string }
+        repo_id: { type: string }
+        revision: { type: string }
+        files:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [path, bytes, sha256]
+            properties:
+              path: { type: string }
+              bytes: { type: integer }
+              sha256: { type: string, pattern: "^[0-9a-f]{64}$" }
+              upstream_sha256: { type: [string, "null"] }
+        total_bytes: { type: integer }
+        created_at: { type: string, format: date-time }
+
+    LocalCopy:
+      type: object
+      additionalProperties: false
+      required: [slug, path, bytes, manifest_present]
+      properties:
+        slug: { type: string }
+        path: { type: string }
+        bytes: { type: integer }
+        manifest_present: { type: boolean }
+        manifest_sha256: { type: [string, "null"] }
+        verified_at: { type: [string, "null"], format: date-time }
+        serving_engine_ids: { type: array, items: { type: string, format: uuid } }
+
+    JobStatus:
+      type: object
+      additionalProperties: false
+      required: [job_id, kind, slug, stage, bytes_done, bytes_total, files_done, files_total, started_at, updated_at]
+      properties:
+        job_id: { type: string, format: uuid }
+        kind: { type: string, enum: [pull, import, verify] }
+        slug: { type: string }
+        stage: { type: string, enum: [queued, resolving, transferring, hashing, done, failed, cancelled] }
+        bytes_done: { type: integer }
+        bytes_total: { type: integer }
+        files_done: { type: integer }
+        files_total: { type: integer }
+        error: { type: [string, "null"] }
+        error_kind: { type: [string, "null"], enum: [gated, not_found, network, checksum_mismatch, disk_full, cancelled, internal, null] }
+        mismatched_paths: { type: array, items: { type: string } }
+        manifest: { oneOf: [{ $ref: "#/components/schemas/ChecksumManifest" }, { type: "null" }] }
+        manifest_sha256: { type: [string, "null"] }
+        worker_pid: { type: [integer, "null"] }
+        worker_cpu_percent: { type: [number, "null"] }
+        started_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        finished_at: { type: [string, "null"], format: date-time }
+
+    EngineStatus:
+      type: object
+      additionalProperties: false
+      required: [engine_id, slug, port, state, estimate_bytes, started_at]
+      properties:
+        engine_id: { type: [string, "null"], format: uuid, description: "null for an orphan." }
+        slug: { type: [string, "null"] }
+        port: { type: integer }
+        pid: { type: [integer, "null"] }
+        process_create_time: { type: [number, "null"] }
+        state: { type: string, enum: [starting, ready, stopping, stopped, failed, orphan] }
+        state_reason: { type: [string, "null"] }
+        exit_code: { type: [integer, "null"] }
+        exit_output: { type: [string, "null"], description: "Last 4 KiB of stderr on failure." }
+        chat_template_sha256: { type: [string, "null"], description: "Digest of the override the engine was started with; null when using the repository's own." }
+        estimate_bytes: { type: integer }
+        resident_bytes: { type: [integer, "null"], description: "Measured footprint (research R6)." }
+        resident_delta_bytes: { type: [integer, "null"] }
+        cpu_percent: { type: [number, "null"] }
+        last_health_at: { type: [string, "null"], format: date-time }
+        started_at: { type: string, format: date-time }
+        stopped_at: { type: [string, "null"], format: date-time }
+
+    BudgetRefused:
+      type: object
+      additionalProperties: false
+      required: [reason, required_bytes, committed_bytes, budget_bytes]
+      properties:
+        reason: { type: string, const: budget }
+        required_bytes: { type: integer }
+        committed_bytes: { type: integer }
+        budget_bytes: { type: integer }
+
+    ReconcileResult:
+      type: object
+      additionalProperties: false
+      required: [adopted, dead, orphans]
+      properties:
+        adopted: { type: array, items: { $ref: "#/components/schemas/EngineStatus" }, description: "Expected engines found running and re-owned." }
+        dead: { type: array, items: { type: string, format: uuid }, description: "Expected engine ids whose process is gone (FR-015: registry corrected)." }
+        orphans: { type: array, items: { $ref: "#/components/schemas/EngineStatus" }, description: "Running engine processes matching no expectation." }

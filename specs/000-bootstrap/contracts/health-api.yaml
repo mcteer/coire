@@ -167,10 +167,20 @@ components:
         reachability: { type: string, enum: [healthy, degraded, unreachable, unknown] }
 
     NodeStatus:
+      # Compatibility note (Principle III), feature 001 / research R11: five additive fields —
+      # engines, jobs, memory_budget_bytes, memory_committed_bytes, store_free_bytes — were
+      # added on 2026-08-30. Consumers written against this file must tolerate them; the full
+      # node contract from feature 001 on is specs/001-model-registry-node-agent/contracts/node-api.yaml.
+      # Nothing here was removed or renamed.
       type: object
       additionalProperties: false
       required: [name, agent_version, uptime_seconds, cpu_percent, thermal_state, memory_total_bytes, memory_free_bytes, disk_total_bytes, disk_free_bytes, agent_cpu_percent, agent_rss_bytes, collection_budget_ok, path, sampled_at]
       properties:
+        engines: { type: array, items: { type: object }, description: "feature 001: per-engine process status" }
+        jobs: { type: array, items: { type: object }, description: "feature 001: active node jobs" }
+        memory_budget_bytes: { type: integer, description: "feature 001" }
+        memory_committed_bytes: { type: integer, description: "feature 001" }
+        store_free_bytes: { type: integer, description: "feature 001" }
         name: { type: string }
         agent_version: { type: string }
         uptime_seconds: { type: number }
