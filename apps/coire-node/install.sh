@@ -75,8 +75,23 @@ mkdir -p "$PREFIX/models" "$PREFIX/state/jobs" "$PREFIX/hf-cache"
 # --- uv, confined to the prefix --------------------------------------------
 if [[ ! -x "$PREFIX/bin/uv" ]]; then
   say "installing uv $UV_VERSION"
-  UV_INSTALL_DIR="$PREFIX/bin" UV_NO_MODIFY_PATH=1 \
-    curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" | sh >/dev/null
+  # `env` on the RIGHT of the pipe, deliberately. Writing
+  #     UV_INSTALL_DIR=... curl ... | sh
+  # sets the variable for `curl`, not for the `sh` that actually reads it, so the installer
+  # silently fell back to ~/.local/bin — outside the prefix this whole script promises to stay
+  # within, and invisible because the output was being discarded.
+  #
+  # UV_INSTALL_DIR is the directory the binaries land in, verbatim — this installer does not
+  # append `bin` when the variable is set.
+  if ! curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" \
+       | env UV_INSTALL_DIR="$PREFIX/bin" UV_NO_MODIFY_PATH=1 sh; then
+    echo "error: could not install uv into $PREFIX" >&2
+    exit 1
+  fi
+  if [[ ! -x "$PREFIX/bin/uv" ]]; then
+    echo "error: uv did not land in $PREFIX/bin (found: $(ls "$PREFIX/bin" 2>/dev/null))" >&2
+    exit 1
+  fi
 else
   say "uv already present"
 fi
@@ -107,10 +122,20 @@ ln -sfn "$ENV_DIR" "$PREFIX/envs/current"
 say "flipped $PREFIX/envs/current -> $ENV_DIR"
 
 # --- launchd ---------------------------------------------------------------
-TEMPLATE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/deploy/launchd/com.coire.node.plist.template"
-if [[ ! -r "$TEMPLATE" ]]; then
-  echo "warning: plist template not found at $TEMPLATE; skipping service install" >&2
-  echo "agent installed but not started." >&2
+# `bash -s` has no script file, so BASH_SOURCE is unset — and `set -u` turns reading it into a
+# fatal error right at the end of an otherwise successful install. The repository is not
+# required on a Studio (the script is normally piped in over ssh), so a missing template is a
+# note, not a failure.
+SELF="${BASH_SOURCE[0]:-}"
+if [[ -n "$SELF" ]]; then
+  TEMPLATE="$(cd "$(dirname "$SELF")/../.." && pwd)/deploy/launchd/com.coire.node.plist.template"
+else
+  TEMPLATE=""
+fi
+if [[ -z "$TEMPLATE" || ! -r "$TEMPLATE" ]]; then
+  echo "note: no plist template available here (the script was piped in), so the LaunchDaemon" >&2
+  echo "      was not rendered. If the service is already installed it will pick this env up" >&2
+  echo "      on its next restart; otherwise render the template from a checkout." >&2
   exit 0
 fi
 

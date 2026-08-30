@@ -39,7 +39,19 @@ services:
       dockerfile: apps/coire-web/Dockerfile
     # The ONLY published port in feature 000, and only on loopback: nothing on core is
     # reachable from the LAN. Public exposure arrives with feature 007 (ADR-0001).
-    ports: ["127.0.0.1:8080:8080"]
+    # Loopback for the operator, and the Thunderbolt mesh address for the node agents.
+    #
+    # ADR-0001 originally published loopback alone. That made node registration impossible:
+    # an agent posts to coire-core:8080 over the mesh, and nothing on core listened there —
+    # a gap that stayed invisible until an agent actually ran (feature 001, T063).
+    #
+    # The mesh address is the narrowest thing that works. It is an unrouted, physically
+    # isolated fabric that reaches nothing but the two Studios, so this exposes the control
+    # plane to strictly less than the lab VLAN would. COIRE_MESH_BIND defaults to loopback so
+    # a machine with no mesh still comes up.
+    ports:
+      - "127.0.0.1:8080:8080"
+      - "${COIRE_MESH_BIND:-127.0.0.1}:8080:8080"
     networks: [coire-edge, coire-telemetry]
     depends_on:
       coire-api: {condition: service_healthy}

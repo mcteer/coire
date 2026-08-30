@@ -93,9 +93,23 @@ write_secret() {  # $1 = filename, $2 = value
 mkdir -p "$SECRETS_DIR"
 chmod 700 "$SECRETS_DIR"
 
+# The mesh address this host publishes the control plane on, so node agents can register
+# (ADR-0001 as amended by feature 001). Read from the managed hosts block rather than
+# hard-coded, and left at loopback when this host is not on the mesh.
+MESH_NAME="$(scutil --get LocalHostName 2>/dev/null || hostname -s).mesh"
+COIRE_MESH_BIND="$(awk -v n="$MESH_NAME" '$2 == n { print $1; exit }' /etc/hosts 2>/dev/null || true)"
+export COIRE_MESH_BIND="${COIRE_MESH_BIND:-127.0.0.1}"
+if [[ "$COIRE_MESH_BIND" == "127.0.0.1" ]]; then
+  echo "note: no mesh address for $MESH_NAME in /etc/hosts; publishing on loopback only." >&2
+  echo "      node agents will not be able to register. Run scripts/apply-mesh-hosts.sh." >&2
+fi
+
 # Record the resolved path so plain `docker compose ps/logs/restart` in this directory works
 # without the caller re-exporting it. Contains a path, never a secret; gitignored.
-printf 'COIRE_SECRETS_DIR=%s\n' "$SECRETS_DIR" > "$COMPOSE_DIR/.env"
+{
+  printf 'COIRE_SECRETS_DIR=%s\n' "$SECRETS_DIR"
+  printf 'COIRE_MESH_BIND=%s\n' "$COIRE_MESH_BIND"
+} > "$COMPOSE_DIR/.env"
 
 if [[ "$FROM_ENV" -eq 1 ]]; then
   for i in "${!SECRET_ITEMS[@]}"; do

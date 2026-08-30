@@ -97,15 +97,28 @@ class TestNetworkSegmentation:
 
 
 class TestPublishedPorts:
-    def test_only_web_publishes_and_only_on_loopback(self, config: dict[str, Any]) -> None:
-        """Nothing on core is reachable from the LAN in feature 000 (ADR-0001)."""
+    def test_only_web_publishes_and_only_on_loopback_or_the_mesh(
+        self, config: dict[str, Any]
+    ) -> None:
+        """Nothing on core is reachable from the LAN (ADR-0001, amended by feature 001).
+
+        The mesh address joins loopback because a node agent has to be able to register, and
+        nothing on core listened where it posts. The mesh is unrouted and physically isolated
+        — it reaches the two Studios and nothing else — so this is narrower than exposing the
+        lab VLAN. Any *other* address here would be a real widening and fails.
+        """
+        allowed = {"127.0.0.1", "::1", "192.168.100.10"}
         for name, svc in config["services"].items():
             ports = svc.get("ports") or []
             if name != "coire-web":
                 assert not ports, f"{name} publishes {ports}"
             else:
-                assert len(ports) == 1
-                assert ports[0].get("host_ip") in ("127.0.0.1", "::1")
+                assert ports, "coire-web must publish something"
+                for port in ports:
+                    assert port.get("host_ip") in allowed, (
+                        f"coire-web publishes on {port.get('host_ip')}, which is neither "
+                        "loopback nor the mesh"
+                    )
 
 
 class TestHardening:

@@ -45,3 +45,23 @@ and no users. Building authentication now would be building it against nothing.
 
 - A placeholder auth that always succeeds — indistinguishable from protection; worse than none.
 - Real auth now — blocks 000 on Cloudflare Access configuration that does not exist.
+
+## Amendment: the control plane must be reachable on the mesh (2026-08-30, feature 001)
+
+Decision 2 above said `coire-web` publishes `127.0.0.1:8080` on core "and nothing else". That
+made node registration impossible: an agent posts to `coire-core:8080` over the Thunderbolt
+mesh, and nothing on core listened there. The gap survived feature 000 because its T063 — the
+step that installs an agent on a Studio — was never run, so no agent had ever attempted to
+register.
+
+`coire-web` now also publishes on core's **mesh address** (`192.168.100.10:8080`), resolved by
+`coire-up` from the managed `/etc/hosts` block and defaulting to loopback when the host is not
+on the mesh.
+
+This does not weaken the intent of this ADR. The mesh is unrouted, reaches only the two
+Studios, and is not connected to the lab VLAN or the internet — so the control plane is exposed
+to strictly less than a LAN binding would expose it to, and to nothing that was not already
+trusted to hold a node token. `tests/integration/test_topology.py` enforces that loopback and
+that one mesh address are the only addresses anything publishes on.
+
+The rest of this ADR is unchanged, and feature 007 still closes it.
