@@ -45,6 +45,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         reconciler = RegistryReconciler(settings)
         await reconciler.start()
         app.state.reconciler = reconciler
+        prober.set_reconciler(reconciler)
         logger.info("coire-api %s started", __version__)
         try:
             yield

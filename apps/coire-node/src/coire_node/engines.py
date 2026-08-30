@@ -352,8 +352,19 @@ class EngineManager:
         return False, engine.status()
 
     def _serving(self, slug: str) -> _Engine | None:
+        """An engine that is actually serving, or about to.
+
+        `stopping` is deliberately excluded. FR-019 makes a duplicate load a no-op returning
+        the existing process, but an engine on its way out is not "already loaded" — returning
+        it hands the caller something that becomes `stopped` moments later, which reads as a
+        load that failed. A load during a stop starts a fresh engine; both count against the
+        budget while they overlap, and draining proper is feature 005.
+        """
         for engine in self._engines.values():
-            if engine.slug == slug and engine.state in LIVE_ENGINE_STATES:
+            if engine.slug == slug and engine.state in (
+                EngineState.STARTING,
+                EngineState.READY,
+            ):
                 return engine
         return None
 

@@ -26,10 +26,14 @@ logger = logging.getLogger(__name__)
 class NodeProber:
     """Polls `/node/health` on every registered node and records what it finds."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, reconciler: object | None = None) -> None:
         self._settings = settings
+        self._reconciler = reconciler
         self._task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
+
+    def set_reconciler(self, reconciler: object) -> None:
+        self._reconciler = reconciler
 
     async def start(self) -> None:
         self._stopping.clear()
@@ -91,9 +95,15 @@ class NodeProber:
             ok = False
 
         if ok:
+            recovered = row.reachability is not Reachability.HEALTHY
             row.reachability = Reachability.HEALTHY
             row.probe_failures = 0
             row.last_seen_at = datetime.now(UTC)
+            if recovered and self._reconciler is not None:
+                # A node that has come back may be running something the registry does not
+                # know about, or may have lost something it does (spec FR-015).
+                logger.info("node %s recovered; requesting a reconcile", row.name)
+                self._reconciler.request_reconcile(row.name)  # type: ignore[attr-defined]
             return
 
         row.probe_failures += 1

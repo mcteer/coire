@@ -23,7 +23,7 @@ from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.registry import service
 from coire_api.registry.placement import NoCandidate, choose_load_node
 from coire_core.models.audit import AuditAction
-from coire_core.models.engine import LIVE_ENGINE_STATES, EngineProcess, EngineState
+from coire_core.models.engine import EngineProcess, EngineState
 from coire_core.models.jobs import DownloadJob
 from coire_core.models.registry import (
     LoadRefusalReason,
@@ -340,12 +340,14 @@ async def load_model(
     if node is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "node is not registered")
 
+    # STARTING/READY only, not STOPPING: an engine on its way out is not "already loaded",
+    # and returning it would hand the caller something that becomes `stopped` moments later.
     existing = (
         await session.execute(
             select(EngineProcessRow).where(
                 EngineProcessRow.model_id == model.id,
                 EngineProcessRow.node_id == node.id,
-                EngineProcessRow.state.in_(list(LIVE_ENGINE_STATES)),
+                EngineProcessRow.state.in_([EngineState.STARTING, EngineState.READY]),
             )
         )
     ).scalar_one_or_none()
