@@ -26,7 +26,7 @@ def test_every_metric_adr_0003_promises_exists() -> None:
 
     sources = []
     for module in (reconciler, engines):
-        sources.append(open(module.__file__).read())  # noqa: SIM115, PTH123
+        sources.append(open(module.__file__).read())  # noqa: SIM115
     blob = "\n".join(sources)
 
     missing = sorted(name for name in EXPECTED_METRICS if f'"{name}"' not in blob)
@@ -39,7 +39,7 @@ def test_every_metric_adr_0003_promises_exists() -> None:
 def test_the_reconciler_names_its_spans_by_stage() -> None:
     import coire_api.registry.reconciler as reconciler
 
-    source = open(reconciler.__file__).read()  # noqa: SIM115, PTH123
+    source = open(reconciler.__file__).read()  # noqa: SIM115
     assert 'f"registry.reconcile.{job.stage.value}"' in source, (
         "a request's time must be attributable to a stage (Principle VI)"
     )
