@@ -15,6 +15,8 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from conftest import POSTGRES_PASSWORD
+from conftest import integration_env as env_with_secrets
 
 pytestmark = [
     pytest.mark.integration,
@@ -30,16 +32,6 @@ UP = COMPOSE_DIR / "coire-up"
 DOWN = COMPOSE_DIR / "coire-down"
 HEALTH = "http://127.0.0.1:8080/health"
 BRINGUP_BUDGET_S = 180.0
-
-
-def env_with_secrets(**extra: str) -> dict[str, str]:
-    return {
-        **os.environ,
-        "COIRE_SECRET_POSTGRES_PASSWORD": "integration-pw",
-        "COIRE_SECRET_KEY_SIGNING_SECRET": "integration-signing",
-        "COIRE_SECRET_NODE_TOKENS": json.dumps({"coire-edge-a": "a", "coire-edge-b": "b"}),
-        **extra,
-    }
 
 
 def get_health(timeout: float = 5.0) -> dict[str, object] | None:
@@ -60,15 +52,6 @@ def wait_healthy(deadline_s: float) -> dict[str, object] | None:
             return body
         time.sleep(1)
     return None
-
-
-@pytest.fixture(scope="module", autouse=True)
-def stack() -> None:
-    subprocess.run(
-        [str(UP), "--secrets-from-env", "--no-build"], env=env_with_secrets(), check=True
-    )
-    yield
-    subprocess.run([str(DOWN)], env=env_with_secrets(), check=False)
 
 
 def test_reaches_all_services_healthy_within_budget() -> None:
@@ -144,7 +127,15 @@ def test_no_secret_is_written_inside_the_repository() -> None:
     secrets_dir = Path(os.environ.get("COIRE_SECRETS_DIR", Path.home() / ".coire/secrets"))
     assert not str(secrets_dir).startswith(str(REPO))
     hits = subprocess.run(
-        ["grep", "-rlF", "integration-pw", str(REPO), "--exclude-dir=.git", "--exclude-dir=.venv"],
+        [
+            "grep",
+            "-rlF",
+            POSTGRES_PASSWORD,
+            str(REPO),
+            "--exclude-dir=.git",
+            "--exclude-dir=.venv",
+            "--exclude-dir=node_modules",
+        ],
         capture_output=True,
         text=True,
     )
