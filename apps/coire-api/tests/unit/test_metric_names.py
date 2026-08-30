@@ -7,6 +7,8 @@ here, where a rename fails a test instead.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 EXPECTED_METRICS = {
@@ -24,10 +26,7 @@ def test_every_metric_adr_0003_promises_exists() -> None:
     import coire_api.registry.reconciler as reconciler
     import coire_node.engines as engines
 
-    sources = []
-    for module in (reconciler, engines):
-        sources.append(open(module.__file__).read())  # noqa: SIM115
-    blob = "\n".join(sources)
+    blob = "\n".join(Path(str(module.__file__)).read_text() for module in (reconciler, engines))
 
     missing = sorted(name for name in EXPECTED_METRICS if f'"{name}"' not in blob)
     assert missing == [], (
@@ -39,7 +38,7 @@ def test_every_metric_adr_0003_promises_exists() -> None:
 def test_the_reconciler_names_its_spans_by_stage() -> None:
     import coire_api.registry.reconciler as reconciler
 
-    source = open(reconciler.__file__).read()  # noqa: SIM115
+    source = Path(str(reconciler.__file__)).read_text()
     assert 'f"registry.reconcile.{job.stage.value}"' in source, (
         "a request's time must be attributable to a stage (Principle VI)"
     )

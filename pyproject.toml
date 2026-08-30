@@ -65,6 +65,13 @@ mypy_path = [
 explicit_package_bases = true
 namespace_packages = true
 
+# Every test root has its own conftest.py, and with test directories deliberately left as
+# non-packages (so pytest's rootdir-relative imports work) they all resolve to the module name
+# `conftest`. mypy refuses the duplicate and stops before checking anything else. Excluding
+# them is the narrow fix: a conftest holds fixtures, the source it exercises is still checked,
+# and making the test tree a package would change how pytest imports it.
+exclude = ["/conftest\\.py$"]
+
 [[tool.mypy.overrides]]
 module = ["psutil.*", "jsonschema.*"]
 ignore_missing_imports = true

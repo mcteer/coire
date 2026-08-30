@@ -50,11 +50,11 @@ def test_read_item_strips_the_trailing_newline(monkeypatch) -> None:  # type: ig
         returncode = 0
         stdout = "tok-with-newline\n"
 
-    monkeypatch.setattr(keychain.shutil, "which", lambda _: "/usr/bin/security")
+    monkeypatch.setattr("coire_node.keychain.shutil.which", lambda _: "/usr/bin/security")
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: Done())
     assert keychain.read_item("x").get_secret_value() == "tok-with-newline"
 
 
 def test_read_item_returns_empty_off_macos(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    monkeypatch.setattr(keychain.shutil, "which", lambda _: None)
+    monkeypatch.setattr("coire_node.keychain.shutil.which", lambda _: None)
     assert keychain.read_item("x").get_secret_value() == ""

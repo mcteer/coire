@@ -31,7 +31,7 @@ def _model(**kw: object) -> ModelRow:
         "created_at": datetime.now(UTC),
         "updated_at": datetime.now(UTC),
     }
-    return ModelRow(**{**base, **kw})  # type: ignore[arg-type]
+    return ModelRow(**{**base, **kw})
 
 
 def _engine(

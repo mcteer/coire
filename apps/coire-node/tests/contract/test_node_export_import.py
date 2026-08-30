@@ -12,6 +12,7 @@ import threading
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 import uvicorn
@@ -151,7 +152,7 @@ class TestFileTransfer:
 class TestImportRoundTrip:
     """Two real agents: one exports over HTTP, the other imports and verifies."""
 
-    def test_a_copy_replicates_and_verifies(self, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    def test_a_copy_replicates_and_verifies(self, tmp_path: Path) -> None:
         origin = Agent(tmp_path / "origin")
         replica = Agent(tmp_path / "replica")
         _seed(origin.store)
@@ -197,6 +198,7 @@ class TestImportRoundTrip:
                 if status.is_terminal:
                     break
                 time.sleep(0.2)
+            assert status is not None
             assert status.stage.value == "done", status.error
             assert replica.store.verify_against(SLUG, manifest) == []
             assert replica.store.read_manifest(SLUG) is not None

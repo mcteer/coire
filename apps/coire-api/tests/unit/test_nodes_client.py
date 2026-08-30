@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -19,7 +20,9 @@ JOB_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 NOW = datetime.now(UTC).isoformat()
 
 
-def _client(handler) -> tuple[NodeClient, list[httpx.Request]]:  # type: ignore[no-untyped-def]
+def _client(
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> tuple[NodeClient, list[httpx.Request]]:
     seen: list[httpx.Request] = []
 
     def wrapped(request: httpx.Request) -> httpx.Response:
@@ -34,7 +37,8 @@ def _client(handler) -> tuple[NodeClient, list[httpx.Request]]:  # type: ignore[
 
 
 def _json(payload: Any, status: int = 200) -> httpx.Response:
-    return httpx.Response(status, json=payload)
+    response: httpx.Response = httpx.Response(status, json=payload)
+    return response
 
 
 class TestAddressingAndAuth:

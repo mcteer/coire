@@ -11,18 +11,20 @@ Skipped unless COIRE_ENGINE=1 on Darwin.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import signal
 import sys
 import time
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
 import psutil
 import pytest
 
-from coire_core.models.engine import EngineState
+from coire_core.models.engine import EngineState, EngineStatus
 from coire_node.engines import EngineManager
 from coire_node.testing.harness import Agent
 
@@ -41,7 +43,7 @@ MEASUREMENTS = Path("engine-measurements.md")
 
 
 @pytest.fixture(scope="module")
-def agent(tmp_path_factory: pytest.TempPathFactory) -> Agent:
+def agent(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Agent]:
     """An agent with the test model really downloaded into its store."""
     from coire_node import hub
 
@@ -57,17 +59,9 @@ def agent(tmp_path_factory: pytest.TempPathFactory) -> Agent:
     yield a
     for status in a.engines.statuses():
         if status.pid and status.state in (EngineState.READY, EngineState.STARTING):
-            with pytest.raises(BaseException) if False else _ignore():
+            with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
                 os.killpg(os.getpgid(status.pid), signal.SIGKILL)
     a.close()
-
-
-class _ignore:
-    def __enter__(self) -> None:
-        return None
-
-    def __exit__(self, *exc: object) -> bool:
-        return True
 
 
 def _record(line: str) -> None:
@@ -76,7 +70,9 @@ def _record(line: str) -> None:
         handle.write(line + "\n")
 
 
-def wait_state(agent: Agent, engine_id: uuid.UUID, *states: EngineState, timeout: float = 600.0):  # type: ignore[no-untyped-def]
+def wait_state(
+    agent: Agent, engine_id: uuid.UUID, *states: EngineState, timeout: float = 600.0
+) -> EngineStatus:
     deadline = time.monotonic() + timeout
     last = None
     while time.monotonic() < deadline:
@@ -225,6 +221,6 @@ class TestRealEngine:
             _record("- a real engine survived a manager restart and still served")
         finally:
             if pid:
-                with _ignore():
+                with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
                     os.killpg(os.getpgid(pid), signal.SIGKILL)
             fresh.shutdown()

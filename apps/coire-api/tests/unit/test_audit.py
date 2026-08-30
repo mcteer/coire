@@ -27,8 +27,8 @@ class TestRedaction:
     def test_nested_dictionaries_are_redacted(self) -> None:
         """Node responses arrive nested; a top-level-only scan would miss them."""
         out = redact({"node": {"name": "coire-edge-a", "token": "leak"}})
-        assert out["node"]["token"] == "[redacted]"  # type: ignore[index]
-        assert out["node"]["name"] == "coire-edge-a"  # type: ignore[index]
+        assert out["node"]["token"] == "[redacted]"
+        assert out["node"]["name"] == "coire-edge-a"
 
     def test_long_values_are_truncated(self) -> None:
         """An audit row is not a log sink; a 4 MiB traceback does not belong in one."""
