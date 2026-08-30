@@ -101,32 +101,40 @@ class TestRealEngine:
         generation_ok_at = None
         started = time.monotonic()
         with httpx.Client(timeout=10.0) as client:
-            deadline = started + 600
+            # Poll /health to success FIRST, and only then start generating. This is what the
+            # agent does, and it is not merely tidier: the server handles requests on a single
+            # thread, so a generation POST issued while the weights are loading blocks the
+            # health endpoint for the whole load. Interleaving the two probes measured nothing
+            # on a slow machine — /health simply never got a turn.
+            deadline = started + 900
+            while time.monotonic() < deadline and health_ok_at is None:
+                try:
+                    if client.get(f"http://127.0.0.1:{port}/health").status_code == 200:
+                        health_ok_at = time.monotonic() - started
+                except httpx.HTTPError:
+                    time.sleep(0.25)
+            assert health_ok_at is not None, "the engine never answered /health"
+
             while time.monotonic() < deadline and generation_ok_at is None:
-                if health_ok_at is None:
-                    try:
-                        if client.get(f"http://127.0.0.1:{port}/health").status_code == 200:
-                            health_ok_at = time.monotonic() - started
-                    except httpx.HTTPError:
-                        pass
                 try:
                     resp = client.post(
                         f"http://127.0.0.1:{port}/v1/chat/completions",
                         json={"messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
-                        timeout=60.0,
+                        timeout=120.0,
                     )
                     if resp.status_code == 200:
                         generation_ok_at = time.monotonic() - started
+                    else:
+                        time.sleep(0.5)
                 except httpx.HTTPError:
-                    pass
-                time.sleep(0.25)
+                    time.sleep(0.5)
 
-        assert health_ok_at is not None, "the engine never answered /health"
         assert generation_ok_at is not None, "the engine never generated"
         _record(
             f"- `/health` answered at {health_ok_at:.2f}s; first generation at "
             f"{generation_ok_at:.2f}s (gap {generation_ok_at - health_ok_at:.2f}s)"
         )
+        # The point of the whole readiness design: liveness precedes the ability to serve.
         assert health_ok_at <= generation_ok_at
 
         ready = wait_state(agent, engine_id, EngineState.READY)

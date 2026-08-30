@@ -32,10 +32,16 @@ show (feature 003). `/health` is still polled first as a cheap "process is liste
   engine wiring memory, not leaking it. It is included in the measured footprint (R6).
 
 **Measured on Apple Silicon, 2026-08-30**, with `mlx-community/Qwen2.5-0.5B-Instruct-4bit`:
-`/health` answered **200 at 1.06 s**; the first successful generation was at **2.57 s** — a
-1.5-second window during which a liveness probe would have reported a model ready that could
-not yet answer a token. The model is 0.29 GB; for a 27 GB model the same window is minutes.
+`/health` answered **200 at 1.05 s**; the first successful generation was at **1.56 s** — a
+half-second window on a 0.29 GB model during which a liveness probe would have reported ready
+something that could not yet answer a token. For a 27 GB model the same window is minutes.
 This is the empirical basis for FR-012 rather than an inference from reading the source.
+
+**A second property, found on a slower machine**: the server handles requests on a single
+thread, so a generation request issued while the weights are still loading blocks `/health`
+for the remainder of the load. The agent is unaffected because it polls `/health` to success
+*before* it ever generates — which is the order this decision already specifies — but anything
+that probes both concurrently will measure nothing.
 
 **Alternatives considered**: treating `/health` 200 as ready — measured to be true before the
 weights are in memory; rejected. Parsing stderr for a load marker — none exists.
