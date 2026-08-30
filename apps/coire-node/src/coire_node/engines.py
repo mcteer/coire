@@ -88,6 +88,50 @@ class NoFreePort(RuntimeError):
     pass
 
 
+def build_engine_argv(
+    *,
+    command: list[str],
+    model_path: str,
+    host: str,
+    port: int,
+    chat_template_path: str | None = None,
+) -> list[str]:
+    """The exact command line an engine is started with.
+
+    Pure, and separated from spawning, because spec FR-017 is a statement about this list: it
+    contains a registry-resolved store path and fixed flags, and nothing that came from a
+    request. A test can assert that without patching the process layer.
+    """
+    argv = [
+        *command,
+        "--model",
+        model_path,
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--log-level",
+        "INFO",
+    ]
+    if chat_template_path:
+        argv += ["--chat-template", chat_template_path]
+    return argv
+
+
+def build_engine_env(base: dict[str, str]) -> dict[str, str]:
+    """The environment an engine runs in.
+
+    `mlx_lm.server` honours a per-request `model` field and will download whatever it names,
+    with no flag to disable it (research R1). Offline mode makes that impossible even if a
+    caller string somehow reached the engine, and the Hugging Face token is removed because an
+    engine has no business authenticating to anything.
+    """
+    env = dict(base)
+    env["HF_HUB_OFFLINE"] = "1"
+    env.pop("HF_TOKEN", None)
+    return env
+
+
 def engine_command(settings: Settings) -> list[str]:
     """The engine's argv prefix.
 
@@ -261,28 +305,19 @@ class EngineManager:
 
             port = self._allocate_port()
             template_digest = None
-            argv = [*engine_command(self._settings)]
-            argv += [
-                "--model",
-                str(self._store.path_for(slug)),
-                "--host",
-                self._address,
-                "--port",
-                str(port),
-                "--log-level",
-                "INFO",
-            ]
+            template_path = None
             if chat_template:
-                path = self._store.write_template(slug, chat_template)
+                template_path = str(self._store.write_template(slug, chat_template))
                 template_digest = hashlib.sha256(chat_template.encode()).hexdigest()
-                argv += ["--chat-template", str(path)]
 
-            env = dict(os.environ)
-            # An engine must never fetch anything. It accepts a `model` field per request and
-            # would happily download whatever it names; offline mode makes that impossible
-            # even if a caller string ever reached it (spec FR-017, research R1).
-            env["HF_HUB_OFFLINE"] = "1"
-            env.pop("HF_TOKEN", None)
+            argv = build_engine_argv(
+                command=engine_command(self._settings),
+                model_path=str(self._store.path_for(slug)),
+                host=self._address,
+                port=port,
+                chat_template_path=template_path,
+            )
+            env = build_engine_env(dict(os.environ))
 
             proc = subprocess.Popen(
                 argv,
@@ -328,8 +363,12 @@ class EngineManager:
         for port in range(low, high + 1):
             if port in taken:
                 continue
+            # Deliberately without SO_REUSEADDR: the point is to find out whether this port
+            # is actually free, and SO_REUSEADDR is precisely the option that lets a bind
+            # succeed anyway. With it set, the probe passed and the engine then died with
+            # "Address already in use" — a failure attributed to the engine rather than to
+            # the allocator that handed it a taken port.
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-                probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 try:
                     probe.bind((self._address, port))
                 except OSError:
@@ -684,5 +723,7 @@ __all__ = [
     "CopyMissing",
     "EngineManager",
     "NoFreePort",
+    "build_engine_argv",
+    "build_engine_env",
     "engine_command",
 ]
