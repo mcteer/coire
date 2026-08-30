@@ -1,0 +1,188 @@
+openapi: 3.1.0
+info:
+  title: Coire bootstrap health and registration API
+  version: 0.1.0
+  description: >
+    The only routes that exist in feature 000. The OpenAPI document served by coire-api is
+    generated from the FastAPI app; CI checks that the generated document matches this file
+    for these paths. No route here is authenticated (ADR-0001).
+
+servers:
+  - url: http://coire-core.mesh
+    description: via coire-web (nginx), the sole ingress
+  - url: http://coire-edge-a.mesh:9400
+    description: coire-node on a Studio (mesh listener)
+
+paths:
+  /ready:
+    get:
+      summary: Liveness — process is up. Checks nothing external.
+      operationId: getReady
+      responses:
+        "200":
+          description: Process can answer.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReadyResponse" }
+
+  /health:
+    get:
+      summary: Aggregate control-plane health (coire-api), proxied unchanged by coire-web.
+      operationId: getHealth
+      responses:
+        "200":
+          description: healthy or degraded (see body.status)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+        "503":
+          description: unhealthy — Postgres unreachable
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthResponse" }
+
+  /api/v1/nodes/register:
+    post:
+      summary: Node agent registers or re-registers itself on boot.
+      operationId: registerNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NodeRegistration" }
+      responses:
+        "200":
+          description: Registered (idempotent on name).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Node" }
+        "401":
+          description: Token does not match the declared node.
+        "403":
+          description: Name not in the declared inventory (deploy/cluster/nodes.yaml).
+        "422":
+          description: Validation failure (e.g. mesh_address outside 192.168.100.0/24).
+
+  # --- served by coire-node on each Studio, port 9400 ---
+  /node/health:
+    get:
+      summary: Node status. Requires the per-node token as a bearer (FR-013). Served on the mesh listener; on the egress listener only with X-Coire-Path.
+      operationId: getNodeHealth
+      security:
+        - nodeToken: []
+      parameters:
+        - in: header
+          name: X-Coire-Path
+          required: false
+          schema: { type: string, enum: [fallback] }
+          description: >
+            Required when the request arrives on the egress (Wi-Fi) listener. Its presence is
+            counted (coire_node_fallback_requests_total) and logged at WARNING. Absent on the
+            mesh listener.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeStatus" }
+        "401":
+          description: Missing or wrong bearer token (constant-time compare against the node's own token).
+        "403":
+          description: Request arrived on the egress listener without X-Coire-Path.
+
+components:
+  securitySchemes:
+    nodeToken:
+      type: http
+      scheme: bearer
+      description: >
+        The static per-node token (System keychain on the Studio; coire-node-tokens on core).
+        Replaced by issued registration tokens in feature 005. This is the one authenticated
+        surface in feature 000 — see ADR-0001.
+  schemas:
+    ReadyResponse:
+      type: object
+      additionalProperties: false
+      required: [service, version, ready]
+      properties:
+        service: { type: string, examples: [coire-api] }
+        version: { type: string }
+        ready: { type: boolean, const: true }
+
+    ServiceHealth:
+      type: object
+      additionalProperties: false
+      required: [name, healthy, checked_at]
+      properties:
+        name: { type: string }
+        healthy: { type: boolean }
+        detail: { type: [string, "null"] }
+        checked_at: { type: string, format: date-time }
+        latency_ms: { type: [number, "null"] }
+
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [status, version, services, nodes, generated_at]
+      properties:
+        status: { type: string, enum: [healthy, degraded, unhealthy] }
+        version: { type: string }
+        services:
+          type: array
+          items: { $ref: "#/components/schemas/ServiceHealth" }
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/ServiceHealth" }
+        generated_at: { type: string, format: date-time }
+
+    NodeRegistration:
+      type: object
+      additionalProperties: false
+      required: [name, token, mesh_address, egress_address, memory_total_bytes, disk_total_bytes, agent_version]
+      properties:
+        name: { type: string, pattern: "^coire-[a-z0-9-]+$" }
+        token: { type: string, format: password }
+        mesh_address: { type: string, format: ipv4 }
+        egress_address: { type: string, format: ipv4 }
+        memory_total_bytes: { type: integer, minimum: 1 }
+        disk_total_bytes: { type: integer, minimum: 1 }
+        gpu_cores: { type: [integer, "null"], minimum: 0 }
+        agent_version: { type: string }
+
+    Node:
+      type: object
+      additionalProperties: false
+      required: [id, name, role, mesh_address, egress_address, memory_total_bytes, disk_total_bytes, agent_version, registered_at, last_seen_at, reachability]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [studio, core] }
+        mesh_address: { type: string, format: ipv4 }
+        egress_address: { type: string, format: ipv4 }
+        memory_total_bytes: { type: integer }
+        disk_total_bytes: { type: integer }
+        gpu_cores: { type: [integer, "null"] }
+        agent_version: { type: string }
+        registered_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        reachability: { type: string, enum: [healthy, degraded, unreachable, unknown] }
+
+    NodeStatus:
+      type: object
+      additionalProperties: false
+      required: [name, agent_version, uptime_seconds, cpu_percent, thermal_state, memory_total_bytes, memory_free_bytes, disk_total_bytes, disk_free_bytes, agent_cpu_percent, agent_rss_bytes, collection_budget_ok, path, sampled_at]
+      properties:
+        name: { type: string }
+        agent_version: { type: string }
+        uptime_seconds: { type: number }
+        cpu_percent: { type: number, minimum: 0, maximum: 100 }
+        gpu_percent: { type: [number, "null"], minimum: 0, maximum: 100 }
+        thermal_state: { type: string, enum: [nominal, fair, serious, critical, unknown] }
+        memory_total_bytes: { type: integer }
+        memory_free_bytes: { type: integer }
+        disk_total_bytes: { type: integer }
+        disk_free_bytes: { type: integer }
+        agent_cpu_percent: { type: number }
+        agent_rss_bytes: { type: integer }
+        collection_budget_ok: { type: boolean }
+        path: { type: string, enum: [mesh, fallback] }
+        sampled_at: { type: string, format: date-time }
