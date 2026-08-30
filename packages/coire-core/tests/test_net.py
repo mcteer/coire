@@ -105,3 +105,50 @@ async def test_caller_headers_are_preserved_on_both_paths() -> None:
 
     assert seen[0].headers["Authorization"] == "Bearer t"
     assert seen[1].headers["Authorization"] == "Bearer t"
+
+
+class TestNoFallbackClient:
+    """Replication may not cross the egress path (spec FR-007, SC-004)."""
+
+    async def test_mesh_failure_raises_instead_of_trying_egress(self) -> None:
+        import httpx
+        import pytest
+
+        from coire_core.net import MeshClient, MeshUnreachable
+
+        attempted: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempted.append(str(request.url))
+            raise httpx.ConnectError("down", request=request)
+
+        transport = httpx.MockTransport(handler)
+        async with MeshClient(
+            client=httpx.AsyncClient(transport=transport), fallback=False
+        ) as client:
+            with pytest.raises(MeshUnreachable):
+                await client.get("coire-edge-b", "/node/health")
+
+        assert len(attempted) == 1
+        assert ".mesh" in attempted[0]
+        assert ".local" not in attempted[0]
+
+    async def test_default_client_still_falls_back(self) -> None:
+        import httpx
+
+        from coire_core.net import MeshClient
+
+        attempted: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempted.append(str(request.url))
+            if ".mesh" in str(request.url):
+                raise httpx.ConnectError("down", request=request)
+            return httpx.Response(200, json={"ok": True})
+
+        transport = httpx.MockTransport(handler)
+        async with MeshClient(client=httpx.AsyncClient(transport=transport)) as client:
+            resp = await client.get("coire-edge-b", "/node/health")
+
+        assert resp.status_code == 200
+        assert len(attempted) == 2 and ".local" in attempted[1]

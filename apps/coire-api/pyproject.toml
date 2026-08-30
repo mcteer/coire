@@ -7,7 +7,12 @@ dependencies = [
     "coire-core",
     "fastapi>=0.115",
     "uvicorn>=0.34",
-    "sqlalchemy>=2.0.36",
+    # The [asyncio] extra, not bare sqlalchemy: it forces `greenlet`, which the async engine
+    # requires at runtime. SQLAlchemy's own conditional dependency lists platform_machine
+    # 'aarch64' but not 'arm64', so bare sqlalchemy installs greenlet inside the Linux arm64
+    # container and NOT on macOS arm64 - the API worked in compose while alembic and every
+    # async DB call failed on a Mac with "the greenlet library is required".
+    "sqlalchemy[asyncio]>=2.0.36",
     "asyncpg>=0.30",
     "alembic>=1.14",
     "httpx>=0.28",

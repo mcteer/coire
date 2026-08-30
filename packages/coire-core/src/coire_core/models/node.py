@@ -14,6 +14,9 @@ from ipaddress import IPv4Address, IPv4Network
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
+from coire_core.models.engine import EngineStatus
+from coire_core.models.jobs import JobStatus
+
 MESH_SUBNET = IPv4Network("192.168.100.0/24")
 """The unrouted Thunderbolt mesh. See docs/adr/0002 and ARCHITECTURE.md 2.1."""
 
@@ -109,3 +112,14 @@ class NodeStatus(BaseModel):
     collection_budget_ok: bool
     path: NodePath
     sampled_at: datetime
+
+    # --- feature 001 (additive; see specs/000-bootstrap/contracts/health-api.yaml) ---
+    engines: list[EngineStatus] = Field(default_factory=list)
+    """Every engine the agent owns, including orphans — with per-process CPU and resident
+    memory, which is what makes FR-013 "per-process" rather than "whole node"."""
+    jobs: list[JobStatus] = Field(default_factory=list)
+    memory_budget_bytes: int = 0
+    memory_committed_bytes: int = 0
+    """Sum of the *estimates* of live engines, not their measured footprints. Admission on a
+    number that moves under load is not reproducible (spec FR-020, research R6)."""
+    store_free_bytes: int = 0
