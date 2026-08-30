@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import yaml
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 
 from coire_api.auth import CurrentPrincipal
@@ -47,6 +47,7 @@ def load_inventory(path: str) -> dict[str, dict[str, object]]:
 @router.post("/register", response_model=Node)
 async def register_node(
     registration: NodeRegistration,
+    http_request: Request,
     principal: CurrentPrincipal,
     session: SessionDep,
     settings: SettingsDep,
@@ -84,7 +85,7 @@ async def register_node(
         session.add(row)
 
     row.mesh_address = str(registration.mesh_address)
-    row.egress_address = str(registration.egress_address)
+    row.egress_address = str(registration.egress_address) if registration.egress_address else None
     row.memory_total_bytes = registration.memory_total_bytes
     row.disk_total_bytes = registration.disk_total_bytes
     row.gpu_cores = registration.gpu_cores
@@ -95,6 +96,13 @@ async def register_node(
 
     await session.commit()
     await session.refresh(row)
+
+    # Registration is one of the two moments a node's real process state may differ from what
+    # the registry believes — the other is returning from unreachable. Ask it what it is
+    # actually running rather than assuming the rows are still true (spec FR-015).
+    reconciler = getattr(http_request.app.state, "reconciler", None)
+    if reconciler is not None:
+        reconciler.request_reconcile(row.name)
 
     return Node(
         id=row.id,

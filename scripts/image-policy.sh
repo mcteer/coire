@@ -14,6 +14,17 @@ IMAGE="${1:?usage: image-policy.sh <image> [dockerfile]}"
 DOCKERFILE="${2:-}"
 FAILED=0
 
+# CI-only images are exempt by name. `coire-node-test` deliberately carries a shell and procps:
+# the integration suite kills the agent inside it to prove engines survive a restart, which is
+# the point of the image. It is never deployed - tests/integration/test_topology.py asserts no
+# service of the production compose project uses it, which is the guard that actually matters.
+case "${IMAGE%%:*}" in
+  *coire-node-test)
+    echo "  skip  ${IMAGE}: CI-only image, exempt from rules 1-7 (never deployed)"
+    exit 0
+    ;;
+esac
+
 fail() { echo "policy: $1 in ${IMAGE}: $2" >&2; FAILED=1; }
 pass() { printf '  ok  %s\n' "$1"; }
 

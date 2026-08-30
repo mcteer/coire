@@ -474,6 +474,7 @@ components:
         resident_delta_bytes: { type: [integer, "null"] }
         cpu_percent: { type: [number, "null"] }
         chat_template_sha256: { type: [string, "null"] }
+        load_seconds: { type: [number, "null"] }
         last_health_at: { type: [string, "null"], format: date-time }
         started_at: { type: string, format: date-time }
         stopped_at: { type: [string, "null"], format: date-time }

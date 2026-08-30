@@ -65,6 +65,13 @@ mypy_path = [
 explicit_package_bases = true
 namespace_packages = true
 
+# Every test root has its own conftest.py, and with test directories deliberately left as
+# non-packages (so pytest's rootdir-relative imports work) they all resolve to the module name
+# `conftest`. mypy refuses the duplicate and stops before checking anything else. Excluding
+# them is the narrow fix: a conftest holds fixtures, the source it exercises is still checked,
+# and making the test tree a package would change how pytest imports it.
+exclude = ["/conftest\\.py$"]
+
 [[tool.mypy.overrides]]
 module = ["psutil.*", "jsonschema.*"]
 ignore_missing_imports = true
@@ -72,6 +79,8 @@ ignore_missing_imports = true
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# No collector exists in a test run, and the exporter's retry chatter drowns real output.
+# Export is verified by the integration suite, which does have one.
 testpaths = [
     "packages/coire-core/tests",
     "apps/coire-api/tests",
@@ -80,5 +89,6 @@ testpaths = [
 ]
 markers = [
     "integration: requires a running control plane (set COIRE_INTEGRATION=1)",
+    "engine: requires Apple Silicon and a real mlx_lm.server (set COIRE_ENGINE=1)",
 ]
 filterwarnings = ["error::DeprecationWarning"]

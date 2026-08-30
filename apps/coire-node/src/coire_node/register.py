@@ -43,7 +43,7 @@ def read_gpu_cores() -> int | None:
 
 
 def build_registration(
-    settings: Settings, mesh_address: str, egress_address: str
+    settings: Settings, mesh_address: str, egress_address: str | None
 ) -> NodeRegistration:
     return NodeRegistration(
         name=settings.node_name or socket.gethostname().split(".")[0],
@@ -84,6 +84,7 @@ class Registrar:
             resp = await client.post(
                 self._settings.core_mesh_host,
                 "/api/v1/nodes/register",
+                port=self._settings.core_api_port,
                 json=self._registration.model_dump(mode="json")
                 | {"token": self._registration.token.get_secret_value()},
             )

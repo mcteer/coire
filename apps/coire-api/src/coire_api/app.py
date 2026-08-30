@@ -11,7 +11,7 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from coire_api import __version__
 from coire_api.db import dispose_engine, init_engine
-from coire_api.routes import health, nodes
+from coire_api.routes import admin_models, admin_nodes, health, models, nodes
 from coire_api.telemetry import configure_telemetry
 from coire_core.settings import Settings, get_settings
 
@@ -39,10 +39,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         prober = NodeProber(settings)
         await prober.start()
         app.state.prober = prober
+
+        from coire_api.registry.reconciler import RegistryReconciler
+
+        reconciler = RegistryReconciler(settings)
+        await reconciler.start()
+        app.state.reconciler = reconciler
+        prober.set_reconciler(reconciler)
         logger.info("coire-api %s started", __version__)
         try:
             yield
         finally:
+            await reconciler.stop()
             await prober.stop()
             await dispose_engine()
 
@@ -55,6 +63,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(health.router)
     app.include_router(nodes.router)
+    app.include_router(models.router)
+    app.include_router(admin_models.router)
+    app.include_router(admin_nodes.router)
 
     FastAPIInstrumentor.instrument_app(app)
     return app

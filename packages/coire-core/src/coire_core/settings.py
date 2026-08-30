@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 DEFAULT_SECRETS_DIR = "/run/secrets"
@@ -27,6 +27,9 @@ class Settings(BaseSettings):
         secrets_dir=DEFAULT_SECRETS_DIR,
         extra="ignore",
         case_sensitive=False,
+        # The node agent fills node_token and hf_token from the System keychain after
+        # construction (coire_node.keychain), because a keychain is not a settings source.
+        validate_assignment=True,
     )
 
     @classmethod
@@ -59,6 +62,16 @@ class Settings(BaseSettings):
     node_tokens: SecretStr = SecretStr("{}")
     """JSON object mapping node name to its static token. Replaced by issued tokens in 005."""
 
+    admin_token: SecretStr = SecretStr("")
+    """Interim static admin bearer (ADR-0004). Empty means *nobody* is an admin, which is the
+    safe default: an unset secret must never make every caller privileged. Feature 007 replaces
+    this with edge identity and API keys."""
+
+    hf_token: SecretStr = SecretStr("")
+    """Hugging Face credential. Exists ONLY on a node agent, read from that Studio's System
+    keychain (spec FR-005). It is never mounted into a control-plane container and never
+    appears in this process on core."""
+
     # --- telemetry ------------------------------------------------------
     otlp_endpoint: str = "http://otel-collector:4317"
     service_version: str = "0.1.0"
@@ -70,12 +83,51 @@ class Settings(BaseSettings):
     node_collection_budget_cpu_pct: float = 2.0
     node_collection_budget_rss_bytes: int = 150 * 1024 * 1024
     node_inventory_file: str = "/app/nodes.yaml"
+    registry_reconcile_interval_s: float = 5.0
+
+    # --- model store and engines (node side) ----------------------------
+    node_store_dir: str = "/opt/coire/models"
+    node_state_dir: str = "/opt/coire/state"
+    node_hf_cache_dir: str = "/opt/coire/hf-cache"
+    node_engine_port_range: str = "9500-9599"
+    node_memory_budget_fraction: float = Field(default=0.90, gt=0.0, le=1.0)
+    """Share of physical memory the platform may commit to engines. 0.90 of 256 GB is the
+    230 GB budget ARCHITECTURE.md section 4 assumes; macOS keeps the rest."""
+    node_engine_health_interval_s: float = 5.0
+    """Also the detection bound for an externally-killed engine (spec SC-009)."""
+    node_engine_start_timeout_s: float = 600.0
+    """A large model takes minutes to page in from SSD; this is not a liveness timeout."""
+
+    # --- acquisition ----------------------------------------------------
+    disk_reserve_bytes: int = 50 * 1024**3
+    """Kept free on every Studio when deciding whether a model fits (spec FR-010)."""
+    kv_headroom_tokens: int = 32_768
+    """Context tokens the memory estimate reserves KV cache for (research R6)."""
+    memory_overhead_by_precision: dict[str, float] = Field(
+        default_factory=lambda: {
+            "4bit": 1.10,
+            "5bit": 1.10,
+            "6bit": 1.10,
+            "8bit": 1.08,
+            "bf16": 1.05,
+            "fp16": 1.05,
+            "other": 1.15,
+        }
+    )
+    """Multipliers applied to weight bytes. Deliberately a setting, not a constant: feature 004
+    corrects them from the resident-vs-estimate deltas this feature records (research R6)."""
 
     # --- node agent only ------------------------------------------------
     node_name: str = ""
     node_token: SecretStr = SecretStr("")
     node_listen_port: int = 9400
     core_mesh_host: str = "coire-core"
+    core_api_port: int = 8080
+    """Port the node reaches the control plane on over the mesh.
+
+    8080 is nginx, the sole ingress. Without this the agent posted to the default HTTP port,
+    where nothing on core listens — registration could never have succeeded on the real
+    cluster, and was not caught because feature 000's T063 install was never run."""
 
     @property
     def database_url(self) -> str:
@@ -85,6 +137,29 @@ class Settings(BaseSettings):
             f"postgresql+asyncpg://{self.postgres_user}:{pw}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+
+    @property
+    def engine_port_range(self) -> tuple[int, int]:
+        """Parsed `node_engine_port_range`. Raises on a malformed value rather than guessing:
+        a bad range would otherwise surface as a confusing bind failure at load time."""
+        raw = self.node_engine_port_range.strip()
+        low, _, high = raw.partition("-")
+        try:
+            start, end = int(low), int(high)
+        except ValueError as exc:
+            raise ValueError(f"node_engine_port_range must be 'LOW-HIGH', got {raw!r}") from exc
+        if not (0 < start <= end < 65536):
+            raise ValueError(f"node_engine_port_range out of range: {raw!r}")
+        return start, end
+
+    def overhead_for(self, precision: str) -> float:
+        """Overhead multiplier for a precision label, falling back to `other`."""
+        table = self.memory_overhead_by_precision
+        if precision in table:
+            return table[precision]
+        # `4bit-g64` and friends carry a group-size suffix; match on the bit-width prefix.
+        head = precision.split("-", 1)[0]
+        return table.get(head, table.get("other", 1.15))
 
     @property
     def node_token_map(self) -> dict[str, str]:

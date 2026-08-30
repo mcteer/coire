@@ -14,6 +14,7 @@ import signal
 from coire_core.settings import Settings
 from coire_node import __version__
 from coire_node.agent import resolve_egress_address, resolve_mesh_address, serve
+from coire_node.keychain import load_node_secrets
 from coire_node.metrics import MetricsCollector
 from coire_node.register import Registrar, build_registration
 
@@ -28,6 +29,10 @@ async def _run() -> None:
     import socket as _socket
 
     settings = Settings()
+    # The Studio's two secrets live in the System keychain, which is the only place they exist
+    # (feature 000 research R6; spec FR-005). Anything already set by environment or a mounted
+    # file wins, so containers and CI need no keychain.
+    load_node_secrets(settings)
     hostname = settings.node_name or _socket.gethostname().split(".")[0]
 
     collector = MetricsCollector(
@@ -43,11 +48,19 @@ async def _run() -> None:
     mesh = resolve_mesh_address(hostname, settings.mesh_hosts_file)
     egress = resolve_egress_address()
     registrar: Registrar | None = None
-    if mesh and egress:
+    if mesh:
+        # Egress is optional: it only carries the alerted Wi-Fi fallback listener. A node with
+        # no route off the mesh is a legitimate configuration and must still join the cluster.
+        if egress is None:
+            logger.info("no egress interface; the fallback listener will not be started")
         registrar = Registrar(settings, build_registration(settings, mesh, egress))
         await registrar.start()
     else:
-        logger.error("not registering: mesh=%s egress=%s", mesh, egress)
+        logger.error(
+            "not registering: no mesh address for this host in %s. Run "
+            "scripts/apply-mesh-hosts.sh.",
+            settings.mesh_hosts_file,
+        )
 
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

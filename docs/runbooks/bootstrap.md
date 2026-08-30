@@ -154,3 +154,8 @@ scripts/image-policy.sh bad:test tests/fixtures/policy/bad.Dockerfile
 ```
 
 The same script runs per-image in CI's `image-policy` job, over all seven built images.
+
+## See also
+
+- [`models.md`](models.md) — adding, curating, retiring models; loading and unloading
+  engines; clearing orphans; where model files live on a Studio.

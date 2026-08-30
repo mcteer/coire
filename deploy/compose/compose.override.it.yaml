@@ -1,0 +1,121 @@
+# Integration-test overlay. NEVER used in production.
+#
+# Adds two node agents on a simulated Thunderbolt mesh so the Linux CI job can exercise the
+# whole of feature 001 except the model load itself (research R9): registration with its
+# mesh-subnet validation, acquisition, the mesh-only export path, engine lifecycle, and
+# reconciliation after an agent restart.
+#
+# The addresses here are the real mesh addresses from deploy/cluster/hosts, on a compose
+# network rather than a Thunderbolt bridge. That is deliberate: NodeRegistration refuses any
+# address outside 192.168.100.0/24, so a made-up subnet would test a different code path than
+# the one that runs on the cluster. This is the one place in the repository that writes an
+# address (ADR-0002 governs *service config*, and this is a test harness) — production
+# compose.yaml stays free of them, which tests/integration/test_topology.py asserts.
+#
+# `node-b` is attached ONLY to the mesh network: it has no route to the internet, so a test
+# asserting the replica never pulled from Hugging Face is enforced by the topology rather than
+# by trusting a log line (spec SC-004).
+#
+#   docker compose -f compose.yaml -f compose.override.it.yaml up -d
+
+services:
+  coire-api:
+    environment:
+      # The Studios keep 50 GiB free; the test tmpfs is 4 GiB, so the production default
+      # would refuse every model on fit. The check itself is exercised by its own test.
+      DISK_RESERVE_BYTES: "268435456"
+      REGISTRY_RECONCILE_INTERVAL_S: "2"
+    networks:
+      coire-mesh-sim:
+        ipv4_address: 192.168.100.10
+    extra_hosts:
+      - "coire-core.mesh:192.168.100.10"
+      - "coire-edge-a.mesh:192.168.100.11"
+      - "coire-edge-b.mesh:192.168.100.12"
+
+  node-a:
+    image: coire-node-test:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-node/docker/node-test.Dockerfile
+    networks:
+      coire-mesh-sim:
+        ipv4_address: 192.168.100.11
+      # The origin needs egress to reach Hugging Face; it is the only container that does.
+      coire-edge:
+    extra_hosts:
+      - "coire-core.mesh:192.168.100.10"
+      - "coire-edge-a.mesh:192.168.100.11"
+      - "coire-edge-b.mesh:192.168.100.12"
+    environment:
+      NODE_NAME: coire-edge-a
+      NODE_TOKEN: ${COIRE_IT_NODE_TOKEN_A:-a}
+      CORE_MESH_HOST: coire-core
+      MESH_HOSTS_FILE: /etc/hosts
+      NODE_PROBE_INTERVAL_S: "2"
+      NODE_ENGINE_HEALTH_INTERVAL_S: "2"
+      # The overlay attaches coire-api to the mesh directly, so the node reaches uvicorn
+      # rather than nginx. Production goes through nginx on 8080.
+      CORE_API_PORT: "8000"
+      REGISTRY_RECONCILE_INTERVAL_S: "2"
+      # Selects the fake engine (research R9). The real one is Apple-Silicon only.
+      COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
+      HF_TOKEN: ${HF_TOKEN:-}
+      HF_HUB_DISABLE_XET: "1"
+      DISK_RESERVE_BYTES: "268435456"
+      OTLP_ENDPOINT: http://otel-collector:4317
+    tmpfs:
+      - /opt/coire:size=4g
+    healthcheck:
+      # The agent binds its mesh address, not loopback, so the probe must use that address —
+      # exactly as it does on a Studio.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://192.168.100.11:9400/ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  node-b:
+    image: coire-node-test:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-node/docker/node-test.Dockerfile
+    networks:
+      # Mesh only. No egress: the replica must receive its copy from the origin over the mesh,
+      # and here it physically cannot do anything else.
+      coire-mesh-sim:
+        ipv4_address: 192.168.100.12
+    extra_hosts:
+      - "coire-core.mesh:192.168.100.10"
+      - "coire-edge-a.mesh:192.168.100.11"
+      - "coire-edge-b.mesh:192.168.100.12"
+    environment:
+      NODE_NAME: coire-edge-b
+      NODE_TOKEN: ${COIRE_IT_NODE_TOKEN_B:-b}
+      CORE_MESH_HOST: coire-core
+      MESH_HOSTS_FILE: /etc/hosts
+      NODE_PROBE_INTERVAL_S: "2"
+      NODE_ENGINE_HEALTH_INTERVAL_S: "2"
+      # The overlay attaches coire-api to the mesh directly, so the node reaches uvicorn
+      # rather than nginx. Production goes through nginx on 8080.
+      CORE_API_PORT: "8000"
+      REGISTRY_RECONCILE_INTERVAL_S: "2"
+      COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
+      HF_HUB_DISABLE_XET: "1"
+      DISK_RESERVE_BYTES: "268435456"
+      OTLP_ENDPOINT: http://otel-collector:4317
+    tmpfs:
+      - /opt/coire:size=4g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://192.168.100.12:9400/ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+networks:
+  coire-mesh-sim:
+    internal: true
+    ipam:
+      config:
+        - subnet: 192.168.100.0/24

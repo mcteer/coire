@@ -113,8 +113,10 @@ unprompted within 2 minutes of the machine returning, and re-register (api `/hea
 `last_seen_at` advancing) with **no login session** on the Studio.
 
 **Footprint** (FR-012a/b): `apps/coire-node/uninstall.sh --dry-run` lists exactly what was
-installed — `/opt/coire/**`, `/Library/LaunchDaemons/com.coire.node.plist`, one Keychain item —
-and nothing else. `brew list` and `ls /usr/local/bin` are unchanged from before install.
+installed — `/opt/coire/**`, `/Library/LaunchDaemons/com.coire.node.plist`, and (from feature
+001) **two** Keychain items, `coire-node-token` and `coire-hf-token` — and nothing else.
+Feature 001 adds three directories under the prefix: `models/` (the store), `state/` (engine
+and job caches) and `hf-cache/` (metadata scratch). `brew list` and `ls /usr/local/bin` are unchanged from before install.
 
 **Fallback path** (FR-013a–c): request the Wi-Fi address without the header, then with it:
 

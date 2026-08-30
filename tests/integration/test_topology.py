@@ -52,6 +52,10 @@ def config() -> dict[str, Any]:
         "COIRE_SECRETS_DIR": "/tmp/coire-secrets-test",
         "COIRE_REGISTRY": "",
         "COIRE_TAG": "dev",
+        # conftest sets COMPOSE_FILE so `coire-up` picks up the integration overlay. These
+        # invariants are about what *ships*, so render the production file alone: an overlay
+        # leaking in here would quietly weaken every assertion below.
+        "COMPOSE_FILE": str(COMPOSE),
     }
     proc = subprocess.run(
         ["docker", "compose", "-f", str(COMPOSE), "config", "--format", "json"],
@@ -164,6 +168,27 @@ class TestImagesAndSecrets:
         """FR-017: coire-agent is built by core but never run on it."""
         for name, svc in config["services"].items():
             assert "coire-agent" not in svc.get("image", ""), f"{name} runs the agent image"
+
+    def test_the_ci_only_node_image_is_absent_from_production(self, config: dict[str, Any]) -> None:
+        """`coire-node-test` carries a shell so the restart test can kill the agent. It is
+        exempt from the image policy precisely because it never ships; this is the assertion
+        that makes that exemption safe."""
+        for name, svc in config["services"].items():
+            assert "node-test" not in svc.get("image", ""), f"{name} uses the CI-only image"
+        assert "node-a" not in config["services"]
+        assert "node-b" not in config["services"]
+
+    def test_no_service_carries_a_hugging_face_credential(self, config: dict[str, Any]) -> None:
+        """Spec FR-005: the Hugging Face token exists only on a node agent's own machine.
+
+        Checked against the *production* project, which is what ships. The integration overlay
+        gives node-a an HF_TOKEN deliberately, and that overlay is never rendered here.
+        """
+        for name, svc in config["services"].items():
+            for key in svc.get("environment") or {}:
+                assert "HF" not in key.upper().replace("SHF", ""), f"{name} has {key}"
+            for secret in svc.get("secrets") or []:
+                assert "hf" not in str(secret.get("source", "")).lower(), name
 
     def test_secrets_are_file_sourced(self, config: dict[str, Any]) -> None:
         """Compose rejects `environment:` sources for read_only services (research R4)."""

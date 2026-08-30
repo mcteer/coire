@@ -1,0 +1,319 @@
+"""Typed client for the node agent API.
+
+One method per operation in `specs/001-model-registry-node-agent/contracts/node-api.yaml`,
+each returning a `coire-core` model. Routes and the reconciler never see an httpx response, so
+a contract change surfaces as a validation error here rather than as a `KeyError` three layers
+away.
+
+Every call goes to `<name>.mesh` through `MeshClient` — no caller ever writes an address
+(ADR-0002) — and carries that node's bearer token from the mounted `node_tokens` secret.
+"""
+
+from __future__ import annotations
+
+import logging
+import uuid
+from datetime import UTC, datetime
+from enum import StrEnum
+from types import TracebackType
+from typing import Any
+
+import httpx
+
+from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileResult
+from coire_core.models.jobs import ChecksumManifest, JobStatus, RepoInspection
+from coire_core.models.node import NodeStatus
+from coire_core.net import MeshClient
+from coire_core.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+
+class NodeErrorKind(StrEnum):
+    UNREACHABLE = "unreachable"
+    UNAUTHORIZED = "unauthorized"
+    NOT_FOUND = "not_found"
+    GATED = "gated"
+    CONFLICT = "conflict"
+    NO_SPACE = "no_space"
+    BUDGET = "budget"
+    UNAVAILABLE = "unavailable"
+    PROTOCOL = "protocol"
+    SERVER = "server"
+
+
+class NodeError(RuntimeError):
+    """A node refused or could not be reached.
+
+    Carries a `kind` because the reconciler's response differs sharply by cause: `unreachable`
+    means wait and retry, `not_found` means the node lost a copy, `gated` is a message for the
+    admin, and `conflict` usually means another job already owns the slug.
+    """
+
+    def __init__(
+        self,
+        kind: NodeErrorKind,
+        node: str,
+        *,
+        status: int | None = None,
+        detail: str = "",
+        body: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(f"{node}: {kind.value}{f' (HTTP {status})' if status else ''} {detail}")
+        self.kind = kind
+        self.node = node
+        self.status = status
+        self.detail = detail
+        self.body = body or {}
+
+    @property
+    def retryable(self) -> bool:
+        """Whether waiting could plausibly help. A refusal on the merits could not."""
+        return self.kind in (
+            NodeErrorKind.UNREACHABLE,
+            NodeErrorKind.UNAVAILABLE,
+            NodeErrorKind.SERVER,
+        )
+
+
+_STATUS_KINDS = {
+    401: NodeErrorKind.UNAUTHORIZED,
+    403: NodeErrorKind.UNAUTHORIZED,
+    404: NodeErrorKind.NOT_FOUND,
+    409: NodeErrorKind.CONFLICT,
+    423: NodeErrorKind.GATED,
+    503: NodeErrorKind.UNAVAILABLE,
+    507: NodeErrorKind.NO_SPACE,
+}
+
+
+class NodeClient:
+    """Talks to node agents. One instance per reconciler pass or request."""
+
+    def __init__(self, settings: Settings, *, timeout: float = 30.0) -> None:
+        self._settings = settings
+        self._mesh = MeshClient(timeout=timeout)
+
+    async def __aenter__(self) -> NodeClient:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        await self._mesh.aclose()
+
+    # -- plumbing ----------------------------------------------------------
+    def _headers(self, node: str) -> dict[str, str]:
+        token = self._settings.node_token_map.get(node, "")
+        if not token:
+            logger.error("no token for node %s; the request will be refused", node)
+        return {"Authorization": f"Bearer {token}"}
+
+    async def _call(
+        self,
+        method: str,
+        node: str,
+        path: str,
+        *,
+        json: Any = None,
+        expect: tuple[int, ...] = (200, 202, 204),
+    ) -> tuple[int, dict[str, Any]]:
+        try:
+            resp = await self._mesh.request(
+                method,
+                node,
+                path,
+                port=self._settings.node_listen_port,
+                headers=self._headers(node),
+                json=json,
+            )
+        except httpx.HTTPError as exc:
+            raise NodeError(NodeErrorKind.UNREACHABLE, node, detail=str(exc)) from exc
+
+        body: dict[str, Any] = {}
+        if resp.content:
+            try:
+                parsed = resp.json()
+                body = parsed if isinstance(parsed, dict) else {"items": parsed}
+            except ValueError:
+                body = {"raw": resp.text[:500]}
+
+        if resp.status_code not in expect:
+            kind = _STATUS_KINDS.get(
+                resp.status_code,
+                NodeErrorKind.SERVER if resp.status_code >= 500 else NodeErrorKind.PROTOCOL,
+            )
+            raise NodeError(
+                kind,
+                node,
+                status=resp.status_code,
+                detail=str(body.get("detail") or body.get("error") or "")[:300],
+                body=body,
+            )
+        return resp.status_code, body
+
+    # -- health ------------------------------------------------------------
+    async def health(self, node: str) -> NodeStatus:
+        _, body = await self._call("GET", node, "/node/health", expect=(200,))
+        return NodeStatus.model_validate(body)
+
+    # -- repositories and copies -------------------------------------------
+    async def inspect(self, node: str, repo_id: str, revision: str = "main") -> RepoInspection:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/models/inspect",
+            json={"repo_id": repo_id, "revision": revision},
+            expect=(200,),
+        )
+        return RepoInspection.model_validate(body)
+
+    async def list_models(self, node: str) -> list[dict[str, Any]]:
+        _, body = await self._call("GET", node, "/node/models", expect=(200,))
+        items = body.get("items", [])
+        return list(items) if isinstance(items, list) else []
+
+    async def delete_model(self, node: str, slug: str) -> None:
+        await self._call("DELETE", node, f"/node/models/{slug}", expect=(204, 404))
+
+    async def grant_export(self, node: str, slug: str, grant: str, expires_at: datetime) -> None:
+        await self._call(
+            "POST",
+            node,
+            f"/node/models/{slug}/export",
+            json={"grant": grant, "expires_at": expires_at.astimezone(UTC).isoformat()},
+            expect=(204,),
+        )
+
+    async def revoke_export(self, node: str, slug: str) -> None:
+        await self._call("DELETE", node, f"/node/models/{slug}/export", expect=(204, 404))
+
+    # -- jobs --------------------------------------------------------------
+    async def start_pull(
+        self,
+        node: str,
+        *,
+        job_id: uuid.UUID,
+        repo_id: str,
+        slug: str,
+        revision: str = "main",
+        expected_total_bytes: int | None = None,
+    ) -> JobStatus:
+        payload: dict[str, Any] = {
+            "job_id": str(job_id),
+            "repo_id": repo_id,
+            "slug": slug,
+            "revision": revision,
+        }
+        if expected_total_bytes is not None:
+            payload["expected_total_bytes"] = expected_total_bytes
+        _, body = await self._call("POST", node, "/node/jobs/pull", json=payload, expect=(200, 202))
+        return JobStatus.model_validate(body)
+
+    async def start_import(
+        self,
+        node: str,
+        *,
+        job_id: uuid.UUID,
+        slug: str,
+        source_node: str,
+        grant: str,
+        manifest: ChecksumManifest,
+    ) -> JobStatus:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/jobs/import",
+            json={
+                "job_id": str(job_id),
+                "slug": slug,
+                "source_node": source_node,
+                "grant": grant,
+                "manifest": manifest.model_dump(mode="json"),
+            },
+            expect=(200, 202),
+        )
+        return JobStatus.model_validate(body)
+
+    async def start_verify(
+        self,
+        node: str,
+        *,
+        job_id: uuid.UUID,
+        slug: str,
+        manifest: ChecksumManifest | None = None,
+    ) -> JobStatus:
+        payload: dict[str, Any] = {"job_id": str(job_id), "slug": slug}
+        if manifest is not None:
+            payload["manifest"] = manifest.model_dump(mode="json")
+        _, body = await self._call(
+            "POST", node, "/node/jobs/verify", json=payload, expect=(200, 202)
+        )
+        return JobStatus.model_validate(body)
+
+    async def get_job(self, node: str, job_id: uuid.UUID) -> JobStatus:
+        _, body = await self._call("GET", node, f"/node/jobs/{job_id}", expect=(200,))
+        return JobStatus.model_validate(body)
+
+    async def cancel_job(self, node: str, job_id: uuid.UUID) -> None:
+        await self._call("DELETE", node, f"/node/jobs/{job_id}", expect=(202, 404))
+
+    # -- engines -----------------------------------------------------------
+    async def list_engines(self, node: str) -> list[EngineStatus]:
+        _, body = await self._call("GET", node, "/node/engines", expect=(200,))
+        return [EngineStatus.model_validate(e) for e in body.get("items", [])]
+
+    async def start_engine(
+        self,
+        node: str,
+        *,
+        engine_id: uuid.UUID,
+        slug: str,
+        estimate_bytes: int,
+        chat_template: str | None = None,
+    ) -> tuple[bool, EngineStatus]:
+        """Returns `(already_running, status)`.
+
+        A second load of the same model on the same node answers 200 with the existing engine
+        rather than starting a second one (spec FR-019); the caller needs to know which
+        happened so it does not create a duplicate row.
+        """
+        status, body = await self._call(
+            "POST",
+            node,
+            "/node/engines",
+            json={
+                "engine_id": str(engine_id),
+                "slug": slug,
+                "estimate_bytes": estimate_bytes,
+                "chat_template": chat_template,
+            },
+            expect=(200, 202),
+        )
+        return status == 200, EngineStatus.model_validate(body)
+
+    async def get_engine(self, node: str, engine_id: uuid.UUID) -> EngineStatus:
+        _, body = await self._call("GET", node, f"/node/engines/{engine_id}", expect=(200,))
+        return EngineStatus.model_validate(body)
+
+    async def stop_engine(self, node: str, engine_id: uuid.UUID) -> EngineStatus | None:
+        status, body = await self._call(
+            "DELETE", node, f"/node/engines/{engine_id}", expect=(202, 404)
+        )
+        return EngineStatus.model_validate(body) if status == 202 else None
+
+    async def reconcile(self, node: str, request: ReconcileRequest) -> ReconcileResult:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/engines/reconcile",
+            json=request.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return ReconcileResult.model_validate(body)

@@ -32,6 +32,22 @@
     <key>ThrottleInterval</key>
     <integer>10</integer>
 
+    <!--
+      Engines must outlive an agent restart (spec FR-015, research R4).
+
+      launchd.plist(5): "When a job dies, launchd kills any remaining processes with the same
+      process group ID as the job." Without this, every KeepAlive restart of the agent would
+      kill every mlx_lm.server it had started - precisely the orphaning US4 forbids. The agent
+      also spawns engines with start_new_session=True (Apple TN2083's preferred remedy); both
+      are set because `launchctl bootout` targets the group regardless of the child's session.
+    -->
+    <key>AbandonProcessGroup</key>
+    <true/>
+
+    <!-- Give the agent time to stop its own children cleanly before SIGKILL. -->
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+
     <key>EnvironmentVariables</key>
     <dict>
         <key>COIRE_ROLE</key>
@@ -40,6 +56,17 @@
         <string>__NODE_NAME__</string>
         <key>MESH_HOSTS_FILE</key>
         <string>/etc/hosts</string>
+        <key>NODE_STORE_DIR</key>
+        <string>__PREFIX__/models</string>
+        <key>NODE_STATE_DIR</key>
+        <string>__PREFIX__/state</string>
+        <key>NODE_HF_CACHE_DIR</key>
+        <string>__PREFIX__/hf-cache</string>
+        <key>HF_HOME</key>
+        <string>__PREFIX__/hf-cache</string>
+        <!-- Progress bars in a launchd log file are noise, not information. -->
+        <key>HF_HUB_DISABLE_PROGRESS_BARS</key>
+        <string>1</string>
         <key>OTLP_ENDPOINT</key>
         <string>http://coire-core.mesh:4317</string>
         <key>PATH</key>

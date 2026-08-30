@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from coire_core.settings import Settings
 
 
@@ -50,3 +52,43 @@ def test_budget_defaults_match_the_spec(tmp_path: Path) -> None:
 
 def test_password_is_not_in_repr(tmp_path: Path) -> None:
     assert "pw" not in repr(_settings(tmp_path, postgres_password="pw"))
+
+
+def test_admin_token_defaults_to_empty(tmp_path: Path) -> None:
+    """An unset admin secret must make nobody an admin, never everybody (ADR-0004)."""
+    assert Settings(_secrets_dir=str(tmp_path)).admin_token.get_secret_value() == ""  # type: ignore[call-arg]
+
+
+def test_admin_token_is_read_from_the_mounted_file(tmp_path: Path) -> None:
+    assert _settings(tmp_path, admin_token="sekrit").admin_token.get_secret_value() == "sekrit"
+
+
+def test_admin_token_is_not_in_repr(tmp_path: Path) -> None:
+    assert "sekrit" not in repr(_settings(tmp_path, admin_token="sekrit"))
+
+
+def test_engine_port_range_parses(tmp_path: Path) -> None:
+    assert Settings(_secrets_dir=str(tmp_path)).engine_port_range == (9500, 9599)  # type: ignore[call-arg]
+
+
+def test_engine_port_range_rejects_malformed_values(tmp_path: Path) -> None:
+    """A bad range must fail loudly here, not as a puzzling bind error at load time."""
+    for bad in ("9500", "abc-def", "9600-9500", "0-10", "1-70000"):
+        settings = Settings(_secrets_dir=str(tmp_path), node_engine_port_range=bad)  # type: ignore[call-arg]
+        with pytest.raises(ValueError):
+            _ = settings.engine_port_range
+
+
+def test_overhead_falls_back_by_bit_width_then_other(tmp_path: Path) -> None:
+    settings = Settings(_secrets_dir=str(tmp_path))  # type: ignore[call-arg]
+    assert settings.overhead_for("8bit") == 1.08
+    assert settings.overhead_for("4bit-g64") == 1.10  # group-size suffix stripped
+    assert settings.overhead_for("something-odd") == 1.15
+
+
+def test_registry_defaults_match_the_plan(tmp_path: Path) -> None:
+    settings = Settings(_secrets_dir=str(tmp_path))  # type: ignore[call-arg]
+    assert settings.node_memory_budget_fraction == 0.90
+    assert settings.node_engine_health_interval_s == 5.0
+    assert settings.kv_headroom_tokens == 32_768
+    assert settings.disk_reserve_bytes == 50 * 1024**3

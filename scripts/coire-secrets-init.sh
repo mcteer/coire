@@ -5,6 +5,10 @@
 #   coire-secrets-init.sh --force    replace existing items
 #   coire-secrets-init.sh --show-node-tokens   print the per-node tokens to store on each Studio
 #
+# Creates: coire-postgres-password, coire-key-signing-secret, coire-node-tokens,
+#          coire-admin-token (the interim admin bearer, ADR-0004).
+# Does NOT create the Hugging Face token: that lives only in each Studio's System keychain.
+#
 # The generated values are written straight into the login Keychain and never echoed, except
 # the node tokens, which the operator must copy to each Studio's SYSTEM keychain.
 set -euo pipefail
@@ -49,6 +53,7 @@ fi
 echo "creating Coire secrets in the login Keychain:"
 create coire-postgres-password "$(openssl rand -base64 32)"
 create coire-key-signing-secret "$(openssl rand -base64 48)"
+create coire-admin-token "$(openssl rand -base64 32)"
 create coire-node-tokens "$(python3 -c '
 import json, secrets
 print(json.dumps({n: secrets.token_urlsafe(32) for n in ("coire-edge-a", "coire-edge-b")}))
@@ -57,3 +62,8 @@ print(json.dumps({n: secrets.token_urlsafe(32) for n in ("coire-edge-a", "coire-
 echo
 echo "next: $(dirname "${BASH_SOURCE[0]}")/coire-secrets-init.sh --show-node-tokens"
 echo "      to get the per-node tokens for each Studio's System keychain."
+echo
+echo "the Hugging Face token is NOT created here: it belongs only in each Studio's SYSTEM"
+echo "keychain (spec FR-005), never on core. On each Studio, once:"
+echo "  sudo security add-generic-password -a coire -s coire-hf-token \\"
+echo "       -w '<hf_...>' /Library/Keychains/System.keychain"
