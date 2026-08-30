@@ -23,6 +23,22 @@ pytestmark = [
     ),
 ]
 
+
+@pytest.fixture(autouse=True)
+def _cluster_restored(api_url: str, admin_headers: dict[str, str]):  # type: ignore[no-untyped-def]
+    """Leave the cluster as it was found.
+
+    Several tests here deliberately kill a node agent. Without a barrier on the way out, the
+    next test loads onto a node that is still coming back and fails for a reason that has
+    nothing to do with what it is testing — which is how these two became flaky only when the
+    whole suite ran.
+    """
+    wait_nodes_healthy(api_url, admin_headers)
+    yield
+    wait_nodes_healthy(api_url, admin_headers)
+    unload_all(api_url, admin_headers)
+
+
 PROJECT = "coire-it"
 COMPOSE_DIR = "deploy/compose"
 TEST_REPO = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
@@ -127,7 +143,6 @@ class TestLoadAndUnload:
     def test_a_model_loads_reports_and_unloads(
         self, api_url: str, admin_headers: dict[str, str], ready_model: dict[str, Any]
     ) -> None:
-        wait_nodes_healthy(api_url, admin_headers)
         unload_all(api_url, admin_headers)
         with _client(api_url) as client:
             resp = client.post(
@@ -208,7 +223,6 @@ class TestAgentRestartAdoption:
     def test_an_engine_survives_an_agent_restart_and_is_re_adopted(
         self, api_url: str, admin_headers: dict[str, str], ready_model: dict[str, Any]
     ) -> None:
-        wait_nodes_healthy(api_url, admin_headers)
         unload_all(api_url, admin_headers)
         with _client(api_url) as client:
             engine = client.post(
@@ -261,7 +275,6 @@ class TestAgentRestartAdoption:
         self, api_url: str, admin_headers: dict[str, str], ready_model: dict[str, Any]
     ) -> None:
         """US4 scenario 3: the registry is corrected, and the discrepancy is recorded."""
-        wait_nodes_healthy(api_url, admin_headers)
         unload_all(api_url, admin_headers)
         with _client(api_url) as client:
             engine = client.post(
@@ -298,7 +311,6 @@ class TestOrphans:
         self, api_url: str, admin_headers: dict[str, str], ready_model: dict[str, Any]
     ) -> None:
         """US4 scenario 2."""
-        wait_nodes_healthy(api_url, admin_headers)
         unload_all(api_url, admin_headers)
         slug = TEST_REPO.replace("/", "--")
         started = _compose(
