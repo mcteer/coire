@@ -161,3 +161,15 @@ An admin can reconstruct who changed what and when, including entitlement grants
 - Explicit-content entitlement is defined here as an entitlement type; its enforcement in generation is feature 015.
 - Audit retention and export are operational concerns; this feature guarantees only that records are written and never removable through the application.
 - Platform secrets live in the macOS keychain on core and are delivered to containers as file-mounted secrets, established in feature 000.
+
+## Design reference
+
+The user-facing surfaces of this feature are specified in `docs/design/DESIGN.md` §6 "Settings" and
+`docs/design/mockups/settings.html`: a single centred 760px panel behind the sub-tabs Account,
+API keys, Connect tools, Feedback & data, and Usage. The API-keys table follows the table spec in §5
+(name, prefix, scopes, budget, last used, with rotate and revoke as row-end text links), and the
+explicit-content entitlement is surfaced on Account.
+
+Two design rules are security-relevant and belong to this feature: a key's secret is shown only by
+its prefix in the table, and Danger-variant buttons are reserved for destructive actions such as
+revoke. The shell and tokens come from feature 008.

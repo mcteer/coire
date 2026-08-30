@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Coire · Images · mockup</title>
+<!-- Static design mockup for the Coire web UI (Glass system). Fixed 1440×900 frame; not responsive by design.
+     Source of truth for tokens and component rules: ../DESIGN.md and ../tokens.css -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap">
+<style>
+    body { margin: 0; color: #1b2030; font-family: "Manrope", "Segoe UI", "Helvetica Neue", Arial, sans-serif; font-size: 14px; -webkit-font-smoothing: antialiased; background: #eef1f6; }
+    a { color: #4f5bd5; } a:hover { color: #3a44a8; }
+    .mono { font-family: "DM Mono", "SF Mono", Menlo, monospace; }
+    .app { width: 1440px; height: 900px; position: relative; overflow: hidden; margin: 0 auto; background: radial-gradient(1100px 600px at 15% 0%, #dfe6f5 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #d9efe9 0%, transparent 60%), #eef1f6; }
+    .glass { background: rgba(255,255,255,0.66); border: 1px solid rgba(255,255,255,0.9); box-shadow: 0 1px 2px rgba(27,32,48,0.04), 0 12px 40px rgba(27,32,48,0.08); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-radius: 18px; }
+    .solid { background: #fff; border: 1px solid #e2e6ef; border-radius: 12px; }
+    .topl { position: absolute; left: 28px; top: 24px; display: flex; align-items: center; gap: 12px; }
+    .topl .lg { width: 34px; height: 34px; border-radius: 10px; background: linear-gradient(135deg, #4f5bd5, #2bb6a3); display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 16px rgba(79,91,213,0.3); }
+    .topl b { font-size: 17px; }
+    .topl .crumb { color: #8a92a6; font-weight: 500; }
+    .topl .crumb b { color: #1b2030; font-size: 14px; }
+    .topr { position: absolute; right: 28px; top: 24px; display: flex; gap: 10px; align-items: center; }
+    .chip { padding: 7px 12px; border-radius: 999px; background: rgba(255,255,255,0.72); border: 1px solid rgba(255,255,255,0.9); color: #4a5266; font-weight: 600; font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #2bb6a3; box-shadow: 0 0 0 3px rgba(43,182,163,0.18); display: inline-block; }
+    .dot.warm { background: #f0a63c; box-shadow: 0 0 0 3px rgba(240,166,60,0.2); }
+    .dot.bad { background: #e0564f; box-shadow: 0 0 0 3px rgba(224,86,79,0.2); }
+    .dot.cold { background: #b6bccb; box-shadow: none; }
+    .av { width: 32px; height: 32px; border-radius: 50%; background: #1b2030; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+    .dock { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%); display: flex; gap: 6px; padding: 8px; border-radius: 22px; }
+    .dock a { display: flex; flex-direction: column; align-items: center; gap: 5px; width: 82px; padding: 10px 0 8px; border-radius: 14px; color: #4a5266; text-decoration: none; font-size: 11px; font-weight: 700; }
+    .dock a svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .dock a.on { background: #fff; color: #1b2030; box-shadow: 0 1px 2px rgba(27,32,48,0.06), 0 6px 18px rgba(27,32,48,0.1); }
+    .dock a.on svg { stroke: #4f5bd5; }
+    .dock .sep { width: 1px; background: rgba(27,32,48,0.12); margin: 10px 4px; }
+    .st { padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+    .st.ok { background: rgba(43,182,163,0.14); color: #1f8a7c; }
+    .st.warm { background: rgba(240,166,60,0.16); color: #a86a12; }
+    .st.bad { background: rgba(224,86,79,0.14); color: #b2382f; }
+    .st.dim { background: #eef0f5; color: #6b7387; }
+    .st.ind { background: rgba(79,91,213,0.12); color: #3a44a8; }
+    .btn { padding: 8px 14px; border-radius: 10px; background: linear-gradient(135deg, #4f5bd5, #2bb6a3); color: #fff; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; gap: 8px; box-shadow: 0 6px 16px rgba(79,91,213,0.25); }
+    .btn.ghost { background: #fff; color: #1b2030; border: 1px solid #e2e6ef; box-shadow: none; }
+    .btn.danger { background: #fff; color: #b2382f; border: 1px solid #f1c9c6; box-shadow: none; }
+    .btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    h4.sec { margin: 0; font-size: 12px; font-weight: 700; color: #4a5266; display: flex; justify-content: space-between; align-items: center; }
+    .ring { height: 7px; border-radius: 999px; background: #edf0f5; overflow: hidden; }
+    .ring i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #4f5bd5, #2bb6a3); }
+    .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 12.5px; color: #4a5266; }
+    .kv b { color: #1b2030; font-weight: 600; }
+    .muted { color: #8a92a6; }
+    table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    th { text-align: left; font-size: 11px; font-weight: 700; color: #8a92a6; letter-spacing: 0.04em; text-transform: uppercase; padding: 0 10px 8px; border-bottom: 1px solid #e2e6ef; white-space: nowrap; }
+    td { padding: 9px 10px; border-bottom: 1px solid #eef0f5; vertical-align: middle; white-space: nowrap; }
+    td.wrap { white-space: normal; }
+    tr:last-child td { border-bottom: 0; }
+    .tog { width: 34px; height: 20px; border-radius: 999px; background: #4f5bd5; position: relative; display: inline-block; vertical-align: middle; }
+    .tog::after { content: ""; position: absolute; top: 2px; right: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; }
+    .tog.off { background: #cfd4e0; } .tog.off::after { right: auto; left: 2px; }
+    .ico { width: 16px; height: 16px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: 11px; font-weight: 700; color: #8a92a6; letter-spacing: 0.04em; text-transform: uppercase; }
+    .field .in { padding: 9px 12px; border-radius: 10px; background: #fff; border: 1px solid #e2e6ef; font-size: 13px; color: #1b2030; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .field .in.ph { color: #8a92a6; }
+    .tabs { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: rgba(255,255,255,0.55); border: 1px solid rgba(255,255,255,0.9); }
+    .tabs span { padding: 7px 14px; border-radius: 9px; font-weight: 600; font-size: 13px; color: #4a5266; }
+    .tabs span.on { background: #fff; color: #1b2030; box-shadow: 0 1px 2px rgba(27,32,48,0.06), 0 4px 12px rgba(27,32,48,0.08); }
+
+    .presets { position: absolute; left: 28px; top: 84px; width: 236px; height: 690px; padding: 14px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; }
+    .presets h4 { margin: 0 0 6px 8px; }
+    .presets .p { padding: 8px 10px; border-radius: 12px; display: flex; flex-direction: column; gap: 3px; color: #4a5266; }
+    .presets .p b { font-size: 13px; color: #1b2030; }
+    .presets .p small { color: #8a92a6; font-size: 11px; font-weight: 500; }
+    .presets .p.on { background: #fff; box-shadow: 0 1px 2px rgba(27,32,48,0.06), 0 4px 14px rgba(27,32,48,0.06); }
+    .presets .sw { width: 100%; height: 26px; border-radius: 8px; margin-top: 4px; }
+    .form { position: absolute; left: 284px; top: 84px; width: 400px; height: 690px; box-sizing: border-box; padding: 18px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+    .form h2 { margin: 0; font-size: 18px; font-weight: 800; display: flex; align-items: center; gap: 10px; }
+    .form .in.ta { min-height: 78px; align-items: flex-start; line-height: 1.5; }
+    .g2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .lora { display: flex; flex-direction: column; gap: 6px; }
+    .lora .l { display: grid; grid-template-columns: minmax(0, 1fr) 90px auto; gap: 8px; align-items: center; padding: 6px 10px; background: #fff; border: 1px solid #e2e6ef; border-radius: 10px; font-size: 12.5px; font-weight: 600; }
+    .lora .l .sl { height: 6px; border-radius: 999px; background: #edf0f5; position: relative; }
+    .lora .l .sl i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: #4f5bd5; }
+    .lora .l .sl i::after { content: ""; position: absolute; right: -6px; top: -4px; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #4f5bd5; }
+    .lora .l small { color: #8a92a6; font-weight: 500; }
+    .gen { margin-top: auto; display: flex; align-items: center; gap: 10px; }
+    .gen .btn { flex: 1; justify-content: center; padding: 12px; font-size: 14px; }
+    .out { position: absolute; left: 708px; top: 84px; width: 704px; height: 690px; box-sizing: border-box; padding: 18px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+    .job { background: #fff; border: 1px solid #e2e6ef; border-radius: 12px; padding: 10px 12px; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; align-items: center; }
+    .job .pv { width: 96px; height: 96px; border-radius: 10px; background: linear-gradient(135deg, #c9d2f0, #8fa3e0 60%, #4f5bd5); filter: blur(1px); position: relative; overflow: hidden; }
+    .job .pv::after { content: "step 6 / 9"; position: absolute; left: 6px; bottom: 6px; font-size: 10px; font-weight: 700; color: #fff; background: rgba(27,32,48,0.5); padding: 2px 6px; border-radius: 6px; }
+    .job .evs { display: flex; flex-direction: column; gap: 6px; }
+    .job .ev { display: grid; grid-template-columns: 12px 64px minmax(0, 1fr); gap: 10px; font-size: 12px; align-items: center; color: #4a5266; }
+    .job .ev i { width: 8px; height: 8px; border-radius: 50%; background: #2bb6a3; }
+    .job .ev i.now { background: #4f5bd5; box-shadow: 0 0 0 3px rgba(79,91,213,0.18); }
+    .job .ev i.next { background: #e2e6ef; }
+    .job .ev b { font-weight: 700; color: #1b2030; }
+    .job .ev .ring { height: 6px; }
+    .gal { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+    .t { position: relative; border-radius: 12px; aspect-ratio: 1; overflow: hidden; background: #dfe3ee; }
+    .t .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 8px; font-size: 10.5px; font-weight: 600; color: #fff; background: linear-gradient(transparent, rgba(27,32,48,0.75)); display: flex; justify-content: space-between; }
+    .t .tag { position: absolute; left: 8px; top: 8px; }
+    .t .act { position: absolute; right: 8px; top: 8px; display: flex; gap: 4px; }
+    .t .act span { width: 24px; height: 24px; border-radius: 7px; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; }
+    .t .act svg { width: 12px; height: 12px; stroke: #1b2030; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .worker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .w { background: #fff; border: 1px solid #e2e6ef; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .w label { font-size: 10px; font-weight: 700; color: #8a92a6; letter-spacing: 0.06em; text-transform: uppercase; }
+    .w b { font-size: 13px; }
+    .w small { color: #8a92a6; font-size: 11px; }
+  </style>
+<style>html, body { background: #eef1f6; }</style>
+</head>
+<body>
+<div class="app">
+<div class="topl"><span class="lg"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M5 8c0-2 2-3 7-3s7 1 7 3v8c0 2-2 3-7 3s-7-1-7-3z"></path><path d="M5 12c0 2 2 3 7 3s7-1 7-3"></path></svg></span><b>Coire</b><span class="crumb">/ Images / <b>Lab door poster</b></span></div><div class="topr"><span class="chip"><span class="dot"></span>core · ok</span><span class="chip"><span class="dot warm"></span>DeepSeek V3.2 warming 62%</span><span class="av">D</span></div>
+  <div class="presets glass">
+    <h4 class="sec"><span>Presets</span><span class="mono muted" style="font-weight: 500;">admin-curated</span></h4>
+    <div class="p on"><b>Z-Image-Turbo · default</b><small>1024² · 9 steps · guidance 0</small><div class="sw" style="background: linear-gradient(120deg, #dfe6f5, #4f5bd5);"></div></div>
+    <div class="p"><b>Portrait soft</b><small>+ LoRA skin-soft 0.6 · 12 steps</small><div class="sw" style="background: linear-gradient(120deg, #fbe4ea, #d97fa0);"></div></div>
+    <div class="p"><b>Product on white</b><small>guidance 1.5 · negative clutter</small><div class="sw" style="background: linear-gradient(120deg, #f3f5f9, #b7bdd0);"></div></div>
+    <div class="p"><b>Explicit · studio</b><small>entitled users only</small><div class="sw" style="background: linear-gradient(120deg, #e8e2f7, #3b2f6b);"></div><span class="st warm" style="align-self: flex-start; margin-top: 4px;">entitlement: granted</span></div>
+    <h4 class="sec" style="margin-top: 8px;"><span>Modes</span></h4>
+    <div style="display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px;"><span class="st ind">Text to image</span><span class="st dim">Image to image</span><span class="st dim">Fill / inpaint</span><span class="st dim">Control</span><span class="st dim">Upscale</span></div>
+  </div>
+
+  <div class="form glass">
+    <h2>Generate <span class="st ind">Z-Image-Turbo 8-bit</span></h2>
+    <div class="field"><label>Prompt</label><div class="in ta">A poster for a small home AI lab door: two Mac Studios linked by a glowing Thunderbolt cable, cauldron motif, flat vector, cream and indigo</div></div>
+    <div class="field"><label>Negative</label><div class="in ph">text, watermark, blurry</div></div>
+    <div class="g3">
+      <div class="field"><label>Size</label><div class="in">1024 × 1024 <span class="muted">▾</span></div></div>
+      <div class="field"><label>Steps</label><div class="in">9</div></div>
+      <div class="field"><label>Guidance</label><div class="in">0.0</div></div>
+    </div>
+    <div class="g3">
+      <div class="field"><label>Seed</label><div class="in mono">4181 <span class="muted">↻</span></div></div>
+      <div class="field"><label>Count</label><div class="in">4</div></div>
+      <div class="field"><label>Format</label><div class="in">PNG + spec</div></div>
+    </div>
+    <div class="field"><label>LoRA stack</label>
+      <div class="lora">
+        <div class="l"><span>flat-vector-v2 <small>image_lora</small></span><span class="sl"><i style="width: 70%;"></i></span><span class="mono">0.70</span></div>
+        <div class="l"><span>cauldron-motif <small>image_lora</small></span><span class="sl"><i style="width: 45%;"></i></span><span class="mono">0.45</span></div>
+        <span class="muted" style="font-size: 12px; padding: 2px 4px;">+ Add from registry</span>
+      </div>
+    </div>
+    <div class="gen"><span class="btn"><svg viewBox="0 0 24 24"><path d="M12 3l2 5 5 2-5 2-2 5-2-5-5-2 5-2z"></path></svg>Generate 4</span><span class="btn ghost">Save preset</span></div>
+  </div>
+
+  <div class="out glass">
+    <div class="job">
+      <div class="pv"></div>
+      <div class="evs">
+        <div class="ev"><i></i><b>queued</b><span class="mono">position 1 · studio-b · 13:59:02</span></div>
+        <div class="ev"><i></i><b>started</b><span class="mono">prompt encoding cached · LoRA stack patched 1.2 s</span></div>
+        <div class="ev"><i class="now"></i><b>progress</b><div class="ring"><i style="width: 66%;"></i></div></div>
+        <div class="ev"><i class="next"></i><b>done</b><span class="mono muted">image 2 of 4 · ~6 s remaining · <a href="#">cancel</a></span></div>
+      </div>
+    </div>
+    <h4 class="sec"><span>Results · Lab door poster</span><span class="muted" style="font-weight: 500;">every image carries its spec · drag one back to reuse</span></h4>
+    <div class="gal"><div class="t" style="background: linear-gradient(160deg, #f6d5c3, #d98b6a 55%, #6b3d2e);"><div class="act"><span><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5"></path></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></span></div><div class="cap"><span>seed 4181 · 9 steps</span><span>1024²</span></div></div><div class="t" style="background: linear-gradient(160deg, #cfe9e2, #6fbfae 50%, #1f5f57);"><div class="act"><span><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5"></path></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></span></div><div class="cap"><span>seed 4182 · 9 steps</span><span>1024²</span></div></div><div class="t" style="background: linear-gradient(160deg, #e8e2f7, #9d8ad6 50%, #3b2f6b);"><span class="st warm tag">explicit</span><div class="act"><span><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5"></path></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></span></div><div class="cap"><span>seed 4183 · 9 steps</span><span>1024²</span></div></div><div class="t" style="background: linear-gradient(160deg, #f3f0e4, #c9b48a 55%, #5a4a2e);"><div class="act"><span><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5"></path></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></span></div><div class="cap"><span>seed 4184 · 9 steps</span><span>1024²</span></div></div><div class="t" style="background: linear-gradient(160deg, #dfe8f7, #7fa0d9 50%, #2a3f73);"><div class="act"><span><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5"></path></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></span></div><div class="cap"><span>seed 3990 · 12 steps · Portrait soft</span><span>1024²</span></div></div><div class="t" style="background: linear-gradient(160deg, #fbe4ea, #d97fa0 50%, #6e2a45);"><div class="act"><span><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5"></path></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></span></div><div class="cap"><span>seed 3991 · 12 steps · Portrait soft</span><span>1024²</span></div></div><div class="t" style="background: linear-gradient(160deg, #e3f2df, #8cc48a 50%, #2f5a2e);"><div class="act"><span><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5"></path></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></span></div><div class="cap"><span>seed 2210 · img2img 0.6</span><span>1024²</span></div></div><div class="t" style="background: linear-gradient(160deg, #eef0f5, #b7bdd0 55%, #4a5266);"><div class="act"><span><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5"></path></svg></span><span><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg></span></div><div class="cap"><span>seed 2211 · upscale 2×</span><span>1024²</span></div></div></div>
+    <div class="worker">
+      <div class="w"><label>Image worker</label><b>studio-b · resident</b><small class="mono">mflux · ZImageTurbo(8-bit) · 12.4 GB reserved</small></div>
+      <div class="w"><label>Queue</label><b>1 running · 0 waiting</b><small class="mono">serialized per node · idle TTL 30 min</small></div>
+      <div class="w"><label>Cache</label><b>prompt enc 71% · LoRA 1 stack</b><small class="mono">control preproc 0 · last 24 h</small></div>
+    </div>
+  </div>
+<nav class="dock glass"><a class="" href="#"><svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"></path></svg>Chat</a><a class="" href="#"><svg viewBox="0 0 24 24"><path d="M4 18h16M6 14l4-6 4 4 4-7"></path></svg>Training</a><a class="on" href="#"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"></rect><path d="M4 16l5-5 4 4 3-3 4 4"></path></svg>Images</a><a class="" href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"></path></svg>Settings</a><span class="sep"></span><a class="" href="#"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"></path></svg>Admin</a></nav>
+</div>
+</body>
+</html>

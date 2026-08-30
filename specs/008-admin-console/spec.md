@@ -184,3 +184,23 @@ An admin types a question into an "ask Coire" box and gets an answer grounded in
 - Upgrade controls are surfaced here only to the extent feature 019 has shipped; if it has not, those controls are absent per FR-020.
 - Image, training, and evaluation views arrive with features 015, 016, and 017 and extend this console rather than replacing it.
 - Dashboards for metrics and traces live in the observability stack from feature 009 and are linked to, not reimplemented here.
+
+## Design reference
+
+The visual design for the console is specified, not left to implementation. `docs/design/DESIGN.md`
+is the source of truth for look; this spec and `docs/ARCHITECTURE.md` remain the source of truth for
+behaviour. Where the two disagree on appearance, the design specification wins; where they disagree
+on what a control does, this spec wins.
+
+Because this feature builds the shared application shell, it owns the shell contract in §2 of that
+document — ground, brand and breadcrumb, status chips, the five-item dock, and the sub-tab bar — for
+every later page to inherit. It must also establish `docs/design/tokens.css` as the only source of
+colour, radius, shadow, and spacing values in `apps/coire-web`, since §1 forbids hard-coding any
+value that already has a token.
+
+- `docs/design/mockups/admin.html` — Overview tile grid, node tiles with segmented ledger bars, the
+  roster table, and Ask Coire's confirm-button pattern (the audit-writing flow itself is feature 012).
+- `docs/design/mockups/settings.html` — the sub-tab pattern this feature must generalise.
+
+The mockups are static 1440×900 frames carrying literal values rather than tokens, and their sample
+data is placeholder. Their measurements are authoritative; their content is not.

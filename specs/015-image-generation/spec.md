@@ -186,3 +186,15 @@ Image jobs run without degrading chat responsiveness on the same node.
 - Training image LoRAs on the platform is backlog; image LoRAs are imported through the acquisition pipeline.
 - A second worker type behind the same specification is the intended path if a needed model is unsupported; that is backlog and does not change this contract.
 - Per Principle VII this feature requires a documented manual verification on the real cluster before merge.
+
+## Design reference
+
+`docs/design/DESIGN.md` §6 "Images" and `docs/design/mockups/images.html` specify this surface: the
+236px preset rail with a swatch per preset, the 400px `ImageSpec` form, and the 704px output panel
+holding the current job's event timeline, a four-column square results grid, and worker residency
+facts. The shell and tokens come from feature 008; the event-timeline component is shared with
+training run logs.
+
+Two rules carry behavioural weight: the entitlement pill appears on explicit presets, and generated
+results carry an `explicit` tag when applicable — both depend on the entitlement model from feature
+007 rather than on styling.
