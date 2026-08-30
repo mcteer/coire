@@ -27,7 +27,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-_state = {"ready_at": 0.0, "model": "", "ballast": None}
+_state: dict[str, object] = {"ready_at": 0.0, "model": "", "ballast": None}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -54,7 +54,7 @@ class Handler(BaseHTTPRequestHandler):
                 200,
                 {
                     "object": "list",
-                    "data": [{"id": _state["model"], "object": "model", "created": 0}],
+                    "data": [{"id": str(_state["model"]), "object": "model", "created": 0}],
                 },
             )
         else:
@@ -67,7 +67,8 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0") or 0)
         if length:
             self.rfile.read(length)
-        if time.monotonic() < float(_state["ready_at"]):
+        ready_at = _state["ready_at"]
+        if time.monotonic() < (ready_at if isinstance(ready_at, float) else 0.0):
             self._send(503, {"detail": "model is still loading"})
             return
         self._send(
@@ -75,7 +76,7 @@ class Handler(BaseHTTPRequestHandler):
             {
                 "id": "fake-1",
                 "object": "chat.completion",
-                "model": _state["model"],
+                "model": str(_state["model"]),
                 "choices": [
                     {
                         "index": 0,

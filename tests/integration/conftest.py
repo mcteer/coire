@@ -30,6 +30,11 @@ DOWN = COMPOSE_DIR / "coire-down"
 PROJECT = "coire-it"
 os.environ.setdefault("COMPOSE_PROJECT_NAME", PROJECT)
 
+# `coire-up` runs `docker compose up` from deploy/compose and relies on auto-discovery, so the
+# integration overlay is selected with COMPOSE_FILE rather than by teaching the script a flag
+# it would only ever use here. Docker Compose reads it as a path-separated list.
+os.environ.setdefault("COMPOSE_FILE", f"compose.yaml{os.pathsep}compose.override.it.yaml")
+
 # Generated per run, not hard-coded: the leak test greps the tree for this exact value, and a
 # literal here would match its own definition rather than a real leak.
 POSTGRES_PASSWORD = f"it-{secrets.token_urlsafe(24)}"
@@ -37,12 +42,24 @@ POSTGRES_PASSWORD = f"it-{secrets.token_urlsafe(24)}"
 # The admin bearer for this run (ADR-0004). Generated, not fixed, for the same reason as the
 # password above: the leak test greps the tree for the literal value.
 ADMIN_TOKEN = f"it-admin-{secrets.token_urlsafe(24)}"
+NODE_TOKEN_A = f"it-node-a-{secrets.token_urlsafe(16)}"
+NODE_TOKEN_B = f"it-node-b-{secrets.token_urlsafe(16)}"
+
+API_URL = "http://127.0.0.1:8080"
+
+# The integration overlay adds two node agents on a simulated mesh (research R9). Feature 000's
+# suite ran against compose.yaml alone; feature 001 needs nodes to exist at all.
+OVERRIDE = COMPOSE_DIR / "compose.override.it.yaml"
 
 INTEGRATION_SECRETS = {
     "COIRE_SECRET_POSTGRES_PASSWORD": POSTGRES_PASSWORD,
     "COIRE_SECRET_KEY_SIGNING_SECRET": f"it-{secrets.token_urlsafe(32)}",
     "COIRE_SECRET_ADMIN_TOKEN": ADMIN_TOKEN,
-    "COIRE_SECRET_NODE_TOKENS": json.dumps({"coire-edge-a": "a", "coire-edge-b": "b"}),
+    "COIRE_SECRET_NODE_TOKENS": json.dumps(
+        {"coire-edge-a": NODE_TOKEN_A, "coire-edge-b": NODE_TOKEN_B}
+    ),
+    "COIRE_IT_NODE_TOKEN_A": NODE_TOKEN_A,
+    "COIRE_IT_NODE_TOKEN_B": NODE_TOKEN_B,
 }
 
 
@@ -102,3 +119,19 @@ def stack() -> Iterator[None]:
             env=env,
             capture_output=True,
         )
+
+
+@pytest.fixture(scope="session")
+def api_url() -> str:
+    return API_URL
+
+
+@pytest.fixture(scope="session")
+def admin_headers() -> dict[str, str]:
+    """The ADR-0004 admin bearer for this run."""
+    return {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+
+
+@pytest.fixture(scope="session")
+def node_tokens() -> dict[str, str]:
+    return {"coire-edge-a": NODE_TOKEN_A, "coire-edge-b": NODE_TOKEN_B}
