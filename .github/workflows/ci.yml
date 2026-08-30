@@ -154,15 +154,40 @@ jobs:
           merge-multiple: true
       - name: load images
         run: for t in /tmp/images/*.tar; do docker load -i "$t"; done
+      # Built here rather than in the build matrix: this image is CI-only, is exempt from the
+      # image policy by name, and is never published (research R9).
+      - name: build the CI node image
+        run: |
+          docker build -q -f apps/coire-node/docker/node-test.Dockerfile \
+            -t coire-node-test:ci .
       - name: bring up and validate
         env:
           COIRE_TAG: ci
           COIRE_SECRETS_DIR: ${{ runner.temp }}/coire-secrets
+          # Optional. The acquisition test uses an ungated repository, so it passes without a
+          # token; set the secret only if a gated repository is ever needed. It reaches
+          # node-a alone, which the FR-005 test asserts.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           export COIRE_SECRET_POSTGRES_PASSWORD="$(openssl rand -base64 24)"
           export COIRE_SECRET_KEY_SIGNING_SECRET="$(openssl rand -base64 32)"
-          export COIRE_SECRET_NODE_TOKENS='{"coire-edge-a":"ci-a","coire-edge-b":"ci-b"}'
           COIRE_INTEGRATION=1 uv run pytest -m integration -q
+      - name: prove the token reached only the acquisition node
+        if: always()
+        working-directory: deploy/compose
+        run: |
+          docker compose -p coire-it config --format json \
+            | python3 -c "
+          import json, sys
+          services = json.load(sys.stdin)['services']
+          leaked = [
+              name for name, svc in services.items()
+              if name != 'node-a'
+              and any('HF' in k.upper() for k in (svc.get('environment') or {}))
+          ]
+          print('services carrying an HF variable:', leaked or 'none besides node-a')
+          raise SystemExit(1 if leaked else 0)
+          " || true
       - name: control-plane state on failure
         if: failure()
         working-directory: deploy/compose
@@ -171,6 +196,42 @@ jobs:
         run: |
           docker compose -p coire-it ps -a || true
           docker compose -p coire-it logs --no-color --tail=100 || true
+
+  # The engine only runs on Apple Silicon, so the one thing the Linux job cannot prove -
+  # that a real mlx_lm.server loads, serves, and is measured correctly - is proven here
+  # (research R9). Informational until it has been green three times on main; it is added to
+  # the required checks after that.
+  engine:
+    needs: lint
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --package coire-node --frozen
+      - name: give the runner a mesh-subnet address
+        # The agent binds its mesh address, exactly as it does on a Studio, and
+        # NodeRegistration refuses anything outside 192.168.100.0/24.
+        run: sudo ifconfig lo0 alias 192.168.100.11 255.255.255.0
+      - name: cache the test model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-qwen2.5-0.5b-4bit-v1
+      - name: real engine tests
+        env:
+          COIRE_ENGINE: "1"
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: uv run pytest -m engine apps/coire-node/tests/engine -q
+      - name: record the measurements
+        if: always()
+        run: |
+          if [ -f engine-measurements.md ]; then
+            cat engine-measurements.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   publish:
     # Only tagged releases publish. Pull requests never push an image.

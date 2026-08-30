@@ -31,6 +31,12 @@ show (feature 003). `/health` is still polled first as a cheap "process is liste
 - On start the server calls `mx.set_wired_limit(max_recommended_working_set_size)`; that is the
   engine wiring memory, not leaking it. It is included in the measured footprint (R6).
 
+**Measured on Apple Silicon, 2026-08-30**, with `mlx-community/Qwen2.5-0.5B-Instruct-4bit`:
+`/health` answered **200 at 1.06 s**; the first successful generation was at **2.57 s** — a
+1.5-second window during which a liveness probe would have reported a model ready that could
+not yet answer a token. The model is 0.29 GB; for a 27 GB model the same window is minutes.
+This is the empirical basis for FR-012 rather than an inference from reading the source.
+
 **Alternatives considered**: treating `/health` 200 as ready — measured to be true before the
 weights are in memory; rejected. Parsing stderr for a load marker — none exists.
 
@@ -173,6 +179,14 @@ one Studio, where `memory_budget_bytes = memory_total × node_memory_budget_frac
 0.90 → 230 GB of 256 GB, the figure ARCHITECTURE §4 assumes). Disk fit is
 `total_bytes + disk_reserve_bytes ≤ store_free_bytes` on **both** Studios (two copies rule).
 Both checks run before any byte moves and return the figures in the 422.
+
+**First measurement, 2026-08-30** (Qwen2.5-0.5B-Instruct-4bit on Apple Silicon): weights
+0.29 GB, estimate 2.15 GB, measured footprint **0.63 GB**, delta **−1.52 GB**. The estimate
+overshoots because the 32k-token KV headroom dominates a model this small — the headroom is a
+flat reservation, not a fraction of the weights. That is the expected shape at this size and
+is exactly the drift datum FR-014 exists to collect; feature 004 corrects the multipliers from
+these, not from argument. Reported RSS for the same process was 0.56 GB, below the footprint,
+confirming the ordering R6 predicts for an MLX process.
 
 **Decision — measure**: `resident_bytes` is the process's **physical footprint**
 (`proc_pid_rusage(pid, RUSAGE_INFO_V4).ri_phys_footprint`) read through `ctypes` from `libproc`,

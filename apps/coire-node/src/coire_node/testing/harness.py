@@ -63,16 +63,18 @@ class Agent:
 
     def __init__(self, root: Path, **overrides: Any) -> None:
         root.mkdir(parents=True, exist_ok=True)
-        self.settings = Settings(
-            _secrets_dir="/nonexistent",  # type: ignore[call-arg]
-            node_store_dir=str(root / "models"),
-            node_state_dir=str(root / "state"),
-            node_hf_cache_dir=str(root / "hf"),
-            node_engine_start_timeout_s=30.0,
-            node_engine_health_interval_s=0.5,
-            disk_reserve_bytes=0,
-            **overrides,
-        )
+        # Defaults an override may replace, rather than duplicate — passing the same keyword
+        # twice is a TypeError, not a last-one-wins.
+        config: dict[str, Any] = {
+            "node_store_dir": str(root / "models"),
+            "node_state_dir": str(root / "state"),
+            "node_hf_cache_dir": str(root / "hf"),
+            "node_engine_start_timeout_s": 30.0,
+            "node_engine_health_interval_s": 0.5,
+            "disk_reserve_bytes": 0,
+        }
+        config.update(overrides)
+        self.settings = Settings(_secrets_dir="/nonexistent", **config)  # type: ignore[call-arg]
         self.settings.node_token = SecretStr(TOKEN)
         self.store = Store(self.settings.node_store_dir)
         self.store.ensure_root()
