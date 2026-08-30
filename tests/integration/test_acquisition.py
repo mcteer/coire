@@ -11,13 +11,20 @@ have come from Hugging Face.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
 import httpx
 import pytest
 
-pytestmark = pytest.mark.integration
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        os.environ.get("COIRE_INTEGRATION") != "1",
+        reason="set COIRE_INTEGRATION=1 to run acquisition tests",
+    ),
+]
 
 TEST_REPO = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
 RAW_REPO = "meta-llama/Llama-3.2-1B-Instruct"
