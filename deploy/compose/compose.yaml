@@ -227,7 +227,9 @@ volumes:
 
 secrets:
   # File-sourced from a 0700 directory outside the repository, written by coire-up from the
-  # Keychain and removed by coire-down.
+  # Keychain and removed by coire-down. The files themselves are 0644: a compose file-secret is
+  # a bind mount that preserves host ownership, so a 0600 file is unreadable to a container
+  # running as uid 65532 on Linux. Confidentiality is the directory's job.
   #
   # Two measured constraints force exactly this shape (research R4, amended):
   #   * `environment:` sources are rejected outright for any service with read_only: true

@@ -56,7 +56,12 @@ core and is never used for the production bring-up.
 | `key_signing_secret` | `coire-key-signing-secret` | `coire-api` (declared; used from 007) |
 | `node_tokens` | `coire-node-tokens` (JSON `{name: token}`) | `coire-api` (registration check) |
 
-`coire-up` refuses to start if any Keychain item is absent, naming it (spec edge case). It reads
-each into its own environment, runs `docker compose up -d`, and exits; nothing is written to
-disk. `docker compose restart <svc>` works afterwards (verified, R4); a fresh `docker compose up`
-must go through `coire-up` again.
+`coire-up` refuses to start if any Keychain item is absent, naming it (spec edge case). It
+writes each into `$COIRE_SECRETS_DIR` (default `~/.coire/secrets`), a **0700 directory outside
+the repository**, with the files themselves **0644**; compose file-mounts them at
+`/run/secrets/`. `coire-down` removes them.
+
+Both details are load-bearing and were established by measurement (research R4): an
+`environment:` source is rejected for any read-only service, and a 0600 file is unreadable to
+a container running as uid 65532 on Linux because the mount preserves host ownership. The
+directory provides confidentiality; the file mode provides container readability.

@@ -77,9 +77,17 @@ SECRET_FILES=(postgres_password key_signing_secret node_tokens)
 
 write_secret() {  # $1 = filename, $2 = value
   local target="$SECRETS_DIR/$1"
-  umask 077
   printf '%s' "$2" > "$target"
-  chmod 600 "$target"
+  # 0644 inside a 0700 directory, deliberately.
+  #
+  # Compose file-secrets are bind mounts that preserve host ownership, and every first-party
+  # service runs as uid 65532. A 0600 file owned by the invoking user is unreadable to them:
+  # macOS hides this behind uid mapping, but on Linux the container gets
+  # "Permission denied: /run/secrets/postgres_password" and the whole control plane fails to
+  # start. Host-side confidentiality comes from the 0700 directory, which no other user can
+  # traverse; the file mode only governs what the container can read once the daemon has
+  # mounted it.
+  chmod 644 "$target"
 }
 
 mkdir -p "$SECRETS_DIR"
@@ -117,7 +125,7 @@ else
     echo "create them with scripts/coire-secrets-init.sh, then re-run" >&2
     exit 2
   fi
-  echo "secrets: read from the Keychain into $SECRETS_DIR (0600, removed by coire-down)"
+  echo "secrets: read from the Keychain into $SECRETS_DIR (0700 dir, removed by coire-down)"
 fi
 
 # --- mesh names ------------------------------------------------------------

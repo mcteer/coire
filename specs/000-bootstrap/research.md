@@ -75,9 +75,27 @@ immediately; `docker compose restart` then fails (`service is not running`) and 
 after the variable is gone from the shell, **still readable after `docker compose restart`**, and
 present nowhere on host disk. Same intent, strictly better letter.
 
+**Amended twice during implementation.** Two further constraints were measured only by running
+this on both platforms:
+
+1. Compose **rejects `environment:` secret sources for any `read_only` service** — "`file` is
+   the sole supported option" — and every first-party service is read-only. The
+   environment-sourced design above is therefore unbuildable, and the original file-based
+   design was right; what was wrong was *deleting* the file after bring-up. The files now live
+   for the lifetime of the stack in a 0700 directory outside the repository and are removed by
+   `coire-down`.
+2. A compose file-secret is a **bind mount that preserves host ownership**, so a 0600 file
+   written by the invoking user is unreadable to a container running as uid 65532. macOS hides
+   this behind uid mapping; on Linux every secret-consuming service failed to start with
+   `Permission denied: /run/secrets/postgres_password`. The files are therefore 0644 and the
+   *directory* is 0700 — host confidentiality comes from the directory no other user can
+   traverse, and the file mode governs only what the container can read once the daemon has
+   mounted it.
+
 **Alternatives considered**: RAM disk for the secret file — works, but adds a mount to manage
 and still leaves a file. Environment variables in containers — forbidden by the constitution
-(file-mounted only). `docker cp` at start — fragile across recreates.
+(file-mounted only), and rejected by compose for read-only services anyway. `docker cp` at
+start — fragile across recreates.
 
 ## R5. Node agent Python and install footprint
 
