@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,13 @@ from typing import Any
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
+
+# Needs the docker CLI to render the compose config, but not a running stack — so it is not
+# marked `integration` and runs on every pull request. Without Docker it skips rather than
+# producing 27 collection errors.
+pytestmark = pytest.mark.skipif(
+    shutil.which("docker") is None, reason="requires the docker CLI to render compose config"
+)
 COMPOSE = REPO / "deploy/compose/compose.yaml"
 
 FIRST_PARTY = {"coire-web", "coire-api", "coire-mcp", "coire-scheduler", "coire-migrate"}
