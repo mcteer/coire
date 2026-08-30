@@ -15,7 +15,7 @@ RUN npm ci --no-audit --no-fund
 COPY apps/coire-web/ ./
 RUN npm run build
 
-FROM docker.io/library/golang:1.23-bookworm@sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db AS probe
+FROM docker.io/library/golang:1.26-bookworm@sha256:e8c859f5632dcfde7b32d2012b4351728f6437930887c2f6a91ea242459e5514 AS probe
 WORKDIR /src
 COPY apps/coire-web/healthcheck/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /healthcheck .

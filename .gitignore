@@ -46,14 +46,17 @@ yarn-error.log*
 # package-lock.json / pnpm-lock.yaml are committed on purpose.
 
 # --- Local model + engine artifacts (never in git; these are data, not source) ---
-models/
-adapters/
-checkpoints/
+# Root-anchored: an unanchored `models/` also matched
+# packages/coire-core/src/coire_core/models/, silently excluding the shared wire shapes from
+# every commit. Weights live at the repository root or on a Studio, never nested in a package.
+/models/
+/adapters/
+/checkpoints/
 *.safetensors
 *.gguf
 *.npz
-outputs/
-generated/
+/outputs/
+/generated/
 
 # --- Runtime / local state ---
 *.log
