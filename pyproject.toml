@@ -33,6 +33,20 @@ src = ["packages/coire-core/src", "apps/coire-api/src", "apps/coire-node/src", "
 select = ["E", "F", "I", "B", "UP", "ASYNC", "C4", "SIM", "RUF"]
 ignore = ["E501"]  # line length is handled by the formatter
 
+[tool.ruff.lint.isort]
+# Declared explicitly rather than inferred. Ruff infers first-party from `src`, but once the
+# workspace packages are installed into .venv it can classify them as third-party instead —
+# which made `ruff check` pass locally and fail in CI on the identical commit. Naming them
+# makes the grouping deterministic in both.
+known-first-party = [
+    "coire_core",
+    "coire_api",
+    "coire_mcp",
+    "coire_scheduler",
+    "coire_node",
+    "coire_agent",
+]
+
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S101"]
 
