@@ -383,8 +383,20 @@ coire/
 │   ├── launchd/             # plists for coire-node on the Studios (core has none)
 │   └── cluster/             # jaccl hostfile template, distributed_config script
 ├── docs/                    # this document, runbooks, ADRs
+│   └── design/              # UI design specification, tokens.css, static mockups
 └── pyproject.toml           # uv workspace root
 ```
+
+`apps/coire-web` is built against a written design specification rather than designed during
+implementation. `docs/design/DESIGN.md` defines the shell, surfaces, typography, components, and
+per-page anatomy; `docs/design/tokens.css` holds every colour, radius, shadow, and spacing value as
+custom properties, and components consume only those. The five static frames in
+`docs/design/mockups/` are authoritative on measurement and placeholder on content.
+
+The split of authority is deliberate and runs the other way for behaviour: the design specification
+governs how the console looks, while this document and the constitution govern what its controls do —
+what a picker lists, when a model warms, what an admin may do. Feature 008 builds the shared shell
+and establishes the token set; features 007, 014, 015, and 016 inherit it.
 
 ## 11. Risks and open questions
 

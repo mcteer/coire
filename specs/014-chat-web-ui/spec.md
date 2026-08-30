@@ -178,3 +178,21 @@ A user uploads a file and uses it in conversation, and sees a reasoning model's 
 - Feedback capture — thumbs, regenerate-and-compare — is feature 018 and is deliberately not in this feature, though the message model must be able to accommodate it.
 - Streaming passes through the tunnel and nginx with buffering disabled, established in feature 000.
 - Warm-up estimates come from recorded load durations produced by features 004 and 009.
+
+## Design reference
+
+`docs/design/DESIGN.md` is the source of truth for the look of this surface; this spec and
+`docs/ARCHITECTURE.md` remain the source of truth for behaviour. This feature consumes the shell and
+token set feature 008 establishes rather than defining its own.
+
+- `docs/design/mockups/chat.html` and §6 "Chat" — the 236px history panel, 760px centre stage, 264px
+  conversation widget, and the composer floated 112px above the viewport bottom so the dock never
+  overlaps it.
+- §5 covers the bubble geometry (user dark and right-aligned, assistant translucent and left-aligned,
+  each with one squared corner), the thinking-block inset, the feedback row, and the model-picker
+  popover grouped by task.
+
+Two design rules carry behavioural weight and are requirements of this feature, not styling choices:
+a cold-model warning and queue position appear as a line inside the composer rather than as a modal,
+and models the user is not entitled to are absent from the picker rather than shown disabled.
+The feedback row is rendered here but only becomes functional in feature 018.

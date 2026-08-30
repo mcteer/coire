@@ -167,3 +167,15 @@ A training job reserves through the ledger, causing idle inference models to be 
 - Fusing an adapter into a standalone model record re-enters the acquisition pipeline at its validation stage, per feature 002.
 - Both Studios have 256 GB and 1.8 TB of disk (verified 2026-08-29); checkpoint retention is bounded against that disk.
 - Per Principle VII, integration tests train a tiny adapter on a tiny model so CI runs on a single Mac, and real training runs are verified manually on the cluster before merge.
+
+## Design reference
+
+`docs/design/DESIGN.md` §6 "Training" and `docs/design/mockups/training.html` specify this surface:
+the 276px runs list with status pills, the 800px run panel with four spec cards, the progress bar
+carrying step, loss, ETA and the ledger reservation, the loss chart with checkpoint chips, the
+eval-vs-base table, the log tail, and the stored `TrainingSpec` rendered as YAML in three mono
+columns. The shell and tokens come from feature 008.
+
+The fixed status vocabulary in §5 — `queued`, `running`, `done`, `failed` — must match the run states
+this feature actually persists; if they diverge, the state model wins and the design vocabulary is
+amended to follow it.
