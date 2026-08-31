@@ -11,11 +11,12 @@ Measured on this cluster: mesh 12.0-12.6 Gb/s at 0.85-1.37 ms; egress 0.4 Gb/s a
 from __future__ import annotations
 
 import logging
+import time
 from types import TracebackType
 from typing import Any, Self
 
 import httpx
-from opentelemetry import metrics
+from opentelemetry import metrics, trace
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,16 @@ fallback_counter = _meter.create_counter(
     unit="1",
     description="Requests that used the egress interface because the mesh path was unreachable.",
 )
+_path_requests = _meter.create_counter(
+    "coire_network_path_requests_total", description="Requests by fixed network purpose."
+)
+_path_failures = _meter.create_counter(
+    "coire_network_path_failures_total", description="Fixed-purpose path connection failures."
+)
+_path_latency = _meter.create_histogram(
+    "coire_control_path_latency_ms", unit="ms", description="Fixed-path HTTP latency."
+)
+_tracer = trace.get_tracer("coire.net")
 
 MESH_SUFFIX = ".mesh"
 EGRESS_SUFFIX = ".local"
@@ -219,12 +230,27 @@ class _FixedPathClient:
         **kwargs: Any,
     ) -> httpx.Response:
         url = self._url(host, path, port)
-        try:
-            return await self._client.request(method, url, headers=dict(headers or {}), **kwargs)
-        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-            raise FabricUnreachable(
-                f"{self._path_name} path to {host} unreachable; cross-fabric fallback is forbidden"
-            ) from exc
+        attributes = {"network_path": self._path_name, "peer": host}
+        _path_requests.add(1, attributes)
+        started = time.perf_counter()
+        with _tracer.start_as_current_span(
+            f"coire.net.{self._path_name}.request", attributes=attributes
+        ):
+            try:
+                response = await self._client.request(
+                    method, url, headers=dict(headers or {}), **kwargs
+                )
+                _path_latency.record((time.perf_counter() - started) * 1000, attributes)
+                return response
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                _path_failures.add(1, attributes)
+                logger.warning(
+                    "fixed network path failed",
+                    extra={"network_path": self._path_name, "peer": host},
+                )
+                raise FabricUnreachable(
+                    f"{self._path_name} path to {host} unreachable; cross-fabric fallback is forbidden"
+                ) from exc
 
     async def get(self, host: str, path: str, **kwargs: Any) -> httpx.Response:
         return await self.request("GET", host, path, **kwargs)

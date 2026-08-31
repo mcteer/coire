@@ -97,15 +97,17 @@ class TestNetworkSegmentation:
 
 
 class TestPublishedPorts:
-    def test_only_web_publishes_and_only_on_loopback(self, config: dict[str, Any]) -> None:
-        """Nothing on core is reachable from the LAN in feature 000 (ADR-0001)."""
+    def test_only_control_ingress_and_otlp_publish(self, config: dict[str, Any]) -> None:
+        """Feature 022 adds node OTLP; no database or internal service is published."""
         for name, svc in config["services"].items():
             ports = svc.get("ports") or []
-            if name != "coire-web":
+            if name not in {"coire-web", "otel-collector"}:
                 assert not ports, f"{name} publishes {ports}"
             else:
                 assert len(ports) == 1
                 assert ports[0].get("host_ip") in ("127.0.0.1", "::1")
+        assert config["services"]["coire-web"]["ports"][0]["target"] == 8080
+        assert config["services"]["otel-collector"]["ports"][0]["target"] == 4317
 
 
 class TestHardening:

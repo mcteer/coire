@@ -1,5 +1,9 @@
 # Runbook: Bootstrap Control Plane
 
+> Network operations below that mention `.mesh` are the historical feature-000 rollback path.
+> Current operation uses control DNS and the Studio-only `.fabric` mapping documented in
+> `network-fabrics.md`.
+
 Operational surface added by feature 000. Full validation procedure:
 `specs/000-bootstrap/quickstart.md`.
 
@@ -126,7 +130,7 @@ Check it:
 
 ```bash
 TOKEN=$(security find-generic-password -w -s coire-node-tokens | jq -r '."coire-edge-a"')
-curl -s -H "Authorization: Bearer $TOKEN" http://coire-edge-a.mesh:9400/node/health | jq
+curl -s -H "Authorization: Bearer $TOKEN" http://coire-edge-a:9400/node/health | jq
 ```
 
 `401` without the token. The egress (Wi-Fi) listener returns `403` unless the request carries

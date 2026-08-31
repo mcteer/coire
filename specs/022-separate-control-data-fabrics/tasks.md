@@ -110,18 +110,18 @@ without loss of registry, job, audit, engine, or model-copy state.
 
 ### Tests for User Story 3
 
-- [ ] T038 [P] [US3] Add shell-policy tests for idempotent preflight/apply/rollback targeting in `tests/test_cluster_scripts.py`
-- [ ] T039 [P] [US3] Add alert-rule unit fixtures for control loss, data loss, forbidden path use, and sustained latency in `tests/test_alert_rules.py`
+- [X] T038 [P] [US3] Add shell-policy tests for idempotent preflight/apply/rollback targeting in `tests/test_cluster_scripts.py`
+- [X] T039 [P] [US3] Add alert-rule unit fixtures for control loss, data loss, forbidden path use, and sustained latency in `tests/test_alert_rules.py`
 
 ### Implementation for User Story 3
 
-- [ ] T040 [US3] Implement DNS, 200-probe latency, firewall matrix, tiny-model, tool-loop, image-result, and interface-counter gates in `deploy/cluster/scripts/preflight-fabrics.sh`
-- [ ] T041 [US3] Implement explicit validated apply steps that remove core's managed fabric binding only after preflight in `deploy/cluster/scripts/apply-fabrics.sh`
-- [ ] T042 [US3] Implement non-destructive legacy listener/hosts restoration in `deploy/cluster/scripts/rollback-fabrics.sh`
-- [ ] T043 [US3] Add structured `network_path`, `peer`, `node`, and applicable model identifiers plus path-specific counters/spans in `packages/coire-core/src/coire_core/net.py`, `apps/coire-api/src/coire_api/telemetry.py`, and `apps/coire-node/src/coire_node/metrics.py`
-- [ ] T044 [US3] Add two control-path panels and one data-link panel in `deploy/observability/grafana/dashboards/cluster.json`
-- [ ] T045 [US3] Add control loss, data loss, forbidden cross-fabric traffic, and latency alerts in `deploy/observability/alerts/network-fabrics.yaml`
-- [ ] T046 [US3] Write preflight, cutover, failure-injection, rollback, and recovery procedures in `docs/runbooks/network-fabrics.md`
+- [X] T040 [US3] Implement DNS, 200-probe latency, firewall matrix, tiny-model, tool-loop, image-result, and interface-counter gates in `deploy/cluster/scripts/preflight-fabrics.sh`
+- [X] T041 [US3] Implement explicit validated apply steps that remove core's managed fabric binding only after preflight in `deploy/cluster/scripts/apply-fabrics.sh`
+- [X] T042 [US3] Implement non-destructive legacy listener/hosts restoration in `deploy/cluster/scripts/rollback-fabrics.sh`
+- [X] T043 [US3] Add structured `network_path`, `peer`, `node`, and applicable model identifiers plus path-specific counters/spans in `packages/coire-core/src/coire_core/net.py`, `apps/coire-api/src/coire_api/telemetry.py`, and `apps/coire-node/src/coire_node/metrics.py`
+- [X] T044 [US3] Add two control-path panels and one data-link panel in `deploy/observability/grafana/dashboards/cluster.json`
+- [X] T045 [US3] Add control loss, data loss, forbidden cross-fabric traffic, and latency alerts in `deploy/observability/alerts/network-fabrics.yaml`
+- [X] T046 [US3] Write preflight, cutover, failure-injection, rollback, and recovery procedures in `docs/runbooks/network-fabrics.md`
 - [ ] T047 [US3] Execute `specs/022-separate-control-data-fabrics/quickstart.md` on the real cluster and record all measured figures and state snapshots in the PR
 
 **Checkpoint**: The physical topology is migrated, observable, and demonstrably reversible.
@@ -132,9 +132,9 @@ without loss of registry, job, audit, engine, or model-copy state.
 
 **Purpose**: Complete contract generation, broad regression validation, and documentation consistency.
 
-- [ ] T048 Regenerate OpenAPI and `apps/coire-web/src/api/schema.d.ts`, then update freshness fixtures for the additive admin link surface
-- [ ] T049 [P] Update `docs/runbooks/bootstrap.md` and `docs/runbooks/models.md` from mesh/fallback commands to control/data-fabric operations after cutover
-- [ ] T050 [P] Create compose and cluster network deployment documentation in `deploy/compose/README.md` and `deploy/cluster/README.md`
+- [X] T048 Regenerate OpenAPI and `apps/coire-web/src/api/schema.d.ts`, then update freshness fixtures for the additive admin link surface
+- [X] T049 [P] Update `docs/runbooks/bootstrap.md` and `docs/runbooks/models.md` from mesh/fallback commands to control/data-fabric operations after cutover
+- [X] T050 [P] Create compose and cluster network deployment documentation in `deploy/compose/README.md` and `deploy/cluster/README.md`
 - [ ] T051 Run the lint, format, type, and unit gates configured by `pyproject.toml`; fix every failure without loosening checks
 - [ ] T052 Run the engine/tiny-model validation in `specs/022-separate-control-data-fabrics/quickstart.md` and record its result; do not mark complete on a skip
 - [ ] T053 Verify images from `deploy/compose/compose.yaml` build and pass `scripts/image-policy.sh`; confirm no service, capability, listener, CORS rule, or secret scope was widened

@@ -45,6 +45,11 @@ fallback_counter = _meter.create_counter(
     unit="1",
     description="Requests served on the egress listener instead of the mesh.",
 )
+forbidden_path_counter = _meter.create_counter(
+    "coire_forbidden_cross_fabric_requests_total",
+    unit="1",
+    description="Requests received on a listener for the wrong network purpose.",
+)
 
 MESH_SUFFIX = ".mesh"
 FALLBACK_HEADER = "x-coire-path"
@@ -147,6 +152,12 @@ def create_app(
 
     @app.middleware("http")
     async def enforce_path(request: Request, call_next):  # type: ignore[no-untyped-def]
+        if listener is NetworkPath.DATA and not request.url.path.startswith(
+            ("/node/export/", "/ready")
+        ):
+            forbidden_path_counter.add(
+                1, {"network_path": "data", "node": settings.node_name, "peer": "unknown"}
+            )
         if listener is NodePath.FALLBACK:
             marker = request.headers.get(FALLBACK_HEADER, "").lower()
             if marker != FALLBACK_VALUE:

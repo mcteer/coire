@@ -1,5 +1,8 @@
 # Runbook: the model registry
 
+Peer replication uses only `coire-edge-a.fabric` and `coire-edge-b.fabric` on port 9401. It never
+falls back to the control VLAN. See `network-fabrics.md` before changing connectivity.
+
 Operating the roster: adding models, watching an acquisition, loading and unloading engines,
 and clearing the states that need a human. Companion to `bootstrap.md`, which covers the
 control plane itself.

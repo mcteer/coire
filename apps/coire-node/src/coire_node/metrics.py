@@ -20,6 +20,7 @@ import time
 from datetime import UTC, datetime
 
 import psutil
+from opentelemetry import metrics as otel_metrics
 
 from coire_core.models.engine import EngineStatus
 from coire_core.models.jobs import JobStatus
@@ -27,6 +28,11 @@ from coire_core.models.link import LinkState, RdmaState, StudioDataLinkStatus
 from coire_core.models.node import NodePath, NodeStatus, ThermalState
 
 logger = logging.getLogger(__name__)
+_meter = otel_metrics.get_meter("coire.node.network")
+_data_link_up = _meter.create_gauge("coire_data_link_up", description="Studio data-link IP state")
+_data_link_latency = _meter.create_histogram(
+    "coire_data_link_latency_ms", unit="ms", description="Studio data-link connect latency"
+)
 
 IOREG_TIMEOUT_S = 3.0
 _GPU_UTIL_RE = re.compile(rb'"Device Utilization %"\s*=\s*(\d+)')
@@ -258,6 +264,10 @@ class MetricsCollector:
         except OSError as exc:
             reason = str(exc)[:512]
         latency_ms = (time.perf_counter() - started) * 1000 if ip_state is LinkState.UP else None
+        attributes = {"network_path": "data", "peer": peer, "node": self._name}
+        _data_link_up.set(1 if ip_state is LinkState.UP else 0, attributes)
+        if latency_ms is not None:
+            _data_link_latency.record(latency_ms, attributes)
 
         rdma_state = RdmaState.UNKNOWN
         profiler = shutil.which("system_profiler")
