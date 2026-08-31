@@ -42,6 +42,7 @@ EXPECTED_NETWORKS = {
     "coire-internal",
     "coire-docker",
     "coire-telemetry",
+    "coire-node-ingress",
 }
 
 
@@ -76,13 +77,21 @@ def nets(config: dict[str, Any], service: str) -> set[str]:
 
 
 class TestNetworkSegmentation:
-    def test_exactly_five_networks(self, config: dict[str, Any]) -> None:
+    def test_exactly_six_networks(self, config: dict[str, Any]) -> None:
         assert set(config["networks"]) == EXPECTED_NETWORKS
 
-    def test_only_edge_is_external(self, config: dict[str, Any]) -> None:
+    def test_only_host_ingress_networks_are_external(self, config: dict[str, Any]) -> None:
         for name, net in config["networks"].items():
-            expected = name != "coire-edge"
+            expected = name not in {"coire-edge", "coire-node-ingress"}
             assert bool(net.get("internal", False)) is expected, name
+
+    def test_node_ingress_is_collector_only(self, config: dict[str, Any]) -> None:
+        attached = {
+            name
+            for name, service in config["services"].items()
+            if "coire-node-ingress" in (service.get("networks") or {})
+        }
+        assert attached == {"otel-collector"}
 
     def test_web_cannot_reach_postgres(self, config: dict[str, Any]) -> None:
         """The headline segmentation invariant (FR-006)."""

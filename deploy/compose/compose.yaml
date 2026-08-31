@@ -194,7 +194,10 @@ services:
     build:
       context: ../..
       dockerfile: deploy/compose/otel.Dockerfile
-    networks: [coire-telemetry]
+    # `coire-node-ingress` exists solely to make the host-published OTLP socket routable.
+    # OrbStack does not create host forwards for a container attached only to internal
+    # networks. The collector retains its separate internal telemetry attachment for services.
+    networks: [coire-telemetry, coire-node-ingress]
     ports: ["${COIRE_CONTROL_BIND_ADDRESS:-127.0.0.1}:4317:4317"]
     # Nothing depends_on the collector: telemetry loss must never cause a request failure.
     read_only: true
@@ -222,6 +225,8 @@ networks:
     internal: true
   coire-telemetry:
     internal: true
+  coire-node-ingress:
+    internal: false
 
 volumes:
   coire-pgdata:
