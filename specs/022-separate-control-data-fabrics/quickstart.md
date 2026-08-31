@@ -125,3 +125,20 @@ match their preflight snapshots.
   diagnostic evidence. Workload-level SC-003 and SC-004 remain unchanged.
 - CI after the FQDN, installer, telemetry-ingress, and integration-topology corrections passed all
   image builds, lint, pin check, unit tests, engine tests, and the full integration job.
+- Tiny-model acquisition and replication: the audited admin pipeline acquired
+  `mlx-community/Qwen2.5-0.5B-Instruct-4bit` (289,601,064 bytes). The first replication attempt
+  failed closed until macOS allowed `192.168.100.0/24` as an Ethernet local-network range for the
+  system LaunchDaemons. After applying that exception and rebooting both Studios, retry 2 completed
+  11/11 files and both copies verified manifest
+  `a28a67a75ff6df6574ef74caaa26a0bb091a5cc3add4c5686aa68072b9430072`.
+- Data-path proof: edge-a `bridge0` output bytes increased from 109,696 to 580,497,820 and edge-b
+  `bridge0` input bytes increased from 594 to 290,194,656 during the retry. Both directions also
+  reached the peer `.fabric` listener on port 9401. Core has no `.fabric` address or route.
+- Real engine: model load created engine `d58fb86b-da86-4853-b0bc-c780ff97e70c` on edge-a and it
+  reached `ready` with PID 772, measured resident footprint 873,530,400 bytes, and no state reason.
+  Twenty streamed tiny-model requests over the Wi-Fi control path measured first-token
+  min/mean/p50/p95/max = 492.6/555.0/519.8/663.0/957.3 ms, passing SC-003's 1.5 s p95 target.
+- Remaining acceptance dependencies: representative tool-loop and image-result surfaces are not
+  implemented in the current feature sequence, so SC-004 and SC-005 cannot be honestly exercised
+  yet. Deliberate physical Thunderbolt and Wi-Fi failure injection also remains to be performed;
+  these gates are not recorded as passed.
