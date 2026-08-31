@@ -103,3 +103,23 @@ match their preflight snapshots.
   install System-keychain secrets, install the LaunchDaemon, and apply PF/hosts policy. A Hugging
   Face token and the selected tiny-model probe are also required. No gate is recorded as passed on
   a skip.
+
+## Execution record — 2026-08-31
+
+- UniFi control DNS: `coire-core.lab`, `coire-edge-a.lab`, and `coire-edge-b.lab` resolve to the
+  isolated VLAN on all hosts. Bare `coire-edge-b` returned `NXDOMAIN`, so production configuration
+  was standardized on the FQDNs with one-release bare-name registration compatibility.
+- Cold restart: both LaunchDaemons started with FQDN control endpoints, and both nodes registered
+  automatically after Wi-Fi became available. Both authenticated control listeners and both
+  Studio-only data listeners bound to their intended interfaces. Core aggregate health reported
+  both nodes and all control-plane services healthy.
+- macOS local-network privacy: the non-root LaunchDaemons required the documented system-wide
+  `192.168.4.0/24` Wi-Fi exception and a reboot. Both Studios also remained disconnected at the
+  login window until an operator attached a keyboard and logged in; unattended cold-start remains
+  unproven and requires Wi-Fi-at-login remediation or wired control.
+- Control latency gate: **FAILED**. Two independent 200-request authenticated runs measured
+  edge-a min/mean/p50/p95/p99/max = 17.8/33.3/24.9/113.4/118.5/127.4 ms and edge-b =
+  18.1/31.6/24.1/111.8/119.4/240.6 ms. Both exceed SC-002's 50 ms p95 ceiling. Per research R6,
+  the next step is wired control networking; the threshold was not waived or loosened.
+- CI after the FQDN, installer, telemetry-ingress, and integration-topology corrections passed all
+  image builds, lint, pin check, unit tests, engine tests, and the full integration job.
