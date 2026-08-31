@@ -44,3 +44,19 @@ never contact the engine. Roll back the API image and migration; confirm registr
 unchanged and the old `/api/v1/models` route still works.
 
 Do not mark the real-model task complete on a skip.
+
+### Recorded real-cluster result — 2026-08-31
+
+Topology: `coire-core.lab` gateway container over Wi-Fi to the bare `mlx_lm.server` on
+`coire-edge-a.lab:9501`, using registry model `336ec191-15a5-4c90-8526-5c9712303d5b`
+(`mlx-community/Qwen2.5-0.5B-Instruct-4bit`, 289 MB). The loaded engine reported a 5.49 s cold-load
+duration; the configured gateway loading keep-alive interval was 5 s.
+
+Twenty one-token SSE requests were made after one warm-up and consumed through `[DONE]`. External
+request-to-first-token was p50 504.91 ms, p95 514.28 ms, max 612.27 ms (SC-004: pass). The gateway
+recorded the exact request-to-upstream-first-byte interval for the same requests and subtracted the
+engine interval: gateway-only overhead was p50 5.80 ms, p95 7.51 ms, max 8.17 ms (SC-003: pass).
+
+As a diagnostic cross-check, direct-engine and gateway probes were also alternated and bracketed.
+Their raw subtraction was dominated by the model/Wi-Fi variance (roughly 400–700 ms), confirming
+that the in-request OTel measurement is required to evaluate a 20 ms gateway-only threshold.

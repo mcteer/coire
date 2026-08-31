@@ -86,7 +86,7 @@
 - [X] T037 [P] Document configuration, diagnosis, cancellation, kill, and rollback in `docs/runbooks/gateway.md` and `deploy/compose/README.md`
 - [X] T038 Regenerate OpenAPI and TypeScript API types in `apps/coire-api/openapi.json` and `apps/coire-web/src/api/schema.d.ts`
 - [X] T039 Run format, Ruff, mypy, unit/contract, OpenAPI freshness, web, and tiny-model integration gates from `specs/003-gateway-openai-v1/quickstart.md`
-- [ ] T040 Measure and record p95 gateway overhead and first-token latency in `specs/003-gateway-openai-v1/quickstart.md`
+- [X] T040 Measure and record p95 gateway overhead and first-token latency in `specs/003-gateway-openai-v1/quickstart.md`
 
 ## Dependencies & Execution Order
 

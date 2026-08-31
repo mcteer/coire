@@ -41,6 +41,8 @@ def test_each_node_has_an_independent_control_attachment() -> None:
         networks = compose["services"][node]["networks"]
         assert "coire-control-sim" in networks
         assert "coire-data-sim" in networks
+        aliases = networks["coire-control-sim"]["aliases"]
+        assert f"coire-edge-{node[-1]}.lab" in aliases
 
 
 @pytest.mark.integration

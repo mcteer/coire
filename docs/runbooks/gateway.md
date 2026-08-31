@@ -16,7 +16,9 @@ curl -N http://127.0.0.1:8080/v1/chat/completions \
 Use the `Coire Gateway` Grafana dashboard. Correlate `request_id`, `model_id`, `engine_id`, and
 `user_id` across gateway logs and traces. The important metrics are
 `coire_gateway_request_duration_ms`, `coire_gateway_first_token_duration_ms`,
-`coire_gateway_inflight`, and `coire_gateway_failures_total`.
+`coire_gateway_overhead_duration_ms`, `coire_gateway_inflight`, and
+`coire_gateway_failures_total`. The overhead histogram excludes the measured upstream engine
+interval and is the metric used for the 20 ms p95 gateway SLO.
 
 ## Diagnose
 

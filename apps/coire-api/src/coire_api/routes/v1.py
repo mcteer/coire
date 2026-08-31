@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import suppress
+from time import perf_counter
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -21,8 +23,15 @@ from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.anthropic import from_openai_response, from_openai_stream, to_openai_payload
 from coire_api.gateway.context import ContextLengthError, enforce_context
 from coire_api.gateway.loading import ModelLoadError, load_model
-from coire_api.gateway.proxy import EngineProxyError, EngineSaturatedError, complete, stream
+from coire_api.gateway.proxy import (
+    EngineProxyError,
+    EngineSaturatedError,
+    StreamTiming,
+    complete,
+    stream,
+)
 from coire_api.gateway.resolution import ModelNotFoundError, ResolvedModel, resolve_model
+from coire_api.gateway.telemetry import first_token_duration_ms, overhead_duration_ms
 from coire_api.gateway.usage import UsageTracker
 from coire_api.registry.service import load_state_for, visible_to
 from coire_core.models.gateway import (
@@ -37,6 +46,7 @@ from coire_core.models.registry import LoadState
 from coire_core.settings import Settings
 
 router = APIRouter(prefix="/v1", tags=["compatible"])
+logger = logging.getLogger(__name__)
 
 
 async def _finish_detached(
@@ -85,6 +95,7 @@ async def _openai_cold_stream(
     settings: Settings,
     usage: UsageTracker,
     request: Request,
+    timing: StreamTiming,
 ) -> AsyncIterator[bytes]:
     task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
     while not task.done():
@@ -104,7 +115,7 @@ async def _openai_cold_stream(
         payload = body.model_dump(mode="json", exclude={"coire_wait_for_model"}, exclude_none=True)
         payload["model"] = resolved.model_path
         async for chunk in _tracked_stream(
-            stream(resolved.engine_url, payload, settings), usage, request
+            stream(resolved.engine_url, payload, settings, timing), usage, request, timing
         ):
             yield chunk
     except (ModelLoadError, TimeoutError) as exc:
@@ -114,13 +125,39 @@ async def _openai_cold_stream(
 
 
 async def _tracked_stream(
-    source: AsyncIterator[bytes], usage: UsageTracker, request: Request | None = None
+    source: AsyncIterator[bytes],
+    usage: UsageTracker,
+    request: Request | None = None,
+    timing: StreamTiming | None = None,
 ) -> AsyncIterator[bytes]:
+    first_observed = False
     try:
         async for chunk in source:
             if request is not None and await request.is_disconnected():
                 await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
                 return
+            if (
+                not first_observed
+                and timing is not None
+                and timing.upstream_started_at is not None
+                and timing.first_chunk_at is not None
+            ):
+                first_observed = True
+                first_token_ms = (perf_counter() - timing.request_started_at) * 1000
+                engine_ms = (timing.first_chunk_at - timing.upstream_started_at) * 1000
+                overhead_ms = max(first_token_ms - engine_ms, 0)
+                attributes = {"protocol": usage.protocol.value}
+                first_token_duration_ms.record(first_token_ms, attributes)
+                overhead_duration_ms.record(overhead_ms, attributes)
+                logger.info(
+                    "gateway first token request_id=%s model_id=%s engine_id=%s "
+                    "first_token_ms=%.2f gateway_overhead_ms=%.2f",
+                    usage.request_id,
+                    usage.model_id,
+                    usage.engine_id,
+                    first_token_ms,
+                    overhead_ms,
+                )
             for line in chunk.decode(errors="replace").splitlines():
                 if not line.startswith("data: ") or line == "data: [DONE]":
                     continue
@@ -161,6 +198,7 @@ async def _anthropic_cold_stream(
     settings: Settings,
     usage: UsageTracker,
     request: Request,
+    timing: StreamTiming,
 ) -> AsyncIterator[bytes]:
     task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
     while not task.done():
@@ -178,7 +216,9 @@ async def _anthropic_cold_stream(
         usage.model_id = resolved.model_id
         usage.engine_id = resolved.engine_id
         payload = to_openai_payload(body, model_path=resolved.model_path)
-        tracked = _tracked_stream(stream(resolved.engine_url, payload, settings), usage, request)
+        tracked = _tracked_stream(
+            stream(resolved.engine_url, payload, settings, timing), usage, request, timing
+        )
         async for event in from_openai_stream(tracked, model=body.model):
             yield event
     except (ModelLoadError, TimeoutError) as exc:
@@ -244,6 +284,7 @@ async def chat_completions(
     settings: SettingsDep,
 ) -> object:
     usage = UsageTracker(principal, str(body.model), GatewayProtocol.OPENAI)
+    timing = StreamTiming()
     try:
         resolved = await resolve_model(session, body.model, principal)
     except ModelNotFoundError as exc:
@@ -268,7 +309,8 @@ async def chat_completions(
             )
         if body.stream:
             return _streaming_response(
-                _openai_cold_stream(body, principal, session, settings, usage, request), usage
+                _openai_cold_stream(body, principal, session, settings, usage, request, timing),
+                usage,
             )
         try:
             resolved = await _load_and_resolve(body.model, principal, session, settings)
@@ -289,7 +331,9 @@ async def chat_completions(
     try:
         if body.stream:
             return _streaming_response(
-                _tracked_stream(stream(resolved.engine_url, payload, settings), usage, request),
+                _tracked_stream(
+                    stream(resolved.engine_url, payload, settings, timing), usage, request, timing
+                ),
                 usage,
             )
         result = await complete(resolved.engine_url, payload, settings)
@@ -320,6 +364,7 @@ async def anthropic_messages(
     settings: SettingsDep,
 ) -> object:
     usage = UsageTracker(principal, str(body.model), GatewayProtocol.ANTHROPIC)
+    timing = StreamTiming()
     try:
         resolved = await resolve_model(session, body.model, principal)
     except ModelNotFoundError as exc:
@@ -337,7 +382,8 @@ async def anthropic_messages(
             )
         if body.stream:
             return _streaming_response(
-                _anthropic_cold_stream(body, principal, session, settings, usage, request), usage
+                _anthropic_cold_stream(body, principal, session, settings, usage, request, timing),
+                usage,
             )
         try:
             resolved = await _load_and_resolve(body.model, principal, session, settings)
@@ -356,7 +402,9 @@ async def anthropic_messages(
     payload = to_openai_payload(body, model_path=resolved.model_path)
     try:
         if body.stream:
-            source = _tracked_stream(stream(resolved.engine_url, payload, settings), usage, request)
+            source = _tracked_stream(
+                stream(resolved.engine_url, payload, settings, timing), usage, request, timing
+            )
             return _streaming_response(from_openai_stream(source, model=body.model), usage)
         result = await complete(resolved.engine_url, payload, settings)
         reported = result.get("usage")

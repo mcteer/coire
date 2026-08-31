@@ -14,7 +14,7 @@
     {
       "type": "timeseries",
       "title": "Gateway p95 overhead",
-      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(coire_gateway_request_duration_ms_bucket[5m])))"}],
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(coire_gateway_overhead_duration_ms_bucket[5m])))"}],
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
     },
     {

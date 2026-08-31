@@ -6,6 +6,8 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from time import perf_counter
 
 import httpx
 
@@ -14,6 +16,13 @@ from coire_core.settings import Settings
 _semaphores: dict[str, asyncio.Semaphore] = {}
 _guard = asyncio.Lock()
 _engine_client: httpx.AsyncClient | None = None
+
+
+@dataclass(slots=True)
+class StreamTiming:
+    request_started_at: float = field(default_factory=perf_counter)
+    upstream_started_at: float | None = None
+    first_chunk_at: float | None = None
 
 
 def init_engine_client() -> None:
@@ -89,12 +98,17 @@ async def complete(
 
 
 async def stream(
-    engine_url: str, payload: dict[str, object], settings: Settings
+    engine_url: str,
+    payload: dict[str, object],
+    settings: Settings,
+    timing: StreamTiming | None = None,
 ) -> AsyncIterator[bytes]:
     async with engine_slot(engine_url, settings):
         timeout = httpx.Timeout(settings.gateway_engine_request_timeout_s, read=None)
         done = False
         try:
+            if timing is not None:
+                timing.upstream_started_at = perf_counter()
             async with _client().stream(
                 "POST",
                 f"{engine_url}/v1/chat/completions",
@@ -104,6 +118,8 @@ async def stream(
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if line:
+                        if timing is not None and timing.first_chunk_at is None:
+                            timing.first_chunk_at = perf_counter()
                         if line.strip() == "data: [DONE]":
                             done = True
                         yield f"{line}\n\n".encode()

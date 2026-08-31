@@ -43,10 +43,9 @@ services:
       dockerfile: apps/coire-node/docker/node-test.Dockerfile
     networks:
       coire-control-sim:
-        aliases: [coire-edge-a]
+        aliases: [coire-edge-a, "coire-edge-a.lab"]
       coire-data-sim:
         ipv4_address: 192.168.100.11
-        aliases: ["coire-edge-a.lab"]
       # The origin needs egress to reach Hugging Face; it is the only container that does.
       coire-edge:
     extra_hosts:
@@ -91,10 +90,9 @@ services:
       # Control for registration/management, data for replication. Unlike node-a, this service
       # has no coire-edge attachment and receives no Hugging Face credential.
       coire-control-sim:
-        aliases: [coire-edge-b]
+        aliases: [coire-edge-b, "coire-edge-b.lab"]
       coire-data-sim:
         ipv4_address: 192.168.100.12
-        aliases: ["coire-edge-b.lab"]
     extra_hosts:
       - "coire-edge-a.fabric:192.168.100.11"
       - "coire-edge-b.fabric:192.168.100.12"
