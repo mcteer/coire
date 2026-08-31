@@ -24,6 +24,7 @@ services:
     ports: !override ["127.0.0.1:${COIRE_IT_PORT:-18080}:8080"]
 
   coire-api:
+    ports: ["127.0.0.1:${COIRE_IT_API_PORT:-18081}:8000"]
     environment:
       # The Studios keep 50 GiB free; the test tmpfs is 4 GiB, so the production default
       # would refuse every model on fit. The check itself is exercised by its own test.

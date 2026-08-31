@@ -6,12 +6,14 @@ import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator, Sequence
+from contextlib import suppress
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.types import Receive, Scope, Send
 
 from coire_api.auth import CurrentPrincipal, Principal
 from coire_api.db import EngineProcessRow, ModelRow
@@ -37,6 +39,35 @@ from coire_core.settings import Settings
 router = APIRouter(prefix="/v1", tags=["compatible"])
 
 
+async def _finish_detached(
+    usage: UsageTracker, outcome: UsageOutcome, *, failure_code: str
+) -> None:
+    task = asyncio.create_task(usage.finish(outcome, failure_code=failure_code))
+    # The detached task must outlive an ASGI cancel scope long enough to commit.
+    with suppress(asyncio.CancelledError):
+        await asyncio.shield(task)
+
+
+class _UsageStreamingResponse(StreamingResponse):
+    def __init__(self, source: AsyncIterator[bytes], usage: UsageTracker) -> None:
+        super().__init__(
+            source,
+            media_type="text/event-stream",
+            headers={"X-Accel-Buffering": "no"},
+        )
+        self._usage = usage
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await _finish_detached(
+                self._usage,
+                UsageOutcome.DISCONNECTED,
+                failure_code="client_disconnected",
+            )
+
+
 async def _load_and_resolve(
     body_model: uuid.UUID, principal: Principal, session: AsyncSession, settings: Settings
 ) -> ResolvedModel:
@@ -53,6 +84,7 @@ async def _openai_cold_stream(
     session: AsyncSession,
     settings: Settings,
     usage: UsageTracker,
+    request: Request,
 ) -> AsyncIterator[bytes]:
     task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
     while not task.done():
@@ -71,7 +103,9 @@ async def _openai_cold_stream(
         usage.engine_id = resolved.engine_id
         payload = body.model_dump(mode="json", exclude={"coire_wait_for_model"}, exclude_none=True)
         payload["model"] = resolved.model_path
-        async for chunk in _tracked_stream(stream(resolved.engine_url, payload, settings), usage):
+        async for chunk in _tracked_stream(
+            stream(resolved.engine_url, payload, settings), usage, request
+        ):
             yield chunk
     except (ModelLoadError, TimeoutError) as exc:
         await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
@@ -80,10 +114,13 @@ async def _openai_cold_stream(
 
 
 async def _tracked_stream(
-    source: AsyncIterator[bytes], usage: UsageTracker
+    source: AsyncIterator[bytes], usage: UsageTracker, request: Request | None = None
 ) -> AsyncIterator[bytes]:
     try:
         async for chunk in source:
+            if request is not None and await request.is_disconnected():
+                await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
+                return
             for line in chunk.decode(errors="replace").splitlines():
                 if not line.startswith("data: ") or line == "data: [DONE]":
                     continue
@@ -103,15 +140,18 @@ async def _tracked_stream(
                     pass
             yield chunk
     except asyncio.CancelledError:
-        await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
-        raise
-    except GeneratorExit:
-        await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
+        await _finish_detached(usage, UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
         raise
     except EngineProxyError:
         await usage.finish(UsageOutcome.FAILED, failure_code="engine_stream_failed")
     else:
         await usage.finish(UsageOutcome.SUCCEEDED)
+
+
+def _streaming_response(source: AsyncIterator[bytes], usage: UsageTracker) -> StreamingResponse:
+    """Finalize accounting when the ASGI server closes an abandoned response."""
+
+    return _UsageStreamingResponse(source, usage)
 
 
 async def _anthropic_cold_stream(
@@ -120,6 +160,7 @@ async def _anthropic_cold_stream(
     session: AsyncSession,
     settings: Settings,
     usage: UsageTracker,
+    request: Request,
 ) -> AsyncIterator[bytes]:
     task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
     while not task.done():
@@ -137,7 +178,7 @@ async def _anthropic_cold_stream(
         usage.model_id = resolved.model_id
         usage.engine_id = resolved.engine_id
         payload = to_openai_payload(body, model_path=resolved.model_path)
-        tracked = _tracked_stream(stream(resolved.engine_url, payload, settings), usage)
+        tracked = _tracked_stream(stream(resolved.engine_url, payload, settings), usage, request)
         async for event in from_openai_stream(tracked, model=body.model):
             yield event
     except (ModelLoadError, TimeoutError) as exc:
@@ -197,6 +238,7 @@ async def list_models(principal: CurrentPrincipal, session: SessionDep) -> Gatew
 @router.post("/chat/completions")
 async def chat_completions(
     body: ChatCompletionRequest,
+    request: Request,
     principal: CurrentPrincipal,
     session: SessionDep,
     settings: SettingsDep,
@@ -225,10 +267,8 @@ async def chat_completions(
                 headers={"Retry-After": str(settings.gateway_retry_after_s)},
             )
         if body.stream:
-            return StreamingResponse(
-                _openai_cold_stream(body, principal, session, settings, usage),
-                media_type="text/event-stream",
-                headers={"X-Accel-Buffering": "no"},
+            return _streaming_response(
+                _openai_cold_stream(body, principal, session, settings, usage, request), usage
             )
         try:
             resolved = await _load_and_resolve(body.model, principal, session, settings)
@@ -248,10 +288,9 @@ async def chat_completions(
     payload["model"] = resolved.model_path
     try:
         if body.stream:
-            return StreamingResponse(
-                _tracked_stream(stream(resolved.engine_url, payload, settings), usage),
-                media_type="text/event-stream",
-                headers={"X-Accel-Buffering": "no"},
+            return _streaming_response(
+                _tracked_stream(stream(resolved.engine_url, payload, settings), usage, request),
+                usage,
             )
         result = await complete(resolved.engine_url, payload, settings)
         reported = result.get("usage")
@@ -275,6 +314,7 @@ async def chat_completions(
 @router.post("/messages")
 async def anthropic_messages(
     body: AnthropicMessagesRequest,
+    request: Request,
     principal: CurrentPrincipal,
     session: SessionDep,
     settings: SettingsDep,
@@ -296,10 +336,8 @@ async def anthropic_messages(
                 headers={"Retry-After": str(settings.gateway_retry_after_s)},
             )
         if body.stream:
-            return StreamingResponse(
-                _anthropic_cold_stream(body, principal, session, settings, usage),
-                media_type="text/event-stream",
-                headers={"X-Accel-Buffering": "no"},
+            return _streaming_response(
+                _anthropic_cold_stream(body, principal, session, settings, usage, request), usage
             )
         try:
             resolved = await _load_and_resolve(body.model, principal, session, settings)
@@ -318,12 +356,8 @@ async def anthropic_messages(
     payload = to_openai_payload(body, model_path=resolved.model_path)
     try:
         if body.stream:
-            source = _tracked_stream(stream(resolved.engine_url, payload, settings), usage)
-            return StreamingResponse(
-                from_openai_stream(source, model=body.model),
-                media_type="text/event-stream",
-                headers={"X-Accel-Buffering": "no"},
-            )
+            source = _tracked_stream(stream(resolved.engine_url, payload, settings), usage, request)
+            return _streaming_response(from_openai_stream(source, model=body.model), usage)
         result = await complete(resolved.engine_url, payload, settings)
         reported = result.get("usage")
         if isinstance(reported, dict):

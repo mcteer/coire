@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import socket
+import struct
 import subprocess
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 import anthropic
 import httpx
@@ -178,3 +182,38 @@ async def test_failed_stream_is_persisted(api_url: str, gateway_model: str) -> N
             break
         await asyncio.sleep(0.2)
     assert "failed" in outcomes
+
+
+async def test_abandoned_stream_is_persisted(direct_api_url: str, gateway_model: str) -> None:
+    before = len(_usage_outcomes())
+    endpoint = urlsplit(direct_api_url)
+    reader, writer = await asyncio.open_connection(endpoint.hostname, endpoint.port)
+    body = json.dumps(
+        {
+            "model": gateway_model,
+            "stream": True,
+            "messages": [{"role": "user", "content": "slow-stream"}],
+        }
+    ).encode()
+    writer.write(
+        b"POST /v1/chat/completions HTTP/1.1\r\n"
+        + f"Host: {endpoint.hostname}\r\n".encode()
+        + b"Content-Type: application/json\r\n"
+        + f"Content-Length: {len(body)}\r\n".encode()
+        + b"Connection: close\r\n\r\n"
+        + body
+    )
+    await writer.drain()
+    received = await asyncio.wait_for(reader.readuntil(b"data:"), timeout=10)
+    assert b"HTTP/1.1 200" in received
+    raw_socket = writer.get_extra_info("socket")
+    raw_socket.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    writer.transport.abort()
+    deadline = time.monotonic() + 10
+    outcomes: list[str] = []
+    while time.monotonic() < deadline:
+        outcomes = _usage_outcomes()[before:]
+        if "disconnected" in outcomes:
+            break
+        await asyncio.sleep(0.2)
+    assert "disconnected" in outcomes

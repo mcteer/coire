@@ -77,7 +77,7 @@
 - [X] T031 [P] [US5] Add usage finalization and exactly-once tests in `apps/coire-api/tests/unit/test_gateway_usage.py`
 - [X] T032 [P] [US5] Add disconnect and engine-failure streaming contract tests in `apps/coire-api/tests/contract/test_gateway_v1.py`
 - [X] T033 [US5] Integrate usage finalization and prompt/completion counters through all route outcomes in `apps/coire-api/src/coire_api/routes/v1.py`
-- [ ] T034 [US5] Add persisted usage assertions for normal, failed, and abandoned integration requests in `tests/integration/test_gateway.py`
+- [X] T034 [US5] Add persisted usage assertions for normal, failed, and abandoned integration requests in `tests/integration/test_gateway.py`
 
 ## Phase 8: Polish & Cross-Cutting Concerns
 
