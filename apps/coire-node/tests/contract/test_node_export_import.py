@@ -18,7 +18,7 @@ import pytest
 import uvicorn
 from fastapi.testclient import TestClient
 
-from coire_core.models.node import NodePath
+from coire_core.models.node import NetworkPath, NodePath
 from coire_node.store import Store
 from coire_node.testing.harness import TOKEN, Agent
 
@@ -117,6 +117,16 @@ class TestMeshOnly:
             assert resp.json()["path"] == "fallback"
 
 
+class TestSeparatedDataListener:
+    def test_exports_exist_only_on_data_listener(self, agent: Agent) -> None:
+        _seed(agent.store)
+        agent.grants.register(GRANT, SLUG, datetime.now(UTC) + timedelta(hours=1))
+        with TestClient(agent.app(NetworkPath.CONTROL)) as control:
+            assert control.get(f"/node/export/{GRANT}/manifest").status_code == 404
+        with TestClient(agent.app(NetworkPath.DATA)) as data:
+            assert data.get(f"/node/export/{GRANT}/manifest").status_code == 200
+
+
 class TestFileTransfer:
     def test_files_stream_and_ranges_are_honoured(self, agent: Agent) -> None:
         """Range support is what lets an interrupted import resume mid-file."""
@@ -163,7 +173,7 @@ class TestImportRoundTrip:
         # Serve the origin on a real socket: the import runs in a worker subprocess and makes
         # genuine HTTP requests, so an ASGI test client would not do.
         config = uvicorn.Config(
-            origin.app(NodePath.MESH), host="127.0.0.1", port=0, log_level="error"
+            origin.app(NetworkPath.DATA), host="127.0.0.1", port=0, log_level="error"
         )
         server = uvicorn.Server(config)
         thread = threading.Thread(target=server.run, daemon=True)
@@ -178,7 +188,7 @@ class TestImportRoundTrip:
         # `source_node` is a literal address here, which MeshClient leaves unsuffixed.
         try:
             job_id = uuid.uuid4()
-            replica.settings.node_listen_port = port
+            replica.settings.node_data_listen_port = port
             created, _ = replica.jobs.start(
                 job_id=job_id,
                 kind=__import__("coire_core.models.jobs", fromlist=["JobKind"]).JobKind.IMPORT,
@@ -187,7 +197,7 @@ class TestImportRoundTrip:
                     "source_node": "127.0.0.1",
                     "grant": GRANT,
                     "manifest": manifest.model_dump(mode="json"),
-                    "node_port": port,
+                    "node_data_port": port,
                 },
             )
             assert created

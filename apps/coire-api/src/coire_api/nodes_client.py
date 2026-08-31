@@ -5,8 +5,7 @@ each returning a `coire-core` model. Routes and the reconciler never see an http
 a contract change surfaces as a validation error here rather than as a `KeyError` three layers
 away.
 
-Every call goes to `<name>.mesh` through `MeshClient` — no caller ever writes an address
-(ADR-0002) — and carries that node's bearer token from the mounted `node_tokens` secret.
+Every call goes to the node's declared control DNS name. There is no data-fabric fallback.
 """
 
 from __future__ import annotations
@@ -22,8 +21,9 @@ import httpx
 
 from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileResult
 from coire_core.models.jobs import ChecksumManifest, JobStatus, RepoInspection
-from coire_core.models.node import NodeStatus
-from coire_core.net import MeshClient
+from coire_core.models.link import StudioDataLinkStatus
+from coire_core.models.node import NodeStatus, NodeStatusV2
+from coire_core.net import ControlClient, FabricUnreachable
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ class NodeClient:
 
     def __init__(self, settings: Settings, *, timeout: float = 30.0) -> None:
         self._settings = settings
-        self._mesh = MeshClient(timeout=timeout)
+        self._control = ControlClient(timeout=timeout)
 
     async def __aenter__(self) -> NodeClient:
         return self
@@ -106,7 +106,7 @@ class NodeClient:
         await self.aclose()
 
     async def aclose(self) -> None:
-        await self._mesh.aclose()
+        await self._control.aclose()
 
     # -- plumbing ----------------------------------------------------------
     def _headers(self, node: str) -> dict[str, str]:
@@ -125,7 +125,7 @@ class NodeClient:
         expect: tuple[int, ...] = (200, 202, 204),
     ) -> tuple[int, dict[str, Any]]:
         try:
-            resp = await self._mesh.request(
+            resp = await self._control.request(
                 method,
                 node,
                 path,
@@ -133,7 +133,7 @@ class NodeClient:
                 headers=self._headers(node),
                 json=json,
             )
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, FabricUnreachable) as exc:
             raise NodeError(NodeErrorKind.UNREACHABLE, node, detail=str(exc)) from exc
 
         body: dict[str, Any] = {}
@@ -159,9 +159,15 @@ class NodeClient:
         return resp.status_code, body
 
     # -- health ------------------------------------------------------------
-    async def health(self, node: str) -> NodeStatus:
+    async def health(self, node: str) -> NodeStatus | NodeStatusV2:
         _, body = await self._call("GET", node, "/node/health", expect=(200,))
+        if body.get("path") == "control":
+            return NodeStatusV2.model_validate(body)
         return NodeStatus.model_validate(body)
+
+    async def data_link_status(self, node: str) -> StudioDataLinkStatus:
+        _, body = await self._call("GET", node, "/node/data-link", expect=(200,))
+        return StudioDataLinkStatus.model_validate(body)
 
     # -- repositories and copies -------------------------------------------
     async def inspect(self, node: str, repo_id: str, revision: str = "main") -> RepoInspection:

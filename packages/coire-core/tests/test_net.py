@@ -13,7 +13,14 @@ from collections.abc import Callable
 import httpx
 import pytest
 
-from coire_core.net import FALLBACK_HEADER, FALLBACK_VALUE, MeshClient
+from coire_core.net import (
+    FALLBACK_HEADER,
+    FALLBACK_VALUE,
+    ControlClient,
+    DataFabricClient,
+    FabricUnreachable,
+    MeshClient,
+)
 
 
 def _client(handler: Callable[[httpx.Request], httpx.Response]) -> MeshClient:
@@ -174,3 +181,49 @@ class TestHostSuffixing:
 
         assert _host_with("coire-edge-a.mesh", MESH_SUFFIX) == "coire-edge-a.mesh"
         assert _host_with("coire-edge-a.local", EGRESS_SUFFIX) == "coire-edge-a.local"
+
+
+class TestSeparatedFabricClients:
+    async def test_control_uses_unifi_name_only(self) -> None:
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            return httpx.Response(200)
+
+        async with ControlClient(
+            client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        ) as client:
+            await client.get("coire-edge-a", "/node/health", port=9400)
+
+        assert seen == ["http://coire-edge-a:9400/node/health"]
+
+    async def test_data_uses_fabric_name_only(self) -> None:
+        seen: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(str(request.url))
+            return httpx.Response(200)
+
+        async with DataFabricClient(
+            client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        ) as client:
+            await client.get("coire-edge-b", "/models/export", port=9401)
+
+        assert seen == ["http://coire-edge-b.fabric:9401/models/export"]
+
+    @pytest.mark.parametrize("client_type", [ControlClient, DataFabricClient])
+    async def test_connect_failure_never_crosses_fabrics(self, client_type: type) -> None:
+        attempted: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            attempted.append(str(request.url))
+            raise httpx.ConnectError("down", request=request)
+
+        async with client_type(
+            client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        ) as client:
+            with pytest.raises(FabricUnreachable):
+                await client.get("coire-edge-a", "/probe")
+
+        assert len(attempted) == 1

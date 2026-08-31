@@ -367,7 +367,14 @@ class TestOrphans:
         )
         assert "alive" in alive.stdout, "an orphan must not be killed"
 
-        # An admin can clear it.
-        with _client(api_url) as client:
-            resp = client.delete(f"/api/v1/admin/engines/{orphan['id']}", headers=admin_headers)
-        assert resp.status_code == 202
+        # An admin can clear it. The node has just restarted, so its control listener may still
+        # return the API's explicitly retryable 503 for a short interval after reconciliation.
+        deadline = time.monotonic() + 30
+        while True:
+            with _client(api_url) as client:
+                resp = client.delete(f"/api/v1/admin/engines/{orphan['id']}", headers=admin_headers)
+            if resp.status_code == 202 or time.monotonic() >= deadline:
+                break
+            assert resp.status_code == 503, resp.text
+            time.sleep(1)
+        assert resp.status_code == 202, resp.text

@@ -112,11 +112,14 @@ class RegistryReconciler:
         maker = async_sessionmaker(engine, expire_on_commit=False)
         try:
             while not self._stopping.is_set():
+                # Consume the wakeup that led to this pass before doing any I/O. A node may
+                # register while the pass is running; clearing afterward would erase that new
+                # request and defer engine reconciliation until an unrelated later wakeup.
+                self._wake.clear()
                 try:
                     await self._pass(maker)
                 except Exception:
                     logger.exception("reconciler pass failed; retrying next interval")
-                self._wake.clear()
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(
                         self._wake.wait(), timeout=self._settings.registry_reconcile_interval_s
@@ -139,6 +142,11 @@ class RegistryReconciler:
         for row in (await session.execute(select(NodeRow))).scalars().all():
             try:
                 self.node_statuses[row.name] = await client.health(row.name)
+                # Reconcile every healthy node on this pass. Registration is intentionally
+                # sent before the restarted listener binds, so its event-driven reconcile may
+                # race readiness; periodic reconciliation guarantees eventual drift/orphan
+                # detection without relying on another state transition.
+                self._node_reconcile.add(row.name)
             except NodeError:
                 self.node_statuses.pop(row.name, None)
 
@@ -546,7 +554,9 @@ class RegistryReconciler:
                 await session.execute(select(ModelRow).where(ModelRow.slug == slug))
             ).scalar_one_or_none()
         row = EngineProcessRow(
-            id=uuid.uuid4(),
+            # Preserve the node-assigned identity so a later admin DELETE addresses the same
+            # process in both control-plane and node state.
+            id=getattr(orphan, "engine_id", None) or uuid.uuid4(),
             model_id=model.id if model else None,
             node_id=node.id,
             port=getattr(orphan, "port", 0),

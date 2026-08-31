@@ -33,7 +33,7 @@ from coire_core.models.jobs import (
     JobStage,
     JobStatus,
 )
-from coire_core.net import MeshClient, MeshUnreachable
+from coire_core.net import DataFabricClient, FabricUnreachable
 from coire_node.store import Store, write_atomic
 
 logging.basicConfig(
@@ -198,7 +198,7 @@ def run_import(job: JobFile) -> int:
     slug = job.status.slug
     source = job.params["source_node"]
     grant = job.params["grant"]
-    port = int(job.params.get("node_port", 9400))
+    port = int(job.params.get("node_data_port", 9401))
     manifest = ChecksumManifest.model_validate(job.params["manifest"])
 
     job.status.bytes_total = manifest.total_bytes
@@ -219,8 +219,8 @@ def run_import(job: JobFile) -> int:
     # fails on the second file with "Event loop is closed".
     try:
         asyncio.run(_fetch_all(job, store, slug, source, port, grant, manifest))
-    except MeshUnreachable as exc:
-        job.fail(JobErrorKind.NETWORK, f"the origin is unreachable over the mesh: {exc}")
+    except FabricUnreachable as exc:
+        job.fail(JobErrorKind.NETWORK, f"the origin is unreachable over the data fabric: {exc}")
         return EXIT_FAILED
     except httpx.HTTPError as exc:
         job.fail(JobErrorKind.NETWORK, f"transfer failed: {exc}")
@@ -258,7 +258,7 @@ async def _fetch_all(
     """Fetch every file of a copy over the mesh, resuming what is already there."""
     base = store.path_for(slug)
     # fallback=False: replication may not cross the egress interface (spec FR-007, SC-004).
-    async with MeshClient(timeout=120.0, fallback=False) as client:
+    async with DataFabricClient(timeout=120.0) as client:
         for index, entry in enumerate(sorted(manifest.files, key=lambda f: f.path), start=1):
             target = base / entry.path
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -272,7 +272,7 @@ async def _fetch_all(
 
 async def _fetch_file(
     job: JobFile,
-    client: MeshClient,
+    client: DataFabricClient,
     source: str,
     port: int,
     grant: str,

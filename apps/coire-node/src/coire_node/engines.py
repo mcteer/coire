@@ -650,7 +650,10 @@ class EngineManager:
             port = _port_from(cmdline)
             slug = _slug_from(cmdline, marker)
             engine = _Engine(
-                engine_id=None,
+                # Give the discovered process a stable control identity immediately. Core must
+                # send this same id back when an admin clears the orphan; inventing a different
+                # database id there leaves the node unable to find and stop the process.
+                engine_id=uuid.uuid4(),
                 slug=slug,
                 port=port,
                 estimate_bytes=0,
@@ -661,7 +664,7 @@ class EngineManager:
             engine.state_reason = "running but not owned by this agent"
             self._sample(engine)
             orphans.append(engine.status())
-            self._engines.setdefault(f"orphan-{engine.pid}", engine)
+            self._engines.setdefault(str(engine.engine_id), engine)
         return orphans
 
     def reconcile(self, request: ReconcileRequest) -> ReconcileResult:

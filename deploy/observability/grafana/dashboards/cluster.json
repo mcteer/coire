@@ -1,0 +1,10 @@
+{
+  "title": "Coire Cluster",
+  "uid": "coire-cluster",
+  "schemaVersion": 39,
+  "panels": [
+    {"id": 1, "title": "edge-a control latency", "type": "timeseries", "targets": [{"expr": "coire_control_path_latency_ms{peer=\"coire-edge-a\"}"}]},
+    {"id": 2, "title": "edge-b control latency", "type": "timeseries", "targets": [{"expr": "coire_control_path_latency_ms{peer=\"coire-edge-b\"}"}]},
+    {"id": 3, "title": "Studio data link", "type": "stat", "targets": [{"expr": "coire_data_link_up"}]}
+  ]
+}

@@ -1,0 +1,15 @@
+version: 1
+policy: deny-by-default
+rules:
+  - name: core-to-node-control
+    sources: [coire-core]
+    destinations: [coire-edge-a, coire-edge-b]
+    tcp_ports: [9400, 9500-9599]
+  - name: studio-peer-data
+    sources: [coire-edge-a.fabric, coire-edge-b.fabric]
+    destinations: [coire-edge-a.fabric, coire-edge-b.fabric]
+    tcp_ports: [9401]
+  - name: studio-to-core
+    sources: [coire-edge-a, coire-edge-b]
+    destinations: [coire-core]
+    tcp_ports: [8180, 4317]

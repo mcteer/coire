@@ -21,13 +21,13 @@
 #   coire health                                 control-plane health
 #
 # Environment:
-#   COIRE_API    default http://127.0.0.1:8080
+#   COIRE_API    default http://127.0.0.1:8180
 #   COIRE_ADMIN  admin bearer; falls back to the `coire-admin-token` Keychain item on core
 #
 # bash 3.2 compatible: macOS ships no bash 4.
 set -euo pipefail
 
-API="${COIRE_API:-http://127.0.0.1:8080}"
+API="${COIRE_API:-http://127.0.0.1:8180}"
 
 need() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is required" >&2; exit 2; }; }
 need curl; need jq

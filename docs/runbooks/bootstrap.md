@@ -1,5 +1,9 @@
 # Runbook: Bootstrap Control Plane
 
+> Network operations below that mention `.mesh` are the historical feature-000 rollback path.
+> Current operation uses control DNS and the Studio-only `.fabric` mapping documented in
+> `network-fabrics.md`.
+
 Operational surface added by feature 000. Full validation procedure:
 `specs/000-bootstrap/quickstart.md`.
 
@@ -21,7 +25,7 @@ Every time:
 
 ```bash
 deploy/compose/coire-up
-curl -s http://127.0.0.1:8080/health | jq .status   # -> "healthy"
+curl -s http://127.0.0.1:8180/health | jq .status   # -> "healthy"
 ```
 
 `coire-up` reads the three secrets from the Keychain, writes them 0600 into
@@ -74,7 +78,7 @@ proxied `/ready`.
 cd deploy/compose
 docker compose ps                      # what is up
 docker compose logs -f coire-api       # structured JSON logs
-curl -s http://127.0.0.1:8080/health | jq   # aggregate + per-dependency latency
+curl -s http://127.0.0.1:8180/health | jq   # aggregate + per-dependency latency
 docker compose logs otel-collector | grep -c ResourceSpans   # telemetry arriving
 ```
 
@@ -116,8 +120,8 @@ boot with no login session, and the login keychain is locked then.
 From core:
 
 ```bash
-scripts/build-node-wheel.sh coire-edge-a     # builds and copies over the mesh
-ssh mcteer@coire-edge-a.mesh 'apps/coire-node/install.sh --wheel-dir /opt/coire/dist'
+scripts/build-node-wheel.sh coire-edge-a     # builds and copies over control DNS
+ssh mcteer@coire-edge-a.lab '~/coire-stage/apps/coire-node/install.sh --wheel-dir ~/coire-stage/dist'
 ```
 
 Then the printed `sudo` steps to install and bootstrap the LaunchDaemon.
@@ -126,7 +130,7 @@ Check it:
 
 ```bash
 TOKEN=$(security find-generic-password -w -s coire-node-tokens | jq -r '."coire-edge-a"')
-curl -s -H "Authorization: Bearer $TOKEN" http://coire-edge-a.mesh:9400/node/health | jq
+curl -s -H "Authorization: Bearer $TOKEN" http://coire-edge-a.lab:9400/node/health | jq
 ```
 
 `401` without the token. The egress (Wi-Fi) listener returns `403` unless the request carries

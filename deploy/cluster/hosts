@@ -12,6 +12,5 @@
 # Topology is a chain, not a triangle: core -- edge-a -- edge-b. Bridging all three into a
 # triangle creates an L2 loop that collapses throughput and breaks external DNS.
 
-192.168.100.10  coire-core.mesh
-192.168.100.11  coire-edge-a.mesh
-192.168.100.12  coire-edge-b.mesh
+192.168.100.11  coire-edge-a.fabric
+192.168.100.12  coire-edge-b.fabric

@@ -14,7 +14,7 @@ import pytest
 import yaml
 from jsonschema import Draft202012Validator
 
-from coire_core.models.node import NodePath, NodeStatus, ThermalState
+from coire_core.models.node import NetworkPath, NodePath, NodeStatus, ThermalState
 from coire_core.settings import Settings
 from coire_node.agent import create_app
 
@@ -55,7 +55,9 @@ def settings() -> Settings:
     return s.model_copy(update={"node_token": __import__("pydantic").SecretStr(TOKEN)})
 
 
-async def call(listener: NodePath, headers: dict[str, str] | None = None) -> httpx.Response:
+async def call(
+    listener: NodePath | NetworkPath, headers: dict[str, str] | None = None
+) -> httpx.Response:
     app = create_app(settings(), StubCollector(), listener=listener)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://node") as client:
@@ -79,6 +81,15 @@ class TestAuthentication:
 
 
 class TestListenerSeparation:
+    async def test_control_listener_is_authenticated_and_labelled(self) -> None:
+        assert (await call(NetworkPath.CONTROL)).status_code == 401
+        response = await call(NetworkPath.CONTROL, AUTH)
+        assert response.status_code == 200
+        assert response.json()["path"] == "control"
+
+    async def test_data_listener_has_no_health_route(self) -> None:
+        assert (await call(NetworkPath.DATA, AUTH)).status_code == 404
+
     async def test_egress_without_marker_is_403(self) -> None:
         """Platform traffic belongs on the mesh; using egress must be deliberate."""
         resp = await call(NodePath.FALLBACK, AUTH)

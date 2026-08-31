@@ -20,6 +20,8 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 logger = logging.getLogger(__name__)
 _configured = False
+NETWORK_PATH_ATTRIBUTE = "network.path"
+NETWORK_PEER_ATTRIBUTE = "network.peer"
 
 
 def configure_telemetry(service_name: str, service_version: str, endpoint: str) -> None:

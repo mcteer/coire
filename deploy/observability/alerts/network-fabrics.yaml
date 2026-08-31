@@ -1,0 +1,17 @@
+groups:
+  - name: coire-network-fabrics
+    rules:
+      - alert: CoireControlPathDown
+        expr: coire_network_path_failures_total{network_path="control"} > 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Coire control path is failing"}
+      - alert: CoireDataLinkDown
+        expr: coire_data_link_up == 0
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "Studio data fabric is unavailable"}
+      - alert: CoireForbiddenCrossFabricTraffic
+        expr: increase(coire_forbidden_cross_fabric_requests_total[5m]) > 0
+        labels: {severity: critical}
+        annotations: {summary: "A request attempted the wrong Coire fabric"}

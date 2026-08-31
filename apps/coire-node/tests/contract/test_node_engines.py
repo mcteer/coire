@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
 from coire_core.models.engine import EngineState, ReconcileExpectation, ReconcileRequest
-from coire_node.engines import EngineManager
+from coire_node.engines import EngineManager, build_engine_argv
 from coire_node.testing.harness import TOKEN, Agent
 
 CONTRACT = (
@@ -64,6 +64,17 @@ def fake_engine_command(delay: float = 0.0, *, fail: bool = False, mb: int = 0) 
     if mb:
         parts += ["--allocate-mb", str(mb)]
     return os.pathsep.join(parts)
+
+
+def test_engine_argv_binds_the_declared_control_address() -> None:
+    argv = build_engine_argv(
+        command=["python", "-m", "mlx_lm.server"],
+        model_path="/opt/coire/models/example",
+        host="coire-edge-a",
+        port=9500,
+    )
+    assert argv[argv.index("--host") + 1] == "coire-edge-a"
+    assert not any(value.endswith(".fabric") or value.endswith(".mesh") for value in argv)
 
 
 def kill_stray_engines() -> None:
