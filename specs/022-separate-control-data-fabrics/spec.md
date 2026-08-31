@@ -20,6 +20,7 @@
 
 - Q: Must authenticated health probes remain below 50 ms p95? → A: No. All 200 probes must succeed without degraded-path events, and latency is recorded rather than gated by a standalone ceiling.
 - Q: May the control fabric move to a wired connection? → A: No. Control and public egress remain on Wi-Fi for all three hosts; Thunderbolt remains the only wired connection and carries Studio-to-Studio data traffic only.
+- Q: Should missing validation dependencies be folded into feature 022? → A: No. Keep feature 022 and PR #11 draft, build each dependency on its own existing feature branch in roadmap order, then return to complete the unchanged acceptance gate.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -150,6 +151,10 @@ cutover, verification, and rollback sections, and record the required latency an
 
 ## Dependencies and Supersession
 
+- Final real-cluster acceptance remains blocked on the separately specified gateway, placement,
+  instance-state, authentication, observability, agent-harness, run-orchestration, and image
+  features. Those features MUST be implemented and reviewed on their own branches; their absence
+  does not waive SC-003 through SC-005 or SC-010, and PR #11 remains draft until T047 passes.
 - Supersedes the network-path requirements FR-013 through FR-013c in `specs/000-bootstrap/spec.md`.
 - Supersedes the engine-binding portion of FR-018 in `specs/001-model-registry-node-agent/spec.md`; its direct peer-replication requirements remain in force.
 - Corrects the physical-topology assumptions in `specs/006-sharded-serving-jaccl/spec.md` without changing its two-rank placement behavior.
