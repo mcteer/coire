@@ -13,7 +13,7 @@ An ephemeral service result, not a table.
 | entitlement_verdict | allowed/refused | Refused is externally indistinguishable from missing |
 | engine_id | UUID or null | READY/STARTING only; STOPPING is never routable |
 | node | declared node name or null | Comes from the engine/copy relationship |
-| engine_url | internal URL or null | Constructed from declared control endpoint and recorded port |
+| engine_url | internal URL or null | Authenticated coire-node proxy URL; the bare engine port is loopback-only |
 
 Resolution succeeds only when the model exists and is visible to the principal. Non-admin visibility
 requires `published` and `ready`; entitlement labels must be empty or covered by principal scopes.
@@ -60,5 +60,6 @@ proxying → disconnected
 proxying → engine_failed → failed
 ```
 
-No transition from a terminal state is permitted. A usage row is written once for every request
-that reaches `resolving`; malformed FastAPI validation failures remain framework-level 422s.
+No transition from a terminal state is permitted. A usage row is written once for every inference
+request. Malformed FastAPI validation failures remain 422 responses and receive a refused usage row
+with the bounded raw model field (or `<missing>`/`<invalid>`) for attribution.

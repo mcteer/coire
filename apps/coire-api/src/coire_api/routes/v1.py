@@ -17,11 +17,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import Receive, Scope, Send
 
-from coire_api.auth import CurrentPrincipal, Principal
+from coire_api.auth import CurrentAuthenticated, Principal
 from coire_api.db import EngineProcessRow, ModelRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.anthropic import from_openai_response, from_openai_stream, to_openai_payload
-from coire_api.gateway.context import ContextLengthError, enforce_context
+from coire_api.gateway.context import ContextLengthError, enforce_anthropic_context, enforce_context
 from coire_api.gateway.loading import ModelLoadError, load_model
 from coire_api.gateway.proxy import (
     EngineProxyError,
@@ -30,7 +30,12 @@ from coire_api.gateway.proxy import (
     complete,
     stream,
 )
-from coire_api.gateway.resolution import ModelNotFoundError, ResolvedModel, resolve_model
+from coire_api.gateway.resolution import (
+    ModelNotFoundError,
+    ResolvedModel,
+    resolve_model,
+    retry_after_seconds,
+)
 from coire_api.gateway.telemetry import first_token_duration_ms, overhead_duration_ms
 from coire_api.gateway.usage import UsageTracker
 from coire_api.registry.service import load_state_for, visible_to
@@ -241,7 +246,7 @@ def _load_label(state: LoadState) -> Literal["loaded", "loading", "cold"]:
 
 
 @router.get("/models", response_model=GatewayModelList)
-async def list_models(principal: CurrentPrincipal, session: SessionDep) -> GatewayModelList:
+async def list_models(principal: CurrentAuthenticated, session: SessionDep) -> GatewayModelList:
     rows = (await session.execute(select(ModelRow).order_by(ModelRow.display_name))).scalars().all()
     visible = [model for model in rows if visible_to(is_admin=principal.is_admin, model=model)]
     engines: Sequence[EngineProcessRow] = []
@@ -279,7 +284,7 @@ async def list_models(principal: CurrentPrincipal, session: SessionDep) -> Gatew
 async def chat_completions(
     body: ChatCompletionRequest,
     request: Request,
-    principal: CurrentPrincipal,
+    principal: CurrentAuthenticated,
     session: SessionDep,
     settings: SettingsDep,
 ) -> object:
@@ -300,12 +305,22 @@ async def chat_completions(
         await usage.finish(UsageOutcome.REFUSED, failure_code="context_length")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     if resolved.engine_url is None or resolved.model_path is None:
+        retry_after = await retry_after_seconds(
+            session, body.model, fallback=settings.gateway_retry_after_s
+        )
+        if body.stream and retry_after >= settings.gateway_wait_ceiling_s:
+            await usage.finish(UsageOutcome.REFUSED, failure_code="model_wait_ceiling")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "estimated model load exceeds wait ceiling",
+                headers={"Retry-After": str(retry_after)},
+            )
         if not body.coire_wait_for_model:
             await usage.finish(UsageOutcome.REFUSED, failure_code="model_cold")
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "model is not loaded",
-                headers={"Retry-After": str(settings.gateway_retry_after_s)},
+                headers={"Retry-After": str(retry_after)},
             )
         if body.stream:
             return _streaming_response(
@@ -319,7 +334,7 @@ async def chat_completions(
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 f"model load failed: {exc}",
-                headers={"Retry-After": str(settings.gateway_retry_after_s)},
+                headers={"Retry-After": str(retry_after)},
             ) from exc
         if resolved.engine_url is None or resolved.model_path is None:
             await usage.finish(UsageOutcome.FAILED, failure_code="model_not_ready")
@@ -359,7 +374,7 @@ async def chat_completions(
 async def anthropic_messages(
     body: AnthropicMessagesRequest,
     request: Request,
-    principal: CurrentPrincipal,
+    principal: CurrentAuthenticated,
     session: SessionDep,
     settings: SettingsDep,
 ) -> object:
@@ -372,13 +387,28 @@ async def anthropic_messages(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
     usage.model_id = resolved.model_id
     usage.engine_id = resolved.engine_id
+    try:
+        usage.prompt_tokens = enforce_anthropic_context(body, limit=resolved.context_window)
+    except ContextLengthError as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="context_length")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     if resolved.engine_url is None or resolved.model_path is None:
+        retry_after = await retry_after_seconds(
+            session, body.model, fallback=settings.gateway_retry_after_s
+        )
+        if body.stream and retry_after >= settings.gateway_wait_ceiling_s:
+            await usage.finish(UsageOutcome.REFUSED, failure_code="model_wait_ceiling")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "estimated model load exceeds wait ceiling",
+                headers={"Retry-After": str(retry_after)},
+            )
         if not body.coire_wait_for_model:
             await usage.finish(UsageOutcome.REFUSED, failure_code="model_cold")
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 "model is not loaded",
-                headers={"Retry-After": str(settings.gateway_retry_after_s)},
+                headers={"Retry-After": str(retry_after)},
             )
         if body.stream:
             return _streaming_response(
@@ -392,7 +422,7 @@ async def anthropic_messages(
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,
                 f"model load failed: {exc}",
-                headers={"Retry-After": str(settings.gateway_retry_after_s)},
+                headers={"Retry-After": str(retry_after)},
             ) from exc
         if resolved.engine_url is None or resolved.model_path is None:
             await usage.finish(UsageOutcome.FAILED, failure_code="model_not_ready")

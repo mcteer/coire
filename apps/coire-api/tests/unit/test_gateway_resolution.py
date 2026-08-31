@@ -5,7 +5,7 @@ from pydantic import ValidationError
 
 from coire_api.auth import ADMIN, Principal, PrincipalKind
 from coire_api.db import ModelRow
-from coire_api.gateway.resolution import _visible
+from coire_api.gateway.resolution import _visible, retry_after_seconds
 from coire_core.models.gateway import ChatCompletionRequest
 from coire_core.models.registry import ModelState, Visibility
 
@@ -52,3 +52,21 @@ def test_unpublished_and_unentitled_are_indistinguishable_to_user() -> None:
     assert not _visible(model(visibility=Visibility.ADMIN_ONLY), user)
     assert not _visible(model(entitlement=["explicit"]), user)
     assert _visible(model(visibility=Visibility.ADMIN_ONLY), ADMIN)
+
+
+@pytest.mark.asyncio
+async def test_retry_after_uses_rounded_up_measured_warmup() -> None:
+    class Session:
+        async def scalar(self, _statement: object) -> float:
+            return 5.01
+
+    assert await retry_after_seconds(Session(), uuid.uuid4(), fallback=30) == 6  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_retry_after_falls_back_before_first_measurement() -> None:
+    class Session:
+        async def scalar(self, _statement: object) -> None:
+            return None
+
+    assert await retry_after_seconds(Session(), uuid.uuid4(), fallback=30) == 30  # type: ignore[arg-type]

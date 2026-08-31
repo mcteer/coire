@@ -108,3 +108,15 @@
 Complete setup and foundation, then deliver US1 as the SDK-compatible MVP. Add Anthropic adaptation,
 cold-load behavior, refusal hardening, and usage accounting in order, keeping every completed phase
 green. Finish with observability, operational documentation, generated contracts, and measured gates.
+
+## Phase 9: Convergence
+
+- [X] T041 CRITICAL Require an authenticated principal on every `/v1` route per Constitution IV and US1 (contradicts)
+- [X] T042 CRITICAL Restrict Studio engine ports so only the gateway workload can reach them per Constitution I and FR-019 (contradicts)
+- [X] T043 CRITICAL Add attributable gateway, queue, load, upstream, and generation spans and wire the declared queue metric per Constitution VI and FR-020 (partial)
+- [X] T044 Derive cold-model `Retry-After` from recorded or estimated warm-up duration per FR-010 (partial)
+- [X] T045 Persist attributable usage for compatible-route request validation failures per FR-013 and SC-008 (partial)
+- [X] T046 Enforce context limits for Anthropic Messages requests per FR-018 (partial)
+- [X] T047 Add an editor integration and Anthropic CLI compatibility acceptance check per US1/AC4 and SC-002 (missing)
+- [X] T048 Prove client disconnect promptly closes the upstream engine stream in integration coverage per FR-015 (partial)
+- [X] T049 Return the specified `503` plus `Retry-After` when a streaming cold wait reaches its ceiling per US3/AC4 (contradicts)

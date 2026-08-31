@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import socket
 import struct
 import subprocess
@@ -55,8 +56,11 @@ def gateway_model(api_url: str, admin_headers: dict[str, str]) -> str:
         return str(found["id"])
 
 
-async def test_official_openai_sdk_lists_and_streams(api_url: str, gateway_model: str) -> None:
-    async with openai.AsyncOpenAI(api_key="coire-test", base_url=f"{api_url}/v1") as client:
+async def test_official_openai_sdk_lists_and_streams(
+    api_url: str, gateway_model: str, admin_headers: dict[str, str]
+) -> None:
+    token = admin_headers["Authorization"].removeprefix("Bearer ")
+    async with openai.AsyncOpenAI(api_key=token, base_url=f"{api_url}/v1") as client:
         listing = await client.models.list()
         assert gateway_model in {model.id for model in listing.data}
         stream = await client.chat.completions.create(
@@ -68,8 +72,11 @@ async def test_official_openai_sdk_lists_and_streams(api_url: str, gateway_model
     assert text.strip()
 
 
-async def test_official_anthropic_sdk_streams(api_url: str, gateway_model: str) -> None:
-    async with anthropic.AsyncAnthropic(api_key="coire-test", base_url=api_url) as client:
+async def test_official_anthropic_sdk_streams(
+    api_url: str, gateway_model: str, admin_headers: dict[str, str]
+) -> None:
+    token = admin_headers["Authorization"].removeprefix("Bearer ")
+    async with anthropic.AsyncAnthropic(api_key=token, base_url=api_url) as client:
         stream = await client.messages.create(
             model=gateway_model,
             max_tokens=8,
@@ -80,6 +87,48 @@ async def test_official_anthropic_sdk_streams(api_url: str, gateway_model: str) 
         async for event in stream:
             events.append(event)
     assert any(getattr(event, "type", None) == "message_stop" for event in events)
+
+
+def test_unmodified_claude_code_cli_uses_gateway(
+    api_url: str, gateway_model: str, admin_headers: dict[str, str]
+) -> None:
+    executable = shutil.which("claude")
+    if executable is None:
+        pytest.skip("Claude Code CLI is not installed on this validation host")
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "ANTHROPIC_API_KEY": admin_headers["Authorization"].removeprefix("Bearer "),
+            "ANTHROPIC_BASE_URL": api_url,
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+            "CLAUDE_CODE_DISABLE_UNKNOWN_MODEL_WINDOW_ENFORCEMENT": "1",
+            "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128",
+            "CLAUDE_CODE_MAX_RETRIES": "0",
+            "CLAUDE_CODE_EXIT_AFTER_STOP_DELAY": "100",
+            "MAX_THINKING_TOKENS": "0",
+        }
+    )
+    result = subprocess.run(
+        [
+            executable,
+            "--bare",
+            "--print",
+            "--settings",
+            json.dumps(
+                {"modelOverrides": {"claude-sonnet-4-6": gateway_model}}, separators=(",", ":")
+            ),
+            "--model",
+            "claude-sonnet-4-6",
+            "Reply with exactly: coire-cli-ok",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env=environment,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert result.stdout.strip(), "Claude Code completed without returning assistant text"
 
 
 async def test_concurrent_cold_requests_share_the_load(
@@ -96,7 +145,8 @@ async def test_concurrent_cold_requests_share_the_load(
                     f"/api/v1/admin/engines/{engine['id']}", headers=admin_headers
                 )
                 assert response.status_code in (200, 202, 204), response.text
-    async with openai.AsyncOpenAI(api_key="coire-test", base_url=f"{api_url}/v1") as client:
+    token = admin_headers["Authorization"].removeprefix("Bearer ")
+    async with openai.AsyncOpenAI(api_key=token, base_url=f"{api_url}/v1") as client:
         results = await asyncio.gather(
             *(
                 client.chat.completions.create(
@@ -135,16 +185,18 @@ def _usage_outcomes() -> list[str]:
 
 
 async def test_completed_and_refused_requests_are_persisted(
-    api_url: str, gateway_model: str
+    api_url: str, gateway_model: str, admin_headers: dict[str, str]
 ) -> None:
     before = len(_usage_outcomes())
     async with httpx.AsyncClient(base_url=api_url) as client:
         completed = await client.post(
             "/v1/chat/completions",
+            headers=admin_headers,
             json={"model": gateway_model, "messages": [{"role": "user", "content": "usage"}]},
         )
         refused = await client.post(
             "/v1/chat/completions",
+            headers=admin_headers,
             json={
                 "model": "00000000-0000-0000-0000-000000000000",
                 "messages": [{"role": "user", "content": "usage"}],
@@ -157,13 +209,16 @@ async def test_completed_and_refused_requests_are_persisted(
     assert "refused" in outcomes
 
 
-async def test_failed_stream_is_persisted(api_url: str, gateway_model: str) -> None:
+async def test_failed_stream_is_persisted(
+    api_url: str, gateway_model: str, admin_headers: dict[str, str]
+) -> None:
     before = len(_usage_outcomes())
     async with (
         httpx.AsyncClient(base_url=api_url, timeout=10) as client,
         client.stream(
             "POST",
             "/v1/chat/completions",
+            headers=admin_headers,
             json={
                 "model": gateway_model,
                 "stream": True,
@@ -184,7 +239,9 @@ async def test_failed_stream_is_persisted(api_url: str, gateway_model: str) -> N
     assert "failed" in outcomes
 
 
-async def test_abandoned_stream_is_persisted(direct_api_url: str, gateway_model: str) -> None:
+async def test_abandoned_stream_is_persisted(
+    direct_api_url: str, gateway_model: str, admin_headers: dict[str, str]
+) -> None:
     before = len(_usage_outcomes())
     endpoint = urlsplit(direct_api_url)
     reader, writer = await asyncio.open_connection(endpoint.hostname, endpoint.port)
@@ -199,6 +256,7 @@ async def test_abandoned_stream_is_persisted(direct_api_url: str, gateway_model:
         b"POST /v1/chat/completions HTTP/1.1\r\n"
         + f"Host: {endpoint.hostname}\r\n".encode()
         + b"Content-Type: application/json\r\n"
+        + f"Authorization: {admin_headers['Authorization']}\r\n".encode()
         + f"Content-Length: {len(body)}\r\n".encode()
         + b"Connection: close\r\n\r\n"
         + body

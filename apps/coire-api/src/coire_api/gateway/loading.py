@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 from sqlalchemy import select
 
 from coire_api.db import EngineProcessRow, ModelCopyRow, ModelRow, NodeRow, session_scope
+from coire_api.gateway.telemetry import tracer
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_core.models.engine import EngineState
 from coire_core.models.node import Reachability
@@ -112,4 +113,6 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             row.state_reason = engine.state_reason
             row.load_seconds = engine.load_seconds
 
-    await coordinator.run(model_id, _load)
+    with tracer.start_as_current_span("coire.gateway.load") as span:
+        span.set_attribute("coire.model.id", str(model_id))
+        await coordinator.run(model_id, _load)

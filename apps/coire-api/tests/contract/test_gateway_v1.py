@@ -9,7 +9,7 @@ import pytest
 from fastapi import FastAPI
 
 from coire_api.app import create_app
-from coire_api.auth import ANONYMOUS, require_principal
+from coire_api.auth import ADMIN, ANONYMOUS, require_principal
 from coire_api.db import get_session
 from coire_api.gateway.proxy import EngineProxyError
 from coire_api.gateway.resolution import ModelNotFoundError, ResolvedModel
@@ -29,7 +29,7 @@ def app(gateway_fake_session: object, monkeypatch: pytest.MonkeyPatch) -> FastAP
 
     application.dependency_overrides[get_session] = session
     application.dependency_overrides[get_settings] = lambda: settings
-    application.dependency_overrides[require_principal] = lambda: ANONYMOUS
+    application.dependency_overrides[require_principal] = lambda: ADMIN
 
     async def discard_usage(**_: object) -> None:
         return None
@@ -51,6 +51,18 @@ async def test_models_has_openai_list_shape(app: FastAPI) -> None:
     response = await request(app, "GET", "/v1/models")
     assert response.status_code == 200
     assert response.json() == {"object": "list", "data": []}
+
+
+async def test_every_compatible_route_requires_authentication(app: FastAPI) -> None:
+    app.dependency_overrides[require_principal] = lambda: ANONYMOUS
+    for method, path, body in (
+        ("GET", "/v1/models", None),
+        ("POST", "/v1/chat/completions", {}),
+        ("POST", "/v1/messages", {}),
+    ):
+        response = await request(app, method, path, json=body)
+        assert response.status_code == 401, path
+        assert response.headers["www-authenticate"] == "Bearer"
 
 
 async def test_openai_nonstream_replaces_model_with_resolved_path(
@@ -124,6 +136,28 @@ async def test_malformed_model_never_reaches_resolution(
         json={"model": "slug@adapter", "messages": [{"role": "user", "content": "hello"}]},
     )
     assert response.status_code == 422
+
+
+async def test_malformed_inference_request_records_refused_usage(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    recorded: list[dict[str, object]] = []
+
+    async def persist(**kwargs: object) -> None:
+        recorded.append(kwargs)
+
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={"model": "not-a-registry-uuid", "messages": []},
+    )
+    assert response.status_code == 422
+    assert len(recorded) == 1
+    assert recorded[0]["requested_model_id"] == "not-a-registry-uuid"
+    assert recorded[0]["outcome"] is UsageOutcome.REFUSED
+    assert recorded[0]["failure_code"] == "request_validation"
 
 
 async def test_anthropic_nonstream_shape(app: FastAPI, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -220,6 +254,36 @@ async def test_anthropic_stream_has_required_terminal_event(
     assert response.status_code == 200
     assert "event: message_start" in response.text
     assert response.text.endswith('event: message_stop\ndata: {"type":"message_stop"}\n\n')
+
+
+async def test_stream_is_rejected_before_commit_when_warmup_exceeds_ceiling(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_id = uuid.uuid4()
+
+    async def cold(*_: object) -> ResolvedModel:
+        return ResolvedModel(model_id, "safe", 4096, None, None, None, None)
+
+    async def slow(*_: object, **__: object) -> int:
+        return 60
+
+    settings = app.dependency_overrides[get_settings]()
+    settings.gateway_wait_ceiling_s = 10
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", cold)
+    monkeypatch.setattr("coire_api.routes.v1.retry_after_seconds", slow)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": str(model_id),
+            "stream": True,
+            "messages": [{"role": "user", "content": "hello"}],
+        },
+    )
+    assert response.status_code == 503
+    assert response.headers["retry-after"] == "60"
+    assert response.headers["content-type"].startswith("application/problem+json")
 
 
 async def test_engine_failure_and_disconnect_are_terminal_usage_outcomes(

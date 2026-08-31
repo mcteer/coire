@@ -8,8 +8,8 @@ case "$MODE" in --check|--apply) ;; *) echo "usage: $0 [--check|--apply]" >&2; e
 HOST="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
 case "$HOST" in
   coire-core) PEERS="coire-edge-a coire-edge-b"; PORTS="8180 4317" ;;
-  coire-edge-a) PEERS="coire-core coire-edge-b.fabric"; PORTS="9400 9401 9500:9599" ;;
-  coire-edge-b) PEERS="coire-core coire-edge-a.fabric"; PORTS="9400 9401 9500:9599" ;;
+  coire-edge-a) PEERS="coire-core coire-edge-b.fabric"; PORTS="9400 9401" ;;
+  coire-edge-b) PEERS="coire-core coire-edge-a.fabric"; PORTS="9400 9401" ;;
   *) echo "refusing unknown host: $HOST" >&2; exit 2 ;;
 esac
 

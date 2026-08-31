@@ -53,6 +53,11 @@ framing. Nginx buffering stays disabled and upstream read timeout exceeds the wa
 
 **Alternatives considered**: Buffer complete responses; background consumer queues; WebSockets.
 
+Bare engines bind to Studio loopback. The gateway reaches them only through a typed,
+bearer-authenticated coire-node relay on port 9400; Studio firewall rules do not expose the engine
+port range. This makes the node agent the process/network owner without introducing an inference
+wrapper or allowing another core process to bypass gateway policy.
+
 ## R5 — Cold-load coordination and overload
 
 **Decision**: A per-model async coordinator deduplicates concurrent load requests. Default streaming

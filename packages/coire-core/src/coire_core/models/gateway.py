@@ -84,10 +84,35 @@ class AnthropicMessagesRequest(BaseModel):
     stream: bool = False
     temperature: float | None = Field(default=None, ge=0)
     top_p: float | None = Field(default=None, ge=0, le=1)
+    top_k: int | None = Field(default=None, ge=0)
     stop_sequences: list[str] | None = None
     tools: list[dict[str, Any]] | None = None
     tool_choice: dict[str, Any] | None = None
+    output_config: dict[str, Any] | None = None
+    thinking: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+    service_tier: str | None = None
+    context_management: dict[str, Any] | None = None
+    container: str | dict[str, Any] | None = None
+    mcp_servers: list[dict[str, Any]] | None = None
     coire_wait_for_model: bool = True
+
+
+class EngineChatRequest(BaseModel):
+    """Registry-resolved payload carried from the gateway to a node-owned engine."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = Field(min_length=1, max_length=4096)
+    messages: list[ChatMessage] = Field(min_length=1)
+    stream: bool = False
+    max_tokens: int | None = Field(default=None, ge=1)
+    temperature: float | None = Field(default=None, ge=0)
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    stop: str | list[str] | None = None
+    tools: list[dict[str, Any]] | None = None
+    tool_choice: Any = None
+    response_format: dict[str, Any] | None = None
 
 
 class GatewayProtocol(StrEnum):

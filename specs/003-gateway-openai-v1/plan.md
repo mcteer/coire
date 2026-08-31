@@ -9,7 +9,8 @@
 Add typed OpenAI Chat Completions, model-listing, and Anthropic Messages surfaces to `coire-api`.
 The gateway resolves opaque registry UUIDs before engine contact, asks the existing registry/node
 control path to load at most one engine per model, streams engine responses without buffering,
-records durable usage for success/failure/disconnect, and leaves placement, real user auth, and
+records durable usage for success/failure/disconnect, requires the existing Keychain-backed
+credential until feature 007 adds user/service identities, and leaves placement and
 multi-instance routing behind their existing feature seams.
 
 ## Technical Context
@@ -48,15 +49,16 @@ single-process gateway concurrency
   process or shared production image is introduced.
 - **III — Contracts first**: PASS. All OpenAI, Anthropic, usage, and error shapes originate in
   `coire-core`; OpenAPI and contract tests change together.
-- **IV — Zero implicit trust**: PASS with the existing ADR-0004 transition seam. Every route depends
-  on `CurrentPrincipal`; feature 007 replaces identity resolution without changing gateway logic.
+- **IV — Zero implicit trust**: PASS with the existing ADR-0004 transition seam. Every route refuses
+  an anonymous principal; feature 007 expands identity resolution without changing gateway policy.
 - **V — Models are data**: PASS. Only a registry UUID resolves; paths and slugs are database-derived.
 - **VI — Observable**: PASS. Gateway spans, latency/in-flight/usage metrics, structured identifiers,
   dashboard hooks, and an overload/engine-failure alert are required.
 - **VII — Spec/test gated**: PASS. Contract tests precede routes and integration uses the tiny model.
 
 Post-design re-check: PASS. The design adds one reversible migration and no new production service,
-network, secret, capability, or engine exposure.
+secret, capability, or engine exposure. Bare engines bind to Studio loopback and gateway traffic
+crosses the existing authenticated node-control boundary.
 
 ## Project Structure
 

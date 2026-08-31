@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import uuid
 from dataclasses import dataclass
 
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal
 from coire_api.db import EngineProcessRow, ModelCopyRow, ModelRow, NodeRow
+from coire_api.gateway.telemetry import tracer
 from coire_core.models.engine import EngineState
 from coire_core.models.registry import ModelState, Visibility
 
@@ -40,9 +42,13 @@ def _visible(model: ModelRow, principal: Principal) -> bool:
 async def resolve_model(
     session: AsyncSession, requested_id: uuid.UUID, principal: Principal
 ) -> ResolvedModel:
-    model = await session.get(ModelRow, requested_id)
-    if model is None or not _visible(model, principal):
-        raise ModelNotFoundError
+    with tracer.start_as_current_span("coire.gateway.resolve") as span:
+        span.set_attribute("coire.model.requested_id", str(requested_id))
+        model = await session.get(ModelRow, requested_id)
+        if model is None or not _visible(model, principal):
+            span.set_attribute("coire.gateway.resolution", "refused")
+            raise ModelNotFoundError
+        span.set_attribute("coire.model.id", str(model.id))
 
     result = await session.execute(
         select(EngineProcessRow, NodeRow, ModelCopyRow)
@@ -70,5 +76,19 @@ async def resolve_model(
         copy.path,
         engine.id,
         node.name,
-        f"http://{node.name}.lab:{engine.port}",
+        f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
     )
+
+
+async def retry_after_seconds(session: AsyncSession, model_id: uuid.UUID, *, fallback: int) -> int:
+    """Return the most recent measured warm-up, falling back only before one exists."""
+    measured = await session.scalar(
+        select(EngineProcessRow.load_seconds)
+        .where(
+            EngineProcessRow.model_id == model_id,
+            EngineProcessRow.load_seconds.is_not(None),
+        )
+        .order_by(EngineProcessRow.started_at.desc())
+        .limit(1)
+    )
+    return max(1, math.ceil(float(measured))) if measured is not None else fallback

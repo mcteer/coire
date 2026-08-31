@@ -278,7 +278,7 @@ paths:
                 items: { $ref: "#/components/schemas/EngineStatus" }
     post:
       summary: >
-        Start `mlx_lm.server` for a local copy, bound to the mesh address on a port from the
+        Start `mlx_lm.server` for a local copy, bound to loopback on a port from the
         engine range (FR-018). Returns `starting`; the engine is `ready` only once it answers its
         own health probe (FR-012). A second load of the same slug returns the existing engine
         with 200 (FR-019). Refused with 409 when `memory_committed_bytes + estimate_bytes` would
@@ -342,6 +342,37 @@ paths:
               schema: { $ref: "#/components/schemas/EngineStatus" }
         "404": { description: Unknown engine. }
 
+  /node/engines/{engine_id}/proxy/v1/chat/completions:
+    parameters:
+      - { in: path, name: engine_id, required: true, schema: { type: string, format: uuid } }
+    post:
+      summary: Carry one authenticated, registry-resolved gateway request to a loopback engine.
+      operationId: proxyEngineChatCompletion
+      security: [{ nodeToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [model, messages]
+              properties:
+                model: { type: string, minLength: 1, description: Registry-resolved local path. }
+                messages: { type: array, minItems: 1, items: { type: object } }
+                stream: { type: boolean, default: false }
+                max_tokens: { type: [integer, "null"], minimum: 1 }
+                temperature: { type: [number, "null"], minimum: 0 }
+                top_p: { type: [number, "null"], minimum: 0, maximum: 1 }
+                stop: {}
+                tools: { type: [array, "null"], items: { type: object } }
+                tool_choice: {}
+                response_format: { type: [object, "null"] }
+      responses:
+        "200": { description: Engine JSON response or SSE stream. }
+        "401": { description: Bad or missing node bearer. }
+        "404": { description: Unknown engine. }
+        "503": { description: Engine is not ready. }
   /node/engines/reconcile:
     post:
       summary: >

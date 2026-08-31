@@ -4,7 +4,7 @@ rules:
   - name: core-to-node-control
     sources: [coire-core]
     destinations: [coire-edge-a, coire-edge-b]
-    tcp_ports: [9400, 9500-9599]
+    tcp_ports: [9400]
   - name: studio-peer-data
     sources: [coire-edge-a.fabric, coire-edge-b.fabric]
     destinations: [coire-edge-a.fabric, coire-edge-b.fabric]

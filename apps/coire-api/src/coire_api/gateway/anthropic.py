@@ -28,7 +28,7 @@ def to_openai_payload(body: AnthropicMessagesRequest, *, model_path: str) -> dic
         "max_tokens": body.max_tokens,
         "stream": body.stream,
     }
-    for name in ("temperature", "top_p", "tools", "tool_choice"):
+    for name in ("temperature", "top_p", "top_k", "tools", "tool_choice"):
         value = getattr(body, name)
         if value is not None:
             payload[name] = value

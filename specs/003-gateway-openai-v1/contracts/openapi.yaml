@@ -2,6 +2,8 @@ openapi: 3.1.0
 info:
   title: Coire compatible gateway contract
   version: 0.1.0
+security:
+  - bearerAuth: []
 paths:
   /v1/models:
     get:
@@ -12,6 +14,7 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ModelList'}
+        '401': {$ref: '#/components/responses/Problem'}
   /v1/chat/completions:
     post:
       operationId: createChatCompletion
@@ -23,6 +26,7 @@ paths:
       responses:
         '200':
           description: JSON completion or text/event-stream chunks when stream is true
+        '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '429': {$ref: '#/components/responses/Problem'}
         '503': {$ref: '#/components/responses/Problem'}
@@ -37,10 +41,15 @@ paths:
       responses:
         '200':
           description: JSON message or Anthropic SSE event sequence when stream is true
+        '401': {$ref: '#/components/responses/Problem'}
         '404': {$ref: '#/components/responses/Problem'}
         '429': {$ref: '#/components/responses/Problem'}
         '503': {$ref: '#/components/responses/Problem'}
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
   responses:
     Problem:
       description: RFC 9457 problem detail
@@ -114,9 +123,17 @@ components:
         stream: {type: boolean, default: false}
         temperature: {type: number, minimum: 0}
         top_p: {type: number, minimum: 0, maximum: 1}
+        top_k: {type: integer, minimum: 0}
         stop_sequences: {type: array, items: {type: string}}
         tools: {type: array, items: {type: object, additionalProperties: true}}
         tool_choice: {type: object, additionalProperties: true}
+        output_config: {type: object, additionalProperties: true}
+        thinking: {type: object, additionalProperties: true}
+        metadata: {type: object, additionalProperties: true}
+        service_tier: {type: string}
+        context_management: {type: object, additionalProperties: true}
+        container: {}
+        mcp_servers: {type: array, items: {type: object, additionalProperties: true}}
         coire_wait_for_model: {type: boolean, default: true}
       additionalProperties: false
     Problem:
