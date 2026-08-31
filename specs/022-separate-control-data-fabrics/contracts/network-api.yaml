@@ -70,7 +70,7 @@ components:
       required: [contract_version, control_host, data_host]
       properties:
         contract_version: { type: integer, const: 2 }
-        control_host: { type: string, pattern: "^coire-[a-z0-9-]+$" }
+        control_host: { type: string, pattern: "^coire-[a-z0-9-]+(?:\\.lab)?$" }
         data_host: { type: [string, "null"], pattern: "^coire-edge-[ab]\\.fabric$" }
 
     NodeRegistrationV1:

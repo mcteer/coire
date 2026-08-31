@@ -186,7 +186,7 @@ class JobSupervisor:
                 "store_dir": str(self._store.root),
                 "cache_dir": self._settings.node_hf_cache_dir,
                 "disk_reserve_bytes": self._settings.disk_reserve_bytes,
-                "node_port": self._settings.node_listen_port,
+                "node_data_port": self._settings.node_data_listen_port,
             }
             self._write(full_params, status)
             self._spawn(job_id)

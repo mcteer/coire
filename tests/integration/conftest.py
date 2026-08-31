@@ -34,6 +34,11 @@ os.environ.setdefault("COMPOSE_PROJECT_NAME", PROJECT)
 # integration overlay is selected with COMPOSE_FILE rather than by teaching the script a flag
 # it would only ever use here. Docker Compose reads it as a path-separated list.
 os.environ.setdefault("COMPOSE_FILE", f"compose.yaml{os.pathsep}compose.override.it.yaml")
+# Production publishes nginx on 8180 so it can coexist with other local control planes. The
+# integration contract predates that host-port choice and all live fixtures intentionally use
+# loopback 8080; pin the test project explicitly instead of inheriting deploy/compose/.env.
+os.environ.setdefault("COIRE_CONTROL_BIND_ADDRESS", "127.0.0.1")
+os.environ.setdefault("COIRE_CONTROL_PORT", "8080")
 
 # Generated per run, not hard-coded: the leak test greps the tree for this exact value, and a
 # literal here would match its own definition rather than a real leak.

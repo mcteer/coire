@@ -11,11 +11,12 @@ Measured on this cluster: mesh 12.0-12.6 Gb/s at 0.85-1.37 ms; egress 0.4 Gb/s a
 from __future__ import annotations
 
 import logging
+import time
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 
 import httpx
-from opentelemetry import metrics
+from opentelemetry import metrics, trace
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +26,20 @@ fallback_counter = _meter.create_counter(
     unit="1",
     description="Requests that used the egress interface because the mesh path was unreachable.",
 )
+_path_requests = _meter.create_counter(
+    "coire_network_path_requests_total", description="Requests by fixed network purpose."
+)
+_path_failures = _meter.create_counter(
+    "coire_network_path_failures_total", description="Fixed-purpose path connection failures."
+)
+_path_latency = _meter.create_histogram(
+    "coire_control_path_latency_ms", unit="ms", description="Fixed-path HTTP latency."
+)
+_tracer = trace.get_tracer("coire.net")
 
 MESH_SUFFIX = ".mesh"
 EGRESS_SUFFIX = ".local"
+DATA_SUFFIX = ".fabric"
 
 
 def _host_with(host: str, suffix: str) -> str:
@@ -47,7 +59,7 @@ def _host_with(host: str, suffix: str) -> str:
         pass
     else:
         return host
-    if host.endswith((MESH_SUFFIX, EGRESS_SUFFIX)):
+    if host.endswith((MESH_SUFFIX, EGRESS_SUFFIX, DATA_SUFFIX)):
         return host
     return f"{host}{suffix}"
 
@@ -168,3 +180,101 @@ class MeshClient:
         suffix = f":{port}" if port else ""
         url = f"http://{_host_with(host, MESH_SUFFIX)}{suffix}{path}"
         return self._client.stream(method, url, headers=dict(headers or {}), **kwargs)
+
+
+class FabricUnreachable(RuntimeError):
+    """A fixed-purpose network path could not reach its peer."""
+
+
+class _FixedPathClient:
+    def __init__(
+        self,
+        suffix: str,
+        path_name: str,
+        *,
+        timeout: float = 5.0,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._suffix = suffix
+        self._path_name = path_name
+        self._client = client or httpx.AsyncClient(timeout=timeout)
+        self._owns_client = client is None
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+    def _url(self, host: str, path: str, port: int | None) -> str:
+        port_part = f":{port}" if port else ""
+        return f"http://{_host_with(host, self._suffix)}{port_part}{path}"
+
+    async def request(
+        self,
+        method: str,
+        host: str,
+        path: str,
+        *,
+        port: int | None = None,
+        headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        url = self._url(host, path, port)
+        attributes = {"network_path": self._path_name, "peer": host}
+        _path_requests.add(1, attributes)
+        started = time.perf_counter()
+        with _tracer.start_as_current_span(
+            f"coire.net.{self._path_name}.request", attributes=attributes
+        ):
+            try:
+                response = await self._client.request(
+                    method, url, headers=dict(headers or {}), **kwargs
+                )
+                _path_latency.record((time.perf_counter() - started) * 1000, attributes)
+                return response
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                _path_failures.add(1, attributes)
+                logger.warning(
+                    "fixed network path failed",
+                    extra={"network_path": self._path_name, "peer": host},
+                )
+                raise FabricUnreachable(
+                    f"{self._path_name} path to {host} unreachable; cross-fabric fallback is forbidden"
+                ) from exc
+
+    async def get(self, host: str, path: str, **kwargs: Any) -> httpx.Response:
+        return await self.request("GET", host, path, **kwargs)
+
+    async def post(self, host: str, path: str, **kwargs: Any) -> httpx.Response:
+        return await self.request("POST", host, path, **kwargs)
+
+    def stream(self, method: str, host: str, path: str, **kwargs: Any) -> Any:
+        port = kwargs.pop("port", None)
+        headers = kwargs.pop("headers", None)
+        return self._client.stream(
+            method, self._url(host, path, port), headers=dict(headers or {}), **kwargs
+        )
+
+
+class ControlClient(_FixedPathClient):
+    """Control traffic over UniFi DNS, with no data-fabric fallback."""
+
+    def __init__(self, *, timeout: float = 5.0, client: httpx.AsyncClient | None = None) -> None:
+        super().__init__("", "control", timeout=timeout, client=client)
+
+
+class DataFabricClient(_FixedPathClient):
+    """Replication/data traffic over the Studio-only ``.fabric`` link."""
+
+    def __init__(self, *, timeout: float = 5.0, client: httpx.AsyncClient | None = None) -> None:
+        super().__init__(DATA_SUFFIX, "data", timeout=timeout, client=client)

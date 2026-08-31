@@ -13,7 +13,7 @@ import pytest
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_core.models.engine import ReconcileRequest
 from coire_core.models.jobs import ChecksumManifest
-from coire_core.net import MeshClient
+from coire_core.net import ControlClient
 from coire_core.settings import Settings
 
 JOB_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -32,7 +32,9 @@ def _client(
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     settings.node_tokens = type(settings.node_tokens)('{"coire-edge-a": "tok-a"}')
     client = NodeClient(settings)
-    client._mesh = MeshClient(client=httpx.AsyncClient(transport=httpx.MockTransport(wrapped)))
+    client._control = ControlClient(
+        client=httpx.AsyncClient(transport=httpx.MockTransport(wrapped))
+    )
     return client, seen
 
 
@@ -42,11 +44,12 @@ def _json(payload: Any, status: int = 200) -> httpx.Response:
 
 
 class TestAddressingAndAuth:
-    async def test_requests_go_to_the_mesh_name_with_the_node_token(self) -> None:
+    async def test_requests_go_to_the_control_name_with_the_node_token(self) -> None:
         client, seen = _client(lambda r: _json({"items": []}))
         await client.list_models("coire-edge-a")
         await client.aclose()
-        assert "coire-edge-a.mesh:9400" in str(seen[0].url)
+        assert "coire-edge-a:9400" in str(seen[0].url)
+        assert ".mesh" not in str(seen[0].url)
         assert seen[0].headers["Authorization"] == "Bearer tok-a"
 
     async def test_a_node_without_a_token_still_sends_a_header(self) -> None:

@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import SecretStr
 
-from coire_core.models.node import NodePath, NodeStatus, ThermalState
+from coire_core.models.node import NetworkPath, NodePath, NodeStatus, ThermalState
 from coire_core.settings import Settings
 from coire_node.engines import EngineManager
 from coire_node.grants import Grants
@@ -84,7 +84,7 @@ class Agent:
         self.collector = StubCollector()
         self.collector.attach(store=self.store, jobs=self.jobs, engines=self.engines)
 
-    def app(self, listener: NodePath = NodePath.MESH) -> FastAPI:
+    def app(self, listener: NodePath | NetworkPath = NodePath.MESH) -> FastAPI:
         from coire_node.agent import create_app
 
         return create_app(
@@ -97,7 +97,7 @@ class Agent:
             grants=self.grants,
         )
 
-    def client(self, listener: NodePath = NodePath.MESH) -> Any:
+    def client(self, listener: NodePath | NetworkPath = NodePath.MESH) -> Any:
         """A TestClient carrying this node's bearer (and the fallback marker when needed)."""
         from fastapi.testclient import TestClient
 

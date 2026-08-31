@@ -13,18 +13,26 @@ from __future__ import annotations
 import logging
 import re
 import shutil
+import socket
 import subprocess
 import threading
 import time
 from datetime import UTC, datetime
 
 import psutil
+from opentelemetry import metrics as otel_metrics
 
 from coire_core.models.engine import EngineStatus
 from coire_core.models.jobs import JobStatus
+from coire_core.models.link import LinkState, RdmaState, StudioDataLinkStatus
 from coire_core.models.node import NodePath, NodeStatus, ThermalState
 
 logger = logging.getLogger(__name__)
+_meter = otel_metrics.get_meter("coire.node.network")
+_data_link_up = _meter.create_gauge("coire_data_link_up", description="Studio data-link IP state")
+_data_link_latency = _meter.create_histogram(
+    "coire_data_link_latency_ms", unit="ms", description="Studio data-link connect latency"
+)
 
 IOREG_TIMEOUT_S = 3.0
 _GPU_UTIL_RE = re.compile(rb'"Device Utilization %"\s*=\s*(\d+)')
@@ -243,3 +251,47 @@ class MetricsCollector:
         if status is None:
             status = self.sample()
         return status.model_copy(update={"path": path})
+
+    def data_link_status(self, *, port: int = 9401) -> StudioDataLinkStatus:
+        """Measure IP and RDMA independently; control reachability is never inferred here."""
+        peer = "coire-edge-b" if self._name == "coire-edge-a" else "coire-edge-a"
+        started = time.perf_counter()
+        ip_state = LinkState.DOWN
+        reason: str | None = None
+        try:
+            with socket.create_connection((f"{peer}.fabric", port), timeout=1.0):
+                ip_state = LinkState.UP
+        except OSError as exc:
+            reason = str(exc)[:512]
+        latency_ms = (time.perf_counter() - started) * 1000 if ip_state is LinkState.UP else None
+        attributes = {"network_path": "data", "peer": peer, "node": self._name}
+        _data_link_up.set(1 if ip_state is LinkState.UP else 0, attributes)
+        if latency_ms is not None:
+            _data_link_latency.record(latency_ms, attributes)
+
+        rdma_state = RdmaState.UNKNOWN
+        profiler = shutil.which("system_profiler")
+        if profiler:
+            try:
+                result = subprocess.run(
+                    [profiler, "SPThunderboltDataType"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                text = result.stdout.lower()
+                if "rdma" in text and ("yes" in text or "enabled" in text):
+                    rdma_state = RdmaState.UP
+                elif result.returncode == 0 and "thunderbolt" in text:
+                    rdma_state = RdmaState.DEGRADED
+            except (OSError, subprocess.SubprocessError):
+                pass
+        return StudioDataLinkStatus(
+            node_a="coire-edge-a",
+            node_b="coire-edge-b",
+            ip_state=ip_state,
+            rdma_state=rdma_state,
+            latency_ms=latency_ms,
+            measured_at=datetime.now(UTC),
+            reason=reason,
+        )

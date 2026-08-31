@@ -1,6 +1,6 @@
 # Integration-test overlay. NEVER used in production.
 #
-# Adds two node agents on a simulated Thunderbolt mesh so the Linux CI job can exercise the
+# Adds two node agents on a shared control network and a Studio-only data network.
 # whole of feature 001 except the model load itself (research R9): registration with its
 # mesh-subnet validation, acquisition, the mesh-only export path, engine lifecycle, and
 # reconciliation after an agent restart.
@@ -12,9 +12,10 @@
 # address (ADR-0002 governs *service config*, and this is a test harness) — production
 # compose.yaml stays free of them, which tests/integration/test_topology.py asserts.
 #
-# `node-b` is attached ONLY to the mesh network: it has no route to the internet, so a test
-# asserting the replica never pulled from Hugging Face is enforced by the topology rather than
-# by trusting a log line (spec SC-004).
+# `node-b` has the control attachment required by feature 022 and the Studio-only data
+# attachment used for replication. It deliberately receives no Hugging Face credential: only
+# the admin-selected origin may acquire externally, while the replica is populated over the
+# internal data network.
 #
 #   docker compose -f compose.yaml -f compose.override.it.yaml up -d
 
@@ -32,12 +33,8 @@ services:
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       GATEWAY_MAX_INFLIGHT_PER_ENGINE: "4"
     networks:
-      coire-mesh-sim:
-        ipv4_address: 192.168.100.10
-    extra_hosts:
-      - "coire-core.mesh:192.168.100.10"
-      - "coire-edge-a.mesh:192.168.100.11"
-      - "coire-edge-b.mesh:192.168.100.12"
+      coire-control-sim:
+        aliases: [coire-core]
 
   node-a:
     image: coire-node-test:${COIRE_TAG:-dev}
@@ -45,19 +42,22 @@ services:
       context: ../..
       dockerfile: apps/coire-node/docker/node-test.Dockerfile
     networks:
-      coire-mesh-sim:
+      coire-control-sim:
+        aliases: [coire-edge-a]
+      coire-data-sim:
         ipv4_address: 192.168.100.11
         aliases: ["coire-edge-a.lab"]
       # The origin needs egress to reach Hugging Face; it is the only container that does.
       coire-edge:
     extra_hosts:
-      - "coire-core.mesh:192.168.100.10"
-      - "coire-edge-a.mesh:192.168.100.11"
-      - "coire-edge-b.mesh:192.168.100.12"
+      - "coire-edge-a.fabric:192.168.100.11"
+      - "coire-edge-b.fabric:192.168.100.12"
     environment:
       NODE_NAME: coire-edge-a
       NODE_TOKEN: ${COIRE_IT_NODE_TOKEN_A:-a}
-      CORE_MESH_HOST: coire-core
+      CORE_CONTROL_HOST: coire-api
+      NODE_CONTROL_HOST: coire-edge-a
+      NODE_DATA_HOST: coire-edge-a.fabric
       MESH_HOSTS_FILE: /etc/hosts
       NODE_PROBE_INTERVAL_S: "2"
       NODE_ENGINE_HEALTH_INTERVAL_S: "2"
@@ -76,7 +76,7 @@ services:
     healthcheck:
       # The agent binds its mesh address, not loopback, so the probe must use that address —
       # exactly as it does on a Studio.
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://192.168.100.11:9400/ready"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://coire-edge-a:9400/ready"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -88,19 +88,22 @@ services:
       context: ../..
       dockerfile: apps/coire-node/docker/node-test.Dockerfile
     networks:
-      # Mesh only. No egress: the replica must receive its copy from the origin over the mesh,
-      # and here it physically cannot do anything else.
-      coire-mesh-sim:
+      # Control for registration/management, data for replication. Unlike node-a, this service
+      # has no coire-edge attachment and receives no Hugging Face credential.
+      coire-control-sim:
+        aliases: [coire-edge-b]
+      coire-data-sim:
         ipv4_address: 192.168.100.12
         aliases: ["coire-edge-b.lab"]
     extra_hosts:
-      - "coire-core.mesh:192.168.100.10"
-      - "coire-edge-a.mesh:192.168.100.11"
-      - "coire-edge-b.mesh:192.168.100.12"
+      - "coire-edge-a.fabric:192.168.100.11"
+      - "coire-edge-b.fabric:192.168.100.12"
     environment:
       NODE_NAME: coire-edge-b
       NODE_TOKEN: ${COIRE_IT_NODE_TOKEN_B:-b}
-      CORE_MESH_HOST: coire-core
+      CORE_CONTROL_HOST: coire-api
+      NODE_CONTROL_HOST: coire-edge-b
+      NODE_DATA_HOST: coire-edge-b.fabric
       MESH_HOSTS_FILE: /etc/hosts
       NODE_PROBE_INTERVAL_S: "2"
       NODE_ENGINE_HEALTH_INTERVAL_S: "2"
@@ -115,14 +118,15 @@ services:
     tmpfs:
       - /opt/coire:size=4g
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://192.168.100.12:9400/ready"]
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://coire-edge-b:9400/ready"]
       interval: 3s
       timeout: 3s
       retries: 20
       start_period: 5s
 
 networks:
-  coire-mesh-sim:
+  coire-control-sim:
+  coire-data-sim:
     internal: true
     ipam:
       config:

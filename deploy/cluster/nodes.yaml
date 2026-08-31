@@ -11,12 +11,16 @@
 nodes:
   coire-edge-a:
     role: studio
+    control_host: coire-edge-a.lab
+    data_host: coire-edge-a.fabric
     gpu_cores: 80
     description: >-
       Studio A. Rank 0 for sharded runs, default home for the largest single-node model.
       Middle of the mesh chain, so it bridges core to edge-b.
   coire-edge-b:
     role: studio
+    control_host: coire-edge-b.lab
+    data_host: coire-edge-b.fabric
     gpu_cores: 60
     description: >-
       Studio B. Rank 1, pinned admin model, image worker.

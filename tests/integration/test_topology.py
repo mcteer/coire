@@ -42,6 +42,7 @@ EXPECTED_NETWORKS = {
     "coire-internal",
     "coire-docker",
     "coire-telemetry",
+    "coire-node-ingress",
 }
 
 
@@ -52,6 +53,8 @@ def config() -> dict[str, Any]:
         "COIRE_SECRETS_DIR": "/tmp/coire-secrets-test",
         "COIRE_REGISTRY": "",
         "COIRE_TAG": "dev",
+        "COIRE_CONTROL_BIND_ADDRESS": "127.0.0.1",
+        "COIRE_CONTROL_PORT": "8180",
         # conftest sets COMPOSE_FILE so `coire-up` picks up the integration overlay. These
         # invariants are about what *ships*, so render the production file alone: an overlay
         # leaking in here would quietly weaken every assertion below.
@@ -74,13 +77,21 @@ def nets(config: dict[str, Any], service: str) -> set[str]:
 
 
 class TestNetworkSegmentation:
-    def test_exactly_five_networks(self, config: dict[str, Any]) -> None:
+    def test_exactly_six_networks(self, config: dict[str, Any]) -> None:
         assert set(config["networks"]) == EXPECTED_NETWORKS
 
-    def test_only_edge_is_external(self, config: dict[str, Any]) -> None:
+    def test_only_host_ingress_networks_are_external(self, config: dict[str, Any]) -> None:
         for name, net in config["networks"].items():
-            expected = name != "coire-edge"
+            expected = name not in {"coire-edge", "coire-node-ingress"}
             assert bool(net.get("internal", False)) is expected, name
+
+    def test_node_ingress_is_collector_only(self, config: dict[str, Any]) -> None:
+        attached = {
+            name
+            for name, service in config["services"].items()
+            if "coire-node-ingress" in (service.get("networks") or {})
+        }
+        assert attached == {"otel-collector"}
 
     def test_web_cannot_reach_postgres(self, config: dict[str, Any]) -> None:
         """The headline segmentation invariant (FR-006)."""
@@ -97,15 +108,17 @@ class TestNetworkSegmentation:
 
 
 class TestPublishedPorts:
-    def test_only_web_publishes_and_only_on_loopback(self, config: dict[str, Any]) -> None:
-        """Nothing on core is reachable from the LAN in feature 000 (ADR-0001)."""
+    def test_only_control_ingress_and_otlp_publish(self, config: dict[str, Any]) -> None:
+        """Feature 022 adds node OTLP; no database or internal service is published."""
         for name, svc in config["services"].items():
             ports = svc.get("ports") or []
-            if name != "coire-web":
+            if name not in {"coire-web", "otel-collector"}:
                 assert not ports, f"{name} publishes {ports}"
             else:
                 assert len(ports) == 1
                 assert ports[0].get("host_ip") in ("127.0.0.1", "::1")
+        assert config["services"]["coire-web"]["ports"][0]["target"] == 8080
+        assert config["services"]["otel-collector"]["ports"][0]["target"] == 4317
 
 
 class TestHardening:

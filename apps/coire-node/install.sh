@@ -75,13 +75,15 @@ mkdir -p "$PREFIX/models" "$PREFIX/state/jobs" "$PREFIX/hf-cache"
 # --- uv, confined to the prefix --------------------------------------------
 if [[ ! -x "$PREFIX/bin/uv" ]]; then
   say "installing uv $UV_VERSION"
-  UV_INSTALL_DIR="$PREFIX/bin" UV_NO_MODIFY_PATH=1 \
-    curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" | sh >/dev/null
+  curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" \
+    | UV_UNMANAGED_INSTALL="$PREFIX/bin" sh >/dev/null
 else
   say "uv already present"
 fi
 export PATH="$PREFIX/bin:$PATH"
 export UV_PYTHON_INSTALL_DIR="$PREFIX/python"
+export UV_PYTHON_BIN_DIR="$PREFIX/bin"
+export UV_NO_CACHE=1
 
 # --- pinned interpreter ----------------------------------------------------
 # The Studios have Homebrew Python 3.14 and no 3.13; the constitution pins 3.13, so the agent
@@ -91,11 +93,15 @@ uv python install "$PYTHON_VERSION" >/dev/null
 
 # --- agent virtualenv ------------------------------------------------------
 say "creating $ENV_DIR"
-uv venv --python "$PYTHON_VERSION" "$ENV_DIR" >/dev/null
+if [[ -x "$ENV_DIR/bin/python3" ]]; then
+  say "reusing existing versioned environment"
+else
+  uv venv --python "$PYTHON_VERSION" "$ENV_DIR" >/dev/null
+fi
 
 if [[ -n "$WHEEL_DIR" ]]; then
   say "installing from wheels in $WHEEL_DIR"
-  VIRTUAL_ENV="$ENV_DIR" uv pip install --python "$ENV_DIR/bin/python3" \
+  VIRTUAL_ENV="$ENV_DIR" uv pip install --upgrade --python "$ENV_DIR/bin/python3" \
     "$WHEEL_DIR"/coire_core-*.whl "$WHEEL_DIR"/coire_node-*.whl >/dev/null
 else
   echo "error: --wheel-dir is required." >&2

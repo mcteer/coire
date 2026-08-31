@@ -655,6 +655,15 @@
         "title": "HealthStatus",
         "type": "string"
       },
+      "LinkState": {
+        "enum": [
+          "unknown",
+          "up",
+          "down"
+        ],
+        "title": "LinkState",
+        "type": "string"
+      },
       "LoadState": {
         "enum": [
           "loaded",
@@ -1011,6 +1020,40 @@
         "title": "Node",
         "type": "object"
       },
+      "NodeEndpointSet": {
+        "additionalProperties": false,
+        "description": "Stable endpoint identities advertised by a v2 node agent.",
+        "properties": {
+          "contract_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Contract Version",
+            "type": "integer"
+          },
+          "control_host": {
+            "pattern": "^coire-[a-z0-9-]+(?:\\.lab)?$",
+            "title": "Control Host",
+            "type": "string"
+          },
+          "data_host": {
+            "anyOf": [
+              {
+                "pattern": "^coire-edge-[ab]\\.fabric$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Host"
+          }
+        },
+        "required": [
+          "control_host"
+        ],
+        "title": "NodeEndpointSet",
+        "type": "object"
+      },
       "NodeRegistration": {
         "additionalProperties": false,
         "description": "`POST /api/v1/nodes/register` request body.",
@@ -1081,12 +1124,152 @@
         "title": "NodeRegistration",
         "type": "object"
       },
+      "NodeRegistrationV2": {
+        "additionalProperties": false,
+        "description": "Separated-fabric registration shape (feature 022).",
+        "properties": {
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "disk_total_bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Disk Total Bytes",
+            "type": "integer"
+          },
+          "endpoints": {
+            "$ref": "#/components/schemas/NodeEndpointSet"
+          },
+          "gpu_cores": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gpu Cores"
+          },
+          "memory_total_bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Memory Total Bytes",
+            "type": "integer"
+          },
+          "name": {
+            "pattern": "^coire-[a-z0-9-]+$",
+            "title": "Name",
+            "type": "string"
+          },
+          "token": {
+            "format": "password",
+            "title": "Token",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "name",
+          "token",
+          "endpoints",
+          "memory_total_bytes",
+          "disk_total_bytes",
+          "agent_version"
+        ],
+        "title": "NodeRegistrationV2",
+        "type": "object"
+      },
       "NodeRole": {
         "enum": [
           "studio",
           "core"
         ],
         "title": "NodeRole",
+        "type": "string"
+      },
+      "NodeV2": {
+        "additionalProperties": false,
+        "description": "Persisted node response matching a v2 registration request.",
+        "properties": {
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "disk_total_bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Disk Total Bytes",
+            "type": "integer"
+          },
+          "endpoints": {
+            "$ref": "#/components/schemas/NodeEndpointSet"
+          },
+          "gpu_cores": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gpu Cores"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "memory_total_bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Memory Total Bytes",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reachability": {
+            "$ref": "#/components/schemas/Reachability",
+            "default": "unknown"
+          },
+          "registered_at": {
+            "format": "date-time",
+            "title": "Registered At",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/NodeRole"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "endpoints",
+          "memory_total_bytes",
+          "disk_total_bytes",
+          "agent_version",
+          "registered_at",
+          "last_seen_at"
+        ],
+        "title": "NodeV2",
+        "type": "object"
+      },
+      "RdmaState": {
+        "enum": [
+          "unknown",
+          "up",
+          "degraded",
+          "down"
+        ],
+        "title": "RdmaState",
         "type": "string"
       },
       "Reachability": {
@@ -1191,6 +1374,83 @@
         ],
         "title": "StructuredOutput",
         "type": "string"
+      },
+      "StudioDataLinkStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "bandwidth_bytes_per_second": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bandwidth Bytes Per Second"
+          },
+          "ip_state": {
+            "$ref": "#/components/schemas/LinkState",
+            "default": "unknown"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "measured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured At"
+          },
+          "node_a": {
+            "pattern": "^coire-edge-[ab]$",
+            "title": "Node A",
+            "type": "string"
+          },
+          "node_b": {
+            "pattern": "^coire-edge-[ab]$",
+            "title": "Node B",
+            "type": "string"
+          },
+          "rdma_state": {
+            "$ref": "#/components/schemas/RdmaState",
+            "default": "unknown"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "node_a",
+          "node_b"
+        ],
+        "title": "StudioDataLinkStatus",
+        "type": "object"
       },
       "Tag": {
         "description": "The picker's grouping vocabulary (ARCHITECTURE.md section 3.2).",
@@ -1922,6 +2182,32 @@
         ]
       }
     },
+    "/api/v1/admin/network/links/studios": {
+      "get": {
+        "operationId": "studio_data_link_api_v1_admin_network_links_studios_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudioDataLinkStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Studio Data Link",
+        "tags": [
+          "admin: cluster"
+        ]
+      }
+    },
     "/api/v1/admin/nodes": {
       "get": {
         "description": "Declared nodes with the last status the prober received, their engines and jobs.",
@@ -1993,7 +2279,15 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/NodeRegistration"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/NodeRegistration"
+                  },
+                  {
+                    "$ref": "#/components/schemas/NodeRegistrationV2"
+                  }
+                ],
+                "title": "Registration"
               }
             }
           },
@@ -2004,7 +2298,15 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Node"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Node"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NodeV2"
+                    }
+                  ],
+                  "title": "Response Register Node Api V1 Nodes Register Post"
                 }
               }
             },

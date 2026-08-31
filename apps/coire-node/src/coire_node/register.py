@@ -18,8 +18,8 @@ import subprocess
 
 import psutil
 
-from coire_core.models.node import NodeRegistration
-from coire_core.net import MeshClient
+from coire_core.models.node import NodeEndpointSet, NodeRegistration, NodeRegistrationV2
+from coire_core.net import ControlClient, MeshClient
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -57,10 +57,28 @@ def build_registration(
     )
 
 
+def build_registration_v2(settings: Settings) -> NodeRegistrationV2:
+    name = settings.node_name or socket.gethostname().split(".")[0]
+    return NodeRegistrationV2(
+        name=name,
+        token=settings.node_token,
+        endpoints=NodeEndpointSet(
+            control_host=settings.node_control_host or name,
+            data_host=settings.node_data_host or f"{name}.fabric",
+        ),
+        memory_total_bytes=psutil.virtual_memory().total,
+        disk_total_bytes=psutil.disk_usage("/").total,
+        gpu_cores=read_gpu_cores(),
+        agent_version=settings.service_version,
+    )
+
+
 class Registrar:
     """Registers with the control plane and keeps re-registering."""
 
-    def __init__(self, settings: Settings, registration: NodeRegistration) -> None:
+    def __init__(
+        self, settings: Settings, registration: NodeRegistration | NodeRegistrationV2
+    ) -> None:
         self._settings = settings
         self._registration = registration
         self._task: asyncio.Task[None] | None = None
@@ -78,11 +96,13 @@ class Registrar:
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-    async def register_once(self, client: MeshClient) -> bool:
+    async def register_once(self, client: MeshClient | ControlClient) -> bool:
         """One attempt. Returns True on success; never raises."""
         try:
             resp = await client.post(
-                self._settings.core_mesh_host,
+                self._settings.core_mesh_host
+                if self._settings.legacy_network_mode
+                else self._settings.core_control_host,
                 "/api/v1/nodes/register",
                 port=self._settings.core_api_port,
                 json=self._registration.model_dump(mode="json")
@@ -111,7 +131,8 @@ class Registrar:
     async def _run(self) -> None:
         backoff = BACKOFF_INITIAL_S
         interval = self._settings.node_probe_interval_s * 6
-        async with MeshClient(timeout=10.0) as client:
+        client_type = MeshClient if self._settings.legacy_network_mode else ControlClient
+        async with client_type(timeout=10.0) as client:
             while not self._stopping.is_set():
                 ok = await self.register_once(client)
                 delay = interval if ok else backoff

@@ -14,7 +14,13 @@
 
 - Q: Does core retain any Thunderbolt or RDMA role? → A: No. Core is reachable on the isolated control VLAN and is absent from the Studio data fabric and distributed hostfiles.
 - Q: Which traffic remains on Thunderbolt? → A: Model replication, interconnect probes, and distributed MLX traffic between edge-a and edge-b only.
-- Q: Is Wi-Fi performance assumed sufficient without verification? → A: No. Cutover is gated by measured control-path latency and reliability; wired control networking is the fallback if Wi-Fi misses the platform objectives.
+- Q: Is Wi-Fi performance assumed sufficient without verification? → A: No. Control latency is measured and recorded, while workload-level reliability, tool-loop, and first-token objectives determine acceptance.
+
+### Session 2026-08-31
+
+- Q: Must authenticated health probes remain below 50 ms p95? → A: No. All 200 probes must succeed without degraded-path events, and latency is recorded rather than gated by a standalone ceiling.
+- Q: May the control fabric move to a wired connection? → A: No. Control and public egress remain on Wi-Fi for all three hosts; Thunderbolt remains the only wired connection and carries Studio-to-Studio data traffic only.
+- Q: Should missing validation dependencies be folded into feature 022? → A: No. Keep feature 022 and PR #11 draft, build each dependency on its own existing feature branch in roadmap order, then return to complete the unchanged acceptance gate.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -103,7 +109,7 @@ cutover, verification, and rollback sections, and record the required latency an
 - **FR-010**: Loss of a Studio's control path MUST mark that node unreachable even if its data-fabric peer remains reachable.
 - **FR-011**: Every listener MUST remain authenticated and MUST be restricted to its minimum caller set; the migration MUST NOT widen engine, node-agent, replication, telemetry, database, or container-network exposure.
 - **FR-012**: The platform MUST expose separate health and telemetry for each node's control path and for the Studio-to-Studio data link.
-- **FR-013**: Control-path loss, data-link loss, forbidden cross-fabric traffic, and sustained control-path latency violations MUST each produce structured logs, metrics, traces where applicable, and an actionable alert.
+- **FR-013**: Control-path loss, data-link loss, and forbidden cross-fabric traffic MUST each produce structured logs, metrics, traces where applicable, and an actionable alert; control-path latency MUST remain measured and visible for workload diagnosis.
 - **FR-014**: Migration MUST preserve existing node identities, registry state, model-copy state, engine lifecycle state, job history, and audit history.
 - **FR-015**: The public and administrative API compatibility surface MUST remain unchanged except for additive, prefixed Coire fields where endpoint details are exposed.
 - **FR-016**: Contract changes MUST include a compatibility note and coordinated updates to generated API artifacts and contract tests.
@@ -124,7 +130,7 @@ cutover, verification, and rollback sections, and record the required latency an
 ### Measurable Outcomes
 
 - **SC-001**: With core disconnected from Thunderbolt, both Studios automatically register and become healthy within two minutes of a simultaneous cold start.
-- **SC-002**: Two hundred consecutive authenticated health probes to each Studio over the control VLAN succeed, with p95 round-trip latency at or below 50 ms and no degraded-path events.
+- **SC-002**: Two hundred consecutive authenticated health probes to each Studio over the control VLAN succeed with no degraded-path events; p50, p95, p99, and maximum round-trip latency are recorded as diagnostic evidence rather than pass/fail criteria.
 - **SC-003**: Loaded single-node inference through the gateway retains the architecture target of at most 1.5 seconds p95 to first token for prompts of at most 4,000 tokens on the tiny validation model.
 - **SC-004**: The multi-tool validation scenario completes without network errors and with no more than 100 ms p95 control-network overhead per tool round trip.
 - **SC-005**: A representative image result reaches core successfully over the control VLAN, with transfer time recorded and no payload bytes retained on the Studio after completion.
@@ -140,11 +146,15 @@ cutover, verification, and rollback sections, and record the required latency an
 - UniFi can provide stable DNS names backed by reserved addresses for all three hosts.
 - The direct edge-a/edge-b Thunderbolt link remains physically available and supports ordinary IP transfer independently of whether RDMA is enabled.
 - The initial migration keeps the existing authentication model and does not accelerate features 007 or 019.
-- Wired control networking is outside the initial scope but is the accepted remedy if Wi-Fi cannot meet the measured service objectives.
+- Control and public internet egress remain on Wi-Fi for all three hosts. The direct Studio-to-Studio Thunderbolt connection is the only wired connection in the architecture.
 - Implementing distributed serving itself remains in feature 006; this feature supplies its corrected two-Studio topology and endpoint contracts.
 
 ## Dependencies and Supersession
 
+- Final real-cluster acceptance remains blocked on the separately specified gateway, placement,
+  instance-state, authentication, observability, agent-harness, run-orchestration, and image
+  features. Those features MUST be implemented and reviewed on their own branches; their absence
+  does not waive SC-003 through SC-005 or SC-010, and PR #11 remains draft until T047 passes.
 - Supersedes the network-path requirements FR-013 through FR-013c in `specs/000-bootstrap/spec.md`.
 - Supersedes the engine-binding portion of FR-018 in `specs/001-model-registry-node-agent/spec.md`; its direct peer-replication requirements remain in force.
 - Corrects the physical-topology assumptions in `specs/006-sharded-serving-jaccl/spec.md` without changing its two-rank placement behavior.
@@ -154,7 +164,7 @@ cutover, verification, and rollback sections, and record the required latency an
 ## Out of Scope
 
 - Adding a model worker beyond edge-a and edge-b.
-- Replacing Wi-Fi with 10GbE or another wired control fabric unless validation fails.
+- Replacing Wi-Fi with Ethernet, 10GbE, Thunderbolt, or any other wired control or egress fabric.
 - Changing public inference, chat, image, training, or agent behavior unrelated to network routing.
 - Adding a database, web tier, model engine, or user harness to a host where the constitution forbids it.
 - Making replication fall back to the control VLAN.

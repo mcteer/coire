@@ -35,9 +35,10 @@ two M3 Ultra Studios; isolated UniFi Wi-Fi VLAN plus direct Thunderbolt 5 betwee
 **Project Type**: Python workspace monorepo spanning shared contracts, control-plane API, node agent,
 deployment, observability, and operational documentation.
 
-**Performance Goals**: Control health probes p95 ≤ 50 ms; control overhead per tool round trip p95 ≤
-100 ms; loaded tiny-model first token p95 ≤ 1.5 s for prompts ≤ 4k tokens; Studio replication remains
-on the measured high-bandwidth link and never uses the VLAN.
+**Performance Goals**: Two hundred consecutive control health probes succeed and their latency
+distribution is recorded; control overhead per tool round trip p95 ≤ 100 ms; loaded tiny-model first
+token p95 ≤ 1.5 s for prompts ≤ 4k tokens; Studio replication remains on the measured high-bandwidth
+link and never uses the VLAN.
 
 **Constraints**: Core hosts no model and has no data-fabric endpoint; only bare engines; no raw host
 addresses in production configuration; deny-by-default listener and firewall policy; replication

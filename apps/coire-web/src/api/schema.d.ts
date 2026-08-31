@@ -173,6 +173,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/network/links/studios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Studio Data Link */
+        get: operations["studio_data_link_api_v1_admin_network_links_studios_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/nodes": {
         parameters: {
             query?: never;
@@ -589,6 +606,11 @@ export interface components {
          */
         HealthStatus: "healthy" | "degraded" | "unhealthy";
         /**
+         * LinkState
+         * @enum {string}
+         */
+        LinkState: "unknown" | "up" | "down";
+        /**
          * LoadState
          * @enum {string}
          */
@@ -709,6 +731,22 @@ export interface components {
             role: components["schemas"]["NodeRole"];
         };
         /**
+         * NodeEndpointSet
+         * @description Stable endpoint identities advertised by a v2 node agent.
+         */
+        NodeEndpointSet: {
+            /**
+             * Contract Version
+             * @default 2
+             * @constant
+             */
+            contract_version: 2;
+            /** Control Host */
+            control_host: string;
+            /** Data Host */
+            data_host?: string | null;
+        };
+        /**
          * NodeRegistration
          * @description `POST /api/v1/nodes/register` request body.
          */
@@ -737,10 +775,72 @@ export interface components {
             token: string;
         };
         /**
+         * NodeRegistrationV2
+         * @description Separated-fabric registration shape (feature 022).
+         */
+        NodeRegistrationV2: {
+            /** Agent Version */
+            agent_version: string;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            endpoints: components["schemas"]["NodeEndpointSet"];
+            /** Gpu Cores */
+            gpu_cores?: number | null;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /** Name */
+            name: string;
+            /**
+             * Token
+             * Format: password
+             */
+            token: string;
+        };
+        /**
          * NodeRole
          * @enum {string}
          */
         NodeRole: "studio" | "core";
+        /**
+         * NodeV2
+         * @description Persisted node response matching a v2 registration request.
+         */
+        NodeV2: {
+            /** Agent Version */
+            agent_version: string;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            endpoints: components["schemas"]["NodeEndpointSet"];
+            /** Gpu Cores */
+            gpu_cores?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /** Name */
+            name: string;
+            /** @default unknown */
+            reachability: components["schemas"]["Reachability"];
+            /**
+             * Registered At
+             * Format: date-time
+             */
+            registered_at: string;
+            role: components["schemas"]["NodeRole"];
+        };
+        /**
+         * RdmaState
+         * @enum {string}
+         */
+        RdmaState: "unknown" | "up" | "degraded" | "down";
         /**
          * Reachability
          * @description Feature 000 sets only HEALTHY/UNREACHABLE/UNKNOWN; DEGRADED arrives with feature 009.
@@ -792,6 +892,25 @@ export interface components {
          * @enum {string}
          */
         StructuredOutput: "none" | "json_mode" | "json_schema";
+        /** StudioDataLinkStatus */
+        StudioDataLinkStatus: {
+            /** Bandwidth Bytes Per Second */
+            bandwidth_bytes_per_second?: number | null;
+            /** @default unknown */
+            ip_state: components["schemas"]["LinkState"];
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Measured At */
+            measured_at?: string | null;
+            /** Node A */
+            node_a: string;
+            /** Node B */
+            node_b: string;
+            /** @default unknown */
+            rdma_state: components["schemas"]["RdmaState"];
+            /** Reason */
+            reason?: string | null;
+        };
         /**
          * Tag
          * @description The picker's grouping vocabulary (ARCHITECTURE.md section 3.2).
@@ -1244,6 +1363,26 @@ export interface operations {
             };
         };
     };
+    studio_data_link_api_v1_admin_network_links_studios_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudioDataLinkStatus"];
+                };
+            };
+        };
+    };
     list_nodes_api_v1_admin_nodes_get: {
         parameters: {
             query?: never;
@@ -1295,7 +1434,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["NodeRegistration"];
+                "application/json": components["schemas"]["NodeRegistration"] | components["schemas"]["NodeRegistrationV2"];
             };
         };
         responses: {
@@ -1305,7 +1444,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Node"];
+                    "application/json": components["schemas"]["Node"] | components["schemas"]["NodeV2"];
                 };
             };
             /** @description Validation Error */

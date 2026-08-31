@@ -4,9 +4,9 @@ Runs against the compose stack with two node agents on the simulated mesh. The m
 `mlx-community/Qwen2.5-0.5B-Instruct-4bit` — about 280 MB, MLX-format, ungated — so CI can
 repeat it and Principle VII's tiny-model rule holds.
 
-The strongest assertion here is structural rather than observational: `node-b` is attached only
-to the mesh network and has no route to the internet, so a copy that arrives there *cannot*
-have come from Hugging Face.
+The replica receives no Hugging Face credential and is populated across the internal data
+network. Feature 022 also gives it a control attachment for registration and management, so
+internet reachability is no longer a valid proxy for acquisition authority.
 """
 
 from __future__ import annotations
@@ -95,11 +95,12 @@ class TestHappyPath:
         assert len(digests) == 1
         assert acquired["manifest_sha256"] in digests
 
-    def test_the_replica_has_no_route_to_hugging_face(self, acquired: dict[str, Any]) -> None:
-        """The structural proof behind SC-004.
+    def test_the_replica_has_no_hugging_face_credential(self, acquired: dict[str, Any]) -> None:
+        """The replica is not authorised to acquire externally.
 
-        `node-b` is attached only to the internal mesh network, so a verified copy on it
-        cannot have been downloaded — it can only have been replicated over the mesh.
+        Feature 022 requires a control attachment on both nodes, so lack of generic internet
+        reachability can no longer prove this invariant. Absence of the acquisition credential
+        does: only node-a receives ``HF_TOKEN`` in the integration topology.
         """
         import subprocess
 
@@ -116,14 +117,13 @@ class TestHappyPath:
                 "node-b",
                 "python",
                 "-c",
-                "import socket;socket.setdefaulttimeout(4);"
-                "socket.create_connection(('huggingface.co',443))",
+                "import os,sys;sys.exit(0 if not os.environ.get('HF_TOKEN') else 1)",
             ],
             cwd="deploy/compose",
             capture_output=True,
             text=True,
         )
-        assert probe.returncode != 0, "node-b reached the internet; SC-004 is not proven"
+        assert probe.returncode == 0, "node-b received a Hugging Face acquisition credential"
 
     def test_the_registry_records_a_plausible_estimate(self, acquired: dict[str, Any]) -> None:
         assert acquired["memory_estimate_bytes"] > acquired["weight_bytes"]

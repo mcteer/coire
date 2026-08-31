@@ -1,6 +1,6 @@
 """Background node prober (T058).
 
-Probes each registered node over the mesh and maintains `reachability`. Feature 000 sets only
+Probes each registered node over the control fabric and maintains `reachability`. Feature 000 sets only
 HEALTHY / UNREACHABLE / UNKNOWN; the damped `degraded` state, hysteresis and health-record
 freshness windows belong to feature 009.
 """
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from coire_api.db import NodeRow, create_engine
 from coire_core.models.node import Reachability
-from coire_core.net import MeshClient
+from coire_core.net import ControlClient
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -73,12 +73,12 @@ class NodeProber:
             rows = list((await session.execute(select(NodeRow))).scalars().all())
             if not rows:
                 return
-            async with MeshClient(timeout=5.0) as client:
+            async with ControlClient(timeout=5.0) as client:
                 for row in rows:
                     await self._probe_node(client, row, tokens.get(row.name, ""))
             await session.commit()
 
-    async def _probe_node(self, client: MeshClient, row: NodeRow, token: str) -> None:
+    async def _probe_node(self, client: ControlClient, row: NodeRow, token: str) -> None:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         try:
             resp = await client.get(

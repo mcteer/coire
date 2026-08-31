@@ -1,5 +1,8 @@
 # Runbook: the model registry
 
+Peer replication uses only `coire-edge-a.fabric` and `coire-edge-b.fabric` on port 9401. It never
+falls back to the control VLAN. See `network-fabrics.md` before changing connectivity.
+
 Operating the roster: adding models, watching an acquisition, loading and unloading engines,
 and clearing the states that need a human. Companion to `bootstrap.md`, which covers the
 control plane itself.
@@ -8,7 +11,7 @@ Everything here uses `scripts/coire`, a `curl`+`jq` wrapper over the admin API. 
 admin bearer from `COIRE_ADMIN` or from core's Keychain item `coire-admin-token`.
 
 ```bash
-export COIRE_API=http://127.0.0.1:8080        # the default
+export COIRE_API=http://127.0.0.1:8180        # the default host port
 scripts/coire health                           # is the control plane up
 scripts/coire nodes | jq '.[] | {name, reachability}'
 ```
