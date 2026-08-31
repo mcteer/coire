@@ -76,7 +76,11 @@ SECRET_VARS=(COIRE_SECRET_POSTGRES_PASSWORD COIRE_SECRET_KEY_SIGNING_SECRET COIR
 SECRETS_DIR="${COIRE_SECRETS_DIR:-$HOME/.coire/secrets}"
 export COIRE_SECRETS_DIR="$SECRETS_DIR"
 if [[ -z "${COIRE_CONTROL_BIND_ADDRESS:-}" ]]; then
-  COIRE_CONTROL_BIND_ADDRESS="$(dscacheutil -q host -a name coire-core 2>/dev/null | awk '/ip_address:/{print $2; exit}')"
+  if command -v dscacheutil >/dev/null 2>&1; then
+    COIRE_CONTROL_BIND_ADDRESS="$(dscacheutil -q host -a name coire-core 2>/dev/null | awk '/ip_address:/{print $2; exit}')"
+  else
+    COIRE_CONTROL_BIND_ADDRESS="$(getent ahostsv4 coire-core 2>/dev/null | awk '{print $1; exit}' || true)"
+  fi
   export COIRE_CONTROL_BIND_ADDRESS="${COIRE_CONTROL_BIND_ADDRESS:-127.0.0.1}"
 fi
 SECRET_FILES=(postgres_password key_signing_secret node_tokens admin_token)
@@ -137,7 +141,12 @@ fi
 
 # --- control names ---------------------------------------------------------
 for node in coire-edge-a coire-edge-b; do
-  if ! dscacheutil -q host -a name "$node" 2>/dev/null | grep -q 'ip_address:'; then
+  if command -v dscacheutil >/dev/null 2>&1; then
+    resolved="$(dscacheutil -q host -a name "$node" 2>/dev/null | awk '/ip_address:/{print $2; exit}')"
+  else
+    resolved="$(getent ahostsv4 "$node" 2>/dev/null | awk '{print $1; exit}' || true)"
+  fi
+  if [[ -z "$resolved" ]]; then
     echo "warning: control DNS name $node does not resolve" >&2
   fi
 done
