@@ -119,9 +119,10 @@ async def _openai_cold_stream(
         usage.engine_id = resolved.engine_id
         payload = body.model_dump(mode="json", exclude={"coire_wait_for_model"}, exclude_none=True)
         payload["model"] = resolved.model_path
-        async for chunk in _tracked_stream(
+        tracked = _tracked_stream(
             stream(resolved.engine_url, payload, settings, timing), usage, request, timing
-        ):
+        )
+        async for chunk in _rewrite_openai_model(tracked, body.model):
             yield chunk
     except (ModelLoadError, TimeoutError) as exc:
         await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
@@ -188,6 +189,32 @@ async def _tracked_stream(
         await usage.finish(UsageOutcome.FAILED, failure_code="engine_stream_failed")
     else:
         await usage.finish(UsageOutcome.SUCCEEDED)
+
+
+async def _rewrite_openai_model(
+    source: AsyncIterator[bytes], model: uuid.UUID
+) -> AsyncIterator[bytes]:
+    """Keep the registry UUID at the public boundary; never expose the node's model path."""
+
+    public_model = str(model)
+    async for chunk in source:
+        if not chunk.startswith(b"data: "):
+            yield chunk
+            continue
+        raw = chunk[6:].strip()
+        if raw == b"[DONE]":
+            yield chunk
+            continue
+        try:
+            event = json.loads(raw)
+        except (TypeError, ValueError):
+            yield chunk
+            continue
+        if not isinstance(event, dict) or "model" not in event:
+            yield chunk
+            continue
+        event["model"] = public_model
+        yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n".encode()
 
 
 def _streaming_response(source: AsyncIterator[bytes], usage: UsageTracker) -> StreamingResponse:
@@ -345,10 +372,11 @@ async def chat_completions(
     payload["model"] = resolved.model_path
     try:
         if body.stream:
+            tracked = _tracked_stream(
+                stream(resolved.engine_url, payload, settings, timing), usage, request, timing
+            )
             return _streaming_response(
-                _tracked_stream(
-                    stream(resolved.engine_url, payload, settings, timing), usage, request, timing
-                ),
+                _rewrite_openai_model(tracked, body.model),
                 usage,
             )
         result = await complete(resolved.engine_url, payload, settings)
@@ -356,6 +384,7 @@ async def chat_completions(
         if isinstance(reported, dict):
             usage.prompt_tokens = int(reported.get("prompt_tokens", usage.prompt_tokens))
             usage.completion_tokens = int(reported.get("completion_tokens", 0))
+        result["model"] = str(body.model)
         await usage.finish(UsageOutcome.SUCCEEDED)
         return result
     except EngineSaturatedError as exc:

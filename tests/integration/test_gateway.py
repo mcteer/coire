@@ -67,9 +67,12 @@ async def test_official_openai_sdk_lists_and_streams(
             model=gateway_model, messages=[{"role": "user", "content": "hello"}], stream=True
         )
         text = ""
+        response_models: set[str] = set()
         async for chunk in stream:
             text += chunk.choices[0].delta.content or ""
+            response_models.add(chunk.model)
     assert text.strip()
+    assert response_models == {gateway_model}
 
 
 async def test_official_anthropic_sdk_streams(
