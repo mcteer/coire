@@ -32,12 +32,16 @@ letter-suffixed roadmap labels below. Each spec records its roadmap ID in its he
 | `specs/019-upgrades-rollback/` | 015 | 4 |
 | `specs/020-control-plane-failover/` | 016 | 5 |
 | `specs/021-node-self-healing/` | 017 | 5 |
+| `specs/022-separate-control-data-fabrics/` | 000b | 1 (topology retrofit) |
 
-Roadmap 000a (network prep) has no spec: it is manual UDM/RDMA work.
+Roadmap 000a (network prep) remains manual UDM/RDMA work. Its software and contract migration is
+roadmap 000b / `specs/022-separate-control-data-fabrics/`.
 
 Features 016 and 017 were added on 2026-08-29 after the original roadmap was written.
 016 is **blocked on a constitutional amendment** — see that spec's Constitutional Conflict
 section. 017 is not blocked but should be re-checked against Principle II during planning.
+Feature 022 was added on 2026-08-30 as a topology retrofit and is ordered before further cluster
+features despite its later directory number.
 
 ## Phase 0 — Foundation
 
@@ -46,8 +50,17 @@ section. 017 is not blocked but should be re-checked against Principle II during
 
 ## Phase 1 — Single-node inference works end to end
 
-**000a · network prep (manual, no spec needed)** — **Thunderbolt mesh (DONE 2026-08-29):** macOS-managed Thunderbolt Bridge on all three hosts, static addresses on a flat `192.168.100.0/24` (core .10, edge-a .11, edge-b .12), no router, no DNS. Cabled as a **chain** `core — edge-a — edge-b`, deliberately not a triangle: bridging a triangle creates an L2 loop that collapses throughput and breaks external DNS. Measured 12.6 Gb/s / 0.85 ms Studio-to-Studio, 12.0 Gb/s / 0.89 ms core-to-edge-a, 12.4 Gb/s / 1.37 ms across the bridged hop to edge-b. Studio-to-Studio SSH keys in place and verified. Wi-Fi retained as an alerted fallback if the middle node fails. **Remaining:** RDMA enabled on both Studios and `mlx.distributed_config --backend jaccl --auto-setup` producing the hostfile committed to `deploy/cluster/`; and on the Wi-Fi/egress path, the `lab` VLAN and firewall rules on the UDM SE, static reservations, split-horizon override, VPN or Tailscale break-glass. No 10GbE switch needed — the mesh is faster.
-*Done when:* each node reaches the others over the mesh by a stable address, platform traffic verifiably takes the mesh rather than Wi-Fi, losing Wi-Fi does not remove a node from the cluster, nothing in `lab` can reach other VLANs, and a 2-rank JACCL all-reduce test passes.
+**000a · network prep (manual, no spec needed)** — The three hosts share the existing isolated Wi-Fi `lab` VLAN for control-plane traffic and internet egress. UniFi supplies stable DNS and firewall rules that prevent `lab → other VLANs`; Cloudflare Tunnel remains outbound-only and VPN/Tailscale remains the break-glass path. The only Thunderbolt connection is the direct `coire-edge-a ↔ coire-edge-b` data fabric, measured at 12.6 Gb/s / 0.85 ms and reserved for model replication and JACCL. Core does not participate in Thunderbolt or RDMA. **Remaining:** enable RDMA on both Studios, generate the two-rank JACCL hostfile with `mlx.distributed_config --backend jaccl --auto-setup`, and migrate the implemented `mesh_address`/`.mesh` control contracts to VLAN DNS names under a spec amendment (ADR-0006).
+*Done when:* all three nodes reach one another by stable UniFi DNS names on the isolated VLAN; required service ports are restricted to their minimum peer sets; losing the Studio Thunderbolt link leaves control-plane membership and single-node serving intact; model replication verifiably takes the data fabric; prompt-to-first-token and multi-tool agent benchmarks meet their latency objectives over Wi-Fi; and a 2-rank JACCL all-reduce test passes.
+
+**000b · separate control and data fabrics** — "Migrate node endpoint contracts, listeners, routing,
+observability, deployment, and runbooks so the isolated VLAN is the three-host control fabric and the
+direct Studio Thunderbolt link is exclusively the replication/JACCL data fabric; preserve mixed-version
+rollback and remove core from Thunderbolt only after measured preflight passes."
+*Done when:* core has no Thunderbolt address or cable; both Studios cold-start, register, and serve
+single-node inference directly over the VLAN; model replication and JACCL remain Studio-only and fail
+closed on link loss; firewall and observability checks pass; and the real-cluster cutover and rollback
+procedure is recorded without state loss.
 
 **001 · model registry & node agent** — "Admin-only model registry with placement policy, memory estimate, idle TTL, visibility/entitlement, and capability profile; download job that pulls once from HF, verifies, and peer-replicates so the model is `ready` only when both Studios hold it; node agent that can load (`mlx_lm.server`), health-check, report memory and disk, and unload."
 *Done when:* `coire model add` (admin key) works and a user key gets 403; `ready` implies two verified copies; `load`/`unload` work; the registry reflects true process state after a node-agent restart.

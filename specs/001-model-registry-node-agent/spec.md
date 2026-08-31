@@ -133,7 +133,7 @@ An admin sets visibility, entitlement, tags, capability profile, placement polic
 - **FR-004**: No user request, agent, or automation may trigger a model acquisition; the system MUST expose no such path.
 - **FR-005**: The Hugging Face credential MUST exist only on the node agent, and MUST NOT be present in any user-facing container.
 - **FR-006**: A download job MUST pull once to the Studio with the most free disk, with resume support and a per-file checksum manifest.
-- **FR-007**: The system MUST replicate the pulled model to the peer Studio over the Thunderbolt mesh rather than performing a second external pull, and MUST NOT use the internet-egress interface for peer replication.
+- **FR-007**: The system MUST replicate the pulled model to the peer Studio over the Thunderbolt mesh rather than performing a second external pull, and MUST NOT use the internet-egress interface for peer replication. Feature 022 preserves this behavior while narrowing the mesh to the direct Studio-only data fabric.
 - **FR-008**: A model MUST become `ready` only when both Studios hold a copy whose per-file checksums match the manifest.
 - **FR-009**: A checksum mismatch MUST leave the model `failed` with the offending paths recorded, and the partial copy MUST be removed.
 - **FR-010**: The system MUST compute a memory estimate at add time and MUST reject a model that fits no supported placement before transferring any bytes.
@@ -144,7 +144,7 @@ An admin sets visibility, entitlement, tags, capability profile, placement polic
 - **FR-015**: On restart the node agent MUST re-adopt engine processes it owns rather than terminating them, MUST correct registry rows whose engines died, and MUST report unmatched processes as orphans.
 - **FR-016**: The node agent MUST detect an externally-killed engine within its health interval and report the model as not loaded.
 - **FR-017**: The system MUST never pass a caller-supplied string as a model or adapter identifier to an engine; only registry-resolved local paths may be used.
-- **FR-018**: Engine processes MUST bind only the node's Thunderbolt mesh address, so they are reachable only from hosts on the unrouted mesh — the node agent, the control plane, and the peer Studio — and MUST NOT be exposed on the egress interface or any other. Per-host firewall restriction of the engine port to core is feature 005.
+- **FR-018**: Engine processes MUST bind only the node's Thunderbolt mesh address, so they are reachable only from hosts on the unrouted mesh — the node agent, the control plane, and the peer Studio — and MUST NOT be exposed on the egress interface or any other. Per-host firewall restriction of the engine port to core is feature 005. **Superseded by feature 022:** engines move to the control endpoint and remain restricted to core and the local node agent; this historical requirement records the feature-001 delivery state.
 - **FR-019**: A load for a model already loaded on that node MUST be a no-op returning the existing process.
 - **FR-020**: A load that would exceed the node's memory budget MUST be refused with a budget error in this feature.
 

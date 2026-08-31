@@ -1,5 +1,8 @@
 # ADR-0001: Defer authentication and public edge until the platform is ready for external traffic
 
+> **Network note (2026-08-30):** ADR-0006 supersedes this ADR's Thunderbolt mesh binding details.
+> The interim authentication decision remains in force until its stated feature boundary.
+
 - **Status**: Accepted
 - **Date**: 2026-08-29
 - **Deciders**: Dan McTeer

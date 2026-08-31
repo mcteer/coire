@@ -22,7 +22,7 @@ Everything the platform depends on will need upgrading: the inference and traini
 - Q: What does the node smoke test prove? → A: That the new environment can actually serve — loading a tiny model and generating tokens — and, when the node participates in sharded serving, that a two-rank collective operation succeeds. Anything less would pass an environment that imports cleanly and fails on first real use.
 - Q: When does rollback happen automatically versus on request? → A: Automatically whenever the smoke test fails or the agent fails to come back healthy within its window. Rollback after a successful upgrade — because something was noticed later — is an explicit admin action.
 - Q: How do control-plane upgrades avoid dropping traffic? → A: Migrations run first as a one-shot that must exit successfully; images then roll service by service, each waiting for health before the next. Rollback is re-pinning the previous tag. This is exactly the per-service independence feature 000 established, used for its intended purpose.
-- Q: Are operating-system upgrades in scope? → A: No. They remain manual, because the interconnect's RDMA capability is tied to the OS build and must be re-validated after each update. This feature triggers that re-validation by re-running the link probe when a node returns.
+- Q: Are operating-system upgrades in scope? → A: No. They remain manual, because the Studio-to-Studio interconnect's RDMA capability is tied to the OS build and must be re-validated after either Studio updates. This feature triggers re-validation of that two-Studio link when a Studio returns; core has no RDMA role per feature 022.
 
 ## User Scenarios & Testing *(mandatory)*
 

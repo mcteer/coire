@@ -155,7 +155,7 @@ A benchmark records throughput per placement for a model, so the choice between 
 ## Assumptions
 
 - Features 001–005 have shipped, in particular the instance state machine, which this feature extends to multi-rank instances rather than replacing.
-- Verified 2026-08-29: both Studios are M3 Ultra with 256 GB, running macOS 26.6.2, above the 26.2 floor that RDMA over Thunderbolt requires. The Thunderbolt mesh is physically cabled — Studio A to Studio B, and each Studio to core — with active links negotiating 80 Gb/s.
+- Verified 2026-08-29: both Studios are M3 Ultra with 256 GB, running macOS 26.6.2, above the 26.2 floor that RDMA over Thunderbolt requires. Feature 022 supersedes the original three-host cabling assumption: the data fabric is a direct Studio A to Studio B link, and core is absent from the JACCL topology.
 - Not yet done at spec time: RDMA enablement per machine and generation of the JACCL hostfile. Both are roadmap 000a manual prerequisites that must be complete before this feature can be verified on the real cluster.
 - Studio A is rank 0 for every sharded run; Studio B is rank 1. GPU core counts are 80 and 60 respectively, so tensor-parallel throughput is bounded by the 60-core unit.
 - Sharded serving is treated as beta throughout; the platform must remain fully useful with it disabled.

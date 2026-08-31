@@ -1,0 +1,163 @@
+openapi: 3.1.0
+info:
+  title: Coire network endpoint migration contract
+  version: 0.2.0
+  description: >
+    Feature 022 contract delta for versioned node registration, node control health, and the
+    Studio-only data link. Existing routes and authentication remain in force.
+
+paths:
+  /api/v1/nodes/register:
+    post:
+      summary: Register a node using the legacy or separated-fabric endpoint contract.
+      operationId: registerNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/NodeRegistrationV1"
+                - $ref: "#/components/schemas/NodeRegistrationV2"
+      responses:
+        "200":
+          description: Response version matches the submitted registration version.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/NodeV1"
+                  - $ref: "#/components/schemas/NodeV2"
+        "401": { description: Node token is missing or invalid. }
+        "403": { description: Node or endpoint set is not in declared inventory. }
+        "422": { description: Registration shape or role/address combination is invalid. }
+
+  /node/health:
+    get:
+      summary: Return node status on the authenticated control listener.
+      operationId: getNodeHealthV2
+      security: [{ nodeToken: [] }]
+      responses:
+        "200":
+          description: Node status observed on the control fabric.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodeStatusV2" }
+        "401": { description: Node token is missing or invalid. }
+
+  /api/v1/admin/network/links/studios:
+    get:
+      summary: Return the measured direct Studio data-link state.
+      operationId: getStudioDataLink
+      security: [{ adminToken: [] }]
+      responses:
+        "200":
+          description: Current IP and RDMA observations.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudioDataLinkStatus" }
+        "401": { description: Authentication missing or invalid. }
+        "403": { description: Caller lacks admin scope. }
+
+components:
+  securitySchemes:
+    nodeToken: { type: http, scheme: bearer }
+    adminToken: { type: http, scheme: bearer }
+  schemas:
+    NodeEndpointSet:
+      type: object
+      additionalProperties: false
+      required: [contract_version, control_host, data_host]
+      properties:
+        contract_version: { type: integer, const: 2 }
+        control_host: { type: string, pattern: "^coire-[a-z0-9-]+$" }
+        data_host: { type: [string, "null"], pattern: "^coire-edge-[ab]\\.fabric$" }
+
+    NodeRegistrationV1:
+      type: object
+      deprecated: true
+      additionalProperties: false
+      required: [name, token, mesh_address, memory_total_bytes, disk_total_bytes, agent_version]
+      properties:
+        name: { type: string }
+        token: { type: string, format: password }
+        mesh_address: { type: string, format: ipv4 }
+        egress_address: { type: [string, "null"], format: ipv4 }
+        memory_total_bytes: { type: integer, minimum: 1 }
+        disk_total_bytes: { type: integer, minimum: 1 }
+        gpu_cores: { type: [integer, "null"], minimum: 0 }
+        agent_version: { type: string }
+
+    NodeRegistrationV2:
+      type: object
+      additionalProperties: false
+      required: [name, token, endpoints, memory_total_bytes, disk_total_bytes, agent_version]
+      properties:
+        name: { type: string, pattern: "^coire-[a-z0-9-]+$" }
+        token: { type: string, format: password }
+        endpoints: { $ref: "#/components/schemas/NodeEndpointSet" }
+        memory_total_bytes: { type: integer, minimum: 1 }
+        disk_total_bytes: { type: integer, minimum: 1 }
+        gpu_cores: { type: [integer, "null"], minimum: 0 }
+        agent_version: { type: string }
+
+    NodeV1:
+      deprecated: true
+      $ref: "../../000-bootstrap/contracts/health-api.yaml#/components/schemas/Node"
+
+    NodeV2:
+      type: object
+      additionalProperties: false
+      required: [id, name, role, endpoints, memory_total_bytes, disk_total_bytes, agent_version, registered_at, last_seen_at, reachability]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [studio, core] }
+        endpoints: { $ref: "#/components/schemas/NodeEndpointSet" }
+        memory_total_bytes: { type: integer, minimum: 1 }
+        disk_total_bytes: { type: integer, minimum: 1 }
+        gpu_cores: { type: [integer, "null"], minimum: 0 }
+        agent_version: { type: string }
+        registered_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        reachability: { type: string, enum: [healthy, degraded, unreachable, unknown] }
+
+    NodeStatusV2:
+      type: object
+      additionalProperties: false
+      required: [name, agent_version, uptime_seconds, cpu_percent, thermal_state, memory_total_bytes, memory_free_bytes, disk_total_bytes, disk_free_bytes, agent_cpu_percent, agent_rss_bytes, collection_budget_ok, path, sampled_at, engines, jobs, memory_budget_bytes, memory_committed_bytes, store_free_bytes]
+      properties:
+        name: { type: string }
+        agent_version: { type: string }
+        uptime_seconds: { type: number, minimum: 0 }
+        cpu_percent: { type: number, minimum: 0, maximum: 100 }
+        gpu_percent: { type: [number, "null"], minimum: 0, maximum: 100 }
+        thermal_state: { type: string, enum: [nominal, fair, serious, critical, unknown] }
+        memory_total_bytes: { type: integer, minimum: 1 }
+        memory_free_bytes: { type: integer, minimum: 0 }
+        disk_total_bytes: { type: integer, minimum: 1 }
+        disk_free_bytes: { type: integer, minimum: 0 }
+        agent_cpu_percent: { type: number, minimum: 0 }
+        agent_rss_bytes: { type: integer, minimum: 0 }
+        collection_budget_ok: { type: boolean }
+        path: { type: string, const: control }
+        sampled_at: { type: string, format: date-time }
+        engines: { type: array, items: { type: object } }
+        jobs: { type: array, items: { type: object } }
+        memory_budget_bytes: { type: integer, minimum: 0 }
+        memory_committed_bytes: { type: integer, minimum: 0 }
+        store_free_bytes: { type: integer, minimum: 0 }
+
+    StudioDataLinkStatus:
+      type: object
+      additionalProperties: false
+      required: [node_a, node_b, ip_state, rdma_state]
+      properties:
+        node_a: { type: string, const: coire-edge-a }
+        node_b: { type: string, const: coire-edge-b }
+        ip_state: { type: string, enum: [unknown, up, down] }
+        rdma_state: { type: string, enum: [unknown, up, degraded, down] }
+        bandwidth_bytes_per_second: { type: [integer, "null"], minimum: 1 }
+        latency_ms: { type: [number, "null"], minimum: 0 }
+        measured_at: { type: [string, "null"], format: date-time }
+        reason: { type: [string, "null"], maxLength: 512 }
