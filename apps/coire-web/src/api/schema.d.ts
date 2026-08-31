@@ -296,10 +296,141 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Models */
+        get: operations["list_models_v1_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chat/completions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Chat Completions */
+        post: operations["chat_completions_v1_chat_completions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Anthropic Messages */
+        post: operations["anthropic_messages_v1_messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AnthropicMessage */
+        AnthropicMessage: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /** Content */
+            content: string | {
+                [key: string]: unknown;
+            }[];
+        };
+        /** AnthropicMessagesRequest */
+        AnthropicMessagesRequest: {
+            /**
+             * Model
+             * Format: uuid
+             */
+            model: string;
+            /** Max Tokens */
+            max_tokens: number;
+            /** Messages */
+            messages: components["schemas"]["AnthropicMessage"][];
+            /** System */
+            system?: string | {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Stream
+             * @default false
+             */
+            stream: boolean;
+            /** Temperature */
+            temperature?: number | null;
+            /** Top P */
+            top_p?: number | null;
+            /** Top K */
+            top_k?: number | null;
+            /** Stop Sequences */
+            stop_sequences?: string[] | null;
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Tool Choice */
+            tool_choice?: {
+                [key: string]: unknown;
+            } | null;
+            /** Output Config */
+            output_config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Thinking */
+            thinking?: {
+                [key: string]: unknown;
+            } | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /** Service Tier */
+            service_tier?: string | null;
+            /** Context Management */
+            context_management?: {
+                [key: string]: unknown;
+            } | null;
+            /** Container */
+            container?: string | {
+                [key: string]: unknown;
+            } | null;
+            /** Mcp Servers */
+            mcp_servers?: {
+                [key: string]: unknown;
+            }[] | null;
+            /**
+             * Coire Wait For Model
+             * @default true
+             */
+            coire_wait_for_model: boolean;
+        };
         /**
          * AuditOutcome
          * @enum {string}
@@ -374,6 +505,104 @@ export interface components {
             reasoning?: components["schemas"]["Reasoning"] | null;
             /** Parallel Tools */
             parallel_tools?: boolean | null;
+        };
+        /** ChatCompletionRequest */
+        ChatCompletionRequest: {
+            /**
+             * Model
+             * Format: uuid
+             */
+            model: string;
+            /** Messages */
+            messages: components["schemas"]["ChatMessage"][];
+            /**
+             * Stream
+             * @default false
+             */
+            stream: boolean;
+            /** Max Tokens */
+            max_tokens?: number | null;
+            /** Temperature */
+            temperature?: number | null;
+            /** Top P */
+            top_p?: number | null;
+            /** Stop */
+            stop?: string | string[] | null;
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Tool Choice */
+            tool_choice?: unknown;
+            /** Response Format */
+            response_format?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Coire Wait For Model
+             * @default true
+             */
+            coire_wait_for_model: boolean;
+        };
+        /** ChatMessage */
+        ChatMessage: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "system" | "user" | "assistant" | "tool";
+            /** Content */
+            content: string | null;
+            /** Name */
+            name?: string | null;
+            /** Tool Call Id */
+            tool_call_id?: string | null;
+        } & {
+            [key: string]: unknown;
+        };
+        /** GatewayModel */
+        GatewayModel: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Object
+             * @default model
+             * @constant
+             */
+            object: "model";
+            /** Created */
+            created: number;
+            /**
+             * Owned By
+             * @default coire
+             * @constant
+             */
+            owned_by: "coire";
+            /**
+             * Coire Load State
+             * @enum {string}
+             */
+            coire_load_state: "loaded" | "loading" | "cold";
+            /** Coire Tags */
+            coire_tags?: string[];
+            /** Coire Description */
+            coire_description?: string | null;
+            /** Coire Context Window */
+            coire_context_window?: number | null;
+        };
+        /** GatewayModelList */
+        GatewayModelList: {
+            /**
+             * Object
+             * @default list
+             * @constant
+             */
+            object: "list";
+            /** Data */
+            data: components["schemas"]["GatewayModel"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -771,7 +1000,9 @@ export interface operations {
     get_health_health_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -786,12 +1017,23 @@ export interface operations {
                     "application/json": components["schemas"]["HealthResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     register_node_api_v1_nodes_register_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -824,7 +1066,9 @@ export interface operations {
     list_models_api_v1_models_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -839,12 +1083,23 @@ export interface operations {
                     "application/json": components["schemas"]["ModelListing"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     list_models_api_v1_admin_models_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -861,12 +1116,23 @@ export interface operations {
                     }[];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     add_model_api_v1_admin_models_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -901,7 +1167,9 @@ export interface operations {
     get_model_api_v1_admin_models__model_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path: {
                 model_id: string;
             };
@@ -934,7 +1202,9 @@ export interface operations {
     delete_model_api_v1_admin_models__model_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path: {
                 model_id: string;
             };
@@ -963,7 +1233,9 @@ export interface operations {
     update_model_api_v1_admin_models__model_id__patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path: {
                 model_id: string;
             };
@@ -1000,7 +1272,9 @@ export interface operations {
     retire_model_api_v1_admin_models__model_id__retire_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path: {
                 model_id: string;
             };
@@ -1033,7 +1307,9 @@ export interface operations {
     retry_model_api_v1_admin_models__model_id__retry_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path: {
                 model_id: string;
             };
@@ -1066,7 +1342,9 @@ export interface operations {
     get_job_api_v1_admin_models__model_id__job_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path: {
                 model_id: string;
             };
@@ -1099,7 +1377,9 @@ export interface operations {
     load_model_api_v1_admin_models__model_id__load_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path: {
                 model_id: string;
             };
@@ -1138,7 +1418,9 @@ export interface operations {
     studio_data_link_api_v1_admin_network_links_studios_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1153,12 +1435,23 @@ export interface operations {
                     "application/json": components["schemas"]["StudioDataLinkStatus"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     list_nodes_api_v1_admin_nodes_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1173,6 +1466,15 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -1180,7 +1482,9 @@ export interface operations {
     list_engines_api_v1_admin_engines_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1197,12 +1501,23 @@ export interface operations {
                     }[];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
     get_engine_api_v1_admin_engines__engine_id__get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path: {
                 engine_id: string;
             };
@@ -1235,7 +1550,9 @@ export interface operations {
     unload_engine_api_v1_admin_engines__engine_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path: {
                 engine_id: string;
             };
@@ -1271,7 +1588,9 @@ export interface operations {
                 limit?: number;
                 target_id?: string | null;
             };
-            header?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -1284,6 +1603,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditRecord"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_models_v1_models_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayModelList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_completions_v1_chat_completions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatCompletionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    anthropic_messages_v1_messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnthropicMessagesRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

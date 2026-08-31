@@ -7,7 +7,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from httpx import ASGITransport, AsyncClient
 
-from coire_api.auth import CurrentAdmin, PrincipalKind, require_principal
+from coire_api.auth import (
+    ADMIN,
+    ANONYMOUS,
+    CurrentAdmin,
+    PrincipalKind,
+    require_authenticated,
+    require_principal,
+)
 from coire_core.settings import Settings, get_settings
 
 
@@ -41,6 +48,11 @@ class TestPrincipalResolution:
         assert principal.kind is PrincipalKind.ADMIN
         assert principal.is_admin
         assert principal.subject == "admin-token"
+
+    async def test_anthropic_api_key_header_is_admin(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        _configure(monkeypatch, "the-token")
+        principal = await require_principal(None, "the-token")
+        assert principal is ADMIN
 
     async def test_wrong_token_is_anonymous(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         _configure(monkeypatch, "the-token")
@@ -111,6 +123,13 @@ class TestGuard:
 
 
 class TestDirectGuardCall:
+    async def test_authenticated_guard(self) -> None:
+        assert await require_authenticated(ADMIN) is ADMIN
+        with pytest.raises(HTTPException) as exc:
+            await require_authenticated(ANONYMOUS)
+        assert exc.value.status_code == 401
+        assert exc.value.headers == {"WWW-Authenticate": "Bearer"}
+
     async def test_admin_principal_passes_through(self) -> None:
         from coire_api.auth import ADMIN, require_admin
 

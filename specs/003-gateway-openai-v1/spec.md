@@ -23,6 +23,7 @@ This is the feature that makes Coire usable from tools people already run. The g
 - Q: What guarantees a caller's string never reaches an engine? → A: The gateway resolves the string to a registry id and passes only the registry-resolved local path to the engine. Any request whose model field does not match a registry id is rejected before an engine is contacted, and the adapter fields the engine accepts for model and adapter selection are never populated from caller input.
 - Q: Which OpenAI surface is in scope here? → A: `chat/completions` streaming and non-streaming, and `models`. Completions, embeddings, and images are out of scope: images arrive with feature 015 and embeddings are backlog. The Anthropic `messages` adapter is in scope because it is the cheap win that makes Claude Code work against the platform.
 - Q: How is usage captured for a streamed response that the client abandons? → A: Usage is recorded from tokens actually produced, and a disconnect is recorded as a completed-with-disconnect outcome rather than discarded. Abandoned streams still consumed engine time and must be attributable for later budgeting.
+- Q: How can a streaming cold wait return HTTP 503 after keep-alive bytes have already committed HTTP 200? → A: It cannot under HTTP. The gateway rejects before committing the stream with `503` when the recorded warm-up estimate reaches the configured ceiling. If an unexpectedly slow load reaches the ceiling after streaming keep-alives begin, it sends a terminal protocol error event and closes the stream; non-streaming waits always return `503` at the ceiling.
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -134,7 +135,7 @@ An operator can see what was spent, by whom, on which model, including for strea
 - **FR-008**: An admin caller MUST be able to resolve unpublished models for testing.
 - **FR-009**: A request for a `ready` but unloaded model MUST by default wait for the load, with keep-alive traffic on the stream sufficient to defeat intermediary idle timeouts.
 - **FR-010**: A caller MUST be able to opt out of waiting and receive `503` with `Retry-After` derived from estimated warm-up time.
-- **FR-011**: Waiting MUST be bounded by a configured ceiling, after which the caller receives `503` with `Retry-After`.
+- **FR-011**: Waiting MUST be bounded by a configured ceiling. A non-streaming wait, or a streaming wait whose recorded estimate reaches the ceiling, MUST receive `503` with `Retry-After` before response commitment. An unexpectedly slow stream that has already emitted keep-alives MUST receive a terminal protocol error event and close at the ceiling.
 - **FR-012**: The gateway MUST cap in-flight requests per instance and MUST NOT pass excess load through to an engine.
 - **FR-013**: The gateway MUST record a usage entry for every request, including caller, model, token counts, duration, and outcome.
 - **FR-014**: Usage MUST be recorded for abandoned streams from tokens actually produced, marked as disconnected.

@@ -7,6 +7,27 @@ import os
 import pytest
 
 
+class GatewayFakeResult:
+    def __init__(self, rows: list[object] | None = None) -> None:
+        self.rows = rows or []
+
+    def scalars(self) -> GatewayFakeResult:
+        return self
+
+    def all(self) -> list[object]:
+        return self.rows
+
+
+class GatewayFakeSession:
+    async def execute(self, *_: object, **__: object) -> GatewayFakeResult:
+        return GatewayFakeResult()
+
+
+@pytest.fixture
+def gateway_fake_session() -> GatewayFakeSession:
+    return GatewayFakeSession()
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _silence_telemetry() -> None:
     """No collector exists in a unit-test run.

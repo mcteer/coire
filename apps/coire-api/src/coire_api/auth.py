@@ -21,7 +21,7 @@ import logging
 from enum import StrEnum
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict
 
@@ -60,8 +60,19 @@ ADMIN = Principal(kind=PrincipalKind.ADMIN, subject="admin-token")
 supplies real identities — that is the truthful account of this period, not a placeholder."""
 
 
+def principal_from_bearer(
+    credentials: HTTPAuthorizationCredentials | None, *, expected: str
+) -> Principal:
+    """Resolve the interim bearer without consulting global configuration."""
+    presented = credentials.credentials if credentials else ""
+    if expected and presented and hmac.compare_digest(expected, presented):
+        return ADMIN
+    return ANONYMOUS
+
+
 async def require_principal(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
+    x_api_key: Annotated[str | None, Header(alias="x-api-key")] = None,
 ) -> Principal:
     """Resolve the caller.
 
@@ -73,14 +84,26 @@ async def require_principal(
     from coire_core.settings import get_settings
 
     expected = get_settings().admin_token.get_secret_value()
-    presented = credentials.credentials if credentials else ""
-    # Both halves matter: an unconfigured token must not make an empty header an admin.
-    if expected and presented and hmac.compare_digest(expected, presented):
-        return ADMIN
-    return ANONYMOUS
+    if credentials is None and x_api_key:
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=x_api_key)
+    return principal_from_bearer(credentials, expected=expected)
 
 
 CurrentPrincipal = Annotated[Principal, Depends(require_principal)]
+
+
+async def require_authenticated(principal: CurrentPrincipal) -> Principal:
+    """Require a credential the platform has actually verified."""
+    if principal.kind is not PrincipalKind.ANONYMOUS:
+        return principal
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="valid bearer credential required",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+CurrentAuthenticated = Annotated[Principal, Depends(require_authenticated)]
 
 
 async def require_admin(request: Request, principal: CurrentPrincipal) -> Principal:

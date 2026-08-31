@@ -66,14 +66,14 @@ def fake_engine_command(delay: float = 0.0, *, fail: bool = False, mb: int = 0) 
     return os.pathsep.join(parts)
 
 
-def test_engine_argv_binds_the_declared_control_address() -> None:
+def test_engine_argv_can_bind_loopback_only() -> None:
     argv = build_engine_argv(
         command=["python", "-m", "mlx_lm.server"],
         model_path="/opt/coire/models/example",
-        host="coire-edge-a",
+        host="127.0.0.1",
         port=9500,
     )
-    assert argv[argv.index("--host") + 1] == "coire-edge-a"
+    assert argv[argv.index("--host") + 1] == "127.0.0.1"
     assert not any(value.endswith(".fabric") or value.endswith(".mesh") for value in argv)
 
 
@@ -226,6 +226,30 @@ class TestStart:
         cmdline = " ".join(psutil.Process(ready.pid).cmdline())
         assert str(engine_agent.store.path_for(SLUG)) in cmdline
         assert f"--port {ready.port}" in cmdline
+
+    def test_authenticated_node_proxy_is_the_engine_network_boundary(
+        self, engine_agent: Agent
+    ) -> None:
+        engine_id = uuid.uuid4()
+        engine_agent.engines.start(engine_id=engine_id, slug=SLUG, estimate_bytes=1024)
+        wait_state(engine_agent, engine_id, EngineState.READY)
+        payload = {
+            "model": str(engine_agent.store.path_for(SLUG)),
+            "messages": [{"role": "user", "content": "hello"}],
+        }
+        with TestClient(engine_agent.app()) as anonymous:
+            assert (
+                anonymous.post(
+                    f"/node/engines/{engine_id}/proxy/v1/chat/completions", json=payload
+                ).status_code
+                == 401
+            )
+        with engine_agent.client() as gateway:
+            response = gateway.post(
+                f"/node/engines/{engine_id}/proxy/v1/chat/completions", json=payload
+            )
+        assert response.status_code == 200
+        assert response.json()["choices"]
 
     def test_a_start_failure_reports_the_exit_status_and_output(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -65,27 +65,89 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"detail": "Not Found"})
             return
         length = int(self.headers.get("Content-Length", "0") or 0)
+        request: dict[str, object] = {}
         if length:
-            self.rfile.read(length)
+            try:
+                parsed = json.loads(self.rfile.read(length))
+                request = parsed if isinstance(parsed, dict) else {}
+            except json.JSONDecodeError:
+                self._send(400, {"detail": "invalid JSON"})
+                return
         ready_at = _state["ready_at"]
         if time.monotonic() < (ready_at if isinstance(ready_at, float) else 0.0):
             self._send(503, {"detail": "model is still loading"})
             return
+        completion = {
+            "id": "fake-1",
+            "object": "chat.completion",
+            "model": str(_state["model"]),
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "length",
+                }
+            ],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+        }
+        if request.get("stream") is True:
+            events = [
+                {
+                    "id": "fake-1",
+                    "object": "chat.completion.chunk",
+                    "model": str(_state["model"]),
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant", "content": "ok"},
+                            "finish_reason": None,
+                        }
+                    ],
+                },
+                {
+                    "id": "fake-1",
+                    "object": "chat.completion.chunk",
+                    "model": str(_state["model"]),
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                },
+            ]
+            slow = "slow-stream" in str(request.get("messages", ""))
+            fail = "fail-stream" in str(request.get("messages", ""))
+            if not slow and not fail:
+                body = (
+                    "".join(f"data: {json.dumps(event)}\n\n" for event in events)
+                    + "data: [DONE]\n\n"
+                ).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Transfer-Encoding", "chunked")
+            self.end_headers()
+
+            def write_chunk(payload: bytes) -> None:
+                self.wfile.write(f"{len(payload):x}\r\n".encode() + payload + b"\r\n")
+                self.wfile.flush()
+
+            for index, event in enumerate(events):
+                write_chunk(f"data: {json.dumps(event)}\n\n".encode())
+                if fail and index == 0:
+                    self.close_connection = True
+                    return
+                if slow:
+                    time.sleep(1.0)
+            write_chunk(b"data: [DONE]\n\n")
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+            return
         self._send(
             200,
-            {
-                "id": "fake-1",
-                "object": "chat.completion",
-                "model": str(_state["model"]),
-                "choices": [
-                    {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": "ok"},
-                        "finish_reason": "length",
-                    }
-                ],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
-            },
+            completion,
         )
 
 

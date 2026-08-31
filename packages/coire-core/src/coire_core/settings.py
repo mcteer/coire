@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     node_inventory_file: str = "/app/nodes.yaml"
     registry_reconcile_interval_s: float = 5.0
 
+    # --- compatible inference gateway ----------------------------------
+    gateway_wait_ceiling_s: float = Field(default=600.0, gt=0.0)
+    gateway_keepalive_interval_s: float = Field(default=10.0, gt=0.0)
+    gateway_max_inflight_per_engine: int = Field(default=1, ge=1)
+    gateway_retry_after_s: int = Field(default=30, ge=1)
+    gateway_engine_request_timeout_s: float = Field(default=900.0, gt=0.0)
+
     # --- model store and engines (node side) ----------------------------
     node_store_dir: str = "/opt/coire/models"
     node_state_dir: str = "/opt/coire/state"

@@ -243,8 +243,9 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     store.ensure_root()
     jobs = JobSupervisor(settings, store)
     grants = Grants()
-    engine_bind = mesh_addr if settings.legacy_network_mode else control_addr
-    engines = EngineManager(settings, store, engine_bind or "127.0.0.1")
+    # Bare engines are private implementation details of coire-node. The authenticated
+    # control listener is their sole network boundary; no engine port binds to Wi-Fi.
+    engines = EngineManager(settings, store, "127.0.0.1")
 
     # Re-own engines that outlived the previous agent process, and re-attach to jobs that were
     # running. Both happen before the listeners bind, so the first /node/health after a restart
@@ -360,6 +361,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     try:
         await asyncio.gather(*(s.serve() for s in servers))
     finally:
+        await engines_routes.close_engine_client()
         # Engines are deliberately left running: the agent is restartable and they are not
         # (spec FR-015).
         engines.shutdown()

@@ -14,7 +14,7 @@ def run(*args: str) -> subprocess.CompletedProcess[str]:
 
 
 def test_repository_is_fully_pinned() -> None:
-    """The real tree must pass: every FROM and third-party image carries a digest."""
+    """The real tree passes with digest-pinned images and Docker's reserved scratch base."""
     proc = run("--check")
     assert proc.returncode == 0, proc.stderr
 

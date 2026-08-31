@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-from conftest import POSTGRES_PASSWORD
+from conftest import API_URL, POSTGRES_PASSWORD
 from conftest import integration_env as env_with_secrets
 
 pytestmark = [
@@ -30,7 +30,7 @@ REPO = Path(__file__).resolve().parents[2]
 COMPOSE_DIR = REPO / "deploy/compose"
 UP = COMPOSE_DIR / "coire-up"
 DOWN = COMPOSE_DIR / "coire-down"
-HEALTH = "http://127.0.0.1:8080/health"
+HEALTH = f"{API_URL}/health"
 BRINGUP_BUDGET_S = 180.0
 
 

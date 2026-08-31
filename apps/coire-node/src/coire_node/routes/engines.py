@@ -4,20 +4,42 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import AsyncIterator
 
+import httpx
 from fastapi import APIRouter, HTTPException, Response, status
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from coire_core.models.engine import (
     EngineStartRequest,
+    EngineState,
     EngineStatus,
     ReconcileRequest,
     ReconcileResult,
 )
-from coire_node.deps import EngineDep
+from coire_core.models.gateway import EngineChatRequest
+from coire_node.deps import EngineDep, StoreDep
 from coire_node.engines import BudgetExceeded, CopyMissing, NoFreePort
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/node/engines", tags=["engines"])
+_proxy_client: httpx.AsyncClient | None = None
+
+
+def _engine_client() -> httpx.AsyncClient:
+    global _proxy_client
+    if _proxy_client is None:
+        _proxy_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=32, max_keepalive_connections=8)
+        )
+    return _proxy_client
+
+
+async def close_engine_client() -> None:
+    global _proxy_client
+    client, _proxy_client = _proxy_client, None
+    if client is not None:
+        await client.aclose()
 
 
 @router.get("", response_model=list[EngineStatus])
@@ -60,6 +82,41 @@ async def get_engine(engine_id: uuid.UUID, engines: EngineDep) -> EngineStatus:
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such engine")
     return found
+
+
+@router.post("/{engine_id}/proxy/v1/chat/completions")
+async def proxy_chat_completion(
+    engine_id: uuid.UUID, request: EngineChatRequest, engines: EngineDep, store: StoreDep
+) -> Response:
+    """Carry one authenticated gateway request to a loopback-only bare engine."""
+    engine = engines.get(engine_id)
+    if engine is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such engine")
+    if engine.state is not EngineState.READY:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "engine is not ready")
+    expected_model = str(store.path_for(engine.slug or ""))
+    if not engine.slug or request.model != expected_model:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "model does not match engine")
+    url = f"http://127.0.0.1:{engine.port}/v1/chat/completions"
+    payload = request.model_dump(mode="json", exclude_none=True)
+    if not request.stream:
+        try:
+            response = await _engine_client().post(url, json=payload, timeout=300)
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "engine request failed") from exc
+        return JSONResponse(status_code=response.status_code, content=response.json())
+
+    async def relay() -> AsyncIterator[bytes]:
+        timeout = httpx.Timeout(300, read=None)
+        async with _engine_client().stream("POST", url, json=payload, timeout=timeout) as response:
+            response.raise_for_status()
+            async for chunk in response.aiter_bytes():
+                yield chunk
+
+    return StreamingResponse(
+        relay(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}
+    )
 
 
 @router.delete("/{engine_id}", response_model=EngineStatus, status_code=status.HTTP_202_ACCEPTED)
