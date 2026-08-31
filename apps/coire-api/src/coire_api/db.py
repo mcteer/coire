@@ -70,6 +70,9 @@ class NodeRow(Base):
     )
     mesh_address: Mapped[str] = mapped_column(INET)
     egress_address: Mapped[str | None] = mapped_column(INET, nullable=True)
+    endpoint_contract_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    control_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    data_host: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # 256 GB of RAM and 1.8 TB of disk both overflow a 32-bit column.
     memory_total_bytes: Mapped[int] = mapped_column(BigInteger)
     disk_total_bytes: Mapped[int] = mapped_column(BigInteger)

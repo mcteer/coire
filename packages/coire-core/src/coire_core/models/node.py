@@ -11,8 +11,9 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 from ipaddress import IPv4Address, IPv4Network
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from coire_core.models.engine import EngineStatus
 from coire_core.models.jobs import JobStatus
@@ -50,6 +51,13 @@ class NodePath(StrEnum):
     FALLBACK = "fallback"
 
 
+class NetworkPath(StrEnum):
+    """A request's fixed purpose; unlike ``NodePath`` this never implies fallback."""
+
+    CONTROL = "control"
+    DATA = "data"
+
+
 def _must_be_on_mesh(value: IPv4Address) -> IPv4Address:
     if value not in MESH_SUBNET:
         raise ValueError(f"address {value} is not within the mesh subnet {MESH_SUBNET}")
@@ -76,6 +84,43 @@ class NodeRegistration(BaseModel):
     _check_mesh = field_validator("mesh_address")(_must_be_on_mesh)
 
 
+NodeRegistrationV1 = NodeRegistration
+
+
+class NodeEndpointSet(BaseModel):
+    """Stable endpoint identities advertised by a v2 node agent."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    contract_version: Literal[2] = 2
+    control_host: str = Field(pattern=r"^coire-[a-z0-9-]+$")
+    data_host: str | None = Field(default=None, pattern=r"^coire-edge-[ab]\.fabric$")
+
+
+class NodeRegistrationV2(BaseModel):
+    """Separated-fabric registration shape (feature 022)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(pattern=r"^coire-[a-z0-9-]+$")
+    token: SecretStr
+    endpoints: NodeEndpointSet
+    memory_total_bytes: int = Field(gt=0)
+    disk_total_bytes: int = Field(gt=0)
+    gpu_cores: int | None = Field(default=None, ge=0)
+    agent_version: str
+
+    @model_validator(mode="after")
+    def validate_endpoint_identity(self) -> NodeRegistrationV2:
+        if self.endpoints.control_host != self.name:
+            raise ValueError("control_host must match the registering node name")
+        if self.name in {"coire-edge-a", "coire-edge-b"} and self.endpoints.data_host is None:
+            raise ValueError("declared Studio nodes require a data_host")
+        if self.name == "coire-core" and self.endpoints.data_host is not None:
+            raise ValueError("core must not advertise a data_host")
+        return self
+
+
 class Node(BaseModel):
     """A declared Studio, as persisted and returned by the registration endpoint."""
 
@@ -89,6 +134,27 @@ class Node(BaseModel):
     memory_total_bytes: int
     disk_total_bytes: int
     gpu_cores: int | None = None
+    agent_version: str
+    registered_at: datetime
+    last_seen_at: datetime
+    reachability: Reachability = Reachability.UNKNOWN
+
+
+NodeV1 = Node
+
+
+class NodeV2(BaseModel):
+    """Persisted node response matching a v2 registration request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    name: str
+    role: NodeRole
+    endpoints: NodeEndpointSet
+    memory_total_bytes: int = Field(gt=0)
+    disk_total_bytes: int = Field(gt=0)
+    gpu_cores: int | None = Field(default=None, ge=0)
     agent_version: str
     registered_at: datetime
     last_seen_at: datetime
@@ -126,3 +192,30 @@ class NodeStatus(BaseModel):
     """Sum of the *estimates* of live engines, not their measured footprints. Admission on a
     number that moves under load is not reproducible (spec FR-020, research R6)."""
     store_free_bytes: int = 0
+
+
+class NodeStatusV2(BaseModel):
+    """Control-listener health response for separated-fabric agents."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    agent_version: str
+    uptime_seconds: float = Field(ge=0)
+    cpu_percent: float = Field(ge=0, le=100)
+    gpu_percent: float | None = Field(default=None, ge=0, le=100)
+    thermal_state: ThermalState = ThermalState.UNKNOWN
+    memory_total_bytes: int = Field(gt=0)
+    memory_free_bytes: int = Field(ge=0)
+    disk_total_bytes: int = Field(gt=0)
+    disk_free_bytes: int = Field(ge=0)
+    agent_cpu_percent: float = Field(ge=0)
+    agent_rss_bytes: int = Field(ge=0)
+    collection_budget_ok: bool
+    path: Literal[NetworkPath.CONTROL] = NetworkPath.CONTROL
+    sampled_at: datetime
+    engines: list[EngineStatus] = Field(default_factory=list)
+    jobs: list[JobStatus] = Field(default_factory=list)
+    memory_budget_bytes: int = Field(default=0, ge=0)
+    memory_committed_bytes: int = Field(default=0, ge=0)
+    store_free_bytes: int = Field(default=0, ge=0)

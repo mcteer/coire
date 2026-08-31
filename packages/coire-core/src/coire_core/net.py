@@ -28,6 +28,7 @@ fallback_counter = _meter.create_counter(
 
 MESH_SUFFIX = ".mesh"
 EGRESS_SUFFIX = ".local"
+DATA_SUFFIX = ".fabric"
 
 
 def _host_with(host: str, suffix: str) -> str:
@@ -168,3 +169,86 @@ class MeshClient:
         suffix = f":{port}" if port else ""
         url = f"http://{_host_with(host, MESH_SUFFIX)}{suffix}{path}"
         return self._client.stream(method, url, headers=dict(headers or {}), **kwargs)
+
+
+class FabricUnreachable(RuntimeError):
+    """A fixed-purpose network path could not reach its peer."""
+
+
+class _FixedPathClient:
+    def __init__(
+        self,
+        suffix: str,
+        path_name: str,
+        *,
+        timeout: float = 5.0,
+        client: httpx.AsyncClient | None = None,
+    ) -> None:
+        self._suffix = suffix
+        self._path_name = path_name
+        self._client = client or httpx.AsyncClient(timeout=timeout)
+        self._owns_client = client is None
+
+    async def __aenter__(self) -> _FixedPathClient:
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        await self.aclose()
+
+    async def aclose(self) -> None:
+        if self._owns_client:
+            await self._client.aclose()
+
+    def _url(self, host: str, path: str, port: int | None) -> str:
+        port_part = f":{port}" if port else ""
+        return f"http://{_host_with(host, self._suffix)}{port_part}{path}"
+
+    async def request(
+        self,
+        method: str,
+        host: str,
+        path: str,
+        *,
+        port: int | None = None,
+        headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> httpx.Response:
+        url = self._url(host, path, port)
+        try:
+            return await self._client.request(method, url, headers=dict(headers or {}), **kwargs)
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise FabricUnreachable(
+                f"{self._path_name} path to {host} unreachable; cross-fabric fallback is forbidden"
+            ) from exc
+
+    async def get(self, host: str, path: str, **kwargs: Any) -> httpx.Response:
+        return await self.request("GET", host, path, **kwargs)
+
+    async def post(self, host: str, path: str, **kwargs: Any) -> httpx.Response:
+        return await self.request("POST", host, path, **kwargs)
+
+    def stream(self, method: str, host: str, path: str, **kwargs: Any) -> Any:
+        port = kwargs.pop("port", None)
+        headers = kwargs.pop("headers", None)
+        return self._client.stream(
+            method, self._url(host, path, port), headers=dict(headers or {}), **kwargs
+        )
+
+
+class ControlClient(_FixedPathClient):
+    """Control traffic over UniFi DNS, with no data-fabric fallback."""
+
+    def __init__(self, *, timeout: float = 5.0, client: httpx.AsyncClient | None = None) -> None:
+        super().__init__("", "control", timeout=timeout, client=client)
+
+
+class DataFabricClient(_FixedPathClient):
+    """Replication/data traffic over the Studio-only ``.fabric`` link."""
+
+    def __init__(self, *, timeout: float = 5.0, client: httpx.AsyncClient | None = None) -> None:
+        super().__init__(DATA_SUFFIX, "data", timeout=timeout, client=client)

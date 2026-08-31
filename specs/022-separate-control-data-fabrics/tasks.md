@@ -13,10 +13,10 @@ its corresponding implementation and confirm it fails for the intended reason.
 
 **Purpose**: Establish the reviewed contract delta and remove ambiguity in earlier design artifacts.
 
-- [ ] T001 Validate `specs/022-separate-control-data-fabrics/contracts/network-api.yaml` as OpenAPI 3.1 and record the command in `specs/022-separate-control-data-fabrics/quickstart.md`
-- [ ] T002 [P] Add feature 022 and its roadmap ID to the spec directory mapping in `docs/ROADMAP.md`
-- [ ] T003 [P] Audit supersession references in `specs/000-bootstrap/spec.md`, `specs/001-model-registry-node-agent/spec.md`, `specs/006-sharded-serving-jaccl/spec.md`, and `specs/019-upgrades-rollback/spec.md`
-- [ ] T004 [P] Reconcile network terminology across `docs/ARCHITECTURE.md`, `docs/adr/0001-defer-auth-and-edge-until-external-traffic.md`, `docs/adr/0002-mesh-name-resolution-via-managed-hosts-file.md`, and `docs/adr/0006-separate-control-and-studio-data-fabrics.md`
+- [X] T001 Validate `specs/022-separate-control-data-fabrics/contracts/network-api.yaml` as OpenAPI 3.1 and record the command in `specs/022-separate-control-data-fabrics/quickstart.md`
+- [X] T002 [P] Add feature 022 and its roadmap ID to the spec directory mapping in `docs/ROADMAP.md`
+- [X] T003 [P] Audit supersession references in `specs/000-bootstrap/spec.md`, `specs/001-model-registry-node-agent/spec.md`, `specs/006-sharded-serving-jaccl/spec.md`, and `specs/019-upgrades-rollback/spec.md`
+- [X] T004 [P] Reconcile network terminology across `docs/ARCHITECTURE.md`, `docs/adr/0001-defer-auth-and-edge-until-external-traffic.md`, `docs/adr/0002-mesh-name-resolution-via-managed-hosts-file.md`, and `docs/adr/0006-separate-control-and-studio-data-fabrics.md`
 
 ---
 
@@ -27,15 +27,15 @@ its corresponding implementation and confirm it fails for the intended reason.
 **⚠️ CRITICAL**: No user-story implementation begins until the contracts, migration, and common
 clients are complete and green.
 
-- [ ] T005 [P] Add failing v1/v2 endpoint-model and role-validation tests in `packages/coire-core/tests/test_models.py`
-- [ ] T006 [P] Add failing purpose-fixed control/data client tests, including no-cross-fabric fallback, in `packages/coire-core/tests/test_net.py`
-- [ ] T007 Implement `NetworkPath`, `NodeEndpointSet`, `NodeRegistrationV2`, and version-matched node response types in `packages/coire-core/src/coire_core/models/node.py`
-- [ ] T008 [P] Implement `ControlPathStatus` and `StudioDataLinkStatus` wire types in `packages/coire-core/src/coire_core/models/link.py` and export them from `packages/coire-core/src/coire_core/models/__init__.py`
-- [ ] T009 Replace generic mesh/fallback selection with explicit `ControlClient` and `DataFabricClient` behavior while retaining the legacy client during migration in `packages/coire-core/src/coire_core/net.py`
-- [ ] T010 Add control/data endpoint settings and legacy compatibility settings in `packages/coire-core/src/coire_core/settings.py`
-- [ ] T011 [P] Add failing forward/downgrade migration tests for nullable endpoint columns in `apps/coire-api/tests/unit/test_migrations.py`
-- [ ] T012 Add endpoint columns and compatibility metadata to `apps/coire-api/src/coire_api/db.py` and create reversible migration `apps/coire-api/alembic/versions/0003_node_endpoints.py`
-- [ ] T013 Run `uv run pytest -q packages/coire-core apps/coire-api/tests/unit/test_migrations.py` and make the foundational suite green
+- [X] T005 [P] Add failing v1/v2 endpoint-model and role-validation tests in `packages/coire-core/tests/test_models.py`
+- [X] T006 [P] Add failing purpose-fixed control/data client tests, including no-cross-fabric fallback, in `packages/coire-core/tests/test_net.py`
+- [X] T007 Implement `NetworkPath`, `NodeEndpointSet`, `NodeRegistrationV2`, and version-matched node response types in `packages/coire-core/src/coire_core/models/node.py`
+- [X] T008 [P] Implement `ControlPathStatus` and `StudioDataLinkStatus` wire types in `packages/coire-core/src/coire_core/models/link.py` and export them from `packages/coire-core/src/coire_core/models/__init__.py`
+- [X] T009 Replace generic mesh/fallback selection with explicit `ControlClient` and `DataFabricClient` behavior while retaining the legacy client during migration in `packages/coire-core/src/coire_core/net.py`
+- [X] T010 Add control/data endpoint settings and legacy compatibility settings in `packages/coire-core/src/coire_core/settings.py`
+- [X] T011 [P] Add failing forward/downgrade migration tests for nullable endpoint columns in `apps/coire-api/tests/unit/test_migrations.py`
+- [X] T012 Add endpoint columns and compatibility metadata to `apps/coire-api/src/coire_api/db.py` and create reversible migration `apps/coire-api/alembic/versions/0003_node_endpoints.py`
+- [X] T013 Run `uv run pytest -q packages/coire-core apps/coire-api/tests/unit/test_migrations.py` and make the foundational suite green
 
 **Checkpoint**: Both registration generations can be represented and persisted without changing
 runtime routing.

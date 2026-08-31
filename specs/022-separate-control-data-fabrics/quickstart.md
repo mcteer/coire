@@ -6,6 +6,8 @@ until §§1–4 pass. Record real-cluster figures in the PR per Principle VII.
 ## 1. Contract and unit gates
 
 ```bash
+uvx --from openapi-spec-validator openapi-spec-validator \
+  specs/022-separate-control-data-fabrics/contracts/network-api.yaml
 uv run pytest -q packages/coire-core apps/coire-api/tests/unit \
   apps/coire-api/tests/contract apps/coire-node/tests/unit apps/coire-node/tests/contract
 uv run mypy
