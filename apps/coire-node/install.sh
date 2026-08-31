@@ -93,11 +93,15 @@ uv python install "$PYTHON_VERSION" >/dev/null
 
 # --- agent virtualenv ------------------------------------------------------
 say "creating $ENV_DIR"
-uv venv --python "$PYTHON_VERSION" "$ENV_DIR" >/dev/null
+if [[ -x "$ENV_DIR/bin/python3" ]]; then
+  say "reusing existing versioned environment"
+else
+  uv venv --python "$PYTHON_VERSION" "$ENV_DIR" >/dev/null
+fi
 
 if [[ -n "$WHEEL_DIR" ]]; then
   say "installing from wheels in $WHEEL_DIR"
-  VIRTUAL_ENV="$ENV_DIR" uv pip install --python "$ENV_DIR/bin/python3" \
+  VIRTUAL_ENV="$ENV_DIR" uv pip install --upgrade --python "$ENV_DIR/bin/python3" \
     "$WHEEL_DIR"/coire_core-*.whl "$WHEEL_DIR"/coire_node-*.whl >/dev/null
 else
   echo "error: --wheel-dir is required." >&2
