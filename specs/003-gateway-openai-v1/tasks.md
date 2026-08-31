@@ -41,9 +41,9 @@
 **Independent Test**: An unmodified Anthropic SDK completes a streamed multi-turn exchange by changing only its base URL.
 
 - [ ] T018 [P] [US2] Add Anthropic Messages contract and event-sequence tests in `apps/coire-api/tests/contract/test_gateway_v1.py`
-- [ ] T019 [P] [US2] Add prompt-role/order and response translation unit tests in `apps/coire-api/tests/unit/test_gateway_anthropic.py`
-- [ ] T020 [US2] Implement Anthropic request, response, and SSE translation in `apps/coire-api/src/coire_api/gateway/anthropic.py`
-- [ ] T021 [US2] Add `/v1/messages` to the compatible router in `apps/coire-api/src/coire_api/routes/v1.py`
+- [X] T019 [P] [US2] Add prompt-role/order and response translation unit tests in `apps/coire-api/tests/unit/test_gateway_anthropic.py`
+- [X] T020 [US2] Implement Anthropic request, response, and SSE translation in `apps/coire-api/src/coire_api/gateway/anthropic.py`
+- [X] T021 [US2] Add `/v1/messages` to the compatible router in `apps/coire-api/src/coire_api/routes/v1.py`
 - [ ] T022 [US2] Add official Anthropic SDK compatibility coverage in `tests/integration/test_gateway.py`
 
 ## Phase 5: User Story 3 - Cold model waiting (Priority: P1)
@@ -66,7 +66,7 @@
 - [ ] T027 [P] [US4] Add user/admin visibility, entitlement, malformed UUID, and no-engine-contact contract tests in `apps/coire-api/tests/contract/test_gateway_v1.py`
 - [ ] T028 [US4] Harden resolution and route error normalization for non-disclosure in `apps/coire-api/src/coire_api/gateway/resolution.py`
 - [X] T029 [US4] Add context-window estimation and explicit limit errors in `apps/coire-api/src/coire_api/gateway/context.py`
-- [ ] T030 [US4] Add context-limit and engine-bound resolved-path tests in `apps/coire-api/tests/unit/test_gateway_context.py`
+- [X] T030 [US4] Add context-limit and engine-bound resolved-path tests in `apps/coire-api/tests/unit/test_gateway_context.py`
 
 ## Phase 7: User Story 5 - Attributable usage (Priority: P2)
 

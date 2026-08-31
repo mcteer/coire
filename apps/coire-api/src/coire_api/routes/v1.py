@@ -12,11 +12,17 @@ from sqlalchemy import select
 from coire_api.auth import CurrentPrincipal
 from coire_api.db import EngineProcessRow, ModelRow
 from coire_api.deps import SessionDep, SettingsDep
+from coire_api.gateway.anthropic import from_openai_response, from_openai_stream, to_openai_payload
 from coire_api.gateway.context import ContextLengthError, enforce_context
 from coire_api.gateway.proxy import EngineProxyError, EngineSaturatedError, complete, stream
 from coire_api.gateway.resolution import ModelNotFoundError, resolve_model
 from coire_api.registry.service import load_state_for, visible_to
-from coire_core.models.gateway import ChatCompletionRequest, GatewayModel, GatewayModelList
+from coire_core.models.gateway import (
+    AnthropicMessagesRequest,
+    ChatCompletionRequest,
+    GatewayModel,
+    GatewayModelList,
+)
 from coire_core.models.registry import LoadState
 
 router = APIRouter(prefix="/v1", tags=["compatible"])
@@ -101,6 +107,40 @@ async def chat_completions(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "engine is saturated",
             headers={"Retry-After": "1"},
+        ) from exc
+    except EngineProxyError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "engine request failed") from exc
+
+
+@router.post("/messages")
+async def anthropic_messages(
+    body: AnthropicMessagesRequest,
+    response: Response,
+    principal: CurrentPrincipal,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> object:
+    try:
+        resolved = await resolve_model(session, body.model, principal)
+    except ModelNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
+    if resolved.engine_url is None or resolved.model_path is None:
+        response.headers["Retry-After"] = str(settings.gateway_retry_after_s)
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "model is not loaded")
+    payload = to_openai_payload(body, model_path=resolved.model_path)
+    try:
+        if body.stream:
+            source = stream(resolved.engine_url, payload, settings)
+            return StreamingResponse(
+                from_openai_stream(source, model=body.model),
+                media_type="text/event-stream",
+                headers={"X-Accel-Buffering": "no"},
+            )
+        result = await complete(resolved.engine_url, payload, settings)
+        return from_openai_response(result, model=body.model)
+    except EngineSaturatedError as exc:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "engine is saturated", headers={"Retry-After": "1"}
         ) from exc
     except EngineProxyError as exc:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "engine request failed") from exc
