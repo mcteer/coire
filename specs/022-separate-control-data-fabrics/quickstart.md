@@ -140,5 +140,11 @@ match their preflight snapshots.
   min/mean/p50/p95/max = 492.6/555.0/519.8/663.0/957.3 ms, passing SC-003's 1.5 s p95 target.
 - Remaining acceptance dependencies: representative tool-loop and image-result surfaces are not
   implemented in the current feature sequence, so SC-004 and SC-005 cannot be honestly exercised
-  yet. Deliberate physical Thunderbolt and Wi-Fi failure injection also remains to be performed;
-  these gates are not recorded as passed.
+  yet. Deliberate Wi-Fi failure injection also remains to be performed; these gates are not
+  recorded as passed.
+- Thunderbolt failure and recovery: with the direct Studio cable physically disconnected, both
+  control nodes remained healthy, the link monitor repeatedly reported `ip_state=down` with a
+  timeout, and peer port 9401 timed out in both directions. The loaded edge-a model continued to
+  serve with a 524.4 ms first token. Reconnecting the cable restored `ip_state=up` without a node
+  restart, port 9401 became reachable in both directions, both control nodes stayed healthy, and
+  the model served again with a 782.5 ms first token.

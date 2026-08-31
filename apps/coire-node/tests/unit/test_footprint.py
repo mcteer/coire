@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from types import SimpleNamespace
 
 import psutil
 import pytest
@@ -60,7 +61,11 @@ class TestDarwin:
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="the non-Darwin fallback")
-def test_non_darwin_falls_back_to_rss() -> None:
+def test_non_darwin_falls_back_to_rss(monkeypatch: pytest.MonkeyPatch) -> None:
     pid = os.getpid()
+    expected = 158_662_656
+    process = psutil.Process(pid)
+    monkeypatch.setattr(process, "memory_info", lambda: SimpleNamespace(rss=expected))
+    monkeypatch.setattr(psutil, "Process", lambda _pid: process)
     assert phys_footprint(pid) is None
-    assert resident_bytes(pid) == psutil.Process(pid).memory_info().rss
+    assert resident_bytes(pid) == expected
