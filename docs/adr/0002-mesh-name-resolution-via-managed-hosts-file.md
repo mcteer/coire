@@ -1,6 +1,6 @@
 # ADR-0002: Name resolution on the Thunderbolt mesh via a managed hosts file
 
-- **Status**: Accepted
+- **Status**: Superseded by ADR-0006
 - **Date**: 2026-08-29
 - **Deciders**: Dan McTeer
 - **Constitution**: exception to the Technology Constraints line "hosts are addressed by UniFi DNS names, never raw IPs, in any config"

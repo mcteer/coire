@@ -121,6 +121,12 @@ An operator installs the node agent on a Studio, and it starts under launchd, su
 - **FR-012a**: Node preparation MUST install only what the node agent and engines require, into a self-contained versioned location, and MUST NOT install general-purpose developer tooling, background services, or anything not required to serve inference. The Studios' compute is reserved for inference.
 - **FR-012b**: Anything installed on a Studio MUST be enumerable and removable, so the node's footprint can be audited against what the platform actually needs.
 - **FR-012c**: The node agent's own steady-state resource use MUST stay within a configured budget and MUST be reported alongside the node's metrics.
+
+> **Superseded by feature 022:** FR-013 through FR-013c below describe the topology delivered by
+> bootstrap and remain its historical acceptance record. Feature 022 replaces mesh-first control
+> traffic and alerted Wi-Fi fallback with a primary isolated-VLAN control fabric and a separate
+> Studio-only Thunderbolt data fabric.
+
 - **FR-013**: `coire-node` MUST authenticate callers of its own endpoints by requiring the per-node token as a bearer credential (the same static token it presents to core at registration), and MUST serve platform traffic on the Thunderbolt mesh interface, rejecting platform requests arriving on the internet-egress interface unless they carry the explicit fallback marker (FR-013b).
 - **FR-013a**: Platform components MUST prefer the Thunderbolt mesh for all node-to-node traffic and MUST use it whenever the mesh path to a peer is available.
 - **FR-013b**: When a peer is unreachable over the mesh, a component MUST be able to fall back to the egress interface rather than treat the peer as lost. The mesh is a chain, so a middle-node failure partitions it, and an absolute prohibition would convert a survivable partition into total loss.

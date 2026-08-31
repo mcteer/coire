@@ -1,6 +1,6 @@
 # Coire — Architecture
 
-*Control plane for a three-node Apple Silicon AI lab. Draft v0.1, 2026-08-28.*
+*Control plane for a three-node Apple Silicon AI lab. Draft v0.2, 2026-08-30.*
 
 ## 1. Goals and decisions already made
 
@@ -38,10 +38,10 @@ Verified facts the design leans on (as of August 2026): `mlx_lm.server` natively
 │  │   Loki/Tempo  │ coire-scheduler, coire-ops (ops harness only)   │  │
 │  │ NO models, NO user agent harnesses on core                      │  │
 │  └────────────────────────┬──────────────────────────────────────┘  │
-│                           │ 10 GbE LAN                               │
+│                           │ isolated Wi-Fi VLAN                      │
 │          ┌────────────────┴────────────────┐                        │
 │          ▼                                 ▼                        │
-│  ┌─ coire-edge-a (80-GPU) ─┐   TB5 mesh  ┌─ coire-edge-b (60-GPU) ─┐│
+│  ┌─ coire-edge-a (80-GPU) ─┐              ┌─ coire-edge-b (60-GPU) ┐│
 │  │ coire-node (agent)      │◄══RDMA/JACCL══►│ coire-node (agent)   ││
 │  │ mlx_lm.server ×N        │              │ mlx_lm.server ×N       ││
 │  │ rank 0 of sharded runs  │              │ rank 1 of sharded runs ││
@@ -58,77 +58,58 @@ Studio A (the 80-core-GPU unit) is rank 0 for every sharded run and the default 
 
 The site sits behind a Ubiquiti Dream Machine SE on a gigabit fiber connection. That shapes three things.
 
-**Two fabrics, separate jobs.** Coire runs on two distinct networks and the split is deliberate.
+**Two fabrics, separate jobs.** Coire uses two networks, but core participates in only one.
 
-The **Thunderbolt 5 mesh is the platform fabric**: every byte of internal platform traffic rides it — gateway↔node requests, model replication between Studios, health heartbeats and quorum, and JACCL collectives for sharded serving. It is a full triangle (core↔A, core↔B, A↔B) with each active link negotiating 80 Gb/s. It is unrouted, never touches the UDM, and carries no internet traffic.
+The **isolated Wi-Fi VLAN is the control fabric** shared by all three hosts. Gateway↔node requests,
+node registration, health heartbeats, scheduler commands, telemetry, run-container callbacks, image
+results, internet egress, and the Cloudflare Tunnel use this network. These flows are modest compared
+with model weights and distributed collectives. UniFi supplies stable DNS names and deny-by-default
+segmentation from other VLANs; configuration refers to host names, never raw addresses.
 
-The **Wi-Fi interface (`en1`, 192.168.4.0/24) exists only for internet egress** — pulling from Hugging Face, package registries, and the Cloudflare Tunnel. No platform service should depend on it for node-to-node communication, and a node losing Wi-Fi should lose the ability to download, not the ability to participate in the cluster.
-
-*Measured state, 2026-08-29.* The mesh is a **chain, not a triangle**, and that is deliberate:
+The **direct Thunderbolt 5 link between the two Studios is the data fabric**. Model replication and
+JACCL collectives for sharded serving use it. Core neither holds model weights nor participates in an
+MLX process group, so connecting it to Thunderbolt provides no computational capability. Keeping it
+off the data fabric also removes edge-a as a layer-2 transit dependency for core↔edge-b traffic and
+isolates RDMA reconfiguration from the control plane.
 
 ```
-coire-core ──── coire-edge-a ──── coire-edge-b
-   .10             .11               .12
+                 isolated Wi-Fi VLAN (control + egress)
+             ┌───────────────┼───────────────┐
+        coire-core       coire-edge-a    coire-edge-b
+                              ║              ║
+                              ╚══ TB5/RDMA ══╝
+                                  data fabric
 ```
 
-Each host runs the macOS-managed Thunderbolt Bridge service with a static address on one flat
-`192.168.100.0/24`, no router and no DNS. `coire-edge-a` sits in the middle and bridges its two
-ports. That ordering keeps the Studio-to-Studio link direct — it carries model replication and JACCL
-collectives — and keeps `core ↔ edge-a` direct too, since edge-a is rank 0 and the default home for
-the largest single-node model. `core ↔ edge-b` takes the hop, and edge-b's traffic is dominated by
-small utility calls to the pinned admin model, where half a millisecond is immaterial.
+The Studio pair has static data-fabric addresses on an unrouted subnet used only for replication,
+link probes, and distributed MLX processes. The Mini has no address on this subnet. The generated
+JACCL hostfile contains only edge-a (rank 0) and edge-b (rank 1).
 
-| Host | Wi-Fi (egress only) | Thunderbolt mesh (platform) |
-|---|---|---|
-| `coire-core` | 192.168.4.10 | **192.168.100.10** |
-| `coire-edge-a` | 192.168.4.11 | **192.168.100.11** |
-| `coire-edge-b` | 192.168.4.12 | **192.168.100.12** |
+*Measured state, 2026-08-29.* The direct `edge-a ↔ edge-b` Thunderbolt Bridge measured 1614 MiB/s
+(12.6 Gb/s) at 0.85 ms, copying 300 GB in about 3.2 minutes. Wi-Fi measured 49 MiB/s (0.4 Gb/s) at
+23–29 ms. Those figures justify the direct Studio data fabric for bulk replication and collectives,
+but not extending it to core: prompts, streamed tokens, health checks, and control requests do not
+need its bandwidth. Prompt-to-first-token and multi-tool agent latency MUST be benchmarked on the
+control VLAN during the migration; a wired control network is the remedy if Wi-Fi misses the stated
+latency objectives, without changing the Studio-only data-fabric design.
 
-Measured on this exact topology:
+**Failure domains.** Losing the Thunderbolt link disables fast replication and tensor parallelism,
+but single-node serving and control-plane membership continue over the VLAN. Losing Wi-Fi removes the
+affected host from the control plane and internet egress; it does not corrupt a running engine, and
+the scheduler treats that host as unreachable. There is no bridged middle node and no layer-2 loop.
 
-| Path | Throughput | Latency | 300 GB replication |
-|---|---|---|---|
-| `edge-a ↔ edge-b` (direct) | **1614 MiB/s — 12.6 Gb/s** | 0.85 ms | 3.2 min |
-| `core ↔ edge-b` (one bridge hop) | 1591 MiB/s — 12.4 Gb/s | 1.37 ms | 3.2 min |
-| `core ↔ edge-a` (direct) | 1536 MiB/s — 12.0 Gb/s | 0.89 ms | 3.3 min |
-| Wi-Fi, for comparison | 49 MiB/s — 0.4 Gb/s | 23–29 ms, high jitter | 104 min |
-
-The mesh is roughly 33× faster than Wi-Fi for bulk transfer and ~30× better on latency. Note that a
-bridged hop costs essentially nothing on throughput — within run-to-run variance — and about 0.5 ms
-on latency, so chain ordering is a latency decision rather than a bandwidth one.
-
-**Resilience, and the accepted cost.** A chain has a middle node, and losing it partitions the mesh:
-the two outer hosts can no longer reach each other over Thunderbolt. This is accepted rather than
-engineered around, because Wi-Fi remains as a fallback and the workload that matters during a Studio
-outage — streaming tokens from the surviving Studio — needs almost no bandwidth. The mesh's 12 Gb/s
-matters for model replication, which is maintenance work nobody runs mid-incident. Platform
-components therefore *prefer* the mesh and *fall back* to the egress path when a peer is unreachable
-over it, recording and alerting on the fallback so sustained slow-path operation is never silent.
-
-Restoring the third cable would need spanning tree to break the loop. macOS's bridge reports legacy
-802.1D (`proto stp`) with no documented RSTP option, so convergence would be 30–50 seconds — and an
-untested STP path on hardware that has already been destabilised once is a poor trade for a failure
-mode Wi-Fi already covers.
-
-**Why a chain and not a mesh.** Cabling all three into a triangle and bridging each host creates a
-layer-2 loop. macOS's bridge does not run STP by default, so flooded ARP and multicast circulate the
-ring indefinitely; the observed result was collapsed inter-node throughput *and* broken external DNS
-and connectivity on all three machines. The third cable buys nothing that justifies that risk, and
-STP would only break the loop by blocking a port — losing the same link while adding 30–50 s
-convergence to every topology change. Leave the triangle open.
-
-Two further notes for anyone reconfiguring this. Use the **macOS-managed Thunderbolt Bridge service**,
-not a hand-built `ifconfig bridge0`; the two share a name and nothing else, and a raw bridge measured
-37 MiB/s against the managed service's 1486 MiB/s. And do not use `nc` to benchmark these links — it
-truncates at ~133 KB reproducibly here regardless of topology; `ssh` transfers measure correctly.
-
-**Segmentation.** The Wi-Fi/egress path is the only one the UDM sees. Give it its own VLAN with UniFi firewall rules allowing `lab → internet`, allowing `trusted-LAN → lab` on 443 only, and blocking `lab → other VLANs`, so a compromised agent container cannot pivot to the rest of the house. Pin static DHCP reservations for the three nodes. The Thunderbolt mesh needs no UDM configuration at all, because it never reaches it. The nodes are named `coire-core`, `coire-edge-a`, and `coire-edge-b`.
+**Segmentation.** UniFi firewall rules allow `lab → internet`, allow only required ingress from the
+trusted LAN, and block `lab → other VLANs`. Node-agent and engine listeners are authenticated and
+restricted by host firewall to the minimum peer set: core reaches node agents and engines; the
+Studios reach each other's replication endpoint; user run containers reach only coire-api. The
+Thunderbolt subnet is unrouted and has no default gateway or DNS. The nodes are named `coire-core`,
+`coire-edge-a`, and `coire-edge-b` through UniFi DNS.
 
 **Ingress.** Because the public path is Cloudflare Tunnel, the UDM needs no port forwards and no DDNS; nothing inbound is opened. Keep the UDM's IDS/IPS and country blocking on for the WAN side, and use the UDM's built-in WireGuard/Teleport VPN or Tailscale (either on the UDM as a subnet router or on core directly) as the break-glass admin path that bypasses Cloudflare Access. A local DNS override on the UDM for your public `coire.<domain>` hostname pointing at core lets LAN clients skip the tunnel round-trip (split-horizon), which matters for SSE latency when you're at home.
 
-**Bandwidth.** The gigabit fiber link is the ceiling on *acquisition only*: a 300 GB model takes roughly 45 minutes to pull from Hugging Face over Wi-Fi, and a sharded placement needs the weights on both Studios. Coire-node pulls once to whichever Studio is idle and replicates to the peer **over the Thunderbolt mesh**, so the second copy costs about 3.2 minutes at a measured 12.6 Gb/s rather than 45 minutes at 1 GbE. Gateway↔node request traffic rides the same mesh and has enormous headroom while a copy runs.
+**Bandwidth.** The internet connection is the ceiling on acquisition: a 300 GB model takes roughly 45 minutes to pull from Hugging Face, and a sharded placement needs the weights on both Studios. Coire-node pulls once to whichever Studio is idle and replicates to the peer over the direct Thunderbolt data fabric, so the second copy costs about 3.2 minutes at the measured 12.6 Gb/s. Gateway↔node traffic stays on the control VLAN and therefore does not contend with replication or JACCL collectives.
 
-This removes the 10GbE switch from the plan. An earlier draft recommended a USW-Aggregation or Flex 10GbE-class unit between core and the Studios to make replication and control traffic tolerable; with all internal traffic on the mesh, 10GbE would be slower than the ~12.6 Gb/s measured on the fabric already in place and would add a component whose only remaining job is internet egress, which gigabit already serves. Buy it only if a fourth node ever joins that cannot be reached by Thunderbolt.
+No 10GbE switch is required for the current topology. Add wired control networking only if measured Wi-Fi latency or reliability misses the service objectives, or if a future node cannot join the Thunderbolt data fabric and must carry model-scale traffic over Ethernet.
 
 Prometheus can scrape the UDM (via the UniFi Poller/`unpoller` exporter) so WAN saturation during a model pull and tunnel health show up on the Cluster dashboard next to node memory.
 
@@ -180,7 +161,7 @@ On the Studios, the engines and coire-node stay native (launchd) because they mu
 Three rules govern which models exist on the platform:
 
 1. **Only an admin acquires models.** Hugging Face pulls are triggered exclusively from the admin console (`POST /api/v1/admin/models` with `admin` role), never by a user request, never by an agent (the `ops` agent has no `download` tool, and the `coding`/`general` agents can't name HF repos at all). The gateway rejects any `model` value that isn't a registry id, so the `model`/`adapters` request fields of `mlx_lm.server` are never fed a user-supplied string — the router translates registry ids to local paths itself. Hugging Face credentials exist only on coire-node, never in a user-facing container.
-2. **Every roster model lives on both Studios.** A download job pulls once from HF to one Studio, verifies its files against the digests the Hub publishes, then replicates to the peer **over the Thunderbolt mesh** and verifies file by file on arrival; the model is `ready` only when both copies verify. Replication is authorised by a per-replication *transfer grant* — 32 random bytes scoped to one model on one node, expiring, revoked when the job ends — because each node holds only its own bearer token and copying one node's token to another would widen exactly the exposure ADR-0001 apologises for. The export routes are served **only on the mesh listener**, so a copy cannot cross Wi-Fi even with a valid grant. This keeps placement free (any single-node model can land on either Studio, and sharded needs both anyway) and makes a Studio failure a capacity loss rather than a roster loss. Conversions/quantisations produced on one node replicate the same way.
+2. **Every roster model lives on both Studios.** A download job pulls once from HF to one Studio, verifies its files against the digests the Hub publishes, then replicates to the peer over the direct Thunderbolt data fabric and verifies file by file on arrival; the model is `ready` only when both copies verify. Replication is authorised by a per-replication *transfer grant* — 32 random bytes scoped to one model on one node, expiring, revoked when the job ends — because each node holds only its own bearer token and copying one node's token to another would widen exactly the exposure ADR-0001 apologises for. The export routes are served only on the Studio data-fabric listener, so a copy cannot cross the control VLAN even with a valid grant. This keeps placement free (any single-node model can land on either Studio, and sharded needs both anyway) and makes a Studio failure a capacity loss rather than a roster loss. Conversions/quantisations produced on one node replicate the same way.
 3. **Users choose from a picker, admins decide what's in it.** A registry record has `state` (`downloading | replicating | ready | failed | retired`), `visibility` (`admin_only | published`), and an optional `roles`/`users` allowlist. `/v1/models` and the UI picker return only `published` + `ready` models the caller is entitled to, each with a display name, a one-line "good for" description, tags (`coding`, `general`, `reasoning`, `vision`, `image`), context size, size class, and live load state (`loaded | loading | cold`, with an estimated warm-up time for cold models). The picker groups by task so a user picking "coding" sees the verified coder models first; the admin sets a per-task default. Unpublishing a model hides it immediately without unloading or deleting it; retiring it unloads, deletes both copies, and keeps the registry row for audit.
 
 Agent profiles reference models by tag and preference order (`coding: [qwen3-coder-…, …]`) rather than by name, so publishing a new coder model changes what agents use without a code change, and the harness evaluation gate (§5.1) still decides which of them may run `apply`.
@@ -219,7 +200,7 @@ Each node has a **memory budget** (e.g. 230 GB of 256 GB usable; macOS keeps the
 
 **Auto-unload**: coire-node stamps `last_used` on every request it proxies for a process. A control loop in coire-api evaluates `idle_ttl` per model (defaults: 15 min for large sharded models, 60 min for mid-size, `never` for pinned) and issues `unload`. Sharded unload terminates the `mlx.launch` process group on rank 0, which brings down rank 1. Loading a big model is slow (minutes for 300 GB from SSD), so the admin UI shows load state per model and lets you pin models ahead of a session.
 
-**What "ready" means for an engine.** `mlx_lm.server` answers `GET /health` with `{"status":"ok"}` from its HTTP thread the moment it binds, while the model is still loading on another thread, and it logs nothing when the load completes. Measured on this cluster with a 0.29 GB model, `/health` answered 1.5 s before the first generation succeeded; on a 27 GB model that window is minutes. So the node agent treats `/health` only as "the port is open" and reports `ready` when a one-token completion it issued comes back. The same server accepts a `model` path per request and will load whatever it names, with no flag to disable that — which is why engines bind the mesh address only and start with `HF_HUB_OFFLINE=1`, and why the gateway passes registry-resolved paths and nothing else.
+**What "ready" means for an engine.** `mlx_lm.server` answers `GET /health` with `{"status":"ok"}` from its HTTP thread the moment it binds, while the model is still loading on another thread, and it logs nothing when the load completes. Measured on this cluster with a 0.29 GB model, `/health` answered 1.5 s before the first generation succeeded; on a 27 GB model that window is minutes. So the node agent treats `/health` only as "the port is open" and reports `ready` when a one-token completion it issued comes back. The same server accepts a `model` path per request and will load whatever it names, with no flag to disable that — which is why engines bind only their control-fabric address, host firewall rules restrict access to core, and they start with `HF_HUB_OFFLINE=1`; the gateway passes registry-resolved paths and nothing else.
 
 **Engines outlive their agent.** launchd kills a job's whole process group when the job dies, so a `KeepAlive` restart of `coire-node` would take every engine with it. Engines are spawned in their own session and the LaunchDaemon sets `AbandonProcessGroup`; on the way back up the agent re-adopts them by `(pid, create_time)`, reports any it cannot match as an orphan, and corrects rows whose process is gone. Memory is *measured* as the kernel's physical footprint (`proc_pid_rusage`), not RSS, because MLX allocates through Metal and those pages land in IOAccelerator accounting; admission still uses estimates, since a number that moves under load cannot make a reproducible decision.
 
