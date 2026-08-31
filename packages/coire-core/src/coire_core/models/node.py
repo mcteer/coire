@@ -93,7 +93,7 @@ class NodeEndpointSet(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     contract_version: Literal[2] = 2
-    control_host: str = Field(pattern=r"^coire-[a-z0-9-]+$")
+    control_host: str = Field(pattern=r"^coire-[a-z0-9-]+(?:\.lab)?$")
     data_host: str | None = Field(default=None, pattern=r"^coire-edge-[ab]\.fabric$")
 
 
@@ -112,8 +112,8 @@ class NodeRegistrationV2(BaseModel):
 
     @model_validator(mode="after")
     def validate_endpoint_identity(self) -> NodeRegistrationV2:
-        if self.endpoints.control_host != self.name:
-            raise ValueError("control_host must match the registering node name")
+        if self.endpoints.control_host not in {self.name, f"{self.name}.lab"}:
+            raise ValueError("control_host must match the registering node name or its .lab FQDN")
         if self.name in {"coire-edge-a", "coire-edge-b"} and self.endpoints.data_host is None:
             raise ValueError("declared Studio nodes require a data_host")
         if self.name == "coire-core" and self.endpoints.data_host is not None:

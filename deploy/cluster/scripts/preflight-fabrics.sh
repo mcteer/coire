@@ -19,7 +19,7 @@ chmod 700 "$STATE_DIR"
 STAMP="$STATE_DIR/fabrics.ok"
 rm -f "$STAMP"
 
-for host in coire-core coire-edge-a coire-edge-b; do
+for host in coire-core.lab coire-edge-a.lab coire-edge-b.lab; do
   dscacheutil -q host -a name "$host" | grep -q 'ip_address:' || {
     echo "control DNS failed: $host" >&2; exit 1;
   }
@@ -35,7 +35,7 @@ for node in coire-edge-a coire-edge-b; do
   while [[ "$i" -lt "$PROBES" ]]; do
     curl --fail --silent --show-error --output /dev/null \
       --header "Authorization: Bearer $token" \
-      --write-out '%{time_total}\n' "http://$node:9400/node/health" >> "$SAMPLES"
+      --write-out '%{time_total}\n' "http://$node.lab:9400/node/health" >> "$SAMPLES"
     i=$((i + 1))
   done
   p95="$(sort -n "$SAMPLES" | awk -v n="$PROBES" 'NR==int(n*.95+0.999){printf "%.3f",$1*1000}')"

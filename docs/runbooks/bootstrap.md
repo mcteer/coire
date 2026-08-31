@@ -120,8 +120,8 @@ boot with no login session, and the login keychain is locked then.
 From core:
 
 ```bash
-scripts/build-node-wheel.sh coire-edge-a     # builds and copies over the mesh
-ssh mcteer@coire-edge-a.mesh 'apps/coire-node/install.sh --wheel-dir /opt/coire/dist'
+scripts/build-node-wheel.sh coire-edge-a     # builds and copies over control DNS
+ssh mcteer@coire-edge-a.lab '~/coire-stage/apps/coire-node/install.sh --wheel-dir ~/coire-stage/dist'
 ```
 
 Then the printed `sudo` steps to install and bootstrap the LaunchDaemon.
@@ -130,7 +130,7 @@ Check it:
 
 ```bash
 TOKEN=$(security find-generic-password -w -s coire-node-tokens | jq -r '."coire-edge-a"')
-curl -s -H "Authorization: Bearer $TOKEN" http://coire-edge-a:9400/node/health | jq
+curl -s -H "Authorization: Bearer $TOKEN" http://coire-edge-a.lab:9400/node/health | jq
 ```
 
 `401` without the token. The egress (Wi-Fi) listener returns `403` unless the request carries

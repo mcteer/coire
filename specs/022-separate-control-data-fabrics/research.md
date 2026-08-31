@@ -16,7 +16,7 @@ also eliminates edge-a as a bridge dependency.
 
 ## R2. Naming
 
-**Decision**: Use UniFi DNS names (`coire-core`, `coire-edge-a`, `coire-edge-b`) on the control VLAN.
+**Decision**: Use UniFi DNS FQDNs (`coire-core.lab`, `coire-edge-a.lab`, `coire-edge-b.lab`) on the control VLAN.
 Use managed `.fabric` names for the two static, unrouted Studio data endpoints; only
 `deploy/cluster/hosts` maps those names to addresses.
 
@@ -25,6 +25,11 @@ the no-DNS data link operable when core is down.
 
 **Alternatives considered**: `.local` mDNS (already measured nondeterministic); raw addresses in
 service config (constitution violation); DNS hosted on core for the data link (unavailable with core).
+
+**Rollout amendment (2026-08-31)**: Direct queries to the UniFi resolver proved that all three
+`.lab` FQDNs resolve consistently while the bare `coire-edge-b` name returns `NXDOMAIN`. The v2
+contract temporarily accepts both forms for rolling compatibility, but production inventory and
+runtime configuration use only the FQDNs.
 
 ## R3. Rolling contract compatibility
 

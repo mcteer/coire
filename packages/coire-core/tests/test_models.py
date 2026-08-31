@@ -104,13 +104,26 @@ class TestNodeRegistrationV2:
         registration = NodeRegistrationV2(
             name="coire-edge-a",
             token=SecretStr("secret"),
-            endpoints=NodeEndpointSet(control_host="coire-edge-a", data_host="coire-edge-a.fabric"),
+            endpoints=NodeEndpointSet(
+                control_host="coire-edge-a.lab", data_host="coire-edge-a.fabric"
+            ),
             memory_total_bytes=1,
             disk_total_bytes=1,
             gpu_cores=80,
             agent_version="0.2.0",
         )
         assert registration.endpoints.contract_version == 2
+
+    def test_accepts_bare_control_name_during_rolling_upgrade(self) -> None:
+        registration = NodeRegistrationV2(
+            name="coire-edge-a",
+            token=SecretStr("secret"),
+            endpoints=NodeEndpointSet(control_host="coire-edge-a", data_host="coire-edge-a.fabric"),
+            memory_total_bytes=1,
+            disk_total_bytes=1,
+            agent_version="0.2.0",
+        )
+        assert registration.endpoints.control_host == "coire-edge-a"
 
     def test_rejects_mismatched_control_identity(self) -> None:
         with pytest.raises(ValidationError, match="control_host"):
@@ -120,7 +133,7 @@ class TestNodeRegistrationV2:
                     "token": "secret",
                     "endpoints": {
                         "contract_version": 2,
-                        "control_host": "coire-edge-b",
+                        "control_host": "coire-edge-b.lab",
                         "data_host": "coire-edge-a.fabric",
                     },
                     "memory_total_bytes": 1,

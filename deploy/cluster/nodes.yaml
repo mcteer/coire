@@ -11,7 +11,7 @@
 nodes:
   coire-edge-a:
     role: studio
-    control_host: coire-edge-a
+    control_host: coire-edge-a.lab
     data_host: coire-edge-a.fabric
     gpu_cores: 80
     description: >-
@@ -19,7 +19,7 @@ nodes:
       Middle of the mesh chain, so it bridges core to edge-b.
   coire-edge-b:
     role: studio
-    control_host: coire-edge-b
+    control_host: coire-edge-b.lab
     data_host: coire-edge-b.fabric
     gpu_cores: 60
     description: >-

@@ -76,8 +76,13 @@ async def register_node(
         declared_control = str(declared.get("control_host", registration.name))
         declared_data_raw = declared.get("data_host")
         declared_data = str(declared_data_raw) if declared_data_raw is not None else None
+        compatible_control_hosts = {declared_control}
+        if declared_control == f"{registration.name}.lab":
+            # One-release rolling compatibility: an already-running v2 agent may still
+            # advertise the bare UniFi name while the inventory moves to the stable FQDN.
+            compatible_control_hosts.add(registration.name)
         if (
-            registration.endpoints.control_host != declared_control
+            registration.endpoints.control_host not in compatible_control_hosts
             or registration.endpoints.data_host != declared_data
         ):
             logger.warning("registration refused: endpoint mismatch for %s", registration.name)

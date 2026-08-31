@@ -42,7 +42,7 @@ def settings(tmp_path: Path) -> Settings:
     inventory = tmp_path / "nodes.yaml"
     inventory.write_text(
         "nodes:\n  coire-edge-a:\n    role: studio\n"
-        "    control_host: coire-edge-a\n    data_host: coire-edge-a.fabric\n"
+        "    control_host: coire-edge-a.lab\n    data_host: coire-edge-a.fabric\n"
     )
     result = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     result.node_inventory_file = str(inventory)
@@ -92,6 +92,31 @@ async def test_v2_request_receives_v2_response(tmp_path: Path) -> None:
                 "token": "token",
                 "endpoints": {
                     "contract_version": 2,
+                    "control_host": "coire-edge-a.lab",
+                    "data_host": "coire-edge-a.fabric",
+                },
+                "memory_total_bytes": 1,
+                "disk_total_bytes": 1,
+                "agent_version": "0.2.0",
+            }
+        ),
+        request(),
+        ANONYMOUS,
+        cast(AsyncSession, Session()),
+        settings(tmp_path),
+    )
+    assert isinstance(response, NodeV2)
+    assert response.endpoints.control_host == "coire-edge-a.lab"
+
+
+async def test_bare_v2_control_name_is_accepted_during_rollout(tmp_path: Path) -> None:
+    response = await register_node(
+        NodeRegistrationV2.model_validate(
+            {
+                "name": "coire-edge-a",
+                "token": "token",
+                "endpoints": {
+                    "contract_version": 2,
                     "control_host": "coire-edge-a",
                     "data_host": "coire-edge-a.fabric",
                 },
@@ -118,7 +143,7 @@ async def test_v2_endpoint_must_match_inventory(tmp_path: Path) -> None:
                     "token": "token",
                     "endpoints": {
                         "contract_version": 2,
-                        "control_host": "coire-edge-a",
+                        "control_host": "coire-edge-a.lab",
                         "data_host": "coire-edge-b.fabric",
                     },
                     "memory_total_bytes": 1,

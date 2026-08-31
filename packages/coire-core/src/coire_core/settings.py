@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     node_control_host: str = ""
     node_data_host: str = ""
     core_mesh_host: str = "coire-core"
-    core_control_host: str = "coire-core"
+    core_control_host: str = "coire-core.lab"
     core_api_port: int = 8180
     """Port the node reaches the control plane on over the mesh.
 

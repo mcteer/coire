@@ -39,7 +39,7 @@ Expected:
 
 With the old cable topology still recoverable, run the deployment preflight from core. It must verify:
 
-1. UniFi DNS resolves all three control names to the isolated VLAN;
+1. UniFi DNS resolves `coire-core.lab`, `coire-edge-a.lab`, and `coire-edge-b.lab` to the isolated VLAN;
 2. 200 authenticated probes per Studio succeed with p95 ≤ 50 ms;
 3. only the allowed firewall matrix succeeds;
 4. the tiny model produces first token within 1.5 s p95 for ≤4k-token prompts;
