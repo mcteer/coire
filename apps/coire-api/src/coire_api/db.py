@@ -35,6 +35,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.engine import EngineState
+from coire_core.models.gateway import GatewayProtocol, UsageOutcome
 from coire_core.models.jobs import DownloadStage
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.registry import CopyRole, ModelState, Visibility
@@ -299,3 +300,30 @@ class AuditRow(Base):
     target_id: Mapped[str] = mapped_column(String(255), index=True)
     outcome: Mapped[AuditOutcome] = mapped_column(_enum(AuditOutcome, "audit_outcome"))
     detail: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+
+
+class UsageRecordRow(Base):
+    """Append-only accounting for every gateway request that reaches resolution."""
+
+    __tablename__ = "usage_records"
+    __table_args__ = (
+        Index("ix_usage_records_model_started", "model_id", "started_at"),
+        Index("ix_usage_records_principal_started", "principal_subject", "started_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    request_id: Mapped[uuid.UUID] = mapped_column(unique=True, index=True)
+    principal_kind: Mapped[str] = mapped_column(String(32))
+    principal_subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="CASCADE"))
+    engine_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("engine_processes.id", ondelete="SET NULL"), nullable=True
+    )
+    protocol: Mapped[GatewayProtocol] = mapped_column(_enum(GatewayProtocol, "gateway_protocol"))
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    duration_ms: Mapped[float] = mapped_column(Float)
+    outcome: Mapped[UsageOutcome] = mapped_column(_enum(UsageOutcome, "usage_outcome"), index=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
