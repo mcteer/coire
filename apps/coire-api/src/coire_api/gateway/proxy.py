@@ -13,6 +13,30 @@ from coire_core.settings import Settings
 
 _semaphores: dict[str, asyncio.Semaphore] = {}
 _guard = asyncio.Lock()
+_engine_client: httpx.AsyncClient | None = None
+
+
+def init_engine_client() -> None:
+    """Create the process-wide engine connection pool during application startup."""
+
+    global _engine_client
+    if _engine_client is None:
+        _engine_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=32, max_keepalive_connections=8)
+        )
+
+
+async def close_engine_client() -> None:
+    global _engine_client
+    client, _engine_client = _engine_client, None
+    if client is not None:
+        await client.aclose()
+
+
+def _client() -> httpx.AsyncClient:
+    init_engine_client()
+    assert _engine_client is not None
+    return _engine_client
 
 
 async def _semaphore(engine_url: str, limit: int) -> asyncio.Semaphore:
@@ -50,12 +74,13 @@ async def complete(
 ) -> dict[str, object]:
     async with engine_slot(engine_url, settings):
         try:
-            async with httpx.AsyncClient(
-                timeout=settings.gateway_engine_request_timeout_s
-            ) as client:
-                response = await client.post(f"{engine_url}/v1/chat/completions", json=payload)
-                response.raise_for_status()
-                body = response.json()
+            response = await _client().post(
+                f"{engine_url}/v1/chat/completions",
+                json=payload,
+                timeout=settings.gateway_engine_request_timeout_s,
+            )
+            response.raise_for_status()
+            body = response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise EngineProxyError(str(exc)) from exc
     if not isinstance(body, dict):
@@ -70,12 +95,12 @@ async def stream(
         timeout = httpx.Timeout(settings.gateway_engine_request_timeout_s, read=None)
         done = False
         try:
-            async with (
-                httpx.AsyncClient(timeout=timeout) as client,
-                client.stream(
-                    "POST", f"{engine_url}/v1/chat/completions", json=payload
-                ) as response,
-            ):
+            async with _client().stream(
+                "POST",
+                f"{engine_url}/v1/chat/completions",
+                json=payload,
+                timeout=timeout,
+            ) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if line:

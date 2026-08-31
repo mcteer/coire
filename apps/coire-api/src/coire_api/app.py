@@ -35,6 +35,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         init_engine(settings)
+        from coire_api.gateway.proxy import close_engine_client, init_engine_client
+
+        init_engine_client()
         from coire_api.nodes_prober import NodeProber
 
         prober = NodeProber(settings)
@@ -53,6 +56,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             await reconciler.stop()
             await prober.stop()
+            await close_engine_client()
             await dispose_engine()
 
     app = FastAPI(
