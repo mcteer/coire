@@ -16,6 +16,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from conftest import API_URL
 
 pytestmark = [
     pytest.mark.integration,
@@ -27,8 +28,8 @@ pytestmark = [
 
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE_DIR = REPO / "deploy/compose"
-HEALTH = "http://127.0.0.1:8080/health"
-NGINX_HEALTH = "http://127.0.0.1:8080/nginx-health"
+HEALTH = f"{API_URL}/health"
+NGINX_HEALTH = f"{API_URL}/nginx-health"
 
 # /health is served BY coire-api through nginx, so restarting either of those makes the
 # endpoint itself unavailable. That is the service under test being down, not collateral
