@@ -138,7 +138,7 @@ without loss of registry, job, audit, engine, or model-copy state.
 - [X] T051 Run the lint, format, type, and unit gates configured by `pyproject.toml`; fix every failure without loosening checks
 - [X] T052 Run the engine/tiny-model validation in `specs/022-separate-control-data-fabrics/quickstart.md` and record its result; do not mark complete on a skip
 - [X] T053 Verify images from `deploy/compose/compose.yaml` build and pass `scripts/image-policy.sh`; confirm no service, capability, listener, CORS rule, or secret scope was widened
-- [ ] T054 Complete the PR description from evidence in `specs/022-separate-control-data-fabrics/quickstart.md`, citing feature 022, ADR-0006, Principles I/III/IV/VI/VII, compatibility, rollback, and real-cluster measurements
+- [X] T054 Complete the PR description from evidence in `specs/022-separate-control-data-fabrics/quickstart.md`, citing feature 022, ADR-0006, Principles I/III/IV/VI/VII, compatibility, rollback, and real-cluster measurements
 
 ---
 
