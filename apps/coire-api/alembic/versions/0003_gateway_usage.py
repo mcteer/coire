@@ -32,11 +32,12 @@ def upgrade() -> None:
         sa.Column("request_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("principal_kind", sa.String(32), nullable=False),
         sa.Column("principal_subject", sa.String(255), nullable=True),
+        sa.Column("requested_model_id", sa.String(255), nullable=False),
         sa.Column(
             "model_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("models.id", ondelete="CASCADE"),
-            nullable=False,
+            sa.ForeignKey("models.id", ondelete="SET NULL"),
+            nullable=True,
         ),
         sa.Column(
             "engine_id",

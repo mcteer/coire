@@ -19,12 +19,17 @@
 #   docker compose -f compose.yaml -f compose.override.it.yaml up -d
 
 services:
+  coire-web:
+    # Never collide with the production/local gateway on 8080.
+    ports: !override ["127.0.0.1:${COIRE_IT_PORT:-18080}:8080"]
+
   coire-api:
     environment:
       # The Studios keep 50 GiB free; the test tmpfs is 4 GiB, so the production default
       # would refuse every model on fit. The check itself is exercised by its own test.
       DISK_RESERVE_BYTES: "268435456"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
+      GATEWAY_MAX_INFLIGHT_PER_ENGINE: "4"
     networks:
       coire-mesh-sim:
         ipv4_address: 192.168.100.10
@@ -41,6 +46,7 @@ services:
     networks:
       coire-mesh-sim:
         ipv4_address: 192.168.100.11
+        aliases: ["coire-edge-a.lab"]
       # The origin needs egress to reach Hugging Face; it is the only container that does.
       coire-edge:
     extra_hosts:
@@ -85,6 +91,7 @@ services:
       # and here it physically cannot do anything else.
       coire-mesh-sim:
         ipv4_address: 192.168.100.12
+        aliases: ["coire-edge-b.lab"]
     extra_hosts:
       - "coire-core.mesh:192.168.100.10"
       - "coire-edge-a.mesh:192.168.100.11"

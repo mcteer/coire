@@ -2,30 +2,153 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import asyncio
+import json
+import uuid
+from collections.abc import AsyncIterator, Sequence
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.auth import CurrentPrincipal
+from coire_api.auth import CurrentPrincipal, Principal
 from coire_api.db import EngineProcessRow, ModelRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.anthropic import from_openai_response, from_openai_stream, to_openai_payload
 from coire_api.gateway.context import ContextLengthError, enforce_context
+from coire_api.gateway.loading import ModelLoadError, load_model
 from coire_api.gateway.proxy import EngineProxyError, EngineSaturatedError, complete, stream
-from coire_api.gateway.resolution import ModelNotFoundError, resolve_model
+from coire_api.gateway.resolution import ModelNotFoundError, ResolvedModel, resolve_model
+from coire_api.gateway.usage import UsageTracker
 from coire_api.registry.service import load_state_for, visible_to
 from coire_core.models.gateway import (
     AnthropicMessagesRequest,
     ChatCompletionRequest,
     GatewayModel,
     GatewayModelList,
+    GatewayProtocol,
+    UsageOutcome,
 )
 from coire_core.models.registry import LoadState
+from coire_core.settings import Settings
 
 router = APIRouter(prefix="/v1", tags=["compatible"])
+
+
+async def _load_and_resolve(
+    body_model: uuid.UUID, principal: Principal, session: AsyncSession, settings: Settings
+) -> ResolvedModel:
+    await asyncio.wait_for(
+        load_model(body_model, settings), timeout=settings.gateway_wait_ceiling_s
+    )
+    session.expire_all()
+    return await resolve_model(session, body_model, principal)
+
+
+async def _openai_cold_stream(
+    body: ChatCompletionRequest,
+    principal: Principal,
+    session: AsyncSession,
+    settings: Settings,
+    usage: UsageTracker,
+) -> AsyncIterator[bytes]:
+    task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
+    while not task.done():
+        try:
+            resolved = await asyncio.wait_for(
+                asyncio.shield(task), timeout=settings.gateway_keepalive_interval_s
+            )
+            break
+        except TimeoutError:
+            yield b": coire model loading\n\n"
+    try:
+        resolved = await task
+        if resolved.engine_url is None or resolved.model_path is None:
+            raise ModelLoadError("engine did not become ready")
+        usage.model_id = resolved.model_id
+        usage.engine_id = resolved.engine_id
+        payload = body.model_dump(mode="json", exclude={"coire_wait_for_model"}, exclude_none=True)
+        payload["model"] = resolved.model_path
+        async for chunk in _tracked_stream(stream(resolved.engine_url, payload, settings), usage):
+            yield chunk
+    except (ModelLoadError, TimeoutError) as exc:
+        await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
+        error = json.dumps({"error": {"message": str(exc), "type": "model_load_error"}})
+        yield f"data: {error}\n\n".encode()
+
+
+async def _tracked_stream(
+    source: AsyncIterator[bytes], usage: UsageTracker
+) -> AsyncIterator[bytes]:
+    try:
+        async for chunk in source:
+            for line in chunk.decode(errors="replace").splitlines():
+                if not line.startswith("data: ") or line == "data: [DONE]":
+                    continue
+                try:
+                    event = json.loads(line[6:])
+                    reported = event.get("usage") or {}
+                    if reported:
+                        usage.prompt_tokens = int(
+                            reported.get("prompt_tokens", usage.prompt_tokens)
+                        )
+                        usage.completion_tokens = int(
+                            reported.get("completion_tokens", usage.completion_tokens)
+                        )
+                    elif event.get("choices", [{}])[0].get("delta", {}).get("content"):
+                        usage.completion_tokens += 1
+                except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+                    pass
+            yield chunk
+    except asyncio.CancelledError:
+        await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
+        raise
+    except GeneratorExit:
+        await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
+        raise
+    except EngineProxyError:
+        await usage.finish(UsageOutcome.FAILED, failure_code="engine_stream_failed")
+    else:
+        await usage.finish(UsageOutcome.SUCCEEDED)
+
+
+async def _anthropic_cold_stream(
+    body: AnthropicMessagesRequest,
+    principal: Principal,
+    session: AsyncSession,
+    settings: Settings,
+    usage: UsageTracker,
+) -> AsyncIterator[bytes]:
+    task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
+    while not task.done():
+        try:
+            resolved = await asyncio.wait_for(
+                asyncio.shield(task), timeout=settings.gateway_keepalive_interval_s
+            )
+            break
+        except TimeoutError:
+            yield b": coire model loading\n\n"
+    try:
+        resolved = await task
+        if resolved.engine_url is None or resolved.model_path is None:
+            raise ModelLoadError("engine did not become ready")
+        usage.model_id = resolved.model_id
+        usage.engine_id = resolved.engine_id
+        payload = to_openai_payload(body, model_path=resolved.model_path)
+        tracked = _tracked_stream(stream(resolved.engine_url, payload, settings), usage)
+        async for event in from_openai_stream(tracked, model=body.model):
+            yield event
+    except (ModelLoadError, TimeoutError) as exc:
+        await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
+        yield (
+            "event: error\ndata: "
+            + json.dumps(
+                {"type": "error", "error": {"type": "model_load_error", "message": str(exc)}}
+            )
+            + "\n\n"
+        ).encode()
 
 
 def _load_label(state: LoadState) -> Literal["loaded", "loading", "cold"]:
@@ -74,73 +197,145 @@ async def list_models(principal: CurrentPrincipal, session: SessionDep) -> Gatew
 @router.post("/chat/completions")
 async def chat_completions(
     body: ChatCompletionRequest,
-    response: Response,
     principal: CurrentPrincipal,
     session: SessionDep,
     settings: SettingsDep,
 ) -> object:
+    usage = UsageTracker(principal, str(body.model), GatewayProtocol.OPENAI)
     try:
         resolved = await resolve_model(session, body.model, principal)
     except ModelNotFoundError as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
+    usage.model_id = resolved.model_id
+    usage.engine_id = resolved.engine_id
     try:
-        enforce_context(
+        usage.prompt_tokens = enforce_context(
             body.messages, limit=resolved.context_window, output_tokens=body.max_tokens or 0
         )
     except ContextLengthError as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="context_length")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     if resolved.engine_url is None or resolved.model_path is None:
-        response.headers["Retry-After"] = str(settings.gateway_retry_after_s)
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "model is not loaded")
+        if not body.coire_wait_for_model:
+            await usage.finish(UsageOutcome.REFUSED, failure_code="model_cold")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "model is not loaded",
+                headers={"Retry-After": str(settings.gateway_retry_after_s)},
+            )
+        if body.stream:
+            return StreamingResponse(
+                _openai_cold_stream(body, principal, session, settings, usage),
+                media_type="text/event-stream",
+                headers={"X-Accel-Buffering": "no"},
+            )
+        try:
+            resolved = await _load_and_resolve(body.model, principal, session, settings)
+        except (ModelLoadError, TimeoutError) as exc:
+            await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"model load failed: {exc}",
+                headers={"Retry-After": str(settings.gateway_retry_after_s)},
+            ) from exc
+        if resolved.engine_url is None or resolved.model_path is None:
+            await usage.finish(UsageOutcome.FAILED, failure_code="model_not_ready")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "model load did not become ready"
+            )
     payload = body.model_dump(mode="json", exclude={"coire_wait_for_model"}, exclude_none=True)
     payload["model"] = resolved.model_path
     try:
         if body.stream:
             return StreamingResponse(
-                stream(resolved.engine_url, payload, settings),
+                _tracked_stream(stream(resolved.engine_url, payload, settings), usage),
                 media_type="text/event-stream",
                 headers={"X-Accel-Buffering": "no"},
             )
-        return await complete(resolved.engine_url, payload, settings)
+        result = await complete(resolved.engine_url, payload, settings)
+        reported = result.get("usage")
+        if isinstance(reported, dict):
+            usage.prompt_tokens = int(reported.get("prompt_tokens", usage.prompt_tokens))
+            usage.completion_tokens = int(reported.get("completion_tokens", 0))
+        await usage.finish(UsageOutcome.SUCCEEDED)
+        return result
     except EngineSaturatedError as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="engine_saturated")
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
             "engine is saturated",
             headers={"Retry-After": "1"},
         ) from exc
     except EngineProxyError as exc:
+        await usage.finish(UsageOutcome.FAILED, failure_code="engine_request_failed")
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "engine request failed") from exc
 
 
 @router.post("/messages")
 async def anthropic_messages(
     body: AnthropicMessagesRequest,
-    response: Response,
     principal: CurrentPrincipal,
     session: SessionDep,
     settings: SettingsDep,
 ) -> object:
+    usage = UsageTracker(principal, str(body.model), GatewayProtocol.ANTHROPIC)
     try:
         resolved = await resolve_model(session, body.model, principal)
     except ModelNotFoundError as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
+    usage.model_id = resolved.model_id
+    usage.engine_id = resolved.engine_id
     if resolved.engine_url is None or resolved.model_path is None:
-        response.headers["Retry-After"] = str(settings.gateway_retry_after_s)
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "model is not loaded")
+        if not body.coire_wait_for_model:
+            await usage.finish(UsageOutcome.REFUSED, failure_code="model_cold")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "model is not loaded",
+                headers={"Retry-After": str(settings.gateway_retry_after_s)},
+            )
+        if body.stream:
+            return StreamingResponse(
+                _anthropic_cold_stream(body, principal, session, settings, usage),
+                media_type="text/event-stream",
+                headers={"X-Accel-Buffering": "no"},
+            )
+        try:
+            resolved = await _load_and_resolve(body.model, principal, session, settings)
+        except (ModelLoadError, TimeoutError) as exc:
+            await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"model load failed: {exc}",
+                headers={"Retry-After": str(settings.gateway_retry_after_s)},
+            ) from exc
+        if resolved.engine_url is None or resolved.model_path is None:
+            await usage.finish(UsageOutcome.FAILED, failure_code="model_not_ready")
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "model load did not become ready"
+            )
     payload = to_openai_payload(body, model_path=resolved.model_path)
     try:
         if body.stream:
-            source = stream(resolved.engine_url, payload, settings)
+            source = _tracked_stream(stream(resolved.engine_url, payload, settings), usage)
             return StreamingResponse(
                 from_openai_stream(source, model=body.model),
                 media_type="text/event-stream",
                 headers={"X-Accel-Buffering": "no"},
             )
         result = await complete(resolved.engine_url, payload, settings)
+        reported = result.get("usage")
+        if isinstance(reported, dict):
+            usage.prompt_tokens = int(reported.get("prompt_tokens", 0))
+            usage.completion_tokens = int(reported.get("completion_tokens", 0))
+        await usage.finish(UsageOutcome.SUCCEEDED)
         return from_openai_response(result, model=body.model)
     except EngineSaturatedError as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="engine_saturated")
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "engine is saturated", headers={"Retry-After": "1"}
         ) from exc
     except EngineProxyError as exc:
+        await usage.finish(UsageOutcome.FAILED, failure_code="engine_request_failed")
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "engine request failed") from exc

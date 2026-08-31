@@ -1,0 +1,19 @@
+groups:
+  - name: coire-gateway
+    rules:
+      - alert: CoireGatewayEngineFailures
+        expr: sum(rate(coire_gateway_failures_total{failure_code=~"engine.*"}[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Coire gateway engine failures are sustained
+          description: More than 0.05 engine failures per second have persisted for ten minutes.
+      - alert: CoireGatewaySaturated
+        expr: sum(rate(coire_gateway_requests_total{outcome="refused",failure_code="engine_saturated"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Coire gateway is refusing saturated-engine traffic
+          description: At least one model engine has remained saturated for five minutes.

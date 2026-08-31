@@ -6,7 +6,8 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from coire_api import __version__
@@ -67,6 +68,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)
     app.include_router(v1.router)
+
+    @app.exception_handler(HTTPException)
+    async def compatible_problem(request: Request, exc: HTTPException) -> JSONResponse:
+        """Keep legacy control routes stable while `/v1` uses RFC 9457."""
+        if not request.url.path.startswith("/v1/"):
+            return JSONResponse(
+                status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers
+            )
+        detail = exc.detail if isinstance(exc.detail, str) else "request failed"
+        return JSONResponse(
+            status_code=exc.status_code,
+            media_type="application/problem+json",
+            headers=exc.headers,
+            content={
+                "type": "about:blank",
+                "title": detail,
+                "status": exc.status_code,
+                "detail": detail,
+                "instance": request.url.path,
+            },
+        )
 
     FastAPIInstrumentor.instrument_app(app)
     return app

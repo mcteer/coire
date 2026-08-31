@@ -6,6 +6,7 @@ from coire_core.models.gateway import (
     GatewayModel,
     GatewayModelList,
     GatewayProtocol,
+    ProblemDetails,
     UsageOutcome,
     UsageRecord,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "GatewayModel",
     "GatewayModelList",
     "GatewayProtocol",
+    "ProblemDetails",
     "UsageOutcome",
     "UsageRecord",
 ]

@@ -84,3 +84,10 @@ Exact tokenizer accounting is deferred until tokenizer service support exists.
 
 **Alternatives considered**: Tokenize on core; trust only engine failure; claim character counts are
 exact tokens.
+
+## R8 — Compatibility test dependencies
+
+The official `openai` and `anthropic` Python packages are development-only compatibility clients;
+neither enters the `coire-api` production dependency set or image. Both are MIT licensed. The web
+schema generator `openapi-typescript` is also development-only and MIT licensed. Exact resolved
+versions and transitive artifacts are pinned by `uv.lock` and `pnpm-lock.yaml`.

@@ -30,6 +30,18 @@ class GatewayModelList(BaseModel):
     data: list[GatewayModel]
 
 
+class ProblemDetails(BaseModel):
+    """RFC 9457 problem detail used by the compatible gateway."""
+
+    model_config = ConfigDict(extra="allow")
+
+    type: str = "about:blank"
+    title: str
+    status: int
+    detail: str | None = None
+    instance: str | None = None
+
+
 class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -97,7 +109,8 @@ class UsageRecord(BaseModel):
     request_id: uuid.UUID
     principal_kind: str
     principal_subject: str | None
-    model_id: uuid.UUID
+    requested_model_id: str
+    model_id: uuid.UUID | None
     engine_id: uuid.UUID | None
     protocol: GatewayProtocol
     prompt_tokens: int = Field(ge=0)

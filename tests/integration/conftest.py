@@ -45,7 +45,8 @@ ADMIN_TOKEN = f"it-admin-{secrets.token_urlsafe(24)}"
 NODE_TOKEN_A = f"it-node-a-{secrets.token_urlsafe(16)}"
 NODE_TOKEN_B = f"it-node-b-{secrets.token_urlsafe(16)}"
 
-API_URL = "http://127.0.0.1:8080"
+INTEGRATION_PORT = os.environ.get("COIRE_IT_PORT", "18080")
+API_URL = f"http://127.0.0.1:{INTEGRATION_PORT}"
 
 # The integration overlay adds two node agents on a simulated mesh (research R9). Feature 000's
 # suite ran against compose.yaml alone; feature 001 needs nodes to exist at all.
@@ -60,6 +61,7 @@ INTEGRATION_SECRETS = {
     ),
     "COIRE_IT_NODE_TOKEN_A": NODE_TOKEN_A,
     "COIRE_IT_NODE_TOKEN_B": NODE_TOKEN_B,
+    "COIRE_IT_PORT": INTEGRATION_PORT,
 }
 
 

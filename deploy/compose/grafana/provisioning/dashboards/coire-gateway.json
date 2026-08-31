@@ -1,0 +1,36 @@
+{
+  "title": "Coire Gateway",
+  "uid": "coire-gateway",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Gateway request rate",
+      "targets": [{"expr": "sum by (protocol, outcome) (rate(coire_gateway_requests_total[5m]))"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Gateway p95 overhead",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(coire_gateway_request_duration_ms_bucket[5m])))"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "First token p95",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le) (rate(coire_gateway_first_token_duration_ms_bucket[5m])))"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "In flight and failures",
+      "targets": [
+        {"expr": "sum(coire_gateway_inflight)", "legendFormat": "in flight"},
+        {"expr": "sum(rate(coire_gateway_failures_total[5m]))", "legendFormat": "failures/s"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    }
+  ]
+}

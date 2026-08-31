@@ -28,7 +28,8 @@ Append-only PostgreSQL entity `usage_records`.
 | request_id | UUID | Unique; also emitted as response/request correlation id |
 | principal_kind | enum string | anonymous/admin/user/service |
 | principal_subject | string or null | No bearer material |
-| model_id | UUID FK | Registry model |
+| requested_model_id | string | Caller value after bounded validation; accounting only, never engine-bound |
+| model_id | UUID FK or null | Registry model; null when resolution is refused as absent |
 | engine_id | UUID FK or null | Null when rejected before engine selection |
 | protocol | openai/anthropic | Requested wire dialect |
 | prompt_tokens | non-negative integer | Engine count when present, otherwise known lower bound |

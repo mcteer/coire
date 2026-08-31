@@ -1,4 +1,6 @@
 import uuid
+from collections.abc import AsyncIterator
+from typing import cast
 
 import pytest
 
@@ -21,12 +23,13 @@ def test_translation_preserves_system_and_turn_order() -> None:
     )
     payload = to_openai_payload(body, model_path="/resolved/model")
     assert payload["model"] == "/resolved/model"
-    assert [item["role"] for item in payload["messages"]] == ["system", "user", "assistant", "user"]
+    messages = cast(list[dict[str, object]], payload["messages"])
+    assert [item["role"] for item in messages] == ["system", "user", "assistant", "user"]
 
 
 @pytest.mark.asyncio
 async def test_stream_emits_anthropic_event_sequence() -> None:
-    async def source():
+    async def source() -> AsyncIterator[bytes]:
         yield b'data: {"choices":[{"delta":{"content":"hello"}}]}\n\n'
         yield b"data: [DONE]\n\n"
 

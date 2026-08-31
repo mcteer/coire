@@ -68,15 +68,23 @@ async def stream(
 ) -> AsyncIterator[bytes]:
     async with engine_slot(engine_url, settings):
         timeout = httpx.Timeout(settings.gateway_engine_request_timeout_s, read=None)
+        done = False
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client, client.stream(
-                "POST", f"{engine_url}/v1/chat/completions", json=payload
-            ) as response:
+            async with (
+                httpx.AsyncClient(timeout=timeout) as client,
+                client.stream(
+                    "POST", f"{engine_url}/v1/chat/completions", json=payload
+                ) as response,
+            ):
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if line:
+                        if line.strip() == "data: [DONE]":
+                            done = True
                         yield f"{line}\n\n".encode()
         except httpx.HTTPError as exc:
+            if done:
+                return
             error = json.dumps(
                 {"error": {"message": "engine stream failed", "type": "engine_error"}}
             )
