@@ -87,6 +87,7 @@ async def test_openai_nonstream_replaces_model_with_resolved_path(
         return {
             "id": "chatcmpl_1",
             "object": "chat.completion",
+            "model": "/opt/coire/models/safe",
             "choices": [],
             "usage": {"prompt_tokens": 1, "completion_tokens": 2, "total_tokens": 3},
         }
@@ -102,6 +103,8 @@ async def test_openai_nonstream_replaces_model_with_resolved_path(
     assert response.status_code == 200
     assert seen["model"] == "/opt/coire/models/safe"
     assert str(model_id) not in str(seen)
+    assert response.json()["model"] == str(model_id)
+    assert "/opt/coire/models" not in response.text
 
 
 async def test_unknown_model_is_rfc9457_problem(
@@ -204,7 +207,7 @@ async def test_openai_stream_uses_sse_and_terminates(
         )
 
     async def stream(*_: object):  # type: ignore[no-untyped-def]
-        yield b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'
+        yield b'data: {"model":"/resolved","choices":[{"delta":{"content":"hi"}}]}\n\n'
         yield b"data: [DONE]\n\n"
 
     monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
@@ -221,6 +224,8 @@ async def test_openai_stream_uses_sse_and_terminates(
     )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
+    assert f'"model":"{model_id}"' in response.text
+    assert "/resolved" not in response.text
     assert response.text.endswith("data: [DONE]\n\n")
 
 
