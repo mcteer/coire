@@ -112,11 +112,14 @@ class RegistryReconciler:
         maker = async_sessionmaker(engine, expire_on_commit=False)
         try:
             while not self._stopping.is_set():
+                # Consume the wakeup that led to this pass before doing any I/O. A node may
+                # register while the pass is running; clearing afterward would erase that new
+                # request and defer engine reconciliation until an unrelated later wakeup.
+                self._wake.clear()
                 try:
                     await self._pass(maker)
                 except Exception:
                     logger.exception("reconciler pass failed; retrying next interval")
-                self._wake.clear()
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(
                         self._wake.wait(), timeout=self._settings.registry_reconcile_interval_s
