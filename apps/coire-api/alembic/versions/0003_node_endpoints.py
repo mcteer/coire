@@ -22,9 +22,11 @@ def upgrade() -> None:
     op.add_column("nodes", sa.Column("endpoint_contract_version", sa.Integer(), nullable=True))
     op.add_column("nodes", sa.Column("control_host", sa.String(length=255), nullable=True))
     op.add_column("nodes", sa.Column("data_host", sa.String(length=255), nullable=True))
+    op.alter_column("nodes", "mesh_address", nullable=True)
 
 
 def downgrade() -> None:
+    op.alter_column("nodes", "mesh_address", nullable=False)
     op.drop_column("nodes", "data_host")
     op.drop_column("nodes", "control_host")
     op.drop_column("nodes", "endpoint_contract_version")

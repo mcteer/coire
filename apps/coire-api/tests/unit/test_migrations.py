@@ -22,12 +22,16 @@ class Recorder:
     def __init__(self) -> None:
         self.added: list[tuple[str, Any]] = []
         self.dropped: list[tuple[str, str]] = []
+        self.altered: list[tuple[str, str, dict[str, Any]]] = []
 
     def add_column(self, table: str, column: Any) -> None:
         self.added.append((table, column))
 
     def drop_column(self, table: str, column: str) -> None:
         self.dropped.append((table, column))
+
+    def alter_column(self, table: str, column: str, **kwargs: Any) -> None:
+        self.altered.append((table, column, kwargs))
 
 
 def test_node_endpoint_migration_is_additive_and_nullable() -> None:
@@ -42,6 +46,7 @@ def test_node_endpoint_migration_is_additive_and_nullable() -> None:
         "data_host",
     ]
     assert all(table == "nodes" and column.nullable for table, column in recorder.added)
+    assert recorder.altered == [("nodes", "mesh_address", {"nullable": True})]
 
 
 def test_node_endpoint_migration_downgrade_reverses_columns() -> None:
@@ -55,3 +60,4 @@ def test_node_endpoint_migration_downgrade_reverses_columns() -> None:
         ("nodes", "control_host"),
         ("nodes", "endpoint_contract_version"),
     ]
+    assert recorder.altered == [("nodes", "mesh_address", {"nullable": False})]

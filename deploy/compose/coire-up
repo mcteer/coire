@@ -73,6 +73,10 @@ SECRET_VARS=(COIRE_SECRET_POSTGRES_PASSWORD COIRE_SECRET_KEY_SIGNING_SECRET COIR
 # Where the materialised secrets live: outside the repository, 0700, removed by coire-down.
 SECRETS_DIR="${COIRE_SECRETS_DIR:-$HOME/.coire/secrets}"
 export COIRE_SECRETS_DIR="$SECRETS_DIR"
+if [[ -z "${COIRE_CONTROL_BIND_ADDRESS:-}" ]]; then
+  COIRE_CONTROL_BIND_ADDRESS="$(dscacheutil -q host -a name coire-core 2>/dev/null | awk '/ip_address:/{print $2; exit}')"
+  export COIRE_CONTROL_BIND_ADDRESS="${COIRE_CONTROL_BIND_ADDRESS:-127.0.0.1}"
+fi
 SECRET_FILES=(postgres_password key_signing_secret node_tokens admin_token)
 
 write_secret() {  # $1 = filename, $2 = value
@@ -95,7 +99,8 @@ chmod 700 "$SECRETS_DIR"
 
 # Record the resolved path so plain `docker compose ps/logs/restart` in this directory works
 # without the caller re-exporting it. Contains a path, never a secret; gitignored.
-printf 'COIRE_SECRETS_DIR=%s\n' "$SECRETS_DIR" > "$COMPOSE_DIR/.env"
+printf 'COIRE_SECRETS_DIR=%s\nCOIRE_CONTROL_BIND_ADDRESS=%s\n' \
+  "$SECRETS_DIR" "$COIRE_CONTROL_BIND_ADDRESS" > "$COMPOSE_DIR/.env"
 
 if [[ "$FROM_ENV" -eq 1 ]]; then
   for i in "${!SECRET_ITEMS[@]}"; do

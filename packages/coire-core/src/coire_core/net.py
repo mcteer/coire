@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 
 import httpx
 from opentelemetry import metrics
@@ -189,7 +189,7 @@ class _FixedPathClient:
         self._client = client or httpx.AsyncClient(timeout=timeout)
         self._owns_client = client is None
 
-    async def __aenter__(self) -> _FixedPathClient:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(

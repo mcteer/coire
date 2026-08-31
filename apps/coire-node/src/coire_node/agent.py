@@ -26,7 +26,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from opentelemetry import metrics as otel_metrics
 
-from coire_core.models.node import NodePath, NodeStatus
+from coire_core.models.node import NetworkPath, NodePath, NodeStatus, NodeStatusV2
 from coire_core.settings import Settings
 from coire_node.engines import EngineManager
 from coire_node.grants import Grants
@@ -80,6 +80,27 @@ def resolve_mesh_address(hostname: str, hosts_file: str = "/etc/hosts") -> str |
     return None
 
 
+def resolve_data_address(hostname: str, hosts_file: str = "/etc/hosts") -> str | None:
+    """Resolve this Studio's managed ``.fabric`` binding without using control DNS."""
+    wanted = f"{hostname}.fabric"
+    try:
+        for line in Path(hosts_file).read_text().splitlines():
+            parts = line.split("#", 1)[0].split()
+            if len(parts) >= 2 and wanted in parts[1:]:
+                return parts[0]
+    except OSError as exc:
+        logger.warning("cannot read %s: %s", hosts_file, exc)
+    return None
+
+
+def resolve_control_address(hostname: str) -> str | None:
+    try:
+        return socket.gethostbyname(hostname)
+    except OSError as exc:
+        logger.error("cannot resolve control host %s: %s", hostname, exc)
+        return None
+
+
 def resolve_egress_address() -> str | None:
     """The address on the default route — used only for the alerted fallback listener."""
     try:
@@ -94,7 +115,7 @@ def create_app(
     settings: Settings,
     collector: SupportsLatest,
     *,
-    listener: NodePath,
+    listener: NodePath | NetworkPath,
     store: Store | None = None,
     jobs: JobSupervisor | None = None,
     engines: EngineManager | None = None,
@@ -151,16 +172,28 @@ def create_app(
             )
         return await call_next(request)
 
-    @app.get("/node/health", response_model=NodeStatus, dependencies=[Depends(require_node_token)])
-    async def node_health() -> NodeStatus:
-        return collector.latest(path=listener)
+    if listener is not NetworkPath.DATA:
+
+        @app.get(
+            "/node/health",
+            response_model=NodeStatus | NodeStatusV2,
+            dependencies=[Depends(require_node_token)],
+        )
+        async def node_health() -> NodeStatus | NodeStatusV2:
+            legacy_path = listener if isinstance(listener, NodePath) else NodePath.MESH
+            status_value = collector.latest(path=legacy_path)
+            if listener is NetworkPath.CONTROL:
+                return NodeStatusV2.model_validate(
+                    status_value.model_dump(exclude={"path"}) | {"path": "control"}
+                )
+            return status_value
 
     @app.get("/ready")
     async def ready() -> dict[str, object]:
         return {"service": "coire-node", "version": settings.service_version, "ready": True}
 
     # Feature 001 verbs. All bearer-authenticated, like /node/health.
-    if store is not None:
+    if store is not None and listener is not NetworkPath.DATA:
         guard = [Depends(require_node_token)]
         app.include_router(models_routes.router, dependencies=guard)
         app.include_router(jobs_routes.router, dependencies=guard)
@@ -169,8 +202,11 @@ def create_app(
         # The data path for peer replication. Mesh listener only, and authorised by the grant
         # in the URL rather than the node bearer, because the peer does not hold that token
         # and should not (spec FR-007, research R3).
-        if listener is NodePath.MESH:
+        if listener in (NodePath.MESH, NetworkPath.DATA):
             app.include_router(export_routes.router)
+
+    if store is not None and listener is NetworkPath.DATA:
+        app.include_router(export_routes.router)
 
     return app
 
@@ -180,6 +216,8 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     hostname = settings.node_name or socket.gethostname().split(".")[0]
     mesh_addr = resolve_mesh_address(hostname, settings.mesh_hosts_file)
     egress_addr = resolve_egress_address()
+    control_addr = resolve_control_address(settings.node_control_host or hostname)
+    data_addr = resolve_data_address(hostname, settings.mesh_hosts_file)
     port = settings.node_listen_port
 
     # Feature 001's collaborators, built once and shared by both listeners.
@@ -187,7 +225,8 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     store.ensure_root()
     jobs = JobSupervisor(settings, store)
     grants = Grants()
-    engines = EngineManager(settings, store, mesh_addr or "127.0.0.1")
+    engine_bind = mesh_addr if settings.legacy_network_mode else control_addr
+    engines = EngineManager(settings, store, engine_bind or "127.0.0.1")
 
     # Re-own engines that outlived the previous agent process, and re-attach to jobs that were
     # running. Both happen before the listeners bind, so the first /node/health after a restart
@@ -203,7 +242,49 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
         collector.attach(store=store, jobs=jobs, engines=engines)
 
     servers: list[uvicorn.Server] = []
-    if mesh_addr:
+    if not settings.legacy_network_mode and control_addr:
+        servers.append(
+            uvicorn.Server(
+                uvicorn.Config(
+                    create_app(
+                        settings,
+                        collector,
+                        listener=NetworkPath.CONTROL,
+                        store=store,
+                        jobs=jobs,
+                        engines=engines,
+                        grants=grants,
+                    ),
+                    host=control_addr,
+                    port=port,
+                    access_log=False,
+                    log_level="info",
+                )
+            )
+        )
+        logger.info("control listener on %s:%d", control_addr, port)
+        if data_addr:
+            servers.append(
+                uvicorn.Server(
+                    uvicorn.Config(
+                        create_app(
+                            settings,
+                            collector,
+                            listener=NetworkPath.DATA,
+                            store=store,
+                            jobs=jobs,
+                            engines=engines,
+                            grants=grants,
+                        ),
+                        host=data_addr,
+                        port=settings.node_data_listen_port,
+                        access_log=False,
+                        log_level="info",
+                    )
+                )
+            )
+            logger.info("data listener on %s:%d", data_addr, settings.node_data_listen_port)
+    elif settings.legacy_network_mode and mesh_addr:
         servers.append(
             uvicorn.Server(
                 uvicorn.Config(
@@ -233,7 +314,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
             settings.mesh_hosts_file,
         )
 
-    if egress_addr and egress_addr != mesh_addr:
+    if settings.legacy_network_mode and egress_addr and egress_addr != mesh_addr:
         servers.append(
             uvicorn.Server(
                 uvicorn.Config(

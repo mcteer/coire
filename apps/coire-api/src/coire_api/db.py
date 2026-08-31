@@ -68,7 +68,7 @@ class NodeRow(Base):
     role: Mapped[NodeRole] = mapped_column(
         SAEnum(NodeRole, name="node_role", values_callable=lambda e: [m.value for m in e])
     )
-    mesh_address: Mapped[str] = mapped_column(INET)
+    mesh_address: Mapped[str | None] = mapped_column(INET, nullable=True)
     egress_address: Mapped[str | None] = mapped_column(INET, nullable=True)
     endpoint_contract_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     control_host: Mapped[str | None] = mapped_column(String(255), nullable=True)

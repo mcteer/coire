@@ -51,23 +51,23 @@ register and become healthy, and edge-b remains reachable when edge-a is stopped
 
 ### Tests for User Story 1
 
-- [ ] T014 [P] [US1] Add failing version-matched registration contract cases from `contracts/network-api.yaml` in `apps/coire-api/tests/contract/test_register_node.py`
-- [ ] T015 [P] [US1] Add failing control-listener and forbidden-path contract cases in `apps/coire-node/tests/contract/test_node_health.py`
-- [ ] T016 [P] [US1] Add failing engine argv tests proving control-address binding in `apps/coire-node/tests/contract/test_node_engines.py`
-- [ ] T017 [P] [US1] Add failing two-node control-independence integration cases in `tests/integration/test_network_fabrics.py`
+- [X] T014 [P] [US1] Add failing version-matched registration contract cases from `contracts/network-api.yaml` in `apps/coire-api/tests/contract/test_register_node.py`
+- [X] T015 [P] [US1] Add failing control-listener and forbidden-path contract cases in `apps/coire-node/tests/contract/test_node_health.py`
+- [X] T016 [P] [US1] Add failing engine argv tests proving control-address binding in `apps/coire-node/tests/contract/test_node_engines.py`
+- [X] T017 [P] [US1] Add failing two-node control-independence integration cases in `tests/integration/test_network_fabrics.py`
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] Accept v1/v2 registrations, validate declared endpoints, persist v2 data, and return the caller's response version in `apps/coire-api/src/coire_api/routes/nodes.py`
-- [ ] T019 [US1] Route health and engine requests exclusively through `ControlClient` in `apps/coire-api/src/coire_api/nodes_client.py` and `apps/coire-api/src/coire_api/nodes_prober.py`
-- [ ] T020 [US1] Register v2 control/data host names with an explicit legacy rollback mode in `apps/coire-node/src/coire_node/register.py`
-- [ ] T021 [US1] Replace mesh/fallback node serving with an authenticated control listener and a separate data listener scaffold in `apps/coire-node/src/coire_node/agent.py` and `apps/coire-node/src/coire_node/__main__.py`
-- [ ] T022 [US1] Bind bare engines to the control endpoint and preserve local ready-probe/adoption behavior in `apps/coire-node/src/coire_node/engines.py`
-- [ ] T023 [US1] Send node OTLP telemetry to core by control DNS in `apps/coire-node/src/coire_node/otel.py` and classify control-path spans in `apps/coire-api/src/coire_api/telemetry.py`
-- [ ] T024 [US1] Replace the simulated three-host mesh with a shared control network plus Studio-only data network in `deploy/compose/compose.override.it.yaml`
-- [ ] T025 [US1] Update control endpoint variables and listeners in `deploy/compose/compose.yaml` and `deploy/launchd/com.coire.node.plist.template`
-- [ ] T026 [US1] Generate and enforce the minimum-peer control firewall policy from `deploy/cluster/firewall.yaml` via `deploy/cluster/scripts/apply-firewall.sh`
-- [ ] T027 [US1] Run `apps/coire-api/tests/contract/test_register_node.py`, `apps/coire-node/tests/contract/test_node_health.py`, `apps/coire-node/tests/contract/test_node_engines.py`, and `tests/integration/test_network_fabrics.py`; verify core has no simulated data-network attachment
+- [X] T018 [US1] Accept v1/v2 registrations, validate declared endpoints, persist v2 data, and return the caller's response version in `apps/coire-api/src/coire_api/routes/nodes.py`
+- [X] T019 [US1] Route health and engine requests exclusively through `ControlClient` in `apps/coire-api/src/coire_api/nodes_client.py` and `apps/coire-api/src/coire_api/nodes_prober.py`
+- [X] T020 [US1] Register v2 control/data host names with an explicit legacy rollback mode in `apps/coire-node/src/coire_node/register.py`
+- [X] T021 [US1] Replace mesh/fallback node serving with an authenticated control listener and a separate data listener scaffold in `apps/coire-node/src/coire_node/agent.py` and `apps/coire-node/src/coire_node/__main__.py`
+- [X] T022 [US1] Bind bare engines to the control endpoint and preserve local ready-probe/adoption behavior in `apps/coire-node/src/coire_node/engines.py`
+- [X] T023 [US1] Send node OTLP telemetry to core by control DNS in `apps/coire-node/src/coire_node/otel.py` and classify control-path spans in `apps/coire-api/src/coire_api/telemetry.py`
+- [X] T024 [US1] Replace the simulated three-host mesh with a shared control network plus Studio-only data network in `deploy/compose/compose.override.it.yaml`
+- [X] T025 [US1] Update control endpoint variables and listeners in `deploy/compose/compose.yaml` and `deploy/launchd/com.coire.node.plist.template`
+- [X] T026 [US1] Generate and enforce the minimum-peer control firewall policy from `deploy/cluster/firewall.yaml` via `deploy/cluster/scripts/apply-firewall.sh`
+- [X] T027 [US1] Run `apps/coire-api/tests/contract/test_register_node.py`, `apps/coire-node/tests/contract/test_node_health.py`, `apps/coire-node/tests/contract/test_node_engines.py`, and `tests/integration/test_network_fabrics.py`; verify core has no simulated data-network attachment
 
 **Checkpoint**: Core can operate both Studios with no Thunderbolt path; single-node behavior is green.
 

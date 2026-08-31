@@ -39,7 +39,7 @@ services:
       dockerfile: apps/coire-web/Dockerfile
     # The ONLY published port in feature 000, and only on loopback: nothing on core is
     # reachable from the LAN. Public exposure arrives with feature 007 (ADR-0001).
-    ports: ["127.0.0.1:8080:8080"]
+    ports: ["${COIRE_CONTROL_BIND_ADDRESS:-127.0.0.1}:8080:8080"]
     networks: [coire-edge, coire-telemetry]
     depends_on:
       coire-api: {condition: service_healthy}
@@ -195,6 +195,7 @@ services:
       context: ../..
       dockerfile: deploy/compose/otel.Dockerfile
     networks: [coire-telemetry]
+    ports: ["${COIRE_CONTROL_BIND_ADDRESS:-127.0.0.1}:4317:4317"]
     # Nothing depends_on the collector: telemetry loss must never cause a request failure.
     read_only: true
     tmpfs: [/tmp]

@@ -56,6 +56,14 @@
         <string>__NODE_NAME__</string>
         <key>MESH_HOSTS_FILE</key>
         <string>/etc/hosts</string>
+        <key>NODE_CONTROL_HOST</key>
+        <string>__NODE_NAME__</string>
+        <key>NODE_DATA_HOST</key>
+        <string>__NODE_NAME__.fabric</string>
+        <key>CORE_CONTROL_HOST</key>
+        <string>coire-core</string>
+        <key>NODE_DATA_LISTEN_PORT</key>
+        <string>9401</string>
         <key>NODE_STORE_DIR</key>
         <string>__PREFIX__/models</string>
         <key>NODE_STATE_DIR</key>
@@ -68,7 +76,7 @@
         <key>HF_HUB_DISABLE_PROGRESS_BARS</key>
         <string>1</string>
         <key>OTLP_ENDPOINT</key>
-        <string>http://coire-core.mesh:4317</string>
+        <string>http://coire-core:4317</string>
         <key>PATH</key>
         <string>__PREFIX__/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
