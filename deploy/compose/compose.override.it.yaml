@@ -12,9 +12,10 @@
 # address (ADR-0002 governs *service config*, and this is a test harness) — production
 # compose.yaml stays free of them, which tests/integration/test_topology.py asserts.
 #
-# `node-b` is attached ONLY to the mesh network: it has no route to the internet, so a test
-# asserting the replica never pulled from Hugging Face is enforced by the topology rather than
-# by trusting a log line (spec SC-004).
+# `node-b` has the control attachment required by feature 022 and the Studio-only data
+# attachment used for replication. It deliberately receives no Hugging Face credential: only
+# the admin-selected origin may acquire externally, while the replica is populated over the
+# internal data network.
 #
 #   docker compose -f compose.yaml -f compose.override.it.yaml up -d
 
@@ -80,8 +81,8 @@ services:
       context: ../..
       dockerfile: apps/coire-node/docker/node-test.Dockerfile
     networks:
-      # Mesh only. No egress: the replica must receive its copy from the origin over the mesh,
-      # and here it physically cannot do anything else.
+      # Control for registration/management, data for replication. Unlike node-a, this service
+      # has no coire-edge attachment and receives no Hugging Face credential.
       coire-control-sim:
         aliases: [coire-edge-b]
       coire-data-sim:

@@ -75,13 +75,15 @@ mkdir -p "$PREFIX/models" "$PREFIX/state/jobs" "$PREFIX/hf-cache"
 # --- uv, confined to the prefix --------------------------------------------
 if [[ ! -x "$PREFIX/bin/uv" ]]; then
   say "installing uv $UV_VERSION"
-  UV_INSTALL_DIR="$PREFIX/bin" UV_NO_MODIFY_PATH=1 \
-    curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" | sh >/dev/null
+  curl -LsSf "https://astral.sh/uv/$UV_VERSION/install.sh" \
+    | UV_UNMANAGED_INSTALL="$PREFIX/bin" sh >/dev/null
 else
   say "uv already present"
 fi
 export PATH="$PREFIX/bin:$PATH"
 export UV_PYTHON_INSTALL_DIR="$PREFIX/python"
+export UV_PYTHON_BIN_DIR="$PREFIX/bin"
+export UV_NO_CACHE=1
 
 # --- pinned interpreter ----------------------------------------------------
 # The Studios have Homebrew Python 3.14 and no 3.13; the constitution pins 3.13, so the agent
