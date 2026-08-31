@@ -554,7 +554,9 @@ class RegistryReconciler:
                 await session.execute(select(ModelRow).where(ModelRow.slug == slug))
             ).scalar_one_or_none()
         row = EngineProcessRow(
-            id=uuid.uuid4(),
+            # Preserve the node-assigned identity so a later admin DELETE addresses the same
+            # process in both control-plane and node state.
+            id=getattr(orphan, "engine_id", None) or uuid.uuid4(),
             model_id=model.id if model else None,
             node_id=node.id,
             port=getattr(orphan, "port", 0),
