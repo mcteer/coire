@@ -12,4 +12,4 @@ rules:
   - name: studio-to-core
     sources: [coire-edge-a, coire-edge-b]
     destinations: [coire-core]
-    tcp_ports: [8080, 4317]
+    tcp_ports: [8180, 4317]

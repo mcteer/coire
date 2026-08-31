@@ -10,8 +10,8 @@ uvx --from openapi-spec-validator openapi-spec-validator \
   specs/022-separate-control-data-fabrics/contracts/network-api.yaml
 uv run pytest -q packages/coire-core apps/coire-api/tests/unit \
   apps/coire-api/tests/contract apps/coire-node/tests/unit apps/coire-node/tests/contract
-uv run mypy
-uv run coire-api export-openapi --check
+uv run mypy apps/ packages/
+# Generate/check OpenAPI through coire_api.app:app until an export-openapi CLI is added.
 ```
 
 Expected: v1 and v2 registration fixtures both pass; a response matches its request version; invalid
@@ -88,3 +88,18 @@ downgrade the additive database migration or delete v2 observations during opera
 
 After rollback, verify registry rows, both model-copy records, engines, job history, and audit history
 match their preflight snapshots.
+
+## Execution record — 2026-08-30
+
+- Core control plane: migration completed and all seven long-lived services healthy; aggregate
+  health returned `healthy` at `http://192.168.4.10:8180/health`.
+- Repository gates: Ruff format/check and strict mypy passed; pytest reported 356 passed and 75
+  environment-dependent skips. Web tests (2), lint, and production build passed with pnpm.
+- Images: api, mcp, scheduler, migrate, web, OTel, and agent built for linux/arm64 and passed all
+  seven `scripts/image-policy.sh` rules.
+- Studio staging: identical coire-core and coire-node wheels, installer, and LaunchDaemon template
+  are present on both Studios in `~/coire-stage`; wheel SHA-256 values match across nodes.
+- Pending real-cluster gates: both Studios require an interactive sudo step to create `/opt/coire`,
+  install System-keychain secrets, install the LaunchDaemon, and apply PF/hosts policy. A Hugging
+  Face token and the selected tiny-model probe are also required. No gate is recorded as passed on
+  a skip.

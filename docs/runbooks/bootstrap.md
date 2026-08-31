@@ -25,7 +25,7 @@ Every time:
 
 ```bash
 deploy/compose/coire-up
-curl -s http://127.0.0.1:8080/health | jq .status   # -> "healthy"
+curl -s http://127.0.0.1:8180/health | jq .status   # -> "healthy"
 ```
 
 `coire-up` reads the three secrets from the Keychain, writes them 0600 into
@@ -78,7 +78,7 @@ proxied `/ready`.
 cd deploy/compose
 docker compose ps                      # what is up
 docker compose logs -f coire-api       # structured JSON logs
-curl -s http://127.0.0.1:8080/health | jq   # aggregate + per-dependency latency
+curl -s http://127.0.0.1:8180/health | jq   # aggregate + per-dependency latency
 docker compose logs otel-collector | grep -c ResourceSpans   # telemetry arriving
 ```
 

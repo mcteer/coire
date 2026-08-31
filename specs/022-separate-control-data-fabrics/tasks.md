@@ -135,9 +135,9 @@ without loss of registry, job, audit, engine, or model-copy state.
 - [X] T048 Regenerate OpenAPI and `apps/coire-web/src/api/schema.d.ts`, then update freshness fixtures for the additive admin link surface
 - [X] T049 [P] Update `docs/runbooks/bootstrap.md` and `docs/runbooks/models.md` from mesh/fallback commands to control/data-fabric operations after cutover
 - [X] T050 [P] Create compose and cluster network deployment documentation in `deploy/compose/README.md` and `deploy/cluster/README.md`
-- [ ] T051 Run the lint, format, type, and unit gates configured by `pyproject.toml`; fix every failure without loosening checks
+- [X] T051 Run the lint, format, type, and unit gates configured by `pyproject.toml`; fix every failure without loosening checks
 - [ ] T052 Run the engine/tiny-model validation in `specs/022-separate-control-data-fabrics/quickstart.md` and record its result; do not mark complete on a skip
-- [ ] T053 Verify images from `deploy/compose/compose.yaml` build and pass `scripts/image-policy.sh`; confirm no service, capability, listener, CORS rule, or secret scope was widened
+- [X] T053 Verify images from `deploy/compose/compose.yaml` build and pass `scripts/image-policy.sh`; confirm no service, capability, listener, CORS rule, or secret scope was widened
 - [ ] T054 Complete the PR description from evidence in `specs/022-separate-control-data-fabrics/quickstart.md`, citing feature 022, ADR-0006, Principles I/III/IV/VI/VII, compatibility, rollback, and real-cluster measurements
 
 ---

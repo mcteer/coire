@@ -1,7 +1,8 @@
 # Core compose deployment
 
 `coire-up` resolves `coire-core` through UniFi DNS and records the observed bind address in the
-gitignored `.env`. Port 8080 and OTLP 4317 bind only to that control address. Override with
+gitignored `.env`. Host port 8180 (forwarded to nginx 8080) and OTLP 4317 bind only to that
+control address. Override with `COIRE_CONTROL_PORT`,
 `COIRE_CONTROL_BIND_ADDRESS` only during a reviewed recovery; never use `0.0.0.0`.
 
 Secrets are materialised from Keychain under `~/.coire/secrets` and mounted as files. Use

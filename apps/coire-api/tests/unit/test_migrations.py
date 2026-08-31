@@ -37,7 +37,7 @@ class Recorder:
 def test_node_endpoint_migration_is_additive_and_nullable() -> None:
     migration = _migration()
     recorder = Recorder()
-    migration.op = recorder
+    migration.op = recorder  # type: ignore[attr-defined]
     migration.upgrade()
 
     assert [column.name for _, column in recorder.added] == [
@@ -52,7 +52,7 @@ def test_node_endpoint_migration_is_additive_and_nullable() -> None:
 def test_node_endpoint_migration_downgrade_reverses_columns() -> None:
     migration = _migration()
     recorder = Recorder()
-    migration.op = recorder
+    migration.op = recorder  # type: ignore[attr-defined]
     migration.downgrade()
 
     assert recorder.dropped == [

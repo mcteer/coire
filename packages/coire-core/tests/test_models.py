@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from coire_core.models.health import (
     HealthResponse,
@@ -103,7 +103,7 @@ class TestNodeRegistrationV2:
     def test_accepts_declared_studio_endpoints(self) -> None:
         registration = NodeRegistrationV2(
             name="coire-edge-a",
-            token="secret",
+            token=SecretStr("secret"),
             endpoints=NodeEndpointSet(control_host="coire-edge-a", data_host="coire-edge-a.fabric"),
             memory_total_bytes=1,
             disk_total_bytes=1,
@@ -114,32 +114,36 @@ class TestNodeRegistrationV2:
 
     def test_rejects_mismatched_control_identity(self) -> None:
         with pytest.raises(ValidationError, match="control_host"):
-            NodeRegistrationV2(
-                name="coire-edge-a",
-                token="secret",
-                endpoints={
-                    "contract_version": 2,
-                    "control_host": "coire-edge-b",
-                    "data_host": "coire-edge-a.fabric",
-                },
-                memory_total_bytes=1,
-                disk_total_bytes=1,
-                agent_version="0.2.0",
+            NodeRegistrationV2.model_validate(
+                {
+                    "name": "coire-edge-a",
+                    "token": "secret",
+                    "endpoints": {
+                        "contract_version": 2,
+                        "control_host": "coire-edge-b",
+                        "data_host": "coire-edge-a.fabric",
+                    },
+                    "memory_total_bytes": 1,
+                    "disk_total_bytes": 1,
+                    "agent_version": "0.2.0",
+                }
             )
 
     def test_rejects_studio_without_data_endpoint(self) -> None:
         with pytest.raises(ValidationError, match="data_host"):
-            NodeRegistrationV2(
-                name="coire-edge-b",
-                token="secret",
-                endpoints={
-                    "contract_version": 2,
-                    "control_host": "coire-edge-b",
-                    "data_host": None,
-                },
-                memory_total_bytes=1,
-                disk_total_bytes=1,
-                agent_version="0.2.0",
+            NodeRegistrationV2.model_validate(
+                {
+                    "name": "coire-edge-b",
+                    "token": "secret",
+                    "endpoints": {
+                        "contract_version": 2,
+                        "control_host": "coire-edge-b",
+                        "data_host": None,
+                    },
+                    "memory_total_bytes": 1,
+                    "disk_total_bytes": 1,
+                    "agent_version": "0.2.0",
+                }
             )
 
 
@@ -181,7 +185,7 @@ class TestNodeStatus:
         status = NodeStatusV2(**payload)
         assert status.path is NetworkPath.CONTROL
         with pytest.raises(ValidationError):
-            NodeStatusV2(**payload, path="data")
+            NodeStatusV2.model_validate({**payload, "path": "data"})
 
 
 class TestEnums:

@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from coire_api.auth import ANONYMOUS
@@ -64,17 +65,19 @@ def request() -> Request:
 
 async def test_v1_request_receives_v1_response(tmp_path: Path) -> None:
     response = await register_node(
-        NodeRegistration(
-            name="coire-edge-a",
-            token="token",
-            mesh_address="192.168.100.11",
-            memory_total_bytes=1,
-            disk_total_bytes=1,
-            agent_version="0.1.0",
+        NodeRegistration.model_validate(
+            {
+                "name": "coire-edge-a",
+                "token": "token",
+                "mesh_address": "192.168.100.11",
+                "memory_total_bytes": 1,
+                "disk_total_bytes": 1,
+                "agent_version": "0.1.0",
+            }
         ),
         request(),
         ANONYMOUS,
-        Session(),
+        cast(AsyncSession, Session()),
         settings(tmp_path),
     )
     assert isinstance(response, Node)
@@ -83,21 +86,23 @@ async def test_v1_request_receives_v1_response(tmp_path: Path) -> None:
 
 async def test_v2_request_receives_v2_response(tmp_path: Path) -> None:
     response = await register_node(
-        NodeRegistrationV2(
-            name="coire-edge-a",
-            token="token",
-            endpoints={
-                "contract_version": 2,
-                "control_host": "coire-edge-a",
-                "data_host": "coire-edge-a.fabric",
-            },
-            memory_total_bytes=1,
-            disk_total_bytes=1,
-            agent_version="0.2.0",
+        NodeRegistrationV2.model_validate(
+            {
+                "name": "coire-edge-a",
+                "token": "token",
+                "endpoints": {
+                    "contract_version": 2,
+                    "control_host": "coire-edge-a",
+                    "data_host": "coire-edge-a.fabric",
+                },
+                "memory_total_bytes": 1,
+                "disk_total_bytes": 1,
+                "agent_version": "0.2.0",
+            }
         ),
         request(),
         ANONYMOUS,
-        Session(),
+        cast(AsyncSession, Session()),
         settings(tmp_path),
     )
     assert isinstance(response, NodeV2)
@@ -107,21 +112,23 @@ async def test_v2_request_receives_v2_response(tmp_path: Path) -> None:
 async def test_v2_endpoint_must_match_inventory(tmp_path: Path) -> None:
     with pytest.raises(HTTPException) as exc:
         await register_node(
-            NodeRegistrationV2(
-                name="coire-edge-a",
-                token="token",
-                endpoints={
-                    "contract_version": 2,
-                    "control_host": "coire-edge-a",
-                    "data_host": "coire-edge-b.fabric",
-                },
-                memory_total_bytes=1,
-                disk_total_bytes=1,
-                agent_version="0.2.0",
+            NodeRegistrationV2.model_validate(
+                {
+                    "name": "coire-edge-a",
+                    "token": "token",
+                    "endpoints": {
+                        "contract_version": 2,
+                        "control_host": "coire-edge-a",
+                        "data_host": "coire-edge-b.fabric",
+                    },
+                    "memory_total_bytes": 1,
+                    "disk_total_bytes": 1,
+                    "agent_version": "0.2.0",
+                }
             ),
             request(),
             ANONYMOUS,
-            Session(),
+            cast(AsyncSession, Session()),
             settings(tmp_path),
         )
     assert exc.value.status_code == 403

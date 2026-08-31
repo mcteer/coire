@@ -52,6 +52,8 @@ def config() -> dict[str, Any]:
         "COIRE_SECRETS_DIR": "/tmp/coire-secrets-test",
         "COIRE_REGISTRY": "",
         "COIRE_TAG": "dev",
+        "COIRE_CONTROL_BIND_ADDRESS": "127.0.0.1",
+        "COIRE_CONTROL_PORT": "8180",
         # conftest sets COMPOSE_FILE so `coire-up` picks up the integration overlay. These
         # invariants are about what *ships*, so render the production file alone: an overlay
         # leaking in here would quietly weaken every assertion below.

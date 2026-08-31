@@ -21,6 +21,8 @@ COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$COMPOSE_DIR/../.." && pwd)"
 LOCKDIR="$COMPOSE_DIR/.coire-up.lock"
 WAIT_TIMEOUT="${COIRE_WAIT_TIMEOUT:-180}"
+CONTROL_PORT="${COIRE_CONTROL_PORT:-8180}"
+export COIRE_CONTROL_PORT="$CONTROL_PORT"
 
 FROM_ENV=0
 BUILD=1
@@ -99,8 +101,8 @@ chmod 700 "$SECRETS_DIR"
 
 # Record the resolved path so plain `docker compose ps/logs/restart` in this directory works
 # without the caller re-exporting it. Contains a path, never a secret; gitignored.
-printf 'COIRE_SECRETS_DIR=%s\nCOIRE_CONTROL_BIND_ADDRESS=%s\n' \
-  "$SECRETS_DIR" "$COIRE_CONTROL_BIND_ADDRESS" > "$COMPOSE_DIR/.env"
+printf 'COIRE_SECRETS_DIR=%s\nCOIRE_CONTROL_BIND_ADDRESS=%s\nCOIRE_CONTROL_PORT=%s\n' \
+  "$SECRETS_DIR" "$COIRE_CONTROL_BIND_ADDRESS" "$CONTROL_PORT" > "$COMPOSE_DIR/.env"
 
 if [[ "$FROM_ENV" -eq 1 ]]; then
   for i in "${!SECRET_ITEMS[@]}"; do
@@ -133,12 +135,12 @@ else
   echo "secrets: read from the Keychain into $SECRETS_DIR (0700 dir, removed by coire-down)"
 fi
 
-# --- mesh names ------------------------------------------------------------
-if ! "$REPO_ROOT/scripts/apply-mesh-hosts.sh" --check >/dev/null 2>&1; then
-  echo "warning: mesh hosts block is not current in /etc/hosts;" >&2
-  echo "         node probing will fall back to the egress path (FR-013b)." >&2
-  echo "         run: sudo scripts/apply-mesh-hosts.sh" >&2
-fi
+# --- control names ---------------------------------------------------------
+for node in coire-edge-a coire-edge-b; do
+  if ! dscacheutil -q host -a name "$node" 2>/dev/null | grep -q 'ip_address:'; then
+    echo "warning: control DNS name $node does not resolve" >&2
+  fi
+done
 
 # --- bring up --------------------------------------------------------------
 cd "$COMPOSE_DIR"
@@ -153,4 +155,4 @@ docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT"
 echo
 docker compose ps --format 'table {{.Service}}\t{{.Status}}'
 echo
-echo "control plane up. health: http://127.0.0.1:8080/health"
+echo "control plane up. health: http://${COIRE_CONTROL_BIND_ADDRESS}:${CONTROL_PORT}/health"
