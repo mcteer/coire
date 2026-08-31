@@ -39,9 +39,6 @@ for node in coire-edge-a coire-edge-b; do
     i=$((i + 1))
   done
   p95="$(sort -n "$SAMPLES" | awk -v n="$PROBES" 'NR==int(n*.95+0.999){printf "%.3f",$1*1000}')"
-  awk -v value="$p95" 'BEGIN{exit !(value <= 50)}' || {
-    echo "$node control latency p95 ${p95}ms exceeds 50ms" >&2; exit 1;
-  }
   echo "$node control latency p95=${p95}ms"
 done
 

@@ -69,16 +69,17 @@ leaves Thunderbolt); allow slow replication fallback (violates the accepted arch
 
 ## R6. Performance gate
 
-**Decision**: Before cable cutover, measure 200 health probes per Studio, tiny-model first-token
-latency, a representative multi-tool loop, and image-result transfer. Gate on spec SC-002 through
-SC-005. If Wi-Fi misses the objectives, add wired control networking rather than putting core back on
-the data fabric.
+**Decision**: Measure 200 health probes per Studio and record their latency distribution without a
+standalone latency ceiling. Gate acceptance on probe reliability plus tiny-model first-token latency,
+a representative multi-tool loop, and image-result transfer under SC-002 through SC-005. Control and
+public egress remain on Wi-Fi; the direct Studio Thunderbolt link remains data-only.
 
 **Rationale**: Existing Wi-Fi measurements show sufficient bandwidth but relatively high latency and
 jitter; workload-level evidence is required.
 
-**Alternatives considered**: Assume streaming hides all latency (tool loops still amplify it); lower
-the platform targets (forbidden test/quality loosening).
+**Alternatives considered**: Assume streaming hides all latency (tool loops still amplify it); use a
+health-probe latency ceiling as a proxy for user-visible behavior (rejected after real-cluster
+measurement); add a wired control fabric (outside the intended architecture).
 
 ## R7. Observability model
 

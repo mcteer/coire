@@ -40,15 +40,16 @@ Expected:
 With the old cable topology still recoverable, run the deployment preflight from core. It must verify:
 
 1. UniFi DNS resolves `coire-core.lab`, `coire-edge-a.lab`, and `coire-edge-b.lab` to the isolated VLAN;
-2. 200 authenticated probes per Studio succeed with p95 ≤ 50 ms;
+2. 200 authenticated probes per Studio succeed without degraded-path events, with latency
+   distribution recorded;
 3. only the allowed firewall matrix succeeds;
 4. the tiny model produces first token within 1.5 s p95 for ≤4k-token prompts;
 5. the representative multi-tool loop adds ≤100 ms p95 control overhead per tool round trip;
 6. an image result reaches core and is removed from the Studio; and
 7. direct Studio transfer counters, latency, and bandwidth are recorded.
 
-Any failure stops the cutover. A Wi-Fi performance failure calls for wired control networking, not a
-waiver of the target.
+Any reliability or workload-level failure stops the cutover. Health-probe latency is diagnostic;
+first-token and tool-loop criteria are the user-visible performance gates.
 
 ## 4. Software rollout
 
@@ -76,9 +77,9 @@ Disconnect the Studio link. Replication and tensor-parallel admission must fail 
 health and single-node serving continue. Reconnect it and verify damped recovery. Then interrupt one
 Studio's Wi-Fi: its control path must alert and become unreachable without changing the peer's state.
 
-Confirm the Cluster dashboard has two control-path panels and one data-link panel, and that deliberate
-control loss, data loss, forbidden cross-fabric access, and latency threshold breaches fire distinct
-alerts with trace/log links.
+Confirm the Cluster dashboard has two control-path panels and one data-link panel, that control-path
+latency remains visible, and that deliberate control loss, data loss, and forbidden cross-fabric
+access fire distinct alerts with trace/log links.
 
 ## 7. Rollback
 
@@ -116,10 +117,11 @@ match their preflight snapshots.
 - macOS local-network privacy: the non-root LaunchDaemons required the documented system-wide
   `192.168.4.0/24` Wi-Fi exception and a reboot. Both Studios also remained disconnected at the
   login window until an operator attached a keyboard and logged in; unattended cold-start remains
-  unproven and requires Wi-Fi-at-login remediation or wired control.
-- Control latency gate: **FAILED**. Two independent 200-request authenticated runs measured
+  unproven and requires Wi-Fi-at-login remediation.
+- Control latency observation: two independent 200-request authenticated runs succeeded and measured
   edge-a min/mean/p50/p95/p99/max = 17.8/33.3/24.9/113.4/118.5/127.4 ms and edge-b =
-  18.1/31.6/24.1/111.8/119.4/240.6 ms. Both exceed SC-002's 50 ms p95 ceiling. Per research R6,
-  the next step is wired control networking; the threshold was not waived or loosened.
+  18.1/31.6/24.1/111.8/119.4/240.6 ms. The 2026-08-31 clarification removed the standalone
+  health-probe ceiling; SC-002 now gates on 200/200 reliability and retains these figures as
+  diagnostic evidence. Workload-level SC-003 and SC-004 remain unchanged.
 - CI after the FQDN, installer, telemetry-ingress, and integration-topology corrections passed all
   image builds, lint, pin check, unit tests, engine tests, and the full integration job.

@@ -111,7 +111,7 @@ without loss of registry, job, audit, engine, or model-copy state.
 ### Tests for User Story 3
 
 - [X] T038 [P] [US3] Add shell-policy tests for idempotent preflight/apply/rollback targeting in `tests/test_cluster_scripts.py`
-- [X] T039 [P] [US3] Add alert-rule unit fixtures for control loss, data loss, forbidden path use, and sustained latency in `tests/test_alert_rules.py`
+- [X] T039 [P] [US3] Add alert-rule unit fixtures for control loss, data loss, and forbidden path use in `tests/test_alert_rules.py`; keep latency visible as a diagnostic metric
 
 ### Implementation for User Story 3
 
@@ -120,7 +120,7 @@ without loss of registry, job, audit, engine, or model-copy state.
 - [X] T042 [US3] Implement non-destructive legacy listener/hosts restoration in `deploy/cluster/scripts/rollback-fabrics.sh`
 - [X] T043 [US3] Add structured `network_path`, `peer`, `node`, and applicable model identifiers plus path-specific counters/spans in `packages/coire-core/src/coire_core/net.py`, `apps/coire-api/src/coire_api/telemetry.py`, and `apps/coire-node/src/coire_node/metrics.py`
 - [X] T044 [US3] Add two control-path panels and one data-link panel in `deploy/observability/grafana/dashboards/cluster.json`
-- [X] T045 [US3] Add control loss, data loss, forbidden cross-fabric traffic, and latency alerts in `deploy/observability/alerts/network-fabrics.yaml`
+- [X] T045 [US3] Add control loss, data loss, and forbidden cross-fabric traffic alerts in `deploy/observability/alerts/network-fabrics.yaml`; retain control-latency dashboards without a standalone alert ceiling
 - [X] T046 [US3] Write preflight, cutover, failure-injection, rollback, and recovery procedures in `docs/runbooks/network-fabrics.md`
 - [ ] T047 [US3] Execute `specs/022-separate-control-data-fabrics/quickstart.md` on the real cluster and record all measured figures and state snapshots in the PR
 

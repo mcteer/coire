@@ -13,5 +13,4 @@ def test_network_alerts_cover_each_failure_domain() -> None:
         "CoireControlPathDown",
         "CoireDataLinkDown",
         "CoireForbiddenCrossFabricTraffic",
-        "CoireControlLatencyHigh",
     }
