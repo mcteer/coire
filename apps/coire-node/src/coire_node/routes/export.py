@@ -1,9 +1,8 @@
 """The peer replication data path.
 
-Mounted **only on the mesh listener** (see `agent.create_app`): a model copy may not cross the
-egress interface (spec FR-007), and the cheapest way to guarantee that is for the route not to
-exist there at all. The egress app answers 404 for these paths even with a valid grant and the
-fallback marker, which `tests/.../test_node_export_import.py` asserts.
+Mounted **only on the Studio data listener** (see `agent.create_app`): a model copy may not
+cross the control interface, and the cheapest way to guarantee that is for the route not to
+exist there at all.
 
 These are the only unauthenticated routes on the agent. They are authorised by the grant in
 the path — one model, one node, expiring — rather than by the node's bearer token, because the

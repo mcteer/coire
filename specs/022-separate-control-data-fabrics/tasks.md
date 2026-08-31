@@ -82,19 +82,19 @@ is absent from control, and severing data leaves control health and single-node 
 
 ### Tests for User Story 2
 
-- [ ] T028 [P] [US2] Add failing export-listener isolation and transfer-grant contract cases in `apps/coire-node/tests/contract/test_node_models.py`
-- [ ] T029 [P] [US2] Add failing replication no-fallback unit cases in `apps/coire-api/tests/unit/test_reconciler.py`
-- [ ] T030 [P] [US2] Add failing data-link status contract cases in `apps/coire-api/tests/contract/test_admin_nodes.py`
-- [ ] T031 [P] [US2] Extend data-link severance and interface-counter assertions in `tests/integration/test_network_fabrics.py`
+- [X] T028 [P] [US2] Add failing export-listener isolation and transfer-grant contract cases in `apps/coire-node/tests/contract/test_node_models.py`
+- [X] T029 [P] [US2] Add failing replication no-fallback unit cases in `apps/coire-api/tests/unit/test_reconciler.py`
+- [X] T030 [P] [US2] Add failing data-link status contract cases in `apps/coire-api/tests/contract/test_admin_nodes.py`
+- [X] T031 [P] [US2] Extend data-link severance and interface-counter assertions in `tests/integration/test_network_fabrics.py`
 
 ### Implementation for User Story 2
 
-- [ ] T032 [US2] Mount model export routes only on the data listener in `apps/coire-node/src/coire_node/agent.py` and `apps/coire-node/src/coire_node/routes/export.py`
-- [ ] T033 [US2] Use `DataFabricClient` with `.fabric` peer names and no fallback in `apps/coire-api/src/coire_api/registry/reconciler.py` and node import handling in `apps/coire-node/src/coire_node/worker.py`
-- [ ] T034 [US2] Record IP and RDMA observations independently in `apps/coire-node/src/coire_node/metrics.py` and expose the typed admin link response in `apps/coire-api/src/coire_api/routes/admin_nodes.py`
-- [ ] T035 [US2] Reduce `deploy/cluster/hosts` to managed edge-a/edge-b `.fabric` names and add control/data names to `deploy/cluster/nodes.yaml`
-- [ ] T036 [US2] Create `deploy/cluster/distributed_config.sh` and `deploy/cluster/jaccl-hostfile.template.json` so generated distributed inventory contains exactly edge-a and edge-b
-- [ ] T037 [US2] Run `apps/coire-node/tests/contract/test_node_models.py`, `apps/coire-api/tests/unit/test_reconciler.py`, `apps/coire-api/tests/contract/test_admin_nodes.py`, and `tests/integration/test_network_fabrics.py`; verify replication fails closed while single-node serving remains green with data disconnected
+- [X] T032 [US2] Mount model export routes only on the data listener in `apps/coire-node/src/coire_node/agent.py` and `apps/coire-node/src/coire_node/routes/export.py`
+- [X] T033 [US2] Use `DataFabricClient` with `.fabric` peer names and no fallback in `apps/coire-api/src/coire_api/registry/reconciler.py` and node import handling in `apps/coire-node/src/coire_node/worker.py`
+- [X] T034 [US2] Record IP and RDMA observations independently in `apps/coire-node/src/coire_node/metrics.py` and expose the typed admin link response in `apps/coire-api/src/coire_api/routes/admin_nodes.py`
+- [X] T035 [US2] Reduce `deploy/cluster/hosts` to managed edge-a/edge-b `.fabric` names and add control/data names to `deploy/cluster/nodes.yaml`
+- [X] T036 [US2] Create `deploy/cluster/distributed_config.sh` and `deploy/cluster/jaccl-hostfile.template.json` so generated distributed inventory contains exactly edge-a and edge-b
+- [X] T037 [US2] Run `apps/coire-node/tests/contract/test_node_models.py`, `apps/coire-api/tests/unit/test_reconciler.py`, `apps/coire-api/tests/contract/test_admin_nodes.py`, and `tests/integration/test_network_fabrics.py`; verify replication fails closed while single-node serving remains green with data disconnected
 
 **Checkpoint**: Bulk and collective traffic is Studio-only and cannot drift onto the control VLAN.
 

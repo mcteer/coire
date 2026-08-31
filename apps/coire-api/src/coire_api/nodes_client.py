@@ -21,6 +21,7 @@ import httpx
 
 from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileResult
 from coire_core.models.jobs import ChecksumManifest, JobStatus, RepoInspection
+from coire_core.models.link import StudioDataLinkStatus
 from coire_core.models.node import NodeStatus, NodeStatusV2
 from coire_core.net import ControlClient, FabricUnreachable
 from coire_core.settings import Settings
@@ -163,6 +164,10 @@ class NodeClient:
         if body.get("path") == "control":
             return NodeStatusV2.model_validate(body)
         return NodeStatus.model_validate(body)
+
+    async def data_link_status(self, node: str) -> StudioDataLinkStatus:
+        _, body = await self._call("GET", node, "/node/data-link", expect=(200,))
+        return StudioDataLinkStatus.model_validate(body)
 
     # -- repositories and copies -------------------------------------------
     async def inspect(self, node: str, repo_id: str, revision: str = "main") -> RepoInspection:

@@ -38,3 +38,13 @@ def test_data_network_is_internal_and_studio_only() -> None:
         if "coire-data-sim" in (config.get("networks") or {})
     }
     assert attached == {"node-a", "node-b"}
+
+
+@pytest.mark.integration
+def test_replication_names_resolve_only_on_the_data_attachment() -> None:
+    compose = yaml.safe_load(OVERLAY.read_text())
+    for node in ("node-a", "node-b"):
+        hosts = compose["services"][node]["extra_hosts"]
+        assert all(".fabric:" in entry for entry in hosts)
+        assert not any(".mesh" in entry for entry in hosts)
+    assert "extra_hosts" not in compose["services"]["coire-api"]

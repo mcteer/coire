@@ -188,6 +188,13 @@ def create_app(
                 )
             return status_value
 
+        @app.get("/node/data-link", dependencies=[Depends(require_node_token)])
+        async def data_link_status():  # type: ignore[no-untyped-def]
+            measure = getattr(collector, "data_link_status", None)
+            if measure is None:
+                raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "link probe unavailable")
+            return measure(port=settings.node_data_listen_port)
+
     @app.get("/ready")
     async def ready() -> dict[str, object]:
         return {"service": "coire-node", "version": settings.service_version, "ready": True}

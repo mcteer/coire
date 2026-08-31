@@ -48,7 +48,7 @@ def _host_with(host: str, suffix: str) -> str:
         pass
     else:
         return host
-    if host.endswith((MESH_SUFFIX, EGRESS_SUFFIX)):
+    if host.endswith((MESH_SUFFIX, EGRESS_SUFFIX, DATA_SUFFIX)):
         return host
     return f"{host}{suffix}"
 

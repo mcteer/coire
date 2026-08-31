@@ -19,6 +19,7 @@ from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.routes.admin_models import _engine, _job
 from coire_core.models.audit import AuditAction, AuditRecord
 from coire_core.models.engine import TERMINAL_ENGINE_STATES, EngineState
+from coire_core.models.link import StudioDataLinkStatus
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/admin", tags=["admin: cluster"])
@@ -30,6 +31,14 @@ async def _client(settings: SettingsDep) -> AsyncGenerator[NodeClient]:
 
 
 ClientDep = Annotated[NodeClient, Depends(_client)]
+
+
+@router.get("/network/links/studios", response_model=StudioDataLinkStatus)
+async def studio_data_link(principal: CurrentAdmin, client: ClientDep) -> StudioDataLinkStatus:
+    try:
+        return await client.data_link_status("coire-edge-a")
+    except NodeError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
 
 
 @router.get("/nodes")
