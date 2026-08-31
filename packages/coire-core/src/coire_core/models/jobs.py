@@ -223,6 +223,7 @@ class JobStatus(BaseModel):
     mismatched_paths: list[str] = Field(default_factory=list)
     manifest: ChecksumManifest | None = None
     manifest_sha256: str | None = None
+    result: dict[str, object] | None = None
     worker_pid: int | None = None
     worker_cpu_percent: float | None = None
     started_at: datetime

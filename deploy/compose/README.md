@@ -13,3 +13,9 @@ Runtime configuration is supplied through `COIRE_` environment variables and Key
 compose secrets. Gateway tuning variables and operational procedures are documented in
 [`docs/runbooks/gateway.md`](../../docs/runbooks/gateway.md). Do not put credentials in this file,
 `.env`, an image, or a compose environment block.
+
+Acquisition tuning uses `ACQUISITION_POLL_INTERVAL_S` (2), `ACQUISITION_STUCK_SECONDS` (1800),
+`ACQUISITION_PERPLEXITY_TOLERANCE` (0.10), `ACQUISITION_CONVERSION_MEMORY_OVERHEAD` (1.20),
+`ACQUISITION_DISK_SAFETY_FRACTION` (0.10), and `ACQUISITION_VALIDATION_FIXTURE_VERSION` (`v1`).
+Raw and converted files remain under the configured Studio model store; DBOS metadata remains in
+Postgres. See [`docs/runbooks/acquisition.md`](../../docs/runbooks/acquisition.md).

@@ -12,6 +12,7 @@ import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Response, status
+from opentelemetry import metrics, trace
 from pydantic import BaseModel, ConfigDict, Field
 
 from coire_core.models.acquisition import Reservation, ReservationRequest
@@ -22,6 +23,18 @@ from coire_node.reservations import ReservationRefused
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/node/jobs", tags=["jobs"])
+tracer = trace.get_tracer("coire.node.acquisition")
+meter = metrics.get_meter("coire.node.acquisition")
+job_starts = meter.create_counter(
+    "coire_node_acquisition_jobs_total",
+    unit="1",
+    description="Node acquisition jobs accepted or reattached.",
+)
+job_expected_bytes = meter.create_histogram(
+    "coire_node_acquisition_expected_bytes",
+    unit="By",
+    description="Expected bytes for acquisition jobs.",
+)
 
 
 @router.post("/reservations", response_model=Reservation, status_code=status.HTTP_201_CREATED)
@@ -88,16 +101,46 @@ class ConvertRequest(BaseModel):
     target_slug: str
     reservation_id: uuid.UUID
     recipe: dict[str, object]
+    dequantize: bool = False
     expected_total_bytes: int | None = None
 
 
+class ValidateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: uuid.UUID
+    slug: str
+    tolerance: float = Field(default=0.1, ge=0.0, le=1.0)
+    validator_version: str = "v1"
+    chat_template_present: bool = False
+    reference_perplexity: float | None = Field(default=None, ge=0.0)
+    reference_variant_id: uuid.UUID | None = None
+
+
+class CleanupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: uuid.UUID
+    slug: str
+
+
 def _start(jobs: JobSupervisor, response: Response, **kw: Any) -> JobStatus:
-    try:
-        created, job_status = jobs.start(**kw)
-    except JobConflict as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    except InsufficientSpace as exc:
-        raise HTTPException(status.HTTP_507_INSUFFICIENT_STORAGE, str(exc)) from exc
+    kind = kw["kind"]
+    with tracer.start_as_current_span(f"coire.node.acquisition.{kind.value}") as span:
+        span.set_attribute("coire.job_id", str(kw["job_id"]))
+        span.set_attribute("coire.model_slug", str(kw["slug"]))
+        try:
+            created, job_status = jobs.start(**kw)
+        except JobConflict as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+        except InsufficientSpace as exc:
+            raise HTTPException(status.HTTP_507_INSUFFICIENT_STORAGE, str(exc)) from exc
+        outcome = "created" if created else "attached"
+        span.set_attribute("coire.outcome", outcome)
+        job_starts.add(1, {"kind": kind.value, "outcome": outcome})
+        expected = kw.get("expected_total_bytes")
+        if isinstance(expected, int):
+            job_expected_bytes.record(expected, {"kind": kind.value})
     # 202 means "started"; 200 means "this already existed", which is how the caller knows its
     # re-issue was a no-op rather than a second download.
     response.status_code = status.HTTP_202_ACCEPTED if created else status.HTTP_200_OK
@@ -168,8 +211,41 @@ async def start_convert(
             "source_slug": request.source_slug,
             "reservation_id": str(request.reservation_id),
             "recipe": request.recipe,
+            "dequantize": request.dequantize,
         },
         expected_total_bytes=request.expected_total_bytes,
+    )
+
+
+@router.post("/validate", response_model=JobStatus)
+async def start_validate(request: ValidateRequest, response: Response, jobs: JobsDep) -> JobStatus:
+    return _start(
+        jobs,
+        response,
+        job_id=request.job_id,
+        kind=JobKind.VALIDATE,
+        slug=request.slug,
+        params={
+            "tolerance": request.tolerance,
+            "validator_version": request.validator_version,
+            "chat_template_present": request.chat_template_present,
+            "reference_perplexity": request.reference_perplexity,
+            "reference_variant_id": (
+                str(request.reference_variant_id) if request.reference_variant_id else None
+            ),
+        },
+    )
+
+
+@router.post("/cleanup", response_model=JobStatus)
+async def start_cleanup(request: CleanupRequest, response: Response, jobs: JobsDep) -> JobStatus:
+    return _start(
+        jobs,
+        response,
+        job_id=request.job_id,
+        kind=JobKind.CLEANUP,
+        slug=request.slug,
+        params={},
     )
 
 

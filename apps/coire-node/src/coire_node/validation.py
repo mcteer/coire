@@ -4,17 +4,22 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import subprocess
 import sys
 from itertools import pairwise
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from coire_core.models.acquisition import ValidationOutcome
 
 SMOKE_PROMPTS = (
     "Reply with exactly one short sentence describing rain.",
     "What is two plus three? Reply with the number and one word.",
+)
+HELD_OUT_TEXT = (
+    "A durable workflow records completed work so a restart can continue without repeating it. "
+    "Checksums establish that two stored copies contain the same bytes."
 )
 
 
@@ -54,6 +59,8 @@ def output_is_nondegenerate(output: str) -> bool:
 
 
 def run_smoke(model_path: Path) -> tuple[ValidationOutcome, str | None]:
+    if os.environ.get("COIRE_TEST_FAKE_VALIDATION") == "1":
+        return ValidationOutcome.PASS, None
     for index, prompt in enumerate(SMOKE_PROMPTS):
         result = subprocess.run(
             smoke_argv(model_path, prompt),
@@ -112,3 +119,71 @@ def validate_tool_call_shape(rendered: str) -> ValidationOutcome:
         if isinstance(arguments, dict) and arguments == {"value": "ok"}
         else ValidationOutcome.FAIL
     )
+
+
+def run_template_check(model_path: Path) -> tuple[ValidationOutcome, str | None]:
+    if os.environ.get("COIRE_TEST_FAKE_VALIDATION") == "1":
+        return ValidationOutcome.PASS, None
+    try:
+        from mlx_lm.tokenizer_utils import load as load_tokenizer
+
+        tokenizer = load_tokenizer(model_path)
+        rendered = tokenizer.apply_chat_template(  # type: ignore[no-untyped-call]
+            [
+                {"role": "user", "content": "Echo ok using the tool."},
+                {
+                    "role": "assistant",
+                    "tool_calls": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "coire_validation_echo",
+                                "arguments": {"value": "ok"},
+                            },
+                        }
+                    ],
+                },
+            ],
+            tools=[
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "coire_validation_echo",
+                        "description": "Echo a validation value.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"value": {"type": "string"}},
+                            "required": ["value"],
+                            "additionalProperties": False,
+                        },
+                    },
+                }
+            ],
+            tokenize=False,
+        )
+        text = str(rendered)
+        if "coire_validation_echo" not in text or "ok" not in text:
+            return ValidationOutcome.FAIL, "rendered tool call omitted its name or arguments"
+        return ValidationOutcome.PASS, None
+    except Exception as exc:
+        return ValidationOutcome.FAIL, f"template rendering failed: {type(exc).__name__}"
+
+
+def measure_perplexity(model_path: Path, text: str = HELD_OUT_TEXT) -> float:
+    if os.environ.get("COIRE_TEST_FAKE_VALIDATION") == "1":
+        return 10.0
+    import mlx.core as mx
+    import mlx.nn as nn
+    from mlx_lm import load
+
+    loaded = cast(Any, load(str(model_path), lazy=True))
+    model, tokenizer = loaded[0], loaded[1]
+    token_ids = tokenizer.encode(text)
+    if len(token_ids) < 2:
+        raise ValueError("held-out fixture produced fewer than two tokens")
+    inputs = mx.array(token_ids[:-1])[None, :]
+    targets = mx.array(token_ids[1:])[None, :]
+    logits = model(inputs)
+    loss = nn.losses.cross_entropy(logits, targets, reduction="mean")
+    mx.eval(loss)
+    return perplexity(float(cast(Any, loss.item())))

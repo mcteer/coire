@@ -103,6 +103,7 @@ def classify_inspection(
         architecture=repo.architecture,
         source_format=source_format,
         gated=repo.gated,
+        chat_template_present=repo.chat_template_present,
         metadata_bytes=metadata_bytes,
         weight_bytes=repo.weight_bytes,
         total_bytes=repo.total_bytes,

@@ -1,6 +1,155 @@
 {
   "components": {
     "schemas": {
+      "AcquisitionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "keep_raw": {
+            "default": false,
+            "title": "Keep Raw",
+            "type": "boolean"
+          },
+          "repo_id": {
+            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+            "title": "Repo Id",
+            "type": "string"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "variant": {
+            "$ref": "#/components/schemas/VariantRecipe"
+          }
+        },
+        "required": [
+          "repo_id",
+          "variant"
+        ],
+        "title": "AcquisitionRequest",
+        "type": "object"
+      },
+      "AcquisitionStage": {
+        "enum": [
+          "inspect",
+          "pull",
+          "convert",
+          "validate",
+          "replicate",
+          "done",
+          "failed"
+        ],
+        "title": "AcquisitionStage",
+        "type": "string"
+      },
+      "AcquisitionState": {
+        "enum": [
+          "queued",
+          "running",
+          "waiting_for_capacity",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "AcquisitionState",
+        "type": "string"
+      },
+      "AcquisitionWorkflow": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "failure_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Detail"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "progress_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Progress Bytes",
+            "type": "integer"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/AcquisitionStage"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/StageResult"
+            },
+            "title": "Stages",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AcquisitionState"
+          },
+          "total_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Total Bytes",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "model_id",
+          "variant_id",
+          "stage",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AcquisitionWorkflow",
+        "type": "object"
+      },
       "AnthropicMessage": {
         "additionalProperties": false,
         "properties": {
@@ -43,10 +192,52 @@
             "title": "Coire Wait For Model",
             "type": "boolean"
           },
+          "container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container"
+          },
+          "context_management": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Management"
+          },
           "max_tokens": {
             "minimum": 1.0,
             "title": "Max Tokens",
             "type": "integer"
+          },
+          "mcp_servers": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp Servers"
           },
           "messages": {
             "items": {
@@ -56,10 +247,45 @@
             "title": "Messages",
             "type": "array"
           },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
           "model": {
             "format": "uuid",
             "title": "Model",
             "type": "string"
+          },
+          "output_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Config"
+          },
+          "service_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Tier"
           },
           "stop_sequences": {
             "anyOf": [
@@ -110,6 +336,18 @@
             ],
             "title": "Temperature"
           },
+          "thinking": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking"
+          },
           "tool_choice": {
             "anyOf": [
               {
@@ -136,6 +374,18 @@
               }
             ],
             "title": "Tools"
+          },
+          "top_k": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top K"
           },
           "top_p": {
             "anyOf": [
@@ -935,6 +1185,109 @@
         "title": "ModelUpdateRequest",
         "type": "object"
       },
+      "ModelVariant": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_size": {
+            "minimum": 0.0,
+            "title": "Byte Size",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "estimate_delta_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Delta Bytes"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "memory_estimate_bytes": {
+            "minimum": 0.0,
+            "title": "Memory Estimate Bytes",
+            "type": "integer"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/Precision"
+          },
+          "published": {
+            "title": "Published",
+            "type": "boolean"
+          },
+          "raw_retained": {
+            "title": "Raw Retained",
+            "type": "boolean"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/VariantRecipe"
+          },
+          "state": {
+            "$ref": "#/components/schemas/VariantState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "validated": {
+            "title": "Validated",
+            "type": "boolean"
+          },
+          "validation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "model_id",
+          "name",
+          "precision",
+          "recipe",
+          "state",
+          "byte_size",
+          "memory_estimate_bytes",
+          "validated",
+          "published",
+          "is_default",
+          "raw_retained",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ModelVariant",
+        "type": "object"
+      },
       "Node": {
         "additionalProperties": false,
         "description": "A declared Studio, as persisted and returned by the registration endpoint.",
@@ -1262,6 +1615,28 @@
         "title": "NodeV2",
         "type": "object"
       },
+      "Precision": {
+        "enum": [
+          "bf16",
+          "fp16",
+          "4bit",
+          "6bit",
+          "8bit",
+          "mixed"
+        ],
+        "title": "Precision",
+        "type": "string"
+      },
+      "QuantizationMode": {
+        "enum": [
+          "affine",
+          "mxfp4",
+          "nvfp4",
+          "mxfp8"
+        ],
+        "title": "QuantizationMode",
+        "type": "string"
+      },
       "RdmaState": {
         "enum": [
           "unknown",
@@ -1365,6 +1740,75 @@
         ],
         "title": "ServiceHealth",
         "type": "object"
+      },
+      "StageResult": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "minimum": 0.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "public_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Summary"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/AcquisitionStage"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StageStatus"
+          }
+        },
+        "required": [
+          "stage",
+          "status",
+          "attempt"
+        ],
+        "title": "StageResult",
+        "type": "object"
+      },
+      "StageStatus": {
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed",
+          "skipped"
+        ],
+        "title": "StageStatus",
+        "type": "string"
       },
       "StructuredOutput": {
         "enum": [
@@ -1513,6 +1957,227 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "ValidationOutcome": {
+        "enum": [
+          "pass",
+          "fail",
+          "not_comparable",
+          "not_applicable"
+        ],
+        "title": "ValidationOutcome",
+        "type": "string"
+      },
+      "ValidationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "perplexity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Perplexity"
+          },
+          "perplexity_outcome": {
+            "$ref": "#/components/schemas/ValidationOutcome"
+          },
+          "reference_perplexity": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Perplexity"
+          },
+          "reference_variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Variant Id"
+          },
+          "smoke": {
+            "$ref": "#/components/schemas/ValidationOutcome"
+          },
+          "smoke_failure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Smoke Failure"
+          },
+          "template": {
+            "$ref": "#/components/schemas/ValidationOutcome"
+          },
+          "template_failure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Failure"
+          },
+          "tolerance": {
+            "minimum": 0.0,
+            "title": "Tolerance",
+            "type": "number"
+          },
+          "validated": {
+            "title": "Validated",
+            "type": "boolean"
+          },
+          "validator_version": {
+            "title": "Validator Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "validator_version",
+          "smoke",
+          "tolerance",
+          "perplexity_outcome",
+          "template",
+          "validated",
+          "created_at"
+        ],
+        "title": "ValidationResult",
+        "type": "object"
+      },
+      "VariantPublication": {
+        "additionalProperties": false,
+        "properties": {
+          "is_default": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Default"
+          },
+          "published": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published"
+          }
+        },
+        "title": "VariantPublication",
+        "type": "object"
+      },
+      "VariantRecipe": {
+        "additionalProperties": false,
+        "properties": {
+          "bits": {
+            "anyOf": [
+              {
+                "maximum": 8.0,
+                "minimum": 2.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bits"
+          },
+          "group_size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Size"
+          },
+          "mixed_recipe": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mixed Recipe"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuantizationMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "precision": {
+            "$ref": "#/components/schemas/Precision"
+          }
+        },
+        "required": [
+          "name",
+          "precision"
+        ],
+        "title": "VariantRecipe",
+        "type": "object"
+      },
+      "VariantState": {
+        "enum": [
+          "requested",
+          "inspecting",
+          "queued",
+          "pulling",
+          "converting",
+          "validating",
+          "replicating",
+          "ready",
+          "failed"
+        ],
+        "title": "VariantState",
+        "type": "string"
+      },
       "Visibility": {
         "enum": [
           "admin_only",
@@ -1535,6 +2200,134 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/admin/acquisitions/{workflow_id}": {
+      "get": {
+        "operationId": "get_acquisition_api_v1_admin_acquisitions__workflow_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcquisitionWorkflow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Acquisition",
+        "tags": [
+          "admin: acquisitions"
+        ]
+      }
+    },
+    "/api/v1/admin/acquisitions/{workflow_id}/retry": {
+      "post": {
+        "operationId": "retry_acquisition_api_v1_admin_acquisitions__workflow_id__retry_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workflow_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workflow Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcquisitionWorkflow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Acquisition",
+        "tags": [
+          "admin: acquisitions"
+        ]
+      }
+    },
     "/api/v1/admin/audit": {
       "get": {
         "description": "Read the audit log. There is no route that writes, edits or deletes one.",
@@ -1566,6 +2359,22 @@
                 }
               ],
               "title": "Target Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -1609,6 +2418,24 @@
     "/api/v1/admin/engines": {
       "get": {
         "operationId": "list_engines_api_v1_admin_engines_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1624,6 +2451,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -1650,6 +2487,22 @@
               "format": "uuid",
               "title": "Engine Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -1699,6 +2552,22 @@
               "title": "Engine Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -1739,6 +2608,24 @@
     "/api/v1/admin/models": {
       "get": {
         "operationId": "list_models_api_v1_admin_models_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1754,6 +2641,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -1769,6 +2666,24 @@
       "post": {
         "description": "Add a model from a Hugging Face repository and start acquiring it.",
         "operationId": "add_model_api_v1_admin_models_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -1814,6 +2729,70 @@
         ]
       }
     },
+    "/api/v1/admin/models/acquisitions": {
+      "post": {
+        "operationId": "submit_acquisition_api_v1_admin_models_acquisitions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcquisitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcquisitionWorkflow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Acquisition",
+        "tags": [
+          "admin: acquisitions"
+        ]
+      }
+    },
     "/api/v1/admin/models/{model_id}": {
       "delete": {
         "operationId": "delete_model_api_v1_admin_models__model_id__delete",
@@ -1826,6 +2805,22 @@
               "format": "uuid",
               "title": "Model Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -1865,6 +2860,22 @@
               "format": "uuid",
               "title": "Model Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -1913,6 +2924,22 @@
               "format": "uuid",
               "title": "Model Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -1974,6 +3001,22 @@
               "title": "Model Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -2024,6 +3067,22 @@
               "format": "uuid",
               "title": "Model Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -2095,6 +3154,22 @@
               "title": "Model Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -2145,6 +3220,22 @@
               "title": "Model Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -2182,9 +3273,251 @@
         ]
       }
     },
+    "/api/v1/admin/models/{model_id}/variants": {
+      "get": {
+        "operationId": "list_model_variants_api_v1_admin_models__model_id__variants_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Model Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelVariant"
+                  },
+                  "title": "Response List Model Variants Api V1 Admin Models  Model Id  Variants Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Model Variants",
+        "tags": [
+          "admin: variants"
+        ]
+      },
+      "post": {
+        "operationId": "create_model_variant_api_v1_admin_models__model_id__variants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Model Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariantRecipe"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcquisitionWorkflow"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Model Variant",
+        "tags": [
+          "admin: variants"
+        ]
+      }
+    },
+    "/api/v1/admin/models/{model_id}/variants/{variant_id}": {
+      "patch": {
+        "operationId": "update_model_variant_api_v1_admin_models__model_id__variants__variant_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Model Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "variant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VariantPublication"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVariant"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Model Variant",
+        "tags": [
+          "admin: variants"
+        ]
+      }
+    },
     "/api/v1/admin/network/links/studios": {
       "get": {
         "operationId": "studio_data_link_api_v1_admin_network_links_studios_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2195,6 +3528,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -2212,6 +3555,24 @@
       "get": {
         "description": "Declared nodes with the last status the prober received, their engines and jobs.",
         "operationId": "list_nodes_api_v1_admin_nodes_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2227,6 +3588,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -2244,6 +3615,24 @@
       "get": {
         "description": "Models the caller may see, with live load state.\n\nAn admin sees everything; anyone else sees only published, ready, unentitled models\n(spec US5 scenario 1). Existence is not disclosed: an unpublished model is simply absent.",
         "operationId": "list_models_api_v1_models_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2258,6 +3647,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -2275,6 +3674,24 @@
       "post": {
         "description": "Register or re-register a declared node. Idempotent on name.",
         "operationId": "register_node_api_v1_nodes_register_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2338,6 +3755,24 @@
       "get": {
         "description": "Aggregate health.\n\nPostgres is the only critical dependency: without it the control plane has no system of\nrecord, so its failure is `unhealthy` (HTTP 503). Everything else degrades.",
         "operationId": "get_health_health_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2348,6 +3783,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -2386,6 +3831,24 @@
     "/v1/chat/completions": {
       "post": {
         "operationId": "chat_completions_v1_chat_completions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2432,6 +3895,24 @@
     "/v1/messages": {
       "post": {
         "operationId": "anthropic_messages_v1_messages_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2478,6 +3959,24 @@
     "/v1/models": {
       "get": {
         "operationId": "list_models_v1_models_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2488,6 +3987,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

@@ -10,7 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.audit import write_audit
-from coire_api.db import AcquisitionStageRow, AcquisitionWorkflowRow, ModelRow, ModelVariantRow
+from coire_api.db import (
+    AcquisitionStageRow,
+    AcquisitionWorkflowRow,
+    InspectionResultRow,
+    ModelRow,
+    ModelVariantRow,
+)
 from coire_core.models.acquisition import (
     AcquisitionRequest,
     AcquisitionStage,
@@ -50,6 +56,11 @@ async def submit(
     weight_bytes: int,
     total_bytes: int,
     memory_estimate_bytes: int,
+    origin_node_id: uuid.UUID,
+    replica_node_id: uuid.UUID,
+    inspection: dict[str, object],
+    skip_pull: bool = False,
+    source_variant_slug: str | None = None,
     actor: str,
 ) -> tuple[ModelRow, ModelVariantRow, AcquisitionWorkflowRow, bool]:
     """Create one workflow or attach to an identical active conversion."""
@@ -115,7 +126,7 @@ async def submit(
         precision=request.variant.precision.value,
         recipe=request.variant.model_dump(mode="json"),
         memory_estimate_bytes=memory_estimate_bytes,
-        state=VariantState.REQUESTED,
+        state=VariantState.QUEUED,
         raw_retained=request.keep_raw,
     )
     workflow = AcquisitionWorkflowRow(
@@ -124,13 +135,61 @@ async def submit(
         variant_id=variant.id,
         repo_id=request.repo_id,
         revision=revision,
-        request=request.model_dump(mode="json"),
+        request=request.model_dump(mode="json")
+        | ({"source_variant_slug": source_variant_slug} if source_variant_slug else {}),
         keep_raw=request.keep_raw,
-        stage=AcquisitionStage.INSPECT,
+        origin_node_id=origin_node_id,
+        replica_node_id=replica_node_id,
+        stage=AcquisitionStage.CONVERT if skip_pull else AcquisitionStage.PULL,
         state=AcquisitionState.QUEUED,
         total_bytes=total_bytes,
     )
-    session.add_all([variant, workflow])
+    now = datetime.now(UTC)
+    # These rows do not have ORM relationships, so SQLAlchemy cannot infer that the
+    # workflow must be inserted before its stage/result children.  Flush the parent
+    # rows explicitly to preserve the database FK ordering.
+    session.add(variant)
+    await session.flush()
+    session.add(workflow)
+    await session.flush()
+    session.add_all(
+        [
+            AcquisitionStageRow(
+                id=uuid.uuid4(),
+                workflow_id=workflow.id,
+                stage=AcquisitionStage.INSPECT,
+                status=StageStatus.SUCCEEDED,
+                attempt=1,
+                result=inspection,
+                public_summary="repository metadata accepted; zero weight bytes transferred",
+                started_at=now,
+                finished_at=now,
+            ),
+            InspectionResultRow(workflow_id=workflow.id, result=inspection),
+        ]
+    )
+    if skip_pull:
+        session.add(
+            AcquisitionStageRow(
+                id=uuid.uuid4(),
+                workflow_id=workflow.id,
+                stage=AcquisitionStage.PULL,
+                status=StageStatus.SKIPPED,
+                attempt=1,
+                result={
+                    "operation": "dequantize_verified_variant"
+                    if source_variant_slug
+                    else "reuse_retained_raw"
+                },
+                public_summary=(
+                    "verified variant selected for explicit dequantization; no external pull"
+                    if source_variant_slug
+                    else "retained raw source reused; no external pull"
+                ),
+                started_at=now,
+                finished_at=now,
+            )
+        )
     await session.flush()
     await write_audit(
         session,

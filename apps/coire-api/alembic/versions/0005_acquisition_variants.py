@@ -172,6 +172,38 @@ def upgrade() -> None:
     op.create_index("ix_acquisition_stages_workflow_id", "acquisition_stages", ["workflow_id"])
 
     op.create_table(
+        "acquisition_commands",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "workflow_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("acquisition_workflows.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("stage", _enum("acquisition_stage"), nullable=False),
+        sa.Column(
+            "node_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("nodes.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("operation", sa.String(32), nullable=False),
+        sa.Column("payload", postgresql.JSONB, nullable=False),
+        sa.Column("state", sa.String(16), nullable=False, server_default="pending"),
+        sa.Column("result", postgresql.JSONB, nullable=True),
+        sa.Column("failure_code", sa.String(64), nullable=True),
+        sa.Column("failure_detail", sa.Text, nullable=True),
+        sa.Column(
+            "created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+        sa.Column(
+            "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+        ),
+    )
+    op.create_index("ix_acquisition_commands_workflow_id", "acquisition_commands", ["workflow_id"])
+    op.create_index("ix_acquisition_commands_state", "acquisition_commands", ["state"])
+
+    op.create_table(
         "inspection_results",
         sa.Column(
             "workflow_id",
@@ -292,6 +324,7 @@ def downgrade() -> None:
         "variant_copies",
         "validation_results",
         "inspection_results",
+        "acquisition_commands",
         "acquisition_stages",
         "acquisition_workflows",
         "model_variants",

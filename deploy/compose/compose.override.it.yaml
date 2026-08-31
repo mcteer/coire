@@ -27,8 +27,8 @@ services:
   coire-api:
     ports: ["127.0.0.1:${COIRE_IT_API_PORT:-18081}:8000"]
     environment:
-      # The Studios keep 50 GiB free; the test tmpfs is 4 GiB, so the production default
-      # would refuse every model on fit. The check itself is exercised by its own test.
+      # Integration storage may be much smaller than a Studio's reserved 50 GiB; the
+      # production default would refuse every fixture. The check itself has a focused test.
       DISK_RESERVE_BYTES: "268435456"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       GATEWAY_MAX_INFLIGHT_PER_ENGINE: "4"
@@ -66,12 +66,16 @@ services:
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       # Selects the fake engine (research R9). The real one is Apple-Silicon only.
       COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
+      COIRE_TEST_FAKE_CONVERSION: "1"
+      COIRE_TEST_FAKE_VALIDATION: "1"
       HF_TOKEN: ${HF_TOKEN:-}
       HF_HUB_DISABLE_XET: "1"
       DISK_RESERVE_BYTES: "268435456"
       OTLP_ENDPOINT: http://otel-collector:4317
-    tmpfs:
-      - /opt/coire:size=4g
+    volumes:
+      # Persistent across `docker compose restart`, like the Studio's /opt/coire volume.
+      # The session fixture removes it with `down -v` after every integration run.
+      - node-a-opt:/opt/coire
     healthcheck:
       # The agent binds its mesh address, not loopback, so the probe must use that address —
       # exactly as it does on a Studio.
@@ -110,11 +114,13 @@ services:
       CORE_API_PORT: "8000"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
+      COIRE_TEST_FAKE_CONVERSION: "1"
+      COIRE_TEST_FAKE_VALIDATION: "1"
       HF_HUB_DISABLE_XET: "1"
       DISK_RESERVE_BYTES: "268435456"
       OTLP_ENDPOINT: http://otel-collector:4317
-    tmpfs:
-      - /opt/coire:size=4g
+    volumes:
+      - node-b-opt:/opt/coire
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://coire-edge-b:9400/ready"]
       interval: 3s
@@ -129,3 +135,7 @@ networks:
     ipam:
       config:
         - subnet: 192.168.100.0/24
+
+volumes:
+  node-a-opt:
+  node-b-opt:

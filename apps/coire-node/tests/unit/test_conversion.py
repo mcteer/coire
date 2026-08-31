@@ -38,3 +38,21 @@ def test_convert_failure_removes_partial_and_never_publishes(tmp_path, monkeypat
         )
     assert not target.exists()
     assert not (tmp_path / "target.partial-job").exists()
+
+
+def test_fake_conversion_uses_the_same_atomic_publication_path(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    (source / "config.json").write_text("{}")
+    monkeypatch.setenv("COIRE_TEST_FAKE_CONVERSION", "1")
+
+    convert_atomic(
+        source=source,
+        destination=target,
+        recipe=VariantRecipe(name="bf16", precision=Precision.BF16),
+        job_suffix="job",
+    )
+
+    assert (target / "config.json").is_file()
+    assert not (tmp_path / "target.partial-job").exists()

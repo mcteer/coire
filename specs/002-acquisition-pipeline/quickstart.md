@@ -22,10 +22,12 @@ COIRE_INTEGRATION=1 uv run pytest -q -m integration \
   tests/integration/test_acquisition_pipeline.py
 ```
 
-The fake Hub provides raw safetensors, MLX, GGUF-only, gated, unsupported, and oversized fixtures.
-Assert raw and MLX sources reach two verified copies, all early refusals transfer zero bytes, two
-identical conversions share one workflow, and scheduler restart resumes after the last completed
-stage.
+The composed suite uses public ≤100 MB Hugging Face fixtures for raw safetensors, already-MLX, and
+unsupported-architecture paths. It asserts two verified copies, zero-byte early refusal, duplicate
+attachment, conversion from an existing verified variant without a second pull, and both scheduler
+and node restart recovery. GGUF, gated, oversized, disk-full, and validation-failure branches use
+deterministic local fixtures in the unit/contract suites so the release gate does not depend on a
+third party changing those failure repositories.
 
 ## 3. Live raw conversion
 

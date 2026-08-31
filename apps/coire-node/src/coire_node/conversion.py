@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -48,18 +49,23 @@ def convert_atomic(
         shutil.rmtree(partial)
     partial.mkdir(parents=True)
     try:
-        result = subprocess.run(
-            build_convert_argv(source, partial, recipe),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            timeout=None,
-            check=False,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"mlx_lm.convert exited {result.returncode}: {result.stdout[-2000:].decode(errors='replace')}"
+        if os.environ.get("COIRE_TEST_FAKE_CONVERSION") == "1":
+            shutil.copytree(source, partial, dirs_exist_ok=True)
+            result = subprocess.CompletedProcess(["coire-test-fake-convert"], 0, stdout=b"")
+        else:
+            result = subprocess.run(
+                build_convert_argv(source, partial, recipe),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=None,
+                check=False,
             )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"mlx_lm.convert exited {result.returncode}: "
+                    f"{result.stdout[-2000:].decode(errors='replace')}"
+                )
         if destination.exists():
             raise FileExistsError(f"destination already exists: {destination.name}")
         partial.replace(destination)
@@ -67,6 +73,44 @@ def convert_atomic(
     except BaseException:
         shutil.rmtree(partial, ignore_errors=True)
         raise
+
+
+def dequantize_then_convert_atomic(
+    *, source: Path, destination: Path, recipe: VariantRecipe, job_suffix: str
+) -> subprocess.CompletedProcess[bytes]:
+    raw = destination.with_name(f"{destination.name}.dequantized-{job_suffix}")
+    if raw.exists():
+        shutil.rmtree(raw)
+    raw.mkdir(parents=True)
+    try:
+        if os.environ.get("COIRE_TEST_FAKE_CONVERSION") == "1":
+            shutil.copytree(source, raw, dirs_exist_ok=True)
+        else:
+            dequantize = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "mlx_lm",
+                    "convert",
+                    "--hf-path",
+                    str(source),
+                    "--mlx-path",
+                    str(raw),
+                    "--dequantize",
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=None,
+                check=False,
+            )
+            if dequantize.returncode != 0:
+                raise RuntimeError(f"mlx_lm dequantization exited {dequantize.returncode}")
+        return convert_atomic(
+            source=raw, destination=destination, recipe=recipe, job_suffix=job_suffix
+        )
+    finally:
+        shutil.rmtree(raw, ignore_errors=True)
 
 
 def recipe_from_params(params: dict[str, Any]) -> VariantRecipe:

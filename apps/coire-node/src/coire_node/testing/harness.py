@@ -18,6 +18,7 @@ from coire_core.settings import Settings
 from coire_node.engines import EngineManager
 from coire_node.grants import Grants
 from coire_node.jobs import JobSupervisor
+from coire_node.reservations import ReservationLedger
 from coire_node.store import Store
 
 TOKEN = "test-node-token"
@@ -81,6 +82,9 @@ class Agent:
         self.jobs = JobSupervisor(self.settings, self.store)
         self.grants = Grants()
         self.engines = EngineManager(self.settings, self.store, "127.0.0.1")
+        self.reservations = ReservationLedger(
+            self.settings, self.store, self.engines.committed_bytes
+        )
         self.collector = StubCollector()
         self.collector.attach(store=self.store, jobs=self.jobs, engines=self.engines)
 
@@ -95,6 +99,7 @@ class Agent:
             jobs=self.jobs,
             engines=self.engines,
             grants=self.grants,
+            reservations=self.reservations,
         )
 
     def client(self, listener: NodePath | NetworkPath = NodePath.MESH) -> Any:

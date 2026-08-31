@@ -347,6 +347,26 @@ class AcquisitionStageRow(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AcquisitionCommandRow(Base):
+    """Scheduler-to-API handoff; only the API is authorised to reach node agents."""
+
+    __tablename__ = "acquisition_commands"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("acquisition_workflows.id", ondelete="CASCADE"), index=True
+    )
+    stage: Mapped[AcquisitionStage] = mapped_column(_enum(AcquisitionStage, "acquisition_stage"))
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    operation: Mapped[str] = mapped_column(String(32))
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    state: Mapped[str] = mapped_column(String(16), index=True, default="pending")
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class InspectionResultRow(Base):
     __tablename__ = "inspection_results"
 

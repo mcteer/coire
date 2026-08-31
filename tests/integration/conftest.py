@@ -123,12 +123,13 @@ def stack() -> Iterator[None]:
     try:
         yield
     finally:
-        subprocess.run(
-            ["docker", "compose", "-p", PROJECT, "down", "-v", "--remove-orphans"],
-            cwd=COMPOSE_DIR,
-            env=env,
-            capture_output=True,
-        )
+        if os.environ.get("COIRE_IT_KEEP_STACK") != "1":
+            subprocess.run(
+                ["docker", "compose", "-p", PROJECT, "down", "-v", "--remove-orphans"],
+                cwd=COMPOSE_DIR,
+                env=env,
+                capture_output=True,
+            )
 
 
 @pytest.fixture(scope="session")

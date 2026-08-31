@@ -141,6 +141,7 @@ class InspectionResult(BaseModel):
     architecture: str | None = None
     source_format: str
     gated: bool = False
+    chat_template_present: bool = False
     metadata_bytes: int = Field(ge=0)
     weight_bytes: int = Field(ge=0)
     total_bytes: int = Field(ge=0)
@@ -156,12 +157,14 @@ class ValidationResult(BaseModel):
 
     validator_version: str
     smoke: ValidationOutcome
+    smoke_failure: str | None = None
     perplexity: float | None = Field(default=None, ge=0.0)
     reference_variant_id: uuid.UUID | None = None
     reference_perplexity: float | None = Field(default=None, ge=0.0)
     tolerance: float = Field(ge=0.0)
     perplexity_outcome: ValidationOutcome
     template: ValidationOutcome
+    template_failure: str | None = None
     validated: bool
     created_at: datetime
 
