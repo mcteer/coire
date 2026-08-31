@@ -20,6 +20,8 @@ dependencies = [
     "opentelemetry-sdk>=1.29",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
     "opentelemetry-instrumentation-fastapi>=0.50b0",
+    # MIT. Durable acquisition stages and restart recovery; scheduler-only (spec 002 R1).
+    "dbos==2.24.0",
 ]
 
 [build-system]

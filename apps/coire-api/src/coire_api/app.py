@@ -17,7 +17,15 @@ from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from coire_api import __version__
 from coire_api.db import dispose_engine, init_engine
-from coire_api.routes import admin_models, admin_nodes, health, models, nodes, v1
+from coire_api.routes import (
+    admin_acquisitions,
+    admin_models,
+    admin_nodes,
+    health,
+    models,
+    nodes,
+    v1,
+)
 from coire_api.telemetry import configure_telemetry
 from coire_core.settings import Settings, get_settings
 
@@ -74,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(nodes.router)
     app.include_router(models.router)
+    app.include_router(admin_acquisitions.router)
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)
     app.include_router(v1.router)

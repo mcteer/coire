@@ -342,6 +342,32 @@ def run_verify(job: JobFile) -> int:
     return EXIT_OK
 
 
+def run_convert(job: JobFile) -> int:
+    from coire_node.conversion import convert_atomic, recipe_from_params
+
+    store = _store(job)
+    source_slug = str(job.params["source_slug"])
+    job.status.stage = JobStage.TRANSFERRING
+    job.save(force=True)
+    convert_atomic(
+        source=store.path_for(source_slug),
+        destination=store.path_for(job.status.slug),
+        recipe=recipe_from_params(job.params["recipe"]),
+        job_suffix=str(job.status.job_id),
+    )
+    job.status.stage = JobStage.HASHING
+    job.save(force=True)
+    manifest = store.hash_tree(
+        job.status.slug,
+        repo_id=str(job.params["repo_id"]),
+        revision=str(job.params["revision"]),
+        on_progress=lambda n, i: _progress(job, n, i),
+    )
+    store.write_manifest(manifest)
+    job.finish(manifest)
+    return EXIT_OK
+
+
 def _progress(job: JobFile, delta: int, files_done: int) -> None:
     job.status.bytes_done += delta
     job.status.files_done = files_done
@@ -351,7 +377,12 @@ def _progress(job: JobFile, delta: int, files_done: int) -> None:
 # --------------------------------------------------------------------------- entry point
 
 
-RUNNERS = {JobKind.PULL: run_pull, JobKind.IMPORT: run_import, JobKind.VERIFY: run_verify}
+RUNNERS = {
+    JobKind.PULL: run_pull,
+    JobKind.IMPORT: run_import,
+    JobKind.VERIFY: run_verify,
+    JobKind.CONVERT: run_convert,
+}
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -87,6 +87,12 @@ class Settings(BaseSettings):
     node_collection_budget_rss_bytes: int = 150 * 1024 * 1024
     node_inventory_file: str = "/app/nodes.yaml"
     registry_reconcile_interval_s: float = 5.0
+    acquisition_poll_interval_s: float = Field(default=2.0, gt=0.0)
+    acquisition_stuck_seconds: int = Field(default=1800, ge=60)
+    acquisition_perplexity_tolerance: float = Field(default=0.10, ge=0.0, le=1.0)
+    acquisition_conversion_memory_overhead: float = Field(default=1.20, ge=1.0)
+    acquisition_disk_safety_fraction: float = Field(default=0.10, ge=0.0, le=1.0)
+    acquisition_validation_fixture_version: str = "v1"
 
     # --- compatible inference gateway ----------------------------------
     gateway_wait_ceiling_s: float = Field(default=600.0, gt=0.0)

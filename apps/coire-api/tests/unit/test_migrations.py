@@ -75,3 +75,20 @@ def test_gateway_and_fabric_migration_heads_are_merged() -> None:
     source = Path("apps/coire-api/alembic/versions/0004_merge_gateway_fabrics.py").read_text()
     assert 'revision = "0004_merge_gateway_fabrics"' in source
     assert 'down_revision = ("0003_gateway_usage", "0003_node_endpoints")' in source
+
+
+def test_acquisition_variant_migration_is_additive_and_guards_downgrade() -> None:
+    source = Path("apps/coire-api/alembic/versions/0005_acquisition_variants.py").read_text()
+    assert 'revision = "0005_acquisition_variants"' in source
+    assert 'down_revision = "0004_merge_gateway_fabrics"' in source
+    for table in (
+        "model_variants",
+        "acquisition_workflows",
+        "acquisition_stages",
+        "inspection_results",
+        "validation_results",
+        "variant_copies",
+        "node_reservations",
+    ):
+        assert f'"{table}"' in source
+    assert "cannot downgrade after creating additional model variants" in source

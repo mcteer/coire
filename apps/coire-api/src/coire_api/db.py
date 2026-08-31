@@ -13,6 +13,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -33,6 +34,13 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from coire_core.models.acquisition import (
+    AcquisitionStage,
+    AcquisitionState,
+    ReservationState,
+    StageStatus,
+    VariantState,
+)
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.engine import EngineState
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
@@ -253,6 +261,154 @@ class DownloadJobRow(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# --------------------------------------------------------------------------- feature 002
+
+
+class ModelVariantRow(Base):
+    __tablename__ = "model_variants"
+    __table_args__ = (
+        UniqueConstraint("model_id", "name", name="uq_model_variants_model_name"),
+        UniqueConstraint("slug", name="uq_model_variants_slug"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("models.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(80))
+    slug: Mapped[str] = mapped_column(String(255))
+    source_revision: Mapped[str] = mapped_column(String(128))
+    precision: Mapped[str] = mapped_column(String(16))
+    recipe: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    byte_size: Mapped[int] = mapped_column(BigInteger, default=0)
+    memory_estimate_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    estimate_delta_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    state: Mapped[VariantState] = mapped_column(_enum(VariantState, "variant_state"), index=True)
+    validated: Mapped[bool] = mapped_column(Boolean, default=False)
+    published: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    raw_retained: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AcquisitionWorkflowRow(Base):
+    __tablename__ = "acquisition_workflows"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("models.id", ondelete="CASCADE"), index=True
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
+    )
+    repo_id: Mapped[str] = mapped_column(String(255))
+    revision: Mapped[str] = mapped_column(String(128))
+    request: Mapped[dict[str, object]] = mapped_column(JSONB)
+    keep_raw: Mapped[bool] = mapped_column(Boolean, default=False)
+    origin_node_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("nodes.id"), nullable=True)
+    replica_node_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("nodes.id"), nullable=True)
+    stage: Mapped[AcquisitionStage] = mapped_column(
+        _enum(AcquisitionStage, "acquisition_stage"), index=True
+    )
+    state: Mapped[AcquisitionState] = mapped_column(
+        _enum(AcquisitionState, "acquisition_state"), index=True
+    )
+    progress_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    total_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class AcquisitionStageRow(Base):
+    __tablename__ = "acquisition_stages"
+    __table_args__ = (
+        UniqueConstraint("workflow_id", "stage", "attempt", name="uq_acquisition_stage_attempt"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("acquisition_workflows.id", ondelete="CASCADE"), index=True
+    )
+    stage: Mapped[AcquisitionStage] = mapped_column(_enum(AcquisitionStage, "acquisition_stage"))
+    status: Mapped[StageStatus] = mapped_column(_enum(StageStatus, "acquisition_stage_status"))
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    result_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    public_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    node_job_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class InspectionResultRow(Base):
+    __tablename__ = "inspection_results"
+
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("acquisition_workflows.id", ondelete="CASCADE"), primary_key=True
+    )
+    result: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ValidationResultRow(Base):
+    __tablename__ = "validation_results"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("acquisition_workflows.id", ondelete="CASCADE"), unique=True
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
+    )
+    result: Mapped[dict[str, object]] = mapped_column(JSONB)
+    validated: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VariantCopyRow(Base):
+    __tablename__ = "variant_copies"
+    __table_args__ = (
+        UniqueConstraint("variant_id", "node_id", name="uq_variant_copies_variant_node"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    path: Mapped[str] = mapped_column(String(512))
+    bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    role: Mapped[CopyRole] = mapped_column(_enum(CopyRole, "copy_role"))
+
+
+class NodeReservationRow(Base):
+    __tablename__ = "node_reservations"
+    __table_args__ = (UniqueConstraint("workflow_id", name="uq_node_reservations_workflow"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("acquisition_workflows.id", ondelete="CASCADE"), index=True
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE")
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    memory_bytes: Mapped[int] = mapped_column(BigInteger)
+    disk_bytes: Mapped[int] = mapped_column(BigInteger)
+    state: Mapped[ReservationState] = mapped_column(_enum(ReservationState, "reservation_state"))
+    occupants: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class EngineProcessRow(Base):

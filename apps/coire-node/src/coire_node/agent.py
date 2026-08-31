@@ -31,6 +31,7 @@ from coire_core.settings import Settings
 from coire_node.engines import EngineManager
 from coire_node.grants import Grants
 from coire_node.jobs import JobSupervisor
+from coire_node.reservations import ReservationLedger
 from coire_node.routes import engines as engines_routes
 from coire_node.routes import export as export_routes
 from coire_node.routes import jobs as jobs_routes
@@ -125,6 +126,7 @@ def create_app(
     jobs: JobSupervisor | None = None,
     engines: EngineManager | None = None,
     grants: Grants | None = None,
+    reservations: ReservationLedger | None = None,
 ) -> FastAPI:
     """Build the agent app for one listener.
 
@@ -139,6 +141,7 @@ def create_app(
     app.state.jobs = jobs
     app.state.engines = engines
     app.state.grants = grants
+    app.state.reservations = reservations
     expected_token = settings.node_token.get_secret_value()
 
     async def require_node_token(credentials: BearerDep) -> None:
@@ -246,6 +249,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     # Bare engines are private implementation details of coire-node. The authenticated
     # control listener is their sole network boundary; no engine port binds to Wi-Fi.
     engines = EngineManager(settings, store, "127.0.0.1")
+    reservations = ReservationLedger(settings, store, engines.committed_bytes)
 
     # Re-own engines that outlived the previous agent process, and re-attach to jobs that were
     # running. Both happen before the listeners bind, so the first /node/health after a restart
@@ -273,6 +277,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         jobs=jobs,
                         engines=engines,
                         grants=grants,
+                        reservations=reservations,
                     ),
                     host=control_addr,
                     port=port,
@@ -294,6 +299,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                             jobs=jobs,
                             engines=engines,
                             grants=grants,
+                            reservations=reservations,
                         ),
                         host=data_addr,
                         port=settings.node_data_listen_port,
@@ -315,6 +321,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         jobs=jobs,
                         engines=engines,
                         grants=grants,
+                        reservations=reservations,
                     ),
                     host=mesh_addr,
                     port=port,
@@ -345,6 +352,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         jobs=jobs,
                         engines=engines,
                         grants=grants,
+                        reservations=reservations,
                     ),
                     host=egress_addr,
                     port=port,

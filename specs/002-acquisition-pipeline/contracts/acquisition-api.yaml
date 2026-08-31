@@ -1,0 +1,202 @@
+openapi: 3.1.0
+info:
+  title: Coire model acquisition API
+  version: 0.2.0
+paths:
+  /admin/models/acquisitions:
+    post:
+      summary: Inspect and acquire a base model variant
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/AcquisitionRequest'}
+      responses:
+        '202':
+          description: Workflow created or an identical active workflow reused
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AcquisitionWorkflow'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+  /admin/models/{model_id}/variants:
+    parameters:
+      - $ref: '#/components/parameters/ModelId'
+    get:
+      summary: Compare variants and validation results
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Variants for the model
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/ModelVariant'}
+    post:
+      summary: Create another variant without an implicit external pull
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VariantRequest'}
+      responses:
+        '202':
+          description: Variant workflow created or reused
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AcquisitionWorkflow'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /admin/models/{model_id}/variants/{variant_id}:
+    parameters:
+      - $ref: '#/components/parameters/ModelId'
+      - $ref: '#/components/parameters/VariantId'
+    patch:
+      summary: Publish, unpublish, or select the default variant
+      security: [{bearerAuth: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VariantPublication'}
+      responses:
+        '200':
+          description: Updated variant
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ModelVariant'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /admin/acquisitions/{workflow_id}:
+    parameters:
+      - $ref: '#/components/parameters/WorkflowId'
+    get:
+      summary: Read workflow and stage progress
+      security: [{bearerAuth: []}]
+      responses:
+        '200':
+          description: Current durable workflow projection
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AcquisitionWorkflow'}
+  /admin/acquisitions/{workflow_id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/WorkflowId'
+    post:
+      summary: Retry from the earliest incomplete stage
+      security: [{bearerAuth: []}]
+      responses:
+        '202':
+          description: Workflow resumed
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AcquisitionWorkflow'}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+  parameters:
+    ModelId: {name: model_id, in: path, required: true, schema: {type: string, format: uuid}}
+    VariantId: {name: variant_id, in: path, required: true, schema: {type: string, format: uuid}}
+    WorkflowId: {name: workflow_id, in: path, required: true, schema: {type: string, format: uuid}}
+  responses:
+    Problem:
+      description: RFC 9457 problem details
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+  schemas:
+    AcquisitionRequest:
+      type: object
+      additionalProperties: false
+      required: [repo_id, variant]
+      properties:
+        repo_id: {type: string, pattern: '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'}
+        revision: {type: [string, 'null'], default: null}
+        keep_raw: {type: boolean, default: false}
+        variant: {$ref: '#/components/schemas/VariantRequest'}
+    VariantRequest:
+      type: object
+      additionalProperties: false
+      required: [name, precision]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 80}
+        precision: {type: string, enum: [bf16, fp16, 4bit, 6bit, 8bit, mixed]}
+        bits: {type: [integer, 'null'], minimum: 2, maximum: 8}
+        group_size: {type: [integer, 'null'], enum: [32, 64, 128, null]}
+        mode: {type: [string, 'null'], enum: [affine, mxfp4, nvfp4, mxfp8, null]}
+        mixed_recipe: {type: [string, 'null']}
+    VariantPublication:
+      type: object
+      additionalProperties: false
+      properties:
+        published: {type: boolean}
+        is_default: {type: boolean}
+      minProperties: 1
+    AcquisitionWorkflow:
+      type: object
+      additionalProperties: false
+      required: [id, model_id, variant_id, stage, state, stages, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        model_id: {type: string, format: uuid}
+        variant_id: {type: string, format: uuid}
+        stage: {type: string, enum: [inspect, pull, convert, validate, replicate, done, failed]}
+        state: {type: string, enum: [queued, running, waiting_for_capacity, succeeded, failed, cancelled]}
+        progress_bytes: {type: integer, minimum: 0, default: 0}
+        total_bytes: {type: integer, minimum: 0, default: 0}
+        failure_code: {type: [string, 'null']}
+        failure_detail: {type: [string, 'null']}
+        stages:
+          type: array
+          items: {$ref: '#/components/schemas/StageResult'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+    StageResult:
+      type: object
+      additionalProperties: false
+      required: [stage, status, attempt]
+      properties:
+        stage: {type: string, enum: [inspect, pull, convert, validate, replicate]}
+        status: {type: string, enum: [pending, running, succeeded, failed, skipped]}
+        attempt: {type: integer, minimum: 0}
+        public_summary: {type: [string, 'null']}
+        started_at: {type: [string, 'null'], format: date-time}
+        finished_at: {type: [string, 'null'], format: date-time}
+    ModelVariant:
+      type: object
+      additionalProperties: false
+      required: [id, model_id, name, precision, state, byte_size, validated, published, is_default, validation]
+      properties:
+        id: {type: string, format: uuid}
+        model_id: {type: string, format: uuid}
+        name: {type: string}
+        precision: {type: string}
+        recipe: {$ref: '#/components/schemas/VariantRequest'}
+        state: {type: string, enum: [requested, inspecting, queued, pulling, converting, validating, replicating, ready, failed]}
+        byte_size: {type: integer, minimum: 0}
+        validated: {type: boolean}
+        published: {type: boolean}
+        is_default: {type: boolean}
+        raw_retained: {type: boolean}
+        validation: {oneOf: [{$ref: '#/components/schemas/ValidationResult'}, {type: 'null'}]}
+    ValidationResult:
+      type: object
+      additionalProperties: false
+      required: [smoke, perplexity_outcome, template, validated]
+      properties:
+        smoke: {type: string, enum: [pass, fail]}
+        perplexity: {type: [number, 'null']}
+        reference_perplexity: {type: [number, 'null']}
+        perplexity_outcome: {type: string, enum: [pass, fail, not_comparable]}
+        template: {type: string, enum: [pass, fail, not_applicable]}
+        validated: {type: boolean}
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: {type: string, format: uri-reference}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}

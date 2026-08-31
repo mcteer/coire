@@ -65,6 +65,9 @@ class JobKind(StrEnum):
     PULL = "pull"
     IMPORT = "import"
     VERIFY = "verify"
+    CONVERT = "convert"
+    VALIDATE = "validate"
+    CLEANUP = "cleanup"
 
 
 class JobStage(StrEnum):
@@ -87,6 +90,9 @@ class JobErrorKind(StrEnum):
     CHECKSUM_MISMATCH = "checksum_mismatch"
     DISK_FULL = "disk_full"
     CANCELLED = "cancelled"
+    RESERVATION_REQUIRED = "reservation_required"
+    VALIDATION_FAILED = "validation_failed"
+    UNSUPPORTED = "unsupported"
     INTERNAL = "internal"
 
 
