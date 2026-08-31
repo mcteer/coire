@@ -58,3 +58,27 @@ async def test_reconcile_wakeup_during_a_pass_is_not_lost(
 
     await asyncio.wait_for(reconciler._run(), timeout=1.0)
     assert passes == 2
+
+
+async def test_every_healthy_node_is_queued_for_periodic_reconciliation() -> None:
+    reconciler = RegistryReconciler(cast(Any, SimpleNamespace(registry_reconcile_interval_s=30.0)))
+
+    class Rows:
+        def scalars(self) -> Rows:
+            return self
+
+        def all(self) -> list[SimpleNamespace]:
+            return [SimpleNamespace(name="coire-edge-a"), SimpleNamespace(name="coire-edge-b")]
+
+    class Session:
+        async def execute(self, _query: object) -> Rows:
+            return Rows()
+
+    class Client:
+        async def health(self, name: str) -> SimpleNamespace:
+            return SimpleNamespace(name=name)
+
+    await reconciler._refresh_statuses(cast(Any, Session()), cast(Any, Client()))
+
+    assert reconciler._node_reconcile == {"coire-edge-a", "coire-edge-b"}
+    assert set(reconciler.node_statuses) == {"coire-edge-a", "coire-edge-b"}

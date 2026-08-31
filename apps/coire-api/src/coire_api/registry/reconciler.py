@@ -142,6 +142,11 @@ class RegistryReconciler:
         for row in (await session.execute(select(NodeRow))).scalars().all():
             try:
                 self.node_statuses[row.name] = await client.health(row.name)
+                # Reconcile every healthy node on this pass. Registration is intentionally
+                # sent before the restarted listener binds, so its event-driven reconcile may
+                # race readiness; periodic reconciliation guarantees eventual drift/orphan
+                # detection without relying on another state transition.
+                self._node_reconcile.add(row.name)
             except NodeError:
                 self.node_statuses.pop(row.name, None)
 
