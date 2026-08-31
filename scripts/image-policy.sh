@@ -109,7 +109,8 @@ if [[ -n "$DOCKERFILE" ]]; then
   if [[ ! -r "$DOCKERFILE" ]]; then
     fail "unpinned FROM" "cannot read $DOCKERFILE"
   else
-    unpinned="$(grep -iE '^\s*FROM\s' "$DOCKERFILE" | grep -v '@sha256:' | head -1)"
+    # `scratch` is Docker's reserved empty root filesystem, not a mutable registry tag.
+    unpinned="$(grep -iE '^\s*FROM\s' "$DOCKERFILE" | grep -viE '^\s*FROM\s+scratch([[:space:]]|$)' | grep -v '@sha256:' | head -1)"
     if [[ -n "$unpinned" ]]; then
       fail "unpinned FROM" "$(printf '%s' "$unpinned" | tr -s ' ')"
     else

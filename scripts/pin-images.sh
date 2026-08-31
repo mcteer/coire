@@ -23,6 +23,7 @@ check_dockerfiles() {
   while IFS= read -r df; do
     while IFS= read -r line; do
       case "$line" in
+        [Ff][Rr][Oo][Mm][[:space:]][Ss][Cc][Rr][Aa][Tt][Cc][Hh]|[Ff][Rr][Oo][Mm][[:space:]][Ss][Cc][Rr][Aa][Tt][Cc][Hh][[:space:]]*) ;;
         *@sha256:*) ;;
         *) echo "unpinned FROM in ${df#$REPO_ROOT/}: $(echo "$line" | tr -s ' ')" >&2; fail=1 ;;
       esac
