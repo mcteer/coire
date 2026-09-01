@@ -75,6 +75,17 @@ async def choose_studio(run_id: uuid.UUID) -> uuid.UUID | None:
         run = await session.get(AgentRunRow, run_id)
         if run is None:
             return None
+        fifo_head = await session.scalar(
+            select(AgentRunRow.id)
+            .where(
+                AgentRunRow.node_id.is_(None),
+                AgentRunRow.state.in_([AgentRunState.QUEUED, AgentRunState.PLACING]),
+            )
+            .order_by(AgentRunRow.requested_at, AgentRunRow.id)
+            .limit(1)
+        )
+        if fifo_head != run_id:
+            return None
         nodes = list(
             (
                 await session.scalars(

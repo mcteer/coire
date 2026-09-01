@@ -25,7 +25,7 @@ No exception was introduced.
 | `uv run mypy apps/ packages/` | pass; 292 source files |
 | `uv run pytest -q -m 'not integration'` | 598 passed, 8 skipped, 100 deselected |
 | `COIRE_INTEGRATION=1 uv run pytest -q -m integration` | 99 passed, 1 third-party/environment skip, 606 deselected; 488.86 s |
-| Local real-Docker run lifecycle | pass; create/replay/start/wait/log/collect, fixed internal relay, hardened inspect, stable container identity, orphan reap, cleanup |
+| Local real-Docker run lifecycle | pass; 2 scenarios cover create/replay/start/wait/log/collect, fixed internal relay, hardened inspect, stable in-flight container identity, immediate token denial, sub-5-second kill, orphan reap, and cleanup |
 | Web `test`, `lint`, `build` | 9 files / 11 tests passed; ESLint and production build passed |
 | `python -m coire_api.openapi --check` | pass |
 | PostgreSQL migration `upgrade head → downgrade -1 → upgrade head` | pass on disposable PostgreSQL 17; final head `0011_container_runs` |
@@ -42,12 +42,13 @@ artifacts, so generated SBOMs are not committed.
 ## Convergence findings
 
 The implementation now covers every contract and automated implementation task except T041/T052's
-full control-plane recovery scenario. The local Docker test proves node-level exact container
-identity on replay and actual label-scoped orphan reaping. Unit and contract tests prove queueing,
-DBOS command identity, revocation-before-contact, and ownership independently. A single integrated
-scenario must still restart the scheduler mid-run, observe no duplicate container, exercise a
-capacity-queued run, and kill a live run while checking immediate token denial. This remains T041
-and prevents T052/T053 from being marked complete.
+full control-plane recovery scenario. The local Docker tests prove node-level exact container
+identity during an in-flight replay, immediate token denial before a sub-five-second live kill,
+and actual label-scoped orphan reaping. Unit and contract tests prove strict FIFO queueing, DBOS
+command identity, revocation-before-contact, and ownership independently. A single integrated
+scenario must still restart the actual scheduler process mid-run and observe the capacity-queued
+successor without a duplicate container. This remains T041 and prevents T052/T053 from being
+marked complete.
 
 ## Real-cluster evidence
 
