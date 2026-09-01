@@ -17,6 +17,7 @@ from coire_api.db import OpsProposalRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.ops_tokens import InvalidConfirmation
 from coire_core.models.audit import AuditOutcome
+from coire_core.models.gateway import ProblemDetails
 from coire_core.models.ops import (
     OpsConfirmRequest,
     OpsConversation,
@@ -48,8 +49,13 @@ async def start_conversation(
     body: OpsConversationCreate,
     principal: CurrentAdmin,
     session: SessionDep,
+    settings: SettingsDep,
 ) -> OpsConversation:
-    row = await ops.create_conversation(session, admin_user_id=_human_user_id(principal))
+    row = await ops.create_conversation(
+        session,
+        admin_user_id=_human_user_id(principal),
+        stale_seconds=settings.ops_session_stale_s,
+    )
     await session.commit()
     return ops.project_conversation(row)
 
@@ -86,15 +92,13 @@ async def post_message(
         )
     except ops.OpsNotFound as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ops conversation not found") from exc
-    active = await ops.current_session(session)
+    active = await ops.current_session(session, stale_seconds=settings.ops_session_stale_s)
     if active is not None:
         try:
             async with httpx.AsyncClient(
                 base_url=settings.ops_service_url,
                 headers={
-                    "Authorization": (
-                        f"Bearer {settings.ops_service_token.get_secret_value()}"
-                    )
+                    "Authorization": (f"Bearer {settings.ops_service_token.get_secret_value()}")
                 },
                 timeout=settings.ops_request_timeout_s,
             ) as client:
@@ -165,6 +169,7 @@ async def get_proposal(
     "/proposals/{proposal_id}/confirm",
     response_model=OpsProposal,
     status_code=status.HTTP_202_ACCEPTED,
+    responses={status.HTTP_409_CONFLICT: {"model": ProblemDetails}},
 )
 async def confirm_proposal(
     proposal_id: uuid.UUID,
@@ -181,6 +186,7 @@ async def confirm_proposal(
             presented_token=body.confirm_token,
             presented_action=body.action,
             principal=principal,
+            stale_seconds=settings.ops_session_stale_s,
         )
     except InvalidConfirmation as exc:
         ops.record_confirmation_refusal(proposal_id=proposal_id, reason=exc.reason)
@@ -220,7 +226,11 @@ async def confirm_proposal(
     return projected
 
 
-@router.post("/proposals/{proposal_id}/decline", response_model=OpsProposal)
+@router.post(
+    "/proposals/{proposal_id}/decline",
+    response_model=OpsProposal,
+    responses={status.HTTP_409_CONFLICT: {"model": ProblemDetails}},
+)
 async def decline_proposal(
     proposal_id: uuid.UUID,
     body: OpsDeclineRequest,

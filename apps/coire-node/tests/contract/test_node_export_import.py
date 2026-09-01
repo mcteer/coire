@@ -173,7 +173,11 @@ class TestImportRoundTrip:
         # Serve the origin on a real socket: the import runs in a worker subprocess and makes
         # genuine HTTP requests, so an ASGI test client would not do.
         config = uvicorn.Config(
-            origin.app(NetworkPath.DATA), host="127.0.0.1", port=0, log_level="error"
+            origin.app(NetworkPath.DATA),
+            host="127.0.0.1",
+            port=0,
+            log_level="error",
+            ws="none",
         )
         server = uvicorn.Server(config)
         thread = threading.Thread(target=server.run, daemon=True)

@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
 from coire_api.auth import (
     ADMIN,
@@ -172,7 +173,7 @@ class TestOpsServicePrincipal:
     async def test_exact_configured_secret_gets_only_fixed_ops_scopes(self) -> None:
         settings = Settings(
             _secrets_dir="/nonexistent",  # type: ignore[call-arg]
-            ops_service_token="coire_ops_a-secret-value",
+            ops_service_token=SecretStr("coire_ops_a-secret-value"),
         )
         request = SimpleNamespace(
             headers={"authorization": "Bearer coire_ops_a-secret-value"},
@@ -190,7 +191,7 @@ class TestOpsServicePrincipal:
         for expected in ("", "coire_ops_right"):
             settings = Settings(
                 _secrets_dir="/nonexistent",  # type: ignore[call-arg]
-                ops_service_token=expected,
+                ops_service_token=SecretStr(expected),
             )
             request = SimpleNamespace(
                 headers={"authorization": "Bearer coire_ops_wrong"},

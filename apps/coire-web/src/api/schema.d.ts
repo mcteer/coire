@@ -3110,6 +3110,27 @@ export interface components {
          */
         ProbeTransport: "jaccl" | "ring";
         /**
+         * ProblemDetails
+         * @description RFC 9457 problem detail used by the compatible gateway.
+         */
+        ProblemDetails: {
+            /** Detail */
+            detail?: string | null;
+            /** Instance */
+            instance?: string | null;
+            /** Status */
+            status: number;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @default about:blank
+             */
+            type: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * ProfileName
          * @enum {string}
          */
@@ -5189,6 +5210,15 @@ export interface operations {
                     "application/json": components["schemas"]["OpsProposal"];
                 };
             };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -5224,6 +5254,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpsProposal"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
                 };
             };
             /** @description Validation Error */

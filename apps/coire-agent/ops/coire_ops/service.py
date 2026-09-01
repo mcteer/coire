@@ -7,6 +7,7 @@ import logging
 import uuid
 from contextlib import suppress
 
+import httpx
 from opentelemetry import metrics, trace
 
 from coire_core.models.ops import (
@@ -43,21 +44,23 @@ class OpsService:
         self._heartbeat_task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
+        await self._register_new_session()
+        self.model_healthy = await self._model.healthy()
+        model_health_checks.add(1, {"outcome": "healthy" if self.model_healthy else "degraded"})
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+
+    async def _register_new_session(self) -> None:
+        self.session_id = uuid.uuid4()
         await self._admin.register_session(
             OpsSessionRegistration(
                 session_id=self.session_id,
                 service_instance=self._service_instance,
             )
         )
-        self.model_healthy = await self._model.healthy()
-        model_health_checks.add(
-            1, {"outcome": "healthy" if self.model_healthy else "degraded"}
-        )
         logger.info(
             "ops session registered",
-            extra={"ops_session_id": str(self.session_id), "model_healthy": self.model_healthy},
+            extra={"ops_session_id": str(self.session_id)},
         )
-        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
     async def stop(self) -> None:
         if self._heartbeat_task is None:
@@ -70,11 +73,36 @@ class OpsService:
     async def _heartbeat_loop(self) -> None:
         while True:
             await asyncio.sleep(self._heartbeat_s)
-            await self._admin.heartbeat_session(str(self.session_id))
-            self.model_healthy = await self._model.healthy()
-            model_health_checks.add(
-                1, {"outcome": "healthy" if self.model_healthy else "degraded"}
-            )
+            try:
+                await self._admin.heartbeat_session(str(self.session_id))
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 409:
+                    logger.exception(
+                        "ops heartbeat request failed",
+                        extra={"ops_session_id": str(self.session_id)},
+                    )
+                    continue
+                logger.exception(
+                    "ops session generation expired; registering a replacement",
+                    extra={"ops_session_id": str(self.session_id)},
+                )
+                try:
+                    await self._register_new_session()
+                except Exception:
+                    logger.exception("ops session re-registration failed")
+                    continue
+            except Exception:
+                logger.exception(
+                    "ops heartbeat request failed",
+                    extra={"ops_session_id": str(self.session_id)},
+                )
+                continue
+            try:
+                self.model_healthy = await self._model.healthy()
+            except Exception:
+                self.model_healthy = False
+                logger.exception("ops model health probe failed")
+            model_health_checks.add(1, {"outcome": "healthy" if self.model_healthy else "degraded"})
 
     async def turn(self, *, conversation_id: uuid.UUID, question: str) -> OpsTurnResponse:
         with tracer.start_as_current_span("coire.ops.turn") as span:

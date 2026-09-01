@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 from coire_api.console.ops import degraded_action_refusal, is_action_request
 from coire_core.models.console import ConsoleCapabilities, ConsoleSnapshot
+from coire_core.models.instance import ClusterState
 
 
 def _snapshot() -> ConsoleSnapshot:
@@ -12,7 +13,7 @@ def _snapshot() -> ConsoleSnapshot:
         observed_at=now,
         cursor="1",
         capabilities=ConsoleCapabilities(),
-        cluster={"observed_at": now, "nodes": [], "instances": []},
+        cluster=ClusterState(observed_at=now, nodes=[], instances=[]),
         ledgers=[],
     )
 

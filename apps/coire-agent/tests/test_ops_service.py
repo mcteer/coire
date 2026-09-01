@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import cast
 
+import httpx
 import pytest
 from coire_ops.model import OPS_TOOL_NAMES, OpsModel, OpsModelTurn
 from coire_ops.service import OpsService
 
 from coire_core.models.console import ConsoleCapabilities, ConsoleSnapshot
+from coire_core.models.instance import ClusterState
 from coire_core.models.ops import OpsProposalIssued, OpsSession, OpsSessionState
 
 
@@ -17,12 +20,7 @@ def _snapshot() -> ConsoleSnapshot:
         observed_at=datetime.now(UTC),
         cursor="1",
         capabilities=ConsoleCapabilities(),
-        cluster={
-            "observed_at": datetime.now(UTC),
-            "nodes": [],
-            "instances": [],
-            "studio_link": None,
-        },
+        cluster=ClusterState(observed_at=datetime.now(UTC), nodes=[], instances=[]),
         ledgers=[],
         alerts=[],
     )
@@ -92,3 +90,40 @@ def test_model_toolset_is_exactly_bounded_read_and_propose() -> None:
     forbidden = {"confirm", "shell", "filesystem", "git", "docker", "delete", "retire"}
     assert not any(fragment in tool for fragment in forbidden for tool in OPS_TOOL_NAMES)
     assert not hasattr(OpsModel, "confirm")
+
+
+@pytest.mark.asyncio
+async def test_failed_heartbeat_registers_a_fresh_session_generation() -> None:
+    class RecoveringAdmin(FakeAdmin):
+        def __init__(self) -> None:
+            super().__init__()
+            self.registrations: list[uuid.UUID] = []
+            self.heartbeat_attempted = asyncio.Event()
+
+        async def register_session(self, registration):  # type: ignore[no-untyped-def]
+            self.registrations.append(registration.session_id)
+            return await super().register_session(registration)  # type: ignore[no-untyped-call]
+
+        async def heartbeat_session(self, session_id):  # type: ignore[no-untyped-def]
+            self.heartbeat_attempted.set()
+            request = httpx.Request("PATCH", f"https://coire.test/{session_id}")
+            response = httpx.Response(409, request=request)
+            raise httpx.HTTPStatusError("stale", request=request, response=response)
+
+    admin = RecoveringAdmin()
+    service = OpsService(
+        admin=cast(object, admin),  # type: ignore[arg-type]
+        model=cast(object, FakeModel()),  # type: ignore[arg-type]
+        service_instance="ops-test",
+        heartbeat_s=0.01,
+    )
+    await service.start()
+    first = service.session_id
+    await asyncio.wait_for(admin.heartbeat_attempted.wait(), timeout=1)
+    for _ in range(100):
+        if len(admin.registrations) >= 2:
+            break
+        await asyncio.sleep(0.01)
+    assert len(admin.registrations) >= 2
+    assert service.session_id != first
+    await service.stop()

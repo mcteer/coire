@@ -54,9 +54,12 @@ async def heartbeat_ops_session(
     session_id: uuid.UUID,
     principal: OpsSessionPrincipal,
     session: SessionDep,
+    settings: SettingsDep,
 ) -> OpsSession:
     try:
-        row = await ops.heartbeat_session(session, session_id)
+        row = await ops.heartbeat_session(
+            session, session_id, stale_seconds=settings.ops_session_stale_s
+        )
     except ops.OpsNotFound as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, "ops session is no longer active") from exc
     await session.commit()
@@ -75,6 +78,7 @@ async def submit_ops_proposal(
             session,
             body,
             ttl_seconds=settings.ops_confirmation_ttl_s,
+            stale_seconds=settings.ops_session_stale_s,
         )
     except (ops.OpsNotFound, InvalidConfirmation) as exc:
         raise HTTPException(

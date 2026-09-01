@@ -156,10 +156,10 @@ the image; no proposal exists and no shell, git, filesystem, Docker, acquisition
 - [X] T059 [P] Add observe, kill, restart, secret rotation, rollback, and stale-proposal procedures in `docs/runbooks/coire-ops.md`
 - [X] T060 Update environment documentation and architecture references in `deploy/compose/README.md`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md`
 - [X] T061 Regenerate OpenAPI and `apps/coire-web/src/api/schema.d.ts`; add freshness assertions in `apps/coire-api/tests/contract/test_admin_ops.py`
-- [ ] T062 Run migration `upgrade head → downgrade -1 → upgrade head`, full Python/web/OpenAPI suites, and record evidence in `specs/012-coire-ops-confirmed-mutations/review.md`
-- [ ] T063 Build `coire-agent-ops`, run image policy and critical-CVE scans, generate an SPDX SBOM, and record licence evidence in `specs/012-coire-ops-confirmed-mutations/review.md`
-- [ ] T064 Run `quickstart.md` composed confirmation/restart/degraded/isolation scenarios and record non-secret evidence in `specs/012-coire-ops-confirmed-mutations/review.md`
-- [ ] T065 Perform a non-destructive convergence analysis and append/complete every remaining task in `specs/012-coire-ops-confirmed-mutations/tasks.md`
+- [X] T062 Run migration `upgrade head → downgrade -1 → upgrade head`, full Python/web/OpenAPI suites, and record evidence in `specs/012-coire-ops-confirmed-mutations/review.md`
+- [X] T063 Build `coire-agent-ops`, run image policy and critical-CVE scans, generate an SPDX SBOM, and record licence evidence in `specs/012-coire-ops-confirmed-mutations/review.md`
+- [X] T064 Run `quickstart.md` composed confirmation/restart/degraded/isolation scenarios and record non-secret evidence in `specs/012-coire-ops-confirmed-mutations/review.md`
+- [X] T065 Perform a non-destructive convergence analysis and append/complete every remaining task in `specs/012-coire-ops-confirmed-mutations/tasks.md`
 
 ---
 
@@ -207,5 +207,12 @@ T017 Browser tests: apps/coire-web/src/pages/admin/AskCoire.test.tsx
 
 ## Format Validation
 
-All 65 tasks use the required checkbox, sequential task id, optional `[P]`, required user-story label
-inside story phases, specific action, and concrete file path.
+All 65 original tasks use the required checkbox, sequential task id, optional `[P]`, required
+user-story label inside story phases, specific action, and concrete file path.
+
+## Phase 8: Convergence Remediation
+
+- [X] T066 Enforce `OPS_SESSION_STALE_S` when selecting or confirming against an active ops session, expire abandoned-session proposals, and add liveness/recovery tests in `apps/coire-api/src/coire_api/ops.py`, `apps/coire-api/tests/unit/test_ops_confirmation.py`, and `apps/coire-agent/tests/test_ops_service.py`
+- [X] T067 Prove confirmation-bound execution for unload, kill, pin, unpin, and load through the fixed registry in `apps/coire-api/tests/unit/test_ops_actions.py`
+- [X] T068 Declare and test RFC 9457 409 responses for confirm and decline in `apps/coire-api/src/coire_api/routes/admin_ops.py` and `apps/coire-api/tests/contract/test_admin_ops.py`, then regenerate `apps/coire-api/openapi.json` and `apps/coire-web/src/api/schema.d.ts`
+- [X] T069 Re-run Feature 012 focused and repository-wide gates, repeat convergence analysis, record evidence in `specs/012-coire-ops-confirmed-mutations/review.md`, and complete T065 only when no requirement gaps remain

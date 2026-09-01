@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from coire_api.auth import Principal, PrincipalKind
-from coire_api.ops import consume_confirmation
+from coire_api.db import OpsSessionRow
+from coire_api.ops import consume_confirmation, current_session
 from coire_api.ops_actions import OpsActionError, _check_precondition, resource_version
 from coire_api.ops_tokens import InvalidConfirmation, canonical_action_digest, hash_secret
 from coire_core.models.ops import (
@@ -95,6 +96,7 @@ async def test_locked_confirmation_consumes_exactly_once(monkeypatch) -> None:  
         presented_token=presented,
         presented_action=action,
         principal=principal,
+        stale_seconds=30.0,
     )
     assert result.id == proposal_id
     assert token.used_at is not None
@@ -110,5 +112,37 @@ async def test_locked_confirmation_consumes_exactly_once(monkeypatch) -> None:  
             presented_token=presented,
             presented_action=action,
             principal=principal,
+            stale_seconds=30.0,
         )
     assert replay.value.reason == "used"
+
+
+@pytest.mark.asyncio
+async def test_stale_session_is_superseded_and_pending_authority_revoked() -> None:
+    now = datetime.now(UTC)
+    session_row = OpsSessionRow(
+        id=uuid.uuid4(),
+        service_instance="stale-test",
+        state=OpsSessionState.ACTIVE,
+        started_at=now - timedelta(minutes=1),
+        last_seen_at=now - timedelta(seconds=31),
+    )
+    proposal = SimpleNamespace(
+        id=uuid.uuid4(),
+        state=OpsProposalState.PENDING,
+        decided_at=None,
+    )
+    token = SimpleNamespace(revoked_at=None)
+    session = SimpleNamespace(
+        scalar=AsyncMock(side_effect=[session_row, token]),
+        scalars=AsyncMock(return_value=SimpleNamespace(all=lambda: [proposal])),
+        flush=AsyncMock(),
+    )
+
+    assert await current_session(session, stale_seconds=30.0) is None  # type: ignore[arg-type]
+    assert session_row.state is OpsSessionState.SUPERSEDED
+    assert session_row.ended_at is not None
+    assert proposal.state is OpsProposalState.EXPIRED
+    assert proposal.decided_at is not None
+    assert token.revoked_at is not None
+    session.flush.assert_awaited_once()

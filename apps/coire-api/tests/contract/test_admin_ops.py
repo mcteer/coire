@@ -76,16 +76,18 @@ def test_create_message_confirm_and_decline_contracts_are_strict() -> None:
         "422",
     }
     assert set(
-        paths["/api/v1/admin/ops/conversations/{conversation_id}/messages"]["post"][
-            "responses"
-        ]
+        paths["/api/v1/admin/ops/conversations/{conversation_id}/messages"]["post"]["responses"]
     ) >= {"200", "422"}
-    assert set(
-        paths["/api/v1/admin/ops/proposals/{proposal_id}/confirm"]["post"]["responses"]
-    ) >= {"202", "422"}
-    assert set(
-        paths["/api/v1/admin/ops/proposals/{proposal_id}/decline"]["post"]["responses"]
-    ) >= {"200", "422"}
+    assert set(paths["/api/v1/admin/ops/proposals/{proposal_id}/confirm"]["post"]["responses"]) >= {
+        "202",
+        "409",
+        "422",
+    }
+    assert set(paths["/api/v1/admin/ops/proposals/{proposal_id}/decline"]["post"]["responses"]) >= {
+        "200",
+        "409",
+        "422",
+    }
     decline = document["components"]["schemas"]["OpsDeclineRequest"]
     assert decline["additionalProperties"] is False
 
@@ -119,6 +121,7 @@ async def test_only_a_human_admin_can_reach_confirmation(
         raise AssertionError("confirmation refusal must precede route database access")
 
     monkeypatch.setattr("coire_api.db.session_scope", no_audit)
+
     async def authenticate(_request: object) -> Principal:
         return principal
 
@@ -136,7 +139,5 @@ async def test_only_a_human_admin_can_reach_confirmation(
 
 
 def test_checked_in_openapi_is_fresh_for_ops_routes() -> None:
-    checked_in = json.loads(
-        (Path(__file__).resolve().parents[2] / "openapi.json").read_text()
-    )
+    checked_in = json.loads((Path(__file__).resolve().parents[2] / "openapi.json").read_text())
     assert checked_in == _document()

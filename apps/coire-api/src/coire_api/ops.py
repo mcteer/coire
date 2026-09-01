@@ -184,31 +184,66 @@ async def register_session(
     return row
 
 
-async def heartbeat_session(session: AsyncSession, session_id: uuid.UUID) -> OpsSessionRow:
+async def heartbeat_session(
+    session: AsyncSession, session_id: uuid.UUID, *, stale_seconds: float
+) -> OpsSessionRow:
     row = await session.scalar(
         select(OpsSessionRow).where(OpsSessionRow.id == session_id).with_for_update()
     )
     if row is None or row.state is not OpsSessionState.ACTIVE:
         raise OpsNotFound("active ops session not found")
+    if row.last_seen_at <= datetime.now(UTC) - timedelta(seconds=stale_seconds):
+        await current_session(session, stale_seconds=stale_seconds)
+        raise OpsNotFound("active ops session is stale")
     row.last_seen_at = datetime.now(UTC)
     await session.flush()
     return row
 
 
-async def current_session(session: AsyncSession) -> OpsSessionRow | None:
+async def current_session(session: AsyncSession, *, stale_seconds: float) -> OpsSessionRow | None:
     row = await session.scalar(
         select(OpsSessionRow)
         .where(OpsSessionRow.state == OpsSessionState.ACTIVE)
         .order_by(OpsSessionRow.started_at.desc())
         .limit(1)
     )
-    return row if isinstance(row, OpsSessionRow) else None
+    if not isinstance(row, OpsSessionRow):
+        return None
+    now = datetime.now(UTC)
+    if row.last_seen_at > now - timedelta(seconds=stale_seconds):
+        return row
+    row.state = OpsSessionState.SUPERSEDED
+    row.ended_at = now
+    pending = list(
+        (
+            await session.scalars(
+                select(OpsProposalRow)
+                .where(
+                    OpsProposalRow.ops_session_id == row.id,
+                    OpsProposalRow.state == OpsProposalState.PENDING,
+                )
+                .with_for_update()
+            )
+        ).all()
+    )
+    for proposal in pending:
+        proposal.state = OpsProposalState.EXPIRED
+        proposal.decided_at = now
+        token = await session.scalar(
+            select(OpsConfirmationTokenRow)
+            .where(OpsConfirmationTokenRow.proposal_id == proposal.id)
+            .with_for_update()
+        )
+        if token is not None:
+            token.revoked_at = now
+    await session.flush()
+    return None
 
 
 async def create_conversation(
-    session: AsyncSession, *, admin_user_id: uuid.UUID
+    session: AsyncSession, *, admin_user_id: uuid.UUID, stale_seconds: float
 ) -> OpsConversationRow:
-    active = await current_session(session)
+    active = await current_session(session, stale_seconds=stale_seconds)
     row = OpsConversationRow(
         admin_user_id=admin_user_id,
         ops_session_id=active.id if active else None,
@@ -281,12 +316,16 @@ async def create_proposal(
     submission: OpsProposalSubmission,
     *,
     ttl_seconds: int,
+    stale_seconds: float,
 ) -> OpsProposalIssued:
     conversation = await get_conversation(session, submission.conversation_id)
     ops_session = await session.scalar(
         select(OpsSessionRow).where(OpsSessionRow.id == submission.session_id).with_for_update()
     )
     if ops_session is None or ops_session.state is not OpsSessionState.ACTIVE:
+        raise InvalidConfirmation("session_restarted")
+    if ops_session.last_seen_at <= datetime.now(UTC) - timedelta(seconds=stale_seconds):
+        await current_session(session, stale_seconds=stale_seconds)
         raise InvalidConfirmation("session_restarted")
     if conversation.ops_session_id not in {None, ops_session.id}:
         raise InvalidConfirmation("session_restarted")
@@ -355,6 +394,7 @@ async def consume_confirmation(
     presented_token: str,
     presented_action: ResolvedOpsAction,
     principal: Principal,
+    stale_seconds: float,
 ) -> OpsProposalRow:
     prefix, secret = parse_token(presented_token)
     token = await session.scalar(
@@ -382,7 +422,7 @@ async def consume_confirmation(
         raise InvalidConfirmation("expired")
     if proposal.state is not OpsProposalState.PENDING:
         raise InvalidConfirmation("not_pending")
-    active_session = await current_session(session)
+    active_session = await current_session(session, stale_seconds=stale_seconds)
     if active_session is None or active_session.id != proposal.ops_session_id:
         raise InvalidConfirmation("session_restarted")
     digest = canonical_action_digest(
