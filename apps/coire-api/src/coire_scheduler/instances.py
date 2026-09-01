@@ -130,6 +130,31 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                             reason=decision.refusal_detail or "placement failed",
                             failure_code=decision.refusal_code or "placement_failed",
                         )
+                        # Placement can fail after creating a pending/held reservation for
+                        # this instance.  A terminal placement decision must release that
+                        # reservation or it will poison subsequent admissions after restart.
+                        reservations = (
+                            (
+                                await session.execute(
+                                    select(MemoryReservationRow).where(
+                                        MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                                        MemoryReservationRow.holder_id == str(instance_id),
+                                        MemoryReservationRow.state.in_(
+                                            [
+                                                MemoryReservationState.PENDING,
+                                                MemoryReservationState.HELD,
+                                                MemoryReservationState.RELEASING,
+                                            ]
+                                        ),
+                                    )
+                                )
+                            )
+                            .scalars()
+                            .all()
+                        )
+                        for reservation in reservations:
+                            reservation.state = MemoryReservationState.FAILED
+                            reservation.released_at = datetime.now(UTC)
                         failures.add(1, {"reason": decision.refusal_code or "placement_failed"})
                         return
                     if state is PlacementState.LOADING:
