@@ -9,7 +9,7 @@ import subprocess
 import sys
 from itertools import pairwise
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 from coire_core.models.acquisition import ValidationOutcome
 
@@ -21,6 +21,10 @@ HELD_OUT_TEXT = (
     "A durable workflow records completed work so a restart can continue without repeating it. "
     "Checksums establish that two stored copies contain the same bytes."
 )
+
+
+class _ChatTemplateTokenizer(Protocol):
+    def apply_chat_template(self, conversation: Any, *, tools: Any, tokenize: bool) -> str: ...
 
 
 def smoke_argv(model_path: Path, prompt: str, *, python: str = sys.executable) -> list[str]:
@@ -127,8 +131,8 @@ def run_template_check(model_path: Path) -> tuple[ValidationOutcome, str | None]
     try:
         from mlx_lm.tokenizer_utils import load as load_tokenizer
 
-        tokenizer = load_tokenizer(model_path)
-        rendered = tokenizer.apply_chat_template(  # type: ignore[no-untyped-call]
+        tokenizer = cast(_ChatTemplateTokenizer, load_tokenizer(model_path))
+        rendered = tokenizer.apply_chat_template(
             [
                 {"role": "user", "content": "Echo ok using the tool."},
                 {

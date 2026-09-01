@@ -37,12 +37,17 @@ async def test_pass_verifies_exact_variant_and_appends_scorecard() -> None:
 
 
 async def test_failure_revokes_but_infrastructure_error_preserves_verification() -> None:
-    variant = SimpleNamespace(harness_verified=True, harness_verified_at=object())
+    verified_at = object()
+    variant = SimpleNamespace(harness_verified=True, harness_verified_at=verified_at)
     session = AsyncMock()
     session.add = Mock()
     session.get.return_value = variant
     await record(session, submission(EvaluationVerdict.INFRASTRUCTURE_ERROR))
     assert variant.harness_verified is True
+    assert variant.harness_verified_at is verified_at
+
+    regressed = SimpleNamespace(harness_verified=True, harness_verified_at=object())
+    session.get.return_value = regressed
     await record(session, submission(EvaluationVerdict.FAILED))
-    assert variant.harness_verified is False
-    assert variant.harness_verified_at is None
+    assert regressed.harness_verified is False
+    assert regressed.harness_verified_at is None
