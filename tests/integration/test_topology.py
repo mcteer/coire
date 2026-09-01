@@ -26,7 +26,14 @@ pytestmark = pytest.mark.skipif(
 )
 COMPOSE = REPO / "deploy/compose/compose.yaml"
 
-FIRST_PARTY = {"coire-web", "coire-api", "coire-mcp", "coire-scheduler", "coire-migrate"}
+FIRST_PARTY = {
+    "coire-web",
+    "coire-api",
+    "coire-mcp",
+    "coire-scheduler",
+    "coire-migrate",
+    "coire-ops",
+}
 LONG_LIVED = {
     "coire-web",
     "coire-api",
@@ -35,6 +42,7 @@ LONG_LIVED = {
     "postgres",
     "docker-socket-proxy",
     "otel-collector",
+    "coire-ops",
 }
 EXPECTED_NETWORKS = {
     "coire-edge",
@@ -102,6 +110,13 @@ class TestNetworkSegmentation:
         """FR-007: the Docker socket has exactly two parties on its network."""
         on_docker = {s for s in config["services"] if "coire-docker" in nets(config, s)}
         assert on_docker == {"coire-scheduler", "docker-socket-proxy"}
+
+    def test_ops_is_core_only_and_has_exact_networks(self, config: dict[str, Any]) -> None:
+        assert nets(config, "coire-ops") == {"coire-internal", "coire-telemetry"}
+        assert "coire-db" not in nets(config, "coire-ops")
+        assert "coire-docker" not in nets(config, "coire-ops")
+        assert "coire-edge" not in nets(config, "coire-ops")
+        assert not config["services"]["coire-ops"].get("ports")
 
     def test_postgres_is_only_on_the_db_network(self, config: dict[str, Any]) -> None:
         assert nets(config, "postgres") == {"coire-db"}
@@ -177,10 +192,18 @@ class TestImagesAndSecrets:
         for name in FIRST_PARTY | {"otel-collector"}:
             assert config["services"][name]["image"], name
 
-    def test_no_service_uses_the_agent_image(self, config: dict[str, Any]) -> None:
+    def test_no_service_uses_the_user_agent_image(self, config: dict[str, Any]) -> None:
         """FR-017: coire-agent is built by core but never run on it."""
         for name, svc in config["services"].items():
-            assert "coire-agent" not in svc.get("image", ""), f"{name} runs the agent image"
+            image = svc.get("image", "").split("@")[0].split(":")[0]
+            assert not image.endswith("coire-agent"), f"{name} runs the user agent image"
+
+    def test_ops_has_only_its_dedicated_secret(self, config: dict[str, Any]) -> None:
+        sources = {item["source"] for item in config["services"]["coire-ops"]["secrets"]}
+        assert sources == {"ops_service_token"}
+        assert "ops_service_token" in {
+            item["source"] for item in config["services"]["coire-api"]["secrets"]
+        }
 
     def test_the_ci_only_node_image_is_absent_from_production(self, config: dict[str, Any]) -> None:
         """`coire-node-test` carries a shell so the restart test can kill the agent. It is

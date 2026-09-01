@@ -6,7 +6,8 @@
 #   coire-secrets-init.sh --show-node-tokens   print the per-node tokens to store on each Studio
 #
 # Creates: coire-postgres-password, coire-key-signing-secret, coire-node-tokens,
-#          coire-admin-token (rollback-only), and coire-bootstrap-admin-email.
+#          coire-admin-token (rollback-only), coire-bootstrap-admin-email, and the isolated
+#          coire-ops service credential.
 # Does NOT create the Hugging Face token: that lives only in each Studio's System keychain.
 #
 # The generated values are written straight into the login Keychain and never echoed, except
@@ -54,6 +55,7 @@ echo "creating Coire secrets in the login Keychain:"
 create coire-postgres-password "$(openssl rand -base64 32)"
 create coire-key-signing-secret "$(openssl rand -base64 48)"
 create coire-admin-token "$(openssl rand -base64 32)"
+create coire-ops-service-token "coire_ops_$(openssl rand -hex 32)"
 create coire-node-tokens "$(python3 -c '
 import json, secrets
 print(json.dumps({n: secrets.token_urlsafe(32) for n in ("coire-edge-a", "coire-edge-b")}))

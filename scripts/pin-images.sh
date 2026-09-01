@@ -58,11 +58,21 @@ check_lock_present() {
            2>/dev/null | sort -u)
 }
 
+check_ops_image_wiring() {
+  grep -qF 'image: ${COIRE_REGISTRY:-}coire-agent-ops:${COIRE_TAG:-dev}' "$COMPOSE" || {
+    echo "coire-ops first-party image is not tag/digest controlled" >&2; fail=1;
+  }
+  grep -qF 'dockerfile: apps/coire-agent/ops.Dockerfile' "$COMPOSE" || {
+    echo "coire-ops does not use its isolated Dockerfile" >&2; fail=1;
+  }
+}
+
 case "$MODE" in
   --check)
     check_dockerfiles
     check_compose_third_party
     check_lock_present
+    check_ops_image_wiring
     if [[ "$fail" -ne 0 ]]; then
       echo "pin-images: FAILED — every base image and third-party image must carry a digest" >&2
       exit 1

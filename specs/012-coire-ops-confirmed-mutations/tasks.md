@@ -129,17 +129,17 @@ the image; no proposal exists and no shell, git, filesystem, Docker, acquisition
 ### Tests for User Story 4
 
 - [X] T046 [P] [US4] Add tool enumeration and malformed/irreversible proposal tests in `apps/coire-agent/tests/test_ops_service.py`
-- [ ] T047 [P] [US4] Add ops image boundary and package-content tests in `apps/coire-agent/tests/test_image_boundary.py`
-- [ ] T048 [P] [US4] Add compose topology tests proving core-only ops placement and no Docker/Studio networks in `tests/integration/test_topology.py`
+- [X] T047 [P] [US4] Add ops image boundary and package-content tests in `apps/coire-agent/tests/test_image_boundary.py`
+- [X] T048 [P] [US4] Add compose topology tests proving core-only ops placement and no Docker/Studio networks in `tests/integration/test_topology.py`
 - [ ] T049 [US4] Extend composed integration with retire/delete-user refusal and zero audit mutation in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 4
 
 - [X] T050 [US4] Restrict the Pydantic AI ops toolset to bounded read/propose tools in `apps/coire-agent/ops/coire_ops/model.py`
-- [ ] T051 [US4] Harden the ops image to contain only its runtime/client and no user harness or debug tools in `apps/coire-agent/ops.Dockerfile`
-- [ ] T052 [US4] Add the isolated, resource-limited, secret-backed `coire-ops` service and healthcheck in `deploy/compose/compose.yaml`
-- [ ] T053 [US4] Restrict `coire-ops` to internal API and telemetry networks and keep it off the Docker proxy/edge/database networks in `deploy/compose/compose.yaml`
-- [ ] T054 [US4] Add ops service secret provisioning and digest pin enforcement in `deploy/compose/coire-up`, `deploy/compose/.env.example`, and `scripts/pin-images.sh`
+- [X] T051 [US4] Harden the ops image to contain only its runtime/client and no user harness or debug tools in `apps/coire-agent/ops.Dockerfile`
+- [X] T052 [US4] Add the isolated, resource-limited, secret-backed `coire-ops` service and healthcheck in `deploy/compose/compose.yaml`
+- [X] T053 [US4] Restrict `coire-ops` to internal API and telemetry networks and keep it off the Docker proxy/edge/database networks in `deploy/compose/compose.yaml`
+- [X] T054 [US4] Add ops service secret provisioning and digest pin enforcement in `deploy/compose/coire-up`, `deploy/compose/.env.example`, and `scripts/pin-images.sh`
 
 **Checkpoint**: Irreversible authority and general-purpose tooling are absent by construction.
 
