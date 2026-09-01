@@ -58,6 +58,10 @@ def prepare_workspace(root: Path, variant_id: uuid.UUID) -> Path:
             }
         )
     )
+    # The production workspace provisioner grants the distroless harness UID write access.
+    # pytest's Linux tmp_path is runner-owned and otherwise masks that contract by failing
+    # before the harness can persist its bounded result.
+    workspace.chmod(0o777)
     return workspace
 
 

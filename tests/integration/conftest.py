@@ -150,6 +150,75 @@ def integration_env(**extra: str) -> dict[str, str]:
     return {**os.environ, **INTEGRATION_SECRETS, **extra}
 
 
+def drain_runtime(
+    client: httpx.Client,
+    headers: dict[str, str],
+    *,
+    timeout: float = 60,
+) -> None:
+    """Drain prior runtime state through public APIs for independent scenarios."""
+    instance_terminal = {"stopped", "failed"}
+    instances = client.get("/api/v1/instances", headers=headers)
+    instances.raise_for_status()
+    waiting: set[str] = set()
+    for instance in instances.json():
+        if instance["state"] == "ready":
+            response = client.delete(f"/api/v1/instances/{instance['id']}", headers=headers)
+            assert response.status_code == 202, response.text
+            waiting.add(str(instance["id"]))
+        elif instance["state"] not in instance_terminal:
+            waiting.add(str(instance["id"]))
+    deadline = time.monotonic() + timeout
+    while waiting and time.monotonic() < deadline:
+        current = client.get("/api/v1/instances", headers=headers)
+        current.raise_for_status()
+        waiting -= {
+            str(instance["id"])
+            for instance in current.json()
+            if instance["state"] in instance_terminal
+        }
+        if waiting:
+            time.sleep(0.25)
+    assert not waiting, f"instances did not drain: {sorted(waiting)}"
+
+    engine_terminal = {"stopped", "failed"}
+    engines = client.get("/api/v1/admin/engines", headers=headers)
+    engines.raise_for_status()
+    active = [engine for engine in engines.json() if engine["state"] not in engine_terminal]
+    for engine in active:
+        response = client.delete(f"/api/v1/admin/engines/{engine['id']}", headers=headers)
+        assert response.status_code == 202, response.text
+    active_ids = {str(engine["id"]) for engine in active}
+    deadline = time.monotonic() + timeout
+    while active_ids and time.monotonic() < deadline:
+        current = client.get("/api/v1/admin/engines", headers=headers)
+        current.raise_for_status()
+        active_ids -= {
+            str(engine["id"]) for engine in current.json() if engine["state"] in engine_terminal
+        }
+        if active_ids:
+            time.sleep(0.25)
+    assert not active_ids, f"engines did not stop: {sorted(active_ids)}"
+
+    deadline = time.monotonic() + timeout
+    remaining_reservations: list[str] = []
+    while time.monotonic() < deadline:
+        ledgers = client.get("/api/v1/admin/ledger", headers=headers)
+        ledgers.raise_for_status()
+        remaining_reservations = [
+            str(reservation["id"])
+            for ledger in ledgers.json()
+            for reservation in ledger["reservations"]
+            if reservation["holder_type"] == "model"
+        ]
+        if not remaining_reservations:
+            break
+        time.sleep(0.25)
+    assert not remaining_reservations, (
+        f"model reservations did not release: {sorted(remaining_reservations)}"
+    )
+
+
 def _digest_ref(image: str) -> str:
     inspected = subprocess.run(
         ["docker", "image", "inspect", image, "--format", "{{index .RepoDigests 0}}"],

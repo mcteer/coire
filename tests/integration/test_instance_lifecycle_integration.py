@@ -10,6 +10,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
+from conftest import drain_runtime
 
 COMPOSE_DIR = Path(__file__).resolve().parents[2] / "deploy/compose"
 pytestmark = [
@@ -132,6 +133,7 @@ def test_restart_two_instances_drain_and_registration_token_reuse(
     api_url: str, admin_headers: dict[str, str]
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=60) as client:
+        drain_runtime(client, admin_headers)
         model, variant = _verified_candidate(client, admin_headers)
         first = client.post(
             "/api/v1/instances",

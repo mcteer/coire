@@ -135,7 +135,7 @@ def prepare_verified_model(client: httpx.Client, admin_headers: dict[str, str]) 
             copy.get("node") == "coire-edge-a" and copy.get("verified")
             for copy in model.get("copies", [])
         )
-        if model.get("repo_id") == TINY_REPO and reusable is not None and has_node_a_copy:
+        if reusable is not None and has_node_a_copy and acquired is None:
             acquired = str(model["id"]), str(reusable["id"])
         if (
             model.get("visibility") != "published"
@@ -309,6 +309,7 @@ def test_scheduler_restart_preserves_one_real_run_container(
                     }
                 )
             )
+            state_dir.chmod(0o777)
             response = client.post(
                 "/api/v1/runs",
                 headers=user_headers,
