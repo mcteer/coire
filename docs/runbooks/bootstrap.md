@@ -146,6 +146,28 @@ apps/coire-node/uninstall.sh --dry-run
 
 Remove it entirely with `apps/coire-node/uninstall.sh --keychain`.
 
+### 2026-09-01 real-cluster evidence
+
+Both Studios were checked over the Wi-Fi control fabric after reboot. The authenticated
+`/node/health` response returned `200` on each node and the unauthenticated response returned
+`401`; both reported `path: control` and `collection_budget_ok: true`:
+
+| Node | Control address | `agent_cpu_percent` | `agent_rss_bytes` | `memory_committed_bytes` | `disk_free_bytes` |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `coire-edge-a` | `192.168.4.11:9400` | 1.0 | 101,777,408 | 708,524,596 | 1,916,450,107,392 |
+| `coire-edge-b` | `192.168.4.12:9400` | 1.5 | 99,155,968 | 0 | 1,908,641,757,184 |
+
+The exact `apps/coire-node/uninstall.sh --dry-run` output listed only `/opt/coire/bin`,
+`/opt/coire/python`, `/opt/coire/envs`, `/opt/coire/log`, `/opt/coire/models`, `/opt/coire/state`,
+`/opt/coire/hf-cache`, and `/Library/LaunchDaemons/com.coire.node.plist`, with `/opt/coire` itself
+left intact. Two hundred unauthenticated readiness probes per control address succeeded; measured
+round-trip percentiles were edge-a `p50 20.609 ms / p95 108.807 ms` and edge-b `p50 22.039 ms /
+p95 113.042 ms`. Latency is recorded evidence only; the former standalone sub-50 ms gate was
+removed by the clarified architecture decision.
+
+The Thunderbolt partition test remains pending because `sudo ifconfig bridge0 down` requires an
+interactive operator password on the Studios; the attempted command made no network change.
+
 ## CI: proving the shell check
 
 `SC-008` requires that a deliberately-introduced shell fails CI with a message naming the
