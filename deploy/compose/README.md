@@ -43,3 +43,8 @@ configured with `SHARDING_JACCL_HOSTFILE` and `SHARDING_RING_HOSTFILE`; latency 
 never an admission threshold. See [`docs/runbooks/sharded-serving.md`](../../docs/runbooks/sharded-serving.md).
 Raw and converted files remain under the configured Studio model store; DBOS metadata remains in
 Postgres. See [`docs/runbooks/acquisition.md`](../../docs/runbooks/acquisition.md).
+
+Harness limits use `HARNESS_RETRY_LIMIT` (2), `HARNESS_TOOL_OUTPUT_BYTE_CAP` (16384),
+`HARNESS_SUMMARY_THRESHOLD` (0.8), and `HARNESS_EVALUATION_PASS_SCORE` (0.8). The user and ops
+harnesses are separate images; only the ops image contains an admin client. See
+[`docs/runbooks/agent-harness.md`](../../docs/runbooks/agent-harness.md).

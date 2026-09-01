@@ -77,6 +77,9 @@ class Handler(BaseHTTPRequestHandler):
         if time.monotonic() < (ready_at if isinstance(ready_at, float) else 0.0):
             self._send(503, {"detail": "model is still loading"})
             return
+        content = "ok"
+        if "coire-harness-json" in str(request.get("messages", "")):
+            content = '{"answer":"bounded"}'
         completion = {
             "id": "fake-1",
             "object": "chat.completion",
@@ -84,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
             "choices": [
                 {
                     "index": 0,
-                    "message": {"role": "assistant", "content": "ok"},
+                    "message": {"role": "assistant", "content": content},
                     "finish_reason": "length",
                 }
             ],

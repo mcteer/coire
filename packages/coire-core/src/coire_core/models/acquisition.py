@@ -193,6 +193,8 @@ class ModelVariant(BaseModel):
     memory_estimate_bytes: int = Field(ge=0)
     estimate_delta_bytes: int | None = None
     validated: bool
+    harness_verified: bool = False
+    harness_verified_at: datetime | None = None
     published: bool
     is_default: bool
     raw_retained: bool

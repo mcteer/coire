@@ -45,6 +45,7 @@ from coire_core.models.audit import AuditOutcome
 from coire_core.models.auth import ActorType, UserRole
 from coire_core.models.engine import EngineState
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
+from coire_core.models.harness import EvaluationVerdict
 from coire_core.models.instance import InstanceState
 from coire_core.models.jobs import DownloadStage
 from coire_core.models.node import NodeRole, Reachability
@@ -314,11 +315,33 @@ class ModelVariantRow(Base):
     estimate_delta_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     state: Mapped[VariantState] = mapped_column(_enum(VariantState, "variant_state"), index=True)
     validated: Mapped[bool] = mapped_column(Boolean, default=False)
+    harness_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    harness_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     published: Mapped[bool] = mapped_column(Boolean, default=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     raw_retained: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class HarnessEvaluationRow(Base):
+    __tablename__ = "harness_evaluations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
+    )
+    scores: Mapped[dict[str, object]] = mapped_column(JSONB)
+    overall_score: Mapped[float] = mapped_column(Float)
+    verdict: Mapped[EvaluationVerdict] = mapped_column(
+        _enum(EvaluationVerdict, "evaluation_verdict"), index=True
+    )
+    harness_version: Mapped[str] = mapped_column(String(32))
+    engine_version: Mapped[str] = mapped_column(String(64))
+    diagnostics: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AcquisitionWorkflowRow(Base):

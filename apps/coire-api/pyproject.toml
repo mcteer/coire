@@ -32,5 +32,8 @@ dependencies = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[project.scripts]
+coire = "coire_api.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/coire_api", "src/coire_mcp", "src/coire_scheduler"]

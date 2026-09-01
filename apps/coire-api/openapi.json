@@ -1324,6 +1324,43 @@
         "title": "CapabilityProfileUpdate",
         "type": "object"
       },
+      "CategoryScores": {
+        "additionalProperties": false,
+        "properties": {
+          "edit_application": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Edit Application",
+            "type": "number"
+          },
+          "long_context": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Long Context",
+            "type": "number"
+          },
+          "structured_output": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Structured Output",
+            "type": "number"
+          },
+          "tool_calling": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Tool Calling",
+            "type": "number"
+          }
+        },
+        "required": [
+          "tool_calling",
+          "structured_output",
+          "edit_application",
+          "long_context"
+        ],
+        "title": "CategoryScores",
+        "type": "object"
+      },
       "ChatCompletionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1851,6 +1888,15 @@
         "title": "CursorPage[ActivityItem]",
         "type": "object"
       },
+      "EvaluationVerdict": {
+        "enum": [
+          "passed",
+          "failed",
+          "infrastructure_error"
+        ],
+        "title": "EvaluationVerdict",
+        "type": "string"
+      },
       "GatewayModel": {
         "additionalProperties": false,
         "properties": {
@@ -1957,6 +2003,137 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HarnessEvaluation": {
+        "additionalProperties": false,
+        "properties": {
+          "diagnostics": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "engine_version": {
+            "maxLength": 64,
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "harness_version": {
+            "maxLength": 32,
+            "title": "Harness Version",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "overall_score": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Overall Score",
+            "type": "number"
+          },
+          "run_at": {
+            "format": "date-time",
+            "title": "Run At",
+            "type": "string"
+          },
+          "scores": {
+            "$ref": "#/components/schemas/CategoryScores"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/EvaluationVerdict"
+          }
+        },
+        "required": [
+          "id",
+          "variant_id",
+          "scores",
+          "overall_score",
+          "verdict",
+          "harness_version",
+          "engine_version",
+          "run_at"
+        ],
+        "title": "HarnessEvaluation",
+        "type": "object"
+      },
+      "HarnessEvaluationSubmission": {
+        "additionalProperties": false,
+        "description": "Measured scorecard submitted by the isolated ops evaluator.",
+        "properties": {
+          "diagnostics": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "engine_version": {
+            "maxLength": 64,
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "harness_version": {
+            "maxLength": 32,
+            "title": "Harness Version",
+            "type": "string"
+          },
+          "scores": {
+            "$ref": "#/components/schemas/CategoryScores"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/EvaluationVerdict"
+          }
+        },
+        "required": [
+          "variant_id",
+          "scores",
+          "verdict",
+          "harness_version",
+          "engine_version"
+        ],
+        "title": "HarnessEvaluationSubmission",
+        "type": "object"
+      },
+      "HarnessEvaluationTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "capability_profile": {
+            "$ref": "#/components/schemas/CapabilityProfile"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant_id",
+          "model_id",
+          "capability_profile"
+        ],
+        "title": "HarnessEvaluationTarget",
         "type": "object"
       },
       "HealthResponse": {
@@ -2909,6 +3086,23 @@
               }
             ],
             "title": "Estimate Delta Bytes"
+          },
+          "harness_verified": {
+            "default": false,
+            "title": "Harness Verified",
+            "type": "boolean"
+          },
+          "harness_verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Harness Verified At"
           },
           "id": {
             "format": "uuid",
@@ -5337,6 +5531,264 @@
         "summary": "Get Engine",
         "tags": [
           "admin: cluster"
+        ]
+      }
+    },
+    "/api/v1/admin/harness-evaluations": {
+      "get": {
+        "operationId": "list_evaluations_api_v1_admin_harness_evaluations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "variant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HarnessEvaluation"
+                  },
+                  "title": "Response List Evaluations Api V1 Admin Harness Evaluations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Evaluations",
+        "tags": [
+          "admin: evaluations"
+        ]
+      },
+      "post": {
+        "operationId": "submit_evaluation_api_v1_admin_harness_evaluations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HarnessEvaluationSubmission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HarnessEvaluation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Evaluation",
+        "tags": [
+          "admin: evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/harness-evaluations/target/{variant_id}": {
+      "get": {
+        "operationId": "evaluation_target_api_v1_admin_harness_evaluations_target__variant_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "variant_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Variant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HarnessEvaluationTarget"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Evaluation Target",
+        "tags": [
+          "admin: evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/harness-evaluations/{evaluation_id}": {
+      "get": {
+        "operationId": "get_evaluation_api_v1_admin_harness_evaluations__evaluation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "evaluation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evaluation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HarnessEvaluation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Evaluation",
+        "tags": [
+          "admin: evaluations"
         ]
       }
     },
