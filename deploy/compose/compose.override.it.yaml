@@ -26,6 +26,10 @@ services:
 
   coire-api:
     ports: ["127.0.0.1:${COIRE_IT_API_PORT:-18081}:8000"]
+    # The integration identity fixture serves JWKS from the host. Docker Desktop resolves
+    # this name automatically; Linux CI needs the explicit host-gateway mapping.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # Integration storage may be much smaller than a Studio's reserved 50 GiB; the
       # production default would refuse every fixture. The check itself has a focused test.
