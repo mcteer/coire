@@ -25,7 +25,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy.dialects.postgresql import INET, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -42,6 +42,7 @@ from coire_core.models.acquisition import (
     VariantState,
 )
 from coire_core.models.audit import AuditOutcome
+from coire_core.models.auth import ActorType, UserRole
 from coire_core.models.engine import EngineState
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
 from coire_core.models.instance import InstanceState
@@ -826,6 +827,76 @@ class EngineProcessRow(Base):
     stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class UserRow(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(120))
+    role: Mapped[UserRole] = mapped_column(_enum(UserRole, "user_role"), index=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EntitlementRow(Base):
+    __tablename__ = "entitlements"
+    __table_args__ = (Index("ix_entitlements_user_name", "user_id", "name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(64))
+    granted_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ApiKeyRow(Base):
+    __tablename__ = "api_keys"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(120))
+    prefix: Mapped[str] = mapped_column(String(12), index=True)
+    secret_hash: Mapped[str] = mapped_column(Text)
+    credential_version: Mapped[int] = mapped_column(Integer, default=1)
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(String(32)))
+    requests_per_minute: Mapped[int] = mapped_column(Integer)
+    monthly_budget_tokens: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RateWindowRow(Base):
+    __tablename__ = "api_key_rate_windows"
+
+    api_key_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="CASCADE"), primary_key=True
+    )
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class UsageAccumulatorRow(Base):
+    __tablename__ = "api_key_usage_accumulators"
+
+    api_key_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="CASCADE"), primary_key=True
+    )
+    period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    requests: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    completion_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
 class AuditRow(Base):
     """Append-only. No route in this application deletes or modifies one (feature 007
     FR-018 is honoured from the first row)."""
@@ -836,11 +907,21 @@ class AuditRow(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     actor: Mapped[str] = mapped_column(String(128))
+    actor_type: Mapped[ActorType] = mapped_column(
+        _enum(ActorType, "audit_actor_type"), default=ActorType.SERVICE
+    )
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    request_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
     action: Mapped[str] = mapped_column(String(64), index=True)
     target_type: Mapped[str] = mapped_column(String(64))
     target_id: Mapped[str] = mapped_column(String(255), index=True)
     outcome: Mapped[AuditOutcome] = mapped_column(_enum(AuditOutcome, "audit_outcome"))
     detail: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    before: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    after: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    context: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
 
 
 class UsageRecordRow(Base):

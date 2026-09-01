@@ -34,6 +34,9 @@ services:
       GATEWAY_MAX_INFLIGHT_PER_ENGINE: "4"
       PLACEMENT_POLL_INTERVAL_S: "0.2"
       INSTANCE_DRAIN_TIMEOUT_S: "2"
+      # Pre-007 integration scenarios still use their generated static bearer. Feature 007's
+      # own scenario uses real keys; production compose never enables this rollback bridge.
+      IDENTITY_LEGACY_ADMIN_ENABLED: "1"
     networks:
       coire-control-sim:
         aliases: [coire-core]

@@ -140,3 +140,29 @@ def test_sharded_serving_migration_is_reversible() -> None:
     ):
         assert f'"{table}"' in source
         assert f'op.drop_table("{table}")' in source
+
+
+def test_identity_migration_is_reversible_and_extends_audit() -> None:
+    source = Path("apps/coire-api/alembic/versions/0009_identity.py").read_text()
+    assert 'revision: str = "0009_identity"' in source
+    assert 'down_revision: str | None = "0008_sharded_serving"' in source
+    for table in (
+        "users",
+        "entitlements",
+        "api_keys",
+        "api_key_rate_windows",
+        "api_key_usage_accumulators",
+    ):
+        assert f'"{table}"' in source
+        assert f'op.drop_table("{table}")' in source
+    for column in (
+        "actor_type",
+        "actor_user_id",
+        "request_id",
+        "before",
+        "after",
+        "context",
+    ):
+        assert f'"{column}"' in source
+    assert 'postgresql.ENUM(name="audit_actor_type").drop' in source
+    assert 'postgresql.ENUM(name="user_role").drop' in source

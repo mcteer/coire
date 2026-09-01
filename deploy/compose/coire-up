@@ -69,8 +69,8 @@ fi
 # Parallel indexed arrays, not an associative array: macOS ships bash 3.2, where `declare -A`
 # does not exist and silently produces a normal array — which would make this loop iterate
 # over garbage and report success while configuring nothing.
-SECRET_ITEMS=(coire-postgres-password coire-key-signing-secret coire-node-tokens coire-admin-token)
-SECRET_VARS=(COIRE_SECRET_POSTGRES_PASSWORD COIRE_SECRET_KEY_SIGNING_SECRET COIRE_SECRET_NODE_TOKENS COIRE_SECRET_ADMIN_TOKEN)
+SECRET_ITEMS=(coire-postgres-password coire-key-signing-secret coire-node-tokens coire-admin-token coire-bootstrap-admin-email)
+SECRET_VARS=(COIRE_SECRET_POSTGRES_PASSWORD COIRE_SECRET_KEY_SIGNING_SECRET COIRE_SECRET_NODE_TOKENS COIRE_SECRET_ADMIN_TOKEN COIRE_SECRET_BOOTSTRAP_ADMIN_EMAIL)
 
 # Where the materialised secrets live: outside the repository, 0700, removed by coire-down.
 SECRETS_DIR="${COIRE_SECRETS_DIR:-$HOME/.coire/secrets}"
@@ -83,7 +83,7 @@ if [[ -z "${COIRE_CONTROL_BIND_ADDRESS:-}" ]]; then
   fi
   export COIRE_CONTROL_BIND_ADDRESS="${COIRE_CONTROL_BIND_ADDRESS:-127.0.0.1}"
 fi
-SECRET_FILES=(postgres_password key_signing_secret node_tokens admin_token)
+SECRET_FILES=(postgres_password key_signing_secret node_tokens admin_token bootstrap_admin_email)
 
 write_secret() {  # $1 = filename, $2 = value
   local target="$SECRETS_DIR/$1"

@@ -67,6 +67,17 @@ class Settings(BaseSettings):
     safe default: an unset secret must never make every caller privileged. Feature 007 replaces
     this with edge identity and API keys."""
 
+    bootstrap_admin_email: SecretStr = SecretStr("")
+    """Configured first local administrator identity. It is sourced from Keychain like other
+    bootstrap material and never grants access without a separately verified Access assertion."""
+    cloudflare_access_issuer: str = ""
+    cloudflare_access_audience: str = ""
+    cloudflare_jwks_ttl_s: float = Field(default=300.0, gt=0.0)
+    cloudflare_jwt_leeway_s: float = Field(default=60.0, ge=0.0, le=300.0)
+    credential_stream_recheck_s: float = Field(default=1.0, gt=0.0, le=10.0)
+    identity_legacy_admin_enabled: bool = False
+    """Test/rollback-only bridge for pre-007 suites. Production compose never enables it."""
+
     hf_token: SecretStr = SecretStr("")
     """Hugging Face credential. Exists ONLY on a node agent, read from that Studio's System
     keychain (spec FR-005). It is never mounted into a control-plane container and never
