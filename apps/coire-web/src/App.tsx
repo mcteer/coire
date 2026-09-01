@@ -87,6 +87,44 @@ function Shell({
 export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
   return (
     <main className="grid">
+      {snapshot.core && (
+        <section className="panel glass node-card" aria-label="Core control-plane">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h3>Core · {snapshot.core.host_name}</h3>
+            <span className="status">
+              <i className={`dot ${snapshot.core.health}`} />
+              {snapshot.core.health}
+            </span>
+          </div>
+          <div
+            className="capacity"
+            title={`${gb(snapshot.core.memory_total_bytes - snapshot.core.memory_free_bytes)} bytes used`}
+          >
+            <span
+              style={{
+                width: `${Math.max(0, ((snapshot.core.memory_total_bytes - snapshot.core.memory_free_bytes) / snapshot.core.memory_total_bytes) * 100)}%`,
+              }}
+            />
+          </div>
+          <p className="mono">
+            {gb(snapshot.core.memory_total_bytes - snapshot.core.memory_free_bytes)} / {gb(snapshot.core.memory_total_bytes)}
+          </p>
+          <div className="facts">
+            <span className="fact">
+              Free memory<b>{gb(snapshot.core.memory_free_bytes)}</b>
+            </span>
+            <span className="fact">
+              Disk free<b>{gb(snapshot.core.disk_free_bytes)}</b>
+            </span>
+            <span className="fact">
+              CPU<b>{snapshot.core.cpu_percent?.toFixed(0) ?? "—"}%</b>
+            </span>
+            <span className="fact">
+              Source<b>control-plane runtime</b>
+            </span>
+          </div>
+        </section>
+      )}
       {snapshot.ledgers.map((l) => {
         const n = snapshot.cluster.nodes.find((n) => n.id === l.node_id),
           used = l.budget_bytes - l.free_bytes;

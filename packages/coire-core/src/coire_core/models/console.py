@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -40,6 +41,22 @@ class ConsoleAlert(BaseModel):
     target_id: str | None = None
 
 
+class CoreHostCapacity(BaseModel):
+    """Capacity visible to the core control-plane runtime, not fabricated host telemetry."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    host_name: str = Field(min_length=1, max_length=128)
+    health: Literal["healthy", "degraded", "unreachable"]
+    memory_total_bytes: int = Field(ge=0)
+    memory_free_bytes: int = Field(ge=0)
+    disk_total_bytes: int = Field(ge=0)
+    disk_free_bytes: int = Field(ge=0)
+    cpu_percent: float | None = Field(default=None, ge=0, le=100)
+    observed_at: datetime
+    source: Literal["core-control-plane-runtime"] = "core-control-plane-runtime"
+
+
 class ConsoleSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -47,6 +64,7 @@ class ConsoleSnapshot(BaseModel):
     cursor: str
     capabilities: ConsoleCapabilities
     cluster: ClusterState
+    core: CoreHostCapacity | None = None
     ledgers: list[MemoryLedger]
     alerts: list[ConsoleAlert] = Field(default_factory=list)
 

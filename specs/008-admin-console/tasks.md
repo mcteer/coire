@@ -94,10 +94,10 @@ Parallel opportunities are marked `[P]`; they touch separate test/UI/observabili
 
 ## Phase 9: Convergence
 
-- [ ] T051 Add a truthful core-host health/capacity projection and tile per FR-002 and US1/AC1 (missing)
+- [X] T051 Add a truthful core-host health/capacity projection and tile per FR-002 and US1/AC1 (missing)
 - [X] T052 Implement stable pagination for model and user collections and bounded incremental rendering per FR-021 (partial)
 - [X] T053 Enforce and test optimistic concurrency on model and user edits per FR-019 (missing)
-- [ ] T054 Complete roster curation, entitlement, validation and default-variant controls per FR-006 and FR-008 (partial)
-- [ ] T055 Connect Ask Coire to an actual read-only ops harness/admin-model path with explicit unavailable degradation per FR-015 and FR-016 (partial)
+- [X] T054 Complete roster curation, entitlement, validation and default-variant controls per FR-006 and FR-008 (partial)
+- [X] T055 Connect Ask Coire to an actual read-only ops harness/admin-model path with explicit unavailable degradation per FR-015 and FR-016 (partial)
 - [X] T056 Add fetch-SSE disconnect, Last-Event-ID reconnect and reconciliation tests per FR-017 and SC-007 (missing)
 - [X] T057 Add the console Grafana panel and execute Playwright WebKit visual/accessibility validation per Constitution VI and plan testing decision (partial)

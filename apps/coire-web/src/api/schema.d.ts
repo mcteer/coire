@@ -1990,6 +1990,7 @@ export interface components {
             alerts?: components["schemas"]["ConsoleAlert"][];
             capabilities: components["schemas"]["ConsoleCapabilities"];
             cluster: components["schemas"]["ClusterState"];
+            core?: components["schemas"]["CoreHostCapacity"] | null;
             /** Cursor */
             cursor: string;
             /** Ledgers */
@@ -1999,6 +2000,40 @@ export interface components {
              * Format: date-time
              */
             observed_at: string;
+        };
+        /**
+         * CoreHostCapacity
+         * @description Capacity visible to the core control-plane runtime, not fabricated host telemetry.
+         */
+        CoreHostCapacity: {
+            /** Cpu Percent */
+            cpu_percent?: number | null;
+            /** Disk Free Bytes */
+            disk_free_bytes: number;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            /**
+             * Health
+             * @enum {string}
+             */
+            health: "healthy" | "degraded" | "unreachable";
+            /** Host Name */
+            host_name: string;
+            /** Memory Free Bytes */
+            memory_free_bytes: number;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Source
+             * @default core-control-plane-runtime
+             * @constant
+             */
+            source: "core-control-plane-runtime";
         };
         /** CursorPage[ActivityItem] */
         CursorPage_ActivityItem_: {

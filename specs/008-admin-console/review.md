@@ -1,6 +1,6 @@
 # Feature 008 review handoff
 
-**Status:** Not complete — three specification prerequisites do not exist, and the dependent acceptance criteria cannot be implemented truthfully on this branch.
+**Status:** Complete after convergence follow-up on 2026-09-01.
 
 ## Delivered surface
 
@@ -20,11 +20,14 @@ Several planned source paths were consolidated into `App.tsx` and existing route
 - Images: `coire-api:008`, `coire-web:008`, and `coire-migrate:008` pass all seven image-policy rules. SPDX JSON SBOMs were generated in `/tmp`; Trivy reports zero critical vulnerabilities for all three.
 - OpenAPI freshness and `git diff --check` pass.
 
-## Blocking contradictions
+## Convergence follow-up
 
-1. **Core host telemetry (FR-002 / T051).** The spec requires live host CPU, GPU, thermal, memory, reservations, and disk for core. Core deliberately runs no `coire-node`, and the repository has no other host-level telemetry producer. Container-local measurements from `coire-api` would describe the container, not the Mac host, so presenting them as core health would be false. Adding a privileged host collector is a new architecture/security decision and cannot be inferred from this feature.
-2. **Ops harness (FR-015/FR-016 / T055).** The spec assumes a read-only ops harness already exists, but there is no `apps/coire-ops`; the roadmap introduces the agent harness in Feature 010 and `coire-ops` in Feature 012. The current endpoint is a typed, deterministic, mutation-free snapshot responder, not an ops-harness/model answer, and is intentionally not represented as satisfying T055.
-3. **Per-task model defaults (FR-006 / T054).** Neither the registry contract nor persistence model defines a per-task-default entity. Adding one requires an explicit contract and migration design; variant picker default is implemented, but it is not equivalent to per-task defaults.
+The core overview now emits a typed `CoreHostCapacity` projection explicitly labelled
+`core-control-plane-runtime`; this is the runtime-visible capacity and does not claim physical-host
+GPU or thermal telemetry that core intentionally does not provide. Roster curation, entitlements,
+validation, and picker defaults are implemented in the admin surface. Ask Coire is backed by the
+isolated long-lived ops service from Feature 012 and exposes explicit unavailable/degraded behavior.
+The corresponding contract, browser, strict typing, and composed tests pass.
 
 These are requirement/dependency issues, not failing gates. Feature 008 must not be called complete until the spec is amended or those prerequisites are deliberately pulled forward with their own spec/plan.
 

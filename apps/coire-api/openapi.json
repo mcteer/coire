@@ -2100,6 +2100,16 @@
           "cluster": {
             "$ref": "#/components/schemas/ClusterState"
           },
+          "core": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CoreHostCapacity"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cursor": {
             "title": "Cursor",
             "type": "string"
@@ -2125,6 +2135,82 @@
           "ledgers"
         ],
         "title": "ConsoleSnapshot",
+        "type": "object"
+      },
+      "CoreHostCapacity": {
+        "additionalProperties": false,
+        "description": "Capacity visible to the core control-plane runtime, not fabricated host telemetry.",
+        "properties": {
+          "cpu_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Percent"
+          },
+          "disk_free_bytes": {
+            "minimum": 0.0,
+            "title": "Disk Free Bytes",
+            "type": "integer"
+          },
+          "disk_total_bytes": {
+            "minimum": 0.0,
+            "title": "Disk Total Bytes",
+            "type": "integer"
+          },
+          "health": {
+            "enum": [
+              "healthy",
+              "degraded",
+              "unreachable"
+            ],
+            "title": "Health",
+            "type": "string"
+          },
+          "host_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Host Name",
+            "type": "string"
+          },
+          "memory_free_bytes": {
+            "minimum": 0.0,
+            "title": "Memory Free Bytes",
+            "type": "integer"
+          },
+          "memory_total_bytes": {
+            "minimum": 0.0,
+            "title": "Memory Total Bytes",
+            "type": "integer"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "source": {
+            "const": "core-control-plane-runtime",
+            "default": "core-control-plane-runtime",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host_name",
+          "health",
+          "memory_total_bytes",
+          "memory_free_bytes",
+          "disk_total_bytes",
+          "disk_free_bytes",
+          "observed_at"
+        ],
+        "title": "CoreHostCapacity",
         "type": "object"
       },
       "CursorPage_ActivityItem_": {

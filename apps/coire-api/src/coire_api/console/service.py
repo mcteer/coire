@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 from datetime import UTC, datetime
 
 from fastapi import Request
@@ -14,7 +16,39 @@ from coire_core.models.console import (
     ConsoleAlert,
     ConsoleCapabilities,
     ConsoleSnapshot,
+    CoreHostCapacity,
 )
+
+
+def project_core_capacity(observed_at: datetime) -> CoreHostCapacity:
+    """Return runtime-visible capacity with an explicit source boundary."""
+
+    page_size = os.sysconf("SC_PAGE_SIZE")
+    memory_total = int(page_size * os.sysconf("SC_PHYS_PAGES"))
+    try:
+        memory_free = int(page_size * os.sysconf("SC_AVPHYS_PAGES"))
+    except (OSError, ValueError):
+        # macOS does not expose Linux's available-pages sysconf key. Keep the field truthful
+        # rather than substituting an unrelated estimate.
+        memory_free = 0
+    disk = shutil.disk_usage("/")
+    try:
+        cpu_percent: float | None = min(
+            100.0,
+            max(0.0, os.getloadavg()[0] * 100.0 / max(1, os.cpu_count() or 1)),
+        )
+    except (OSError, NotImplementedError):
+        cpu_percent = None
+    return CoreHostCapacity(
+        host_name=os.uname().nodename,
+        health="healthy",
+        memory_total_bytes=max(memory_total, memory_free),
+        memory_free_bytes=memory_free,
+        disk_total_bytes=disk.total,
+        disk_free_bytes=disk.free,
+        cpu_percent=cpu_percent,
+        observed_at=observed_at,
+    )
 
 
 async def project_snapshot(
@@ -70,6 +104,7 @@ async def project_snapshot(
         cursor=str(int(observed_at.timestamp() * 1000)),
         capabilities=ConsoleCapabilities(),
         cluster=cluster,
+        core=project_core_capacity(observed_at),
         ledgers=ledgers,
         alerts=alerts,
     )
