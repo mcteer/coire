@@ -8,7 +8,9 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
+from threading import Event, Thread
 from typing import Any, cast
 
 import httpx
@@ -157,6 +159,30 @@ def _ready_instance(
     return model_id, ready
 
 
+@contextmanager
+def _session_heartbeats(api_url: str, service_headers: dict[str, str], session_id: str) -> Any:
+    """Keep a manual ops session alive while CI waits on a model lifecycle."""
+
+    stop = Event()
+
+    def heartbeat() -> None:
+        with httpx.Client(base_url=api_url, timeout=10) as heartbeat_client:
+            while not stop.wait(10):
+                response = heartbeat_client.patch(
+                    f"/api/v1/internal/ops/sessions/{session_id}", headers=service_headers
+                )
+                if response.status_code != 200:
+                    return
+
+    worker = Thread(target=heartbeat, name="ops-session-heartbeat", daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        worker.join(timeout=5)
+
+
 def _context(
     client: httpx.Client,
     human_headers: dict[str, str],
@@ -182,16 +208,7 @@ def _proposal(
     conversation_id: str,
     instance: dict[str, Any],
 ) -> dict[str, Any]:
-    # The real ops container registers/heartbeats continuously.  The test uses a manually
-    # registered session while deliberately waiting through model lifecycle operations; re-
-    # registering the same id models that reconnect and prevents a long CI run from turning
-    # an otherwise valid proposal into an unrelated stale-session refusal.
-    registered = client.post(
-        "/api/v1/internal/ops/sessions",
-        headers=service_headers,
-        json={"session_id": session_id, "service_instance": "ops-integration"},
-    )
-    assert registered.status_code == 201, registered.text
+    # The caller keeps the manually registered session alive around long lifecycle waits.
     heartbeat = client.patch(f"/api/v1/internal/ops/sessions/{session_id}", headers=service_headers)
     assert heartbeat.status_code == 200, heartbeat.text
     action = {
@@ -307,7 +324,8 @@ def test_confirmation_is_single_use_not_redirectable_and_restart_invalidates(
         assert statuses == [202, 409]
 
         # Resource-version drift is detected after authority consumption and before mutation.
-        _, ready_again = _ready_instance(client, admin_headers)
+        with _session_heartbeats(api_url, service, session_id):
+            _, ready_again = _ready_instance(client, admin_headers)
         changed = _proposal(
             client,
             service,
