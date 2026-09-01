@@ -193,6 +193,13 @@ scripts/image-policy.sh bad:test tests/fixtures/policy/bad.Dockerfile
 
 The same script runs per-image in CI's `image-policy` job, over all seven built images.
 
+### SC-008 execution evidence — 2026-09-01
+
+Throwaway PR #22 (`spike/sc-008-shell-fixture`) added a pinned BusyBox `/bin/sh` copy to the
+API image. The CI image-policy gate rejected it with the expected diagnostic:
+`policy: shell present in coire-api:ci: /bin/sh` (exit 1). The fixture PR and branch were
+closed and deleted after capture.
+
 ## See also
 
 - [`models.md`](models.md) — adding, curating, retiring models; loading and unloading
