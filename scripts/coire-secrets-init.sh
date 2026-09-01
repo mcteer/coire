@@ -6,7 +6,7 @@
 #   coire-secrets-init.sh --show-node-tokens   print the per-node tokens to store on each Studio
 #
 # Creates: coire-postgres-password, coire-key-signing-secret, coire-node-tokens,
-#          coire-admin-token (the interim admin bearer, ADR-0004).
+#          coire-admin-token (rollback-only), and coire-bootstrap-admin-email.
 # Does NOT create the Hugging Face token: that lives only in each Studio's System keychain.
 #
 # The generated values are written straight into the login Keychain and never echoed, except
@@ -58,6 +58,13 @@ create coire-node-tokens "$(python3 -c '
 import json, secrets
 print(json.dumps({n: secrets.token_urlsafe(32) for n in ("coire-edge-a", "coire-edge-b")}))
 ')"
+if [[ -n "${COIRE_BOOTSTRAP_ADMIN_EMAIL:-}" ]]; then
+  normalized_email="$(python3 -c 'import sys; value=sys.argv[1].strip().casefold(); assert "@" in value and "." in value.partition("@")[2], "invalid bootstrap email"; print(value)' "$COIRE_BOOTSTRAP_ADMIN_EMAIL")"
+  create coire-bootstrap-admin-email "$normalized_email"
+elif ! security find-generic-password -s coire-bootstrap-admin-email >/dev/null 2>&1; then
+  echo "missing bootstrap admin email; rerun with COIRE_BOOTSTRAP_ADMIN_EMAIL=you@example.com" >&2
+  exit 2
+fi
 
 echo
 echo "next: $(dirname "${BASH_SOURCE[0]}")/coire-secrets-init.sh --show-node-tokens"

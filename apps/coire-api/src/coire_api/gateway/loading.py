@@ -9,10 +9,20 @@ from collections.abc import Awaitable, Callable
 
 from sqlalchemy import select
 
-from coire_api.db import EngineProcessRow, ModelCopyRow, ModelRow, NodeRow, session_scope
+from coire_api.db import (
+    EngineProcessRow,
+    ModelCopyRow,
+    ModelInstanceRow,
+    ModelRow,
+    ModelVariantRow,
+    NodeRow,
+    session_scope,
+)
 from coire_api.gateway.telemetry import tracer
+from coire_api.instance.service import append_initial_transition
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_core.models.engine import EngineState
+from coire_core.models.instance import InstanceState
 from coire_core.models.node import Reachability
 from coire_core.settings import Settings
 
@@ -43,8 +53,78 @@ class LoadCoordinator:
 coordinator = LoadCoordinator()
 
 
+async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -> bool:
+    """Use feature-004 placement for variant-backed models; return false for legacy rows."""
+    instance_id: uuid.UUID | None = None
+    async with session_scope() as session:
+        model = await session.get(ModelRow, model_id)
+        if model is None:
+            raise ModelLoadError("model disappeared during load")
+        variant = await session.scalar(
+            select(ModelVariantRow)
+            .where(
+                ModelVariantRow.model_id == model_id,
+                ModelVariantRow.is_default.is_(True),
+                ModelVariantRow.validated.is_(True),
+            )
+            .limit(1)
+        )
+        if variant is None:
+            return False
+        ready = await session.scalar(
+            select(ModelInstanceRow.id).where(
+                ModelInstanceRow.model_id == model_id,
+                ModelInstanceRow.state == InstanceState.READY,
+            )
+        )
+        if ready is not None:
+            return True
+        active = await session.scalar(
+            select(ModelInstanceRow)
+            .where(
+                ModelInstanceRow.model_id == model_id,
+                ModelInstanceRow.variant_id == variant.id,
+                ModelInstanceRow.state.in_(
+                    [
+                        InstanceState.REQUESTED,
+                        InstanceState.RESERVING,
+                        InstanceState.LAUNCHING,
+                        InstanceState.WARMING,
+                    ]
+                ),
+            )
+            .order_by(ModelInstanceRow.created_at.desc())
+            .limit(1)
+        )
+        if active is None:
+            active = ModelInstanceRow(
+                model_id=model_id,
+                variant_id=variant.id,
+                policy=model.placement_policy,
+                state=InstanceState.REQUESTED,
+            )
+            session.add(active)
+            await session.flush()
+            await append_initial_transition(session, active)
+        instance_id = active.id
+    deadline = time.monotonic() + settings.gateway_wait_ceiling_s
+    while time.monotonic() < deadline:
+        async with session_scope() as session:
+            instance = await session.get(ModelInstanceRow, instance_id)
+            if instance is None:
+                raise ModelLoadError("model instance disappeared")
+            if instance.state is InstanceState.READY:
+                return True
+            if instance.state is InstanceState.FAILED:
+                raise ModelLoadError(instance.failure_detail or "instance launch failed")
+        await asyncio.sleep(settings.placement_poll_interval_s)
+    raise ModelLoadError("placement did not complete before the gateway wait ceiling")
+
+
 async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
     async def _load() -> None:
+        if await _place_variant_if_available(model_id, settings):
+            return
         async with session_scope() as session:
             existing = await session.scalar(
                 select(EngineProcessRow)
@@ -86,6 +166,10 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             if existing is None:
                 session.add(row)
                 await session.flush()
+                # Publish the stable engine identity before the node process can become
+                # visible to reconciliation. Holding this insert uncommitted across the
+                # network launch lets reconciliation race an orphan row with the same id.
+                await session.commit()
             try:
                 async with NodeClient(settings, timeout=settings.gateway_wait_ceiling_s) as client:
                     _, engine = await client.start_engine(

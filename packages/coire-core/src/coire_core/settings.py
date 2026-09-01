@@ -67,6 +67,17 @@ class Settings(BaseSettings):
     safe default: an unset secret must never make every caller privileged. Feature 007 replaces
     this with edge identity and API keys."""
 
+    bootstrap_admin_email: SecretStr = SecretStr("")
+    """Configured first local administrator identity. It is sourced from Keychain like other
+    bootstrap material and never grants access without a separately verified Access assertion."""
+    cloudflare_access_issuer: str = ""
+    cloudflare_access_audience: str = ""
+    cloudflare_jwks_ttl_s: float = Field(default=300.0, gt=0.0)
+    cloudflare_jwt_leeway_s: float = Field(default=60.0, ge=0.0, le=300.0)
+    credential_stream_recheck_s: float = Field(default=1.0, gt=0.0, le=10.0)
+    identity_legacy_admin_enabled: bool = False
+    """Test/rollback-only bridge for pre-007 suites. Production compose never enables it."""
+
     hf_token: SecretStr = SecretStr("")
     """Hugging Face credential. Exists ONLY on a node agent, read from that Studio's System
     keychain (spec FR-005). It is never mounted into a control-plane container and never
@@ -87,6 +98,35 @@ class Settings(BaseSettings):
     node_collection_budget_rss_bytes: int = 150 * 1024 * 1024
     node_inventory_file: str = "/app/nodes.yaml"
     registry_reconcile_interval_s: float = 5.0
+    acquisition_poll_interval_s: float = Field(default=2.0, gt=0.0)
+    acquisition_stuck_seconds: int = Field(default=1800, ge=60)
+    acquisition_perplexity_tolerance: float = Field(default=0.10, ge=0.0, le=1.0)
+    acquisition_conversion_memory_overhead: float = Field(default=1.20, ge=1.0)
+    acquisition_disk_safety_fraction: float = Field(default=0.10, ge=0.0, le=1.0)
+    acquisition_validation_fixture_version: str = "v1"
+
+    # --- placement scheduler -------------------------------------------
+    placement_default_budget_bytes: int = Field(default=230 * 1024**3, gt=0)
+    placement_sandbox_bytes: int = Field(default=16 * 1024**3, ge=0)
+    placement_health_freshness_s: float = Field(default=30.0, gt=0.0)
+    placement_cpu_saturation_percent: float = Field(default=90.0, ge=0.0, le=100.0)
+    placement_busy_drain_timeout_s: float = Field(default=10.0, ge=0.0)
+    placement_poll_interval_s: float = Field(default=1.0, gt=0.0)
+    placement_ttl_interval_s: float = Field(default=30.0, gt=0.0)
+    placement_lease_ttl_s: float = Field(default=60.0, gt=0.0)
+    instance_drain_timeout_s: float = Field(default=30.0, gt=0.0)
+    instance_event_poll_interval_s: float = Field(default=0.5, gt=0.0)
+
+    # --- Studio data-link and sharding ---------------------------------
+    link_probe_interval_s: float = Field(default=30.0, gt=0.0)
+    link_probe_freshness_s: float = Field(default=120.0, gt=0.0)
+    link_failures_before_down: int = Field(default=2, ge=1)
+    link_successes_before_up: int = Field(default=3, ge=1)
+    sharding_allow_ring_fallback: bool = True
+    sharding_start_timeout_s: float = Field(default=600.0, gt=0.0)
+    sharding_port_range: str = "9600-9699"
+    sharding_jaccl_hostfile: str = "/opt/coire/state/jaccl-hostfile.json"
+    sharding_ring_hostfile: str = "/opt/coire/state/ring-hostfile.json"
 
     # --- compatible inference gateway ----------------------------------
     gateway_wait_ceiling_s: float = Field(default=600.0, gt=0.0)

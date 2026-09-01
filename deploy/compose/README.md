@@ -13,3 +13,33 @@ Runtime configuration is supplied through `COIRE_` environment variables and Key
 compose secrets. Gateway tuning variables and operational procedures are documented in
 [`docs/runbooks/gateway.md`](../../docs/runbooks/gateway.md). Do not put credentials in this file,
 `.env`, an image, or a compose environment block.
+
+Identity requires `CLOUDFLARE_ACCESS_ISSUER` (the exact team issuer) and
+`CLOUDFLARE_ACCESS_AUDIENCE`. Seed `coire-bootstrap-admin-email` in Keychain by running
+`COIRE_BOOTSTRAP_ADMIN_EMAIL=you@example.com scripts/coire-secrets-init.sh`; it creates the first
+local admin row but is never itself an authenticator. JWKS cache/leeway defaults are controlled by
+`CLOUDFLARE_JWKS_TTL_S` (300) and `CLOUDFLARE_JWT_LEEWAY_S` (60). The legacy admin bearer is disabled
+unless the explicit rollback/test-only `IDENTITY_LEGACY_ADMIN_ENABLED` switch is set; production
+compose does not set it.
+
+Acquisition tuning uses `ACQUISITION_POLL_INTERVAL_S` (2), `ACQUISITION_STUCK_SECONDS` (1800),
+`ACQUISITION_PERPLEXITY_TOLERANCE` (0.10), `ACQUISITION_CONVERSION_MEMORY_OVERHEAD` (1.20),
+`ACQUISITION_DISK_SAFETY_FRACTION` (0.10), and `ACQUISITION_VALIDATION_FIXTURE_VERSION` (`v1`).
+
+Placement uses `PLACEMENT_DEFAULT_BUDGET_BYTES` (230 GiB), `PLACEMENT_SANDBOX_BYTES` (16 GiB),
+`PLACEMENT_HEALTH_FRESHNESS_S` (30), `PLACEMENT_BUSY_DRAIN_TIMEOUT_S` (10),
+`PLACEMENT_CPU_SATURATION_PERCENT` (90),
+`PLACEMENT_POLL_INTERVAL_S` (1), `PLACEMENT_TTL_INTERVAL_S` (30), and
+`PLACEMENT_LEASE_TTL_S` (60). The budget is authoritative; measured resident memory is used
+only for drift telemetry. Reducing a budget below current reservations blocks admission but
+does not force eviction.
+Instance lifecycle uses `INSTANCE_DRAIN_TIMEOUT_S` (30) for bounded graceful drain and
+`INSTANCE_EVENT_POLL_INTERVAL_S` (0.5) for persisted SSE replay polling.
+Sharding uses `LINK_PROBE_INTERVAL_S` (30), `LINK_PROBE_FRESHNESS_S` (120),
+`LINK_FAILURES_BEFORE_DOWN` (2), `LINK_SUCCESSES_BEFORE_UP` (3),
+`SHARDING_ALLOW_RING_FALLBACK` (true), `SHARDING_START_TIMEOUT_S` (600), and
+`SHARDING_PORT_RANGE` (`9600-9699`). The complete MLX-generated JACCL and ring hostfiles are
+configured with `SHARDING_JACCL_HOSTFILE` and `SHARDING_RING_HOSTFILE`; latency is telemetry,
+never an admission threshold. See [`docs/runbooks/sharded-serving.md`](../../docs/runbooks/sharded-serving.md).
+Raw and converted files remain under the configured Studio model store; DBOS metadata remains in
+Postgres. See [`docs/runbooks/acquisition.md`](../../docs/runbooks/acquisition.md).

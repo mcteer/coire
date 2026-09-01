@@ -35,11 +35,14 @@ from coire_api.audit import write_audit
 from coire_api.db import (
     DownloadJobRow,
     EngineProcessRow,
+    MemoryReservationRow,
     ModelCopyRow,
+    ModelInstanceRow,
     ModelRow,
     NodeRow,
     create_engine,
 )
+from coire_api.instance import service as instance_service
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_api.registry import service
 from coire_core.models.audit import AuditAction, AuditOutcome
@@ -50,7 +53,9 @@ from coire_core.models.engine import (
     ReconcileExpectation,
     ReconcileRequest,
 )
+from coire_core.models.instance import InstanceState
 from coire_core.models.jobs import ChecksumManifest, DownloadStage, JobStage, JobStatus
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.registry import CopyRole, ModelState
 from coire_core.settings import Settings
 
@@ -443,6 +448,7 @@ class RegistryReconciler:
                     row.state = EngineState.FAILED
                     row.state_reason = "the node no longer knows this engine"
                     row.stopped_at = datetime.now(UTC)
+                    await self._fail_instance_for_engine(session, row, row.state_reason)
                     logger.warning("engine %s is unknown to %s", row.id, node.name)
                 continue
             row.state = status.state
@@ -457,6 +463,9 @@ class RegistryReconciler:
             row.last_health_at = status.last_health_at
             if status.state in TERMINAL_ENGINE_STATES and row.stopped_at is None:
                 row.stopped_at = status.stopped_at or datetime.now(UTC)
+                await self._fail_instance_for_engine(
+                    session, row, status.state_reason or "engine exited while instance was active"
+                )
 
     async def _reconcile_nodes(self, session: AsyncSession, client: NodeClient) -> None:
         """Ask named nodes what they are really running (spec FR-015)."""
@@ -512,6 +521,9 @@ class RegistryReconciler:
                 row.state = EngineState.FAILED
                 row.state_reason = "process gone during agent restart"
                 row.stopped_at = datetime.now(UTC)
+                await self._fail_instance_for_engine(
+                    session, row, "process gone during agent restart"
+                )
                 await write_audit(
                     session,
                     actor=ACTOR,
@@ -534,8 +546,52 @@ class RegistryReconciler:
                     len(result.orphans),
                 )
 
+    async def _fail_instance_for_engine(
+        self, session: AsyncSession, engine: EngineProcessRow, reason: str
+    ) -> None:
+        if engine.instance_id is None:
+            return
+        instance = await session.get(ModelInstanceRow, engine.instance_id)
+        if instance is None or instance.state in {
+            InstanceState.STOPPED,
+            InstanceState.FAILED,
+            InstanceState.DRAINING,
+        }:
+            return
+        await instance_service.transition(
+            session,
+            instance.id,
+            InstanceState.FAILED,
+            reason=reason,
+            failure_code="engine_failed",
+        )
+        reservation = await session.scalar(
+            select(MemoryReservationRow).where(
+                MemoryReservationRow.node_id == engine.node_id,
+                MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                MemoryReservationRow.holder_id == str(instance.id),
+                MemoryReservationRow.state.in_(
+                    [
+                        MemoryReservationState.PENDING,
+                        MemoryReservationState.HELD,
+                        MemoryReservationState.RELEASING,
+                    ]
+                ),
+            )
+        )
+        if reservation is not None:
+            reservation.state = MemoryReservationState.RELEASED
+            reservation.released_at = datetime.now(UTC)
+
     async def _record_orphan(self, session: AsyncSession, node: NodeRow, orphan: object) -> None:
         pid = getattr(orphan, "pid", None)
+        orphan_id = getattr(orphan, "engine_id", None)
+        # A launch can commit while the node reconciliation request is in flight. In that
+        # case the node truthfully labelled the process orphaned against the older expected
+        # set, but its stable engine id is now authoritative control-plane state. Recheck by
+        # identity after the network round trip before attempting an orphan insert.
+        if orphan_id is not None and await session.get(EngineProcessRow, orphan_id) is not None:
+            return
         existing = (
             await session.execute(
                 select(EngineProcessRow).where(
@@ -556,7 +612,7 @@ class RegistryReconciler:
         row = EngineProcessRow(
             # Preserve the node-assigned identity so a later admin DELETE addresses the same
             # process in both control-plane and node state.
-            id=getattr(orphan, "engine_id", None) or uuid.uuid4(),
+            id=orphan_id or uuid.uuid4(),
             model_id=model.id if model else None,
             node_id=node.id,
             port=getattr(orphan, "port", 0),

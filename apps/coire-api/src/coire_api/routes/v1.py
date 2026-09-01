@@ -8,16 +8,16 @@ import logging
 import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import suppress
-from time import perf_counter
+from time import monotonic, perf_counter
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import Receive, Scope, Send
 
-from coire_api.auth import CurrentAuthenticated, Principal
+from coire_api.auth import CurrentAuthenticated, Principal, require_scope
 from coire_api.db import EngineProcessRow, ModelRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.anthropic import from_openai_response, from_openai_stream, to_openai_payload
@@ -50,7 +50,7 @@ from coire_core.models.gateway import (
 from coire_core.models.registry import LoadState
 from coire_core.settings import Settings
 
-router = APIRouter(prefix="/v1", tags=["compatible"])
+router = APIRouter(prefix="/v1", tags=["compatible"], dependencies=[Depends(require_scope("chat"))])
 logger = logging.getLogger(__name__)
 
 
@@ -84,13 +84,17 @@ class _UsageStreamingResponse(StreamingResponse):
 
 
 async def _load_and_resolve(
-    body_model: uuid.UUID, principal: Principal, session: AsyncSession, settings: Settings
+    body_model: uuid.UUID,
+    principal: Principal,
+    session: AsyncSession,
+    settings: Settings,
+    affinity_node: str | None = None,
 ) -> ResolvedModel:
     await asyncio.wait_for(
         load_model(body_model, settings), timeout=settings.gateway_wait_ceiling_s
     )
     session.expire_all()
-    return await resolve_model(session, body_model, principal)
+    return await resolve_model(session, body_model, principal, affinity_node)
 
 
 async def _openai_cold_stream(
@@ -102,7 +106,9 @@ async def _openai_cold_stream(
     request: Request,
     timing: StreamTiming,
 ) -> AsyncIterator[bytes]:
-    task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
+    task = asyncio.create_task(
+        _load_and_resolve(body.model, principal, session, settings, body.coire_affinity_node)
+    )
     while not task.done():
         try:
             resolved = await asyncio.wait_for(
@@ -117,7 +123,11 @@ async def _openai_cold_stream(
             raise ModelLoadError("engine did not become ready")
         usage.model_id = resolved.model_id
         usage.engine_id = resolved.engine_id
-        payload = body.model_dump(mode="json", exclude={"coire_wait_for_model"}, exclude_none=True)
+        payload = body.model_dump(
+            mode="json",
+            exclude={"coire_wait_for_model", "coire_affinity_node"},
+            exclude_none=True,
+        )
         payload["model"] = resolved.model_path
         tracked = _tracked_stream(
             stream(resolved.engine_url, payload, settings, timing), usage, request, timing
@@ -137,11 +147,36 @@ async def _tracked_stream(
     timing: StreamTiming | None = None,
 ) -> AsyncIterator[bytes]:
     first_observed = False
+    credential_checked_at = 0.0
     try:
         async for chunk in source:
             if request is not None and await request.is_disconnected():
                 await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
                 return
+            if usage.principal.api_key_id is not None and request is not None:
+                settings = getattr(request.app.state, "settings", None)
+                interval = settings.credential_stream_recheck_s if settings is not None else 1.0
+                now = monotonic()
+                if now - credential_checked_at >= interval:
+                    from coire_api.db import session_scope
+                    from coire_api.identity.keys import key_is_active
+
+                    credential_checked_at = now
+                    async with session_scope() as session:
+                        active = await key_is_active(session, usage.principal)
+                    if not active:
+                        await usage.finish(UsageOutcome.REFUSED, failure_code="credential_revoked")
+                        error = json.dumps(
+                            {
+                                "error": {
+                                    "message": "credential revoked",
+                                    "type": "authentication_error",
+                                    "code": "credential_revoked",
+                                }
+                            }
+                        )
+                        yield f"data: {error}\n\ndata: [DONE]\n\n".encode()
+                        return
             if (
                 not first_observed
                 and timing is not None
@@ -232,7 +267,9 @@ async def _anthropic_cold_stream(
     request: Request,
     timing: StreamTiming,
 ) -> AsyncIterator[bytes]:
-    task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
+    task = asyncio.create_task(
+        _load_and_resolve(body.model, principal, session, settings, body.coire_affinity_node)
+    )
     while not task.done():
         try:
             resolved = await asyncio.wait_for(
@@ -318,7 +355,7 @@ async def chat_completions(
     usage = UsageTracker(principal, str(body.model), GatewayProtocol.OPENAI)
     timing = StreamTiming()
     try:
-        resolved = await resolve_model(session, body.model, principal)
+        resolved = await resolve_model(session, body.model, principal, body.coire_affinity_node)
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
@@ -355,7 +392,9 @@ async def chat_completions(
                 usage,
             )
         try:
-            resolved = await _load_and_resolve(body.model, principal, session, settings)
+            resolved = await _load_and_resolve(
+                body.model, principal, session, settings, body.coire_affinity_node
+            )
         except (ModelLoadError, TimeoutError) as exc:
             await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
             raise HTTPException(
@@ -368,7 +407,11 @@ async def chat_completions(
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "model load did not become ready"
             )
-    payload = body.model_dump(mode="json", exclude={"coire_wait_for_model"}, exclude_none=True)
+    payload = body.model_dump(
+        mode="json",
+        exclude={"coire_wait_for_model", "coire_affinity_node"},
+        exclude_none=True,
+    )
     payload["model"] = resolved.model_path
     try:
         if body.stream:
@@ -410,7 +453,7 @@ async def anthropic_messages(
     usage = UsageTracker(principal, str(body.model), GatewayProtocol.ANTHROPIC)
     timing = StreamTiming()
     try:
-        resolved = await resolve_model(session, body.model, principal)
+        resolved = await resolve_model(session, body.model, principal, body.coire_affinity_node)
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
@@ -445,7 +488,9 @@ async def anthropic_messages(
                 usage,
             )
         try:
-            resolved = await _load_and_resolve(body.model, principal, session, settings)
+            resolved = await _load_and_resolve(
+                body.model, principal, session, settings, body.coire_affinity_node
+            )
         except (ModelLoadError, TimeoutError) as exc:
             await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
             raise HTTPException(

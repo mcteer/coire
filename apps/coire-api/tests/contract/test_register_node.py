@@ -2,36 +2,83 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 from fastapi import HTTPException
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
 from coire_api.auth import ANONYMOUS
+from coire_api.instance.registration import token_digest
 from coire_api.routes.nodes import load_inventory, register_node
-from coire_core.models.node import Node, NodeRegistration, NodeRegistrationV2, NodeV2
+from coire_core.models.node import (
+    Node,
+    NodeRegistration,
+    NodeRegistrationV2,
+    NodeRole,
+    NodeV2,
+    Reachability,
+)
 from coire_core.settings import Settings
 
 
 class Result:
-    def scalar_one_or_none(self) -> None:
-        return None
+    def __init__(self, row: Any) -> None:
+        self.row = row
+
+    def scalar_one_or_none(self) -> Any:
+        return self.row
 
 
 class Session:
     def __init__(self) -> None:
-        self.row: Any = None
+        now = datetime.now(UTC)
+        self.row: Any = SimpleNamespace(
+            id=uuid.uuid4(),
+            name="coire-edge-a",
+            role=NodeRole.STUDIO,
+            mesh_address="192.168.100.11",
+            egress_address=None,
+            endpoint_contract_version=None,
+            control_host=None,
+            data_host=None,
+            memory_total_bytes=1,
+            disk_total_bytes=1,
+            gpu_cores=None,
+            agent_version="0.1.0",
+            registered_at=now,
+            last_seen_at=now,
+            reachability=Reachability.UNKNOWN,
+            probe_failures=0,
+            declared_at=now,
+            registration_token_digest=token_digest(
+                "token",
+                Settings(  # type: ignore[call-arg]
+                    _secrets_dir="/nonexistent", key_signing_secret=SecretStr("contract-secret")
+                ),
+            ),
+            token_issued_at=now,
+            token_consumed_at=None,
+            token_revoked_at=None,
+        )
+        self.added: list[Any] = []
 
     async def execute(self, *_: Any) -> Result:
-        return Result()
+        return Result(self.row)
 
     def add(self, row: Any) -> None:
-        self.row = row
+        self.added.append(row)
 
     async def commit(self) -> None:
+        return None
+
+    async def flush(self) -> None:
         return None
 
     async def refresh(self, row: Any) -> None:
@@ -44,7 +91,9 @@ def settings(tmp_path: Path) -> Settings:
         "nodes:\n  coire-edge-a:\n    role: studio\n"
         "    control_host: coire-edge-a.lab\n    data_host: coire-edge-a.fabric\n"
     )
-    result = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    result = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent", key_signing_secret=SecretStr("contract-secret")
+    )
     result.node_inventory_file = str(inventory)
     result.node_tokens = type(result.node_tokens)('{"coire-edge-a":"token"}')
     load_inventory.cache_clear()

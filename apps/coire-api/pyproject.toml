@@ -20,6 +20,12 @@ dependencies = [
     "opentelemetry-sdk>=1.29",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
     "opentelemetry-instrumentation-fastapi>=0.50b0",
+    # MIT. Verify Cloudflare Access signatures/claims against configured JWKS (spec 007 R1).
+    "PyJWT[crypto]==2.13.0",
+    # MIT. Memory-hard Argon2id hashes for one-time API-key secrets (spec 007 R2).
+    "argon2-cffi==25.1.0",
+    # MIT. Durable acquisition stages and restart recovery; scheduler-only (spec 002 R1).
+    "dbos==2.24.0",
 ]
 
 [build-system]

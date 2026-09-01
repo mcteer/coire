@@ -6,14 +6,25 @@ import math
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import case, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal
-from coire_api.db import EngineProcessRow, ModelCopyRow, ModelRow, NodeRow
+from coire_api.db import (
+    EngineProcessRow,
+    InstanceMemberRow,
+    ModelCopyRow,
+    ModelInstanceRow,
+    ModelRow,
+    NodeRow,
+    ShardGroupRow,
+    VariantCopyRow,
+)
 from coire_api.gateway.telemetry import tracer
 from coire_core.models.engine import EngineState
+from coire_core.models.instance import InstanceState
 from coire_core.models.registry import ModelState, Visibility
+from coire_core.models.sharding import ShardGroupState
 
 
 class ModelNotFoundError(Exception):
@@ -40,7 +51,10 @@ def _visible(model: ModelRow, principal: Principal) -> bool:
 
 
 async def resolve_model(
-    session: AsyncSession, requested_id: uuid.UUID, principal: Principal
+    session: AsyncSession,
+    requested_id: uuid.UUID,
+    principal: Principal,
+    affinity_node: str | None = None,
 ) -> ResolvedModel:
     with tracer.start_as_current_span("coire.gateway.resolve") as span:
         span.set_attribute("coire.model.requested_id", str(requested_id))
@@ -51,24 +65,123 @@ async def resolve_model(
         span.set_attribute("coire.model.id", str(model.id))
 
     result = await session.execute(
-        select(EngineProcessRow, NodeRow, ModelCopyRow)
+        select(EngineProcessRow, NodeRow, VariantCopyRow, ModelInstanceRow)
         .join(NodeRow, NodeRow.id == EngineProcessRow.node_id)
+        .join(ModelInstanceRow, ModelInstanceRow.id == EngineProcessRow.instance_id)
         .join(
-            ModelCopyRow,
-            (ModelCopyRow.model_id == model.id) & (ModelCopyRow.node_id == NodeRow.id),
+            VariantCopyRow,
+            (VariantCopyRow.variant_id == ModelInstanceRow.variant_id)
+            & (VariantCopyRow.node_id == NodeRow.id),
         )
         .where(
             EngineProcessRow.model_id == model.id,
-            EngineProcessRow.state.in_([EngineState.READY, EngineState.STARTING]),
-            ModelCopyRow.verified.is_(True),
+            EngineProcessRow.state == EngineState.READY,
+            ModelInstanceRow.state == InstanceState.READY,
+            VariantCopyRow.verified.is_(True),
         )
-        .order_by(EngineProcessRow.started_at)
+        .order_by(
+            case((NodeRow.name == affinity_node, 0), else_=1) if affinity_node else literal(0),
+            ModelInstanceRow.in_flight,
+            ModelInstanceRow.created_at.desc(),
+        )
         .limit(1)
     )
     target = result.one_or_none()
+    sharded = (
+        await session.execute(
+            select(ModelInstanceRow, InstanceMemberRow, NodeRow, VariantCopyRow, ShardGroupRow)
+            .join(ShardGroupRow, ShardGroupRow.instance_id == ModelInstanceRow.id)
+            .join(
+                InstanceMemberRow,
+                (InstanceMemberRow.instance_id == ModelInstanceRow.id)
+                & (InstanceMemberRow.rank == 0),
+            )
+            .join(NodeRow, NodeRow.id == InstanceMemberRow.node_id)
+            .join(
+                VariantCopyRow,
+                (VariantCopyRow.variant_id == ModelInstanceRow.variant_id)
+                & (VariantCopyRow.node_id == NodeRow.id),
+            )
+            .where(
+                ModelInstanceRow.model_id == model.id,
+                ModelInstanceRow.state == InstanceState.READY,
+                ShardGroupRow.state == ShardGroupState.READY,
+                InstanceMemberRow.rank_healthy.is_(True),
+                VariantCopyRow.verified.is_(True),
+            )
+            .order_by(ModelInstanceRow.in_flight, ModelInstanceRow.created_at.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    # Single-node and sharded instances are peers. Prefer an explicit affinity match, then
+    # least-loaded placement, then the newest ready instance so a newly requested placement
+    # is actually exercised instead of being shadowed forever by an older single.
+    sharded_key = (
+        (
+            0 if affinity_node and sharded is not None and sharded[2].name == affinity_node else 1,
+            sharded[0].in_flight,
+            -sharded[0].created_at.timestamp(),
+        )
+        if sharded is not None
+        else None
+    )
+    target_key = (
+        (
+            0 if affinity_node and target[1].name == affinity_node else 1,
+            target[3].in_flight,
+            -target[3].created_at.timestamp(),
+        )
+        if target is not None
+        else None
+    )
+    use_sharded = sharded_key is not None and (target_key is None or sharded_key < target_key)
+    if use_sharded:
+        assert sharded is not None
+        _instance, _member, node, copy, group = sharded
+        return ResolvedModel(
+            model.id,
+            model.slug,
+            model.context_window,
+            copy.path,
+            None,
+            node.name,
+            f"http://{node.name}.lab:9400/node/shard-groups/{group.id}/proxy",
+        )
     if target is None:
-        return ResolvedModel(model.id, model.slug, model.context_window, None, None, None, None)
-    engine, node, copy = target
+        # Feature 001 rows have no ModelVariant and therefore cannot be represented by an
+        # instance until their acquisition record is upgraded. Keep the one-release gateway
+        # read path while all newly acquired variants route exclusively through instances.
+        legacy = (
+            await session.execute(
+                select(EngineProcessRow, NodeRow, ModelCopyRow)
+                .join(NodeRow, NodeRow.id == EngineProcessRow.node_id)
+                .join(
+                    ModelCopyRow,
+                    (ModelCopyRow.model_id == model.id) & (ModelCopyRow.node_id == NodeRow.id),
+                )
+                .where(
+                    EngineProcessRow.model_id == model.id,
+                    EngineProcessRow.instance_id.is_(None),
+                    EngineProcessRow.state == EngineState.READY,
+                    ModelCopyRow.verified.is_(True),
+                )
+                .order_by(NodeRow.name)
+                .limit(1)
+            )
+        ).one_or_none()
+        if legacy is None:
+            return ResolvedModel(model.id, model.slug, model.context_window, None, None, None, None)
+        engine, node, copy = legacy
+        return ResolvedModel(
+            model.id,
+            model.slug,
+            model.context_window,
+            copy.path,
+            engine.id,
+            node.name,
+            f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
+        )
+    engine, node, copy, _instance = target
     return ResolvedModel(
         model.id,
         model.slug,

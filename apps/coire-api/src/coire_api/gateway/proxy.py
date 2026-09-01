@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -11,8 +12,19 @@ from time import perf_counter
 from urllib.parse import urlparse
 
 import httpx
+from sqlalchemy import select
 
+from coire_api.db import (
+    EngineProcessRow,
+    InstanceMemberRow,
+    MemoryReservationRow,
+    ModelInstanceRow,
+    ShardGroupRow,
+    session_scope,
+)
 from coire_api.gateway.telemetry import queue_duration_ms, tracer
+from coire_api.placement.service import acquire_lease, refresh_lease, release_lease
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import Settings
 
 _semaphores: dict[str, asyncio.Semaphore] = {}
@@ -52,7 +64,7 @@ def _client() -> httpx.AsyncClient:
 
 def _node_headers(engine_url: str, settings: Settings) -> dict[str, str]:
     parsed = urlparse(engine_url)
-    if not parsed.path.startswith("/node/engines/"):
+    if not parsed.path.startswith(("/node/engines/", "/node/shard-groups/")):
         return {}
     node = (parsed.hostname or "").split(".", 1)[0]
     token = settings.node_token_map.get(node, "")
@@ -76,6 +88,20 @@ class EngineProxyError(Exception):
     pass
 
 
+def _stream_failure_event(retry_after_s: int = 1) -> bytes:
+    """Carry retry guidance after an SSE response has committed its HTTP headers."""
+    error = json.dumps(
+        {
+            "error": {
+                "message": "engine stream failed",
+                "type": "engine_error",
+                "coire_retry_after": retry_after_s,
+            }
+        }
+    )
+    return f"retry: {retry_after_s * 1000}\ndata: {error}\n\n".encode()
+
+
 @asynccontextmanager
 async def engine_slot(engine_url: str, settings: Settings) -> AsyncIterator[None]:
     semaphore = await _semaphore(engine_url, settings.gateway_max_inflight_per_engine)
@@ -95,12 +121,120 @@ async def engine_slot(engine_url: str, settings: Settings) -> AsyncIterator[None
         semaphore.release()
 
 
+@asynccontextmanager
+async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[None]:
+    """Protect a resolved model from TTL/eviction for the full upstream request lifetime."""
+    parsed = urlparse(engine_url)
+    segments = parsed.path.split("/")
+    try:
+        target_id = uuid.UUID(segments[3])
+    except (ValueError, IndexError):
+        yield
+        return
+    lease_ids: list[uuid.UUID] = []
+    instance_id: uuid.UUID | None = None
+    async with session_scope() as session:
+        if len(segments) > 2 and segments[2] == "shard-groups":
+            group = await session.get(ShardGroupRow, target_id)
+            instance_id = group.instance_id if group is not None else None
+            members = (
+                list(
+                    (
+                        await session.execute(
+                            select(InstanceMemberRow).where(
+                                InstanceMemberRow.instance_id == instance_id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if instance_id is not None
+                else []
+            )
+            for member in members:
+                if member.reservation_id is not None:
+                    lease = await acquire_lease(
+                        session,
+                        member.reservation_id,
+                        str(uuid.uuid4()),
+                        ttl_seconds=settings.placement_lease_ttl_s,
+                    )
+                    lease_ids.append(lease.id)
+        else:
+            engine = await session.get(EngineProcessRow, target_id)
+            if engine is not None:
+                instance_id = engine.instance_id
+        if len(segments) <= 2 or segments[2] != "shard-groups":
+            engine = await session.get(EngineProcessRow, target_id)
+        else:
+            engine = None
+        if engine is not None and engine.model_id is not None:
+            holder_id = str(engine.instance_id or engine.model_id)
+            reservation = await session.scalar(
+                select(MemoryReservationRow).where(
+                    MemoryReservationRow.node_id == engine.node_id,
+                    MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                    MemoryReservationRow.holder_id == holder_id,
+                    MemoryReservationRow.state == MemoryReservationState.HELD,
+                )
+            )
+            if reservation is not None:
+                lease = await acquire_lease(
+                    session,
+                    reservation.id,
+                    str(uuid.uuid4()),
+                    ttl_seconds=settings.placement_lease_ttl_s,
+                )
+                lease_ids.append(lease.id)
+        if instance_id is not None and lease_ids:
+            instance = await session.get(ModelInstanceRow, instance_id)
+            if instance is not None:
+                instance.in_flight += 1
+    try:
+        stop_refresh = asyncio.Event()
+
+        async def keep_fresh() -> None:
+            interval = max(0.1, settings.placement_lease_ttl_s / 2)
+            while not stop_refresh.is_set():
+                try:
+                    await asyncio.wait_for(stop_refresh.wait(), timeout=interval)
+                    return
+                except TimeoutError:
+                    async with session_scope() as session:
+                        refreshed = [
+                            await refresh_lease(
+                                session,
+                                lease_id,
+                                ttl_seconds=settings.placement_lease_ttl_s,
+                            )
+                            for lease_id in lease_ids
+                        ]
+                        if not all(refreshed):
+                            return
+
+        refresher = asyncio.create_task(keep_fresh()) if lease_ids else None
+        yield
+    finally:
+        stop_refresh.set()
+        if refresher is not None:
+            await refresher
+        if lease_ids:
+            async with session_scope() as session:
+                for lease_id in lease_ids:
+                    await release_lease(session, lease_id)
+                if instance_id is not None:
+                    instance = await session.get(ModelInstanceRow, instance_id)
+                    if instance is not None:
+                        instance.in_flight = max(0, instance.in_flight - 1)
+
+
 async def complete(
     engine_url: str, payload: dict[str, object], settings: Settings
 ) -> dict[str, object]:
     with tracer.start_as_current_span("coire.gateway.generation") as span:
         span.set_attribute("coire.gateway.streaming", False)
-        async with engine_slot(engine_url, settings):
+        async with engine_slot(engine_url, settings), request_lease(engine_url, settings):
             try:
                 with tracer.start_as_current_span("coire.gateway.upstream"):
                     response = await _client().post(
@@ -127,7 +261,7 @@ async def stream(
 ) -> AsyncIterator[bytes]:
     with tracer.start_as_current_span("coire.gateway.generation") as span:
         span.set_attribute("coire.gateway.streaming", True)
-        async with engine_slot(engine_url, settings):
+        async with engine_slot(engine_url, settings), request_lease(engine_url, settings):
             timeout = httpx.Timeout(settings.gateway_engine_request_timeout_s, read=None)
             done = False
             try:
@@ -150,22 +284,11 @@ async def stream(
                                     done = True
                                 yield f"{line}\n\n".encode()
                         if not done:
-                            error = json.dumps(
-                                {
-                                    "error": {
-                                        "message": "engine stream failed",
-                                        "type": "engine_error",
-                                    }
-                                }
-                            )
-                            yield f"data: {error}\n\n".encode()
+                            yield _stream_failure_event()
                             raise EngineProxyError("engine stream ended without a terminator")
             except httpx.HTTPError as exc:
                 if done:
                     return
                 span.record_exception(exc)
-                error = json.dumps(
-                    {"error": {"message": "engine stream failed", "type": "engine_error"}}
-                )
-                yield f"data: {error}\n\n".encode()
+                yield _stream_failure_event()
                 raise EngineProxyError(str(exc)) from exc

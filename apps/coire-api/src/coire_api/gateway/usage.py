@@ -17,6 +17,7 @@ from coire_api.gateway.telemetry import (
     request_counter,
     request_duration_ms,
 )
+from coire_api.identity.limits import settle_usage
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
 
 
@@ -110,6 +111,13 @@ async def persist_usage(
                     finished_at=finished_at,
                 )
             )
+            if principal.api_key_id is not None:
+                await settle_usage(
+                    session,
+                    principal.api_key_id,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
 
     task = asyncio.create_task(_write())
     try:

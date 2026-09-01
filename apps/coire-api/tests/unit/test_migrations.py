@@ -75,3 +75,94 @@ def test_gateway_and_fabric_migration_heads_are_merged() -> None:
     source = Path("apps/coire-api/alembic/versions/0004_merge_gateway_fabrics.py").read_text()
     assert 'revision = "0004_merge_gateway_fabrics"' in source
     assert 'down_revision = ("0003_gateway_usage", "0003_node_endpoints")' in source
+
+
+def test_acquisition_variant_migration_is_additive_and_guards_downgrade() -> None:
+    source = Path("apps/coire-api/alembic/versions/0005_acquisition_variants.py").read_text()
+    assert 'revision = "0005_acquisition_variants"' in source
+    assert 'down_revision = "0004_merge_gateway_fabrics"' in source
+    for table in (
+        "model_variants",
+        "acquisition_workflows",
+        "acquisition_stages",
+        "inspection_results",
+        "validation_results",
+        "variant_copies",
+        "node_reservations",
+    ):
+        assert f'"{table}"' in source
+    assert "cannot downgrade after creating additional model variants" in source
+
+
+def test_memory_ledger_migration_is_reversible() -> None:
+    source = Path("apps/coire-api/alembic/versions/0006_memory_ledger.py").read_text()
+    assert 'revision: str = "0006_memory_ledger"' in source
+    assert 'down_revision: str | None = "0005_acquisition_variants"' in source
+    for table in (
+        "node_memory_ledgers",
+        "memory_reservations",
+        "request_leases",
+        "placement_decisions",
+        "eviction_events",
+        "placement_commands",
+    ):
+        assert f'"{table}"' in source
+    assert '"placement_commands",\n        "eviction_events"' in source
+
+
+def test_model_instance_migration_preserves_legacy_engines_and_is_reversible() -> None:
+    source = Path("apps/coire-api/alembic/versions/0007_model_instances.py").read_text()
+    assert 'revision: str = "0007_model_instances"' in source
+    assert 'down_revision: str | None = "0006_memory_ledger"' in source
+    for table in (
+        "model_instances",
+        "instance_members",
+        "instance_transitions",
+        "registration_attempts",
+    ):
+        assert f'"{table}"' in source
+    assert "UPDATE engine_processes SET instance_id=id" in source
+    assert "UPDATE memory_reservations r SET holder_id=e.instance_id::text" in source
+    assert 'op.drop_column("engine_processes", "instance_id")' in source
+
+
+def test_sharded_serving_migration_is_reversible() -> None:
+    source = Path("apps/coire-api/alembic/versions/0008_sharded_serving.py").read_text()
+    assert 'revision: str = "0008_sharded_serving"' in source
+    assert 'down_revision: str | None = "0007_model_instances"' in source
+    for table in (
+        "link_observations",
+        "shard_groups",
+        "shard_commands",
+        "benchmark_runs",
+        "placement_benchmarks",
+        "benchmark_commands",
+    ):
+        assert f'"{table}"' in source
+        assert f'op.drop_table("{table}")' in source
+
+
+def test_identity_migration_is_reversible_and_extends_audit() -> None:
+    source = Path("apps/coire-api/alembic/versions/0009_identity.py").read_text()
+    assert 'revision: str = "0009_identity"' in source
+    assert 'down_revision: str | None = "0008_sharded_serving"' in source
+    for table in (
+        "users",
+        "entitlements",
+        "api_keys",
+        "api_key_rate_windows",
+        "api_key_usage_accumulators",
+    ):
+        assert f'"{table}"' in source
+        assert f'op.drop_table("{table}")' in source
+    for column in (
+        "actor_type",
+        "actor_user_id",
+        "request_id",
+        "before",
+        "after",
+        "context",
+    ):
+        assert f'"{column}"' in source
+    assert 'postgresql.ENUM(name="audit_actor_type").drop' in source
+    assert 'postgresql.ENUM(name="user_role").drop' in source

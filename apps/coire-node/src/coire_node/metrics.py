@@ -10,7 +10,9 @@ Sampling happens on a background thread so a slow `ioreg` never blocks the event
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
+import platform
 import re
 import shutil
 import socket
@@ -101,6 +103,11 @@ class MetricsCollector:
     ) -> None:
         self._name = node_name
         self._version = agent_version
+        self._os_version = platform.mac_ver()[0] or platform.release()
+        try:
+            self._engine_version = importlib.metadata.version("mlx-lm")
+        except importlib.metadata.PackageNotFoundError:
+            self._engine_version = "unavailable"
         self._interval = interval_s
         self._budget_cpu = budget_cpu_pct
         self._budget_rss = budget_rss_bytes
@@ -157,6 +164,8 @@ class MetricsCollector:
         status = NodeStatus(
             name=self._name,
             agent_version=self._version,
+            os_version=self._os_version,
+            engine_version=self._engine_version,
             uptime_seconds=time.monotonic() - self._started,
             cpu_percent=float(psutil.cpu_percent(interval=None)),
             gpu_percent=read_gpu_percent(),
