@@ -180,6 +180,14 @@ core control address (`192.168.4.10`) through Wi‑Fi `en1`, while the Thunderbo
 active at `192.168.100.11` (edge-a) and `192.168.100.12` (edge-b). This confirms no wired path is
 used for control or public egress; `bridge0` is reserved for Studio-to-Studio inference traffic.
 
+The footprint command was rerun over SSH with `--keychain` on both Studios. Each output contained
+only `/opt/coire/{bin,python,envs,log,models,state,hf-cache}`, the LaunchDaemon plist, and the two
+System-keychain entries `coire-node-token` and `coire-hf-token`; `/opt/coire` itself remained.
+The same check reported LaunchDaemon `state = running`, the expected FQDN/data hosts, and MLX
+`0.31.3` on both nodes. A subsequent authenticated health sample reported
+`collection_budget_ok: true` on edge-a; edge-b varied around the 2% CPU boundary while idle and
+was observed returning to `true`, so a sustained pull-budget measurement remains open.
+
 ## CI: proving the shell check
 
 `SC-008` requires that a deliberately-introduced shell fails CI with a message naming the
