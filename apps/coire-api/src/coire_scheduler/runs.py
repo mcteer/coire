@@ -185,7 +185,10 @@ async def place_run(run_id_text: str) -> None:
         await asyncio.sleep(get_settings().placement_poll_interval_s)
 
 
-@DBOS.step(retries_allowed=True, max_attempts=5, interval_seconds=1.0)
+# A process restart interrupts the active WAIT command and DBOS records the recovery as another
+# step attempt. Keep the ceiling aligned with the workflow recovery budget so several supervisor
+# restarts cannot exhaust otherwise idempotent command replay while a container is still running.
+@DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
 async def execute_run(run_id_text: str) -> None:
     run_id = uuid.UUID(run_id_text)
     with tracer.start_as_current_span("coire.scheduler.run.execute") as span:

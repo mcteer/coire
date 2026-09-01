@@ -157,6 +157,21 @@ def drain_runtime(
     timeout: float = 60,
 ) -> None:
     """Drain prior runtime state through public APIs for independent scenarios."""
+    # A prior scenario may deliberately pin a model reservation. Remove that policy first;
+    # otherwise the instance can reach a terminal state while its reservation correctly remains
+    # held, contaminating the next scenario's capacity assumptions.
+    ledgers = client.get("/api/v1/admin/ledger", headers=headers)
+    ledgers.raise_for_status()
+    for ledger in ledgers.json():
+        for reservation in ledger["reservations"]:
+            if reservation["holder_type"] == "model" and reservation["pinned"]:
+                response = client.patch(
+                    f"/api/v1/admin/ledger/reservations/{reservation['id']}",
+                    headers=headers,
+                    json={"pinned": False},
+                )
+                assert response.status_code == 204, response.text
+
     instance_terminal = {"stopped", "failed"}
     instances = client.get("/api/v1/instances", headers=headers)
     instances.raise_for_status()
