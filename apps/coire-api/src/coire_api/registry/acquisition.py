@@ -310,6 +310,8 @@ def variant_projection(row: ModelVariantRow) -> ModelVariant:
         memory_estimate_bytes=row.memory_estimate_bytes,
         estimate_delta_bytes=row.estimate_delta_bytes,
         validated=row.validated,
+        harness_verified=bool(row.harness_verified),
+        harness_verified_at=row.harness_verified_at,
         published=row.published,
         is_default=row.is_default,
         raw_retained=row.raw_retained,

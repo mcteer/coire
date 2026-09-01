@@ -135,6 +135,12 @@ class Settings(BaseSettings):
     gateway_retry_after_s: int = Field(default=30, ge=1)
     gateway_engine_request_timeout_s: float = Field(default=900.0, gt=0.0)
 
+    # --- agent harness -------------------------------------------------
+    harness_retry_limit: int = Field(default=2, ge=0, le=5)
+    harness_tool_output_byte_cap: int = Field(default=16_384, ge=1024, le=1_048_576)
+    harness_summary_threshold: float = Field(default=0.8, gt=0.0, le=1.0)
+    harness_evaluation_pass_score: float = Field(default=0.8, ge=0.0, le=1.0)
+
     # --- model store and engines (node side) ----------------------------
     node_store_dir: str = "/opt/coire/models"
     node_state_dir: str = "/opt/coire/state"
