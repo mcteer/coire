@@ -185,9 +185,7 @@ def _proposal(
     # Keep the manually registered session alive while the preceding model lifecycle
     # assertions run.  In CI those waits can exceed the 30-second stale-session window;
     # the real ops container sends this heartbeat continuously.
-    heartbeat = client.patch(
-        f"/api/v1/internal/ops/sessions/{session_id}", headers=service_headers
-    )
+    heartbeat = client.patch(f"/api/v1/internal/ops/sessions/{session_id}", headers=service_headers)
     assert heartbeat.status_code == 200, heartbeat.text
     action = {
         "operation": "instance.unload",
