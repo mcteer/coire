@@ -188,6 +188,7 @@ def drain_runtime(
     instance_terminal = {"stopped", "failed"}
     instances = client.get("/api/v1/instances", headers=headers)
     instances.raise_for_status()
+    instance_ids = {str(instance["id"]) for instance in instances.json()}
     waiting: set[str] = set()
     for instance in instances.json():
         if instance["state"] == "ready":
@@ -237,7 +238,14 @@ def drain_runtime(
             str(reservation["id"])
             for ledger in ledgers.json()
             for reservation in ledger["reservations"]
-            if reservation["holder_type"] == "model" and reservation["released_at"] is None
+            # Model-level reservations can legitimately outlive an instance while the
+            # model cache remains warm.  Runtime cleanup must assert only reservations
+            # owned by instances from this suite.
+            if (
+                reservation["holder_type"] == "model"
+                and reservation["holder_id"] in instance_ids
+                and reservation["released_at"] is None
+            )
         ]
         if not remaining_reservations:
             break
