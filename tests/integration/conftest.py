@@ -172,6 +172,34 @@ def drain_runtime(
     timeout: float = 180,
 ) -> None:
     """Drain prior runtime state through public APIs for independent scenarios."""
+    # Agent runs own containers and reservations independently of model instances.  A prior
+    # scenario can therefore leave a run container alive even after its publication cleanup;
+    # kill those runs first so later lifecycle/admission tests do not inherit their memory
+    # pressure or a serialized command executor that is still waiting on a container.
+    admin_runs = client.get("/api/v1/admin/runs", headers=headers)
+    admin_runs.raise_for_status()
+    run_terminal = {"succeeded", "failed", "result_collection_failed", "timed_out", "killed"}
+    active_run_ids: set[str] = set()
+    for run in admin_runs.json():
+        if run["state"] in run_terminal:
+            continue
+        response = client.request(
+            "DELETE",
+            f"/api/v1/admin/runs/{run['id']}",
+            headers=headers,
+            json={"reason": "integration runtime isolation"},
+        )
+        assert response.status_code == 202, response.text
+        active_run_ids.add(str(run["id"]))
+    deadline = time.monotonic() + timeout
+    while active_run_ids and time.monotonic() < deadline:
+        current = client.get("/api/v1/admin/runs", headers=headers)
+        current.raise_for_status()
+        active_run_ids -= {str(run["id"]) for run in current.json() if run["state"] in run_terminal}
+        if active_run_ids:
+            time.sleep(0.25)
+    assert not active_run_ids, f"agent runs did not drain: {sorted(active_run_ids)}"
+
     # A prior scenario may deliberately pin a model reservation. Remove that policy first;
     # otherwise the instance can reach a terminal state while its reservation correctly remains
     # held, contaminating the next scenario's capacity assumptions.
