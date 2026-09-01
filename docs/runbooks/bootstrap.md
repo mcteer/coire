@@ -175,6 +175,11 @@ LaunchDaemon on both hosts. `/opt/coire/envs/0.2.0/bin/python3` reported `mlx_lm
 edge-b: `envs 392M`, `models 291M`, `python 70M`, `bin 35M`, `log 4.0M`, `hf-cache 24K`,
 `state 20K`. No files outside the uninstall allowlist were reported by the dry-run.
 
+The control/data separation was also verified without changing routes: both Studios resolve the
+core control address (`192.168.4.10`) through Wi‑Fi `en1`, while the Thunderbolt `bridge0` fabric is
+active at `192.168.100.11` (edge-a) and `192.168.100.12` (edge-b). This confirms no wired path is
+used for control or public egress; `bridge0` is reserved for Studio-to-Studio inference traffic.
+
 ## CI: proving the shell check
 
 `SC-008` requires that a deliberately-introduced shell fails CI with a message naming the
