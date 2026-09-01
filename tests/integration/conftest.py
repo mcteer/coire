@@ -90,6 +90,11 @@ INTEGRATION_SECRETS = {
     "COIRE_IT_API_PORT": INTEGRATION_API_PORT,
     "COIRE_CLUSTER_CONFIG_DIR": str(REPO / "tests/integration/testdata"),
     "COIRE_IT_RUN_WORKSPACE_ROOT": str(RUN_WORKSPACE_ROOT),
+    # The composed suite can spend several minutes between operations while engines and
+    # acquisition workflows settle. Production remains intentionally strict at 30 seconds;
+    # the fixture uses the configured upper bound so manually registered test sessions do not
+    # expire between assertions (real ops containers heartbeat continuously).
+    "OPS_SESSION_STALE_S": "300",
 }
 
 ACCESS_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -227,9 +232,9 @@ def drain_runtime(
         remaining_reservations = [
             str(reservation["id"])
             for ledger in ledgers.json()
-            for reservation in ledger["reservations"]
-            if reservation["holder_type"] == "model"
-        ]
+                for reservation in ledger["reservations"]
+                if reservation["holder_type"] == "model" and reservation["released_at"] is None
+            ]
         if not remaining_reservations:
             break
         time.sleep(0.25)
