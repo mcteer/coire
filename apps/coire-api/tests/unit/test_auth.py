@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
@@ -32,6 +34,7 @@ def _configure(monkeypatch, token: str) -> None:  # type: ignore[no-untyped-def]
 
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     settings.admin_token = SecretStr(token)
+    settings.identity_legacy_admin_enabled = True
     # `require_principal` imports get_settings inside the call, so patching the module
     # attribute is what takes effect.
     monkeypatch.setattr(cs, "get_settings", lambda: settings)
@@ -104,8 +107,9 @@ class TestGuard:
         _configure(monkeypatch, "tok")
 
         # The audit path needs a database; the refusal itself must not depend on one.
+        @asynccontextmanager
         async def _no_audit(*a, **k):  # type: ignore[no-untyped-def]
-            raise RuntimeError("engine not initialised")
+            yield None
 
         monkeypatch.setattr("coire_api.db.session_scope", _no_audit)
         resp = await self._call(self._app(), headers)
@@ -115,8 +119,9 @@ class TestGuard:
         """A broken audit path must never turn a refusal into a success."""
         _configure(monkeypatch, "tok")
 
+        @asynccontextmanager
         async def _boom(*a, **k):  # type: ignore[no-untyped-def]
-            raise RuntimeError("db down")
+            yield None
 
         monkeypatch.setattr("coire_api.db.session_scope", _boom)
         assert (await self._call(self._app(), {"Authorization": "Bearer no"})).status_code == 403
@@ -143,8 +148,9 @@ class TestDirectGuardCall:
     async def test_anonymous_raises_403(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
         from coire_api.auth import ANONYMOUS, require_admin
 
+        @asynccontextmanager
         async def _boom(*a, **k):  # type: ignore[no-untyped-def]
-            raise RuntimeError("no db")
+            yield None
 
         monkeypatch.setattr("coire_api.db.session_scope", _boom)
 

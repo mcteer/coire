@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, status
 from opentelemetry import metrics, trace
 from sqlalchemy import select
 
-from coire_api.audit import write_audit
+from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
 from coire_api.benchmarks import project_run
 from coire_api.db import (
@@ -127,9 +127,9 @@ async def create_benchmark(
                 payload=command.model_dump(mode="json"),
             )
         )
-    await write_audit(
+    await write_principal_audit(
         session,
-        actor=principal.subject or "admin",
+        principal=principal,
         action="benchmark.create",
         target_type="benchmark_run",
         target_id=str(run.id),
@@ -191,9 +191,9 @@ async def probe_studio_link(
                 await append_observation(session, observation)
     except (NodeError, LookupError) as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
-    await write_audit(
+    await write_principal_audit(
         session,
-        actor=principal.subject or "admin",
+        principal=principal,
         action="link.probe",
         target_type="studio_link",
         target_id="coire-edge-a:coire-edge-b",

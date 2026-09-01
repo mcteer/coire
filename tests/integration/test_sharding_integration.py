@@ -411,19 +411,22 @@ def test_rank_failure_creates_one_smaller_survivor_fallback(
         # the independent bounded-fallback branch.
         _sql_value(
             "UPDATE nodes SET reachability='healthy'::reachability "
-            "WHERE name='coire-edge-a'; "
+            "WHERE name IN ('coire-edge-a','coire-edge-b'); "
             "UPDATE node_memory_ledgers SET health='healthy'::reachability,health_reason=NULL "
-            "WHERE node_id=(SELECT id FROM nodes WHERE name='coire-edge-a'); SELECT 1"
+            "WHERE node_id IN (SELECT id FROM nodes WHERE name IN "
+            "('coire-edge-a','coire-edge-b')); SELECT 1"
         )
         deadline = time.monotonic() + 30
-        edge_a: dict[str, Any] | None = None
+        recovered: set[str] = set()
         while time.monotonic() < deadline:
             state = client.get("/api/v1/state", headers=admin_headers).json()
-            edge_a = next(node for node in state["nodes"] if node["name"] == "coire-edge-a")
-            if edge_a["reachability"] == "healthy":
+            recovered = {
+                node["name"] for node in state["nodes"] if node["reachability"] == "healthy"
+            }
+            if recovered >= {"coire-edge-a", "coire-edge-b"}:
                 break
             time.sleep(0.5)
-        assert edge_a is not None and edge_a["reachability"] == "healthy"
+        assert recovered >= {"coire-edge-a", "coire-edge-b"}
         model, largest = _fallback_candidate(client, admin_headers)
         _open_link(client, admin_headers)
         group = _create_tp(client, admin_headers, model, largest)

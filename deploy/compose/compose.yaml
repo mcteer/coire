@@ -66,11 +66,13 @@ services:
     environment:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
+      CLOUDFLARE_ACCESS_ISSUER: ${CLOUDFLARE_ACCESS_ISSUER:-}
+      CLOUDFLARE_ACCESS_AUDIENCE: ${CLOUDFLARE_ACCESS_AUDIENCE:-}
       NODE_INVENTORY_FILE: /app/nodes.yaml
       SHARDING_JACCL_HOSTFILE: /run/coire/cluster/jaccl-hostfile.json
       SHARDING_RING_HOSTFILE: /run/coire/cluster/ring-hostfile.json
     volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
-    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token]
+    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email]
     depends_on:
       postgres: {condition: service_healthy}
       coire-migrate: {condition: service_completed_successfully}
@@ -85,9 +87,16 @@ services:
     build:
       context: ../..
       dockerfile: apps/coire-api/docker/mcp.Dockerfile
-    networks: [coire-edge, coire-telemetry]
+    networks: [coire-edge, coire-db, coire-telemetry]
     environment:
       OTLP_ENDPOINT: http://otel-collector:4317
+      POSTGRES_HOST: postgres
+      CLOUDFLARE_ACCESS_ISSUER: ${CLOUDFLARE_ACCESS_ISSUER:-}
+      CLOUDFLARE_ACCESS_AUDIENCE: ${CLOUDFLARE_ACCESS_AUDIENCE:-}
+    secrets: [postgres_password]
+    depends_on:
+      postgres: {condition: service_healthy}
+      coire-migrate: {condition: service_completed_successfully}
     <<: *hardening
     user: "65532:65532"
     healthcheck:
@@ -261,3 +270,5 @@ secrets:
   # an authorisation decision, and a secret is only as confined as its narrowest mount.
   admin_token:
     file: ${COIRE_SECRETS_DIR}/admin_token
+  bootstrap_admin_email:
+    file: ${COIRE_SECRETS_DIR}/bootstrap_admin_email

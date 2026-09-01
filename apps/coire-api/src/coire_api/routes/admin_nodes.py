@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.audit import write_audit
+from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
 from coire_api.db import AuditRow, DownloadJobRow, EngineProcessRow, NodeRow
 from coire_api.deps import SessionDep, SettingsDep
@@ -20,7 +20,8 @@ from coire_api.instance.registration import issue_token
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.placement.service import ensure_ledgers
 from coire_api.routes.admin_models import _engine, _job
-from coire_core.models.audit import AuditAction, AuditRecord
+from coire_core.models.audit import AuditAction, AuditOutcome, AuditRecord
+from coire_core.models.auth import ActorType
 from coire_core.models.engine import TERMINAL_ENGINE_STATES, EngineState
 from coire_core.models.instance import NodeDeclaration, NodeRegistrationCredential
 from coire_core.models.link import StudioDataLinkStatus
@@ -73,9 +74,9 @@ async def declare_node(
         budget_bytes=settings.placement_default_budget_bytes,
         sandbox_bytes=settings.placement_sandbox_bytes,
     )
-    await write_audit(
+    await write_principal_audit(
         session,
-        actor=principal.subject or "admin",
+        principal=principal,
         action="node.declare",
         target_type="node",
         target_id=str(row.id),
@@ -100,9 +101,9 @@ async def rotate_registration_token(
     if row is None or row.declared_at is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such declared node")
     credential = issue_token(row, settings)
-    await write_audit(
+    await write_principal_audit(
         session,
-        actor=principal.subject or "admin",
+        principal=principal,
         action="node.registration_token.rotate",
         target_type="node",
         target_id=str(row.id),
@@ -119,9 +120,9 @@ async def revoke_registration_token(
     if row is None or row.declared_at is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such declared node")
     row.token_revoked_at = datetime.now(UTC)
-    await write_audit(
+    await write_principal_audit(
         session,
-        actor=principal.subject or "admin",
+        principal=principal,
         action="node.registration_token.revoke",
         target_type="node",
         target_id=str(row.id),
@@ -232,9 +233,9 @@ async def unload_engine(
                 status.HTTP_503_SERVICE_UNAVAILABLE, f"could not reach {node.name}: {exc}"
             ) from exc
 
-    await write_audit(
+    await write_principal_audit(
         session,
-        actor=principal.subject or "admin",
+        principal=principal,
         action=AuditAction.ENGINE_UNLOAD,
         target_type="engine",
         target_id=str(engine_id),
@@ -250,13 +251,35 @@ async def list_audit(
     session: SessionDep,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     target_id: str | None = None,
+    action: str | None = None,
+    actor: str | None = None,
+    actor_type: ActorType | None = None,
+    outcome: AuditOutcome | None = None,
 ) -> list[AuditRecord]:
     """Read the audit log. There is no route that writes, edits or deletes one."""
     query = select(AuditRow).order_by(AuditRow.at.desc()).limit(limit)
     if target_id:
         query = query.where(AuditRow.target_id == target_id)
+    if action:
+        query = query.where(AuditRow.action == action)
+    if actor:
+        query = query.where(AuditRow.actor == actor)
+    if actor_type:
+        query = query.where(AuditRow.actor_type == actor_type)
+    if outcome:
+        query = query.where(AuditRow.outcome == outcome)
     rows = (await session.execute(query)).scalars().all()
     return [AuditRecord.model_validate(r, from_attributes=True) for r in rows]
+
+
+@router.get("/audit/{audit_id}", response_model=AuditRecord)
+async def get_audit(
+    audit_id: uuid.UUID, principal: CurrentAdmin, session: SessionDep
+) -> AuditRecord:
+    row = await session.get(AuditRow, audit_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "audit record not found")
+    return AuditRecord.model_validate(row, from_attributes=True)
 
 
 def _dump(status_obj: Any) -> dict[str, Any] | None:

@@ -1,0 +1,22 @@
+groups:
+  - name: coire-identity
+    rules:
+      - alert: CoireAuthenticationFailureSpike
+        expr: sum(rate(coire_auth_attempts_total{outcome="refused"}[5m])) > 1
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Authentication refusals are elevated
+          description: Inspect bounded method/reason labels and correlated coire.auth spans; credentials are never logged.
+      - alert: CoireAuthenticationAuditWriteFailed
+        expr: increase(coire_auth_audit_failures_total[5m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: Authentication refusal audit writes are failing
+          description: Requests remain fail-closed, but investigate Postgres and coire.audit.write spans immediately.
+      - alert: CoireApiKeyQuotaRefusals
+        expr: increase(coire_key_limit_refusals_total{kind="quota"}[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: One or more API keys exhausted monthly quota
+          description: Review key consumption and reset time in the admin identity API.

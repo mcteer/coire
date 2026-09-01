@@ -15,12 +15,16 @@ import secrets
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import httpx
+import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE_DIR = REPO / "deploy/compose"
@@ -67,6 +71,7 @@ INTEGRATION_SECRETS = {
     "COIRE_SECRET_POSTGRES_PASSWORD": POSTGRES_PASSWORD,
     "COIRE_SECRET_KEY_SIGNING_SECRET": f"it-{secrets.token_urlsafe(32)}",
     "COIRE_SECRET_ADMIN_TOKEN": ADMIN_TOKEN,
+    "COIRE_SECRET_BOOTSTRAP_ADMIN_EMAIL": "admin@integration.test",
     # Nodes are deliberately started without usable credentials. The fixture declares them
     # through the admin API, installs the returned one-time tokens, and recreates the affected
     # services. This proves a fresh database cannot materialise workers by self-registration.
@@ -78,6 +83,63 @@ INTEGRATION_SECRETS = {
     "COIRE_IT_API_PORT": INTEGRATION_API_PORT,
     "COIRE_CLUSTER_CONFIG_DIR": str(REPO / "tests/integration/testdata"),
 }
+
+ACCESS_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+ACCESS_KID = "coire-integration-access"
+ACCESS_AUDIENCE = "coire-integration-audience"
+ACCESS_ISSUER = ""
+
+
+def _b64_int(value: int) -> str:
+    import base64
+
+    raw = value.to_bytes((value.bit_length() + 7) // 8, "big")
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+class _JwksHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path != "/cdn-cgi/access/certs":
+            self.send_error(404)
+            return
+        numbers = ACCESS_KEY.public_key().public_numbers()
+        body = json.dumps(
+            {
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "kid": ACCESS_KID,
+                        "use": "sig",
+                        "alg": "RS256",
+                        "n": _b64_int(numbers.n),
+                        "e": _b64_int(numbers.e),
+                    }
+                ]
+            }
+        ).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+
+def access_assertion(*, email: str = "admin@integration.test", **claims: object) -> str:
+    now = int(time.time())
+    payload: dict[str, object] = {
+        "iss": ACCESS_ISSUER,
+        "aud": ACCESS_AUDIENCE,
+        "sub": "integration-browser-user",
+        "email": email,
+        "iat": now,
+        "nbf": now - 1,
+        "exp": now + 120,
+    }
+    payload.update(claims)
+    return jwt.encode(payload, ACCESS_KEY, algorithm="RS256", headers={"kid": ACCESS_KID})
 
 
 def integration_env(**extra: str) -> dict[str, str]:
@@ -167,6 +229,17 @@ def stack() -> Iterator[None]:
         yield
         return
 
+    global ACCESS_ISSUER
+    jwks_server = ThreadingHTTPServer(("0.0.0.0", 0), _JwksHandler)
+    jwks_thread = threading.Thread(target=jwks_server.serve_forever, daemon=True)
+    jwks_thread.start()
+    ACCESS_ISSUER = f"http://host.docker.internal:{jwks_server.server_port}"
+    INTEGRATION_SECRETS.update(
+        {
+            "CLOUDFLARE_ACCESS_ISSUER": ACCESS_ISSUER,
+            "CLOUDFLARE_ACCESS_AUDIENCE": ACCESS_AUDIENCE,
+        }
+    )
     env = integration_env(COMPOSE_PROJECT_NAME=PROJECT)
     # Start from nothing: a leftover volume carries the previous run's credentials.
     subprocess.run(
@@ -207,6 +280,9 @@ def stack() -> Iterator[None]:
     try:
         yield
     finally:
+        jwks_server.shutdown()
+        jwks_server.server_close()
+        jwks_thread.join(timeout=5)
         if os.environ.get("COIRE_IT_KEEP_STACK") != "1":
             subprocess.run(
                 ["docker", "compose", "-p", PROJECT, "down", "-v", "--remove-orphans"],
@@ -232,6 +308,11 @@ def direct_api_url() -> str:
 def admin_headers() -> dict[str, str]:
     """The ADR-0004 admin bearer for this run."""
     return {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+
+
+@pytest.fixture(scope="session")
+def access_token_factory():  # type: ignore[no-untyped-def]
+    return access_assertion
 
 
 @pytest.fixture(scope="session")

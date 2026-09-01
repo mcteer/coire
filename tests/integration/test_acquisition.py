@@ -70,6 +70,25 @@ def acquired(api_url: str, admin_headers: dict[str, str]) -> dict[str, Any]:
         return wait_ready(client, admin_headers, body["id"], timeout=ACQUIRE_TIMEOUT_S)
 
 
+@pytest.fixture(scope="module")
+def user_headers(
+    api_url: str,
+    admin_headers: dict[str, str],
+    access_token_factory,  # type: ignore[no-untyped-def]
+) -> dict[str, str]:
+    email = "model-viewer@integration.test"
+    with _api(api_url) as client:
+        existing = client.get("/api/v1/admin/users", headers=admin_headers).json()
+        if not any(user["email"] == email for user in existing):
+            response = client.post(
+                "/api/v1/admin/users",
+                headers=admin_headers,
+                json={"email": email, "display_name": "Model Viewer", "role": "user"},
+            )
+            assert response.status_code == 201, response.text
+    return {"cf-access-jwt-assertion": access_token_factory(email=email)}
+
+
 class TestHappyPath:
     """SC-001: an admin adds a model and it reaches ready, unattended."""
 
@@ -195,14 +214,21 @@ class TestUserVisibility:
     """A model is invisible to a user until an admin publishes it (spec US5)."""
 
     def test_an_unpublished_model_is_absent_from_the_user_listing(
-        self, api_url: str, acquired: dict[str, Any]
+        self,
+        api_url: str,
+        user_headers: dict[str, str],
+        acquired: dict[str, Any],
     ) -> None:
         with _api(api_url) as client:
-            listing = client.get("/api/v1/models").json()
+            listing = client.get("/api/v1/models", headers=user_headers).json()
         assert not any(m["id"] == acquired["id"] for m in listing)
 
     def test_publishing_reveals_it_and_unpublishing_hides_it_again(
-        self, api_url: str, admin_headers: dict[str, str], acquired: dict[str, Any]
+        self,
+        api_url: str,
+        admin_headers: dict[str, str],
+        user_headers: dict[str, str],
+        acquired: dict[str, Any],
     ) -> None:
         model_id = acquired["id"]
         with _api(api_url) as client:
@@ -211,7 +237,7 @@ class TestUserVisibility:
                 headers=admin_headers,
                 json={"visibility": "published", "description": "small and fast"},
             )
-            published = client.get("/api/v1/models").json()
+            published = client.get("/api/v1/models", headers=user_headers).json()
             entry = next((m for m in published if m["id"] == model_id), None)
             assert entry is not None
             assert entry["load_state"] == "cold"
@@ -224,7 +250,7 @@ class TestUserVisibility:
                 headers=admin_headers,
                 json={"visibility": "admin_only"},
             )
-            hidden = client.get("/api/v1/models").json()
+            hidden = client.get("/api/v1/models", headers=user_headers).json()
 
         assert not any(m["id"] == model_id for m in hidden)
         # Unpublishing must not have touched the files.

@@ -67,6 +67,21 @@ def test_admin_token_is_not_in_repr(tmp_path: Path) -> None:
     assert "sekrit" not in repr(_settings(tmp_path, admin_token="sekrit"))
 
 
+def test_identity_defaults_are_fail_closed(tmp_path: Path) -> None:
+    settings = Settings(_secrets_dir=str(tmp_path))  # type: ignore[call-arg]
+    assert settings.cloudflare_access_issuer == ""
+    assert settings.cloudflare_access_audience == ""
+    assert settings.bootstrap_admin_email.get_secret_value() == ""
+    assert settings.cloudflare_jwks_ttl_s == 300.0
+    assert settings.cloudflare_jwt_leeway_s == 60.0
+
+
+def test_bootstrap_admin_email_is_file_sourced_and_redacted(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, bootstrap_admin_email="admin@example.test")
+    assert settings.bootstrap_admin_email.get_secret_value() == "admin@example.test"
+    assert "admin@example.test" not in repr(settings)
+
+
 def test_engine_port_range_parses(tmp_path: Path) -> None:
     assert Settings(_secrets_dir=str(tmp_path)).engine_port_range == (9500, 9599)  # type: ignore[call-arg]
 

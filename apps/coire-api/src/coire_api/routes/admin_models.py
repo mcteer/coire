@@ -406,11 +406,11 @@ async def load_model(
     row.process_create_time = engine_status.process_create_time
     row.state = engine_status.state
     row.chat_template_sha256 = engine_status.chat_template_sha256
-    from coire_api.audit import write_audit
+    from coire_api.audit import write_principal_audit
 
-    await write_audit(
+    await write_principal_audit(
         session,
-        actor=principal.subject or "admin",
+        principal=principal,
         action=AuditAction.ENGINE_LOAD,
         target_type="engine",
         target_id=str(engine_id),

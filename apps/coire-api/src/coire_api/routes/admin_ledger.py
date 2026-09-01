@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, status
 
-from coire_api.audit import write_audit
+from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
 from coire_api.db import ModelRow, ModelVariantRow, PlacementDecisionRow
 from coire_api.deps import SessionDep, SettingsDep
@@ -113,9 +113,9 @@ async def submit_placement(
     )
     session.add(row)
     await session.flush()
-    await write_audit(
+    await write_principal_audit(
         session,
-        actor=principal.subject or "admin",
+        principal=principal,
         action=AuditAction.PLACEMENT_REQUEST,
         target_type="placement_decision",
         target_id=str(row.id),

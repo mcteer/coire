@@ -13,7 +13,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 
-from coire_api.audit import write_audit
+from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAuthenticated
 from coire_api.db import (
     InstanceTransitionRow,
@@ -87,9 +87,9 @@ async def create_instance(
         session.add(row)
         await session.flush()
         await service.append_initial_transition(session, row)
-        await write_audit(
+        await write_principal_audit(
             session,
-            actor=principal.subject or principal.kind.value,
+            principal=principal,
             action="instance.create",
             target_type="model_instance",
             target_id=str(row.id),
@@ -184,9 +184,9 @@ async def drain_instance(
             seconds=settings.instance_drain_timeout_s
         )
         row = await service.transition(session, instance_id, InstanceState.DRAINING)
-        await write_audit(
+        await write_principal_audit(
             session,
-            actor=principal.subject or principal.kind.value,
+            principal=principal,
             action="instance.drain",
             target_type="model_instance",
             target_id=str(instance_id),
