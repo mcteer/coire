@@ -164,6 +164,11 @@ def _session_heartbeats(api_url: str, service_headers: dict[str, str], session_i
     """Keep a manual ops session alive while CI waits on a model lifecycle."""
 
     stop = Event()
+    with httpx.Client(base_url=api_url, timeout=10) as initial_client:
+        initial = initial_client.patch(
+            f"/api/v1/internal/ops/sessions/{session_id}", headers=service_headers
+        )
+        assert initial.status_code == 200, initial.text
 
     def heartbeat() -> None:
         with httpx.Client(base_url=api_url, timeout=10) as heartbeat_client:
