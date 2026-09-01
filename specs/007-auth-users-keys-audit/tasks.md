@@ -127,7 +127,7 @@ audit record, scan stored JSON/logs for presented secrets, and prove no write/de
 - [x] T054 Run `quickstart.md`, full non-integration and composed integration suites, Ruff, mypy, web tests/lint, and OpenAPI freshness checks
 - [x] T055 Build changed production images and pass image policy, CRITICAL CVE scans, and SBOM generation
 - [x] T056 Complete a convergence audit against every FR/SC and append any uncovered work to `specs/007-auth-users-keys-audit/tasks.md`
-- [ ] T057 Complete PR description with spec link, dependency licences/rationale, and Principles I–VII compliance
+- [x] T057 Complete PR description with spec link, dependency licences/rationale, and Principles I–VII compliance
 
 ---
 
