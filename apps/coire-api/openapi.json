@@ -2156,6 +2156,12 @@
         "title": "CursorPage[ActivityItem]",
         "type": "object"
       },
+      "EmptyOpsParameters": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "EmptyOpsParameters",
+        "type": "object"
+      },
       "EvaluationVerdict": {
         "enum": [
           "passed",
@@ -2498,6 +2504,68 @@
         "title": "InstanceCreate",
         "type": "object"
       },
+      "InstanceLoadAction": {
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "const": "instance.load",
+            "title": "Operation",
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/InstanceLoadParameters"
+          },
+          "precondition": {
+            "$ref": "#/components/schemas/OpsActionPrecondition"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "model",
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "target_type",
+          "target_id",
+          "parameters",
+          "precondition"
+        ],
+        "title": "InstanceLoadAction",
+        "type": "object"
+      },
+      "InstanceLoadParameters": {
+        "additionalProperties": false,
+        "properties": {
+          "policy": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant_id"
+        ],
+        "title": "InstanceLoadParameters",
+        "type": "object"
+      },
       "InstanceMember": {
         "additionalProperties": false,
         "properties": {
@@ -2579,6 +2647,40 @@
         ],
         "title": "InstanceState",
         "type": "string"
+      },
+      "InstanceUnloadAction": {
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "const": "instance.unload",
+            "title": "Operation",
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/EmptyOpsParameters"
+          },
+          "precondition": {
+            "$ref": "#/components/schemas/OpsActionPrecondition"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "instance",
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "target_type",
+          "target_id",
+          "precondition"
+        ],
+        "title": "InstanceUnloadAction",
+        "type": "object"
       },
       "LedgerUpdate": {
         "additionalProperties": false,
@@ -3213,6 +3315,74 @@
           "capability_profile"
         ],
         "title": "ModelListing",
+        "type": "object"
+      },
+      "ModelPinAction": {
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "const": "model.pin",
+            "title": "Operation",
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/EmptyOpsParameters"
+          },
+          "precondition": {
+            "$ref": "#/components/schemas/OpsActionPrecondition"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "model",
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "target_type",
+          "target_id",
+          "precondition"
+        ],
+        "title": "ModelPinAction",
+        "type": "object"
+      },
+      "ModelUnpinAction": {
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "const": "model.unpin",
+            "title": "Operation",
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/EmptyOpsParameters"
+          },
+          "precondition": {
+            "$ref": "#/components/schemas/OpsActionPrecondition"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "model",
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "target_type",
+          "target_id",
+          "precondition"
+        ],
+        "title": "ModelUnpinAction",
         "type": "object"
       },
       "ModelUpdateRequest": {
@@ -3872,6 +4042,629 @@
         "title": "OccupantReason",
         "type": "string"
       },
+      "OpsActionPrecondition": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_state": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Expected State",
+            "type": "string"
+          },
+          "resource_version": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Resource Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_version",
+          "expected_state"
+        ],
+        "title": "OpsActionPrecondition",
+        "type": "object"
+      },
+      "OpsConfirmRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "discriminator": {
+              "mapping": {
+                "instance.load": "#/components/schemas/InstanceLoadAction",
+                "instance.unload": "#/components/schemas/InstanceUnloadAction",
+                "model.pin": "#/components/schemas/ModelPinAction",
+                "model.unpin": "#/components/schemas/ModelUnpinAction",
+                "run.kill": "#/components/schemas/RunKillAction"
+              },
+              "propertyName": "operation"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InstanceUnloadAction"
+              },
+              {
+                "$ref": "#/components/schemas/RunKillAction"
+              },
+              {
+                "$ref": "#/components/schemas/ModelPinAction"
+              },
+              {
+                "$ref": "#/components/schemas/ModelUnpinAction"
+              },
+              {
+                "$ref": "#/components/schemas/InstanceLoadAction"
+              }
+            ],
+            "title": "Action"
+          },
+          "confirm_token": {
+            "pattern": "^coire_confirm_[A-Za-z0-9_-]{12}_[A-Za-z0-9_-]{43}$",
+            "title": "Confirm Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "confirm_token",
+          "action"
+        ],
+        "title": "OpsConfirmRequest",
+        "type": "object"
+      },
+      "OpsConversation": {
+        "additionalProperties": false,
+        "properties": {
+          "admin_user_id": {
+            "format": "uuid",
+            "title": "Admin User Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "degraded": {
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ops_session_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ops Session Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OpsConversationState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "admin_user_id",
+          "state",
+          "degraded",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OpsConversation",
+        "type": "object"
+      },
+      "OpsConversationCreate": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "OpsConversationCreate",
+        "type": "object"
+      },
+      "OpsConversationDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/OpsConversation"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/OpsMessage"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/OpsProposal"
+            },
+            "title": "Proposals",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversation"
+        ],
+        "title": "OpsConversationDetail",
+        "type": "object"
+      },
+      "OpsConversationState": {
+        "enum": [
+          "active",
+          "closed"
+        ],
+        "title": "OpsConversationState",
+        "type": "string"
+      },
+      "OpsDeclineRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "OpsDeclineRequest",
+        "type": "object"
+      },
+      "OpsMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OpsMessageRole"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "role",
+          "content",
+          "created_at"
+        ],
+        "title": "OpsMessage",
+        "type": "object"
+      },
+      "OpsMessageCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "question": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "question"
+        ],
+        "title": "OpsMessageCreate",
+        "type": "object"
+      },
+      "OpsMessageRole": {
+        "enum": [
+          "admin",
+          "ops",
+          "system"
+        ],
+        "title": "OpsMessageRole",
+        "type": "string"
+      },
+      "OpsProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "discriminator": {
+              "mapping": {
+                "instance.load": "#/components/schemas/InstanceLoadAction",
+                "instance.unload": "#/components/schemas/InstanceUnloadAction",
+                "model.pin": "#/components/schemas/ModelPinAction",
+                "model.unpin": "#/components/schemas/ModelUnpinAction",
+                "run.kill": "#/components/schemas/RunKillAction"
+              },
+              "propertyName": "operation"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InstanceUnloadAction"
+              },
+              {
+                "$ref": "#/components/schemas/RunKillAction"
+              },
+              {
+                "$ref": "#/components/schemas/ModelPinAction"
+              },
+              {
+                "$ref": "#/components/schemas/ModelUnpinAction"
+              },
+              {
+                "$ref": "#/components/schemas/InstanceLoadAction"
+              }
+            ],
+            "title": "Action"
+          },
+          "confirmed_by_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By User Id"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "executed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executed At"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "ops_session_id": {
+            "format": "uuid",
+            "title": "Ops Session Id",
+            "type": "string"
+          },
+          "proposer": {
+            "title": "Proposer",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OpsProposalState"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "ops_session_id",
+          "proposer",
+          "action",
+          "rationale",
+          "state",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "OpsProposal",
+        "type": "object"
+      },
+      "OpsProposalIssued": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_token": {
+            "pattern": "^coire_confirm_[A-Za-z0-9_-]{12}_[A-Za-z0-9_-]{43}$",
+            "title": "Confirm Token",
+            "type": "string"
+          },
+          "proposal": {
+            "$ref": "#/components/schemas/OpsProposal"
+          }
+        },
+        "required": [
+          "proposal",
+          "confirm_token"
+        ],
+        "title": "OpsProposalIssued",
+        "type": "object"
+      },
+      "OpsProposalState": {
+        "enum": [
+          "pending",
+          "confirmed",
+          "executing",
+          "executed",
+          "declined",
+          "expired",
+          "stale",
+          "failed"
+        ],
+        "title": "OpsProposalState",
+        "type": "string"
+      },
+      "OpsProposalSubmission": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "discriminator": {
+              "mapping": {
+                "instance.load": "#/components/schemas/InstanceLoadAction",
+                "instance.unload": "#/components/schemas/InstanceUnloadAction",
+                "model.pin": "#/components/schemas/ModelPinAction",
+                "model.unpin": "#/components/schemas/ModelUnpinAction",
+                "run.kill": "#/components/schemas/RunKillAction"
+              },
+              "propertyName": "operation"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InstanceUnloadAction"
+              },
+              {
+                "$ref": "#/components/schemas/RunKillAction"
+              },
+              {
+                "$ref": "#/components/schemas/ModelPinAction"
+              },
+              {
+                "$ref": "#/components/schemas/ModelUnpinAction"
+              },
+              {
+                "$ref": "#/components/schemas/InstanceLoadAction"
+              }
+            ],
+            "title": "Action"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "rationale": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "session_id",
+          "action",
+          "rationale"
+        ],
+        "title": "OpsProposalSubmission",
+        "type": "object"
+      },
+      "OpsSession": {
+        "additionalProperties": false,
+        "properties": {
+          "ended_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_seen_at": {
+            "format": "date-time",
+            "title": "Last Seen At",
+            "type": "string"
+          },
+          "service_instance": {
+            "title": "Service Instance",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/OpsSessionState"
+          }
+        },
+        "required": [
+          "id",
+          "service_instance",
+          "state",
+          "started_at",
+          "last_seen_at"
+        ],
+        "title": "OpsSession",
+        "type": "object"
+      },
+      "OpsSessionRegistration": {
+        "additionalProperties": false,
+        "properties": {
+          "service_instance": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Service Instance",
+            "type": "string"
+          },
+          "session_id": {
+            "format": "uuid",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "service_instance"
+        ],
+        "title": "OpsSessionRegistration",
+        "type": "object"
+      },
+      "OpsSessionState": {
+        "enum": [
+          "active",
+          "superseded",
+          "expired"
+        ],
+        "title": "OpsSessionState",
+        "type": "string"
+      },
+      "OpsTurnResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "proposal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpsProposalIssued"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OpsTurnStatus"
+          }
+        },
+        "required": [
+          "status",
+          "answer",
+          "observed_at"
+        ],
+        "title": "OpsTurnResponse",
+        "type": "object"
+      },
+      "OpsTurnStatus": {
+        "enum": [
+          "answered",
+          "proposed",
+          "degraded",
+          "unavailable"
+        ],
+        "title": "OpsTurnStatus",
+        "type": "string"
+      },
       "PinUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -4175,6 +4968,40 @@
         ],
         "title": "ReservationHolder",
         "type": "string"
+      },
+      "RunKillAction": {
+        "additionalProperties": false,
+        "properties": {
+          "operation": {
+            "const": "run.kill",
+            "title": "Operation",
+            "type": "string"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/EmptyOpsParameters"
+          },
+          "precondition": {
+            "$ref": "#/components/schemas/OpsActionPrecondition"
+          },
+          "target_id": {
+            "format": "uuid",
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "const": "run",
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "target_type",
+          "target_id",
+          "precondition"
+        ],
+        "title": "RunKillAction",
+        "type": "object"
       },
       "RunKillRequest": {
         "additionalProperties": false,
@@ -8137,6 +8964,420 @@
         ]
       }
     },
+    "/api/v1/admin/ops/conversations": {
+      "post": {
+        "operationId": "start_conversation_api_v1_admin_ops_conversations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpsConversationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsConversation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Start Conversation",
+        "tags": [
+          "admin: ops"
+        ]
+      }
+    },
+    "/api/v1/admin/ops/conversations/{conversation_id}": {
+      "get": {
+        "operationId": "get_conversation_api_v1_admin_ops_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsConversationDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Conversation",
+        "tags": [
+          "admin: ops"
+        ]
+      }
+    },
+    "/api/v1/admin/ops/conversations/{conversation_id}/messages": {
+      "post": {
+        "operationId": "post_message_api_v1_admin_ops_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpsMessageCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsTurnResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Message",
+        "tags": [
+          "admin: ops"
+        ]
+      }
+    },
+    "/api/v1/admin/ops/proposals/{proposal_id}": {
+      "get": {
+        "operationId": "get_proposal_api_v1_admin_ops_proposals__proposal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Proposal",
+        "tags": [
+          "admin: ops"
+        ]
+      }
+    },
+    "/api/v1/admin/ops/proposals/{proposal_id}/confirm": {
+      "post": {
+        "operationId": "confirm_proposal_api_v1_admin_ops_proposals__proposal_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpsConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm Proposal",
+        "tags": [
+          "admin: ops"
+        ]
+      }
+    },
+    "/api/v1/admin/ops/proposals/{proposal_id}/decline": {
+      "post": {
+        "operationId": "decline_proposal_api_v1_admin_ops_proposals__proposal_id__decline_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpsDeclineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Decline Proposal",
+        "tags": [
+          "admin: ops"
+        ]
+      }
+    },
     "/api/v1/admin/placements/{decision_id}": {
       "get": {
         "operationId": "get_placement_api_v1_admin_placements__decision_id__get",
@@ -9238,6 +10479,198 @@
         "summary": "Instance Events",
         "tags": [
           "instances"
+        ]
+      }
+    },
+    "/api/v1/internal/ops/proposals": {
+      "post": {
+        "operationId": "submit_ops_proposal_api_v1_internal_ops_proposals_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpsProposalSubmission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsProposalIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Ops Proposal",
+        "tags": [
+          "internal: ops"
+        ]
+      }
+    },
+    "/api/v1/internal/ops/sessions": {
+      "post": {
+        "operationId": "register_ops_session_api_v1_internal_ops_sessions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpsSessionRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsSession"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Ops Session",
+        "tags": [
+          "internal: ops"
+        ]
+      }
+    },
+    "/api/v1/internal/ops/sessions/{session_id}": {
+      "patch": {
+        "operationId": "heartbeat_ops_session_api_v1_internal_ops_sessions__session_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsSession"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Heartbeat Ops Session",
+        "tags": [
+          "internal: ops"
         ]
       }
     },

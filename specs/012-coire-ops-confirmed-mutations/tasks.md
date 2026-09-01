@@ -29,9 +29,9 @@ and observability tests are required by the spec and constitution.
 - [X] T009 Add a reversible Alembic migration for ops state in `apps/coire-api/alembic/versions/0012_ops_confirmations.py`
 - [X] T010 [P] Add migration upgrade/downgrade coverage in `apps/coire-api/tests/unit/test_migrations.py`
 - [X] T011 Add a dedicated ops-service principal and constant-time secret authentication in `apps/coire-api/src/coire_api/auth.py`
-- [ ] T012 Add internal ops session/proposal routes and public admin conversation/proposal routers in `apps/coire-api/src/coire_api/routes/internal_ops.py`, `apps/coire-api/src/coire_api/routes/admin_ops.py`, and `apps/coire-api/src/coire_api/app.py`
-- [ ] T013 [P] Add route authentication sweep and generated OpenAPI contract assertions in `apps/coire-api/tests/contract/test_admin_ops.py` and `apps/coire-api/tests/contract/test_auth_route_sweep.py`
-- [ ] T014 Regenerate `apps/coire-web/src/api/schema.d.ts` from the authoritative OpenAPI document
+- [X] T012 Add internal ops session/proposal routes and public admin conversation/proposal routers in `apps/coire-api/src/coire_api/routes/internal_ops.py`, `apps/coire-api/src/coire_api/routes/admin_ops.py`, and `apps/coire-api/src/coire_api/app.py`
+- [X] T013 [P] Add route authentication sweep and generated OpenAPI contract assertions in `apps/coire-api/tests/contract/test_admin_ops.py` and `apps/coire-api/tests/contract/test_auth_route_sweep.py`
+- [X] T014 Regenerate `apps/coire-web/src/api/schema.d.ts` from the authoritative OpenAPI document
 
 **Checkpoint**: All wire shapes, database constraints, service identity, and authenticated route shells exist.
 
@@ -53,8 +53,8 @@ approve it, observe stopped state and an audit naming the human actor and ops pr
 
 ### Implementation for User Story 1
 
-- [ ] T019 [US1] Implement canonical action digesting and proposal/token minting in `apps/coire-api/src/coire_api/ops_tokens.py`
-- [ ] T020 [US1] Implement conversation/message/proposal persistence and projection in `apps/coire-api/src/coire_api/ops.py`
+- [X] T019 [US1] Implement canonical action digesting and proposal/token minting in `apps/coire-api/src/coire_api/ops_tokens.py`
+- [X] T020 [US1] Implement conversation/message/proposal persistence and projection in `apps/coire-api/src/coire_api/ops.py`
 - [ ] T021 [US1] Implement the fixed reversible action registry using existing domain services in `apps/coire-api/src/coire_api/ops_actions.py`
 - [ ] T022 [US1] Implement proposal, confirmation, decline, and status endpoints in `apps/coire-api/src/coire_api/routes/admin_ops.py` and `apps/coire-api/src/coire_api/routes/internal_ops.py`
 - [ ] T023 [US1] Extend the ops-only admin client with typed read/propose methods and no confirm method in `apps/coire-agent/ops/coire_ops/admin_client.py`
@@ -77,7 +77,7 @@ service-token, non-admin, and stale-state variants; exactly one exact human conf
 
 ### Tests for User Story 2
 
-- [ ] T029 [P] [US2] Add Argon2 token, canonical digest, expiry, and mismatch unit tests in `apps/coire-api/tests/unit/test_ops_tokens.py`
+- [X] T029 [P] [US2] Add Argon2 token, canonical digest, expiry, and mismatch unit tests in `apps/coire-api/tests/unit/test_ops_tokens.py`
 - [ ] T030 [P] [US2] Add row-lock concurrency and stale-precondition tests in `apps/coire-api/tests/unit/test_ops_confirmation.py`
 - [ ] T031 [P] [US2] Add non-admin, API-key, and ops-service confirmation refusal contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
 - [ ] T032 [US2] Extend composed integration for concurrent single use, replay, expiry, redirection, and stale state in `tests/integration/test_ops_confirmations.py`

@@ -1,31 +1,58 @@
-from datetime import UTC, datetime
+from __future__ import annotations
+
+from typing import Any
 
 from coire_api.app import create_app
-from coire_api.console.ops import answer_from_snapshot
-from coire_core.models.console import AskStatus, ConsoleCapabilities, ConsoleSnapshot
-from coire_core.models.instance import ClusterState
 from coire_core.settings import Settings
 
 
-def test_ask_route_is_admin_guarded_strict_and_has_no_mutation_shape() -> None:
-    document = create_app(Settings(_secrets_dir="/nonexistent")).openapi()  # type: ignore[call-arg]
-    operation = document["paths"]["/api/v1/admin/ops/ask"]["post"]
-    assert operation["security"] == [{"HTTPBearer": []}]
-    response = document["components"]["schemas"]["AskResponse"]
-    assert response["additionalProperties"] is False
-    assert not ({"tool", "action", "confirm_token"} & response["properties"].keys())
+def _document() -> dict[str, Any]:
+    app = create_app(Settings(_secrets_dir="/nonexistent"))  # type: ignore[call-arg]
+    return app.openapi()
 
 
-def test_read_only_answer_degrades_when_live_state_is_absent() -> None:
-    observed_at = datetime(2026, 9, 1, tzinfo=UTC)
-    snapshot = ConsoleSnapshot(
-        observed_at=observed_at,
-        cursor="1",
-        capabilities=ConsoleCapabilities(),
-        cluster=ClusterState(observed_at=observed_at, nodes=[], instances=[]),
-        ledgers=[],
-    )
-    answer = answer_from_snapshot(snapshot)
-    assert answer.status is AskStatus.UNAVAILABLE
-    assert answer.sources == ["cluster"]
-    assert "unavailable" in answer.answer
+def test_ops_routes_are_present_with_exact_human_and_service_boundaries() -> None:
+    paths = _document()["paths"]
+    expected = {
+        ("/api/v1/admin/ops/conversations", "post"),
+        ("/api/v1/admin/ops/conversations/{conversation_id}", "get"),
+        ("/api/v1/admin/ops/conversations/{conversation_id}/messages", "post"),
+        ("/api/v1/admin/ops/proposals/{proposal_id}", "get"),
+        ("/api/v1/admin/ops/proposals/{proposal_id}/confirm", "post"),
+        ("/api/v1/admin/ops/proposals/{proposal_id}/decline", "post"),
+        ("/api/v1/internal/ops/sessions", "post"),
+        ("/api/v1/internal/ops/sessions/{session_id}", "patch"),
+        ("/api/v1/internal/ops/proposals", "post"),
+    }
+    assert expected <= {(path, method) for path, item in paths.items() for method in item}
+    for path, method in expected:
+        assert paths[path][method]["security"] == [{"HTTPBearer": []}]
+
+
+def test_confirmation_contract_requires_the_token_and_echoed_exact_action() -> None:
+    document = _document()
+    schema = document["components"]["schemas"]["OpsConfirmRequest"]
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {"confirm_token", "action"}
+    assert schema["properties"]["confirm_token"]["pattern"].startswith("^coire_confirm_")
+    action = schema["properties"]["action"]
+    assert action["discriminator"]["propertyName"] == "operation"
+    assert set(action["discriminator"]["mapping"]) == {
+        "instance.unload",
+        "run.kill",
+        "model.pin",
+        "model.unpin",
+        "instance.load",
+    }
+
+
+def test_irreversible_operations_are_absent_from_generated_openapi() -> None:
+    encoded = str(_document())
+    for forbidden in (
+        "model.retire",
+        "model.acquire",
+        "user.delete",
+        "shell.exec",
+        "route.call",
+    ):
+        assert forbidden not in encoded

@@ -26,11 +26,13 @@ from coire_api.routes import (
     admin_ledger,
     admin_models,
     admin_nodes,
+    admin_ops,
     admin_runs,
     admin_sharding,
     admin_variants,
     health,
     instances,
+    internal_ops,
     me,
     models,
     nodes,
@@ -161,8 +163,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_variants.router)
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)
+    app.include_router(admin_ops.router)
     app.include_router(admin_runs.router)
     app.include_router(admin_sharding.router)
+    app.include_router(internal_ops.router)
     app.include_router(v1.router)
 
     @app.middleware("http")

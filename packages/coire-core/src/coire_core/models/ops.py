@@ -209,6 +209,14 @@ class OpsProposalIssued(BaseModel):
     )
 
 
+class OpsConversationDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    conversation: OpsConversation
+    messages: list[OpsMessage] = Field(default_factory=list)
+    proposals: list[OpsProposal] = Field(default_factory=list)
+
+
 class OpsConfirmRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -627,6 +627,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ops/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Conversation */
+        post: operations["start_conversation_api_v1_admin_ops_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Conversation */
+        get: operations["get_conversation_api_v1_admin_ops_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Message */
+        post: operations["post_message_api_v1_admin_ops_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Proposal */
+        get: operations["get_proposal_api_v1_admin_ops_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/proposals/{proposal_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Proposal */
+        post: operations["confirm_proposal_api_v1_admin_ops_proposals__proposal_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/proposals/{proposal_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline Proposal */
+        post: operations["decline_proposal_api_v1_admin_ops_proposals__proposal_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/placements/{decision_id}": {
         parameters: {
             query?: never;
@@ -801,6 +903,57 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/ops/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Ops Proposal */
+        post: operations["submit_ops_proposal_api_v1_internal_ops_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/ops/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Ops Session */
+        post: operations["register_ops_session_api_v1_internal_ops_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/ops/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Heartbeat Ops Session */
+        patch: operations["heartbeat_ops_session_api_v1_internal_ops_sessions__session_id__patch"];
         trace?: never;
     };
     "/api/v1/me": {
@@ -1834,6 +1987,8 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** EmptyOpsParameters */
+        EmptyOpsParameters: Record<string, never>;
         /**
          * EvaluationVerdict
          * @enum {string}
@@ -1990,6 +2145,36 @@ export interface components {
              */
             variant_id: string;
         };
+        /** InstanceLoadAction */
+        InstanceLoadAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "instance.load";
+            parameters: components["schemas"]["InstanceLoadParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "model";
+        };
+        /** InstanceLoadParameters */
+        InstanceLoadParameters: {
+            /** Policy */
+            policy?: string | null;
+            /**
+             * Variant Id
+             * Format: uuid
+             */
+            variant_id: string;
+        };
         /** InstanceMember */
         InstanceMember: {
             /** Engine Id */
@@ -2015,6 +2200,26 @@ export interface components {
          * @enum {string}
          */
         InstanceState: "requested" | "reserving" | "launching" | "warming" | "ready" | "draining" | "stopped" | "failed";
+        /** InstanceUnloadAction */
+        InstanceUnloadAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "instance.unload";
+            parameters?: components["schemas"]["EmptyOpsParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "instance";
+        };
         /** LedgerUpdate */
         LedgerUpdate: {
             /** Budget Bytes */
@@ -2256,6 +2461,46 @@ export interface components {
             precision: string;
             /** Tags */
             tags?: components["schemas"]["Tag"][];
+        };
+        /** ModelPinAction */
+        ModelPinAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "model.pin";
+            parameters?: components["schemas"]["EmptyOpsParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "model";
+        };
+        /** ModelUnpinAction */
+        ModelUnpinAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "model.unpin";
+            parameters?: components["schemas"]["EmptyOpsParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "model";
         };
         /**
          * ModelUpdateRequest
@@ -2518,6 +2763,241 @@ export interface components {
          * @enum {string}
          */
         OccupantReason: "pinned" | "in_use" | "eligible";
+        /** OpsActionPrecondition */
+        OpsActionPrecondition: {
+            /** Expected State */
+            expected_state: string;
+            /** Resource Version */
+            resource_version: string;
+        };
+        /** OpsConfirmRequest */
+        OpsConfirmRequest: {
+            /** Action */
+            action: components["schemas"]["InstanceUnloadAction"] | components["schemas"]["RunKillAction"] | components["schemas"]["ModelPinAction"] | components["schemas"]["ModelUnpinAction"] | components["schemas"]["InstanceLoadAction"];
+            /** Confirm Token */
+            confirm_token: string;
+        };
+        /** OpsConversation */
+        OpsConversation: {
+            /**
+             * Admin User Id
+             * Format: uuid
+             */
+            admin_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Degraded */
+            degraded: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ops Session Id */
+            ops_session_id?: string | null;
+            state: components["schemas"]["OpsConversationState"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** OpsConversationCreate */
+        OpsConversationCreate: Record<string, never>;
+        /** OpsConversationDetail */
+        OpsConversationDetail: {
+            conversation: components["schemas"]["OpsConversation"];
+            /** Messages */
+            messages?: components["schemas"]["OpsMessage"][];
+            /** Proposals */
+            proposals?: components["schemas"]["OpsProposal"][];
+        };
+        /**
+         * OpsConversationState
+         * @enum {string}
+         */
+        OpsConversationState: "active" | "closed";
+        /** OpsDeclineRequest */
+        OpsDeclineRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /** OpsMessage */
+        OpsMessage: {
+            /** Content */
+            content: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            role: components["schemas"]["OpsMessageRole"];
+        };
+        /** OpsMessageCreate */
+        OpsMessageCreate: {
+            /** Question */
+            question: string;
+        };
+        /**
+         * OpsMessageRole
+         * @enum {string}
+         */
+        OpsMessageRole: "admin" | "ops" | "system";
+        /** OpsProposal */
+        OpsProposal: {
+            /** Action */
+            action: components["schemas"]["InstanceUnloadAction"] | components["schemas"]["RunKillAction"] | components["schemas"]["ModelPinAction"] | components["schemas"]["ModelUnpinAction"] | components["schemas"]["InstanceLoadAction"];
+            /** Confirmed By User Id */
+            confirmed_by_user_id?: string | null;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Executed At */
+            executed_at?: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Failure Code */
+            failure_code?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Ops Session Id
+             * Format: uuid
+             */
+            ops_session_id: string;
+            /** Proposer */
+            proposer: string;
+            /** Rationale */
+            rationale: string;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            state: components["schemas"]["OpsProposalState"];
+        };
+        /** OpsProposalIssued */
+        OpsProposalIssued: {
+            /** Confirm Token */
+            confirm_token: string;
+            proposal: components["schemas"]["OpsProposal"];
+        };
+        /**
+         * OpsProposalState
+         * @enum {string}
+         */
+        OpsProposalState: "pending" | "confirmed" | "executing" | "executed" | "declined" | "expired" | "stale" | "failed";
+        /** OpsProposalSubmission */
+        OpsProposalSubmission: {
+            /** Action */
+            action: components["schemas"]["InstanceUnloadAction"] | components["schemas"]["RunKillAction"] | components["schemas"]["ModelPinAction"] | components["schemas"]["ModelUnpinAction"] | components["schemas"]["InstanceLoadAction"];
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Rationale */
+            rationale: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+        };
+        /** OpsSession */
+        OpsSession: {
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Service Instance */
+            service_instance: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            state: components["schemas"]["OpsSessionState"];
+        };
+        /** OpsSessionRegistration */
+        OpsSessionRegistration: {
+            /** Service Instance */
+            service_instance: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+        };
+        /**
+         * OpsSessionState
+         * @enum {string}
+         */
+        OpsSessionState: "active" | "superseded" | "expired";
+        /** OpsTurnResponse */
+        OpsTurnResponse: {
+            /** Answer */
+            answer: string;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            proposal?: components["schemas"]["OpsProposalIssued"] | null;
+            /** Sources */
+            sources?: string[];
+            status: components["schemas"]["OpsTurnStatus"];
+        };
+        /**
+         * OpsTurnStatus
+         * @enum {string}
+         */
+        OpsTurnStatus: "answered" | "proposed" | "degraded" | "unavailable";
         /** PinUpdate */
         PinUpdate: {
             /** Pinned */
@@ -2656,6 +3136,26 @@ export interface components {
          * @enum {string}
          */
         ReservationHolder: "sandbox" | "model" | "conversion" | "training" | "image" | "run";
+        /** RunKillAction */
+        RunKillAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "run.kill";
+            parameters?: components["schemas"]["EmptyOpsParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "run";
+        };
         /** RunKillRequest */
         RunKillRequest: {
             /**
@@ -4505,6 +5005,218 @@ export interface operations {
             };
         };
     };
+    start_conversation_api_v1_admin_ops_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsConversationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsConversation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversation_api_v1_admin_ops_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsConversationDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_message_api_v1_admin_ops_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsMessageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsTurnResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proposal_api_v1_admin_ops_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_proposal_api_v1_admin_ops_proposals__proposal_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_proposal_api_v1_admin_ops_proposals__proposal_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsDeclineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_placement_api_v1_admin_placements__decision_id__get: {
         parameters: {
             query?: never;
@@ -5033,6 +5745,109 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_ops_proposal_api_v1_internal_ops_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsProposalSubmission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsProposalIssued"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_ops_session_api_v1_internal_ops_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsSessionRegistration"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heartbeat_ops_session_api_v1_internal_ops_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsSession"];
+                };
             };
             /** @description Validation Error */
             422: {
