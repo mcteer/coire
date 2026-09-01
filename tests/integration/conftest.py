@@ -163,7 +163,7 @@ def drain_runtime(
     client: httpx.Client,
     headers: dict[str, str],
     *,
-    timeout: float = 60,
+    timeout: float = 180,
 ) -> None:
     """Drain prior runtime state through public APIs for independent scenarios."""
     # A prior scenario may deliberately pin a model reservation. Remove that policy first;
