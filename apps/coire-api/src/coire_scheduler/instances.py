@@ -72,6 +72,9 @@ async def execute_instance_launch(instance_id_text: str) -> None:
 
                 try:
                     await execute_sharded_launch(instance_id)
+                    from coire_scheduler.sharded_instances import release_failed_reservations
+
+                    await release_failed_reservations(instance_id)
                 except Exception:
                     await teardown_sharded(instance_id, failed=True, reason="sharded launch failed")
                     raise
