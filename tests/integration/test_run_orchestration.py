@@ -349,6 +349,12 @@ def test_scheduler_restart_preserves_one_real_run_container(
             text=True,
         ).stdout.strip()
         assert after_restart.startswith(container_id)
+        # This scenario intentionally waits longer than the short-lived Access assertion used
+        # by the integration identity provider. Refresh the human credential after the restart
+        # so workflow recovery—not token expiry—is what the remaining assertions exercise.
+        user_headers = {
+            "cf-access-jwt-assertion": access_token_factory(email=user_email)
+        }
         terminal = wait_for(
             client,
             f"/api/v1/runs/{first_id}",
