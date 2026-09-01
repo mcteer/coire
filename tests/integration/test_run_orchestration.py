@@ -353,7 +353,9 @@ def test_scheduler_restart_preserves_one_real_run_container(
         # by the integration identity provider. Refresh the human credential after the restart
         # so workflow recovery—not token expiry—is what the remaining assertions exercise.
         user_headers = {
-            "cf-access-jwt-assertion": access_token_factory(email=user_email)
+            "cf-access-jwt-assertion": access_token_factory(
+                email=user_email, exp=int(time.time()) + 600
+            )
         }
         terminal = wait_for(
             client,
