@@ -4,13 +4,13 @@ import {
   type ActivityItem,
   type ActivityPage,
   type ApiKey,
-  type AskResponse,
   type ApiKeyIssued,
   type AuditRecord,
   type ConsoleSnapshot,
   type ModelVariant,
   type User,
 } from "./api/client";
+import { AskCoire } from "./pages/admin/AskCoire";
 import { useEventStream } from "./hooks/useEventStream";
 import { ConfirmAction } from "./components/ConfirmAction";
 import "./styles/app.css";
@@ -85,20 +85,6 @@ function Shell({
   );
 }
 export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState<AskResponse | null>(null);
-  const [asking, setAsking] = useState(false);
-  const ask = async (e: FormEvent) => {
-    e.preventDefault();
-    setAsking(true);
-    try {
-      setAnswer(
-        await api("/api/v1/admin/ops/ask", { method: "POST", body: JSON.stringify({ question }) }),
-      );
-    } finally {
-      setAsking(false);
-    }
-  };
   return (
     <main className="grid">
       {snapshot.ledgers.map((l) => {
@@ -181,30 +167,7 @@ export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
           </p>
         ))}
       </section>
-      <section className="panel glass">
-        <h3>Ask Coire</h3>
-        <p className="muted">Read-only answers grounded in live state.</p>
-        <form onSubmit={ask}>
-          <div className="field">
-            <label htmlFor="question">Question</label>
-            <textarea
-              id="question"
-              value={question}
-              onChange={(e) => setQuestion(e.target.value)}
-              required
-            />
-          </div>
-          <button className="button" disabled={asking}>
-            {asking ? "Checking…" : "Ask"}
-          </button>
-        </form>
-        {answer && (
-          <div className={answer.status === "unavailable" ? "error ask-answer" : "ask-answer"}>
-            {answer.answer}
-            <p className="muted mono">Sources: {answer.sources?.join(", ")}</p>
-          </div>
-        )}
-      </section>
+      <AskCoire />
     </main>
   );
 }

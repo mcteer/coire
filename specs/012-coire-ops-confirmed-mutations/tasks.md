@@ -48,7 +48,7 @@ approve it, observe stopped state and an audit naming the human actor and ops pr
 
 - [ ] T015 [P] [US1] Add proposal/create/confirm/decline contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
 - [X] T016 [P] [US1] Add exact resolved-action registry unit tests for unload, kill, pin, unpin, and load in `apps/coire-api/tests/unit/test_ops_actions.py`
-- [ ] T017 [P] [US1] Add Ask Coire confirmation-card browser tests in `apps/coire-web/src/pages/admin/AskCoire.test.tsx`
+- [X] T017 [P] [US1] Add Ask Coire confirmation-card browser tests in `apps/coire-web/src/pages/admin/AskCoire.test.tsx`
 - [ ] T018 [US1] Add the normal unload approval and decline composed integration scenario in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 1
@@ -60,8 +60,8 @@ approve it, observe stopped state and an audit naming the human actor and ops pr
 - [X] T023 [US1] Extend the ops-only admin client with typed read/propose methods and no confirm method in `apps/coire-agent/ops/coire_ops/admin_client.py`
 - [X] T024 [US1] Implement model-backed answer/proposal orchestration with shallow validated output in `apps/coire-agent/ops/coire_ops/service.py` and `apps/coire-agent/ops/coire_ops/model.py`
 - [X] T025 [US1] Wire `coire-api` Ask Coire forwarding to the internal ops service in `apps/coire-api/src/coire_api/routes/admin_ops.py`
-- [ ] T026 [US1] Render exact action details, expiry, approve, decline, pending, and terminal states in `apps/coire-web/src/pages/admin/AskCoire.tsx` and `apps/coire-web/src/components/OpsProposalCard.tsx`
-- [ ] T027 [US1] Add API client methods for conversations, messages, approval, and decline in `apps/coire-web/src/api/client.ts`
+- [X] T026 [US1] Render exact action details, expiry, approve, decline, pending, and terminal states in `apps/coire-web/src/pages/admin/AskCoire.tsx` and `apps/coire-web/src/components/OpsProposalCard.tsx`
+- [X] T027 [US1] Add API client methods for conversations, messages, approval, and decline in `apps/coire-web/src/api/client.ts`
 - [ ] T028 [US1] Audit creation, decline, confirmation, dispatch, and terminal outcome with actor/proposer fields in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-api/src/coire_api/ops_actions.py`
 
 **Checkpoint**: The independently testable unload approval/decline journey works end to end.
@@ -105,7 +105,7 @@ degraded snapshot answer and one proposal refusal with zero model calls; restore
 
 - [X] T038 [P] [US3] Add deterministic degraded status/action classification tests in `apps/coire-api/tests/unit/test_ops_degraded.py`
 - [X] T039 [P] [US3] Add ops service model-health transition tests in `apps/coire-agent/tests/test_ops_service.py`
-- [ ] T040 [P] [US3] Add degraded banner and disabled approval UI tests in `apps/coire-web/src/pages/admin/AskCoire.test.tsx`
+- [X] T040 [P] [US3] Add degraded banner and disabled approval UI tests in `apps/coire-web/src/pages/admin/AskCoire.test.tsx`
 - [ ] T041 [US3] Extend composed integration for unavailable/recovered admin model with zero core inference in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 3
@@ -113,7 +113,7 @@ degraded snapshot answer and one proposal refusal with zero model calls; restore
 - [X] T042 [US3] Extend the existing bounded snapshot responder to distinguish status questions from action requests in `apps/coire-api/src/coire_api/console/ops.py`
 - [X] T043 [US3] Add pinned-model readiness probing and automatic healthy/degraded transitions in `apps/coire-agent/ops/coire_ops/service.py`
 - [X] T044 [US3] Implement no-model degraded responses and proposal suppression in `apps/coire-api/src/coire_api/routes/admin_ops.py`
-- [ ] T045 [US3] Surface degraded status, source facts, and recovery in `apps/coire-web/src/pages/admin/AskCoire.tsx`
+- [X] T045 [US3] Surface degraded status, source facts, and recovery in `apps/coire-web/src/pages/admin/AskCoire.tsx`
 
 **Checkpoint**: Ops remains useful and mutation-free while its Studio model is unavailable.
 
