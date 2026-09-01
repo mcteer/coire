@@ -183,6 +183,7 @@ async def confirm_proposal(
             principal=principal,
         )
     except InvalidConfirmation as exc:
+        ops.record_confirmation_refusal(proposal_id=proposal_id, reason=exc.reason)
         await write_principal_audit(
             session,
             principal=principal,

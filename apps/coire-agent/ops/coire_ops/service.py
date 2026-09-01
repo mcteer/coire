@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from contextlib import suppress
+
+from opentelemetry import metrics, trace
 
 from coire_core.models.ops import (
     OpsProposalSubmission,
@@ -14,6 +17,12 @@ from coire_core.models.ops import (
 )
 from coire_ops.admin_client import AdminClient
 from coire_ops.model import OpsModel
+
+logger = logging.getLogger(__name__)
+tracer = trace.get_tracer("coire.ops")
+meter = metrics.get_meter("coire.ops")
+turns = meter.create_counter("coire_ops_turns_total", unit="1")
+model_health_checks = meter.create_counter("coire_ops_model_health_checks_total", unit="1")
 
 
 class OpsService:
@@ -41,6 +50,13 @@ class OpsService:
             )
         )
         self.model_healthy = await self._model.healthy()
+        model_health_checks.add(
+            1, {"outcome": "healthy" if self.model_healthy else "degraded"}
+        )
+        logger.info(
+            "ops session registered",
+            extra={"ops_session_id": str(self.session_id), "model_healthy": self.model_healthy},
+        )
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
     async def stop(self) -> None:
@@ -56,13 +72,23 @@ class OpsService:
             await asyncio.sleep(self._heartbeat_s)
             await self._admin.heartbeat_session(str(self.session_id))
             self.model_healthy = await self._model.healthy()
+            model_health_checks.add(
+                1, {"outcome": "healthy" if self.model_healthy else "degraded"}
+            )
 
     async def turn(self, *, conversation_id: uuid.UUID, question: str) -> OpsTurnResponse:
-        snapshot = await self._admin.read_snapshot()
-        self.model_healthy = await self._model.healthy()
-        if not self.model_healthy:
-            raise RuntimeError("pinned ops model is unavailable")
-        result = await self._model.run(question=question, snapshot=snapshot)
+        with tracer.start_as_current_span("coire.ops.turn") as span:
+            span.set_attribute("conversation_id", str(conversation_id))
+            snapshot = await self._admin.read_snapshot()
+            self.model_healthy = await self._model.healthy()
+            if not self.model_healthy:
+                turns.add(1, {"outcome": "degraded"})
+                logger.warning(
+                    "ops model unavailable",
+                    extra={"conversation_id": str(conversation_id)},
+                )
+                raise RuntimeError("pinned ops model is unavailable")
+            result = await self._model.run(question=question, snapshot=snapshot)
         issued = None
         status = OpsTurnStatus.ANSWERED
         if result.action is not None:
@@ -75,6 +101,15 @@ class OpsService:
                 )
             )
             status = OpsTurnStatus.PROPOSED
+        turns.add(1, {"outcome": status.value})
+        logger.info(
+            "ops turn completed",
+            extra={
+                "conversation_id": str(conversation_id),
+                "proposal_id": str(issued.proposal.id) if issued else None,
+                "outcome": status.value,
+            },
+        )
         return OpsTurnResponse(
             status=status,
             answer=result.answer,

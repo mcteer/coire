@@ -46,7 +46,7 @@ approve it, observe stopped state and an audit naming the human actor and ops pr
 
 ### Tests for User Story 1
 
-- [ ] T015 [P] [US1] Add proposal/create/confirm/decline contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
+- [X] T015 [P] [US1] Add proposal/create/confirm/decline contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
 - [X] T016 [P] [US1] Add exact resolved-action registry unit tests for unload, kill, pin, unpin, and load in `apps/coire-api/tests/unit/test_ops_actions.py`
 - [X] T017 [P] [US1] Add Ask Coire confirmation-card browser tests in `apps/coire-web/src/pages/admin/AskCoire.test.tsx`
 - [ ] T018 [US1] Add the normal unload approval and decline composed integration scenario in `tests/integration/test_ops_confirmations.py`
@@ -62,7 +62,7 @@ approve it, observe stopped state and an audit naming the human actor and ops pr
 - [X] T025 [US1] Wire `coire-api` Ask Coire forwarding to the internal ops service in `apps/coire-api/src/coire_api/routes/admin_ops.py`
 - [X] T026 [US1] Render exact action details, expiry, approve, decline, pending, and terminal states in `apps/coire-web/src/pages/admin/AskCoire.tsx` and `apps/coire-web/src/components/OpsProposalCard.tsx`
 - [X] T027 [US1] Add API client methods for conversations, messages, approval, and decline in `apps/coire-web/src/api/client.ts`
-- [ ] T028 [US1] Audit creation, decline, confirmation, dispatch, and terminal outcome with actor/proposer fields in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-api/src/coire_api/ops_actions.py`
+- [X] T028 [US1] Audit creation, decline, confirmation, dispatch, and terminal outcome with actor/proposer fields in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-api/src/coire_api/ops_actions.py`
 
 **Checkpoint**: The independently testable unload approval/decline journey works end to end.
 
@@ -79,7 +79,7 @@ service-token, non-admin, and stale-state variants; exactly one exact human conf
 
 - [X] T029 [P] [US2] Add Argon2 token, canonical digest, expiry, and mismatch unit tests in `apps/coire-api/tests/unit/test_ops_tokens.py`
 - [X] T030 [P] [US2] Add row-lock concurrency and stale-precondition tests in `apps/coire-api/tests/unit/test_ops_confirmation.py`
-- [ ] T031 [P] [US2] Add non-admin, API-key, and ops-service confirmation refusal contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
+- [X] T031 [P] [US2] Add non-admin, API-key, and ops-service confirmation refusal contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
 - [ ] T032 [US2] Extend composed integration for concurrent single use, replay, expiry, redirection, and stale state in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 2
@@ -88,7 +88,7 @@ service-token, non-admin, and stale-state variants; exactly one exact human conf
 - [X] T034 [US2] Atomically lock, validate, consume, and transition a pending proposal before dispatch in `apps/coire-api/src/coire_api/ops.py`
 - [X] T035 [US2] Enforce current resource version/state preconditions in every action handler in `apps/coire-api/src/coire_api/ops_actions.py`
 - [X] T036 [US2] Map confirmation failures to RFC 9457 problem details without leaking tokens or model output in `apps/coire-api/src/coire_api/routes/admin_ops.py`
-- [ ] T037 [US2] Add bounded confirmation-refusal metrics and structured proposal identifiers in `apps/coire-api/src/coire_api/ops.py`
+- [X] T037 [US2] Add bounded confirmation-refusal metrics and structured proposal identifiers in `apps/coire-api/src/coire_api/ops.py`
 
 **Checkpoint**: No altered or repeated authority can execute, and concurrent redemption is exactly once.
 
@@ -149,13 +149,13 @@ the image; no proposal exists and no shell, git, filesystem, Docker, acquisition
 
 **Purpose**: Complete restart invalidation, observability, operations, generated artifacts, and all release gates.
 
-- [ ] T055 Add session registration/heartbeat and prior-session proposal invalidation in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-agent/ops/coire_ops/service.py`
+- [X] T055 Add session registration/heartbeat and prior-session proposal invalidation in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-agent/ops/coire_ops/service.py`
 - [ ] T056 [P] Add ops-container restart invalidation integration coverage in `tests/integration/test_ops_confirmations.py`
-- [ ] T057 [P] Add spans, bounded metrics, and structured logs across API and service paths in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-agent/ops/coire_ops/service.py`
-- [ ] T058 [P] Add ops proposal/degraded panels and alerts in `deploy/observability/grafana/provisioning/dashboards/coire-runs.json` and `deploy/observability/prometheus/rules/coire-ops.yml`
-- [ ] T059 [P] Add observe, kill, restart, secret rotation, rollback, and stale-proposal procedures in `docs/runbooks/coire-ops.md`
-- [ ] T060 Update environment documentation and architecture references in `deploy/compose/README.md`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md`
-- [ ] T061 Regenerate OpenAPI and `apps/coire-web/src/api/schema.d.ts`; add freshness assertions in `apps/coire-api/tests/contract/test_admin_ops.py`
+- [X] T057 [P] Add spans, bounded metrics, and structured logs across API and service paths in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-agent/ops/coire_ops/service.py`
+- [X] T058 [P] Add ops proposal/degraded panels and alerts in `deploy/observability/grafana/dashboards/runs.json` and `deploy/observability/alerts/coire-ops.yaml`
+- [X] T059 [P] Add observe, kill, restart, secret rotation, rollback, and stale-proposal procedures in `docs/runbooks/coire-ops.md`
+- [X] T060 Update environment documentation and architecture references in `deploy/compose/README.md`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md`
+- [X] T061 Regenerate OpenAPI and `apps/coire-web/src/api/schema.d.ts`; add freshness assertions in `apps/coire-api/tests/contract/test_admin_ops.py`
 - [ ] T062 Run migration `upgrade head → downgrade -1 → upgrade head`, full Python/web/OpenAPI suites, and record evidence in `specs/012-coire-ops-confirmed-mutations/review.md`
 - [ ] T063 Build `coire-agent-ops`, run image policy and critical-CVE scans, generate an SPDX SBOM, and record licence evidence in `specs/012-coire-ops-confirmed-mutations/review.md`
 - [ ] T064 Run `quickstart.md` composed confirmation/restart/degraded/isolation scenarios and record non-secret evidence in `specs/012-coire-ops-confirmed-mutations/review.md`

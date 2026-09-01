@@ -56,6 +56,9 @@ than five minutes). Session liveness uses `OPS_SESSION_HEARTBEAT_S` (10) and
 `OPS_SESSION_STALE_S` (30); internal/model calls use `OPS_REQUEST_TIMEOUT_S` (120). The
 `ops_service_token` compose secret is a dedicated read/propose credential mounted only in
 `coire-api` and `coire-ops`; it is not an admin credential and cannot confirm a proposal.
+Set the non-secret registry UUID as `COIRE_OPS_MODEL_ID` (see `.env.example`) before bring-up, and
+provision `coire-ops-service-token` with `scripts/coire-secrets-init.sh`. Operational procedures
+are in [`docs/runbooks/coire-ops.md`](../../docs/runbooks/coire-ops.md).
 
 Studio container orchestration uses `RUN_CONCURRENCY_CAP` (3),
 `RUN_DEFAULT_MEMORY_BYTES` (4 GiB), `RUN_MAX_MEMORY_BYTES` (16 GiB),

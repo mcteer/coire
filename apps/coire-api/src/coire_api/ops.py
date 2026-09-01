@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
+from opentelemetry import metrics, trace
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +49,24 @@ from coire_core.models.ops import (
 
 class OpsNotFound(LookupError):
     pass
+
+
+logger = logging.getLogger(__name__)
+tracer = trace.get_tracer("coire.api.ops")
+meter = metrics.get_meter("coire.api.ops")
+proposal_events = meter.create_counter("coire_ops_proposals_total", unit="1")
+confirmation_events = meter.create_counter("coire_ops_confirmations_total", unit="1")
+
+
+def record_confirmation_refusal(*, proposal_id: uuid.UUID, reason: str) -> None:
+    """Record only the reviewed bounded reason vocabulary; never token/model content."""
+
+    bounded = reason if reason in InvalidConfirmation.ALLOWED_REASONS else "unknown"
+    confirmation_events.add(1, {"outcome": "refused", "reason": bounded})
+    logger.warning(
+        "ops confirmation refused",
+        extra={"proposal_id": str(proposal_id), "reason": bounded},
+    )
 
 
 def project_session(row: OpsSessionRow) -> OpsSession:
@@ -314,6 +334,15 @@ async def create_proposal(
         target_id=str(row.id),
         detail={"operation": submission.action.operation},
     )
+    proposal_events.add(1, {"operation": submission.action.operation, "outcome": "created"})
+    logger.info(
+        "ops proposal created",
+        extra={
+            "proposal_id": str(row.id),
+            "conversation_id": str(row.conversation_id),
+            "operation": submission.action.operation,
+        },
+    )
     return OpsProposalIssued(proposal=project_proposal(row), confirm_token=presented)
 
 
@@ -375,6 +404,11 @@ async def consume_confirmation(
         detail={"proposer": proposal.proposer, "operation": presented_action.operation},
     )
     await session.flush()
+    confirmation_events.add(1, {"outcome": "accepted", "reason": "none"})
+    logger.info(
+        "ops confirmation accepted",
+        extra={"proposal_id": str(proposal.id), "user_id": str(principal.user_id)},
+    )
     return proposal
 
 
@@ -428,9 +462,11 @@ async def execute_confirmed_proposal(
 
     if not isinstance(settings, Settings):
         raise TypeError("settings must be Settings")
-    row = await session.scalar(
-        select(OpsProposalRow).where(OpsProposalRow.id == proposal_id).with_for_update()
-    )
+    with tracer.start_as_current_span("coire.api.ops.execute") as span:
+        span.set_attribute("proposal_id", str(proposal_id))
+        row = await session.scalar(
+            select(OpsProposalRow).where(OpsProposalRow.id == proposal_id).with_for_update()
+        )
     if row is None:
         raise OpsNotFound("ops proposal not found")
     if row.state is not OpsProposalState.CONFIRMED:
