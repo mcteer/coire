@@ -9,7 +9,7 @@ import uuid
 from collections.abc import AsyncIterator, Sequence
 from contextlib import suppress
 from time import monotonic, perf_counter
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import Receive, Scope, Send
 
-from coire_api.auth import CurrentAuthenticated, Principal, require_scope
+from coire_api.auth import CurrentAuthenticated, Principal, PrincipalKind, require_scope
 from coire_api.db import EngineProcessRow, ModelRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.anthropic import from_openai_response, from_openai_stream, to_openai_payload
@@ -52,6 +52,59 @@ from coire_core.settings import Settings
 
 router = APIRouter(prefix="/v1", tags=["compatible"], dependencies=[Depends(require_scope("chat"))])
 logger = logging.getLogger(__name__)
+
+
+def _tool_names(tools: list[dict[str, Any]] | None) -> set[str]:
+    names: set[str] = set()
+    for tool in tools or []:
+        function = tool.get("function")
+        name = function.get("name") if isinstance(function, dict) else tool.get("name")
+        if isinstance(name, str):
+            names.add(name)
+    return names
+
+
+def _enforce_run_request_scope(
+    principal: Principal,
+    *,
+    tools: list[dict[str, Any]] | None,
+    prompt_tokens: int,
+    max_tokens: int | None,
+) -> int | None:
+    if principal.kind is not PrincipalKind.RUN:
+        return max_tokens
+    requested_tools = _tool_names(tools)
+    if not requested_tools.issubset(principal.permitted_tools):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "tool is outside run scope")
+    remaining = (principal.spend_limit_tokens or 0) - principal.spent_tokens
+    if prompt_tokens >= remaining:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "run spend exhausted")
+    bounded_output = min(max_tokens or remaining - prompt_tokens, remaining - prompt_tokens)
+    if max_tokens is not None and max_tokens > bounded_output:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "request exceeds run spend scope")
+    return bounded_output
+
+
+async def _reserve_run_spend(
+    session: AsyncSession,
+    principal: Principal,
+    usage: UsageTracker,
+    *,
+    max_tokens: int | None,
+) -> None:
+    if principal.kind is not PrincipalKind.RUN:
+        return
+    assert principal.run_id is not None and max_tokens is not None
+    from coire_api.run_tokens import InvalidRunToken, charge_run_token
+
+    reservation = usage.prompt_tokens + max_tokens
+    try:
+        await charge_run_token(session, principal.run_id, reservation)
+        await session.commit()
+    except InvalidRunToken as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="run_spend_exhausted")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "run spend exhausted") from exc
+    usage.reserved_tokens = reservation
 
 
 async def _finish_detached(
@@ -94,6 +147,11 @@ async def _load_and_resolve(
         load_model(body_model, settings), timeout=settings.gateway_wait_ceiling_s
     )
     session.expire_all()
+    if principal.run_id is not None:
+        from coire_api.run_tokens import run_token_is_active
+
+        if not await run_token_is_active(session, principal.run_id):
+            raise ModelLoadError("run credential revoked")
     return await resolve_model(session, body_model, principal, affinity_node)
 
 
@@ -153,17 +211,24 @@ async def _tracked_stream(
             if request is not None and await request.is_disconnected():
                 await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
                 return
-            if usage.principal.api_key_id is not None and request is not None:
+            if (
+                usage.principal.api_key_id is not None or usage.principal.kind is PrincipalKind.RUN
+            ) and request is not None:
                 settings = getattr(request.app.state, "settings", None)
                 interval = settings.credential_stream_recheck_s if settings is not None else 1.0
                 now = monotonic()
                 if now - credential_checked_at >= interval:
                     from coire_api.db import session_scope
                     from coire_api.identity.keys import key_is_active
+                    from coire_api.run_tokens import run_token_is_active
 
                     credential_checked_at = now
                     async with session_scope() as session:
-                        active = await key_is_active(session, usage.principal)
+                        if usage.principal.kind is PrincipalKind.RUN:
+                            assert usage.principal.run_id is not None
+                            active = await run_token_is_active(session, usage.principal.run_id)
+                        else:
+                            active = await key_is_active(session, usage.principal)
                     if not active:
                         await usage.finish(UsageOutcome.REFUSED, failure_code="credential_revoked")
                         error = json.dumps(
@@ -312,7 +377,12 @@ def _load_label(state: LoadState) -> Literal["loaded", "loading", "cold"]:
 @router.get("/models", response_model=GatewayModelList)
 async def list_models(principal: CurrentAuthenticated, session: SessionDep) -> GatewayModelList:
     rows = (await session.execute(select(ModelRow).order_by(ModelRow.display_name))).scalars().all()
-    visible = [model for model in rows if visible_to(is_admin=principal.is_admin, model=model)]
+    visible = [
+        model
+        for model in rows
+        if visible_to(is_admin=principal.is_admin, model=model)
+        and (principal.kind is not PrincipalKind.RUN or model.id in principal.permitted_model_ids)
+    ]
     engines: Sequence[EngineProcessRow] = []
     if visible:
         engines = (
@@ -368,6 +438,17 @@ async def chat_completions(
     except ContextLengthError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="context_length")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    try:
+        body.max_tokens = _enforce_run_request_scope(
+            principal,
+            tools=body.tools,
+            prompt_tokens=usage.prompt_tokens,
+            max_tokens=body.max_tokens,
+        )
+    except HTTPException:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="run_scope_refused")
+        raise
+    await _reserve_run_spend(session, principal, usage, max_tokens=body.max_tokens)
     if resolved.engine_url is None or resolved.model_path is None:
         retry_after = await retry_after_seconds(
             session, body.model, fallback=settings.gateway_retry_after_s
@@ -464,6 +545,19 @@ async def anthropic_messages(
     except ContextLengthError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="context_length")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    try:
+        bounded_max_tokens = _enforce_run_request_scope(
+            principal,
+            tools=body.tools,
+            prompt_tokens=usage.prompt_tokens,
+            max_tokens=body.max_tokens,
+        )
+    except HTTPException:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="run_scope_refused")
+        raise
+    assert bounded_max_tokens is not None
+    body.max_tokens = bounded_max_tokens
+    await _reserve_run_spend(session, principal, usage, max_tokens=body.max_tokens)
     if resolved.engine_url is None or resolved.model_path is None:
         retry_after = await retry_after_seconds(
             session, body.model, fallback=settings.gateway_retry_after_s

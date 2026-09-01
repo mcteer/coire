@@ -23,6 +23,23 @@ class ProfileName(StrEnum):
     OPS = "ops"
 
 
+PROFILE_TOOL_NAMES: dict[ProfileName, frozenset[str]] = {
+    ProfileName.CODING: frozenset(
+        {"read_file", "search", "apply_patch", "run_tests", "load_tool_pack"}
+    ),
+    ProfileName.GENERAL: frozenset({"search", "read_document", "load_tool_pack"}),
+    ProfileName.IMAGE: frozenset({"inspect_image", "load_tool_pack"}),
+    ProfileName.OPS: frozenset({"cluster_health", "list_models", "list_jobs", "load_tool_pack"}),
+}
+
+PROFILE_MODEL_TAGS: dict[ProfileName, tuple[str, ...]] = {
+    ProfileName.CODING: ("coding", "reasoning"),
+    ProfileName.GENERAL: ("general", "reasoning"),
+    ProfileName.IMAGE: ("image", "vision"),
+    ProfileName.OPS: ("reasoning", "general"),
+}
+
+
 class TaskClass(StrEnum):
     READ = "read"
     WRITE = "write"

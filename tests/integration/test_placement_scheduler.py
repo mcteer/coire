@@ -11,6 +11,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from conftest import drain_runtime
 
 pytestmark = [
     pytest.mark.integration,
@@ -63,9 +64,10 @@ def _wait(
 
 
 def test_pin_refusal_then_unpin_lru_eviction_survives_scheduler_restart(
-    api_url: str, admin_headers: dict[str, str]
+    api_url: str, admin_headers: dict[str, str], request: pytest.FixtureRequest
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=60.0) as client:
+        drain_runtime(client, admin_headers)
         models = client.get("/api/v1/admin/models", headers=admin_headers).json()
         candidates: list[tuple[dict[str, object], dict[str, object]]] = []
         for model in models:
@@ -89,6 +91,14 @@ def test_pin_refusal_then_unpin_lru_eviction_survives_scheduler_restart(
 
         ledgers = client.get("/api/v1/admin/ledger", headers=admin_headers).json()
         ledger = next(item for item in ledgers if item["node_name"] == "coire-edge-a")
+        original_budget = int(ledger["budget_bytes"])
+        ledger_id = str(ledger["node_id"])
+        request.addfinalizer(
+            lambda: _sql(
+                "UPDATE node_memory_ledgers "
+                f"SET budget_bytes={original_budget} WHERE node_id='{ledger_id}'"
+            )
+        )
         first_reservation = next(
             item
             for item in ledger["reservations"]

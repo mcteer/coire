@@ -26,6 +26,7 @@ from coire_api.routes import (
     admin_ledger,
     admin_models,
     admin_nodes,
+    admin_runs,
     admin_sharding,
     admin_variants,
     health,
@@ -33,6 +34,7 @@ from coire_api.routes import (
     me,
     models,
     nodes,
+    runs,
     v1,
 )
 from coire_api.telemetry import configure_telemetry
@@ -92,6 +94,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         placement_executor = PlacementCommandExecutor(settings)
         await placement_executor.start()
         app.state.placement_executor = placement_executor
+        from coire_api.run_executor import RunCommandExecutor
+
+        run_executor = RunCommandExecutor(settings)
+        await run_executor.start()
+        app.state.run_executor = run_executor
+        from coire_api.run_reconciler import RunReconciliationCoordinator
+
+        run_reconciler = RunReconciliationCoordinator(settings)
+        await run_reconciler.start()
+        app.state.run_reconciler = run_reconciler
         from coire_api.shard_executor import ShardCommandExecutor
 
         shard_executor = ShardCommandExecutor(settings)
@@ -114,6 +126,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await benchmark_executor.stop()
             await shard_reconciler.stop()
             await shard_executor.stop()
+            await run_reconciler.stop()
+            await run_executor.stop()
             await placement_executor.stop()
             await acquisition_executor.stop()
             await reconciler.stop()
@@ -137,6 +151,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(instances.router)
     app.include_router(nodes.router)
     app.include_router(models.router)
+    app.include_router(runs.router)
     app.include_router(me.router)
     app.include_router(admin_acquisitions.router)
     app.include_router(admin_console.router)
@@ -146,6 +161,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_variants.router)
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)
+    app.include_router(admin_runs.router)
     app.include_router(admin_sharding.router)
     app.include_router(v1.router)
 
@@ -216,7 +232,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.middleware("http")
     async def trace_compatible_request(request: Request, call_next):  # type: ignore[no-untyped-def]
-        if not request.url.path.startswith("/v1/"):
+        run_problem = request.url.path.startswith(("/api/v1/runs", "/api/v1/admin/runs"))
+        if not request.url.path.startswith("/v1/") and not run_problem:
             return await call_next(request)
         from coire_api.gateway.telemetry import tracer
 
@@ -247,17 +264,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(HTTPException)
     async def compatible_problem(request: Request, exc: HTTPException) -> JSONResponse:
         """Keep legacy control routes stable while `/v1` uses RFC 9457."""
-        if not request.url.path.startswith("/v1/"):
+        run_problem = request.url.path.startswith(("/api/v1/runs", "/api/v1/admin/runs"))
+        if not request.url.path.startswith("/v1/") and not run_problem:
             return JSONResponse(
                 status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers
             )
-        detail = exc.detail if isinstance(exc.detail, str) else "request failed"
+        raw_detail: object = exc.detail
+        detail = (
+            str(raw_detail.get("detail", "request failed"))
+            if isinstance(raw_detail, dict)
+            else str(raw_detail)
+        )
+        code = raw_detail.get("code") if isinstance(raw_detail, dict) else None
         return JSONResponse(
             status_code=exc.status_code,
             media_type="application/problem+json",
             headers=exc.headers,
             content={
-                "type": "about:blank",
+                "type": f"urn:coire:problem:{code}" if code else "about:blank",
                 "title": detail,
                 "status": exc.status_code,
                 "detail": detail,

@@ -54,7 +54,7 @@ async def _advance(instance_id: uuid.UUID, state: InstanceState, reason: str) ->
             )
 
 
-@DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0)
+@DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
 async def execute_instance_launch(instance_id_text: str) -> None:
     instance_id = uuid.UUID(instance_id_text)
     settings = get_settings()
@@ -72,6 +72,9 @@ async def execute_instance_launch(instance_id_text: str) -> None:
 
                 try:
                     await execute_sharded_launch(instance_id)
+                    from coire_scheduler.sharded_instances import release_failed_reservations
+
+                    await release_failed_reservations(instance_id)
                 except Exception:
                     await teardown_sharded(instance_id, failed=True, reason="sharded launch failed")
                     raise
@@ -130,6 +133,31 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                             reason=decision.refusal_detail or "placement failed",
                             failure_code=decision.refusal_code or "placement_failed",
                         )
+                        # Placement can fail after creating a pending/held reservation for
+                        # this instance.  A terminal placement decision must release that
+                        # reservation or it will poison subsequent admissions after restart.
+                        reservations = (
+                            (
+                                await session.execute(
+                                    select(MemoryReservationRow).where(
+                                        MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                                        MemoryReservationRow.holder_id == str(instance_id),
+                                        MemoryReservationRow.state.in_(
+                                            [
+                                                MemoryReservationState.PENDING,
+                                                MemoryReservationState.HELD,
+                                                MemoryReservationState.RELEASING,
+                                            ]
+                                        ),
+                                    )
+                                )
+                            )
+                            .scalars()
+                            .all()
+                        )
+                        for reservation in reservations:
+                            reservation.state = MemoryReservationState.FAILED
+                            reservation.released_at = datetime.now(UTC)
                         failures.add(1, {"reason": decision.refusal_code or "placement_failed"})
                         return
                     if state is PlacementState.LOADING:
@@ -150,7 +178,7 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                 decision = await session.get(PlacementDecisionRow, decision_id)
                 if instance is None or decision is None or decision.selected_node_id is None:
                     raise RuntimeError("ready placement has no selected node")
-                reservation = await session.scalar(
+                ready_reservation = await session.scalar(
                     select(MemoryReservationRow).where(
                         MemoryReservationRow.node_id == decision.selected_node_id,
                         MemoryReservationRow.holder_type == ReservationHolder.MODEL,
@@ -171,9 +199,9 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                     .limit(1)
                 )
                 node = await session.get(NodeRow, decision.selected_node_id)
-                if reservation is None or engine is None or node is None:
+                if ready_reservation is None or engine is None or node is None:
                     raise RuntimeError("ready placement is missing reservation, engine, or node")
-                reservation.holder_id = str(instance.id)
+                ready_reservation.holder_id = str(instance.id)
                 engine.instance_id = instance.id
                 member = await session.scalar(
                     select(InstanceMemberRow).where(
@@ -188,7 +216,7 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                             node_id=node.id,
                             rank=0,
                             engine_id=engine.id,
-                            reservation_id=reservation.id,
+                            reservation_id=ready_reservation.id,
                             host=node.control_host or node.name,
                             port=engine.port,
                         )
@@ -205,10 +233,24 @@ async def execute_instance_launch(instance_id_text: str) -> None:
             span.record_exception(exc)
             async with session_scope() as session:
                 instance = await session.get(ModelInstanceRow, instance_id)
-                if instance is not None and instance.state not in {
-                    InstanceState.STOPPED,
-                    InstanceState.FAILED,
-                }:
+                # A scheduler restart can replay this step while the node is still
+                # re-registering its engine. Keep the durable launch state recoverable;
+                # placement failures already transition the instance explicitly above,
+                # while this transient gap must be retried by DBOS.
+                recovering = instance is not None and instance.state in {
+                    InstanceState.RESERVING,
+                    InstanceState.LAUNCHING,
+                    InstanceState.WARMING,
+                }
+                if (
+                    instance is not None
+                    and instance.state
+                    not in {
+                        InstanceState.STOPPED,
+                        InstanceState.FAILED,
+                    }
+                    and not recovering
+                ):
                     await transition(
                         session,
                         instance_id,

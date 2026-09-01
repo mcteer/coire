@@ -42,6 +42,7 @@ class PrincipalKind(StrEnum):
     USER = "user"
     SERVICE = "service"
     API_KEY = "api_key"
+    RUN = "run"
 
 
 class Principal(BaseModel):
@@ -57,6 +58,11 @@ class Principal(BaseModel):
     entitlements: frozenset[str] = frozenset()
     api_key_id: uuid.UUID | None = None
     credential_version: int | None = None
+    run_id: uuid.UUID | None = None
+    permitted_model_ids: frozenset[uuid.UUID] = frozenset()
+    permitted_tools: frozenset[str] = frozenset()
+    spend_limit_tokens: int | None = None
+    spent_tokens: int = 0
 
     @property
     def is_admin(self) -> bool:
@@ -175,16 +181,34 @@ async def authenticate_request(request: Request) -> Principal:
             auth_attempts.add(1, {"method": "legacy", "outcome": "accepted", "reason": "none"})
             return legacy
     assertion = request.headers.get("cf-access-jwt-assertion", "")
-    if not bearer.startswith("coire_") and not assertion:
+    if not bearer.startswith(("coire_", "coire_run_")) and not assertion:
         return ANONYMOUS
     async with session_scope() as session:
+        if bearer.startswith("coire_run_"):
+            from coire_api.run_tokens import InvalidRunToken, authenticate_run_token
+
+            try:
+                run_principal = await authenticate_run_token(session, bearer)
+            except InvalidRunToken as exc:
+                auth_attempts.add(
+                    1,
+                    {
+                        "method": "run_token",
+                        "outcome": "refused",
+                        "reason": exc.reason,
+                    },
+                )
+                logger.warning("run token authentication refused reason=%s", exc.reason)
+                return ANONYMOUS
+            auth_attempts.add(1, {"method": "run_token", "outcome": "accepted", "reason": "none"})
+            return run_principal
         if bearer.startswith("coire_"):
             try:
                 with tracer.start_as_current_span("coire.auth.verify_api_key"):
-                    resolved = await authenticate_key(session, bearer)
-                    if resolved.api_key_id is not None:
+                    api_principal = await authenticate_key(session, bearer)
+                    if api_principal.api_key_id is not None:
                         with tracer.start_as_current_span("coire.auth.enforce_limits"):
-                            await enforce_limits(session, resolved.api_key_id)
+                            await enforce_limits(session, api_principal.api_key_id)
             except (InvalidApiKey, LookupError):
                 auth_attempts.add(
                     1, {"method": "api_key", "outcome": "refused", "reason": "invalid"}
@@ -193,13 +217,13 @@ async def authenticate_request(request: Request) -> Principal:
             auth_attempts.add(1, {"method": "api_key", "outcome": "accepted", "reason": "none"})
             return Principal(
                 kind=PrincipalKind.API_KEY,
-                subject=resolved.subject,
-                user_id=resolved.user_id,
-                role=resolved.role,
-                scopes=frozenset(scope.value for scope in resolved.scopes),
-                entitlements=resolved.entitlements,
-                api_key_id=resolved.api_key_id,
-                credential_version=resolved.credential_version,
+                subject=api_principal.subject,
+                user_id=api_principal.user_id,
+                role=api_principal.role,
+                scopes=frozenset(scope.value for scope in api_principal.scopes),
+                entitlements=api_principal.entitlements,
+                api_key_id=api_principal.api_key_id,
+                credential_version=api_principal.credential_version,
             )
         try:
             verifier = getattr(request.app.state, "access_verifier", None) or AccessVerifier(

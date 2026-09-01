@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
@@ -8,6 +9,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
+from conftest import drain_runtime
 
 COMPOSE_DIR = Path(__file__).resolve().parents[2] / "deploy/compose"
 pytestmark = [
@@ -108,7 +110,7 @@ def _create_tp(
     )
     assert response.status_code == 202, response.text
     ready = _wait_instance(client, response.json()["id"], headers, {"ready", "failed"})
-    assert ready["state"] == "ready", ready
+    assert ready["state"] == "ready", json.dumps(ready, indent=2)
     assert [member["rank"] for member in ready["members"]] == [0, 1]
     assert len({member["reservation_id"] for member in ready["members"]}) == 2
     return ready
@@ -146,7 +148,7 @@ def _create_single(
     )
     assert response.status_code == 202, response.text
     ready = _wait_instance(client, response.json()["id"], headers, {"ready", "failed"})
-    assert ready["state"] == "ready", ready
+    assert ready["state"] == "ready", json.dumps(ready, indent=2)
     return ready
 
 
@@ -219,10 +221,33 @@ def test_synthetic_over_250gb_admission_serves_through_gateway(
 
 
 def test_probe_two_rank_gateway_drain_benchmark_and_rank_failure(
-    api_url: str, admin_headers: dict[str, str]
+    api_url: str, admin_headers: dict[str, str], request: pytest.FixtureRequest
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=120) as client:
+        drain_runtime(client, admin_headers)
         model, variant = _candidate(client, admin_headers)
+        ledgers = client.get("/api/v1/admin/ledger", headers=admin_headers).json()
+        original_budgets = {str(item["node_id"]): int(item["budget_bytes"]) for item in ledgers}
+        request.addfinalizer(
+            lambda: _sql_value(
+                "; ".join(
+                    f"UPDATE node_memory_ledgers SET budget_bytes={budget} "
+                    f"WHERE node_id='{node_id}'"
+                    for node_id, budget in original_budgets.items()
+                )
+                + "; SELECT 1"
+            )
+        )
+        required_per_node = (int(variant["memory_estimate_bytes"]) + 1) // 2
+        for ledger in ledgers:
+            minimum = int(ledger["reserved_bytes"]) + required_per_node + 1024**3
+            if int(ledger["budget_bytes"]) < minimum:
+                changed = client.patch(
+                    f"/api/v1/admin/ledger/{ledger['node_id']}",
+                    headers=admin_headers,
+                    json={"budget_bytes": minimum},
+                )
+                assert changed.status_code == 200, changed.text
         _sql_value("DELETE FROM link_observations")
         unmeasured = _create_tp_failure(client, admin_headers, model, variant)
         assert unmeasured["failure_code"] == "rdma_probe_required"

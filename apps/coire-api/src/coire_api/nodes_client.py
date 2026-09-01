@@ -24,6 +24,15 @@ from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileRe
 from coire_core.models.jobs import ChecksumManifest, JobStatus, RepoInspection
 from coire_core.models.link import StudioDataLinkStatus
 from coire_core.models.node import NodeStatus, NodeStatusV2
+from coire_core.models.runs import (
+    RunCollectedResult,
+    RunContainerCreate,
+    RunContainerObservation,
+    RunContainerStatus,
+    RunLogChunk,
+    RunReconcileRequest,
+    RunReconcileResult,
+)
 from coire_core.models.sharding import (
     BenchmarkCommand,
     BenchmarkMeasurement,
@@ -480,3 +489,50 @@ class NodeClient:
             expect=(200,),
         )
         return ReconcileResult.model_validate(body)
+
+    # -- ephemeral runs ----------------------------------------------------
+    async def create_run(self, node: str, command: RunContainerCreate) -> RunContainerStatus:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/runs",
+            json=command.model_dump(mode="json"),
+            expect=(200, 201),
+        )
+        return RunContainerStatus.model_validate(body)
+
+    async def start_run(self, node: str, run_id: uuid.UUID) -> RunContainerStatus:
+        _, body = await self._call("POST", node, f"/node/runs/{run_id}/start", expect=(200,))
+        return RunContainerStatus.model_validate(body)
+
+    async def run_logs(self, node: str, run_id: uuid.UUID, *, offset: int = 0) -> list[RunLogChunk]:
+        _, body = await self._call(
+            "GET", node, f"/node/runs/{run_id}/logs?offset={offset}", expect=(200,)
+        )
+        return [RunLogChunk.model_validate(item) for item in body.get("items", [])]
+
+    async def wait_run(self, node: str, run_id: uuid.UUID) -> RunContainerStatus:
+        _, body = await self._call("POST", node, f"/node/runs/{run_id}/wait", expect=(200,))
+        return RunContainerStatus.model_validate(body)
+
+    async def collect_run(self, node: str, run_id: uuid.UUID) -> RunCollectedResult:
+        _, body = await self._call("GET", node, f"/node/runs/{run_id}/result", expect=(200,))
+        return RunCollectedResult.model_validate(body)
+
+    async def remove_run(self, node: str, run_id: uuid.UUID, *, kill: bool = False) -> None:
+        suffix = "?kill=true" if kill else ""
+        await self._call("DELETE", node, f"/node/runs/{run_id}{suffix}", expect=(204, 404))
+
+    async def list_runs(self, node: str) -> list[RunContainerObservation]:
+        _, body = await self._call("GET", node, "/node/runs", expect=(200,))
+        return [RunContainerObservation.model_validate(item) for item in body.get("items", [])]
+
+    async def reconcile_runs(self, node: str, request: RunReconcileRequest) -> RunReconcileResult:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/runs/reconcile",
+            json=request.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return RunReconcileResult.model_validate(body)

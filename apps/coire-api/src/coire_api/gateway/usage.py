@@ -32,6 +32,7 @@ class UsageTracker:
     engine_id: uuid.UUID | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    reserved_tokens: int = 0
     _finished: bool = False
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
@@ -66,6 +67,7 @@ class UsageTracker:
             started_at=self.started_at,
             outcome=outcome,
             failure_code=failure_code,
+            reserved_tokens=self.reserved_tokens,
         )
 
 
@@ -82,6 +84,7 @@ async def persist_usage(
     started_at: datetime,
     outcome: UsageOutcome,
     failure_code: str | None = None,
+    reserved_tokens: int = 0,
 ) -> None:
     """Insert once even when the request task is being cancelled."""
 
@@ -117,6 +120,15 @@ async def persist_usage(
                     principal.api_key_id,
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
+                )
+            if principal.run_id is not None and reserved_tokens > 0:
+                from coire_api.run_tokens import settle_run_token_usage
+
+                await settle_run_token_usage(
+                    session,
+                    principal.run_id,
+                    max(prompt_tokens, 0) + max(completion_tokens, 0),
+                    reserved_tokens=reserved_tokens,
                 )
 
     task = asyncio.create_task(_write())

@@ -524,6 +524,36 @@ async def execute_sharded_launch(instance_id: uuid.UUID) -> None:
         await _execute_sharded_launch(instance_id)
 
 
+async def release_failed_reservations(instance_id: uuid.UUID) -> None:
+    """Fail any reservations left by a sharded admission that refused before group creation."""
+    async with session_scope() as session:
+        instance = await session.get(ModelInstanceRow, instance_id)
+        if instance is None or instance.state is not InstanceState.FAILED:
+            return
+        reservations = (
+            (
+                await session.execute(
+                    select(MemoryReservationRow).where(
+                        MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                        MemoryReservationRow.holder_id == str(instance_id),
+                        MemoryReservationRow.state.in_(
+                            [
+                                MemoryReservationState.PENDING,
+                                MemoryReservationState.HELD,
+                                MemoryReservationState.RELEASING,
+                            ]
+                        ),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for reservation in reservations:
+            reservation.state = MemoryReservationState.FAILED
+            reservation.released_at = datetime.now(UTC)
+
+
 async def teardown_sharded(instance_id: uuid.UUID, *, failed: bool, reason: str) -> None:
     """Stop both expectations, then release both reservations in one transaction."""
     span = trace.get_current_span()

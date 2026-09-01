@@ -123,4 +123,21 @@ if [[ "$FAILED" -ne 0 ]]; then
   echo "IMAGE POLICY FAILED: $IMAGE" >&2
   exit 1
 fi
+
+# Principle II: core control-plane images must not contain the user harness package. Runtime
+# placement is Studio-only, but omitting the executable from core makes fallback impossible.
+case "${IMAGE%%:*}" in
+  *coire-api|*coire-scheduler|*coire-mcp|*coire-migrate)
+    if printf '%s\n' "$FS" | grep -q '/coire_agent/'; then
+      fail "user harness present on core" "coire_agent package found"
+    else
+      pass "principle II: no user harness on core"
+    fi
+    ;;
+esac
+
+if [[ "$FAILED" -ne 0 ]]; then
+  echo "IMAGE POLICY FAILED: $IMAGE" >&2
+  exit 1
+fi
 echo "image policy passed: $IMAGE"
