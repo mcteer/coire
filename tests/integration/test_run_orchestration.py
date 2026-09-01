@@ -364,7 +364,19 @@ def test_scheduler_restart_preserves_one_real_run_container(
             {"succeeded", "failed", "result_collection_failed", "timed_out"},
             timeout=180,
         )
-        assert terminal["state"] == "succeeded", json.dumps(terminal, indent=2)
+        if terminal["state"] != "succeeded":
+            container_logs = subprocess.run(
+                ["docker", "logs", container_id],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            pytest.fail(
+                json.dumps(terminal, indent=2)
+                + "\n--- run container logs ---\n"
+                + container_logs.stdout
+                + container_logs.stderr
+            )
         assert terminal["result"]["output"]["answer"] == "bounded"
         successor = wait_for(
             client,
