@@ -51,11 +51,16 @@ check_lock_present() {
     grep -qF "$digest" "$LOCK" || {
       echo "digest not recorded in images.lock: $digest" >&2; fail=1;
     }
-  done < <(grep -ohE 'sha256:[a-f0-9]{64}' "$COMPOSE" \
-             $(find "$REPO_ROOT" -name '*Dockerfile' \
-                 -not -path '*/node_modules/*' -not -path '*/.venv/*' \
-                 -not -path '*/tests/fixtures/*') \
-           2>/dev/null | sort -u)
+  done < <(
+    {
+      grep -ohE 'sha256:[a-f0-9]{64}' "$COMPOSE" || true
+      while IFS= read -r df; do
+        grep -iE '^[[:space:]]*FROM[[:space:]]' "$df" || true
+      done < <(find "$REPO_ROOT" -name '*Dockerfile' \
+        -not -path '*/node_modules/*' -not -path '*/.venv/*' \
+        -not -path '*/tests/fixtures/*')
+    } | grep -oE 'sha256:[a-f0-9]{64}' | sort -u
+  )
 }
 
 check_ops_image_wiring() {
