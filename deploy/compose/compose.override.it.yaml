@@ -41,6 +41,9 @@ services:
       # Pre-007 integration scenarios still use their generated static bearer. Feature 007's
       # own scenario uses real keys; production compose never enables this rollback bridge.
       IDENTITY_LEGACY_ADMIN_ENABLED: "1"
+      RUN_AGENT_IMAGE: ${COIRE_IT_RUN_AGENT_IMAGE:-}
+      RUN_RELAY_IMAGE: ${COIRE_IT_RUN_RELAY_IMAGE:-}
+      RUN_GATEWAY_URL: http://host.docker.internal:${COIRE_IT_API_PORT:-18081}/v1
     networks:
       coire-control-sim:
         aliases: [coire-core]
@@ -49,6 +52,7 @@ services:
     environment:
       PLACEMENT_POLL_INTERVAL_S: "0.2"
       PLACEMENT_TTL_INTERVAL_S: "2"
+      RUN_CONCURRENCY_CAP: "1"
     networks: [coire-control-sim]
 
   otel-collector:
@@ -100,12 +104,17 @@ services:
       HF_HUB_DISABLE_XET: "1"
       DISK_RESERVE_BYTES: "268435456"
       OTLP_ENDPOINT: http://otel-collector:4317
+      RUN_AGENT_IMAGE: ${COIRE_IT_RUN_AGENT_IMAGE:-}
+      RUN_RELAY_IMAGE: ${COIRE_IT_RUN_RELAY_IMAGE:-}
+      RUN_WORKSPACE_ROOT: ${COIRE_IT_RUN_WORKSPACE_ROOT:-/tmp/coire-it-workspaces}
     volumes:
       # Persistent across `docker compose restart`, like the Studio's /opt/coire volume.
       # The session fixture removes it with `down -v` after every integration run.
       - node-a-opt:/opt/coire
       - ../../tests/integration/testdata/jaccl-hostfile.json:/opt/coire/state/jaccl-hostfile.json:ro
       - ../../tests/integration/testdata/ring-hostfile.json:/opt/coire/state/ring-hostfile.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${COIRE_IT_RUN_WORKSPACE_ROOT:-/tmp/coire-it-workspaces}:${COIRE_IT_RUN_WORKSPACE_ROOT:-/tmp/coire-it-workspaces}
     healthcheck:
       # The agent binds its mesh address, not loopback, so the probe must use that address —
       # exactly as it does on a Studio.

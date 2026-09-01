@@ -73,17 +73,43 @@ class RunReconciliationCoordinator:
             for node in nodes:
                 try:
                     with tracer.start_as_current_span("coire.api.run.reconcile"):
-                        result = await client.reconcile_runs(
+                        observed = await client.reconcile_runs(
                             node.name,
-                            RunReconcileRequest(authoritative_run_ids=by_node[node.id]),
+                            RunReconcileRequest(
+                                authoritative_run_ids=by_node[node.id], reap_orphans=False
+                            ),
                         )
                 except NodeError:
                     logger.warning("run reconciliation deferred node=%s", node.name)
                     continue
-                if result.orphan_run_ids:
-                    orphans_total.add(len(result.orphan_run_ids), {"node": node.name})
+                if observed.orphan_run_ids:
+                    # The first snapshot can race placement: a run may acquire its node and
+                    # create a container after the database read but before the node observes
+                    # it. Refresh authoritative state before any destructive request.
                     async with session_scope() as session:
-                        for run_id in result.orphan_run_ids:
+                        refreshed = frozenset(
+                            (
+                                await session.scalars(
+                                    select(AgentRunRow.id).where(
+                                        AgentRunRow.node_id == node.id,
+                                        AgentRunRow.state.notin_(list(TERMINAL_RUN_STATES)),
+                                    )
+                                )
+                            ).all()
+                        )
+                    try:
+                        result = await client.reconcile_runs(
+                            node.name,
+                            RunReconcileRequest(authoritative_run_ids=refreshed, reap_orphans=True),
+                        )
+                    except NodeError:
+                        logger.warning("run orphan reap deferred node=%s", node.name)
+                        continue
+                    if not result.reaped_run_ids:
+                        continue
+                    orphans_total.add(len(result.reaped_run_ids), {"node": node.name})
+                    async with session_scope() as session:
+                        for run_id in result.reaped_run_ids:
                             await write_audit(
                                 session,
                                 actor="coire-run-reconciler",

@@ -77,6 +77,8 @@ class Handler(BaseHTTPRequestHandler):
         if time.monotonic() < (ready_at if isinstance(ready_at, float) else 0.0):
             self._send(503, {"detail": "model is still loading"})
             return
+        if "slow-completion" in str(request.get("messages", "")):
+            time.sleep(5.0)
         content = "ok"
         if "coire-harness-json" in str(request.get("messages", "")):
             content = '{"answer":"bounded"}'

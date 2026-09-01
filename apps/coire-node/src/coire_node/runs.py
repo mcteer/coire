@@ -27,6 +27,7 @@ from coire_node.docker_api import DockerAPI, DockerAPIError
 
 RUN_LABEL = "com.coire.agent-run"
 MANAGED_LABEL = "com.coire.managed"
+NODE_LABEL = "com.coire.node"
 RESULT_PATH = "/workspace/.coire/result.json"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
@@ -41,6 +42,7 @@ class RunManager:
     def __init__(self, settings: Settings, docker: DockerAPI) -> None:
         self.settings = settings
         self.docker = docker
+        self._create_locks: dict[uuid.UUID, asyncio.Lock] = {}
 
     @staticmethod
     def container_name(run_id: uuid.UUID) -> str:
@@ -92,6 +94,7 @@ class RunManager:
             "Labels": {
                 RUN_LABEL: str(command.run_id),
                 MANAGED_LABEL: "true",
+                NODE_LABEL: self.settings.node_name,
                 "com.coire.gateway-host": gateway_host,
                 "com.coire.timeout-seconds": str(command.limits.timeout_seconds),
                 "com.coire.log-bytes": str(command.limits.log_bytes),
@@ -135,6 +138,7 @@ class RunManager:
             "Labels": {
                 RUN_LABEL: str(command.run_id),
                 MANAGED_LABEL: "true",
+                NODE_LABEL: self.settings.node_name,
                 "com.coire.component": "run-relay",
             },
             "User": "65532:65532",
@@ -155,12 +159,29 @@ class RunManager:
                 "PortBindings": {},
                 "PublishAllPorts": False,
                 "AutoRemove": False,
+                "ExtraHosts": ["host.docker.internal:host-gateway"],
             },
         }
 
     async def create(self, command: RunContainerCreate) -> RunContainerStatus:
+        lock = self._create_locks.setdefault(command.run_id, asyncio.Lock())
+        async with lock:
+            return await self._create(command)
+
+    async def _create(self, command: RunContainerCreate) -> RunContainerStatus:
         name = self.container_name(command.run_id)
         observed = await self.docker.inspect_container(name)
+        if observed is not None and not self._token_matches(observed, command.run_token):
+            state = observed.get("State") or {}
+            if bool(state.get("Running")):
+                raise RunRuntimeError(
+                    "run_token_conflict", "running container has a superseded credential"
+                )
+            # An ambiguous control-plane timeout can rotate the credential while the
+            # original create is still completing. A container is not executable until
+            # the separate START command, so replacing it here is safe and convergent.
+            await self.docker.remove_container(name, force=True)
+            observed = None
         if observed is None:
             network = self.network_name(command.run_id)
             try:
@@ -191,6 +212,11 @@ class RunManager:
         if observed is None:
             raise RunRuntimeError("run_runtime_unavailable", "created container is not inspectable")
         return self._status(command.run_id, observed)
+
+    @staticmethod
+    def _token_matches(observed: dict[str, Any], expected: str) -> bool:
+        environment = (observed.get("Config") or {}).get("Env") or []
+        return f"COIRE_RUN_TOKEN={expected}" in environment
 
     async def _wait_relay_ready(self, container_id: str) -> None:
         deadline = time.monotonic() + self.settings.run_relay_start_timeout_s
@@ -314,7 +340,9 @@ class RunManager:
         await self.docker.remove_network(self.network_name(run_id))
 
     async def observations(self) -> list[RunContainerObservation]:
-        rows = await self.docker.list_containers(labels={MANAGED_LABEL: "true"})
+        rows = await self.docker.list_containers(
+            labels={MANAGED_LABEL: "true", NODE_LABEL: self.settings.node_name}
+        )
         now = datetime.now(UTC)
         observations: list[RunContainerObservation] = []
         for row in rows:
@@ -334,6 +362,20 @@ class RunManager:
                 )
             )
         return observations
+
+    async def managed_run_ids(self) -> set[uuid.UUID]:
+        """Return IDs for every managed runner or relay, including incomplete pairs."""
+        rows = await self.docker.list_containers(
+            labels={MANAGED_LABEL: "true", NODE_LABEL: self.settings.node_name}
+        )
+        run_ids: set[uuid.UUID] = set()
+        for row in rows:
+            labels = row.get("Labels") or {}
+            try:
+                run_ids.add(uuid.UUID(str(labels[RUN_LABEL])))
+            except (KeyError, TypeError, ValueError):
+                continue
+        return run_ids
 
     @staticmethod
     def _decode_docker_logs(raw: bytes) -> str:

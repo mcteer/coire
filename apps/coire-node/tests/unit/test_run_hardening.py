@@ -57,6 +57,7 @@ def test_create_payload_is_hardened_and_has_no_general_egress(tmp_path: Path) ->
     relay = manager.relay_payload(command("safe"))
     assert relay["HostConfig"]["NetworkMode"] == "bridge"
     assert relay["HostConfig"]["PortBindings"] == {}
+    assert relay["HostConfig"]["ExtraHosts"] == ["host.docker.internal:host-gateway"]
     assert relay["HostConfig"]["ReadonlyRootfs"] is True
 
 

@@ -119,14 +119,23 @@ class RunCommandExecutor:
                 command.state = RunCommandState.RUNNING
                 command.updated_at = datetime.now(UTC)
                 operation, node_name, run_id = command.operation, node.name, run.id
+                run_limits = RunLimits.model_validate(run.limits)
                 span.set_attribute("run_id", str(run_id))
                 span.set_attribute("node", node_name)
 
-            async with NodeClient(self.settings, timeout=5.0) as client:
+            # The wait route is intentionally a blocking node operation. Its HTTP
+            # budget must cover the admitted run timeout; otherwise a healthy long
+            # run is retried forever in the command ledger after five seconds.
+            node_timeout = 5.0
+            if operation is RunOperation.CREATE:
+                node_timeout = self.settings.run_relay_start_timeout_s + 10.0
+            elif operation is RunOperation.WAIT:
+                node_timeout = float(run_limits.timeout_seconds + 5)
+            async with NodeClient(self.settings, timeout=node_timeout) as client:
                 if operation is RunOperation.CREATE:
                     observations = await client.list_runs(node_name)
                     existing = next((item for item in observations if item.run_id == run_id), None)
-                    if existing is not None:
+                    if existing is not None and run.container_id == existing.container_id:
                         return {
                             "run_id": str(run_id),
                             "container_id": existing.container_id,

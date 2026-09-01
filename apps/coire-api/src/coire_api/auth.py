@@ -189,10 +189,16 @@ async def authenticate_request(request: Request) -> Principal:
 
             try:
                 run_principal = await authenticate_run_token(session, bearer)
-            except InvalidRunToken:
+            except InvalidRunToken as exc:
                 auth_attempts.add(
-                    1, {"method": "run_token", "outcome": "refused", "reason": "invalid"}
+                    1,
+                    {
+                        "method": "run_token",
+                        "outcome": "refused",
+                        "reason": exc.reason,
+                    },
                 )
+                logger.warning("run token authentication refused reason=%s", exc.reason)
                 return ANONYMOUS
             auth_attempts.add(1, {"method": "run_token", "outcome": "accepted", "reason": "none"})
             return run_principal

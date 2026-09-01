@@ -21,7 +21,9 @@ hasher = PasswordHasher(time_cost=2, memory_cost=19 * 1024, parallelism=1)
 
 
 class InvalidRunToken(ValueError):
-    pass
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(f"invalid run token: {reason}")
 
 
 def token_material() -> tuple[str, str, str]:
@@ -91,24 +93,26 @@ async def rotate_run_token(
 async def authenticate_run_token(session: AsyncSession, presented: str) -> Principal:
     match = RUN_TOKEN_PATTERN.fullmatch(presented)
     if match is None:
-        raise InvalidRunToken("invalid run token")
+        raise InvalidRunToken("malformed")
     prefix, secret = match.groups()
     row = await session.scalar(select(RunTokenRow).where(RunTokenRow.prefix == prefix))
-    if row is None or not verify_material(row.secret_hash, secret):
-        raise InvalidRunToken("invalid run token")
+    if row is None:
+        raise InvalidRunToken("unknown_prefix")
+    if not verify_material(row.secret_hash, secret):
+        raise InvalidRunToken("secret_mismatch")
     run = await session.get(AgentRunRow, row.run_id)
     now = datetime.now(UTC)
-    if (
-        run is None
-        or run.state in TERMINAL_RUN_STATES
-        or run.state is AgentRunState.KILL_REQUESTED
-        or row.revoked_at is not None
-        or row.expires_at <= now
-    ):
-        raise InvalidRunToken("invalid run token")
+    if run is None:
+        raise InvalidRunToken("run_missing")
+    if run.state in TERMINAL_RUN_STATES or run.state is AgentRunState.KILL_REQUESTED:
+        raise InvalidRunToken("run_inactive")
+    if row.revoked_at is not None:
+        raise InvalidRunToken("revoked")
+    if row.expires_at <= now:
+        raise InvalidRunToken("expired")
     scope = RunTokenScope.model_validate(row.scope)
     if row.spent_tokens >= scope.spend_limit_tokens:
-        raise InvalidRunToken("run spend exhausted")
+        raise InvalidRunToken("spend_exhausted")
     return Principal(
         kind=PrincipalKind.RUN,
         subject=str(run.id),

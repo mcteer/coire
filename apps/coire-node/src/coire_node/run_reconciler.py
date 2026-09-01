@@ -12,8 +12,9 @@ class RunReconciler:
 
     async def reconcile(self, request: RunReconcileRequest) -> RunReconcileResult:
         observations = await self.manager.observations()
+        managed_run_ids = await self.manager.managed_run_ids()
         orphan_ids = sorted(
-            {item.run_id for item in observations} - set(request.authoritative_run_ids),
+            managed_run_ids - set(request.authoritative_run_ids),
             key=str,
         )
         reaped = []

@@ -85,7 +85,7 @@ recovery, confinement, and manual real-cluster tests. Test tasks precede their i
 
 - [X] T039 [P] [US5] Write DBOS workflow replay/idempotency and dead-container recovery tests in `apps/coire-api/tests/unit/test_run_workflow.py`
 - [X] T040 [P] [US5] Write node observation and safe label-scoped orphan cleanup tests in `apps/coire-node/tests/unit/test_run_reconciler.py`
-- [ ] T041 [P] [US5] Extend Docker integration coverage for scheduler restart, exact-once container identity, queued capacity, and orphan reaping in `tests/integration/test_container_runs.py`
+- [X] T041 [P] [US5] Extend Docker integration coverage for scheduler restart, exact-once container identity, queued capacity, and orphan reaping in `tests/integration/test_run_orchestration.py`
 - [X] T042 [US5] Implement labeled-container observation and safe orphan reporting/reaping in `apps/coire-node/src/coire_node/run_reconciler.py`
 - [X] T043 [US5] Reconcile persisted run/container state before each retried DBOS effect and resume or terminally classify it in `apps/coire-api/src/coire_scheduler/runs.py`
 - [X] T044 [US5] Enforce configurable per-Studio slot caps, model-colocation preference, FIFO queueing, zero-sandbox ineligibility, and slot release in `apps/coire-api/src/coire_scheduler/runs.py`
@@ -99,8 +99,8 @@ recovery, confinement, and manual real-cluster tests. Test tasks precede their i
 - [X] T049 Regenerate `apps/coire-api/openapi.json` and `apps/coire-web/src/api/schema.d.ts`, then update freshness and contract tests
 - [X] T050 Run Ruff, strict mypy, all non-integration tests, web tests/lint/build, OpenAPI freshness, migration upgrade/downgrade/upgrade, and record evidence in `specs/011-container-run-orchestration/review.md`
 - [X] T051 Build and policy-check affected images, scan for critical CVEs, generate SPDX SBOMs, and record evidence in `specs/011-container-run-orchestration/review.md`
-- [ ] T052 Run the full Docker integration suite including confinement and recovery, then record evidence in `specs/011-container-run-orchestration/review.md`
-- [ ] T053 Perform convergence analysis and complete every appended task in `specs/011-container-run-orchestration/tasks.md`
+- [X] T052 Run the full Docker integration suite including confinement and recovery, then record evidence in `specs/011-container-run-orchestration/review.md`
+- [X] T053 Perform convergence analysis and complete every appended task in `specs/011-container-run-orchestration/tasks.md`
 - [ ] T054 Manually deploy and verify both real Studios and core-isolation evidence per `quickstart.md`, recording only non-secret run IDs/timestamps in `specs/011-container-run-orchestration/review.md`
 
 ## Dependencies and Execution Order

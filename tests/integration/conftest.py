@@ -57,6 +57,8 @@ POSTGRES_PASSWORD = f"it-{secrets.token_urlsafe(24)}"
 ADMIN_TOKEN = f"it-admin-{secrets.token_urlsafe(24)}"
 NODE_TOKENS: dict[str, str] = {}
 SECRETS_DIR = Path(tempfile.mkdtemp(prefix="coire-it-secrets-"))
+RUN_WORKSPACE_ROOT = Path(tempfile.mkdtemp(prefix="coire-it-workspaces-"))
+os.environ.setdefault("COIRE_IT_RUN_WORKSPACE_ROOT", str(RUN_WORKSPACE_ROOT))
 
 INTEGRATION_PORT = os.environ.get("COIRE_IT_PORT", "18080")
 INTEGRATION_API_PORT = os.environ.get("COIRE_IT_API_PORT", "18081")
@@ -68,6 +70,7 @@ DIRECT_API_URL = f"http://127.0.0.1:{INTEGRATION_API_PORT}"
 OVERRIDE = COMPOSE_DIR / "compose.override.it.yaml"
 
 INTEGRATION_SECRETS = {
+    "COIRE_TAG": os.environ.get("COIRE_TAG", "ci"),
     "COIRE_SECRET_POSTGRES_PASSWORD": POSTGRES_PASSWORD,
     "COIRE_SECRET_KEY_SIGNING_SECRET": f"it-{secrets.token_urlsafe(32)}",
     "COIRE_SECRET_ADMIN_TOKEN": ADMIN_TOKEN,
@@ -82,6 +85,7 @@ INTEGRATION_SECRETS = {
     "COIRE_IT_PORT": INTEGRATION_PORT,
     "COIRE_IT_API_PORT": INTEGRATION_API_PORT,
     "COIRE_CLUSTER_CONFIG_DIR": str(REPO / "tests/integration/testdata"),
+    "COIRE_IT_RUN_WORKSPACE_ROOT": str(RUN_WORKSPACE_ROOT),
 }
 
 ACCESS_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -144,6 +148,17 @@ def access_assertion(*, email: str = "admin@integration.test", **claims: object)
 
 def integration_env(**extra: str) -> dict[str, str]:
     return {**os.environ, **INTEGRATION_SECRETS, **extra}
+
+
+def _digest_ref(image: str) -> str:
+    inspected = subprocess.run(
+        ["docker", "image", "inspect", image, "--format", "{{index .RepoDigests 0}}"],
+        capture_output=True,
+        text=True,
+    )
+    if inspected.returncode != 0 or "@sha256:" not in inspected.stdout:
+        raise AssertionError(f"integration image has no digest-pinned reference: {image}")
+    return inspected.stdout.strip()
 
 
 def _declare_and_register_nodes(env: dict[str, str]) -> None:
@@ -229,6 +244,13 @@ def stack() -> Iterator[None]:
         yield
         return
 
+    INTEGRATION_SECRETS.update(
+        {
+            "COIRE_IT_RUN_AGENT_IMAGE": _digest_ref("coire-agent:ci"),
+            "COIRE_IT_RUN_RELAY_IMAGE": _digest_ref("coire-run-relay:ci"),
+        }
+    )
+
     global ACCESS_ISSUER
     jwks_server = ThreadingHTTPServer(("0.0.0.0", 0), _JwksHandler)
     jwks_thread = threading.Thread(target=jwks_server.serve_forever, daemon=True)
@@ -291,6 +313,7 @@ def stack() -> Iterator[None]:
                 capture_output=True,
             )
             shutil.rmtree(SECRETS_DIR, ignore_errors=True)
+            shutil.rmtree(RUN_WORKSPACE_ROOT, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")

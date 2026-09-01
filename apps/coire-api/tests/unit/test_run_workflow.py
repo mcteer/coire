@@ -40,6 +40,7 @@ async def test_create_replay_adopts_existing_labeled_container_without_remint(
         primary_model_id=uuid.uuid4(),
         primary_variant_id=uuid.uuid4(),
         node_id=node_id,
+        container_id="existing-container",
         workspace_ref="workspace",
         token_scope={},
         state=AgentRunState.CREATING,
