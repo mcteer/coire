@@ -175,7 +175,7 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                 decision = await session.get(PlacementDecisionRow, decision_id)
                 if instance is None or decision is None or decision.selected_node_id is None:
                     raise RuntimeError("ready placement has no selected node")
-                reservation = await session.scalar(
+                ready_reservation = await session.scalar(
                     select(MemoryReservationRow).where(
                         MemoryReservationRow.node_id == decision.selected_node_id,
                         MemoryReservationRow.holder_type == ReservationHolder.MODEL,
@@ -196,9 +196,9 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                     .limit(1)
                 )
                 node = await session.get(NodeRow, decision.selected_node_id)
-                if reservation is None or engine is None or node is None:
+                if ready_reservation is None or engine is None or node is None:
                     raise RuntimeError("ready placement is missing reservation, engine, or node")
-                reservation.holder_id = str(instance.id)
+                ready_reservation.holder_id = str(instance.id)
                 engine.instance_id = instance.id
                 member = await session.scalar(
                     select(InstanceMemberRow).where(
@@ -213,7 +213,7 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                             node_id=node.id,
                             rank=0,
                             engine_id=engine.id,
-                            reservation_id=reservation.id,
+                            reservation_id=ready_reservation.id,
                             host=node.control_host or node.name,
                             port=engine.port,
                         )
