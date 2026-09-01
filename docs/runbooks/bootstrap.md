@@ -180,6 +180,11 @@ core control address (`192.168.4.10`) through Wi‑Fi `en1`, while the Thunderbo
 active at `192.168.100.11` (edge-a) and `192.168.100.12` (edge-b). This confirms no wired path is
 used for control or public egress; `bridge0` is reserved for Studio-to-Studio inference traffic.
 
+The deployed v2 nodes intentionally run with `legacy_network_mode=false`. Consequently their
+Wi‑Fi `.lab` listener is the authenticated control path (`path: control`), and no separate legacy
+egress/fallback listener is started. The historical fallback-header checks in the pre-v2 quickstart
+apply only to legacy-mode deployments; they are not a current control-fabric requirement.
+
 The footprint command was rerun over SSH with `--keychain` on both Studios. Each output contained
 only `/opt/coire/{bin,python,envs,log,models,state,hf-cache}`, the LaunchDaemon plist, and the two
 System-keychain entries `coire-node-token` and `coire-hf-token`; `/opt/coire` itself remained.
