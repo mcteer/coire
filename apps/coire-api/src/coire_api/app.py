@@ -20,6 +20,7 @@ from coire_api import __version__
 from coire_api.db import dispose_engine, init_engine, session_scope
 from coire_api.routes import (
     admin_acquisitions,
+    admin_console,
     admin_identity,
     admin_ledger,
     admin_models,
@@ -137,6 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(models.router)
     app.include_router(me.router)
     app.include_router(admin_acquisitions.router)
+    app.include_router(admin_console.router)
     app.include_router(admin_ledger.router)
     app.include_router(admin_identity.router)
     app.include_router(admin_variants.router)

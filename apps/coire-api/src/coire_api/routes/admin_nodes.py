@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.audit import write_principal_audit
@@ -24,6 +24,7 @@ from coire_core.models.audit import AuditAction, AuditOutcome, AuditRecord
 from coire_core.models.auth import ActorType
 from coire_core.models.engine import TERMINAL_ENGINE_STATES, EngineState
 from coire_core.models.instance import NodeDeclaration, NodeRegistrationCredential
+from coire_core.models.jobs import DownloadStage
 from coire_core.models.link import StudioDataLinkStatus
 from coire_core.models.node import NodeRole, Reachability
 
@@ -201,6 +202,41 @@ async def list_engines(principal: CurrentAdmin, session: SessionDep) -> list[dic
     return [_engine(r, names) for r in rows]
 
 
+@router.delete("/jobs/{job_id}", status_code=status.HTTP_202_ACCEPTED)
+async def cancel_job(
+    job_id: uuid.UUID,
+    principal: CurrentAdmin,
+    session: SessionDep,
+    client: ClientDep,
+) -> dict[str, Any]:
+    row = await session.get(DownloadJobRow, job_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such job")
+    nodes = {
+        node.id: node.name for node in (await session.execute(select(NodeRow))).scalars().all()
+    }
+    if row.stage not in {DownloadStage.DONE, DownloadStage.FAILED}:
+        for node_id in {row.origin_node_id, row.replica_node_id}:
+            node_name = nodes.get(node_id)
+            if node_name:
+                try:
+                    await client.cancel_job(node_name, job_id)
+                except NodeError:
+                    logger.warning("job cancellation could not reach %s", node_name)
+        row.stage = DownloadStage.FAILED
+        row.failure_reason = "cancelled by administrator"
+        row.finished_at = datetime.now(UTC)
+    await write_principal_audit(
+        session,
+        principal=principal,
+        action="job.cancel",
+        target_type="download_job",
+        target_id=str(job_id),
+    )
+    await session.commit()
+    return _job(row, nodes)
+
+
 @router.get("/engines/{engine_id}")
 async def get_engine(
     engine_id: uuid.UUID, principal: CurrentAdmin, session: SessionDep
@@ -255,9 +291,11 @@ async def list_audit(
     actor: str | None = None,
     actor_type: ActorType | None = None,
     outcome: AuditOutcome | None = None,
+    before: datetime | None = None,
+    before_id: uuid.UUID | None = None,
 ) -> list[AuditRecord]:
     """Read the audit log. There is no route that writes, edits or deletes one."""
-    query = select(AuditRow).order_by(AuditRow.at.desc()).limit(limit)
+    query = select(AuditRow).order_by(AuditRow.at.desc(), AuditRow.id.desc()).limit(limit)
     if target_id:
         query = query.where(AuditRow.target_id == target_id)
     if action:
@@ -268,6 +306,12 @@ async def list_audit(
         query = query.where(AuditRow.actor_type == actor_type)
     if outcome:
         query = query.where(AuditRow.outcome == outcome)
+    if before is not None:
+        query = query.where(
+            or_(AuditRow.at < before, and_(AuditRow.at == before, AuditRow.id < before_id))
+            if before_id is not None
+            else AuditRow.at < before
+        )
     rows = (await session.execute(query)).scalars().all()
     return [AuditRecord.model_validate(r, from_attributes=True) for r in rows]
 

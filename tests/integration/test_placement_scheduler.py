@@ -158,7 +158,7 @@ def test_pin_refusal_then_unpin_lru_eviction_survives_scheduler_restart(
         )
         ttl = client.patch(
             f"/api/v1/admin/models/{second_model['id']}",
-            headers=admin_headers,
+            headers={**admin_headers, "If-Match": second_model["updated_at"]},
             json={"idle_ttl_seconds": 60},
         )
         assert ttl.status_code == 200, ttl.text

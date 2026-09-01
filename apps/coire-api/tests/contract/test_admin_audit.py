@@ -17,7 +17,16 @@ def test_audit_list_has_bounded_filters_and_typed_projection() -> None:
     document = create_app(Settings(_secrets_dir="/nonexistent")).openapi()  # type: ignore[call-arg]
     operation = document["paths"]["/api/v1/admin/audit"]["get"]
     parameters = {item["name"]: item for item in operation["parameters"]}
-    assert {"limit", "target_id", "action", "actor", "actor_type", "outcome"} <= parameters.keys()
+    assert {
+        "limit",
+        "target_id",
+        "action",
+        "actor",
+        "actor_type",
+        "outcome",
+        "before",
+        "before_id",
+    } <= parameters.keys()
     assert parameters["limit"]["schema"]["maximum"] == 500
     audit = document["components"]["schemas"]["AuditRecord"]["properties"]
     assert {

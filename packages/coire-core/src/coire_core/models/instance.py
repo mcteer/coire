@@ -117,6 +117,12 @@ class ClusterNodeState(BaseModel):
     cpu_percent: float | None = Field(default=None, ge=0, le=100)
     gpu_percent: float | None = Field(default=None, ge=0, le=100)
     thermal_state: ThermalState = ThermalState.UNKNOWN
+    health_reason: str | None = None
+    stale: bool = False
+    memory_total_bytes: int | None = Field(default=None, ge=0)
+    memory_free_bytes: int | None = Field(default=None, ge=0)
+    disk_total_bytes: int | None = Field(default=None, ge=0)
+    disk_free_bytes: int | None = Field(default=None, ge=0)
     budget_bytes: int = Field(ge=0)
     reserved_bytes: int = Field(ge=0)
     reservations: list[MemoryReservation] = Field(default_factory=list)

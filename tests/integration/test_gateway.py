@@ -11,6 +11,7 @@ import struct
 import subprocess
 import time
 import uuid
+from collections.abc import Iterator
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -31,7 +32,7 @@ TEST_REPO = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
 
 
 @pytest.fixture(scope="module")
-def gateway_model(api_url: str, admin_headers: dict[str, str]) -> str:
+def gateway_model(api_url: str, admin_headers: dict[str, str]) -> Iterator[str]:
     with httpx.Client(base_url=api_url, timeout=30) as client:
         models = client.get("/api/v1/admin/models", headers=admin_headers).json()
         found = next((model for model in models if model["repo_id"] == TEST_REPO), None)
@@ -50,11 +51,32 @@ def gateway_model(api_url: str, admin_headers: dict[str, str]) -> str:
         assert found["state"] == "ready", found.get("state_reason")
         response = client.patch(
             f"/api/v1/admin/models/{found['id']}",
-            headers=admin_headers,
+            headers={**admin_headers, "If-Match": found["updated_at"]},
             json={"visibility": "published"},
         )
         assert response.status_code == 200, response.text
-        return str(found["id"])
+        yield str(found["id"])
+
+        detail = client.get(f"/api/v1/admin/models/{found['id']}", headers=admin_headers).json()
+        for engine in detail.get("engines", []):
+            if engine["state"] not in ("stopped", "failed"):
+                stopped = client.delete(
+                    f"/api/v1/admin/engines/{engine['id']}", headers=admin_headers
+                )
+                assert stopped.status_code in (200, 202, 204), stopped.text
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            detail = client.get(f"/api/v1/admin/models/{found['id']}", headers=admin_headers).json()
+            if all(engine["state"] in ("stopped", "failed") for engine in detail["engines"]):
+                break
+            time.sleep(0.5)
+        current = client.get(f"/api/v1/admin/models/{found['id']}", headers=admin_headers).json()
+        hidden = client.patch(
+            f"/api/v1/admin/models/{found['id']}",
+            headers={**admin_headers, "If-Match": current["updated_at"]},
+            json={"visibility": "admin_only"},
+        )
+        assert hidden.status_code == 200, hidden.text
 
 
 async def test_official_openai_sdk_lists_and_streams(

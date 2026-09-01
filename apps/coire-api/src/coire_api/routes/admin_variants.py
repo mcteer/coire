@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 
 from coire_api.auth import CurrentAdmin
 from coire_api.db import ModelRow, ModelVariantRow
 from coire_api.deps import SessionDep, SettingsDep
+from coire_api.preconditions import require_current
 from coire_api.registry import acquisition, variants
 from coire_api.routes.admin_acquisitions import ClientDep, submit_acquisition
 from coire_core.models.acquisition import (
@@ -67,11 +69,13 @@ async def update_model_variant(
     body: VariantPublication,
     principal: CurrentAdmin,
     session: SessionDep,
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> ModelVariant:
     await _model(session, model_id)
     row = await session.get(ModelVariantRow, variant_id)
     if row is None or row.model_id != model_id:
         raise HTTPException(404, "no such model variant")
+    require_current(if_match, row.updated_at)
     try:
         result = await variants.update_publication(
             session, row, body, actor=principal.subject or "admin"

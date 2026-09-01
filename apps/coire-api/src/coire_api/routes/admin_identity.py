@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, Header, HTTPException, Query, Response, status
+from sqlalchemy import and_, or_, select
 
 from coire_api.auth import CurrentAdmin, audit_actor
+from coire_api.db import UserRow
 from coire_api.deps import SessionDep
 from coire_api.identity import entitlements, keys, users
+from coire_api.preconditions import require_current
 from coire_core.models.auth import (
     ApiKey,
     ApiKeyCreate,
@@ -23,8 +28,25 @@ router = APIRouter(prefix="/api/v1/admin", tags=["admin: identity"])
 
 
 @router.get("/users", response_model=list[User])
-async def list_users(principal: CurrentAdmin, session: SessionDep) -> list[User]:
-    return await users.list_users(session)
+async def list_users(
+    principal: CurrentAdmin,
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    before: datetime | None = None,
+    before_id: uuid.UUID | None = None,
+) -> list[User]:
+    query = select(UserRow).order_by(UserRow.created_at.desc(), UserRow.id.desc()).limit(limit)
+    if before is not None:
+        query = query.where(
+            or_(
+                UserRow.created_at < before,
+                and_(UserRow.created_at == before, UserRow.id < before_id),
+            )
+            if before_id is not None
+            else UserRow.created_at < before
+        )
+    rows = (await session.execute(query)).scalars().all()
+    return [await users.project_user(session, row) for row in rows]
 
 
 @router.post("/users", response_model=User, status_code=status.HTTP_201_CREATED)
@@ -51,7 +73,10 @@ async def update_user(
     request: UserUpdate,
     principal: CurrentAdmin,
     session: SessionDep,
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> User:
+    row = await users.get_user(session, user_id)
+    require_current(if_match, row.updated_at)
     actor, actor_type, actor_user_id = audit_actor(principal)
     try:
         result = await users.update_user(

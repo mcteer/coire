@@ -12,6 +12,14 @@ def test_user_and_self_routes_are_published() -> None:
     ].endswith("/User")
     assert {"get", "post"} <= paths["/api/v1/admin/users"].keys()
     assert {"patch", "delete"} <= paths["/api/v1/admin/users/{user_id}"].keys()
+    listing_parameters = {
+        item["name"] for item in paths["/api/v1/admin/users"]["get"]["parameters"]
+    }
+    assert listing_parameters >= {"limit", "before", "before_id"}
+    update_parameters = {
+        item["name"] for item in paths["/api/v1/admin/users/{user_id}"]["patch"]["parameters"]
+    }
+    assert "If-Match" in update_parameters
 
 
 def test_user_contract_is_strict_and_role_bounded() -> None:

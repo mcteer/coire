@@ -232,11 +232,24 @@ class TestUserVisibility:
     ) -> None:
         model_id = acquired["id"]
         with _api(api_url) as client:
-            client.patch(
+            missing_version = client.patch(
                 f"/api/v1/admin/models/{model_id}",
                 headers=admin_headers,
+                json={"description": "unsafe overwrite"},
+            )
+            assert missing_version.status_code == 428
+            stale_version = client.patch(
+                f"/api/v1/admin/models/{model_id}",
+                headers={**admin_headers, "If-Match": "2000-01-01T00:00:00Z"},
+                json={"description": "stale overwrite"},
+            )
+            assert stale_version.status_code == 409
+            updated = client.patch(
+                f"/api/v1/admin/models/{model_id}",
+                headers={**admin_headers, "If-Match": acquired["updated_at"]},
                 json={"visibility": "published", "description": "small and fast"},
             )
+            assert updated.status_code == 200, updated.text
             published = client.get("/api/v1/models", headers=user_headers).json()
             entry = next((m for m in published if m["id"] == model_id), None)
             assert entry is not None
@@ -247,7 +260,7 @@ class TestUserVisibility:
 
             client.patch(
                 f"/api/v1/admin/models/{model_id}",
-                headers=admin_headers,
+                headers={**admin_headers, "If-Match": updated.json()["updated_at"]},
                 json={"visibility": "admin_only"},
             )
             hidden = client.get("/api/v1/models", headers=user_headers).json()

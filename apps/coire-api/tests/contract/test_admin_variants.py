@@ -15,3 +15,4 @@ def test_variant_comparison_and_publication_are_typed_and_guarded() -> None:
     assert patch["requestBody"]["content"]["application/json"]["schema"]["$ref"].endswith(
         "VariantPublication"
     )
+    assert any(parameter["name"] == "If-Match" for parameter in patch["parameters"])
