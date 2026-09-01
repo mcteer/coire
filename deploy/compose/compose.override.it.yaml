@@ -25,7 +25,11 @@ services:
     ports: !override ["127.0.0.1:${COIRE_IT_PORT:-18080}:8080"]
 
   coire-api:
-    ports: ["127.0.0.1:${COIRE_IT_API_PORT:-18081}:8000"]
+    # The run relay reaches the API through Docker's host gateway. Binding the
+    # published integration port to loopback makes that path unreachable on
+    # Linux CI (and causes the non-root harness to exit with a connection error).
+    # This overlay is test-only; production remains loopback-bound by default.
+    ports: ["0.0.0.0:${COIRE_IT_API_PORT:-18081}:8000"]
     # The integration identity fixture serves JWKS from the host. Docker Desktop resolves
     # this name automatically; Linux CI needs the explicit host-gateway mapping.
     extra_hosts:
