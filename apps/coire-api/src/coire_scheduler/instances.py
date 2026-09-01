@@ -54,7 +54,7 @@ async def _advance(instance_id: uuid.UUID, state: InstanceState, reason: str) ->
             )
 
 
-@DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0)
+@DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
 async def execute_instance_launch(instance_id_text: str) -> None:
     instance_id = uuid.UUID(instance_id_text)
     settings = get_settings()
@@ -205,10 +205,24 @@ async def execute_instance_launch(instance_id_text: str) -> None:
             span.record_exception(exc)
             async with session_scope() as session:
                 instance = await session.get(ModelInstanceRow, instance_id)
-                if instance is not None and instance.state not in {
-                    InstanceState.STOPPED,
-                    InstanceState.FAILED,
-                }:
+                # A scheduler restart can replay this step while the node is still
+                # re-registering its engine. Keep the durable launch state recoverable;
+                # placement failures already transition the instance explicitly above,
+                # while this transient gap must be retried by DBOS.
+                recovering = instance is not None and instance.state in {
+                    InstanceState.RESERVING,
+                    InstanceState.LAUNCHING,
+                    InstanceState.WARMING,
+                }
+                if (
+                    instance is not None
+                    and instance.state
+                    not in {
+                        InstanceState.STOPPED,
+                        InstanceState.FAILED,
+                    }
+                    and not recovering
+                ):
                     await transition(
                         session,
                         instance_id,
