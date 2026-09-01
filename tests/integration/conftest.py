@@ -326,7 +326,7 @@ def _declare_and_register_nodes(env: dict[str, str]) -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def stack() -> Iterator[None]:
+def stack(request: pytest.FixtureRequest) -> Iterator[None]:
     """Bring the control plane up for the whole session and tear it down at the end."""
     if os.environ.get("COIRE_INTEGRATION") != "1":
         yield
@@ -393,6 +393,15 @@ def stack() -> Iterator[None]:
         jwks_server.shutdown()
         jwks_server.server_close()
         jwks_thread.join(timeout=5)
+        if request.session.testsfailed:
+            diagnostic = subprocess.run(
+                ["docker", "compose", "-p", PROJECT, "logs", "--no-color", "--tail=200"],
+                cwd=COMPOSE_DIR,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            print("\n--- integration compose logs (before teardown) ---\n" + diagnostic.stdout)
         if os.environ.get("COIRE_IT_KEEP_STACK") != "1":
             subprocess.run(
                 ["docker", "compose", "-p", PROJECT, "down", "-v", "--remove-orphans"],
