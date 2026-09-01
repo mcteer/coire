@@ -6,6 +6,7 @@ import asyncio
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
@@ -67,6 +68,8 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
                         ModelCopyRow.model_id == model_id,
                         ModelCopyRow.verified.is_(True),
                         NodeRow.reachability == Reachability.HEALTHY,
+                        NodeRow.last_observed_at
+                        >= datetime.now(UTC) - timedelta(seconds=settings.node_health_freshness_s),
                     )
                     .order_by(NodeRow.name)
                     .limit(1)
@@ -113,6 +116,6 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             row.state_reason = engine.state_reason
             row.load_seconds = engine.load_seconds
 
-    with tracer.start_as_current_span("coire.gateway.load") as span:
+    with tracer.start_as_current_span("coire.node.load_wait") as span:
         span.set_attribute("coire.model.id", str(model_id))
         await coordinator.run(model_id, _load)

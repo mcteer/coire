@@ -1,0 +1,48 @@
+openapi: 3.1.0
+info: {title: Coire observability additions, version: 0.1.0}
+paths:
+  /health:
+    get:
+      summary: Authenticated end-to-end cluster health
+      responses:
+        '200': {description: Healthy or degraded, content: {application/json: {schema: {$ref: '#/components/schemas/ClusterHealth'}}}}
+        '503': {description: Critical control-plane failure, content: {application/json: {schema: {$ref: '#/components/schemas/ClusterHealth'}}}}
+components:
+  schemas:
+    HealthVerdict: {type: string, enum: [healthy, degraded, unreachable, unknown, unhealthy]}
+    NodeObservation:
+      type: object
+      additionalProperties: false
+      required: [name, sampled_at, cpu_percent, memory_used_bytes, memory_budget_bytes, memory_reserved_bytes, thermal_state, collection_budget_ok]
+      properties:
+        name: {type: string}
+        sampled_at: {type: string, format: date-time}
+        cpu_percent: {type: number, minimum: 0, maximum: 100}
+        gpu_percent: {type: [number, 'null'], minimum: 0, maximum: 100}
+        memory_used_bytes: {type: integer, minimum: 0}
+        memory_budget_bytes: {type: integer, minimum: 0}
+        memory_reserved_bytes: {type: integer, minimum: 0}
+        thermal_state: {type: string, enum: [nominal, fair, serious, critical, unknown]}
+        collection_budget_ok: {type: boolean}
+    NodeHealth:
+      type: object
+      additionalProperties: false
+      required: [name, verdict, fresh, last_observed_at, seconds_since_heartbeat, process_state_verified]
+      properties:
+        name: {type: string}
+        verdict: {$ref: '#/components/schemas/HealthVerdict'}
+        fresh: {type: boolean}
+        last_observed_at: {type: string, format: date-time}
+        seconds_since_heartbeat: {type: number, minimum: 0}
+        process_state_verified: {type: boolean}
+        observation: {oneOf: [{$ref: '#/components/schemas/NodeObservation'}, {type: 'null'}]}
+    ClusterHealth:
+      type: object
+      additionalProperties: false
+      required: [status, version, services, nodes, generated_at]
+      properties:
+        status: {$ref: '#/components/schemas/HealthVerdict'}
+        version: {type: string}
+        services: {type: array, items: {type: object}}
+        nodes: {type: array, items: {$ref: '#/components/schemas/NodeHealth'}}
+        generated_at: {type: string, format: date-time}

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
+import secrets
 import shutil
 import socket
 import struct
@@ -159,6 +161,198 @@ async def test_concurrent_cold_requests_share_the_load(
             )
         )
     assert all(result.choices[0].message.content for result in results)
+
+
+async def test_cold_slow_stream_is_one_attributable_trace(
+    api_url: str, gateway_model: str, admin_headers: dict[str, str]
+) -> None:
+    """FR-004/005: W3C context joins API/node spans and the induced decode delay dominates."""
+
+    async with httpx.AsyncClient(base_url=api_url, timeout=30) as control:
+        engines = (await control.get("/api/v1/admin/engines", headers=admin_headers)).json()
+        for engine in engines:
+            if engine.get("model_id") == gateway_model and engine.get("state") in {
+                "ready",
+                "starting",
+            }:
+                response = await control.delete(
+                    f"/api/v1/admin/engines/{engine['id']}", headers=admin_headers
+                )
+                assert response.status_code in (200, 202, 204), response.text
+
+    trace_id = secrets.token_hex(16)
+    span_id = secrets.token_hex(8)
+    headers = {
+        **admin_headers,
+        "traceparent": f"00-{trace_id}-{span_id}-01",
+    }
+    async with (
+        httpx.AsyncClient(base_url=api_url, timeout=60) as client,
+        client.stream(
+            "POST",
+            "/v1/chat/completions",
+            headers=headers,
+            json={
+                "model": gateway_model,
+                "stream": True,
+                "messages": [{"role": "user", "content": "slow-stream"}],
+            },
+        ) as response,
+    ):
+        assert response.status_code == 200, await response.aread()
+        assert b"data: [DONE]" in await response.aread()
+
+    encoded_trace_id = base64.b64encode(bytes.fromhex(trace_id)).decode()
+    trace: dict[str, Any] | None = None
+    required = {
+        "coire.api.gateway",
+        "coire.scheduler.admission_wait",
+        "coire.node.load_wait",
+        "coire.node.prefill",
+        "coire.node.decode",
+        "coire.node.network",
+    }
+    deadline = time.monotonic() + 30
+    async with httpx.AsyncClient(
+        base_url=api_url, auth=("admin", admin_headers["Authorization"].removeprefix("Bearer "))
+    ) as client:
+        while time.monotonic() < deadline:
+            found = await client.get(
+                f"/grafana/api/datasources/proxy/uid/tempo/api/traces/{trace_id}"
+            )
+            if found.status_code == 200:
+                trace = found.json()
+                names = {
+                    span["name"]
+                    for batch in trace["batches"]
+                    for scope in batch["scopeSpans"]
+                    for span in scope["spans"]
+                }
+                if required <= names:
+                    break
+            await asyncio.sleep(1)
+    assert trace is not None, "trace did not reach Tempo"
+    spans = [
+        span
+        for batch in trace["batches"]
+        for scope in batch["scopeSpans"]
+        for span in scope["spans"]
+    ]
+    assert {span["traceId"] for span in spans} == {encoded_trace_id}
+    by_name = {span["name"]: span for span in spans}
+    assert required <= by_name.keys()
+    load_wait_s = (
+        int(by_name["coire.node.load_wait"]["endTimeUnixNano"])
+        - int(by_name["coire.node.load_wait"]["startTimeUnixNano"])
+    ) / 1_000_000_000
+    assert load_wait_s >= 0.5, f"cold-load delay was not attributed: {load_wait_s}"
+    assert int(by_name["coire.node.decode"]["endTimeUnixNano"]) - int(
+        by_name["coire.node.decode"]["startTimeUnixNano"]
+    ) > int(by_name["coire.node.prefill"]["endTimeUnixNano"]) - int(
+        by_name["coire.node.prefill"]["startTimeUnixNano"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("marker", "expected_span"),
+    [
+        ("slow-network", "coire.node.network"),
+        ("slow-prefill", "coire.node.prefill"),
+        ("slow-decode", "coire.node.decode"),
+    ],
+)
+async def test_induced_node_stage_is_attributable(
+    api_url: str,
+    gateway_model: str,
+    admin_headers: dict[str, str],
+    marker: str,
+    expected_span: str,
+) -> None:
+    """SC-001: controlled transport/model delays land in their distinct stage span."""
+    trace_id = secrets.token_hex(16)
+    headers = {
+        **admin_headers,
+        "traceparent": f"00-{trace_id}-{secrets.token_hex(8)}-01",
+    }
+    async with (
+        httpx.AsyncClient(base_url=api_url, timeout=60) as client,
+        client.stream(
+            "POST",
+            "/v1/chat/completions",
+            headers=headers,
+            json={
+                "model": gateway_model,
+                "stream": True,
+                "messages": [{"role": "user", "content": marker}],
+            },
+        ) as response,
+    ):
+        assert response.status_code == 200, await response.aread()
+        assert b"data: [DONE]" in await response.aread()
+
+    encoded_trace_id = base64.b64encode(bytes.fromhex(trace_id)).decode()
+    deadline = time.monotonic() + 30
+    spans: list[dict[str, Any]] = []
+    async with httpx.AsyncClient(
+        base_url=api_url, auth=("admin", admin_headers["Authorization"].removeprefix("Bearer "))
+    ) as client:
+        while time.monotonic() < deadline:
+            found = await client.get(
+                f"/grafana/api/datasources/proxy/uid/tempo/api/traces/{trace_id}"
+            )
+            if found.status_code == 200:
+                trace = found.json()
+                spans = [
+                    span
+                    for batch in trace["batches"]
+                    for scope in batch["scopeSpans"]
+                    for span in scope["spans"]
+                ]
+                if any(span["name"] == expected_span for span in spans):
+                    break
+            await asyncio.sleep(1)
+    matching = [span for span in spans if span["name"] == expected_span]
+    assert matching and {span["traceId"] for span in matching} == {encoded_trace_id}
+    duration_s = max(
+        (int(span["endTimeUnixNano"]) - int(span["startTimeUnixNano"])) / 1_000_000_000
+        for span in matching
+    )
+    assert duration_s >= 0.8, f"{expected_span} did not capture the induced delay: {duration_s}"
+
+
+async def test_gateway_and_node_metrics_back_dashboard_queries(
+    api_url: str, admin_headers: dict[str, str]
+) -> None:
+    """FR-006/008: dashboard metric names are emitted by live request/load paths."""
+    required = {
+        "coire_gateway_tokens_total",
+        "coire_node_queue_depth",
+        "coire_node_generation_output_bytes_total",
+        "coire_engine_unload_seconds_count",
+    }
+    async with httpx.AsyncClient(base_url=api_url, timeout=30) as control:
+        engines = (await control.get("/api/v1/admin/engines", headers=admin_headers)).json()
+        ready = next(engine for engine in engines if engine.get("state") == "ready")
+        stopped = await control.delete(
+            f"/api/v1/admin/engines/{ready['id']}", headers=admin_headers
+        )
+        assert stopped.status_code in {200, 202, 204}, stopped.text
+    token = admin_headers["Authorization"].removeprefix("Bearer ")
+    deadline = time.monotonic() + 30
+    observed: set[str] = set()
+    async with httpx.AsyncClient(base_url=api_url, auth=("admin", token)) as client:
+        while time.monotonic() < deadline:
+            for metric in required - observed:
+                response = await client.get(
+                    "/grafana/api/datasources/proxy/uid/prometheus/api/v1/query",
+                    params={"query": metric},
+                )
+                if response.status_code == 200 and response.json()["data"]["result"]:
+                    observed.add(metric)
+            if observed == required:
+                break
+            await asyncio.sleep(1)
+    assert observed == required, f"dashboard metrics absent from Prometheus: {required - observed}"
 
 
 def _usage_outcomes() -> list[str]:

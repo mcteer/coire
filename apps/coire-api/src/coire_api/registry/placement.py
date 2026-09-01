@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from coire_core.models.node import Reachability
 
@@ -24,6 +25,23 @@ single-node model, so `single:auto` prefers it and falls back to B (feature 004 
 
 class NoCandidate(RuntimeError):
     """No node can take this placement, with a reason worth showing an admin."""
+
+
+def effective_reachability(
+    reachability: Reachability,
+    observed_at: datetime | None,
+    freshness_s: float,
+    *,
+    now: datetime | None = None,
+) -> Reachability:
+    """Discard last-known-good state once its control-plane observation expires."""
+
+    if observed_at is None:
+        return Reachability.UNKNOWN
+    reference = now or datetime.now(UTC)
+    if observed_at < reference - timedelta(seconds=freshness_s):
+        return Reachability.UNKNOWN
+    return reachability
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
@@ -75,6 +76,8 @@ class Settings(BaseSettings):
     # --- telemetry ------------------------------------------------------
     otlp_endpoint: str = "http://otel-collector:4317"
     service_version: str = "0.1.0"
+    tunnel_health_url: str = ""
+    """Optional local cloudflared readiness URL; empty until the ingress feature is deployed."""
 
     # --- node probing ---------------------------------------------------
     mesh_hosts_file: str = "/etc/hosts"
@@ -83,8 +86,16 @@ class Settings(BaseSettings):
     legacy_network_mode: bool = False
     node_probe_interval_s: float = 10.0
     node_probe_failures_before_unreachable: int = 3
+    node_probe_successes_before_recovery: int = 5
+    node_probe_degraded_before_transition: int = 3
+    node_health_freshness_s: float = Field(default=35.0, gt=0)
+    node_degraded_cpu_pct: float = Field(default=90.0, ge=0, le=100)
+    node_degraded_memory_pct: float = Field(default=90.0, ge=0, le=100)
+    node_degraded_latency_ms: float = Field(default=2000.0, gt=0)
     node_collection_budget_cpu_pct: float = 2.0
     node_collection_budget_rss_bytes: int = 150 * 1024 * 1024
+    node_collection_interval_s: float = Field(default=15.0, gt=0)
+    telemetry_content_capture: Literal[False] = False
     node_inventory_file: str = "/app/nodes.yaml"
     registry_reconcile_interval_s: float = 5.0
 

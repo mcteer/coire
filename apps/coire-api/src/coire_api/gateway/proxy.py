@@ -11,6 +11,7 @@ from time import perf_counter
 from urllib.parse import urlparse
 
 import httpx
+from opentelemetry.propagate import inject
 
 from coire_api.gateway.telemetry import queue_duration_ms, tracer
 from coire_core.settings import Settings
@@ -56,7 +57,9 @@ def _node_headers(engine_url: str, settings: Settings) -> dict[str, str]:
         return {}
     node = (parsed.hostname or "").split(".", 1)[0]
     token = settings.node_token_map.get(node, "")
-    return {"Authorization": f"Bearer {token}"} if token else {}
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    inject(headers)
+    return headers
 
 
 async def _semaphore(engine_url: str, limit: int) -> asyncio.Semaphore:
@@ -80,7 +83,7 @@ class EngineProxyError(Exception):
 async def engine_slot(engine_url: str, settings: Settings) -> AsyncIterator[None]:
     semaphore = await _semaphore(engine_url, settings.gateway_max_inflight_per_engine)
     queued_at = perf_counter()
-    with tracer.start_as_current_span("coire.gateway.queue") as span:
+    with tracer.start_as_current_span("coire.scheduler.admission_wait") as span:
         try:
             await asyncio.wait_for(semaphore.acquire(), timeout=0.001)
         except TimeoutError as exc:

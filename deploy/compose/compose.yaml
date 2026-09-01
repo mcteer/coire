@@ -66,6 +66,7 @@ services:
     environment:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
+      TUNNEL_HEALTH_URL: "${COIRE_TUNNEL_HEALTH_URL:-}"
       NODE_INVENTORY_FILE: /app/nodes.yaml
     secrets: [postgres_password, key_signing_secret, node_tokens, admin_token]
     depends_on:
@@ -212,6 +213,103 @@ services:
       retries: 3
       start_period: 5s
 
+  prometheus:
+    image: ${COIRE_REGISTRY:-}coire-prometheus:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/prometheus.Dockerfile
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=${COIRE_METRIC_RETENTION:-7d}", "--storage.tsdb.retention.size=${COIRE_METRIC_RETENTION_SIZE:-32GB}", "--web.enable-lifecycle"]
+    networks: [coire-telemetry]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - coire-prometheus:/prometheus
+    user: "65534:65534"
+    <<: *hardening
+    deploy: {resources: {limits: {memory: 768M}}}
+    healthcheck: {test: ["CMD", "/bin/promtool", "check", "healthy"], interval: 10s, timeout: 3s, retries: 3}
+
+  alertmanager:
+    image: ${COIRE_REGISTRY:-}coire-alertmanager:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/alertmanager.Dockerfile
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    networks: [coire-telemetry]
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - coire-alertmanager:/alertmanager
+    user: "65534:65534"
+    <<: *hardening
+    deploy: {resources: {limits: {memory: 128M}}}
+    healthcheck: {test: ["CMD", "/bin/alertmanager", "--version"], interval: 10s, timeout: 3s, retries: 3}
+
+  loki:
+    image: ${COIRE_REGISTRY:-}coire-loki:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/loki.Dockerfile
+    command: ["-config.file=/etc/loki/loki.yml", "-config.expand-env=true"]
+    environment:
+      COIRE_LOG_RETENTION: "${COIRE_LOG_RETENTION:-168h}"
+      COIRE_LOG_INGESTION_MBPS: "${COIRE_LOG_INGESTION_MBPS:-0.05}"
+    networks: [coire-telemetry]
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - coire-loki:/loki
+    user: "10001:10001"
+    <<: *hardening
+    deploy: {resources: {limits: {memory: 768M}}}
+    healthcheck: {test: ["CMD", "/usr/bin/loki", "-version"], interval: 10s, timeout: 3s, retries: 3}
+
+  tempo:
+    image: ${COIRE_REGISTRY:-}coire-tempo:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/tempo.Dockerfile
+    command: ["-config.file=/etc/tempo/tempo.yml", "-config.expand-env=true"]
+    environment:
+      COIRE_TRACE_RETENTION: "${COIRE_TRACE_RETENTION:-168h}"
+      COIRE_TRACE_INGESTION_BPS: "${COIRE_TRACE_INGESTION_BPS:-50000}"
+    networks: [coire-telemetry]
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo/tempo.yml:ro
+      - coire-tempo:/var/tempo
+    user: "10001:10001"
+    <<: *hardening
+    deploy: {resources: {limits: {memory: 768M}}}
+    healthcheck: {test: ["CMD", "/tempo", "-version"], interval: 10s, timeout: 3s, retries: 3}
+
+  grafana:
+    image: ${COIRE_REGISTRY:-}coire-grafana:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/grafana.Dockerfile
+    networks: [coire-telemetry]
+    environment:
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED: "true"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/admin_token
+      GF_PATHS_DATA: /var/lib/grafana
+      GF_PATHS_LOGS: /var/lib/grafana/log
+      GF_PATHS_PLUGINS: /var/lib/grafana/plugins
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - coire-grafana:/var/lib/grafana
+    secrets: [admin_token]
+    user: "472:472"
+    <<: *hardening
+    deploy: {resources: {limits: {memory: 512M}}}
+    healthcheck: {test: ["CMD", "/usr/share/grafana/bin/grafana", "-v"], interval: 10s, timeout: 3s, retries: 3}
+
 networks:
   # Only coire-edge is non-internal: it is where cloudflared attaches in feature 007. Even so,
   # nothing is published from it in feature 000 except coire-web on loopback.
@@ -230,6 +328,11 @@ networks:
 
 volumes:
   coire-pgdata:
+  coire-prometheus:
+  coire-alertmanager:
+  coire-loki:
+  coire-tempo:
+  coire-grafana:
 
 secrets:
   # File-sourced from a 0700 directory outside the repository, written by coire-up from the

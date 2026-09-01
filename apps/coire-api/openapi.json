@@ -43,10 +43,52 @@
             "title": "Coire Wait For Model",
             "type": "boolean"
           },
+          "container": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container"
+          },
+          "context_management": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Management"
+          },
           "max_tokens": {
             "minimum": 1.0,
             "title": "Max Tokens",
             "type": "integer"
+          },
+          "mcp_servers": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp Servers"
           },
           "messages": {
             "items": {
@@ -56,10 +98,45 @@
             "title": "Messages",
             "type": "array"
           },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
           "model": {
             "format": "uuid",
             "title": "Model",
             "type": "string"
+          },
+          "output_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Config"
+          },
+          "service_tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Service Tier"
           },
           "stop_sequences": {
             "anyOf": [
@@ -110,6 +187,18 @@
             ],
             "title": "Temperature"
           },
+          "thinking": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking"
+          },
           "tool_choice": {
             "anyOf": [
               {
@@ -136,6 +225,18 @@
               }
             ],
             "title": "Tools"
+          },
+          "top_k": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top K"
           },
           "top_p": {
             "anyOf": [
@@ -498,6 +599,249 @@
         "title": "ChatMessage",
         "type": "object"
       },
+      "ChecksumManifest": {
+        "additionalProperties": false,
+        "description": "The record of exactly what a verified copy contains.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/ManifestFile"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "repo_id": {
+            "title": "Repo Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "total_bytes": {
+            "minimum": 0.0,
+            "title": "Total Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "slug",
+          "repo_id",
+          "revision",
+          "total_bytes",
+          "created_at"
+        ],
+        "title": "ChecksumManifest",
+        "type": "object"
+      },
+      "EngineState": {
+        "enum": [
+          "starting",
+          "ready",
+          "stopping",
+          "stopped",
+          "failed",
+          "orphan"
+        ],
+        "title": "EngineState",
+        "type": "string"
+      },
+      "EngineStatus": {
+        "additionalProperties": false,
+        "description": "A node's view of one engine.",
+        "properties": {
+          "chat_template_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Template Sha256"
+          },
+          "cpu_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cpu Percent"
+          },
+          "engine_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine Id"
+          },
+          "estimate_bytes": {
+            "default": 0,
+            "title": "Estimate Bytes",
+            "type": "integer"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "exit_output": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Output"
+          },
+          "last_health_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Health At"
+          },
+          "load_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Load Seconds"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "port": {
+            "title": "Port",
+            "type": "integer"
+          },
+          "process_create_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Create Time"
+          },
+          "resident_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resident Bytes"
+          },
+          "resident_delta_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resident Delta Bytes"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/EngineState"
+          },
+          "state_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Reason"
+          },
+          "stopped_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped At"
+          }
+        },
+        "required": [
+          "port",
+          "state",
+          "started_at"
+        ],
+        "title": "EngineStatus",
+        "type": "object"
+      },
       "GatewayModel": {
         "additionalProperties": false,
         "properties": {
@@ -615,9 +959,16 @@
             "title": "Generated At",
             "type": "string"
           },
+          "links": {
+            "items": {
+              "$ref": "#/components/schemas/StudioDataLinkStatus"
+            },
+            "title": "Links",
+            "type": "array"
+          },
           "nodes": {
             "items": {
-              "$ref": "#/components/schemas/ServiceHealth"
+              "$ref": "#/components/schemas/NodeHealth"
             },
             "title": "Nodes",
             "type": "array"
@@ -655,6 +1006,185 @@
         "title": "HealthStatus",
         "type": "string"
       },
+      "JobErrorKind": {
+        "enum": [
+          "gated",
+          "not_found",
+          "network",
+          "checksum_mismatch",
+          "disk_full",
+          "cancelled",
+          "internal"
+        ],
+        "title": "JobErrorKind",
+        "type": "string"
+      },
+      "JobKind": {
+        "enum": [
+          "pull",
+          "import",
+          "verify"
+        ],
+        "title": "JobKind",
+        "type": "string"
+      },
+      "JobStage": {
+        "enum": [
+          "queued",
+          "resolving",
+          "transferring",
+          "hashing",
+          "done",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobStage",
+        "type": "string"
+      },
+      "JobStatus": {
+        "additionalProperties": false,
+        "description": "A node's view of one unit of acquisition work.",
+        "properties": {
+          "bytes_done": {
+            "default": 0,
+            "title": "Bytes Done",
+            "type": "integer"
+          },
+          "bytes_total": {
+            "default": 0,
+            "title": "Bytes Total",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "error_kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobErrorKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "files_done": {
+            "default": 0,
+            "title": "Files Done",
+            "type": "integer"
+          },
+          "files_total": {
+            "default": 0,
+            "title": "Files Total",
+            "type": "integer"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "job_id": {
+            "format": "uuid",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "manifest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChecksumManifest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "manifest_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Sha256"
+          },
+          "mismatched_paths": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Mismatched Paths",
+            "type": "array"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/JobStage"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "worker_cpu_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Cpu Percent"
+          },
+          "worker_pid": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Pid"
+          }
+        },
+        "required": [
+          "job_id",
+          "kind",
+          "slug",
+          "stage",
+          "started_at",
+          "updated_at"
+        ],
+        "title": "JobStatus",
+        "type": "object"
+      },
       "LinkState": {
         "enum": [
           "unknown",
@@ -672,6 +1202,43 @@
         ],
         "title": "LoadState",
         "type": "string"
+      },
+      "ManifestFile": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "minimum": 0.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "upstream_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upstream Sha256"
+          }
+        },
+        "required": [
+          "path",
+          "bytes",
+          "sha256"
+        ],
+        "title": "ManifestFile",
+        "type": "object"
       },
       "ModelAddRequest": {
         "additionalProperties": false,
@@ -1054,6 +1621,113 @@
         "title": "NodeEndpointSet",
         "type": "object"
       },
+      "NodeHealth": {
+        "additionalProperties": false,
+        "description": "A node verdict evaluated using control-plane receipt time.",
+        "properties": {
+          "clock_skew_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clock Skew Seconds"
+          },
+          "fresh": {
+            "title": "Fresh",
+            "type": "boolean"
+          },
+          "heartbeat_latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Heartbeat Latency Ms"
+          },
+          "last_observed_at": {
+            "format": "date-time",
+            "title": "Last Observed At",
+            "type": "string"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "observation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "process_state_verified": {
+            "title": "Process State Verified",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "seconds_since_heartbeat": {
+            "minimum": 0.0,
+            "title": "Seconds Since Heartbeat",
+            "type": "number"
+          },
+          "verdict": {
+            "$ref": "#/components/schemas/Reachability"
+          }
+        },
+        "required": [
+          "name",
+          "verdict",
+          "fresh",
+          "last_observed_at",
+          "seconds_since_heartbeat",
+          "process_state_verified"
+        ],
+        "title": "NodeHealth",
+        "type": "object"
+      },
+      "NodePath": {
+        "description": "Which listener answered. `FALLBACK` means the egress path was used (FR-013b/c).",
+        "enum": [
+          "mesh",
+          "fallback"
+        ],
+        "title": "NodePath",
+        "type": "string"
+      },
       "NodeRegistration": {
         "additionalProperties": false,
         "description": "`POST /api/v1/nodes/register` request body.",
@@ -1187,6 +1861,141 @@
         ],
         "title": "NodeRole",
         "type": "string"
+      },
+      "NodeStatus": {
+        "additionalProperties": false,
+        "description": "`GET /node/health` on a Studio, port 9400. Requires the node's bearer token (FR-013).",
+        "properties": {
+          "agent_cpu_percent": {
+            "title": "Agent Cpu Percent",
+            "type": "number"
+          },
+          "agent_rss_bytes": {
+            "title": "Agent Rss Bytes",
+            "type": "integer"
+          },
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "collection_budget_ok": {
+            "title": "Collection Budget Ok",
+            "type": "boolean"
+          },
+          "collection_duration_ms": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Collection Duration Ms",
+            "type": "number"
+          },
+          "cpu_percent": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Cpu Percent",
+            "type": "number"
+          },
+          "disk_free_bytes": {
+            "title": "Disk Free Bytes",
+            "type": "integer"
+          },
+          "disk_total_bytes": {
+            "title": "Disk Total Bytes",
+            "type": "integer"
+          },
+          "engines": {
+            "items": {
+              "$ref": "#/components/schemas/EngineStatus"
+            },
+            "title": "Engines",
+            "type": "array"
+          },
+          "gpu_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gpu Percent"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobStatus"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "memory_budget_bytes": {
+            "default": 0,
+            "title": "Memory Budget Bytes",
+            "type": "integer"
+          },
+          "memory_committed_bytes": {
+            "default": 0,
+            "title": "Memory Committed Bytes",
+            "type": "integer"
+          },
+          "memory_free_bytes": {
+            "title": "Memory Free Bytes",
+            "type": "integer"
+          },
+          "memory_total_bytes": {
+            "title": "Memory Total Bytes",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "optional_sampling_backoff": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Optional Sampling Backoff",
+            "type": "integer"
+          },
+          "path": {
+            "$ref": "#/components/schemas/NodePath"
+          },
+          "sampled_at": {
+            "format": "date-time",
+            "title": "Sampled At",
+            "type": "string"
+          },
+          "store_free_bytes": {
+            "default": 0,
+            "title": "Store Free Bytes",
+            "type": "integer"
+          },
+          "thermal_state": {
+            "$ref": "#/components/schemas/ThermalState",
+            "default": "unknown"
+          },
+          "uptime_seconds": {
+            "title": "Uptime Seconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "agent_version",
+          "uptime_seconds",
+          "cpu_percent",
+          "memory_total_bytes",
+          "memory_free_bytes",
+          "disk_total_bytes",
+          "disk_free_bytes",
+          "agent_cpu_percent",
+          "agent_rss_bytes",
+          "collection_budget_ok",
+          "path",
+          "sampled_at"
+        ],
+        "title": "NodeStatus",
+        "type": "object"
       },
       "NodeV2": {
         "additionalProperties": false,
@@ -1464,6 +2273,17 @@
         "title": "Tag",
         "type": "string"
       },
+      "ThermalState": {
+        "enum": [
+          "nominal",
+          "fair",
+          "serious",
+          "critical",
+          "unknown"
+        ],
+        "title": "ThermalState",
+        "type": "string"
+      },
       "ToolCalling": {
         "enum": [
           "none",
@@ -1567,6 +2387,22 @@
               ],
               "title": "Target Id"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -1609,6 +2445,24 @@
     "/api/v1/admin/engines": {
       "get": {
         "operationId": "list_engines_api_v1_admin_engines_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1624,6 +2478,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -1650,6 +2514,22 @@
               "format": "uuid",
               "title": "Engine Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -1699,6 +2579,22 @@
               "title": "Engine Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -1739,6 +2635,24 @@
     "/api/v1/admin/models": {
       "get": {
         "operationId": "list_models_api_v1_admin_models_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -1754,6 +2668,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -1769,6 +2693,24 @@
       "post": {
         "description": "Add a model from a Hugging Face repository and start acquiring it.",
         "operationId": "add_model_api_v1_admin_models_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -1827,6 +2769,22 @@
               "title": "Model Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -1865,6 +2823,22 @@
               "format": "uuid",
               "title": "Model Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -1913,6 +2887,22 @@
               "format": "uuid",
               "title": "Model Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -1974,6 +2964,22 @@
               "title": "Model Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -2024,6 +3030,22 @@
               "format": "uuid",
               "title": "Model Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
             }
           }
         ],
@@ -2095,6 +3117,22 @@
               "title": "Model Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -2145,6 +3183,22 @@
               "title": "Model Id",
               "type": "string"
             }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
           }
         ],
         "responses": {
@@ -2185,6 +3239,24 @@
     "/api/v1/admin/network/links/studios": {
       "get": {
         "operationId": "studio_data_link_api_v1_admin_network_links_studios_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2195,6 +3267,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -2212,6 +3294,24 @@
       "get": {
         "description": "Declared nodes with the last status the prober received, their engines and jobs.",
         "operationId": "list_nodes_api_v1_admin_nodes_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2227,6 +3327,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -2244,6 +3354,24 @@
       "get": {
         "description": "Models the caller may see, with live load state.\n\nAn admin sees everything; anyone else sees only published, ready, unentitled models\n(spec US5 scenario 1). Existence is not disclosed: an unpublished model is simply absent.",
         "operationId": "list_models_api_v1_models_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2258,6 +3386,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -2275,6 +3413,24 @@
       "post": {
         "description": "Register or re-register a declared node. Idempotent on name.",
         "operationId": "register_node_api_v1_nodes_register_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2338,6 +3494,24 @@
       "get": {
         "description": "Aggregate health.\n\nPostgres is the only critical dependency: without it the control plane has no system of\nrecord, so its failure is `unhealthy` (HTTP 503). Everything else degrades.",
         "operationId": "get_health_health_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2348,6 +3522,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [
@@ -2386,6 +3570,24 @@
     "/v1/chat/completions": {
       "post": {
         "operationId": "chat_completions_v1_chat_completions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2432,6 +3634,24 @@
     "/v1/messages": {
       "post": {
         "operationId": "anthropic_messages_v1_messages_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2478,6 +3698,24 @@
     "/v1/models": {
       "get": {
         "operationId": "list_models_v1_models_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -2488,6 +3726,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "security": [

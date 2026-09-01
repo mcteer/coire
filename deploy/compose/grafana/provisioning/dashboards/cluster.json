@@ -1,0 +1,10 @@
+{
+  "title": "Coire Cluster", "uid": "coire-cluster", "schemaVersion": 39, "version": 1, "refresh": "15s",
+  "panels": [
+    {"type":"stat","title":"Aggregate health","targets":[{"expr":"max(coire_cluster_health_verdict)"}],"links":[{"title":"Logs","url":"/explore?left={\"datasource\":\"loki\",\"queries\":[{\"expr\":\"{service_name=~\\\"coire.*\\\"}\"}]}"}],"gridPos":{"h":6,"w":6,"x":0,"y":0}},
+    {"type":"timeseries","title":"CPU / GPU by node","targets":[{"expr":"coire_node_cpu_percent","legendFormat":"{{node}} CPU"},{"expr":"coire_node_gpu_percent","legendFormat":"{{node}} GPU"}],"gridPos":{"h":8,"w":9,"x":6,"y":0}},
+    {"type":"timeseries","title":"Memory used, budget, reserved","targets":[{"expr":"coire_node_memory_used_bytes","legendFormat":"{{node}} used"},{"expr":"coire_node_memory_budget_bytes","legendFormat":"{{node}} budget"},{"expr":"coire_node_memory_reserved_bytes","legendFormat":"{{node}} reserved"}],"gridPos":{"h":8,"w":9,"x":15,"y":0}},
+    {"type":"state-timeline","title":"Thermal and interconnect state","targets":[{"expr":"coire_node_thermal_state"},{"expr":"coire_data_link_up"}],"gridPos":{"h":8,"w":12,"x":0,"y":8}},
+    {"type":"timeseries","title":"Disk and loaded processes","targets":[{"expr":"coire_node_disk_free_bytes"},{"expr":"count by (node,model_id) (coire_node_process_rss_bytes)"}],"gridPos":{"h":8,"w":12,"x":12,"y":8}}
+  ]
+}

@@ -164,7 +164,7 @@ async def add_model(
     client: ClientDep,
 ) -> dict[str, object]:
     """Add a model from a Hugging Face repository and start acquiring it."""
-    views = await service.node_views(session, _statuses(http_request))
+    views = await service.node_views(session, _statuses(http_request), settings)
     try:
         model, _job_row = await service.add_model(
             session,
@@ -318,7 +318,7 @@ async def load_model(
             ).model_dump(mode="json"),
         )
 
-    views = await service.node_views(session, _statuses(http_request))
+    views = await service.node_views(session, _statuses(http_request), settings)
     try:
         target = choose_load_node(
             model.placement_policy,

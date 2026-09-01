@@ -30,7 +30,13 @@ from coire_api.db import (
     NodeRow,
 )
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
-from coire_api.registry.placement import NoCandidate, NodeView, choose_origin, replica_for
+from coire_api.registry.placement import (
+    NoCandidate,
+    NodeView,
+    choose_origin,
+    effective_reachability,
+    replica_for,
+)
 from coire_core.memory import (
     NodeCapacity,
     estimate_bytes,
@@ -135,7 +141,9 @@ async def recompute_state(session: AsyncSession, model: ModelRow) -> ModelState:
 # --------------------------------------------------------------------------- node views
 
 
-async def node_views(session: AsyncSession, statuses: dict[str, Any]) -> list[NodeView]:
+async def node_views(
+    session: AsyncSession, statuses: dict[str, Any], settings: Settings
+) -> list[NodeView]:
     """Registry rows joined to the last status the prober received."""
     rows = (await session.execute(select(NodeRow))).scalars().all()
     views: list[NodeView] = []
@@ -144,7 +152,11 @@ async def node_views(session: AsyncSession, statuses: dict[str, Any]) -> list[No
         views.append(
             NodeView(
                 name=row.name,
-                reachability=row.reachability,
+                reachability=effective_reachability(
+                    row.reachability,
+                    row.last_observed_at or row.last_seen_at,
+                    settings.node_health_freshness_s,
+                ),
                 store_free_bytes=getattr(status, "store_free_bytes", 0) or 0,
                 memory_budget_bytes=getattr(status, "memory_budget_bytes", 0) or 0,
                 memory_committed_bytes=getattr(status, "memory_committed_bytes", 0) or 0,

@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 
 import httpx
 from fastapi import APIRouter, Response, status
+from opentelemetry import metrics
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,15 +24,25 @@ from coire_api import __version__
 from coire_api.auth import CurrentPrincipal
 from coire_api.db import NodeRow
 from coire_api.deps import SessionDep, SettingsDep
+from coire_api.health_evaluator import is_fresh
+from coire_api.nodes_client import NodeClient, NodeError
 from coire_core.models.health import (
     HealthResponse,
     HealthStatus,
+    NodeHealth,
     ReadyResponse,
     ServiceHealth,
 )
-from coire_core.models.node import Reachability
+from coire_core.models.link import LinkState, StudioDataLinkStatus
+from coire_core.models.node import NodeStatus, Reachability
+from coire_core.settings import Settings
 
 router = APIRouter(tags=["health"])
+_meter = metrics.get_meter("coire.api.health")
+_health_verdict = _meter.create_gauge("coire_node_health_verdict")
+_heartbeat_age = _meter.create_gauge("coire_node_heartbeat_age_seconds", unit="s")
+_clock_skew = _meter.create_gauge("coire_node_clock_skew_seconds", unit="s")
+_tunnel_up = _meter.create_gauge("coire_tunnel_up")
 
 PROBE_TIMEOUT_S = 2.0
 SERVICE_NAME = "coire-api"
@@ -93,18 +104,65 @@ async def _probe_http(client: httpx.AsyncClient, name: str, url: str) -> Service
         )
 
 
-async def _node_health(session: AsyncSession) -> list[ServiceHealth]:
+async def _node_health(session: AsyncSession, settings: Settings) -> list[NodeHealth]:
     """Nodes as the prober last saw them; this route never probes a node itself."""
     rows = (await session.execute(select(NodeRow))).scalars().all()
-    return [
-        ServiceHealth(
-            name=row.name,
-            healthy=row.reachability is Reachability.HEALTHY,
-            detail=None if row.reachability is Reachability.HEALTHY else row.reachability.value,
-            checked_at=row.last_seen_at,
+    now = datetime.now(UTC)
+    result: list[NodeHealth] = []
+    for row in rows:
+        fresh = is_fresh(row.last_observed_at, now, settings)
+        verdict = row.reachability if fresh else Reachability.UNKNOWN
+        observation = (
+            NodeStatus.model_validate(row.last_observation) if row.last_observation else None
         )
-        for row in rows
-    ]
+        skew = (
+            (observation.sampled_at - row.last_observed_at).total_seconds()
+            if observation is not None and row.last_observed_at is not None
+            else None
+        )
+        result.append(
+            NodeHealth(
+                name=row.name,
+                verdict=verdict,
+                reason=None if verdict is Reachability.HEALTHY else verdict.value,
+                fresh=fresh,
+                last_observed_at=row.last_observed_at or row.last_seen_at,
+                last_success_at=row.last_seen_at,
+                seconds_since_heartbeat=max(0.0, (now - row.last_seen_at).total_seconds()),
+                heartbeat_latency_ms=row.heartbeat_latency_ms,
+                clock_skew_seconds=skew,
+                process_state_verified=fresh and verdict is not Reachability.UNREACHABLE,
+                observation=observation,
+            )
+        )
+        _health_verdict.set(1, {"node": row.name, "verdict": verdict.value})
+        _heartbeat_age.set(result[-1].seconds_since_heartbeat, {"node": row.name})
+        if skew is not None:
+            _clock_skew.set(skew, {"node": row.name})
+    return result
+
+
+async def _link_health(settings: Settings) -> list[StudioDataLinkStatus]:
+    """Read the canonical Studio link without making its failure break `/health`."""
+    try:
+        async with NodeClient(settings, timeout=PROBE_TIMEOUT_S) as client:
+            link = await client.data_link_status("coire-edge-a")
+            now = datetime.now(UTC)
+            if link.measured_at is None or not is_fresh(link.measured_at, now, settings):
+                link = link.model_copy(
+                    update={"ip_state": LinkState.UNKNOWN, "reason": "stale link observation"}
+                )
+            return [link]
+    except (NodeError, httpx.HTTPError, ValueError):
+        return [
+            StudioDataLinkStatus(
+                node_a="coire-edge-a",
+                node_b="coire-edge-b",
+                ip_state=LinkState.UNKNOWN,
+                measured_at=datetime.now(UTC),
+                reason="link observation unavailable",
+            )
+        ]
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -120,23 +178,38 @@ async def get_health(
     record, so its failure is `unhealthy` (HTTP 503). Everything else degrades.
     """
     async with httpx.AsyncClient() as client:
-        results = await asyncio.gather(
-            _probe_postgres(session),
-            *(_probe_http(client, name, url) for name, url in _HTTP_DEPENDENCIES),
+        results = list(
+            await asyncio.gather(
+                _probe_postgres(session),
+                *(_probe_http(client, name, url) for name, url in _HTTP_DEPENDENCIES),
+            )
         )
+        if settings.tunnel_health_url:
+            tunnel = await _probe_http(client, "tunnel", settings.tunnel_health_url)
+            results.append(tunnel)
+            _tunnel_up.set(1 if tunnel.healthy else 0, {"tunnel": "primary"})
 
     postgres, *others = results
     services = list(results)
 
     try:
-        nodes = await _node_health(session) if postgres.healthy else []
+        nodes, links = (
+            await asyncio.gather(_node_health(session, settings), _link_health(settings))
+            if postgres.healthy
+            else ([], [])
+        )
     except Exception:
         nodes = []
+        links = []
 
     if not postgres.healthy:
         overall = HealthStatus.UNHEALTHY
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    elif any(not s.healthy for s in others) or any(not n.healthy for n in nodes):
+    elif (
+        any(not s.healthy for s in others)
+        or any(n.verdict is not Reachability.HEALTHY for n in nodes)
+        or any(link.ip_state is not LinkState.UP for link in links)
+    ):
         overall = HealthStatus.DEGRADED
     else:
         overall = HealthStatus.HEALTHY
@@ -146,5 +219,6 @@ async def get_health(
         version=settings.service_version,
         services=services,
         nodes=nodes,
+        links=links,
         generated_at=datetime.now(UTC),
     )

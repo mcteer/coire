@@ -33,6 +33,18 @@ _data_link_up = _meter.create_gauge("coire_data_link_up", description="Studio da
 _data_link_latency = _meter.create_histogram(
     "coire_data_link_latency_ms", unit="ms", description="Studio data-link connect latency"
 )
+_node_cpu = _meter.create_gauge("coire_node_cpu_percent")
+_node_gpu = _meter.create_gauge("coire_node_gpu_percent")
+_node_memory_used = _meter.create_gauge("coire_node_memory_used_bytes", unit="By")
+_node_memory_budget = _meter.create_gauge("coire_node_memory_budget_bytes", unit="By")
+_node_memory_reserved = _meter.create_gauge("coire_node_memory_reserved_bytes", unit="By")
+_node_disk_free = _meter.create_gauge("coire_node_disk_free_bytes", unit="By")
+_node_process_rss = _meter.create_gauge("coire_node_process_rss_bytes", unit="By")
+_node_process_cpu = _meter.create_gauge("coire_node_process_cpu_percent")
+_node_collection_duration = _meter.create_histogram("coire_node_collection_duration_ms", unit="ms")
+_node_collection_backoff = _meter.create_gauge("coire_node_collection_optional_backoff")
+_node_thermal = _meter.create_gauge("coire_node_thermal_state")
+_model_load_duration = _meter.create_histogram("coire_model_load_duration_seconds", unit="s")
 
 IOREG_TIMEOUT_S = 3.0
 _GPU_UTIL_RE = re.compile(rb'"Device Utilization %"\s*=\s*(\d+)')
@@ -116,6 +128,8 @@ class MetricsCollector:
         self._engines: object | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._sample_number = 0
+        self._optional_backoff = 1
         # Prime psutil's CPU deltas so the first real sample is meaningful, not 0.0.
         psutil.cpu_percent(interval=None)
         self._proc.cpu_percent(interval=None)
@@ -148,19 +162,21 @@ class MetricsCollector:
     # -- sampling ----------------------------------------------------------
     def sample(self) -> NodeStatus:
         started = time.perf_counter()
+        self._sample_number += 1
 
         vm = psutil.virtual_memory()
         du = psutil.disk_usage(self._disk_path)
         agent_cpu = self._proc.cpu_percent(interval=None)
         agent_rss = self._proc.memory_info().rss
 
+        collect_optional = self._sample_number % self._optional_backoff == 0
         status = NodeStatus(
             name=self._name,
             agent_version=self._version,
             uptime_seconds=time.monotonic() - self._started,
             cpu_percent=float(psutil.cpu_percent(interval=None)),
-            gpu_percent=read_gpu_percent(),
-            thermal_state=read_thermal_state(),
+            gpu_percent=read_gpu_percent() if collect_optional else None,
+            thermal_state=read_thermal_state() if collect_optional else ThermalState.UNKNOWN,
             memory_total_bytes=vm.total,
             memory_free_bytes=vm.available,
             disk_total_bytes=du.total,
@@ -168,6 +184,8 @@ class MetricsCollector:
             agent_cpu_percent=agent_cpu,
             agent_rss_bytes=agent_rss,
             collection_budget_ok=(agent_cpu <= self._budget_cpu and agent_rss <= self._budget_rss),
+            collection_duration_ms=0,
+            optional_sampling_backoff=self._optional_backoff,
             path=NodePath.MESH,
             sampled_at=datetime.now(UTC),
             engines=self._engine_statuses(),
@@ -178,6 +196,37 @@ class MetricsCollector:
         )
 
         elapsed = time.perf_counter() - started
+        budget_ok = status.collection_budget_ok and elapsed <= self._interval / 2
+        if budget_ok:
+            self._optional_backoff = max(1, self._optional_backoff // 2)
+        else:
+            self._optional_backoff = min(16, self._optional_backoff * 2)
+        status = status.model_copy(
+            update={
+                "collection_budget_ok": budget_ok,
+                "collection_duration_ms": elapsed * 1000,
+                "optional_sampling_backoff": self._optional_backoff,
+            }
+        )
+        attrs = {"node": self._name}
+        _node_cpu.set(status.cpu_percent, attrs)
+        if status.gpu_percent is not None:
+            _node_gpu.set(status.gpu_percent, attrs)
+        _node_memory_used.set(status.memory_total_bytes - status.memory_free_bytes, attrs)
+        _node_memory_budget.set(status.memory_budget_bytes, attrs)
+        _node_memory_reserved.set(status.memory_committed_bytes, attrs)
+        _node_disk_free.set(status.disk_free_bytes, attrs)
+        _node_collection_duration.record(status.collection_duration_ms, attrs)
+        _node_collection_backoff.set(status.optional_sampling_backoff, attrs)
+        _node_thermal.set(1, {**attrs, "state": status.thermal_state.value})
+        for engine in status.engines[:64]:
+            engine_attrs = {"node": self._name, "model_id": engine.slug or "unknown"}
+            if engine.resident_bytes is not None:
+                _node_process_rss.set(engine.resident_bytes, engine_attrs)
+            if engine.cpu_percent is not None:
+                _node_process_cpu.set(engine.cpu_percent, engine_attrs)
+            if engine.load_seconds is not None:
+                _model_load_duration.record(engine.load_seconds, engine_attrs)
         if elapsed > self._interval / 2:
             logger.warning(
                 "metrics collection took %.2fs against a %.1fs interval; "

@@ -8,6 +8,7 @@ fails here rather than in a consumer.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ from jsonschema import Draft202012Validator
 
 from coire_api.deps import SessionDep, SettingsDep  # noqa: F401  (imported for override keys)
 from coire_api.routes import health
+from coire_core.models.health import ServiceHealth
 from coire_core.settings import Settings
 
 CONTRACT = Path(__file__).resolve().parents[4] / "specs/000-bootstrap/contracts/health-api.yaml"
@@ -65,7 +67,7 @@ class FakeSession:
         return FakeResult([])
 
 
-def build_app(*, db_fails: bool = False) -> FastAPI:
+def build_app(*, db_fails: bool = False, settings: Settings | None = None) -> FastAPI:
     app = FastAPI()
     app.include_router(health.router)
 
@@ -76,7 +78,8 @@ def build_app(*, db_fails: bool = False) -> FastAPI:
     from coire_core.settings import get_settings
 
     app.dependency_overrides[get_session] = _session
-    app.dependency_overrides[get_settings] = lambda: Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    configured = settings or Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    app.dependency_overrides[get_settings] = lambda: configured
     return app
 
 
@@ -126,6 +129,34 @@ async def test_health_reports_every_dependency() -> None:
 async def test_health_records_latency_for_each_probe() -> None:
     body = (await call(build_app(), "/health")).json()
     assert all(s["latency_ms"] is not None for s in body["services"])
+
+
+async def test_configured_tunnel_probe_emits_live_metric(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observations: list[tuple[int, dict[str, str]]] = []
+
+    class Gauge:
+        def set(self, value: int, attributes: dict[str, str]) -> None:
+            observations.append((value, attributes))
+
+    original = health._probe_http
+
+    async def probe(client: httpx.AsyncClient, name: str, url: str) -> Any:
+        if name == "tunnel":
+            return ServiceHealth(
+                name=name, healthy=True, checked_at=datetime.now(UTC), latency_ms=1
+            )
+        return await original(client, name, url)
+
+    monkeypatch.setattr(health, "_tunnel_up", Gauge())
+    monkeypatch.setattr(health, "_probe_http", probe)
+    response = await call(
+        build_app(settings=Settings(tunnel_health_url="http://cloudflared:2000/ready")),
+        "/health",
+    )
+    assert response.status_code == 200
+    assert observations == [(1, {"tunnel": "primary"})]
 
 
 async def test_probes_run_concurrently_not_serially() -> None:

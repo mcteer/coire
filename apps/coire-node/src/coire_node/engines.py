@@ -60,6 +60,9 @@ _load_seconds = _meter.create_histogram(
 _engine_resident = _meter.create_gauge(
     "coire_engine_resident_bytes", unit="By", description="Measured engine footprint."
 )
+_unload_seconds = _meter.create_histogram(
+    "coire_engine_unload_seconds", unit="s", description="Time from stop request to exit."
+)
 
 ENGINES_FILE = "engines.json"
 CREATE_TIME_TOLERANCE_S = 1.0
@@ -491,6 +494,7 @@ class EngineManager:
         The group, not the pid: `mlx.launch` (feature 006) spawns ranks, and terminating only
         the leader would leave them holding memory.
         """
+        started = time.monotonic()
         pid = engine.pid
         if pid is not None and _alive(pid, engine.create_time):
             with contextlib.suppress(ProcessLookupError, PermissionError):
@@ -508,6 +512,7 @@ class EngineManager:
             engine.resident_bytes = None
             engine.cpu_percent = None
             self._persist()
+        _unload_seconds.record(time.monotonic() - started, {"slug": engine.slug or ""})
         logger.info("engine %s stopped", engine.engine_id)
 
     # -- observation -------------------------------------------------------

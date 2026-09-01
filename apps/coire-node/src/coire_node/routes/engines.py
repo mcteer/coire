@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 import httpx
 from fastapi import APIRouter, HTTPException, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
+from opentelemetry import metrics, trace
 
 from coire_core.models.engine import (
     EngineStartRequest,
@@ -24,6 +25,14 @@ from coire_node.engines import BudgetExceeded, CopyMissing, NoFreePort
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/node/engines", tags=["engines"])
 _proxy_client: httpx.AsyncClient | None = None
+_tracer = trace.get_tracer("coire.node.engine_proxy")
+_meter = metrics.get_meter("coire.node.engine_proxy")
+_queue_depth = _meter.create_up_down_counter("coire_node_queue_depth")
+_output_bytes = _meter.create_counter(
+    "coire_node_generation_output_bytes_total",
+    unit="By",
+    description="Engine response bytes, usable as a bounded generation-throughput rate.",
+)
 
 
 def _engine_client() -> httpx.AsyncClient:
@@ -99,20 +108,45 @@ async def proxy_chat_completion(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "model does not match engine")
     url = f"http://127.0.0.1:{engine.port}/v1/chat/completions"
     payload = request.model_dump(mode="json", exclude_none=True)
+    metric_attributes = {"model_id": engine.slug or "unknown"}
+    _queue_depth.add(1, metric_attributes)
     if not request.stream:
         try:
-            response = await _engine_client().post(url, json=payload, timeout=300)
-            response.raise_for_status()
+            with (
+                _tracer.start_as_current_span("coire.node.prefill"),
+                _tracer.start_as_current_span("coire.node.network"),
+            ):
+                response = await _engine_client().post(url, json=payload, timeout=300)
+                response.raise_for_status()
         except httpx.HTTPError as exc:
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, "engine request failed") from exc
+        finally:
+            _queue_depth.add(-1, metric_attributes)
+        _output_bytes.add(len(response.content), metric_attributes)
         return JSONResponse(status_code=response.status_code, content=response.json())
 
     async def relay() -> AsyncIterator[bytes]:
         timeout = httpx.Timeout(300, read=None)
-        async with _engine_client().stream("POST", url, json=payload, timeout=timeout) as response:
-            response.raise_for_status()
-            async for chunk in response.aiter_bytes():
-                yield chunk
+        stream_context = _engine_client().stream("POST", url, json=payload, timeout=timeout)
+        response: httpx.Response | None = None
+        try:
+            with _tracer.start_as_current_span("coire.node.network"):
+                response = await stream_context.__aenter__()
+                response.raise_for_status()
+            iterator = response.aiter_bytes()
+            with _tracer.start_as_current_span("coire.node.prefill"):
+                first = await anext(iterator, None)
+            if first is not None:
+                _output_bytes.add(len(first), metric_attributes)
+                yield first
+            with _tracer.start_as_current_span("coire.node.decode"):
+                async for chunk in iterator:
+                    _output_bytes.add(len(chunk), metric_attributes)
+                    yield chunk
+        finally:
+            if response is not None:
+                await stream_context.__aexit__(None, None, None)
+            _queue_depth.add(-1, metric_attributes)
 
     return StreamingResponse(
         relay(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}

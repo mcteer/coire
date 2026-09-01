@@ -16,6 +16,7 @@ from coire_api.gateway.telemetry import (
     inflight_counter,
     request_counter,
     request_duration_ms,
+    token_counter,
 )
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
 
@@ -50,6 +51,23 @@ class UsageTracker:
         duration_ms = max((datetime.now(UTC) - self.started_at).total_seconds() * 1000, 0)
         request_counter.add(1, attributes)
         request_duration_ms.record(duration_ms, attributes)
+        identity_attributes = {
+            "user_class": self.principal.kind.value,
+            "credential_class": (
+                "admin_token"
+                if self.principal.kind.value == "admin"
+                else "anonymous"
+                if self.principal.kind.value == "anonymous"
+                else "issued"
+            ),
+            "model": str(self.model_id or self.requested_model_id),
+        }
+        token_counter.add(
+            max(self.prompt_tokens, 0), {**identity_attributes, "direction": "prompt"}
+        )
+        token_counter.add(
+            max(self.completion_tokens, 0), {**identity_attributes, "direction": "completion"}
+        )
         inflight_counter.add(-1, {"protocol": self.protocol.value})
         if outcome is UsageOutcome.FAILED:
             failure_counter.add(1, attributes)
