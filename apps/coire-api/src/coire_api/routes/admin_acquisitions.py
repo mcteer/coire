@@ -186,20 +186,29 @@ async def submit_acquisition(
     if origin.name not in node_rows or replica.name not in node_rows:
         raise HTTPException(503, "selected acquisition nodes are not registered")
     effective_body = body.model_copy(update={"keep_raw": True}) if preserve_existing_raw else body
-    _, _, workflow, created = await acquisition.submit(
-        session,
-        effective_body,
-        revision=metadata.revision,
-        weight_bytes=metadata.weight_bytes,
-        total_bytes=metadata.total_bytes,
-        memory_estimate_bytes=int(estimated * settings.overhead_for(body.variant.precision.value)),
-        origin_node_id=node_rows[origin.name].id,
-        replica_node_id=node_rows[replica.name].id,
-        inspection=decision.model_dump(mode="json"),
-        skip_pull=existing_model is not None,
-        source_variant_slug=source_variant_slug,
-        actor=actor,
-    )
+    try:
+        _, _, workflow, created = await acquisition.submit(
+            session,
+            effective_body,
+            revision=metadata.revision,
+            weight_bytes=metadata.weight_bytes,
+            total_bytes=metadata.total_bytes,
+            memory_estimate_bytes=int(
+                estimated * settings.overhead_for(body.variant.precision.value)
+            ),
+            origin_node_id=node_rows[origin.name].id,
+            replica_node_id=node_rows[replica.name].id,
+            inspection=decision.model_dump(mode="json"),
+            skip_pull=existing_model is not None,
+            source_variant_slug=source_variant_slug,
+            actor=actor,
+        )
+    except acquisition.AcquisitionError as exc:
+        await session.rollback()
+        raise HTTPException(
+            exc.status_code,
+            {"code": exc.code, "detail": exc.detail, "bytes_transferred": 0},
+        ) from exc
     await session.commit()
     if not created:
         response.status_code = status.HTTP_200_OK

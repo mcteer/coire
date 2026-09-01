@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
@@ -169,7 +170,12 @@ def prepare_verified_model(client: httpx.Client, admin_headers: dict[str, str]) 
             json={
                 "repo_id": TINY_REPO,
                 "keep_raw": False,
-                "variant": {"name": "run-integration-bf16", "precision": "bf16"},
+                # A prior integration test may leave this repo with an unvalidated variant;
+                # use a fresh name so preparation remains idempotent across the full suite.
+                "variant": {
+                    "name": f"run-integration-bf16-{uuid.uuid4().hex[:8]}",
+                    "precision": "bf16",
+                },
             },
         )
         assert response.status_code in (200, 202), response.text
