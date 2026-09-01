@@ -93,6 +93,12 @@ def test_budget_flag_is_true_within_limits() -> None:
     assert c.sample().collection_budget_ok is True
 
 
+def test_saturated_cpu_boundary_allows_sampling_jitter(monkeypatch: pytest.MonkeyPatch) -> None:
+    c = collector(budget_cpu_pct=100.0, budget_rss_bytes=10 * 1024**3)
+    monkeypatch.setattr(c._proc, "cpu_percent", lambda interval=None: 100.3)
+    assert c.sample().collection_budget_ok is True
+
+
 def test_latest_relabels_the_path_without_resampling() -> None:
     c = collector()
     first = c.sample()

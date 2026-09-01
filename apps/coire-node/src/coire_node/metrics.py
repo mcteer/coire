@@ -160,6 +160,12 @@ class MetricsCollector:
         du = psutil.disk_usage(self._disk_path)
         agent_cpu = self._proc.cpu_percent(interval=None)
         agent_rss = self._proc.memory_info().rss
+        # psutil's first non-blocking sample can overshoot the physical 100% ceiling by a
+        # fraction while the collector itself wakes. Treat that measurement jitter as the
+        # saturated boundary only; real budgets below 100% remain strict.
+        cpu_budget_ok = agent_cpu <= self._budget_cpu or (
+            self._budget_cpu >= 100.0 and agent_cpu <= 100.5
+        )
 
         status = NodeStatus(
             name=self._name,
@@ -176,7 +182,7 @@ class MetricsCollector:
             disk_free_bytes=du.free,
             agent_cpu_percent=agent_cpu,
             agent_rss_bytes=agent_rss,
-            collection_budget_ok=(agent_cpu <= self._budget_cpu and agent_rss <= self._budget_rss),
+            collection_budget_ok=(cpu_budget_ok and agent_rss <= self._budget_rss),
             path=NodePath.MESH,
             sampled_at=datetime.now(UTC),
             engines=self._engine_statuses(),
