@@ -4,6 +4,7 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from coire_core.models.jobs import JobKind, JobStage, JobStatus
 from coire_core.settings import Settings
@@ -12,7 +13,7 @@ from coire_node.store import Store
 from coire_node.worker import JobFile
 
 
-def test_resume_restarts_only_incomplete_jobs(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_resume_restarts_only_incomplete_jobs(tmp_path: Path, monkeypatch: Any) -> None:
     settings = Settings(  # type: ignore[call-arg]
         node_state_dir=str(tmp_path / "state"),
         node_store_dir=str(tmp_path / "models"),

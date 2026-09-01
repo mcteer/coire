@@ -325,6 +325,9 @@ def test_confirmation_is_single_use_not_redirectable_and_restart_invalidates(
         assert changed_response.status_code == 409
 
         current = client.get(f"/api/v1/instances/{ready_again['id']}", headers=admin_headers).json()
+        # The confirmation and preceding lifecycle can cross the short volatile-session
+        # expiry window. Use a fresh session for the expiry assertion itself.
+        session_id, conversation_id = _context(client, human, service)
         expired = _proposal(
             client,
             service,
