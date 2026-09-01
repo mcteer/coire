@@ -185,22 +185,50 @@ async def place_run(run_id_text: str) -> None:
         await asyncio.sleep(get_settings().placement_poll_interval_s)
 
 
-# A process restart interrupts the active WAIT command and DBOS records the recovery as another
-# step attempt. Keep the ceiling aligned with the workflow recovery budget so several supervisor
-# restarts cannot exhaust otherwise idempotent command replay while a container is still running.
-@DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
+def _retry_execution_error(exc: BaseException) -> bool:
+    """Retry transport/control failures, but never a durable terminal run outcome."""
+
+    return str(exc) not in {"run_timeout", "run_container_failed"} and not str(exc).startswith(
+        "run_result_"
+    )
+
+
+# Commands are deterministic and durable, so a recovered step resumes from their recorded
+# results. Keep transient retries linear and exclude terminal container/result outcomes.
+@DBOS.step(
+    retries_allowed=True,
+    max_attempts=100,
+    interval_seconds=1.0,
+    backoff_rate=1.0,
+    should_retry=_retry_execution_error,
+)
 async def execute_run(run_id_text: str) -> None:
     run_id = uuid.UUID(run_id_text)
     with tracer.start_as_current_span("coire.scheduler.run.execute") as span:
         span.set_attribute("run_id", run_id_text)
-        await _advance(run_id, AgentRunState.CREATING, "creating hardened container")
-        created = await _submit(run_id, RunOperation.CREATE)
         async with session_scope() as session:
             run = await session.get(AgentRunRow, run_id)
-            if run is not None:
-                run.container_id = str(created["container_id"])
-        await _submit(run_id, RunOperation.START)
-        await _advance(run_id, AgentRunState.RUNNING, "container started")
+            container_id = run.container_id if run is not None else None
+            current_state = run.state if run is not None else None
+        if container_id is None:
+            await _advance(run_id, AgentRunState.CREATING, "creating hardened container")
+            created = await _submit(run_id, RunOperation.CREATE)
+            async with session_scope() as session:
+                run = await session.get(AgentRunRow, run_id)
+                if run is not None:
+                    run.container_id = str(created["container_id"])
+            current_state = AgentRunState.CREATING
+        if current_state in {
+            AgentRunState.QUEUED,
+            AgentRunState.PLACING,
+            AgentRunState.CREATING,
+        }:
+            await _submit(run_id, RunOperation.START)
+            await _advance(run_id, AgentRunState.RUNNING, "container started")
+        else:
+            # START is idempotent and may already be recorded, but a recovered running or
+            # collecting run must never be transitioned backwards.
+            await _submit(run_id, RunOperation.START)
         waited = await _submit(run_id, RunOperation.WAIT)
         logs = await _submit(run_id, RunOperation.LOGS)
         async with session_scope() as session:
@@ -226,7 +254,11 @@ async def execute_run(run_id_text: str) -> None:
             raise TimeoutError("run_timeout")
         if waited.get("exit_code") not in (None, 0):
             raise RuntimeError("run_container_failed")
-        await _advance(run_id, AgentRunState.COLLECTING, "collecting strict result")
+        async with session_scope() as session:
+            run = await session.get(AgentRunRow, run_id)
+            current_state = run.state if run is not None else None
+        if current_state is not AgentRunState.COLLECTING:
+            await _advance(run_id, AgentRunState.COLLECTING, "collecting strict result")
         collected = await _submit(run_id, RunOperation.COLLECT)
         async with session_scope() as session:
             run = await session.get(AgentRunRow, run_id)
