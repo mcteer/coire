@@ -72,6 +72,9 @@ COPY --from=builder /build/apps/coire-api/alembic /app/alembic
 COPY --from=builder /build/apps/coire-api/alembic.ini /app/alembic.ini
 COPY deploy/cluster/nodes.yaml /app/nodes.yaml
 
+# SC-008 throwaway fixture: deliberately introduce a shell so image-policy rejects this build.
+COPY --from=docker.io/library/busybox:1.36-musl@sha256:3c6ae8008e2c2eedd141725c30b20d9c36b026eb796688f88205845ef17aa213 /bin/sh /bin/sh
+
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
