@@ -41,6 +41,7 @@ class PrincipalKind(StrEnum):
     ADMIN = "admin"
     USER = "user"
     SERVICE = "service"
+    OPS_SERVICE = "ops_service"
     API_KEY = "api_key"
     RUN = "run"
 
@@ -128,6 +129,20 @@ def require_scope(scope: str):  # type: ignore[no-untyped-def]
     return guard
 
 
+def require_ops_scope(scope: str):  # type: ignore[no-untyped-def]
+    """Require the dedicated ops service and one of its fixed narrow authorities."""
+
+    async def guard(principal: CurrentAuthenticated) -> Principal:
+        if principal.kind is PrincipalKind.OPS_SERVICE and scope in principal.scopes:
+            return principal
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="ops service credential with required scope required",
+        )
+
+    return guard
+
+
 def principal_from_bearer(
     credentials: HTTPAuthorizationCredentials | None, *, expected: str
 ) -> Principal:
@@ -180,6 +195,32 @@ async def authenticate_request(request: Request) -> Principal:
         if legacy is not ANONYMOUS:
             auth_attempts.add(1, {"method": "legacy", "outcome": "accepted", "reason": "none"})
             return legacy
+    if bearer.startswith("coire_ops_"):
+        expected = settings.ops_service_token.get_secret_value()
+        accepted = bool(expected and hmac.compare_digest(expected, bearer))
+        auth_attempts.add(
+            1,
+            {
+                "method": "ops_service",
+                "outcome": "accepted" if accepted else "refused",
+                "reason": "none" if accepted else "invalid",
+            },
+        )
+        if not accepted:
+            return ANONYMOUS
+        permitted_model_ids: frozenset[uuid.UUID] = frozenset()
+        if settings.ops_model_id:
+            try:
+                permitted_model_ids = frozenset({uuid.UUID(settings.ops_model_id)})
+            except ValueError:
+                logger.error("configured ops model id is not a UUID")
+                return ANONYMOUS
+        return Principal(
+            kind=PrincipalKind.OPS_SERVICE,
+            subject="coire-ops",
+            scopes=frozenset({"ops:read", "ops:propose", "ops:session", "ops:infer"}),
+            permitted_model_ids=permitted_model_ids,
+        )
     assertion = request.headers.get("cf-access-jwt-assertion", "")
     if not bearer.startswith(("coire_", "coire_run_")) and not assertion:
         return ANONYMOUS
@@ -311,6 +352,8 @@ async def require_authenticated(principal: CurrentPrincipal) -> Principal:
 
 
 CurrentAuthenticated = Annotated[Principal, Depends(require_authenticated)]
+
+CurrentOpsService = Annotated[Principal, Depends(require_ops_scope("ops:session"))]
 
 
 async def require_admin(request: Request, principal: CurrentPrincipal) -> Principal:

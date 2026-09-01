@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI, HTTPException
@@ -14,7 +15,10 @@ from coire_api.auth import (
     ANONYMOUS,
     CurrentAdmin,
     PrincipalKind,
+    authenticate_request,
+    require_admin,
     require_authenticated,
+    require_ops_scope,
     require_principal,
 )
 from coire_core.settings import Settings, get_settings
@@ -161,4 +165,57 @@ class TestDirectGuardCall:
 
         with pytest.raises(HTTPException) as exc:
             await require_admin(Req(), ANONYMOUS)  # type: ignore[arg-type]
+        assert exc.value.status_code == 403
+
+
+class TestOpsServicePrincipal:
+    async def test_exact_configured_secret_gets_only_fixed_ops_scopes(self) -> None:
+        settings = Settings(
+            _secrets_dir="/nonexistent",  # type: ignore[call-arg]
+            ops_service_token="coire_ops_a-secret-value",
+        )
+        request = SimpleNamespace(
+            headers={"authorization": "Bearer coire_ops_a-secret-value"},
+            app=SimpleNamespace(state=SimpleNamespace(settings=settings)),
+        )
+        principal = await authenticate_request(request)  # type: ignore[arg-type]
+        assert principal.kind is PrincipalKind.OPS_SERVICE
+        assert principal.scopes == frozenset(
+            {"ops:read", "ops:propose", "ops:session", "ops:infer"}
+        )
+        assert not principal.is_admin
+        assert await require_ops_scope("ops:propose")(principal) is principal
+
+    async def test_wrong_or_unconfigured_ops_secret_fails_closed(self) -> None:
+        for expected in ("", "coire_ops_right"):
+            settings = Settings(
+                _secrets_dir="/nonexistent",  # type: ignore[call-arg]
+                ops_service_token=expected,
+            )
+            request = SimpleNamespace(
+                headers={"authorization": "Bearer coire_ops_wrong"},
+                app=SimpleNamespace(state=SimpleNamespace(settings=settings)),
+            )
+            principal = await authenticate_request(request)  # type: ignore[arg-type]
+            assert principal is ANONYMOUS
+
+    async def test_ops_service_cannot_cross_human_admin_gate(self, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+        @asynccontextmanager
+        async def _no_audit(*a, **k):  # type: ignore[no-untyped-def]
+            yield None
+
+        monkeypatch.setattr("coire_api.db.session_scope", _no_audit)
+        principal = type(ADMIN)(
+            kind=PrincipalKind.OPS_SERVICE,
+            subject="coire-ops",
+            scopes=frozenset({"ops:propose"}),
+        )
+
+        class Req:
+            method = "POST"
+            url = type("U", (), {"path": "/api/v1/admin/ops/proposals/x/confirm"})()
+            client = None
+
+        with pytest.raises(HTTPException) as exc:
+            await require_admin(Req(), principal)  # type: ignore[arg-type]
         assert exc.value.status_code == 403

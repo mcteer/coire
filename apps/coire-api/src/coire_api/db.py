@@ -49,6 +49,12 @@ from coire_core.models.harness import EvaluationVerdict
 from coire_core.models.instance import InstanceState
 from coire_core.models.jobs import DownloadStage
 from coire_core.models.node import NodeRole, Reachability
+from coire_core.models.ops import (
+    OpsConversationState,
+    OpsMessageRole,
+    OpsProposalState,
+    OpsSessionState,
+)
 from coire_core.models.placement import (
     MemoryReservationState,
     PlacementState,
@@ -1046,6 +1052,99 @@ class AuditRow(Base):
     before: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
     after: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
     context: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+
+
+class OpsSessionRow(Base):
+    __tablename__ = "ops_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    service_instance: Mapped[str] = mapped_column(String(128))
+    state: Mapped[OpsSessionState] = mapped_column(
+        _enum(OpsSessionState, "ops_session_state"), index=True
+    )
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class OpsConversationRow(Base):
+    __tablename__ = "ops_conversations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    admin_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    ops_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ops_sessions.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    state: Mapped[OpsConversationState] = mapped_column(
+        _enum(OpsConversationState, "ops_conversation_state"), index=True
+    )
+    degraded: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OpsMessageRow(Base):
+    __tablename__ = "ops_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ops_conversations.id", ondelete="CASCADE"), index=True
+    )
+    role: Mapped[OpsMessageRole] = mapped_column(_enum(OpsMessageRole, "ops_message_role"))
+    content: Mapped[str] = mapped_column(String(4000))
+    degraded: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OpsProposalRow(Base):
+    __tablename__ = "ops_proposals"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ops_conversations.id", ondelete="CASCADE"), index=True
+    )
+    ops_session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ops_sessions.id", ondelete="RESTRICT"), index=True
+    )
+    proposer: Mapped[str] = mapped_column(String(128))
+    action: Mapped[dict[str, object]] = mapped_column(JSONB)
+    action_digest: Mapped[str] = mapped_column(String(64))
+    rationale: Mapped[str] = mapped_column(String(1000))
+    state: Mapped[OpsProposalState] = mapped_column(
+        _enum(OpsProposalState, "ops_proposal_state"), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class OpsConfirmationTokenRow(Base):
+    __tablename__ = "ops_confirmation_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    proposal_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ops_proposals.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    prefix: Mapped[str] = mapped_column(String(12), unique=True, index=True)
+    secret_hash: Mapped[str] = mapped_column(String(255))
+    action_digest: Mapped[str] = mapped_column(String(64))
+    issued_to_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class UsageRecordRow(Base):
