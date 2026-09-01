@@ -182,9 +182,16 @@ def _proposal(
     conversation_id: str,
     instance: dict[str, Any],
 ) -> dict[str, Any]:
-    # Keep the manually registered session alive while the preceding model lifecycle
-    # assertions run.  In CI those waits can exceed the 30-second stale-session window;
-    # the real ops container sends this heartbeat continuously.
+    # The real ops container registers/heartbeats continuously.  The test uses a manually
+    # registered session while deliberately waiting through model lifecycle operations; re-
+    # registering the same id models that reconnect and prevents a long CI run from turning
+    # an otherwise valid proposal into an unrelated stale-session refusal.
+    registered = client.post(
+        "/api/v1/internal/ops/sessions",
+        headers=service_headers,
+        json={"session_id": session_id, "service_instance": "ops-integration"},
+    )
+    assert registered.status_code == 201, registered.text
     heartbeat = client.patch(f"/api/v1/internal/ops/sessions/{session_id}", headers=service_headers)
     assert heartbeat.status_code == 200, heartbeat.text
     action = {
