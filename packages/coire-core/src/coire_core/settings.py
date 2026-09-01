@@ -94,6 +94,16 @@ class Settings(BaseSettings):
     acquisition_disk_safety_fraction: float = Field(default=0.10, ge=0.0, le=1.0)
     acquisition_validation_fixture_version: str = "v1"
 
+    # --- placement scheduler -------------------------------------------
+    placement_default_budget_bytes: int = Field(default=230 * 1024**3, gt=0)
+    placement_sandbox_bytes: int = Field(default=16 * 1024**3, ge=0)
+    placement_health_freshness_s: float = Field(default=30.0, gt=0.0)
+    placement_cpu_saturation_percent: float = Field(default=90.0, ge=0.0, le=100.0)
+    placement_busy_drain_timeout_s: float = Field(default=10.0, ge=0.0)
+    placement_poll_interval_s: float = Field(default=1.0, gt=0.0)
+    placement_ttl_interval_s: float = Field(default=30.0, gt=0.0)
+    placement_lease_ttl_s: float = Field(default=60.0, gt=0.0)
+
     # --- compatible inference gateway ----------------------------------
     gateway_wait_ceiling_s: float = Field(default=600.0, gt=0.0)
     gateway_keepalive_interval_s: float = Field(default=10.0, gt=0.0)

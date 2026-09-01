@@ -31,6 +31,26 @@
         {"expr": "max(abs(coire_acquisition_estimate_delta_ratio))", "legendFormat": "estimate drift"}
       ],
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Placement reserved bytes and drift",
+      "targets": [
+        {"expr": "sum by (node) (coire_placement_reserved_bytes)", "legendFormat": "{{node}} reserved"},
+        {"expr": "max by (node) (abs(coire_placement_ledger_drift_ratio))", "legendFormat": "{{node}} drift"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+    },
+    {
+      "type": "timeseries",
+      "title": "Placement admissions, evictions, and refusals",
+      "targets": [
+        {"expr": "sum by (outcome) (rate(coire_placement_admissions_total[5m]))", "legendFormat": "admit {{outcome}}"},
+        {"expr": "sum by (reason) (rate(coire_placement_evictions_total[5m]))", "legendFormat": "evict {{reason}}"},
+        {"expr": "sum by (reason) (rate(coire_placement_refusals_total[5m]))", "legendFormat": "refuse {{reason}}"}
+      ],
+      "links": [{"title": "Placement traces", "url": "/explore?left={\"datasource\":\"Tempo\",\"queries\":[{\"query\":\"coire.scheduler.placement\"}]}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
     }
   ]
 }

@@ -32,9 +32,15 @@ services:
       DISK_RESERVE_BYTES: "268435456"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       GATEWAY_MAX_INFLIGHT_PER_ENGINE: "4"
+      PLACEMENT_POLL_INTERVAL_S: "0.2"
     networks:
       coire-control-sim:
         aliases: [coire-core]
+
+  coire-scheduler:
+    environment:
+      PLACEMENT_POLL_INTERVAL_S: "0.2"
+      PLACEMENT_TTL_INTERVAL_S: "2"
 
   node-a:
     image: coire-node-test:${COIRE_TAG:-dev}

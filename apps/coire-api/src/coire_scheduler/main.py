@@ -20,13 +20,21 @@ from dbos import DBOS, SetWorkflowID
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from coire_api.db import AcquisitionWorkflowRow, dispose_engine, init_engine, session_scope
+from coire_api.db import (
+    AcquisitionWorkflowRow,
+    PlacementDecisionRow,
+    dispose_engine,
+    init_engine,
+    session_scope,
+)
 from coire_api.telemetry import configure_telemetry
 from coire_core.models.acquisition import AcquisitionState
 from coire_core.models.health import ReadyResponse
+from coire_core.models.placement import PlacementState
 from coire_core.settings import get_settings
 from coire_scheduler.acquisition import acquisition_workflow
 from coire_scheduler.dbos_runtime import DBOSRuntime
+from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
 
 SERVICE_NAME = "coire-scheduler"
 __version__ = "0.1.0"
@@ -56,10 +64,45 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
             for workflow_id in ids:
                 with SetWorkflowID(str(workflow_id)):
                     DBOS.start_workflow(acquisition_workflow, str(workflow_id))
+            async with session_scope() as session:
+                placement_ids = list(
+                    (
+                        await session.execute(
+                            select(PlacementDecisionRow.id).where(
+                                PlacementDecisionRow.state.in_(
+                                    [
+                                        PlacementState.REQUESTED,
+                                        PlacementState.WAITING_FOR_DRAIN,
+                                        PlacementState.EVICTING,
+                                        PlacementState.RESERVING,
+                                        PlacementState.LOADING,
+                                    ]
+                                ),
+                                PlacementDecisionRow.policy != "idle-ttl",
+                            )
+                        )
+                    ).scalars()
+                )
+            for decision_id in placement_ids:
+                with SetWorkflowID(f"placement-{decision_id}"):
+                    DBOS.start_workflow(placement_workflow, str(decision_id))
         except Exception:
             logger.exception("acquisition dispatcher pass failed")
         with suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=settings.acquisition_poll_interval_s)
+
+
+async def dispatch_idle_ttl(stop: asyncio.Event) -> None:
+    settings = get_settings()
+    while not stop.is_set():
+        bucket = int(asyncio.get_running_loop().time() // settings.placement_ttl_interval_s)
+        try:
+            with SetWorkflowID(f"placement-idle-ttl-{bucket}"):
+                DBOS.start_workflow(idle_ttl_workflow)
+        except Exception:
+            logger.exception("placement idle-TTL dispatcher pass failed")
+        with suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=settings.placement_ttl_interval_s)
 
 
 def create_app() -> FastAPI:
@@ -73,12 +116,16 @@ def create_app() -> FastAPI:
         runtime.launch()
         stop = asyncio.Event()
         dispatcher = asyncio.create_task(dispatch_queued(stop), name="acquisition-dispatcher")
+        ttl_dispatcher = asyncio.create_task(
+            dispatch_idle_ttl(stop), name="placement-ttl-dispatcher"
+        )
         app.state.dbos = runtime
         try:
             yield
         finally:
             stop.set()
             await dispatcher
+            await ttl_dispatcher
             runtime.destroy()
             await dispose_engine()
 

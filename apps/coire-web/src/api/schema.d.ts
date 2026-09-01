@@ -96,6 +96,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ledger": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Ledger */
+        get: operations["list_ledger_api_v1_admin_ledger_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ledger/reservations/{reservation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Reservation */
+        patch: operations["patch_reservation_api_v1_admin_ledger_reservations__reservation_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/ledger/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch Ledger */
+        patch: operations["patch_ledger_api_v1_admin_ledger__node_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/models": {
         parameters: {
             query?: never;
@@ -184,6 +235,23 @@ export interface paths {
          * @description Load a model on a node. Exercised by tests and the console; user traffic is feature 003.
          */
         post: operations["load_model_api_v1_admin_models__model_id__load_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/models/{model_id}/placement": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Placement */
+        post: operations["submit_placement_api_v1_admin_models__model_id__placement_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -288,6 +356,23 @@ export interface paths {
          * @description Declared nodes with the last status the prober received, their engines and jobs.
          */
         get: operations["list_nodes_api_v1_admin_nodes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/placements/{decision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Placement */
+        get: operations["get_placement_api_v1_admin_placements__decision_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -788,6 +873,13 @@ export interface components {
          * @enum {string}
          */
         HealthStatus: "healthy" | "degraded" | "unhealthy";
+        /** LedgerUpdate */
+        LedgerUpdate: {
+            /** Budget Bytes */
+            budget_bytes?: number | null;
+            /** Sandbox Bytes */
+            sandbox_bytes?: number | null;
+        };
         /**
          * LinkState
          * @enum {string}
@@ -798,6 +890,86 @@ export interface components {
          * @enum {string}
          */
         LoadState: "loaded" | "loading" | "cold";
+        /** MemoryLedger */
+        MemoryLedger: {
+            /** Budget Bytes */
+            budget_bytes: number;
+            /** Drift Ratio */
+            drift_ratio?: number | null;
+            /** Free Bytes */
+            free_bytes: number;
+            health: components["schemas"]["Reachability"];
+            /** Health Reason */
+            health_reason?: string | null;
+            /** Health Sampled At */
+            health_sampled_at?: string | null;
+            /** Measured Resident Bytes */
+            measured_resident_bytes?: number | null;
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            /** Node Name */
+            node_name: string;
+            /** Reservations */
+            reservations?: components["schemas"]["MemoryReservation"][];
+            /** Reserved Bytes */
+            reserved_bytes: number;
+            /** Sandbox Bytes */
+            sandbox_bytes: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** MemoryReservation */
+        MemoryReservation: {
+            /** Bytes */
+            bytes: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Holder Id */
+            holder_id: string;
+            holder_type: components["schemas"]["ReservationHolder"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * In Flight
+             * @default 0
+             */
+            in_flight: number;
+            /**
+             * Last Used At
+             * Format: date-time
+             */
+            last_used_at: string;
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            /**
+             * Pinned
+             * @default false
+             */
+            pinned: boolean;
+            /** Released At */
+            released_at?: string | null;
+            state: components["schemas"]["MemoryReservationState"];
+        };
+        /**
+         * MemoryReservationState
+         * @enum {string}
+         */
+        MemoryReservationState: "pending" | "held" | "releasing" | "released" | "failed";
         /** ModelAddRequest */
         ModelAddRequest: {
             /** Description */
@@ -1063,6 +1235,87 @@ export interface components {
             role: components["schemas"]["NodeRole"];
         };
         /**
+         * OccupantReason
+         * @enum {string}
+         */
+        OccupantReason: "pinned" | "in_use" | "eligible";
+        /** PinUpdate */
+        PinUpdate: {
+            /** Pinned */
+            pinned: boolean;
+        };
+        /** PlacementDecision */
+        PlacementDecision: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Evicted Reservation Ids */
+            evicted_reservation_ids?: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Occupants */
+            occupants?: components["schemas"]["PlacementOccupant"][];
+            /** Policy */
+            policy: string;
+            /** Refusal Code */
+            refusal_code?: string | null;
+            /** Refusal Detail */
+            refusal_detail?: string | null;
+            /** Required Bytes */
+            required_bytes: number;
+            /** Selected Node Id */
+            selected_node_id?: string | null;
+            state: components["schemas"]["PlacementState"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Variant Id
+             * Format: uuid
+             */
+            variant_id: string;
+        };
+        /** PlacementOccupant */
+        PlacementOccupant: {
+            /** Bytes */
+            bytes: number;
+            /** Holder Id */
+            holder_id: string;
+            reason: components["schemas"]["OccupantReason"];
+            /**
+             * Reservation Id
+             * Format: uuid
+             */
+            reservation_id: string;
+        };
+        /** PlacementRequest */
+        PlacementRequest: {
+            /** Policy */
+            policy?: string | null;
+            /**
+             * Variant Id
+             * Format: uuid
+             */
+            variant_id: string;
+        };
+        /**
+         * PlacementState
+         * @enum {string}
+         */
+        PlacementState: "requested" | "waiting_for_drain" | "evicting" | "reserving" | "loading" | "ready" | "refused" | "failed";
+        /**
          * Precision
          * @enum {string}
          */
@@ -1104,6 +1357,11 @@ export interface components {
          * @enum {string}
          */
         Reasoning: "none" | "thinking" | "hybrid";
+        /**
+         * ReservationHolder
+         * @enum {string}
+         */
+        ReservationHolder: "sandbox" | "model" | "conversion" | "training" | "image" | "run";
         /**
          * ServiceHealth
          * @description One dependency's health as observed by the aggregate probe.
@@ -1463,6 +1721,109 @@ export interface operations {
             };
         };
     };
+    list_ledger_api_v1_admin_ledger_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryLedger"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_reservation_api_v1_admin_ledger_reservations__reservation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                reservation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PinUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_ledger_api_v1_admin_ledger__node_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LedgerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryLedger"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_models_api_v1_admin_models_get: {
         parameters: {
             query?: never;
@@ -1749,6 +2110,43 @@ export interface operations {
             };
         };
     };
+    submit_placement_api_v1_admin_models__model_id__placement_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlacementRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacementDecision"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     retire_model_api_v1_admin_models__model_id__retire_post: {
         parameters: {
             query?: never;
@@ -1978,6 +2376,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_placement_api_v1_admin_placements__decision_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                decision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacementDecision"];
                 };
             };
             /** @description Validation Error */

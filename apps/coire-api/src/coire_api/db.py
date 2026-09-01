@@ -46,6 +46,11 @@ from coire_core.models.engine import EngineState
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
 from coire_core.models.jobs import DownloadStage
 from coire_core.models.node import NodeRole, Reachability
+from coire_core.models.placement import (
+    MemoryReservationState,
+    PlacementState,
+    ReservationHolder,
+)
 from coire_core.models.registry import CopyRole, ModelState, Visibility
 from coire_core.settings import Settings
 
@@ -429,6 +434,134 @@ class NodeReservationRow(Base):
     occupants: Mapped[list[str]] = mapped_column(JSONB, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# --------------------------------------------------------------------------- feature 004
+
+
+class NodeMemoryLedgerRow(Base):
+    __tablename__ = "node_memory_ledgers"
+
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
+    )
+    budget_bytes: Mapped[int] = mapped_column(BigInteger)
+    sandbox_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    measured_resident_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    thermal_state: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    health: Mapped[Reachability] = mapped_column(_enum(Reachability, "reachability"))
+    health_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    health_sampled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MemoryReservationRow(Base):
+    __tablename__ = "memory_reservations"
+    __table_args__ = (
+        UniqueConstraint(
+            "node_id", "holder_type", "holder_id", name="uq_memory_reservation_holder"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("nodes.id", ondelete="CASCADE"), index=True
+    )
+    holder_type: Mapped[ReservationHolder] = mapped_column(
+        _enum(ReservationHolder, "reservation_holder")
+    )
+    holder_id: Mapped[str] = mapped_column(String(255))
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    state: Mapped[MemoryReservationState] = mapped_column(
+        _enum(MemoryReservationState, "memory_reservation_state"), index=True
+    )
+    last_used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RequestLeaseRow(Base):
+    __tablename__ = "request_leases"
+    __table_args__ = (UniqueConstraint("request_id", name="uq_request_lease_request"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    reservation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("memory_reservations.id", ondelete="CASCADE"), index=True
+    )
+    request_id: Mapped[str] = mapped_column(String(128))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class PlacementDecisionRow(Base):
+    __tablename__ = "placement_decisions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("models.id", ondelete="CASCADE"), index=True
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
+    )
+    policy: Mapped[str] = mapped_column(String(64))
+    required_bytes: Mapped[int] = mapped_column(BigInteger)
+    state: Mapped[PlacementState] = mapped_column(
+        _enum(PlacementState, "placement_state"), index=True
+    )
+    selected_node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("nodes.id"), nullable=True
+    )
+    evicted_reservation_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    refusal_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    refusal_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    occupants: Mapped[list[dict[str, object]]] = mapped_column(JSONB, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvictionEventRow(Base):
+    __tablename__ = "eviction_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    decision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("placement_decisions.id", ondelete="CASCADE"), index=True
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id"))
+    reservation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("memory_reservations.id"))
+    lru_rank: Mapped[int] = mapped_column(Integer)
+    skipped: Mapped[list[dict[str, object]]] = mapped_column(JSONB, default=list)
+    outcome: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PlacementCommandRow(Base):
+    """Durable scheduler-to-API engine command; scheduler never holds node credentials."""
+
+    __tablename__ = "placement_commands"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    decision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("placement_decisions.id", ondelete="CASCADE"), index=True
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    reservation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("memory_reservations.id", ondelete="SET NULL"), nullable=True
+    )
+    engine_id: Mapped[uuid.UUID] = mapped_column(nullable=False)
+    operation: Mapped[str] = mapped_column(String(16))
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    state: Mapped[str] = mapped_column(String(16), index=True, default="pending")
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class EngineProcessRow(Base):

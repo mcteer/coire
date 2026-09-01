@@ -19,6 +19,7 @@ from coire_api import __version__
 from coire_api.db import dispose_engine, init_engine
 from coire_api.routes import (
     admin_acquisitions,
+    admin_ledger,
     admin_models,
     admin_nodes,
     admin_variants,
@@ -69,10 +70,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         acquisition_executor = AcquisitionCommandExecutor(settings)
         await acquisition_executor.start()
         app.state.acquisition_executor = acquisition_executor
+        from coire_api.placement.executor import PlacementCommandExecutor
+
+        placement_executor = PlacementCommandExecutor(settings)
+        await placement_executor.start()
+        app.state.placement_executor = placement_executor
         logger.info("coire-api %s started", __version__)
         try:
             yield
         finally:
+            await placement_executor.stop()
             await acquisition_executor.stop()
             await reconciler.stop()
             await prober.stop()
@@ -90,6 +97,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(nodes.router)
     app.include_router(models.router)
     app.include_router(admin_acquisitions.router)
+    app.include_router(admin_ledger.router)
     app.include_router(admin_variants.router)
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)

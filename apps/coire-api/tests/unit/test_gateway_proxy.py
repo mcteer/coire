@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import cast
 
 import httpx
@@ -64,3 +67,46 @@ async def test_closing_gateway_stream_promptly_closes_upstream() -> None:
     await source.aclose()
     assert closed
     await proxy.close_engine_client()
+
+
+@pytest.mark.asyncio
+async def test_node_proxy_request_acquires_and_releases_memory_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine_id = uuid.uuid4()
+    reservation_id = uuid.uuid4()
+    lease_id = uuid.uuid4()
+    calls: list[tuple[str, object]] = []
+
+    class Session:
+        async def get(self, _model: object, _id: object) -> object:
+            return SimpleNamespace(model_id=uuid.uuid4(), node_id=uuid.uuid4())
+
+        async def scalar(self, _query: object) -> object:
+            return SimpleNamespace(id=reservation_id)
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    async def acquire(
+        _session: object, reservation: uuid.UUID, request: str, *, ttl_seconds: float
+    ) -> object:
+        calls.append(("acquire", reservation))
+        assert request
+        assert ttl_seconds == 60
+        return SimpleNamespace(id=lease_id)
+
+    async def release(_session: object, lease: uuid.UUID) -> None:
+        calls.append(("release", lease))
+
+    monkeypatch.setattr(proxy, "session_scope", sessions)
+    monkeypatch.setattr(proxy, "acquire_lease", acquire)
+    monkeypatch.setattr(proxy, "release_lease", release)
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+
+    async with proxy.request_lease(
+        f"http://coire-edge-a.lab:9400/node/engines/{engine_id}/proxy", settings
+    ):
+        assert calls == [("acquire", reservation_id)]
+    assert calls == [("acquire", reservation_id), ("release", lease_id)]

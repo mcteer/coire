@@ -17,5 +17,13 @@ compose secrets. Gateway tuning variables and operational procedures are documen
 Acquisition tuning uses `ACQUISITION_POLL_INTERVAL_S` (2), `ACQUISITION_STUCK_SECONDS` (1800),
 `ACQUISITION_PERPLEXITY_TOLERANCE` (0.10), `ACQUISITION_CONVERSION_MEMORY_OVERHEAD` (1.20),
 `ACQUISITION_DISK_SAFETY_FRACTION` (0.10), and `ACQUISITION_VALIDATION_FIXTURE_VERSION` (`v1`).
+
+Placement uses `PLACEMENT_DEFAULT_BUDGET_BYTES` (230 GiB), `PLACEMENT_SANDBOX_BYTES` (16 GiB),
+`PLACEMENT_HEALTH_FRESHNESS_S` (30), `PLACEMENT_BUSY_DRAIN_TIMEOUT_S` (10),
+`PLACEMENT_CPU_SATURATION_PERCENT` (90),
+`PLACEMENT_POLL_INTERVAL_S` (1), `PLACEMENT_TTL_INTERVAL_S` (30), and
+`PLACEMENT_LEASE_TTL_S` (60). The budget is authoritative; measured resident memory is used
+only for drift telemetry. Reducing a budget below current reservations blocks admission but
+does not force eviction.
 Raw and converted files remain under the configured Studio model store; DBOS metadata remains in
 Postgres. See [`docs/runbooks/acquisition.md`](../../docs/runbooks/acquisition.md).

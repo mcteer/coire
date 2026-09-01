@@ -9,7 +9,7 @@ from typing import Any
 
 from dbos import DBOS
 from opentelemetry import metrics, trace
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from coire_api.audit import write_audit
 from coire_api.db import (
@@ -17,13 +17,16 @@ from coire_api.db import (
     AcquisitionStageRow,
     AcquisitionWorkflowRow,
     InspectionResultRow,
+    MemoryReservationRow,
     ModelRow,
     ModelVariantRow,
+    NodeMemoryLedgerRow,
     NodeRow,
     ValidationResultRow,
     VariantCopyRow,
     session_scope,
 )
+from coire_api.placement.service import ensure_ledgers, node_admission_lock
 from coire_core.models.acquisition import (
     AcquisitionStage,
     AcquisitionState,
@@ -32,6 +35,7 @@ from coire_core.models.acquisition import (
     VariantState,
 )
 from coire_core.models.jobs import JobStatus
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.registry import CopyRole, ModelState
 from coire_core.settings import get_settings
 
@@ -69,6 +73,71 @@ PHYSICAL_STAGES = (
 
 def node_job_id(workflow_id: uuid.UUID, stage: AcquisitionStage, attempt: int = 1) -> uuid.UUID:
     return uuid.uuid5(JOB_NAMESPACE, f"{workflow_id}:{stage.value}:{attempt}")
+
+
+async def _hold_conversion_memory(
+    workflow_id: uuid.UUID, node_id: uuid.UUID, memory_bytes: int
+) -> None:
+    settings = get_settings()
+    async with session_scope() as session:
+        await ensure_ledgers(
+            session,
+            budget_bytes=settings.placement_default_budget_bytes,
+            sandbox_bytes=settings.placement_sandbox_bytes,
+        )
+        ledger = await session.get(NodeMemoryLedgerRow, node_id)
+        if ledger is None:
+            raise RuntimeError("conversion node has no memory ledger")
+        async with node_admission_lock(session, node_id):
+            held = await session.scalar(
+                select(func.coalesce(func.sum(MemoryReservationRow.bytes), 0)).where(
+                    MemoryReservationRow.node_id == node_id,
+                    MemoryReservationRow.state.in_(
+                        [
+                            MemoryReservationState.PENDING,
+                            MemoryReservationState.HELD,
+                            MemoryReservationState.RELEASING,
+                        ]
+                    ),
+                )
+            )
+            if int(held or 0) + memory_bytes > ledger.budget_bytes:
+                raise RuntimeError("conversion is waiting for authoritative memory capacity")
+            row = await session.scalar(
+                select(MemoryReservationRow).where(
+                    MemoryReservationRow.node_id == node_id,
+                    MemoryReservationRow.holder_type == ReservationHolder.CONVERSION,
+                    MemoryReservationRow.holder_id == str(workflow_id),
+                )
+            )
+            if row is None:
+                session.add(
+                    MemoryReservationRow(
+                        node_id=node_id,
+                        holder_type=ReservationHolder.CONVERSION,
+                        holder_id=str(workflow_id),
+                        bytes=memory_bytes,
+                        state=MemoryReservationState.HELD,
+                    )
+                )
+            else:
+                row.bytes = memory_bytes
+                row.state = MemoryReservationState.HELD
+                row.released_at = None
+
+
+async def _release_conversion_memory(workflow_id: uuid.UUID, node_id: uuid.UUID) -> None:
+    async with session_scope() as session:
+        row = await session.scalar(
+            select(MemoryReservationRow).where(
+                MemoryReservationRow.node_id == node_id,
+                MemoryReservationRow.holder_type == ReservationHolder.CONVERSION,
+                MemoryReservationRow.holder_id == str(workflow_id),
+            )
+        )
+        if row is not None:
+            row.state = MemoryReservationState.RELEASED
+            row.released_at = datetime.now(UTC)
 
 
 async def _context(workflow_id: uuid.UUID) -> dict[str, Any]:
@@ -320,6 +389,11 @@ async def _run_command_stage(
             )
             return
         reservation_bytes.set(context["memory_estimate_bytes"], {"node": context["origin"]})
+        await _hold_conversion_memory(
+            workflow_id,
+            context["origin_id"],
+            max(1, context["memory_estimate_bytes"]),
+        )
         try:
             status = JobStatus.model_validate(
                 await _submit_command(
@@ -343,6 +417,7 @@ async def _run_command_stage(
                 )
             )
         finally:
+            await _release_conversion_memory(workflow_id, context["origin_id"])
             reservation_bytes.set(0, {"node": context["origin"]})
         await _finish_stage(
             workflow_id,

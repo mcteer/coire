@@ -905,6 +905,37 @@
         "title": "HealthStatus",
         "type": "string"
       },
+      "LedgerUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "budget_bytes": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Budget Bytes"
+          },
+          "sandbox_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandbox Bytes"
+          }
+        },
+        "title": "LedgerUpdate",
+        "type": "object"
+      },
       "LinkState": {
         "enum": [
           "unknown",
@@ -921,6 +952,198 @@
           "cold"
         ],
         "title": "LoadState",
+        "type": "string"
+      },
+      "MemoryLedger": {
+        "additionalProperties": false,
+        "properties": {
+          "budget_bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Budget Bytes",
+            "type": "integer"
+          },
+          "drift_ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drift Ratio"
+          },
+          "free_bytes": {
+            "title": "Free Bytes",
+            "type": "integer"
+          },
+          "health": {
+            "$ref": "#/components/schemas/Reachability"
+          },
+          "health_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Reason"
+          },
+          "health_sampled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Health Sampled At"
+          },
+          "measured_resident_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured Resident Bytes"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "node_name": {
+            "title": "Node Name",
+            "type": "string"
+          },
+          "reservations": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryReservation"
+            },
+            "title": "Reservations",
+            "type": "array"
+          },
+          "reserved_bytes": {
+            "minimum": 0.0,
+            "title": "Reserved Bytes",
+            "type": "integer"
+          },
+          "sandbox_bytes": {
+            "minimum": 0.0,
+            "title": "Sandbox Bytes",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "node_name",
+          "budget_bytes",
+          "sandbox_bytes",
+          "reserved_bytes",
+          "free_bytes",
+          "health",
+          "updated_at"
+        ],
+        "title": "MemoryLedger",
+        "type": "object"
+      },
+      "MemoryReservation": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "holder_id": {
+            "title": "Holder Id",
+            "type": "string"
+          },
+          "holder_type": {
+            "$ref": "#/components/schemas/ReservationHolder"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "in_flight": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "In Flight",
+            "type": "integer"
+          },
+          "last_used_at": {
+            "format": "date-time",
+            "title": "Last Used At",
+            "type": "string"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "pinned": {
+            "default": false,
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "released_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Released At"
+          },
+          "state": {
+            "$ref": "#/components/schemas/MemoryReservationState"
+          }
+        },
+        "required": [
+          "id",
+          "node_id",
+          "holder_type",
+          "holder_id",
+          "bytes",
+          "state",
+          "last_used_at",
+          "created_at"
+        ],
+        "title": "MemoryReservation",
+        "type": "object"
+      },
+      "MemoryReservationState": {
+        "enum": [
+          "pending",
+          "held",
+          "releasing",
+          "released",
+          "failed"
+        ],
+        "title": "MemoryReservationState",
         "type": "string"
       },
       "ModelAddRequest": {
@@ -1615,6 +1838,203 @@
         "title": "NodeV2",
         "type": "object"
       },
+      "OccupantReason": {
+        "enum": [
+          "pinned",
+          "in_use",
+          "eligible"
+        ],
+        "title": "OccupantReason",
+        "type": "string"
+      },
+      "PinUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pinned"
+        ],
+        "title": "PinUpdate",
+        "type": "object"
+      },
+      "PlacementDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evicted_reservation_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Evicted Reservation Ids",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "occupants": {
+            "items": {
+              "$ref": "#/components/schemas/PlacementOccupant"
+            },
+            "title": "Occupants",
+            "type": "array"
+          },
+          "policy": {
+            "title": "Policy",
+            "type": "string"
+          },
+          "refusal_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal Code"
+          },
+          "refusal_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refusal Detail"
+          },
+          "required_bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Required Bytes",
+            "type": "integer"
+          },
+          "selected_node_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Node Id"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PlacementState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "model_id",
+          "variant_id",
+          "policy",
+          "required_bytes",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PlacementDecision",
+        "type": "object"
+      },
+      "PlacementOccupant": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "exclusiveMinimum": 0.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "holder_id": {
+            "title": "Holder Id",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/OccupantReason"
+          },
+          "reservation_id": {
+            "format": "uuid",
+            "title": "Reservation Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reservation_id",
+          "holder_id",
+          "bytes",
+          "reason"
+        ],
+        "title": "PlacementOccupant",
+        "type": "object"
+      },
+      "PlacementRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "policy": {
+            "anyOf": [
+              {
+                "pattern": "^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant_id"
+        ],
+        "title": "PlacementRequest",
+        "type": "object"
+      },
+      "PlacementState": {
+        "enum": [
+          "requested",
+          "waiting_for_drain",
+          "evicting",
+          "reserving",
+          "loading",
+          "ready",
+          "refused",
+          "failed"
+        ],
+        "title": "PlacementState",
+        "type": "string"
+      },
       "Precision": {
         "enum": [
           "bf16",
@@ -1691,6 +2111,18 @@
           "hybrid"
         ],
         "title": "Reasoning",
+        "type": "string"
+      },
+      "ReservationHolder": {
+        "enum": [
+          "sandbox",
+          "model",
+          "conversion",
+          "training",
+          "image",
+          "run"
+        ],
+        "title": "ReservationHolder",
         "type": "string"
       },
       "ServiceHealth": {
@@ -2605,6 +3037,205 @@
         ]
       }
     },
+    "/api/v1/admin/ledger": {
+      "get": {
+        "operationId": "list_ledger_api_v1_admin_ledger_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryLedger"
+                  },
+                  "title": "Response List Ledger Api V1 Admin Ledger Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Ledger",
+        "tags": [
+          "admin: placement"
+        ]
+      }
+    },
+    "/api/v1/admin/ledger/reservations/{reservation_id}": {
+      "patch": {
+        "operationId": "patch_reservation_api_v1_admin_ledger_reservations__reservation_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reservation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Reservation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Reservation",
+        "tags": [
+          "admin: placement"
+        ]
+      }
+    },
+    "/api/v1/admin/ledger/{node_id}": {
+      "patch": {
+        "operationId": "patch_ledger_api_v1_admin_ledger__node_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Node Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LedgerUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryLedger"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Ledger",
+        "tags": [
+          "admin: placement"
+        ]
+      }
+    },
     "/api/v1/admin/models": {
       "get": {
         "operationId": "list_models_api_v1_admin_models_get",
@@ -3141,6 +3772,80 @@
         ]
       }
     },
+    "/api/v1/admin/models/{model_id}/placement": {
+      "post": {
+        "operationId": "submit_placement_api_v1_admin_models__model_id__placement_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Model Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlacementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacementDecision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Placement",
+        "tags": [
+          "admin: placement"
+        ]
+      }
+    },
     "/api/v1/admin/models/{model_id}/retire": {
       "post": {
         "operationId": "retire_model_api_v1_admin_models__model_id__retire_post",
@@ -3608,6 +4313,70 @@
         "summary": "List Nodes",
         "tags": [
           "admin: cluster"
+        ]
+      }
+    },
+    "/api/v1/admin/placements/{decision_id}": {
+      "get": {
+        "operationId": "get_placement_api_v1_admin_placements__decision_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "decision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Decision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlacementDecision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Placement",
+        "tags": [
+          "admin: placement"
         ]
       }
     },

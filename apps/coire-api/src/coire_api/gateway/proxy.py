@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -11,8 +12,12 @@ from time import perf_counter
 from urllib.parse import urlparse
 
 import httpx
+from sqlalchemy import select
 
+from coire_api.db import EngineProcessRow, MemoryReservationRow, session_scope
 from coire_api.gateway.telemetry import queue_duration_ms, tracer
+from coire_api.placement.service import acquire_lease, refresh_lease, release_lease
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import Settings
 
 _semaphores: dict[str, asyncio.Semaphore] = {}
@@ -95,12 +100,69 @@ async def engine_slot(engine_url: str, settings: Settings) -> AsyncIterator[None
         semaphore.release()
 
 
+@asynccontextmanager
+async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[None]:
+    """Protect a resolved model from TTL/eviction for the full upstream request lifetime."""
+    parsed = urlparse(engine_url)
+    try:
+        engine_id = uuid.UUID(parsed.path.split("/")[3])
+    except (ValueError, IndexError):
+        yield
+        return
+    lease_id: uuid.UUID | None = None
+    async with session_scope() as session:
+        engine = await session.get(EngineProcessRow, engine_id)
+        if engine is not None and engine.model_id is not None:
+            reservation = await session.scalar(
+                select(MemoryReservationRow).where(
+                    MemoryReservationRow.node_id == engine.node_id,
+                    MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                    MemoryReservationRow.holder_id == str(engine.model_id),
+                    MemoryReservationRow.state == MemoryReservationState.HELD,
+                )
+            )
+            if reservation is not None:
+                lease = await acquire_lease(
+                    session,
+                    reservation.id,
+                    str(uuid.uuid4()),
+                    ttl_seconds=settings.placement_lease_ttl_s,
+                )
+                lease_id = lease.id
+    try:
+        stop_refresh = asyncio.Event()
+
+        async def keep_fresh() -> None:
+            assert lease_id is not None
+            interval = max(0.1, settings.placement_lease_ttl_s / 2)
+            while not stop_refresh.is_set():
+                try:
+                    await asyncio.wait_for(stop_refresh.wait(), timeout=interval)
+                    return
+                except TimeoutError:
+                    async with session_scope() as session:
+                        if not await refresh_lease(
+                            session, lease_id, ttl_seconds=settings.placement_lease_ttl_s
+                        ):
+                            return
+
+        refresher = asyncio.create_task(keep_fresh()) if lease_id is not None else None
+        yield
+    finally:
+        stop_refresh.set()
+        if refresher is not None:
+            await refresher
+        if lease_id is not None:
+            async with session_scope() as session:
+                await release_lease(session, lease_id)
+
+
 async def complete(
     engine_url: str, payload: dict[str, object], settings: Settings
 ) -> dict[str, object]:
     with tracer.start_as_current_span("coire.gateway.generation") as span:
         span.set_attribute("coire.gateway.streaming", False)
-        async with engine_slot(engine_url, settings):
+        async with engine_slot(engine_url, settings), request_lease(engine_url, settings):
             try:
                 with tracer.start_as_current_span("coire.gateway.upstream"):
                     response = await _client().post(
@@ -127,7 +189,7 @@ async def stream(
 ) -> AsyncIterator[bytes]:
     with tracer.start_as_current_span("coire.gateway.generation") as span:
         span.set_attribute("coire.gateway.streaming", True)
-        async with engine_slot(engine_url, settings):
+        async with engine_slot(engine_url, settings), request_lease(engine_url, settings):
             timeout = httpx.Timeout(settings.gateway_engine_request_timeout_s, read=None)
             done = False
             try:

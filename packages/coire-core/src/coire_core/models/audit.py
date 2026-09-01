@@ -36,6 +36,10 @@ class AuditAction(StrEnum):
     ENGINE_LOAD = "engine.load"
     ENGINE_UNLOAD = "engine.unload"
     ENGINE_RECONCILE = "engine.reconcile"
+    LEDGER_UPDATE = "ledger.update"
+    MODEL_PIN = "model.pin"
+    MODEL_UNPIN = "model.unpin"
+    PLACEMENT_REQUEST = "placement.request"
 
 
 class AuditRecord(BaseModel):

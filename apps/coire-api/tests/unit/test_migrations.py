@@ -92,3 +92,19 @@ def test_acquisition_variant_migration_is_additive_and_guards_downgrade() -> Non
     ):
         assert f'"{table}"' in source
     assert "cannot downgrade after creating additional model variants" in source
+
+
+def test_memory_ledger_migration_is_reversible() -> None:
+    source = Path("apps/coire-api/alembic/versions/0006_memory_ledger.py").read_text()
+    assert 'revision: str = "0006_memory_ledger"' in source
+    assert 'down_revision: str | None = "0005_acquisition_variants"' in source
+    for table in (
+        "node_memory_ledgers",
+        "memory_reservations",
+        "request_leases",
+        "placement_decisions",
+        "eviction_events",
+        "placement_commands",
+    ):
+        assert f'"{table}"' in source
+    assert '"placement_commands",\n        "eviction_events"' in source

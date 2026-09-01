@@ -9,11 +9,20 @@ from collections.abc import Awaitable, Callable
 
 from sqlalchemy import select
 
-from coire_api.db import EngineProcessRow, ModelCopyRow, ModelRow, NodeRow, session_scope
+from coire_api.db import (
+    EngineProcessRow,
+    ModelCopyRow,
+    ModelRow,
+    ModelVariantRow,
+    NodeRow,
+    PlacementDecisionRow,
+    session_scope,
+)
 from coire_api.gateway.telemetry import tracer
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_core.models.engine import EngineState
 from coire_core.models.node import Reachability
+from coire_core.models.placement import PlacementState
 from coire_core.settings import Settings
 
 
@@ -43,8 +52,81 @@ class LoadCoordinator:
 coordinator = LoadCoordinator()
 
 
+async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -> bool:
+    """Use feature-004 placement for variant-backed models; return false for legacy rows."""
+    decision_id: uuid.UUID | None = None
+    async with session_scope() as session:
+        model = await session.get(ModelRow, model_id)
+        if model is None:
+            raise ModelLoadError("model disappeared during load")
+        variant = await session.scalar(
+            select(ModelVariantRow)
+            .where(
+                ModelVariantRow.model_id == model_id,
+                ModelVariantRow.is_default.is_(True),
+                ModelVariantRow.validated.is_(True),
+            )
+            .limit(1)
+        )
+        if variant is None:
+            return False
+        ready = await session.scalar(
+            select(EngineProcessRow.id).where(
+                EngineProcessRow.model_id == model_id,
+                EngineProcessRow.state == EngineState.READY,
+            )
+        )
+        if ready is not None:
+            return True
+        active = await session.scalar(
+            select(PlacementDecisionRow)
+            .where(
+                PlacementDecisionRow.model_id == model_id,
+                PlacementDecisionRow.state.in_(
+                    [
+                        PlacementState.REQUESTED,
+                        PlacementState.WAITING_FOR_DRAIN,
+                        PlacementState.EVICTING,
+                        PlacementState.RESERVING,
+                        PlacementState.LOADING,
+                    ]
+                ),
+            )
+            .order_by(PlacementDecisionRow.created_at.desc())
+            .limit(1)
+        )
+        if active is None:
+            active = PlacementDecisionRow(
+                model_id=model_id,
+                variant_id=variant.id,
+                policy=model.placement_policy,
+                required_bytes=max(1, variant.memory_estimate_bytes),
+                state=PlacementState.REQUESTED,
+            )
+            session.add(active)
+            await session.flush()
+        decision_id = active.id
+    deadline = time.monotonic() + settings.gateway_wait_ceiling_s
+    while time.monotonic() < deadline:
+        async with session_scope() as session:
+            decision = await session.get(PlacementDecisionRow, decision_id)
+            if decision is None:
+                raise ModelLoadError("placement decision disappeared")
+            if decision.state is PlacementState.READY:
+                return True
+            if decision.state in {PlacementState.REFUSED, PlacementState.FAILED}:
+                detail = decision.refusal_detail or "placement failed"
+                if decision.occupants:
+                    detail += f"; occupants={decision.occupants}"
+                raise ModelLoadError(detail)
+        await asyncio.sleep(settings.placement_poll_interval_s)
+    raise ModelLoadError("placement did not complete before the gateway wait ceiling")
+
+
 async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
     async def _load() -> None:
+        if await _place_variant_if_available(model_id, settings):
+            return
         async with session_scope() as session:
             existing = await session.scalar(
                 select(EngineProcessRow)
