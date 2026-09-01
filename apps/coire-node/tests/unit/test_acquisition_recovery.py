@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -41,6 +42,31 @@ def test_resume_restarts_only_incomplete_jobs(tmp_path, monkeypatch) -> None:  #
 
     assert supervisor.resume_all() == 1
     assert spawned == [active.job_id]
+
+
+def test_state_file_omits_unset_nullable_fields_for_rolling_upgrade(tmp_path) -> None:
+    settings = Settings(  # type: ignore[call-arg]
+        node_state_dir=str(tmp_path / "state"),
+        node_store_dir=str(tmp_path / "models"),
+        node_hf_cache_dir=str(tmp_path / "cache"),
+        _secrets_dir="/nonexistent",
+    )
+    supervisor = JobSupervisor(settings, Store(settings.node_store_dir))
+    now = datetime.now(UTC)
+    status = JobStatus(
+        job_id=uuid.uuid4(),
+        kind=JobKind.PULL,
+        slug="model.upgrade",
+        stage=JobStage.QUEUED,
+        started_at=now,
+        updated_at=now,
+    )
+
+    supervisor._write({}, status)
+    raw = json.loads((tmp_path / "state" / "jobs" / f"{status.job_id}.json").read_text())
+
+    assert "result" not in raw["status"]
+    assert supervisor.status(status.job_id) is not None
 
 
 def test_duplicate_job_id_attaches_without_spawning_twice(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
