@@ -40,7 +40,8 @@ These are requirement/dependency issues, not failing gates. Feature 008 must not
 - **IV — Zero trust:** pass; admin routes re-authorize and mutations use existing audited paths. Optimistic writes require `If-Match`.
 - **V — Models as data:** pass; controls resolve registry/model/variant identifiers and use admin acquisition/lifecycle routes.
 - **VI — Observable:** pass; spans, metrics, dashboard, alert, and runbook are included.
-- **VII — Spec/test gated:** implementation gates pass, but feature completion is blocked by the three unmet requirements above.
+- **VII — Spec/test gated:** implementation and convergence gates pass; the remaining real-cluster
+  acceptance is tracked as operator evidence in the outstanding checklist.
 
 ## Proposed PR summary (once blockers are resolved)
 
