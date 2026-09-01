@@ -156,6 +156,9 @@ async def project_instance(session: AsyncSession, row: ModelInstanceRow) -> Mode
         updated_at=row.updated_at,
         transitioned_at=row.transitioned_at,
         drain_deadline=row.drain_deadline,
+        fallback_attempted_at=row.fallback_attempted_at,
+        fallback_instance_id=row.fallback_instance_id,
+        fallback_no_fit=row.fallback_no_fit,
     )
 
 

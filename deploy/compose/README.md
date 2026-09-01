@@ -27,5 +27,11 @@ only for drift telemetry. Reducing a budget below current reservations blocks ad
 does not force eviction.
 Instance lifecycle uses `INSTANCE_DRAIN_TIMEOUT_S` (30) for bounded graceful drain and
 `INSTANCE_EVENT_POLL_INTERVAL_S` (0.5) for persisted SSE replay polling.
+Sharding uses `LINK_PROBE_INTERVAL_S` (30), `LINK_PROBE_FRESHNESS_S` (120),
+`LINK_FAILURES_BEFORE_DOWN` (2), `LINK_SUCCESSES_BEFORE_UP` (3),
+`SHARDING_ALLOW_RING_FALLBACK` (true), `SHARDING_START_TIMEOUT_S` (600), and
+`SHARDING_PORT_RANGE` (`9600-9699`). The complete MLX-generated JACCL and ring hostfiles are
+configured with `SHARDING_JACCL_HOSTFILE` and `SHARDING_RING_HOSTFILE`; latency is telemetry,
+never an admission threshold. See [`docs/runbooks/sharded-serving.md`](../../docs/runbooks/sharded-serving.md).
 Raw and converted files remain under the configured Studio model store; DBOS metadata remains in
 Postgres. See [`docs/runbooks/acquisition.md`](../../docs/runbooks/acquisition.md).

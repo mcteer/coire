@@ -49,7 +49,15 @@ class PlacementCommandExecutor:
 
     async def _run(self) -> None:
         while not self._stop.is_set():
-            command_id = await self._next_command()
+            try:
+                command_id = await self._next_command()
+            except Exception:
+                logger.exception("placement command queue poll failed; retrying")
+                with suppress(TimeoutError):
+                    await asyncio.wait_for(
+                        self._stop.wait(), timeout=self.settings.placement_poll_interval_s
+                    )
+                continue
             if command_id is not None:
                 await self._execute_safely(command_id)
                 continue
@@ -153,13 +161,17 @@ class PlacementCommandExecutor:
                             if instance_id is not None
                             else None
                         )
-                        if instance is not None and instance.state is InstanceState.READY:
-                            await transition(
-                                session,
-                                instance.id,
-                                InstanceState.DRAINING,
-                                reason="placement unload requested",
-                            )
+                        if instance is not None and instance.state in {
+                            InstanceState.READY,
+                            InstanceState.DRAINING,
+                        }:
+                            if instance.state is InstanceState.READY:
+                                await transition(
+                                    session,
+                                    instance.id,
+                                    InstanceState.DRAINING,
+                                    reason="placement unload requested",
+                                )
                             await transition(
                                 session,
                                 instance.id,

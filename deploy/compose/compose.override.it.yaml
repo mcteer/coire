@@ -42,6 +42,15 @@ services:
     environment:
       PLACEMENT_POLL_INTERVAL_S: "0.2"
       PLACEMENT_TTL_INTERVAL_S: "2"
+    networks: [coire-control-sim]
+
+  otel-collector:
+    # Test nodes export over their simulated control fabric, matching the host-published
+    # collector path used by the real Studios without generating DNS/export noise.
+    networks:
+      - coire-telemetry
+      - coire-node-ingress
+      - coire-control-sim
 
   node-a:
     image: coire-node-test:${COIRE_TAG:-dev}
@@ -73,6 +82,11 @@ services:
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       # Selects the fake engine (research R9). The real one is Apple-Silicon only.
       COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
+      COIRE_SHARD_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      COIRE_PROBE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      COIRE_BENCHMARK_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      SHARDING_JACCL_HOSTFILE: /opt/coire/state/jaccl-hostfile.json
+      SHARDING_RING_HOSTFILE: /opt/coire/state/ring-hostfile.json
       COIRE_TEST_FAKE_CONVERSION: "1"
       COIRE_TEST_FAKE_VALIDATION: "1"
       HF_TOKEN: ${HF_TOKEN:-}
@@ -83,6 +97,8 @@ services:
       # Persistent across `docker compose restart`, like the Studio's /opt/coire volume.
       # The session fixture removes it with `down -v` after every integration run.
       - node-a-opt:/opt/coire
+      - ../../tests/integration/testdata/jaccl-hostfile.json:/opt/coire/state/jaccl-hostfile.json:ro
+      - ../../tests/integration/testdata/ring-hostfile.json:/opt/coire/state/ring-hostfile.json:ro
     healthcheck:
       # The agent binds its mesh address, not loopback, so the probe must use that address —
       # exactly as it does on a Studio.
@@ -121,6 +137,11 @@ services:
       CORE_API_PORT: "8000"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
+      COIRE_SHARD_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      COIRE_PROBE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      COIRE_BENCHMARK_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      SHARDING_JACCL_HOSTFILE: /opt/coire/state/jaccl-hostfile.json
+      SHARDING_RING_HOSTFILE: /opt/coire/state/ring-hostfile.json
       COIRE_TEST_FAKE_CONVERSION: "1"
       COIRE_TEST_FAKE_VALIDATION: "1"
       HF_HUB_DISABLE_XET: "1"
@@ -128,6 +149,8 @@ services:
       OTLP_ENDPOINT: http://otel-collector:4317
     volumes:
       - node-b-opt:/opt/coire
+      - ../../tests/integration/testdata/jaccl-hostfile.json:/opt/coire/state/jaccl-hostfile.json:ro
+      - ../../tests/integration/testdata/ring-hostfile.json:/opt/coire/state/ring-hostfile.json:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://coire-edge-b:9400/ready"]
       interval: 3s

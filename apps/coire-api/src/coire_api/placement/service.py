@@ -55,6 +55,24 @@ async def node_admission_lock(session: AsyncSession, node_id: uuid.UUID) -> Asyn
     yield
 
 
+@asynccontextmanager
+async def node_admission_locks(
+    session: AsyncSession, node_ids: list[uuid.UUID]
+) -> AsyncIterator[None]:
+    """Lock a group in stable order so competing sharded admissions cannot split or deadlock."""
+
+    def lock_key(item: uuid.UUID) -> int:
+        return int.from_bytes(item.bytes[:8], "big", signed=False) & ((1 << 63) - 1)
+
+    unique = sorted(set(node_ids), key=lock_key)
+    if len(unique) != len(node_ids):
+        raise ValueError("admission group contains duplicate nodes")
+    for node_id in unique:
+        key = lock_key(node_id)
+        await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+    yield
+
+
 async def ensure_ledgers(session: AsyncSession, *, budget_bytes: int, sandbox_bytes: int) -> None:
     """Create ledger and standing sandbox rows for newly declared nodes."""
     nodes = (await session.execute(select(NodeRow))).scalars().all()

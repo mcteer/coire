@@ -480,6 +480,218 @@
         "title": "AuditRecord",
         "type": "object"
       },
+      "BenchmarkRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "generation_tokens": {
+            "default": 128,
+            "exclusiveMinimum": 0.0,
+            "maximum": 4096.0,
+            "title": "Generation Tokens",
+            "type": "integer"
+          },
+          "placements": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Placements",
+            "type": "array"
+          },
+          "prompt_tokens": {
+            "default": 128,
+            "exclusiveMinimum": 0.0,
+            "maximum": 8192.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "variant_id"
+        ],
+        "title": "BenchmarkRequest",
+        "type": "object"
+      },
+      "BenchmarkResult": {
+        "additionalProperties": false,
+        "properties": {
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "generation_tokens": {
+            "exclusiveMinimum": 0.0,
+            "title": "Generation Tokens",
+            "type": "integer"
+          },
+          "gpu_cores": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Gpu Cores",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "os_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Os Versions",
+            "type": "object"
+          },
+          "placement": {
+            "title": "Placement",
+            "type": "string"
+          },
+          "prompt_tokens": {
+            "exclusiveMinimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "run_at": {
+            "format": "date-time",
+            "title": "Run At",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "tokens_per_second": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tokens Per Second"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "variant_id",
+          "placement",
+          "prompt_tokens",
+          "generation_tokens",
+          "gpu_cores",
+          "os_versions",
+          "engine_version",
+          "run_at"
+        ],
+        "title": "BenchmarkResult",
+        "type": "object"
+      },
+      "BenchmarkRun": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "generation_tokens": {
+            "title": "Generation Tokens",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "prompt_tokens": {
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/BenchmarkResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "state": {
+            "$ref": "#/components/schemas/BenchmarkRunState"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "variant_id",
+          "state",
+          "prompt_tokens",
+          "generation_tokens",
+          "created_at"
+        ],
+        "title": "BenchmarkRun",
+        "type": "object"
+      },
+      "BenchmarkRunState": {
+        "enum": [
+          "queued",
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "BenchmarkRunState",
+        "type": "string"
+      },
       "CapabilityProfile": {
         "additionalProperties": false,
         "description": "Declared model behaviour. Harness behaviour is selected from this, never from a model\nname (Principle V).",
@@ -878,6 +1090,16 @@
             "format": "date-time",
             "title": "Observed At",
             "type": "string"
+          },
+          "studio_link": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudioLinkProjection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -1068,7 +1290,7 @@
           "policy": {
             "anyOf": [
               {
-                "pattern": "^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+)$",
+                "pattern": "^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$",
                 "type": "string"
               },
               {
@@ -1201,6 +1423,108 @@
           }
         },
         "title": "LedgerUpdate",
+        "type": "object"
+      },
+      "LinkObservation": {
+        "additionalProperties": false,
+        "properties": {
+          "bandwidth_bytes_per_second": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bandwidth Bytes Per Second"
+          },
+          "engine_version": {
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "node_a": {
+            "title": "Node A",
+            "type": "string"
+          },
+          "node_b": {
+            "title": "Node B",
+            "type": "string"
+          },
+          "observed_at": {
+            "format": "date-time",
+            "title": "Observed At",
+            "type": "string"
+          },
+          "os_version_a": {
+            "title": "Os Version A",
+            "type": "string"
+          },
+          "os_version_b": {
+            "title": "Os Version B",
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ProbeOutcome"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "transport": {
+            "$ref": "#/components/schemas/ProbeTransport"
+          }
+        },
+        "required": [
+          "id",
+          "node_a",
+          "node_b",
+          "transport",
+          "outcome",
+          "os_version_a",
+          "os_version_b",
+          "engine_version",
+          "observed_at"
+        ],
+        "title": "LinkObservation",
+        "type": "object"
+      },
+      "LinkProbeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          }
+        },
+        "title": "LinkProbeRequest",
         "type": "object"
       },
       "LinkState": {
@@ -1522,6 +1846,35 @@
               }
             ],
             "title": "Failure Detail"
+          },
+          "fallback_attempted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Attempted At"
+          },
+          "fallback_instance_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Instance Id"
+          },
+          "fallback_no_fit": {
+            "default": false,
+            "title": "Fallback No Fit",
+            "type": "boolean"
           },
           "id": {
             "format": "uuid",
@@ -2469,7 +2822,7 @@
           "policy": {
             "anyOf": [
               {
-                "pattern": "^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+)$",
+                "pattern": "^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$",
                 "type": "string"
               },
               {
@@ -2514,6 +2867,22 @@
           "mixed"
         ],
         "title": "Precision",
+        "type": "string"
+      },
+      "ProbeOutcome": {
+        "enum": [
+          "succeeded",
+          "failed"
+        ],
+        "title": "ProbeOutcome",
+        "type": "string"
+      },
+      "ProbeTransport": {
+        "enum": [
+          "jaccl",
+          "ring"
+        ],
+        "title": "ProbeTransport",
         "type": "string"
       },
       "QuantizationMode": {
@@ -2795,6 +3164,90 @@
           "node_b"
         ],
         "title": "StudioDataLinkStatus",
+        "type": "object"
+      },
+      "StudioLinkProjection": {
+        "additionalProperties": false,
+        "properties": {
+          "consecutive_failures": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Consecutive Failures",
+            "type": "integer"
+          },
+          "consecutive_successes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Consecutive Successes",
+            "type": "integer"
+          },
+          "fallback_state": {
+            "$ref": "#/components/schemas/LinkState"
+          },
+          "flapping": {
+            "default": false,
+            "title": "Flapping",
+            "type": "boolean"
+          },
+          "ip_state": {
+            "$ref": "#/components/schemas/LinkState"
+          },
+          "latest": {
+            "items": {
+              "$ref": "#/components/schemas/LinkObservation"
+            },
+            "title": "Latest",
+            "type": "array"
+          },
+          "node_a": {
+            "title": "Node A",
+            "type": "string"
+          },
+          "node_b": {
+            "title": "Node B",
+            "type": "string"
+          },
+          "rdma_state": {
+            "$ref": "#/components/schemas/RdmaState"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "required_after": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required After"
+          },
+          "tp_eligible": {
+            "title": "Tp Eligible",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "node_a",
+          "node_b",
+          "ip_state",
+          "rdma_state",
+          "fallback_state",
+          "tp_eligible"
+        ],
+        "title": "StudioLinkProjection",
         "type": "object"
       },
       "Tag": {
@@ -3327,6 +3780,126 @@
         ]
       }
     },
+    "/api/v1/admin/benchmarks": {
+      "get": {
+        "operationId": "list_benchmarks_api_v1_admin_benchmarks_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/BenchmarkRun"
+                  },
+                  "title": "Response List Benchmarks Api V1 Admin Benchmarks Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Benchmarks",
+        "tags": [
+          "admin: sharding"
+        ]
+      },
+      "post": {
+        "operationId": "create_benchmark_api_v1_admin_benchmarks_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BenchmarkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BenchmarkRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Benchmark",
+        "tags": [
+          "admin: sharding"
+        ]
+      }
+    },
     "/api/v1/admin/engines": {
       "get": {
         "operationId": "list_engines_api_v1_admin_engines_get",
@@ -3713,6 +4286,124 @@
         "summary": "Patch Ledger",
         "tags": [
           "admin: placement"
+        ]
+      }
+    },
+    "/api/v1/admin/links/studios": {
+      "get": {
+        "operationId": "studio_link_api_v1_admin_links_studios_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudioLinkProjection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Studio Link",
+        "tags": [
+          "admin: sharding"
+        ]
+      }
+    },
+    "/api/v1/admin/links/studios/probe": {
+      "post": {
+        "operationId": "probe_studio_link_api_v1_admin_links_studios_probe_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StudioLinkProjection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Probe Studio Link",
+        "tags": [
+          "admin: sharding"
         ]
       }
     },

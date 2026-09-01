@@ -58,6 +58,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/benchmarks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Benchmarks */
+        get: operations["list_benchmarks_api_v1_admin_benchmarks_get"];
+        put?: never;
+        /** Create Benchmark */
+        post: operations["create_benchmark_api_v1_admin_benchmarks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/engines": {
         parameters: {
             query?: never;
@@ -145,6 +163,40 @@ export interface paths {
         head?: never;
         /** Patch Ledger */
         patch: operations["patch_ledger_api_v1_admin_ledger__node_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/links/studios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Studio Link */
+        get: operations["studio_link_api_v1_admin_links_studios_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/links/studios/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Probe Studio Link */
+        post: operations["probe_studio_link_api_v1_admin_links_studios_probe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/models": {
@@ -793,6 +845,103 @@ export interface components {
             /** Target Type */
             target_type: string;
         };
+        /** BenchmarkRequest */
+        BenchmarkRequest: {
+            /**
+             * Generation Tokens
+             * @default 128
+             */
+            generation_tokens: number;
+            /** Placements */
+            placements?: string[];
+            /**
+             * Prompt Tokens
+             * @default 128
+             */
+            prompt_tokens: number;
+            /**
+             * Variant Id
+             * Format: uuid
+             */
+            variant_id: string;
+        };
+        /** BenchmarkResult */
+        BenchmarkResult: {
+            /** Engine Version */
+            engine_version: string;
+            /** Failure */
+            failure?: string | null;
+            /** Generation Tokens */
+            generation_tokens: number;
+            /** Gpu Cores */
+            gpu_cores: {
+                [key: string]: number;
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Os Versions */
+            os_versions: {
+                [key: string]: string;
+            };
+            /** Placement */
+            placement: string;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /**
+             * Run At
+             * Format: date-time
+             */
+            run_at: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Tokens Per Second */
+            tokens_per_second?: number | null;
+            /**
+             * Variant Id
+             * Format: uuid
+             */
+            variant_id: string;
+        };
+        /** BenchmarkRun */
+        BenchmarkRun: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Failure */
+            failure?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Generation Tokens */
+            generation_tokens: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Prompt Tokens */
+            prompt_tokens: number;
+            /** Results */
+            results?: components["schemas"]["BenchmarkResult"][];
+            state: components["schemas"]["BenchmarkRunState"];
+            /**
+             * Variant Id
+             * Format: uuid
+             */
+            variant_id: string;
+        };
+        /**
+         * BenchmarkRunState
+         * @enum {string}
+         */
+        BenchmarkRunState: "queued" | "running" | "completed" | "failed";
         /**
          * CapabilityProfile
          * @description Declared model behaviour. Harness behaviour is selected from this, never from a model
@@ -929,6 +1078,7 @@ export interface components {
              * Format: date-time
              */
             observed_at: string;
+            studio_link?: components["schemas"]["StudioLinkProjection"] | null;
         };
         /** GatewayModel */
         GatewayModel: {
@@ -1052,6 +1202,45 @@ export interface components {
             /** Sandbox Bytes */
             sandbox_bytes?: number | null;
         };
+        /** LinkObservation */
+        LinkObservation: {
+            /** Bandwidth Bytes Per Second */
+            bandwidth_bytes_per_second?: number | null;
+            /** Engine Version */
+            engine_version: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Node A */
+            node_a: string;
+            /** Node B */
+            node_b: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Os Version A */
+            os_version_a: string;
+            /** Os Version B */
+            os_version_b: string;
+            outcome: components["schemas"]["ProbeOutcome"];
+            /** Reason */
+            reason?: string | null;
+            transport: components["schemas"]["ProbeTransport"];
+        };
+        /** LinkProbeRequest */
+        LinkProbeRequest: {
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+        };
         /**
          * LinkState
          * @enum {string}
@@ -1174,6 +1363,15 @@ export interface components {
             failure_code?: string | null;
             /** Failure Detail */
             failure_detail?: string | null;
+            /** Fallback Attempted At */
+            fallback_attempted_at?: string | null;
+            /** Fallback Instance Id */
+            fallback_instance_id?: string | null;
+            /**
+             * Fallback No Fit
+             * @default false
+             */
+            fallback_no_fit: boolean;
             /**
              * Id
              * Format: uuid
@@ -1575,6 +1773,16 @@ export interface components {
          */
         Precision: "bf16" | "fp16" | "4bit" | "6bit" | "8bit" | "mixed";
         /**
+         * ProbeOutcome
+         * @enum {string}
+         */
+        ProbeOutcome: "succeeded" | "failed";
+        /**
+         * ProbeTransport
+         * @enum {string}
+         */
+        ProbeTransport: "jaccl" | "ring";
+        /**
          * QuantizationMode
          * @enum {string}
          */
@@ -1676,6 +1884,39 @@ export interface components {
             rdma_state: components["schemas"]["RdmaState"];
             /** Reason */
             reason?: string | null;
+        };
+        /** StudioLinkProjection */
+        StudioLinkProjection: {
+            /**
+             * Consecutive Failures
+             * @default 0
+             */
+            consecutive_failures: number;
+            /**
+             * Consecutive Successes
+             * @default 0
+             */
+            consecutive_successes: number;
+            fallback_state: components["schemas"]["LinkState"];
+            /**
+             * Flapping
+             * @default false
+             */
+            flapping: boolean;
+            ip_state: components["schemas"]["LinkState"];
+            /** Latest */
+            latest?: components["schemas"]["LinkObservation"][];
+            /** Node A */
+            node_a: string;
+            /** Node B */
+            node_b: string;
+            rdma_state: components["schemas"]["RdmaState"];
+            /** Reason */
+            reason?: string | null;
+            /** Required After */
+            required_after?: string | null;
+            /** Tp Eligible */
+            tp_eligible: boolean;
         };
         /**
          * Tag
@@ -1864,6 +2105,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuditRecord"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_benchmarks_api_v1_admin_benchmarks_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkRun"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_benchmark_api_v1_admin_benchmarks_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BenchmarkRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BenchmarkRun"];
                 };
             };
             /** @description Validation Error */
@@ -2070,6 +2377,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemoryLedger"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    studio_link_api_v1_admin_links_studios_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudioLinkProjection"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    probe_studio_link_api_v1_admin_links_studios_probe_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkProbeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StudioLinkProjection"];
                 };
             };
             /** @description Validation Error */

@@ -27,6 +27,7 @@ from coire_api.db import (
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.instance import service
 from coire_api.placement.service import project_ledgers
+from coire_api.sharding import link_projection
 from coire_core.models.instance import (
     TERMINAL_INSTANCE_STATES,
     ClusterNodeState,
@@ -116,7 +117,9 @@ async def list_instances(
 
 
 @router.get("/state", response_model=ClusterState)
-async def cluster_state(principal: CurrentAuthenticated, session: SessionDep) -> ClusterState:
+async def cluster_state(
+    principal: CurrentAuthenticated, session: SessionDep, settings: SettingsDep
+) -> ClusterState:
     ledgers = await project_ledgers(session)
     node_rows = {row.id: row for row in (await session.execute(select(NodeRow))).scalars().all()}
     ledger_rows = {
@@ -150,6 +153,7 @@ async def cluster_state(principal: CurrentAuthenticated, session: SessionDep) ->
         observed_at=datetime.now(UTC),
         nodes=nodes,
         instances=[await service.project_instance(session, row) for row in instance_rows],
+        studio_link=await link_projection(session, settings),
     )
 
 

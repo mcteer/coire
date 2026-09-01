@@ -24,6 +24,16 @@ from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileRe
 from coire_core.models.jobs import ChecksumManifest, JobStatus, RepoInspection
 from coire_core.models.link import StudioDataLinkStatus
 from coire_core.models.node import NodeStatus, NodeStatusV2
+from coire_core.models.sharding import (
+    BenchmarkCommand,
+    BenchmarkMeasurement,
+    LinkObservation,
+    LinkProbeCommand,
+    ShardCapabilityRequest,
+    ShardCapabilityResult,
+    ShardGroupCommand,
+    ShardGroupStatus,
+)
 from coire_core.net import ControlClient, FabricUnreachable
 from coire_core.settings import Settings
 
@@ -169,6 +179,64 @@ class NodeClient:
     async def data_link_status(self, node: str) -> StudioDataLinkStatus:
         _, body = await self._call("GET", node, "/node/data-link", expect=(200,))
         return StudioDataLinkStatus.model_validate(body)
+
+    async def run_link_probe(self, node: str, command: LinkProbeCommand) -> LinkObservation:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/link-probes",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return LinkObservation.model_validate(body)
+
+    async def run_benchmark(self, node: str, command: BenchmarkCommand) -> BenchmarkMeasurement:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/benchmarks",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return BenchmarkMeasurement.model_validate(body)
+
+    async def prepare_shard_group(self, node: str, command: ShardGroupCommand) -> ShardGroupStatus:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/shard-groups",
+            json=command.model_dump(mode="json"),
+            expect=(200, 202),
+        )
+        return ShardGroupStatus.model_validate(body)
+
+    async def shard_capability(
+        self, node: str, request: ShardCapabilityRequest
+    ) -> ShardCapabilityResult:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/shard-groups/capabilities",
+            json=request.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return ShardCapabilityResult.model_validate(body)
+
+    async def shard_group(self, node: str, group_id: uuid.UUID) -> ShardGroupStatus:
+        _, body = await self._call("GET", node, f"/node/shard-groups/{group_id}", expect=(200,))
+        return ShardGroupStatus.model_validate(body)
+
+    async def stop_shard_group(self, node: str, group_id: uuid.UUID) -> ShardGroupStatus:
+        _, body = await self._call(
+            "DELETE", node, f"/node/shard-groups/{group_id}", expect=(200, 202)
+        )
+        return ShardGroupStatus.model_validate(body)
+
+    async def mark_shard_group_ready(self, node: str, group_id: uuid.UUID) -> ShardGroupStatus:
+        _, body = await self._call(
+            "POST", node, f"/node/shard-groups/{group_id}/ready", expect=(200,)
+        )
+        return ShardGroupStatus.model_validate(body)
 
     # -- repositories and copies -------------------------------------------
     async def inspect(self, node: str, repo_id: str, revision: str = "main") -> RepoInspection:

@@ -38,7 +38,15 @@ class AcquisitionCommandExecutor:
 
     async def _run(self) -> None:
         while not self._stop.is_set():
-            command_id = await self._next_command()
+            try:
+                command_id = await self._next_command()
+            except Exception:
+                logger.exception("acquisition command queue poll failed; retrying")
+                with suppress(TimeoutError):
+                    await asyncio.wait_for(
+                        self._stop.wait(), timeout=self.settings.acquisition_poll_interval_s
+                    )
+                continue
             if command_id is not None:
                 await self._execute_safely(command_id)
                 continue

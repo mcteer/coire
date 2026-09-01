@@ -10,6 +10,7 @@ from typing import Any, cast
 
 import pytest
 from fastapi import HTTPException
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.requests import Request
 
@@ -58,7 +59,9 @@ class Session:
             declared_at=now,
             registration_token_digest=token_digest(
                 "token",
-                Settings(_secrets_dir="/nonexistent", key_signing_secret="contract-secret"),  # type: ignore[call-arg]
+                Settings(  # type: ignore[call-arg]
+                    _secrets_dir="/nonexistent", key_signing_secret=SecretStr("contract-secret")
+                ),
             ),
             token_issued_at=now,
             token_consumed_at=None,
@@ -89,7 +92,7 @@ def settings(tmp_path: Path) -> Settings:
         "    control_host: coire-edge-a.lab\n    data_host: coire-edge-a.fabric\n"
     )
     result = Settings(  # type: ignore[call-arg]
-        _secrets_dir="/nonexistent", key_signing_secret="contract-secret"
+        _secrets_dir="/nonexistent", key_signing_secret=SecretStr("contract-secret")
     )
     result.node_inventory_file = str(inventory)
     result.node_tokens = type(result.node_tokens)('{"coire-edge-a":"token"}')

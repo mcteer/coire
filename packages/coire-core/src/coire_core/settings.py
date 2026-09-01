@@ -106,6 +106,17 @@ class Settings(BaseSettings):
     instance_drain_timeout_s: float = Field(default=30.0, gt=0.0)
     instance_event_poll_interval_s: float = Field(default=0.5, gt=0.0)
 
+    # --- Studio data-link and sharding ---------------------------------
+    link_probe_interval_s: float = Field(default=30.0, gt=0.0)
+    link_probe_freshness_s: float = Field(default=120.0, gt=0.0)
+    link_failures_before_down: int = Field(default=2, ge=1)
+    link_successes_before_up: int = Field(default=3, ge=1)
+    sharding_allow_ring_fallback: bool = True
+    sharding_start_timeout_s: float = Field(default=600.0, gt=0.0)
+    sharding_port_range: str = "9600-9699"
+    sharding_jaccl_hostfile: str = "/opt/coire/state/jaccl-hostfile.json"
+    sharding_ring_hostfile: str = "/opt/coire/state/ring-hostfile.json"
+
     # --- compatible inference gateway ----------------------------------
     gateway_wait_ceiling_s: float = Field(default=600.0, gt=0.0)
     gateway_keepalive_interval_s: float = Field(default=10.0, gt=0.0)

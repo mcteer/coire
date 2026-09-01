@@ -104,7 +104,7 @@ class PlacementRequest(BaseModel):
     variant_id: uuid.UUID
     policy: str | None = Field(
         default=None,
-        pattern=r"^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+)$",
+        pattern=r"^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$",
     )
 
 

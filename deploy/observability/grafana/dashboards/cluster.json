@@ -5,6 +5,10 @@
   "panels": [
     {"id": 1, "title": "edge-a control latency", "type": "timeseries", "targets": [{"expr": "coire_control_path_latency_ms{peer=\"coire-edge-a\"}"}]},
     {"id": 2, "title": "edge-b control latency", "type": "timeseries", "targets": [{"expr": "coire_control_path_latency_ms{peer=\"coire-edge-b\"}"}]},
-    {"id": 3, "title": "Studio data link", "type": "stat", "targets": [{"expr": "coire_data_link_up"}]}
+    {"id": 3, "title": "Studio data link", "type": "stat", "targets": [{"expr": "coire_data_link_up"}]},
+    {"id": 4, "title": "Sharding eligibility", "type": "stat", "targets": [{"expr": "coire_sharding_link_eligible", "legendFormat": "{{mode}}"}]},
+    {"id": 5, "title": "Link measurement age", "type": "timeseries", "targets": [{"expr": "time() - coire_sharding_link_last_success_timestamp_seconds", "legendFormat": "{{transport}}"}]},
+    {"id": 6, "title": "Sharded group transitions", "type": "timeseries", "targets": [{"expr": "sum by (state, mode) (rate(coire_sharding_group_transitions_total[5m]))", "legendFormat": "{{mode}} {{state}}"}]},
+    {"id": 7, "title": "Placement benchmark tokens/s", "type": "timeseries", "targets": [{"expr": "histogram_quantile(0.5, sum by (le, placement) (rate(coire_sharding_benchmark_tokens_per_second_bucket[30m])))", "legendFormat": "{{placement}}"}]}
   ]
 }

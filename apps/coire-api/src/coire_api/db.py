@@ -53,6 +53,13 @@ from coire_core.models.placement import (
     ReservationHolder,
 )
 from coire_core.models.registry import CopyRole, ModelState, Visibility
+from coire_core.models.sharding import (
+    BenchmarkRunState,
+    ProbeOutcome,
+    ProbeTransport,
+    ShardGroupState,
+    ShardingMode,
+)
 from coire_core.settings import Settings
 
 
@@ -605,6 +612,11 @@ class ModelInstanceRow(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     drain_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    fallback_attempted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    fallback_instance_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    fallback_no_fit: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class InstanceMemberRow(Base):
@@ -626,6 +638,122 @@ class InstanceMemberRow(Base):
     )
     host: Mapped[str] = mapped_column(String(255))
     port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    rank_healthy: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_rank_health_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class LinkObservationRow(Base):
+    __tablename__ = "link_observations"
+    __table_args__ = (
+        Index("ix_link_observations_pair_at", "node_a_id", "node_b_id", "observed_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    node_a_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    node_b_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    transport: Mapped[ProbeTransport] = mapped_column(_enum(ProbeTransport, "probe_transport"))
+    outcome: Mapped[ProbeOutcome] = mapped_column(_enum(ProbeOutcome, "probe_outcome"))
+    bandwidth_bytes_per_second: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    os_version_a: Mapped[str] = mapped_column(String(64))
+    os_version_b: Mapped[str] = mapped_column(String(64))
+    engine_version: Mapped[str] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ShardGroupRow(Base):
+    __tablename__ = "shard_groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_instances.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    mode: Mapped[ShardingMode] = mapped_column(_enum(ShardingMode, "sharding_mode"))
+    state: Mapped[ShardGroupState] = mapped_column(_enum(ShardGroupState, "shard_group_state"))
+    command_id: Mapped[uuid.UUID] = mapped_column(unique=True)
+    hostfile_sha256: Mapped[str] = mapped_column(String(64))
+    state_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ShardCommandRow(Base):
+    """Durable scheduler-to-API command; node credentials remain in coire-api."""
+
+    __tablename__ = "shard_commands"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("shard_groups.id", ondelete="CASCADE"), index=True
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    operation: Mapped[str] = mapped_column(String(16))
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    state: Mapped[str] = mapped_column(String(16), index=True, default="pending")
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PlacementBenchmarkRow(Base):
+    __tablename__ = "placement_benchmarks"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("benchmark_runs.id", ondelete="CASCADE"), index=True
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
+    )
+    placement: Mapped[str] = mapped_column(String(64))
+    tokens_per_second: Mapped[float | None] = mapped_column(Float, nullable=True)
+    prompt_tokens: Mapped[int] = mapped_column(Integer)
+    generation_tokens: Mapped[int] = mapped_column(Integer)
+    gpu_cores: Mapped[dict[str, int]] = mapped_column(JSONB, default=dict)
+    os_versions: Mapped[dict[str, str]] = mapped_column(JSONB, default=dict)
+    engine_version: Mapped[str] = mapped_column(String(64))
+    failure: Mapped[str | None] = mapped_column(Text, nullable=True)
+    run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class BenchmarkRunRow(Base):
+    __tablename__ = "benchmark_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
+    )
+    state: Mapped[BenchmarkRunState] = mapped_column(
+        _enum(BenchmarkRunState, "benchmark_run_state"), index=True
+    )
+    prompt_tokens: Mapped[int] = mapped_column(Integer)
+    generation_tokens: Mapped[int] = mapped_column(Integer)
+    failure: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class BenchmarkCommandRow(Base):
+    __tablename__ = "benchmark_commands"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("benchmark_runs.id", ondelete="CASCADE"), index=True
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    sequence: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    state: Mapped[str] = mapped_column(String(16), index=True, default="pending")
+    failure_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class InstanceTransitionRow(Base):
