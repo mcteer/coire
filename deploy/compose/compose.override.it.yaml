@@ -31,6 +31,7 @@ services:
       # would refuse every model on fit. The check itself is exercised by its own test.
       DISK_RESERVE_BYTES: "268435456"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
+      NODE_PROBE_INTERVAL_S: "2"
       GATEWAY_MAX_INFLIGHT_PER_ENGINE: "4"
     networks:
       coire-control-sim:
@@ -48,6 +49,7 @@ services:
         ipv4_address: 192.168.100.11
       # The origin needs egress to reach Hugging Face; it is the only container that does.
       coire-edge:
+      coire-node-ingress:
     extra_hosts:
       - "coire-edge-a.fabric:192.168.100.11"
       - "coire-edge-b.fabric:192.168.100.12"
@@ -93,6 +95,7 @@ services:
         aliases: [coire-edge-b, "coire-edge-b.lab"]
       coire-data-sim:
         ipv4_address: 192.168.100.12
+      coire-node-ingress:
     extra_hosts:
       - "coire-edge-a.fabric:192.168.100.11"
       - "coire-edge-b.fabric:192.168.100.12"

@@ -13,6 +13,9 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
+  attributes/redact:
+    actions:
+      - {pattern: "(?i).*(authorization|cookie|password|secret|token|prompt|response).*", action: delete}
   memory_limiter:
     check_interval: 1s
     limit_mib: 256
@@ -25,11 +28,16 @@ extensions:
     endpoint: 0.0.0.0:13133
 
 exporters:
-  # Until feature 009 provides Tempo/Prometheus/Loki, spans and metrics are counted and
-  # dropped. `basic` keeps one line per batch so the quickstart can assert arrival without
-  # filling core's disk.
-  debug:
-    verbosity: basic
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    enable_open_metrics: true
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls: {insecure: true}
+    retry_on_failure: {enabled: true, max_elapsed_time: 30s}
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    retry_on_failure: {enabled: true, max_elapsed_time: 30s}
 
 service:
   extensions: [health_check]
@@ -39,9 +47,13 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, batch]
-      exporters: [debug]
+      processors: [memory_limiter, attributes/redact, batch]
+      exporters: [otlp/tempo]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact, batch]
+      exporters: [otlphttp/loki]

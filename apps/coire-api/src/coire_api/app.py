@@ -84,7 +84,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return await call_next(request)
         from coire_api.gateway.telemetry import tracer
 
-        with tracer.start_as_current_span("coire.gateway.request") as span:
+        with tracer.start_as_current_span("coire.api.gateway") as span:
             span.set_attribute("http.request.method", request.method)
             span.set_attribute("url.path", request.url.path)
             response = await call_next(request)

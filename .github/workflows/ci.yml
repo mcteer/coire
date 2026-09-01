@@ -94,6 +94,16 @@ jobs:
             dockerfile: apps/coire-web/Dockerfile
           - name: coire-otel
             dockerfile: deploy/compose/otel.Dockerfile
+          - name: coire-prometheus
+            dockerfile: deploy/compose/prometheus.Dockerfile
+          - name: coire-alertmanager
+            dockerfile: deploy/compose/alertmanager.Dockerfile
+          - name: coire-loki
+            dockerfile: deploy/compose/loki.Dockerfile
+          - name: coire-tempo
+            dockerfile: deploy/compose/tempo.Dockerfile
+          - name: coire-grafana
+            dockerfile: deploy/compose/grafana.Dockerfile
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4

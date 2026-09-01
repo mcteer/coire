@@ -148,7 +148,7 @@ One service per container, one process per container, each independently restart
 | `docker-socket-proxy` | `tecnativa/docker-socket-proxy` (HAProxy, minimal) | HAProxy with allowlist | The only container with core's Docker socket mounted; used by `coire-scheduler` solely to manage the control plane's own containers (restart `coire-ops`, run `coire-migrate`, upgrades) — never for user runs |
 | `cloudflared` | `cloudflare/cloudflared` (distroless, static binary) | tunnel client | Outbound-only; restarting it drops the tunnel, nothing else |
 | `otel-collector` | `otel/opentelemetry-collector-contrib` (scratch-based) | collector | Receives OTLP from every service |
-| `prometheus`, `loki`, `tempo`, `grafana`, `alertmanager` | upstream images (all scratch/alpine-based) | one process each | Each can be restarted or version-bumped alone; retention volumes are per service |
+| `prometheus`, `loki`, `tempo`, `grafana`, `alertmanager` | pinned upstream releases; static services are rebuilt into scratch when a fixed dependency is newer than the published image | one process each | Each can be restarted or version-bumped alone; retention volumes are per service |
 
 Networks are per concern, not one flat bridge: `coire-edge` (cloudflared ↔ web ↔ api/mcp), `coire-db` (api, scheduler, migrate ↔ postgres), `coire-internal` (ops ↔ api), `coire-docker` (scheduler ↔ socket proxy), `coire-telemetry` (everyone → otel-collector; collector → prometheus/loki/tempo). A container is attached only to the networks its role requires, so `coire-web` can't reach Postgres and `coire-ops` can't reach the socket proxy.
 
@@ -310,7 +310,27 @@ Because the platform is public, the trust model is explicit:
 
 ## 8. Observability
 
-Every service is instrumented with OpenTelemetry. FastAPI and Pydantic AI use the Logfire SDK purely as an OTel instrumentation layer, exporting OTLP to a local collector — no cloud account needed (if you later want Logfire's UI, it's a config change). Coire-node exports Prometheus metrics: per-node memory used/budget/reserved, per-process RSS, GPU utilisation and thermal state from `powermetrics`, tokens/s, queue depth, load/unload durations. Grafana ships with three dashboards: *Cluster* (nodes, memory ledger, loaded models), *Traffic* (requests, latency, tokens by user/key/model), *Jobs* (agent runs and training with per-run trace links). Alertmanager rules cover: node unreachable, JACCL peer down, memory ledger drift vs actual, model load > N minutes, run exceeding timeout, tunnel down. Traces span gateway → node → model server so a slow request is attributable to prefill, decode, queueing, or network.
+Every service exports OpenTelemetry to the collector on core; the collector is fail-open and has no
+Internet exporter. It batches and defensively redacts signals, exposes bounded metrics to
+Prometheus, stores operational logs in Loki, and stores traces in Tempo. Request/response bodies,
+credentials, cookies, and secret values are never telemetry. Exact identity and workflow IDs are
+trace/log correlation fields rather than Prometheus labels.
+
+Coire-node samples essential CPU, memory, disk, process, link, and heartbeat state without
+privilege. Optional GPU/thermal/process detail backs off exponentially when collection exceeds its
+budget, while the essential heartbeat continues. Health freshness uses the API's receipt time, not
+the node clock; three failed or degraded evaluations enter the corresponding state and five healthy
+evaluations recover it. A responding but saturated node is degraded, while an expired observation
+is unknown and cannot be treated as placement truth.
+
+Grafana ships with version-controlled *Cluster*, *Traffic*, and *Jobs* dashboards and is reachable
+only through authenticated `/grafana/` ingress. Its provisioned Prometheus, Loki, and Tempo data
+sources remain internal. Alerts cover node reachability/degradation, capacity and thermal pressure,
+link state/flapping, ledger drift, model loads, agent runs, tunnel health, and clock skew, grouped by
+subject with inhibition for unreachable dependencies. Traces propagate W3C context across gateway,
+admission, load, node, prefill, decode, and sharded-network boundaries so latency is attributable.
+Core hosts this storage and UI only: it still loads no model, performs no Metal work, and runs no
+user harness.
 
 ## 8.1 Post-training: SFT and preference optimisation
 

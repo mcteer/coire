@@ -122,7 +122,7 @@ components:
     HealthResponse:
       type: object
       additionalProperties: false
-      required: [status, version, services, nodes, generated_at]
+      required: [status, version, services, nodes, links, generated_at]
       properties:
         status: { type: string, enum: [healthy, degraded, unhealthy] }
         version: { type: string }
@@ -131,8 +131,25 @@ components:
           items: { $ref: "#/components/schemas/ServiceHealth" }
         nodes:
           type: array
-          items: { $ref: "#/components/schemas/ServiceHealth" }
+          items: { type: object }
+        links:
+          type: array
+          items: { $ref: "#/components/schemas/StudioDataLinkStatus" }
         generated_at: { type: string, format: date-time }
+
+    StudioDataLinkStatus:
+      type: object
+      additionalProperties: false
+      required: [node_a, node_b, ip_state, rdma_state]
+      properties:
+        node_a: { type: string, pattern: "^coire-edge-[ab]$" }
+        node_b: { type: string, pattern: "^coire-edge-[ab]$" }
+        ip_state: { type: string, enum: [unknown, up, down] }
+        rdma_state: { type: string, enum: [unknown, up, degraded, down] }
+        bandwidth_bytes_per_second: { type: [integer, "null"], minimum: 1 }
+        latency_ms: { type: [number, "null"], minimum: 0 }
+        measured_at: { type: [string, "null"], format: date-time }
+        reason: { type: [string, "null"] }
 
     NodeRegistration:
       type: object
@@ -196,5 +213,7 @@ components:
         agent_cpu_percent: { type: number }
         agent_rss_bytes: { type: integer }
         collection_budget_ok: { type: boolean }
+        collection_duration_ms: { type: number, minimum: 0, description: "feature 009" }
+        optional_sampling_backoff: { type: integer, minimum: 1, description: "feature 009" }
         path: { type: string, enum: [mesh, fallback] }
         sampled_at: { type: string, format: date-time }

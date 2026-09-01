@@ -112,9 +112,12 @@ class Handler(BaseHTTPRequestHandler):
                     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
                 },
             ]
-            slow = "slow-stream" in str(request.get("messages", ""))
+            messages = str(request.get("messages", ""))
+            slow = "slow-stream" in messages or "slow-decode" in messages
+            slow_network = "slow-network" in messages
+            slow_prefill = "slow-prefill" in messages
             fail = "fail-stream" in str(request.get("messages", ""))
-            if not slow and not fail:
+            if not slow and not slow_network and not slow_prefill and not fail:
                 body = (
                     "".join(f"data: {json.dumps(event)}\n\n" for event in events)
                     + "data: [DONE]\n\n"
@@ -125,10 +128,15 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(body)
                 return
+            if slow_network:
+                time.sleep(1.0)
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Transfer-Encoding", "chunked")
             self.end_headers()
+
+            if slow_prefill:
+                time.sleep(1.0)
 
             def write_chunk(payload: bytes) -> None:
                 self.wfile.write(f"{len(payload):x}\r\n".encode() + payload + b"\r\n")

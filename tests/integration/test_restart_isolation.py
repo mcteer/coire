@@ -112,6 +112,20 @@ def test_restarting_one_service_leaves_the_others_healthy(service: str) -> None:
     assert not disturbed, f"restarting {service} disturbed {sorted(disturbed)}"
 
 
+def test_collector_outage_does_not_fail_control_plane_requests() -> None:
+    """FR-017/SC-008: telemetry loss remains fail-open for serving traffic."""
+    compose("stop", "otel-collector")
+    try:
+        statuses: list[int] = []
+        for _ in range(5):
+            with urllib.request.urlopen(HEALTH, timeout=3) as response:
+                statuses.append(response.status)
+            time.sleep(0.2)
+        assert statuses == [200] * 5
+    finally:
+        compose("start", "otel-collector")
+
+
 def test_web_stays_healthy_while_api_restarts() -> None:
     """The regression guard for the proxied-healthcheck defect.
 

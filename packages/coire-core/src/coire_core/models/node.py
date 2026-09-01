@@ -179,6 +179,8 @@ class NodeStatus(BaseModel):
     agent_cpu_percent: float
     agent_rss_bytes: int
     collection_budget_ok: bool
+    collection_duration_ms: float = Field(default=0, ge=0)
+    optional_sampling_backoff: int = Field(default=1, ge=1)
     path: NodePath
     sampled_at: datetime
 
@@ -212,6 +214,8 @@ class NodeStatusV2(BaseModel):
     agent_cpu_percent: float = Field(ge=0)
     agent_rss_bytes: int = Field(ge=0)
     collection_budget_ok: bool
+    collection_duration_ms: float = Field(default=0, ge=0)
+    optional_sampling_backoff: int = Field(default=1, ge=1)
     path: Literal[NetworkPath.CONTROL] = NetworkPath.CONTROL
     sampled_at: datetime
     engines: list[EngineStatus] = Field(default_factory=list)

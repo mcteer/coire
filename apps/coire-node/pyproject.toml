@@ -11,6 +11,7 @@ dependencies = [
     "httpx>=0.28",
     "opentelemetry-sdk>=1.29",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
+    "opentelemetry-instrumentation-fastapi>=0.50b0",
     # Feature 001 (research R1, R10): the engine and the Hugging Face client. mlx is
     # Darwin-only — the Linux CI image installs coire-node without it and drives the fake
     # engine instead, so every non-engine verb is still exercised on Linux (research R9).

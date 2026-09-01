@@ -25,6 +25,7 @@ import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from opentelemetry import metrics as otel_metrics
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
 from coire_core.models.node import NetworkPath, NodePath, NodeStatus, NodeStatusV2
 from coire_core.settings import Settings
@@ -134,6 +135,7 @@ def create_app(
     surest way to guarantee that is for the route not to be there.
     """
     app = FastAPI(title=f"coire-node ({listener.value})", docs_url=None, openapi_url=None)
+    FastAPIInstrumentor.instrument_app(app)
     app.state.settings = settings
     app.state.store = store
     app.state.jobs = jobs

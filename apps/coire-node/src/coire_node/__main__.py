@@ -40,7 +40,7 @@ async def _run() -> None:
     collector = MetricsCollector(
         node_name=hostname,
         agent_version=__version__,
-        interval_s=settings.node_probe_interval_s,
+        interval_s=settings.node_collection_interval_s,
         budget_cpu_pct=settings.node_collection_budget_cpu_pct,
         budget_rss_bytes=settings.node_collection_budget_rss_bytes,
         disk_path="/",

@@ -90,6 +90,13 @@ class NodeRow(Base):
         default=Reachability.UNKNOWN,
     )
     probe_failures: Mapped[int] = mapped_column(default=0)
+    probe_successes: Mapped[int] = mapped_column(default=0)
+    probe_degraded: Mapped[int] = mapped_column(default=0)
+    last_observation: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    last_observed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    heartbeat_latency_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 def create_engine(settings: Settings) -> AsyncEngine:

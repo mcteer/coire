@@ -4,7 +4,7 @@
  */
 
 export interface paths {
-    "/ready": {
+    "/api/v1/admin/audit": {
         parameters: {
             query?: never;
             header?: never;
@@ -12,224 +12,10 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Get Ready
-         * @description Liveness. Deliberately checks nothing external.
+         * List Audit
+         * @description Read the audit log. There is no route that writes, edits or deletes one.
          */
-        get: operations["get_ready_ready_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Health
-         * @description Aggregate health.
-         *
-         *     Postgres is the only critical dependency: without it the control plane has no system of
-         *     record, so its failure is `unhealthy` (HTTP 503). Everything else degrades.
-         */
-        get: operations["get_health_health_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/nodes/register": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Register Node
-         * @description Register or re-register a declared node. Idempotent on name.
-         */
-        post: operations["register_node_api_v1_nodes_register_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Models
-         * @description Models the caller may see, with live load state.
-         *
-         *     An admin sees everything; anyone else sees only published, ready, unentitled models
-         *     (spec US5 scenario 1). Existence is not disclosed: an unpublished model is simply absent.
-         */
-        get: operations["list_models_api_v1_models_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/models": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List Models */
-        get: operations["list_models_api_v1_admin_models_get"];
-        put?: never;
-        /**
-         * Add Model
-         * @description Add a model from a Hugging Face repository and start acquiring it.
-         */
-        post: operations["add_model_api_v1_admin_models_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/models/{model_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Model */
-        get: operations["get_model_api_v1_admin_models__model_id__get"];
-        put?: never;
-        post?: never;
-        /** Delete Model */
-        delete: operations["delete_model_api_v1_admin_models__model_id__delete"];
-        options?: never;
-        head?: never;
-        /** Update Model */
-        patch: operations["update_model_api_v1_admin_models__model_id__patch"];
-        trace?: never;
-    };
-    "/api/v1/admin/models/{model_id}/retire": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retire Model */
-        post: operations["retire_model_api_v1_admin_models__model_id__retire_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/models/{model_id}/retry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Retry Model */
-        post: operations["retry_model_api_v1_admin_models__model_id__retry_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/models/{model_id}/job": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Job */
-        get: operations["get_job_api_v1_admin_models__model_id__job_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/models/{model_id}/load": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Load Model
-         * @description Load a model on a node. Exercised by tests and the console; user traffic is feature 003.
-         */
-        post: operations["load_model_api_v1_admin_models__model_id__load_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/network/links/studios": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Studio Data Link */
-        get: operations["studio_data_link_api_v1_admin_network_links_studios_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/admin/nodes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Nodes
-         * @description Declared nodes with the last status the prober received, their engines and jobs.
-         */
-        get: operations["list_nodes_api_v1_admin_nodes_get"];
+        get: operations["list_audit_api_v1_admin_audit_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -276,18 +62,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/admin/audit": {
+    "/api/v1/admin/models": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
+        /** List Models */
+        get: operations["list_models_api_v1_admin_models_get"];
+        put?: never;
         /**
-         * List Audit
-         * @description Read the audit log. There is no route that writes, edits or deletes one.
+         * Add Model
+         * @description Add a model from a Hugging Face repository and start acquiring it.
          */
-        get: operations["list_audit_api_v1_admin_audit_get"];
+        post: operations["add_model_api_v1_admin_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/models/{model_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Model */
+        get: operations["get_model_api_v1_admin_models__model_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Model */
+        delete: operations["delete_model_api_v1_admin_models__model_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Model */
+        patch: operations["update_model_api_v1_admin_models__model_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/models/{model_id}/job": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_v1_admin_models__model_id__job_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -296,15 +119,175 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/models": {
+    "/api/v1/admin/models/{model_id}/load": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Models */
-        get: operations["list_models_v1_models_get"];
+        get?: never;
+        put?: never;
+        /**
+         * Load Model
+         * @description Load a model on a node. Exercised by tests and the console; user traffic is feature 003.
+         */
+        post: operations["load_model_api_v1_admin_models__model_id__load_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/models/{model_id}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retire Model */
+        post: operations["retire_model_api_v1_admin_models__model_id__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/models/{model_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Model */
+        post: operations["retry_model_api_v1_admin_models__model_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/network/links/studios": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Studio Data Link */
+        get: operations["studio_data_link_api_v1_admin_network_links_studios_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/nodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Nodes
+         * @description Declared nodes with the last status the prober received, their engines and jobs.
+         */
+        get: operations["list_nodes_api_v1_admin_nodes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Models
+         * @description Models the caller may see, with live load state.
+         *
+         *     An admin sees everything; anyone else sees only published, ready, unentitled models
+         *     (spec US5 scenario 1). Existence is not disclosed: an unpublished model is simply absent.
+         */
+        get: operations["list_models_api_v1_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/nodes/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Node
+         * @description Register or re-register a declared node. Idempotent on name.
+         */
+        post: operations["register_node_api_v1_nodes_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Health
+         * @description Aggregate health.
+         *
+         *     Postgres is the only critical dependency: without it the control plane has no system of
+         *     record, so its failure is `unhealthy` (HTTP 503). Everything else degrades.
+         */
+        get: operations["get_health_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Ready
+         * @description Liveness. Deliberately checks nothing external.
+         */
+        get: operations["get_ready_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -347,89 +330,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Models */
+        get: operations["list_models_v1_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /** AnthropicMessage */
         AnthropicMessage: {
+            /** Content */
+            content: string | {
+                [key: string]: unknown;
+            }[];
             /**
              * Role
              * @enum {string}
              */
             role: "user" | "assistant";
-            /** Content */
-            content: string | {
-                [key: string]: unknown;
-            }[];
         };
         /** AnthropicMessagesRequest */
         AnthropicMessagesRequest: {
-            /**
-             * Model
-             * Format: uuid
-             */
-            model: string;
-            /** Max Tokens */
-            max_tokens: number;
-            /** Messages */
-            messages: components["schemas"]["AnthropicMessage"][];
-            /** System */
-            system?: string | {
-                [key: string]: unknown;
-            }[] | null;
-            /**
-             * Stream
-             * @default false
-             */
-            stream: boolean;
-            /** Temperature */
-            temperature?: number | null;
-            /** Top P */
-            top_p?: number | null;
-            /** Top K */
-            top_k?: number | null;
-            /** Stop Sequences */
-            stop_sequences?: string[] | null;
-            /** Tools */
-            tools?: {
-                [key: string]: unknown;
-            }[] | null;
-            /** Tool Choice */
-            tool_choice?: {
-                [key: string]: unknown;
-            } | null;
-            /** Output Config */
-            output_config?: {
-                [key: string]: unknown;
-            } | null;
-            /** Thinking */
-            thinking?: {
-                [key: string]: unknown;
-            } | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            } | null;
-            /** Service Tier */
-            service_tier?: string | null;
-            /** Context Management */
-            context_management?: {
-                [key: string]: unknown;
-            } | null;
-            /** Container */
-            container?: string | {
-                [key: string]: unknown;
-            } | null;
-            /** Mcp Servers */
-            mcp_servers?: {
-                [key: string]: unknown;
-            }[] | null;
             /**
              * Coire Wait For Model
              * @default true
              */
             coire_wait_for_model: boolean;
+            /** Container */
+            container?: string | {
+                [key: string]: unknown;
+            } | null;
+            /** Context Management */
+            context_management?: {
+                [key: string]: unknown;
+            } | null;
+            /** Max Tokens */
+            max_tokens: number;
+            /** Mcp Servers */
+            mcp_servers?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Messages */
+            messages: components["schemas"]["AnthropicMessage"][];
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Model
+             * Format: uuid
+             */
+            model: string;
+            /** Output Config */
+            output_config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Service Tier */
+            service_tier?: string | null;
+            /** Stop Sequences */
+            stop_sequences?: string[] | null;
+            /**
+             * Stream
+             * @default false
+             */
+            stream: boolean;
+            /** System */
+            system?: string | {
+                [key: string]: unknown;
+            }[] | null;
+            /** Temperature */
+            temperature?: number | null;
+            /** Thinking */
+            thinking?: {
+                [key: string]: unknown;
+            } | null;
+            /** Tool Choice */
+            tool_choice?: {
+                [key: string]: unknown;
+            } | null;
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Top K */
+            top_k?: number | null;
+            /** Top P */
+            top_p?: number | null;
         };
         /**
          * AuditOutcome
@@ -438,29 +438,29 @@ export interface components {
         AuditOutcome: "ok" | "refused" | "error";
         /** AuditRecord */
         AuditRecord: {
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
+            /** Action */
+            action: string;
+            /** Actor */
+            actor: string;
             /**
              * At
              * Format: date-time
              */
             at: string;
-            /** Actor */
-            actor: string;
-            /** Action */
-            action: string;
-            /** Target Type */
-            target_type: string;
-            /** Target Id */
-            target_id: string;
-            outcome: components["schemas"]["AuditOutcome"];
             /** Detail */
             detail?: {
                 [key: string]: unknown;
             };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            outcome: components["schemas"]["AuditOutcome"];
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
         };
         /**
          * CapabilityProfile
@@ -468,24 +468,24 @@ export interface components {
          *     name (Principle V).
          */
         CapabilityProfile: {
-            /** @default none */
-            tool_calling: components["schemas"]["ToolCalling"];
-            /** @default none */
-            structured_output: components["schemas"]["StructuredOutput"];
-            /** Context Window */
-            context_window?: number | null;
-            /** @default none */
-            reasoning: components["schemas"]["Reasoning"];
-            /**
-             * Parallel Tools
-             * @default false
-             */
-            parallel_tools: boolean;
             /**
              * Chat Template Present
              * @default false
              */
             chat_template_present: boolean;
+            /** Context Window */
+            context_window?: number | null;
+            /**
+             * Parallel Tools
+             * @default false
+             */
+            parallel_tools: boolean;
+            /** @default none */
+            reasoning: components["schemas"]["Reasoning"];
+            /** @default none */
+            structured_output: components["schemas"]["StructuredOutput"];
+            /** @default none */
+            tool_calling: components["schemas"]["ToolCalling"];
             /**
              * Verified
              * @default false
@@ -498,70 +498,156 @@ export interface components {
          *     it is rejected as an unknown field rather than silently ignored.
          */
         CapabilityProfileUpdate: {
-            tool_calling?: components["schemas"]["ToolCalling"] | null;
-            structured_output?: components["schemas"]["StructuredOutput"] | null;
             /** Context Window */
             context_window?: number | null;
-            reasoning?: components["schemas"]["Reasoning"] | null;
             /** Parallel Tools */
             parallel_tools?: boolean | null;
+            reasoning?: components["schemas"]["Reasoning"] | null;
+            structured_output?: components["schemas"]["StructuredOutput"] | null;
+            tool_calling?: components["schemas"]["ToolCalling"] | null;
         };
         /** ChatCompletionRequest */
         ChatCompletionRequest: {
-            /**
-             * Model
-             * Format: uuid
-             */
-            model: string;
-            /** Messages */
-            messages: components["schemas"]["ChatMessage"][];
-            /**
-             * Stream
-             * @default false
-             */
-            stream: boolean;
-            /** Max Tokens */
-            max_tokens?: number | null;
-            /** Temperature */
-            temperature?: number | null;
-            /** Top P */
-            top_p?: number | null;
-            /** Stop */
-            stop?: string | string[] | null;
-            /** Tools */
-            tools?: {
-                [key: string]: unknown;
-            }[] | null;
-            /** Tool Choice */
-            tool_choice?: unknown;
-            /** Response Format */
-            response_format?: {
-                [key: string]: unknown;
-            } | null;
             /**
              * Coire Wait For Model
              * @default true
              */
             coire_wait_for_model: boolean;
+            /** Max Tokens */
+            max_tokens?: number | null;
+            /** Messages */
+            messages: components["schemas"]["ChatMessage"][];
+            /**
+             * Model
+             * Format: uuid
+             */
+            model: string;
+            /** Response Format */
+            response_format?: {
+                [key: string]: unknown;
+            } | null;
+            /** Stop */
+            stop?: string | string[] | null;
+            /**
+             * Stream
+             * @default false
+             */
+            stream: boolean;
+            /** Temperature */
+            temperature?: number | null;
+            /** Tool Choice */
+            tool_choice?: unknown;
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Top P */
+            top_p?: number | null;
         };
         /** ChatMessage */
         ChatMessage: {
+            /** Content */
+            content: string | null;
+            /** Name */
+            name?: string | null;
             /**
              * Role
              * @enum {string}
              */
             role: "system" | "user" | "assistant" | "tool";
-            /** Content */
-            content: string | null;
-            /** Name */
-            name?: string | null;
             /** Tool Call Id */
             tool_call_id?: string | null;
         } & {
             [key: string]: unknown;
         };
+        /**
+         * ChecksumManifest
+         * @description The record of exactly what a verified copy contains.
+         */
+        ChecksumManifest: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Files */
+            files?: components["schemas"]["ManifestFile"][];
+            /** Repo Id */
+            repo_id: string;
+            /** Revision */
+            revision: string;
+            /** Slug */
+            slug: string;
+            /** Total Bytes */
+            total_bytes: number;
+        };
+        /**
+         * EngineState
+         * @enum {string}
+         */
+        EngineState: "starting" | "ready" | "stopping" | "stopped" | "failed" | "orphan";
+        /**
+         * EngineStatus
+         * @description A node's view of one engine.
+         */
+        EngineStatus: {
+            /** Chat Template Sha256 */
+            chat_template_sha256?: string | null;
+            /** Cpu Percent */
+            cpu_percent?: number | null;
+            /** Engine Id */
+            engine_id?: string | null;
+            /**
+             * Estimate Bytes
+             * @default 0
+             */
+            estimate_bytes: number;
+            /** Exit Code */
+            exit_code?: number | null;
+            /** Exit Output */
+            exit_output?: string | null;
+            /** Last Health At */
+            last_health_at?: string | null;
+            /** Load Seconds */
+            load_seconds?: number | null;
+            /** Pid */
+            pid?: number | null;
+            /** Port */
+            port: number;
+            /** Process Create Time */
+            process_create_time?: number | null;
+            /** Resident Bytes */
+            resident_bytes?: number | null;
+            /** Resident Delta Bytes */
+            resident_delta_bytes?: number | null;
+            /** Slug */
+            slug?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            state: components["schemas"]["EngineState"];
+            /** State Reason */
+            state_reason?: string | null;
+            /** Stopped At */
+            stopped_at?: string | null;
+        };
         /** GatewayModel */
         GatewayModel: {
+            /** Coire Context Window */
+            coire_context_window?: number | null;
+            /** Coire Description */
+            coire_description?: string | null;
+            /**
+             * Coire Load State
+             * @enum {string}
+             */
+            coire_load_state: "loaded" | "loading" | "cold";
+            /** Coire Tags */
+            coire_tags?: string[];
+            /** Created */
+            created: number;
             /**
              * Id
              * Format: uuid
@@ -573,36 +659,23 @@ export interface components {
              * @constant
              */
             object: "model";
-            /** Created */
-            created: number;
             /**
              * Owned By
              * @default coire
              * @constant
              */
             owned_by: "coire";
-            /**
-             * Coire Load State
-             * @enum {string}
-             */
-            coire_load_state: "loaded" | "loading" | "cold";
-            /** Coire Tags */
-            coire_tags?: string[];
-            /** Coire Description */
-            coire_description?: string | null;
-            /** Coire Context Window */
-            coire_context_window?: number | null;
         };
         /** GatewayModelList */
         GatewayModelList: {
+            /** Data */
+            data: components["schemas"]["GatewayModel"][];
             /**
              * Object
              * @default list
              * @constant
              */
             object: "list";
-            /** Data */
-            data: components["schemas"]["GatewayModel"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -614,18 +687,20 @@ export interface components {
          * @description `GET /health` — the aggregate. HTTP 503 when `status` is `unhealthy`.
          */
         HealthResponse: {
-            status: components["schemas"]["HealthStatus"];
-            /** Version */
-            version: string;
-            /** Services */
-            services?: components["schemas"]["ServiceHealth"][];
-            /** Nodes */
-            nodes?: components["schemas"]["ServiceHealth"][];
             /**
              * Generated At
              * Format: date-time
              */
             generated_at: string;
+            /** Links */
+            links?: components["schemas"]["StudioDataLinkStatus"][];
+            /** Nodes */
+            nodes?: components["schemas"]["NodeHealth"][];
+            /** Services */
+            services?: components["schemas"]["ServiceHealth"][];
+            status: components["schemas"]["HealthStatus"];
+            /** Version */
+            version: string;
         };
         /**
          * HealthStatus
@@ -633,6 +708,80 @@ export interface components {
          * @enum {string}
          */
         HealthStatus: "healthy" | "degraded" | "unhealthy";
+        /**
+         * JobErrorKind
+         * @enum {string}
+         */
+        JobErrorKind: "gated" | "not_found" | "network" | "checksum_mismatch" | "disk_full" | "cancelled" | "internal";
+        /**
+         * JobKind
+         * @enum {string}
+         */
+        JobKind: "pull" | "import" | "verify";
+        /**
+         * JobStage
+         * @enum {string}
+         */
+        JobStage: "queued" | "resolving" | "transferring" | "hashing" | "done" | "failed" | "cancelled";
+        /**
+         * JobStatus
+         * @description A node's view of one unit of acquisition work.
+         */
+        JobStatus: {
+            /**
+             * Bytes Done
+             * @default 0
+             */
+            bytes_done: number;
+            /**
+             * Bytes Total
+             * @default 0
+             */
+            bytes_total: number;
+            /** Error */
+            error?: string | null;
+            error_kind?: components["schemas"]["JobErrorKind"] | null;
+            /**
+             * Files Done
+             * @default 0
+             */
+            files_done: number;
+            /**
+             * Files Total
+             * @default 0
+             */
+            files_total: number;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Job Id
+             * Format: uuid
+             */
+            job_id: string;
+            kind: components["schemas"]["JobKind"];
+            manifest?: components["schemas"]["ChecksumManifest"] | null;
+            /** Manifest Sha256 */
+            manifest_sha256?: string | null;
+            /** Mismatched Paths */
+            mismatched_paths?: string[];
+            /** Slug */
+            slug: string;
+            stage: components["schemas"]["JobStage"];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Worker Cpu Percent */
+            worker_cpu_percent?: number | null;
+            /** Worker Pid */
+            worker_pid?: number | null;
+        };
         /**
          * LinkState
          * @enum {string}
@@ -643,23 +792,34 @@ export interface components {
          * @enum {string}
          */
         LoadState: "loaded" | "loading" | "cold";
+        /** ManifestFile */
+        ManifestFile: {
+            /** Bytes */
+            bytes: number;
+            /** Path */
+            path: string;
+            /** Sha256 */
+            sha256: string;
+            /** Upstream Sha256 */
+            upstream_sha256?: string | null;
+        };
         /** ModelAddRequest */
         ModelAddRequest: {
-            /** Repo Id */
-            repo_id: string;
-            /** Display Name */
-            display_name?: string | null;
             /** Description */
             description?: string | null;
-            /** Tags */
-            tags?: components["schemas"]["Tag"][];
+            /** Display Name */
+            display_name?: string | null;
+            /** Idle Ttl Seconds */
+            idle_ttl_seconds?: number | null;
             /**
              * Placement Policy
              * @default single:auto
              */
             placement_policy: string;
-            /** Idle Ttl Seconds */
-            idle_ttl_seconds?: number | null;
+            /** Repo Id */
+            repo_id: string;
+            /** Tags */
+            tags?: components["schemas"]["Tag"][];
         };
         /**
          * ModelListing
@@ -669,27 +829,27 @@ export interface components {
          *     see about a model is what the picker needs to choose one.
          */
         ModelListing: {
+            capability_profile: components["schemas"]["CapabilityProfile"];
+            /** Context Window */
+            context_window?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Estimated Warmup Seconds */
+            estimated_warmup_seconds?: number | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Display Name */
-            display_name: string;
-            /** Description */
-            description?: string | null;
-            /** Tags */
-            tags?: components["schemas"]["Tag"][];
-            /** Context Window */
-            context_window?: number | null;
-            /** Precision */
-            precision: string;
             load_state: components["schemas"]["LoadState"];
             /** Loaded On */
             loaded_on?: string[];
-            /** Estimated Warmup Seconds */
-            estimated_warmup_seconds?: number | null;
-            capability_profile: components["schemas"]["CapabilityProfile"];
+            /** Precision */
+            precision: string;
+            /** Tags */
+            tags?: components["schemas"]["Tag"][];
         };
         /**
          * ModelUpdateRequest
@@ -700,63 +860,63 @@ export interface components {
          *     detected with `model_fields_set`.
          */
         ModelUpdateRequest: {
-            /** Display Name */
-            display_name?: string | null;
-            /** Description */
-            description?: string | null;
-            visibility?: components["schemas"]["Visibility"] | null;
-            /** Entitlement */
-            entitlement?: string[] | null;
-            /** Tags */
-            tags?: components["schemas"]["Tag"][] | null;
-            /** Placement Policy */
-            placement_policy?: string | null;
-            /** Idle Ttl Seconds */
-            idle_ttl_seconds?: number | null;
+            capability_profile?: components["schemas"]["CapabilityProfileUpdate"] | null;
             /** Chat Template */
             chat_template?: string | null;
-            capability_profile?: components["schemas"]["CapabilityProfileUpdate"] | null;
+            /** Description */
+            description?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            /** Entitlement */
+            entitlement?: string[] | null;
+            /** Idle Ttl Seconds */
+            idle_ttl_seconds?: number | null;
+            /** Placement Policy */
+            placement_policy?: string | null;
+            /** Tags */
+            tags?: components["schemas"]["Tag"][] | null;
+            visibility?: components["schemas"]["Visibility"] | null;
         };
         /**
          * Node
          * @description A declared Studio, as persisted and returned by the registration endpoint.
          */
         Node: {
+            /** Agent Version */
+            agent_version: string;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            /** Egress Address */
+            egress_address?: string | null;
+            /** Gpu Cores */
+            gpu_cores?: number | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Name */
-            name: string;
-            role: components["schemas"]["NodeRole"];
-            /**
-             * Mesh Address
-             * Format: ipv4
-             */
-            mesh_address: string;
-            /** Egress Address */
-            egress_address?: string | null;
-            /** Memory Total Bytes */
-            memory_total_bytes: number;
-            /** Disk Total Bytes */
-            disk_total_bytes: number;
-            /** Gpu Cores */
-            gpu_cores?: number | null;
-            /** Agent Version */
-            agent_version: string;
-            /**
-             * Registered At
-             * Format: date-time
-             */
-            registered_at: string;
             /**
              * Last Seen At
              * Format: date-time
              */
             last_seen_at: string;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /**
+             * Mesh Address
+             * Format: ipv4
+             */
+            mesh_address: string;
+            /** Name */
+            name: string;
             /** @default unknown */
             reachability: components["schemas"]["Reachability"];
+            /**
+             * Registered At
+             * Format: date-time
+             */
+            registered_at: string;
+            role: components["schemas"]["NodeRole"];
         };
         /**
          * NodeEndpointSet
@@ -775,10 +935,60 @@ export interface components {
             data_host?: string | null;
         };
         /**
+         * NodeHealth
+         * @description A node verdict evaluated using control-plane receipt time.
+         */
+        NodeHealth: {
+            /** Clock Skew Seconds */
+            clock_skew_seconds?: number | null;
+            /** Fresh */
+            fresh: boolean;
+            /** Heartbeat Latency Ms */
+            heartbeat_latency_ms?: number | null;
+            /**
+             * Last Observed At
+             * Format: date-time
+             */
+            last_observed_at: string;
+            /** Last Success At */
+            last_success_at?: string | null;
+            /** Name */
+            name: string;
+            observation?: components["schemas"]["NodeStatus"] | null;
+            /** Process State Verified */
+            process_state_verified: boolean;
+            /** Reason */
+            reason?: string | null;
+            /** Seconds Since Heartbeat */
+            seconds_since_heartbeat: number;
+            verdict: components["schemas"]["Reachability"];
+        };
+        /**
+         * NodePath
+         * @description Which listener answered. `FALLBACK` means the egress path was used (FR-013b/c).
+         * @enum {string}
+         */
+        NodePath: "mesh" | "fallback";
+        /**
          * NodeRegistration
          * @description `POST /api/v1/nodes/register` request body.
          */
         NodeRegistration: {
+            /** Agent Version */
+            agent_version: string;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            /** Egress Address */
+            egress_address?: string | null;
+            /** Gpu Cores */
+            gpu_cores?: number | null;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /**
+             * Mesh Address
+             * Format: ipv4
+             */
+            mesh_address: string;
             /** Name */
             name: string;
             /**
@@ -786,27 +996,21 @@ export interface components {
              * Format: password
              */
             token: string;
-            /**
-             * Mesh Address
-             * Format: ipv4
-             */
-            mesh_address: string;
-            /** Egress Address */
-            egress_address?: string | null;
-            /** Memory Total Bytes */
-            memory_total_bytes: number;
-            /** Disk Total Bytes */
-            disk_total_bytes: number;
-            /** Gpu Cores */
-            gpu_cores?: number | null;
-            /** Agent Version */
-            agent_version: string;
         };
         /**
          * NodeRegistrationV2
          * @description Separated-fabric registration shape (feature 022).
          */
         NodeRegistrationV2: {
+            /** Agent Version */
+            agent_version: string;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            endpoints: components["schemas"]["NodeEndpointSet"];
+            /** Gpu Cores */
+            gpu_cores?: number | null;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
             /** Name */
             name: string;
             /**
@@ -814,15 +1018,6 @@ export interface components {
              * Format: password
              */
             token: string;
-            endpoints: components["schemas"]["NodeEndpointSet"];
-            /** Memory Total Bytes */
-            memory_total_bytes: number;
-            /** Disk Total Bytes */
-            disk_total_bytes: number;
-            /** Gpu Cores */
-            gpu_cores?: number | null;
-            /** Agent Version */
-            agent_version: string;
         };
         /**
          * NodeRole
@@ -830,39 +1025,106 @@ export interface components {
          */
         NodeRole: "studio" | "core";
         /**
+         * NodeStatus
+         * @description `GET /node/health` on a Studio, port 9400. Requires the node's bearer token (FR-013).
+         */
+        NodeStatus: {
+            /** Agent Cpu Percent */
+            agent_cpu_percent: number;
+            /** Agent Rss Bytes */
+            agent_rss_bytes: number;
+            /** Agent Version */
+            agent_version: string;
+            /** Collection Budget Ok */
+            collection_budget_ok: boolean;
+            /**
+             * Collection Duration Ms
+             * @default 0
+             */
+            collection_duration_ms: number;
+            /** Cpu Percent */
+            cpu_percent: number;
+            /** Disk Free Bytes */
+            disk_free_bytes: number;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            /** Engines */
+            engines?: components["schemas"]["EngineStatus"][];
+            /** Gpu Percent */
+            gpu_percent?: number | null;
+            /** Jobs */
+            jobs?: components["schemas"]["JobStatus"][];
+            /**
+             * Memory Budget Bytes
+             * @default 0
+             */
+            memory_budget_bytes: number;
+            /**
+             * Memory Committed Bytes
+             * @default 0
+             */
+            memory_committed_bytes: number;
+            /** Memory Free Bytes */
+            memory_free_bytes: number;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /** Name */
+            name: string;
+            /**
+             * Optional Sampling Backoff
+             * @default 1
+             */
+            optional_sampling_backoff: number;
+            path: components["schemas"]["NodePath"];
+            /**
+             * Sampled At
+             * Format: date-time
+             */
+            sampled_at: string;
+            /**
+             * Store Free Bytes
+             * @default 0
+             */
+            store_free_bytes: number;
+            /** @default unknown */
+            thermal_state: components["schemas"]["ThermalState"];
+            /** Uptime Seconds */
+            uptime_seconds: number;
+        };
+        /**
          * NodeV2
          * @description Persisted node response matching a v2 registration request.
          */
         NodeV2: {
+            /** Agent Version */
+            agent_version: string;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            endpoints: components["schemas"]["NodeEndpointSet"];
+            /** Gpu Cores */
+            gpu_cores?: number | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
-            /** Name */
-            name: string;
-            role: components["schemas"]["NodeRole"];
-            endpoints: components["schemas"]["NodeEndpointSet"];
-            /** Memory Total Bytes */
-            memory_total_bytes: number;
-            /** Disk Total Bytes */
-            disk_total_bytes: number;
-            /** Gpu Cores */
-            gpu_cores?: number | null;
-            /** Agent Version */
-            agent_version: string;
-            /**
-             * Registered At
-             * Format: date-time
-             */
-            registered_at: string;
             /**
              * Last Seen At
              * Format: date-time
              */
             last_seen_at: string;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /** Name */
+            name: string;
             /** @default unknown */
             reachability: components["schemas"]["Reachability"];
+            /**
+             * Registered At
+             * Format: date-time
+             */
+            registered_at: string;
+            role: components["schemas"]["NodeRole"];
         };
         /**
          * RdmaState
@@ -880,16 +1142,16 @@ export interface components {
          * @description `GET /ready` — liveness only. Deliberately checks nothing external (FR-009).
          */
         ReadyResponse: {
-            /** Service */
-            service: string;
-            /** Version */
-            version: string;
             /**
              * Ready
              * @default true
              * @constant
              */
             ready: true;
+            /** Service */
+            service: string;
+            /** Version */
+            version: string;
         };
         /**
          * Reasoning
@@ -901,19 +1163,19 @@ export interface components {
          * @description One dependency's health as observed by the aggregate probe.
          */
         ServiceHealth: {
-            /** Name */
-            name: string;
-            /** Healthy */
-            healthy: boolean;
-            /** Detail */
-            detail?: string | null;
             /**
              * Checked At
              * Format: date-time
              */
             checked_at: string;
+            /** Detail */
+            detail?: string | null;
+            /** Healthy */
+            healthy: boolean;
             /** Latency Ms */
             latency_ms?: number | null;
+            /** Name */
+            name: string;
         };
         /**
          * StructuredOutput
@@ -922,20 +1184,20 @@ export interface components {
         StructuredOutput: "none" | "json_mode" | "json_schema";
         /** StudioDataLinkStatus */
         StudioDataLinkStatus: {
+            /** Bandwidth Bytes Per Second */
+            bandwidth_bytes_per_second?: number | null;
+            /** @default unknown */
+            ip_state: components["schemas"]["LinkState"];
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Measured At */
+            measured_at?: string | null;
             /** Node A */
             node_a: string;
             /** Node B */
             node_b: string;
             /** @default unknown */
-            ip_state: components["schemas"]["LinkState"];
-            /** @default unknown */
             rdma_state: components["schemas"]["RdmaState"];
-            /** Bandwidth Bytes Per Second */
-            bandwidth_bytes_per_second?: number | null;
-            /** Latency Ms */
-            latency_ms?: number | null;
-            /** Measured At */
-            measured_at?: string | null;
             /** Reason */
             reason?: string | null;
         };
@@ -946,22 +1208,27 @@ export interface components {
          */
         Tag: "coding" | "general" | "reasoning" | "vision" | "image";
         /**
+         * ThermalState
+         * @enum {string}
+         */
+        ThermalState: "nominal" | "fair" | "serious" | "critical" | "unknown";
+        /**
          * ToolCalling
          * @enum {string}
          */
         ToolCalling: "none" | "prompted" | "native";
         /** ValidationError */
         ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
             /** Location */
             loc: (string | number)[];
             /** Message */
             msg: string;
             /** Error Type */
             type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
         };
         /**
          * Visibility
@@ -977,29 +1244,12 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    get_ready_ready_get: {
+    list_audit_api_v1_admin_audit_get: {
         parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ReadyResponse"];
-                };
+            query?: {
+                limit?: number;
+                target_id?: string | null;
             };
-        };
-    };
-    get_health_health_get: {
-        parameters: {
-            query?: never;
             header?: {
                 "x-api-key"?: string | null;
             };
@@ -1014,7 +1264,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HealthResponse"];
+                    "application/json": components["schemas"]["AuditRecord"][];
                 };
             };
             /** @description Validation Error */
@@ -1028,42 +1278,7 @@ export interface operations {
             };
         };
     };
-    register_node_api_v1_nodes_register_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-api-key"?: string | null;
-            };
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["NodeRegistration"] | components["schemas"]["NodeRegistrationV2"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Node"] | components["schemas"]["NodeV2"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_models_api_v1_models_get: {
+    list_engines_api_v1_admin_engines_get: {
         parameters: {
             query?: never;
             header?: {
@@ -1080,7 +1295,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ModelListing"][];
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_engine_api_v1_admin_engines__engine_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                engine_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unload_engine_api_v1_admin_engines__engine_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                engine_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -1269,76 +1556,6 @@ export interface operations {
             };
         };
     };
-    retire_model_api_v1_admin_models__model_id__retire_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-api-key"?: string | null;
-            };
-            path: {
-                model_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    retry_model_api_v1_admin_models__model_id__retry_post: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-api-key"?: string | null;
-            };
-            path: {
-                model_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_job_api_v1_admin_models__model_id__job_get: {
         parameters: {
             query?: never;
@@ -1395,6 +1612,76 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_model_api_v1_admin_models__model_id__retire_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retry_model_api_v1_admin_models__model_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1479,7 +1766,7 @@ export interface operations {
             };
         };
     };
-    list_engines_api_v1_admin_engines_get: {
+    list_models_api_v1_models_get: {
         parameters: {
             query?: never;
             header?: {
@@ -1496,9 +1783,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    }[];
+                    "application/json": components["schemas"]["ModelListing"][];
                 };
             };
             /** @description Validation Error */
@@ -1512,89 +1797,20 @@ export interface operations {
             };
         };
     };
-    get_engine_api_v1_admin_engines__engine_id__get: {
+    register_node_api_v1_nodes_register_post: {
         parameters: {
             query?: never;
-            header?: {
-                "x-api-key"?: string | null;
-            };
-            path: {
-                engine_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    unload_engine_api_v1_admin_engines__engine_id__delete: {
-        parameters: {
-            query?: never;
-            header?: {
-                "x-api-key"?: string | null;
-            };
-            path: {
-                engine_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_audit_api_v1_admin_audit_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-                target_id?: string | null;
-            };
             header?: {
                 "x-api-key"?: string | null;
             };
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeRegistration"] | components["schemas"]["NodeRegistrationV2"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -1602,7 +1818,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AuditRecord"][];
+                    "application/json": components["schemas"]["Node"] | components["schemas"]["NodeV2"];
                 };
             };
             /** @description Validation Error */
@@ -1616,7 +1832,7 @@ export interface operations {
             };
         };
     };
-    list_models_v1_models_get: {
+    get_health_health_get: {
         parameters: {
             query?: never;
             header?: {
@@ -1633,7 +1849,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["GatewayModelList"];
+                    "application/json": components["schemas"]["HealthResponse"];
                 };
             };
             /** @description Validation Error */
@@ -1643,6 +1859,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_ready_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadyResponse"];
                 };
             };
         };
@@ -1704,6 +1940,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_models_v1_models_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayModelList"];
                 };
             };
             /** @description Validation Error */

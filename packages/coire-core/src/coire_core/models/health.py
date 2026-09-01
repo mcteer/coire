@@ -12,6 +12,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from coire_core.models.link import StudioDataLinkStatus
+from coire_core.models.node import NodeStatus, Reachability
+
 
 class HealthStatus(StrEnum):
     """Aggregate verdict for the control plane."""
@@ -41,7 +44,8 @@ class HealthResponse(BaseModel):
     status: HealthStatus
     version: str
     services: list[ServiceHealth] = Field(default_factory=list)
-    nodes: list[ServiceHealth] = Field(default_factory=list)
+    nodes: list[NodeHealth] = Field(default_factory=list)
+    links: list[StudioDataLinkStatus] = Field(default_factory=list)
     generated_at: datetime
 
 
@@ -53,3 +57,34 @@ class ReadyResponse(BaseModel):
     service: str
     version: str
     ready: Literal[True] = True
+
+
+class ProcessObservation(BaseModel):
+    """Bounded process resource observation; never an engine-control input."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pid: int = Field(gt=0)
+    kind: str = Field(max_length=32)
+    model_id: str | None = Field(default=None, max_length=255)
+    cpu_percent: float = Field(ge=0)
+    rss_bytes: int = Field(ge=0)
+    verified_at: datetime
+
+
+class NodeHealth(BaseModel):
+    """A node verdict evaluated using control-plane receipt time."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    verdict: Reachability
+    reason: str | None = Field(default=None, max_length=255)
+    fresh: bool
+    last_observed_at: datetime
+    last_success_at: datetime | None = None
+    seconds_since_heartbeat: float = Field(ge=0)
+    heartbeat_latency_ms: float | None = Field(default=None, ge=0)
+    clock_skew_seconds: float | None = None
+    process_state_verified: bool
+    observation: NodeStatus | None = None
