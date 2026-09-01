@@ -168,6 +168,13 @@ removed by the clarified architecture decision.
 The Thunderbolt partition test remains pending because `sudo ifconfig bridge0 down` requires an
 interactive operator password on the Studios; the attempted command made no network change.
 
+The follow-up footprint check on 2026-09-01 confirmed the same allowlisted paths and running
+LaunchDaemon on both hosts. `/opt/coire/envs/0.2.0/bin/python3` reported `mlx_lm 0.31.3` and
+`huggingface_hub` imported successfully. Directory totals were edge-a:
+`envs 400M`, `models 276M`, `python 70M`, `bin 35M`, `log 3.0M`, `hf-cache 148K`, `state 8.0K`;
+edge-b: `envs 392M`, `models 291M`, `python 70M`, `bin 35M`, `log 4.0M`, `hf-cache 24K`,
+`state 20K`. No files outside the uninstall allowlist were reported by the dry-run.
+
 ## CI: proving the shell check
 
 `SC-008` requires that a deliberately-introduced shell fails CI with a message naming the
