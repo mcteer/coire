@@ -116,7 +116,11 @@ class OpsModel:
                 models = response.json().get("data", [])
         except (httpx.HTTPError, TypeError, ValueError):
             return False
-        return any(item.get("id") == self._model_id for item in models if isinstance(item, dict))
+        return any(
+            item.get("id") == self._model_id and item.get("coire_load_state") == "loaded"
+            for item in models
+            if isinstance(item, dict)
+        )
 
     async def run(self, *, question: str, snapshot: ConsoleSnapshot) -> OpsModelTurn:
         deps = OpsModelDeps(snapshot=snapshot)

@@ -49,7 +49,7 @@ approve it, observe stopped state and an audit naming the human actor and ops pr
 - [X] T015 [P] [US1] Add proposal/create/confirm/decline contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
 - [X] T016 [P] [US1] Add exact resolved-action registry unit tests for unload, kill, pin, unpin, and load in `apps/coire-api/tests/unit/test_ops_actions.py`
 - [X] T017 [P] [US1] Add Ask Coire confirmation-card browser tests in `apps/coire-web/src/pages/admin/AskCoire.test.tsx`
-- [ ] T018 [US1] Add the normal unload approval and decline composed integration scenario in `tests/integration/test_ops_confirmations.py`
+- [X] T018 [US1] Add the normal unload approval and decline composed integration scenario in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 1
 
@@ -80,7 +80,7 @@ service-token, non-admin, and stale-state variants; exactly one exact human conf
 - [X] T029 [P] [US2] Add Argon2 token, canonical digest, expiry, and mismatch unit tests in `apps/coire-api/tests/unit/test_ops_tokens.py`
 - [X] T030 [P] [US2] Add row-lock concurrency and stale-precondition tests in `apps/coire-api/tests/unit/test_ops_confirmation.py`
 - [X] T031 [P] [US2] Add non-admin, API-key, and ops-service confirmation refusal contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
-- [ ] T032 [US2] Extend composed integration for concurrent single use, replay, expiry, redirection, and stale state in `tests/integration/test_ops_confirmations.py`
+- [X] T032 [US2] Extend composed integration for concurrent single use, replay, expiry, redirection, and stale state in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 2
 
@@ -106,7 +106,7 @@ degraded snapshot answer and one proposal refusal with zero model calls; restore
 - [X] T038 [P] [US3] Add deterministic degraded status/action classification tests in `apps/coire-api/tests/unit/test_ops_degraded.py`
 - [X] T039 [P] [US3] Add ops service model-health transition tests in `apps/coire-agent/tests/test_ops_service.py`
 - [X] T040 [P] [US3] Add degraded banner and disabled approval UI tests in `apps/coire-web/src/pages/admin/AskCoire.test.tsx`
-- [ ] T041 [US3] Extend composed integration for unavailable/recovered admin model with zero core inference in `tests/integration/test_ops_confirmations.py`
+- [X] T041 [US3] Extend composed integration for unavailable/recovered admin model with zero core inference in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 3
 
@@ -131,7 +131,7 @@ the image; no proposal exists and no shell, git, filesystem, Docker, acquisition
 - [X] T046 [P] [US4] Add tool enumeration and malformed/irreversible proposal tests in `apps/coire-agent/tests/test_ops_service.py`
 - [X] T047 [P] [US4] Add ops image boundary and package-content tests in `apps/coire-agent/tests/test_image_boundary.py`
 - [X] T048 [P] [US4] Add compose topology tests proving core-only ops placement and no Docker/Studio networks in `tests/integration/test_topology.py`
-- [ ] T049 [US4] Extend composed integration with retire/delete-user refusal and zero audit mutation in `tests/integration/test_ops_confirmations.py`
+- [X] T049 [US4] Extend composed integration with retire/delete-user refusal and zero audit mutation in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 4
 
@@ -150,7 +150,7 @@ the image; no proposal exists and no shell, git, filesystem, Docker, acquisition
 **Purpose**: Complete restart invalidation, observability, operations, generated artifacts, and all release gates.
 
 - [X] T055 Add session registration/heartbeat and prior-session proposal invalidation in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-agent/ops/coire_ops/service.py`
-- [ ] T056 [P] Add ops-container restart invalidation integration coverage in `tests/integration/test_ops_confirmations.py`
+- [X] T056 [P] Add ops-container restart invalidation integration coverage in `tests/integration/test_ops_confirmations.py`
 - [X] T057 [P] Add spans, bounded metrics, and structured logs across API and service paths in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-agent/ops/coire_ops/service.py`
 - [X] T058 [P] Add ops proposal/degraded panels and alerts in `deploy/observability/grafana/dashboards/runs.json` and `deploy/observability/alerts/coire-ops.yaml`
 - [X] T059 [P] Add observe, kill, restart, secret rotation, rollback, and stale-proposal procedures in `docs/runbooks/coire-ops.md`

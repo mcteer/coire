@@ -323,7 +323,9 @@ async def create_proposal(
         issued_to_user_id=conversation.admin_user_id,
         expires_at=expires_at,
     )
-    session.add_all((row, token))
+    session.add(row)
+    await session.flush()
+    session.add(token)
     await session.flush()
     await write_audit(
         session,

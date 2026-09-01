@@ -71,7 +71,9 @@ class ActionSpec:
 
 
 def resource_version(updated_at: datetime) -> str:
-    return updated_at.isoformat()
+    # Match Pydantic's JSON representation exposed by the state and instance APIs.  A proposal
+    # is built from those wire values, where UTC is rendered with ``Z`` rather than ``+00:00``.
+    return updated_at.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _check_precondition(action: ResolvedOpsAction, *, state: str, updated_at: datetime) -> None:

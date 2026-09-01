@@ -1869,7 +1869,7 @@ export interface components {
         /** ChatMessage */
         ChatMessage: {
             /** Content */
-            content: string | null;
+            content?: string | null;
             /** Name */
             name?: string | null;
             /**

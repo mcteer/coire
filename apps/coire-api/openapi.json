@@ -1807,8 +1807,7 @@
           }
         },
         "required": [
-          "role",
-          "content"
+          "role"
         ],
         "title": "ChatMessage",
         "type": "object"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -30,6 +31,7 @@ from coire_core.settings import Settings
 _semaphores: dict[str, asyncio.Semaphore] = {}
 _guard = asyncio.Lock()
 _engine_client: httpx.AsyncClient | None = None
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -243,6 +245,25 @@ async def complete(
                         headers=_node_headers(engine_url, settings),
                         timeout=settings.gateway_engine_request_timeout_s,
                     )
+                    if response.status_code == 422:
+                        try:
+                            errors = response.json().get("detail", [])
+                        except (ValueError, AttributeError):
+                            errors = []
+                        safe_errors = [
+                            {
+                                "loc": item.get("loc", []),
+                                "type": item.get("type", "unknown"),
+                                "msg": item.get("msg", "validation failed"),
+                            }
+                            for item in errors
+                            if isinstance(item, dict)
+                        ]
+                        logger.warning(
+                            "node engine proxy rejected gateway contract status=%d errors=%s",
+                            response.status_code,
+                            json.dumps(safe_errors, separators=(",", ":")),
+                        )
                     response.raise_for_status()
                     body = response.json()
             except (httpx.HTTPError, ValueError) as exc:
