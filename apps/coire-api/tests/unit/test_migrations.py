@@ -124,3 +124,19 @@ def test_model_instance_migration_preserves_legacy_engines_and_is_reversible() -
     assert "UPDATE engine_processes SET instance_id=id" in source
     assert "UPDATE memory_reservations r SET holder_id=e.instance_id::text" in source
     assert 'op.drop_column("engine_processes", "instance_id")' in source
+
+
+def test_sharded_serving_migration_is_reversible() -> None:
+    source = Path("apps/coire-api/alembic/versions/0008_sharded_serving.py").read_text()
+    assert 'revision: str = "0008_sharded_serving"' in source
+    assert 'down_revision: str | None = "0007_model_instances"' in source
+    for table in (
+        "link_observations",
+        "shard_groups",
+        "shard_commands",
+        "benchmark_runs",
+        "placement_benchmarks",
+        "benchmark_commands",
+    ):
+        assert f'"{table}"' in source
+        assert f'op.drop_table("{table}")' in source

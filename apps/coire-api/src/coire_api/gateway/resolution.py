@@ -12,16 +12,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.auth import Principal
 from coire_api.db import (
     EngineProcessRow,
+    InstanceMemberRow,
     ModelCopyRow,
     ModelInstanceRow,
     ModelRow,
     NodeRow,
+    ShardGroupRow,
     VariantCopyRow,
 )
 from coire_api.gateway.telemetry import tracer
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.registry import ModelState, Visibility
+from coire_core.models.sharding import ShardGroupState
 
 
 class ModelNotFoundError(Exception):
@@ -62,7 +65,7 @@ async def resolve_model(
         span.set_attribute("coire.model.id", str(model.id))
 
     result = await session.execute(
-        select(EngineProcessRow, NodeRow, VariantCopyRow)
+        select(EngineProcessRow, NodeRow, VariantCopyRow, ModelInstanceRow)
         .join(NodeRow, NodeRow.id == EngineProcessRow.node_id)
         .join(ModelInstanceRow, ModelInstanceRow.id == EngineProcessRow.instance_id)
         .join(
@@ -79,11 +82,71 @@ async def resolve_model(
         .order_by(
             case((NodeRow.name == affinity_node, 0), else_=1) if affinity_node else literal(0),
             ModelInstanceRow.in_flight,
-            ModelInstanceRow.id,
+            ModelInstanceRow.created_at.desc(),
         )
         .limit(1)
     )
     target = result.one_or_none()
+    sharded = (
+        await session.execute(
+            select(ModelInstanceRow, InstanceMemberRow, NodeRow, VariantCopyRow, ShardGroupRow)
+            .join(ShardGroupRow, ShardGroupRow.instance_id == ModelInstanceRow.id)
+            .join(
+                InstanceMemberRow,
+                (InstanceMemberRow.instance_id == ModelInstanceRow.id)
+                & (InstanceMemberRow.rank == 0),
+            )
+            .join(NodeRow, NodeRow.id == InstanceMemberRow.node_id)
+            .join(
+                VariantCopyRow,
+                (VariantCopyRow.variant_id == ModelInstanceRow.variant_id)
+                & (VariantCopyRow.node_id == NodeRow.id),
+            )
+            .where(
+                ModelInstanceRow.model_id == model.id,
+                ModelInstanceRow.state == InstanceState.READY,
+                ShardGroupRow.state == ShardGroupState.READY,
+                InstanceMemberRow.rank_healthy.is_(True),
+                VariantCopyRow.verified.is_(True),
+            )
+            .order_by(ModelInstanceRow.in_flight, ModelInstanceRow.created_at.desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    # Single-node and sharded instances are peers. Prefer an explicit affinity match, then
+    # least-loaded placement, then the newest ready instance so a newly requested placement
+    # is actually exercised instead of being shadowed forever by an older single.
+    sharded_key = (
+        (
+            0 if affinity_node and sharded is not None and sharded[2].name == affinity_node else 1,
+            sharded[0].in_flight,
+            -sharded[0].created_at.timestamp(),
+        )
+        if sharded is not None
+        else None
+    )
+    target_key = (
+        (
+            0 if affinity_node and target[1].name == affinity_node else 1,
+            target[3].in_flight,
+            -target[3].created_at.timestamp(),
+        )
+        if target is not None
+        else None
+    )
+    use_sharded = sharded_key is not None and (target_key is None or sharded_key < target_key)
+    if use_sharded:
+        assert sharded is not None
+        _instance, _member, node, copy, group = sharded
+        return ResolvedModel(
+            model.id,
+            model.slug,
+            model.context_window,
+            copy.path,
+            None,
+            node.name,
+            f"http://{node.name}.lab:9400/node/shard-groups/{group.id}/proxy",
+        )
     if target is None:
         # Feature 001 rows have no ModelVariant and therefore cannot be represented by an
         # instance until their acquisition record is upgraded. Keep the one-release gateway
@@ -118,7 +181,7 @@ async def resolve_model(
             node.name,
             f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
         )
-    engine, node, copy = target
+    engine, node, copy, _instance = target
     return ResolvedModel(
         model.id,
         model.slug,

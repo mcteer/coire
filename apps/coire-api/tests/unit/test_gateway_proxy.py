@@ -44,6 +44,24 @@ async def test_stream_records_upstream_first_chunk_timing() -> None:
 
 
 @pytest.mark.asyncio
+async def test_truncated_stream_emits_retry_guidance() -> None:
+    async def respond(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b'data: {"choices":[]}\n\n')
+
+    await proxy.close_engine_client()
+    proxy._engine_client = httpx.AsyncClient(transport=httpx.MockTransport(respond))
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    chunks: list[bytes] = []
+    with pytest.raises(proxy.EngineProxyError):
+        async for chunk in proxy.stream("http://engine", {}, settings):
+            chunks.append(chunk)
+    terminal = chunks[-1].decode()
+    assert "retry: 1000" in terminal
+    assert '"coire_retry_after": 1' in terminal
+    await proxy.close_engine_client()
+
+
+@pytest.mark.asyncio
 async def test_closing_gateway_stream_promptly_closes_upstream() -> None:
     closed = False
 

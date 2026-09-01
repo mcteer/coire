@@ -22,6 +22,7 @@ from coire_api.routes import (
     admin_ledger,
     admin_models,
     admin_nodes,
+    admin_sharding,
     admin_variants,
     health,
     instances,
@@ -54,9 +55,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from coire_api.gateway.proxy import close_engine_client, init_engine_client
 
         init_engine_client()
+        from coire_api.link_probe_coordinator import LinkProbeCoordinator
+
+        link_probe_coordinator = LinkProbeCoordinator(settings)
+        await link_probe_coordinator.start()
+        app.state.link_probe_coordinator = link_probe_coordinator
         from coire_api.nodes_prober import NodeProber
 
         prober = NodeProber(settings)
+        prober.set_link_probe_coordinator(link_probe_coordinator)
         await prober.start()
         app.state.prober = prober
 
@@ -76,14 +83,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         placement_executor = PlacementCommandExecutor(settings)
         await placement_executor.start()
         app.state.placement_executor = placement_executor
+        from coire_api.shard_executor import ShardCommandExecutor
+
+        shard_executor = ShardCommandExecutor(settings)
+        await shard_executor.start()
+        app.state.shard_executor = shard_executor
+        from coire_api.shard_reconciler import ShardReconciler
+
+        shard_reconciler = ShardReconciler(settings)
+        await shard_reconciler.start()
+        app.state.shard_reconciler = shard_reconciler
+        from coire_api.benchmark_executor import BenchmarkCommandExecutor
+
+        benchmark_executor = BenchmarkCommandExecutor(settings)
+        await benchmark_executor.start()
+        app.state.benchmark_executor = benchmark_executor
         logger.info("coire-api %s started", __version__)
         try:
             yield
         finally:
+            await benchmark_executor.stop()
+            await shard_reconciler.stop()
+            await shard_executor.stop()
             await placement_executor.stop()
             await acquisition_executor.stop()
             await reconciler.stop()
             await prober.stop()
+            await link_probe_coordinator.stop()
             await close_engine_client()
             await dispose_engine()
 
@@ -103,6 +129,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_variants.router)
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)
+    app.include_router(admin_sharding.router)
     app.include_router(v1.router)
 
     @app.middleware("http")

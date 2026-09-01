@@ -62,6 +62,21 @@ async def execute_instance_launch(instance_id_text: str) -> None:
         span.set_attribute("instance_id", instance_id_text)
         try:
             async with session_scope() as session:
+                candidate = await session.get(ModelInstanceRow, instance_id)
+                sharded = candidate is not None and candidate.policy.startswith("sharded:")
+            if sharded:
+                from coire_scheduler.sharded_instances import (
+                    execute_sharded_launch,
+                    teardown_sharded,
+                )
+
+                try:
+                    await execute_sharded_launch(instance_id)
+                except Exception:
+                    await teardown_sharded(instance_id, failed=True, reason="sharded launch failed")
+                    raise
+                return
+            async with session_scope() as session:
                 instance = await session.get(ModelInstanceRow, instance_id)
                 if instance is None or instance.state in {
                     InstanceState.READY,
@@ -236,6 +251,14 @@ async def instance_launch_workflow(instance_id: str) -> None:
 async def execute_instance_drain(instance_id_text: str) -> None:
     instance_id = uuid.UUID(instance_id_text)
     settings = get_settings()
+    async with session_scope() as session:
+        candidate = await session.get(ModelInstanceRow, instance_id)
+        sharded = candidate is not None and candidate.policy.startswith("sharded:")
+    if sharded:
+        from coire_scheduler.sharded_instances import drain_sharded
+
+        await drain_sharded(instance_id)
+        return
     command_id: uuid.UUID | None = None
     while command_id is None:
         async with session_scope() as session:

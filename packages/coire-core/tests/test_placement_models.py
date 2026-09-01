@@ -43,12 +43,12 @@ def test_budget_reduction_and_zero_sandbox_are_valid_updates() -> None:
         LedgerUpdate()
 
 
-def test_placement_policy_excludes_sharded_until_feature_006() -> None:
+def test_placement_policy_includes_feature_006_sharding() -> None:
     variant = uuid.uuid4()
     assert PlacementRequest(variant_id=variant, policy="single:auto").policy == "single:auto"
     assert (
         PlacementRequest(variant_id=variant, policy="pinned:coire-edge-b").policy
         == "pinned:coire-edge-b"
     )
-    with pytest.raises(ValidationError):
-        PlacementRequest(variant_id=variant, policy="sharded:tp")
+    assert PlacementRequest(variant_id=variant, policy="sharded:tp").policy == "sharded:tp"
+    assert PlacementRequest(variant_id=variant, policy="sharded:pp").policy == "sharded:pp"

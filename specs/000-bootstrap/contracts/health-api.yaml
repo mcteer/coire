@@ -176,7 +176,7 @@ components:
       # Nothing here was removed or renamed.
       type: object
       additionalProperties: false
-      required: [name, agent_version, uptime_seconds, cpu_percent, thermal_state, memory_total_bytes, memory_free_bytes, disk_total_bytes, disk_free_bytes, agent_cpu_percent, agent_rss_bytes, collection_budget_ok, path, sampled_at]
+      required: [name, agent_version, os_version, engine_version, uptime_seconds, cpu_percent, thermal_state, memory_total_bytes, memory_free_bytes, disk_total_bytes, disk_free_bytes, agent_cpu_percent, agent_rss_bytes, collection_budget_ok, path, sampled_at]
       properties:
         engines: { type: array, items: { type: object }, description: "feature 001: per-engine process status" }
         jobs: { type: array, items: { type: object }, description: "feature 001: active node jobs" }
@@ -185,6 +185,8 @@ components:
         store_free_bytes: { type: integer, description: "feature 001" }
         name: { type: string }
         agent_version: { type: string }
+        os_version: { type: string, description: "feature 006: automatic link-probe trigger" }
+        engine_version: { type: string, description: "feature 006: automatic link-probe trigger" }
         uptime_seconds: { type: number }
         cpu_percent: { type: number, minimum: 0, maximum: 100 }
         gpu_percent: { type: [number, "null"], minimum: 0, maximum: 100 }

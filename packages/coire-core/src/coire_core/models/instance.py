@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from coire_core.models.node import Reachability, ThermalState
 from coire_core.models.placement import MemoryReservation
+from coire_core.models.sharding import StudioLinkProjection
 
 
 class InstanceState(StrEnum):
@@ -33,7 +34,7 @@ class InstanceCreate(BaseModel):
     variant_id: uuid.UUID
     policy: str | None = Field(
         default=None,
-        pattern=r"^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+)$",
+        pattern=r"^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$",
     )
     affinity_node_id: uuid.UUID | None = None
 
@@ -80,6 +81,9 @@ class ModelInstance(BaseModel):
     updated_at: datetime
     transitioned_at: datetime
     drain_deadline: datetime | None = None
+    fallback_attempted_at: datetime | None = None
+    fallback_instance_id: uuid.UUID | None = None
+    fallback_no_fit: bool = False
 
 
 class NodeDeclaration(BaseModel):
@@ -124,3 +128,4 @@ class ClusterState(BaseModel):
     observed_at: datetime
     nodes: list[ClusterNodeState]
     instances: list[ModelInstance]
+    studio_link: StudioLinkProjection | None = None

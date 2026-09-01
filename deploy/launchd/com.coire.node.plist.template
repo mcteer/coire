@@ -68,6 +68,10 @@
         <string>__PREFIX__/models</string>
         <key>NODE_STATE_DIR</key>
         <string>__PREFIX__/state</string>
+        <key>SHARDING_JACCL_HOSTFILE</key>
+        <string>__PREFIX__/state/jaccl-hostfile.json</string>
+        <key>SHARDING_RING_HOSTFILE</key>
+        <string>__PREFIX__/state/ring-hostfile.json</string>
         <key>NODE_HF_CACHE_DIR</key>
         <string>__PREFIX__/hf-cache</string>
         <key>HF_HOME</key>

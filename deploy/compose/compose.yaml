@@ -67,6 +67,9 @@ services:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
       NODE_INVENTORY_FILE: /app/nodes.yaml
+      SHARDING_JACCL_HOSTFILE: /run/coire/cluster/jaccl-hostfile.json
+      SHARDING_RING_HOSTFILE: /run/coire/cluster/ring-hostfile.json
+    volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
     secrets: [postgres_password, key_signing_secret, node_tokens, admin_token]
     depends_on:
       postgres: {condition: service_healthy}
@@ -97,12 +100,15 @@ services:
       context: ../..
       dockerfile: apps/coire-api/docker/scheduler.Dockerfile
     # The only service on coire-docker, and it reaches the socket solely through the proxy.
-    networks: [coire-db, coire-internal, coire-docker, coire-telemetry]
+    networks: [coire-edge, coire-db, coire-internal, coire-docker, coire-telemetry]
     environment:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
       DOCKER_HOST: tcp://docker-socket-proxy:2375
-    secrets: [postgres_password]
+      SHARDING_JACCL_HOSTFILE: /run/coire/cluster/jaccl-hostfile.json
+      SHARDING_RING_HOSTFILE: /run/coire/cluster/ring-hostfile.json
+    volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
+    secrets: [postgres_password, node_tokens]
     depends_on:
       postgres: {condition: service_healthy}
     <<: *hardening

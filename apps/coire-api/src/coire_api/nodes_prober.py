@@ -31,9 +31,13 @@ class NodeProber:
         self._reconciler = reconciler
         self._task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
+        self._link_probe_coordinator: object | None = None
 
     def set_reconciler(self, reconciler: object) -> None:
         self._reconciler = reconciler
+
+    def set_link_probe_coordinator(self, coordinator: object) -> None:
+        self._link_probe_coordinator = coordinator
 
     async def start(self) -> None:
         self._stopping.clear()
@@ -125,8 +129,12 @@ class NodeProber:
             ok = False
 
         if ok:
-            recovered = row.reachability is not Reachability.HEALTHY
-            row.reachability = Reachability.HEALTHY
+            recovered = row.reachability in {Reachability.UNKNOWN, Reachability.UNREACHABLE}
+            # A sharded rank failure is a semantic degradation, not a transport failure.
+            # Successful /health probes must not erase it; a later successful group launch
+            # clears it after the rank has done real work again.
+            if row.reachability is not Reachability.DEGRADED:
+                row.reachability = Reachability.HEALTHY
             row.probe_failures = 0
             row.last_seen_at = datetime.now(UTC)
             if recovered and self._reconciler is not None:
@@ -134,6 +142,8 @@ class NodeProber:
                 # know about, or may have lost something it does (spec FR-015).
                 logger.info("node %s recovered; requesting a reconcile", row.name)
                 self._reconciler.request_reconcile(row.name)  # type: ignore[attr-defined]
+            if self._link_probe_coordinator is not None:
+                self._link_probe_coordinator.observe(row.name, status)  # type: ignore[attr-defined]
             return status
 
         row.probe_failures += 1

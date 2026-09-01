@@ -14,7 +14,14 @@ from urllib.parse import urlparse
 import httpx
 from sqlalchemy import select
 
-from coire_api.db import EngineProcessRow, MemoryReservationRow, ModelInstanceRow, session_scope
+from coire_api.db import (
+    EngineProcessRow,
+    InstanceMemberRow,
+    MemoryReservationRow,
+    ModelInstanceRow,
+    ShardGroupRow,
+    session_scope,
+)
 from coire_api.gateway.telemetry import queue_duration_ms, tracer
 from coire_api.placement.service import acquire_lease, refresh_lease, release_lease
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
@@ -57,7 +64,7 @@ def _client() -> httpx.AsyncClient:
 
 def _node_headers(engine_url: str, settings: Settings) -> dict[str, str]:
     parsed = urlparse(engine_url)
-    if not parsed.path.startswith("/node/engines/"):
+    if not parsed.path.startswith(("/node/engines/", "/node/shard-groups/")):
         return {}
     node = (parsed.hostname or "").split(".", 1)[0]
     token = settings.node_token_map.get(node, "")
@@ -79,6 +86,20 @@ class EngineSaturatedError(Exception):
 
 class EngineProxyError(Exception):
     pass
+
+
+def _stream_failure_event(retry_after_s: int = 1) -> bytes:
+    """Carry retry guidance after an SSE response has committed its HTTP headers."""
+    error = json.dumps(
+        {
+            "error": {
+                "message": "engine stream failed",
+                "type": "engine_error",
+                "coire_retry_after": retry_after_s,
+            }
+        }
+    )
+    return f"retry: {retry_after_s * 1000}\ndata: {error}\n\n".encode()
 
 
 @asynccontextmanager
@@ -104,14 +125,50 @@ async def engine_slot(engine_url: str, settings: Settings) -> AsyncIterator[None
 async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[None]:
     """Protect a resolved model from TTL/eviction for the full upstream request lifetime."""
     parsed = urlparse(engine_url)
+    segments = parsed.path.split("/")
     try:
-        engine_id = uuid.UUID(parsed.path.split("/")[3])
+        target_id = uuid.UUID(segments[3])
     except (ValueError, IndexError):
         yield
         return
-    lease_id: uuid.UUID | None = None
+    lease_ids: list[uuid.UUID] = []
+    instance_id: uuid.UUID | None = None
     async with session_scope() as session:
-        engine = await session.get(EngineProcessRow, engine_id)
+        if len(segments) > 2 and segments[2] == "shard-groups":
+            group = await session.get(ShardGroupRow, target_id)
+            instance_id = group.instance_id if group is not None else None
+            members = (
+                list(
+                    (
+                        await session.execute(
+                            select(InstanceMemberRow).where(
+                                InstanceMemberRow.instance_id == instance_id
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                if instance_id is not None
+                else []
+            )
+            for member in members:
+                if member.reservation_id is not None:
+                    lease = await acquire_lease(
+                        session,
+                        member.reservation_id,
+                        str(uuid.uuid4()),
+                        ttl_seconds=settings.placement_lease_ttl_s,
+                    )
+                    lease_ids.append(lease.id)
+        else:
+            engine = await session.get(EngineProcessRow, target_id)
+            if engine is not None:
+                instance_id = engine.instance_id
+        if len(segments) <= 2 or segments[2] != "shard-groups":
+            engine = await session.get(EngineProcessRow, target_id)
+        else:
+            engine = None
         if engine is not None and engine.model_id is not None:
             holder_id = str(engine.instance_id or engine.model_id)
             reservation = await session.scalar(
@@ -129,16 +186,15 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                     str(uuid.uuid4()),
                     ttl_seconds=settings.placement_lease_ttl_s,
                 )
-                lease_id = lease.id
-                if engine.instance_id is not None:
-                    instance = await session.get(ModelInstanceRow, engine.instance_id)
-                    if instance is not None:
-                        instance.in_flight += 1
+                lease_ids.append(lease.id)
+        if instance_id is not None and lease_ids:
+            instance = await session.get(ModelInstanceRow, instance_id)
+            if instance is not None:
+                instance.in_flight += 1
     try:
         stop_refresh = asyncio.Event()
 
         async def keep_fresh() -> None:
-            assert lease_id is not None
             interval = max(0.1, settings.placement_lease_ttl_s / 2)
             while not stop_refresh.is_set():
                 try:
@@ -146,23 +202,29 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                     return
                 except TimeoutError:
                     async with session_scope() as session:
-                        if not await refresh_lease(
-                            session, lease_id, ttl_seconds=settings.placement_lease_ttl_s
-                        ):
+                        refreshed = [
+                            await refresh_lease(
+                                session,
+                                lease_id,
+                                ttl_seconds=settings.placement_lease_ttl_s,
+                            )
+                            for lease_id in lease_ids
+                        ]
+                        if not all(refreshed):
                             return
 
-        refresher = asyncio.create_task(keep_fresh()) if lease_id is not None else None
+        refresher = asyncio.create_task(keep_fresh()) if lease_ids else None
         yield
     finally:
         stop_refresh.set()
         if refresher is not None:
             await refresher
-        if lease_id is not None:
+        if lease_ids:
             async with session_scope() as session:
-                await release_lease(session, lease_id)
-                engine = await session.get(EngineProcessRow, engine_id)
-                if engine is not None and engine.instance_id is not None:
-                    instance = await session.get(ModelInstanceRow, engine.instance_id)
+                for lease_id in lease_ids:
+                    await release_lease(session, lease_id)
+                if instance_id is not None:
+                    instance = await session.get(ModelInstanceRow, instance_id)
                     if instance is not None:
                         instance.in_flight = max(0, instance.in_flight - 1)
 
@@ -222,22 +284,11 @@ async def stream(
                                     done = True
                                 yield f"{line}\n\n".encode()
                         if not done:
-                            error = json.dumps(
-                                {
-                                    "error": {
-                                        "message": "engine stream failed",
-                                        "type": "engine_error",
-                                    }
-                                }
-                            )
-                            yield f"data: {error}\n\n".encode()
+                            yield _stream_failure_event()
                             raise EngineProxyError("engine stream ended without a terminator")
             except httpx.HTTPError as exc:
                 if done:
                     return
                 span.record_exception(exc)
-                error = json.dumps(
-                    {"error": {"message": "engine stream failed", "type": "engine_error"}}
-                )
-                yield f"data: {error}\n\n".encode()
+                yield _stream_failure_event()
                 raise EngineProxyError(str(exc)) from exc
