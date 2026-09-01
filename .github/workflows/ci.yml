@@ -158,6 +158,25 @@ jobs:
           merge-multiple: true
       - name: load images
         run: for t in /tmp/images/*.tar; do docker load -i "$t"; done
+      # docker save/load preserves image IDs but not RepoDigests on Linux. Push the two
+      # run images through a loopback registry so tests use production-shaped immutable
+      # name@sha256 references rather than mutable CI tags.
+      - name: assign run-image repository digests
+        run: |
+          docker run -d --name coire-ci-registry -p 127.0.0.1:5000:5000 \
+            docker.io/library/registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
+          for attempt in {1..20}; do
+            curl --fail --silent http://127.0.0.1:5000/v2/ >/dev/null && break
+            if [ "$attempt" -eq 20 ]; then
+              docker logs coire-ci-registry
+              exit 1
+            fi
+            sleep 1
+          done
+          for image in coire-agent coire-run-relay; do
+            docker tag "${image}:ci" "localhost:5000/${image}:ci"
+            docker push "localhost:5000/${image}:ci"
+          done
       # Built here rather than in the build matrix: this image is CI-only, is exempt from the
       # image policy by name, and is never published (research R9).
       - name: build the CI node image
@@ -200,6 +219,9 @@ jobs:
         run: |
           docker compose -p coire-it ps -a || true
           docker compose -p coire-it logs --no-color --tail=100 || true
+      - name: remove the ephemeral registry
+        if: always()
+        run: docker rm -f coire-ci-registry || true
 
   # The engine only runs on Apple Silicon, so the one thing the Linux job cannot prove -
   # that a real mlx_lm.server loads, serves, and is measured correctly - is proven here
