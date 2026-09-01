@@ -141,6 +141,20 @@ class Settings(BaseSettings):
     harness_summary_threshold: float = Field(default=0.8, gt=0.0, le=1.0)
     harness_evaluation_pass_score: float = Field(default=0.8, ge=0.0, le=1.0)
 
+    # --- core-only ops harness -----------------------------------------
+    ops_service_token: SecretStr = SecretStr("")
+    """Dedicated read/propose credential mounted only into coire-ops and coire-api."""
+
+    ops_service_url: str = "http://coire-ops:8003"
+    ops_api_url: str = "http://coire-api:8000"
+    ops_gateway_url: str = "http://coire-api:8000/v1"
+    ops_model_id: str = ""
+    ops_confirmation_ttl_s: int = Field(default=300, ge=30, le=300)
+    ops_session_heartbeat_s: float = Field(default=10.0, gt=0.0, le=60.0)
+    ops_session_stale_s: float = Field(default=30.0, gt=0.0, le=300.0)
+    ops_request_timeout_s: float = Field(default=120.0, gt=0.0, le=900.0)
+    ops_service_instance: str = Field(default="coire-ops", min_length=1, max_length=128)
+
     # --- Studio container runs ----------------------------------------
     run_concurrency_cap: int = Field(default=3, ge=1, le=32)
     run_default_memory_bytes: int = Field(default=4 * 1024**3, ge=128 * 1024**2)

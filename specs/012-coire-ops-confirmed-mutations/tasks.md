@@ -11,11 +11,11 @@ and observability tests are required by the spec and constitution.
 
 **Purpose**: Establish the feature branch, service skeleton, configuration, and dependency evidence.
 
-- [ ] T001 Verify branch ancestry and record the Feature 012 Constitution Check in `specs/012-coire-ops-confirmed-mutations/plan.md`
-- [ ] T002 Create the ops contract module and exports in `packages/coire-core/src/coire_core/models/ops.py` and `packages/coire-core/src/coire_core/models/__init__.py`
-- [ ] T003 [P] Add ops confirmation settings and secret-file configuration in `packages/coire-core/src/coire_core/settings.py` and `deploy/compose/README.md`
-- [ ] T004 [P] Convert the existing ops entrypoint into a long-lived service skeleton in `apps/coire-agent/ops/coire_ops/app.py` and `apps/coire-agent/ops/coire_ops/__main__.py`
-- [ ] T005 Document every added dependency, exact pin, purpose, and licence in `specs/012-coire-ops-confirmed-mutations/review.md` and update the lockfile only if required
+- [X] T001 Verify branch ancestry and record the Feature 012 Constitution Check in `specs/012-coire-ops-confirmed-mutations/plan.md`
+- [X] T002 Create the ops contract module and exports in `packages/coire-core/src/coire_core/models/ops.py` and `packages/coire-core/src/coire_core/models/__init__.py`
+- [X] T003 [P] Add ops confirmation settings and secret-file configuration in `packages/coire-core/src/coire_core/settings.py` and `deploy/compose/README.md`
+- [X] T004 [P] Convert the existing ops entrypoint into a long-lived service skeleton in `apps/coire-agent/ops/coire_ops/app.py` and `apps/coire-agent/ops/coire_ops/__main__.py`
+- [X] T005 Document every added dependency, exact pin, purpose, and licence in `specs/012-coire-ops-confirmed-mutations/review.md` and update the lockfile only if required
 
 ---
 
@@ -23,8 +23,8 @@ and observability tests are required by the spec and constitution.
 
 **Purpose**: Add strict shared state, authentication, persistence, and routing foundations required by every story.
 
-- [ ] T006 Add strict conversation, message, session, action-union, proposal, token, confirmation, decline, and response schemas in `packages/coire-core/src/coire_core/models/ops.py`
-- [ ] T007 [P] Add schema validation and irreversible-action exclusion tests in `packages/coire-core/tests/test_ops_models.py`
+- [X] T006 Add strict conversation, message, session, action-union, proposal, token, confirmation, decline, and response schemas in `packages/coire-core/src/coire_core/models/ops.py`
+- [X] T007 [P] Add schema validation and irreversible-action exclusion tests in `packages/coire-core/tests/test_ops_models.py`
 - [ ] T008 Add ops session/conversation/message/proposal/token rows and constraints in `apps/coire-api/src/coire_api/db.py`
 - [ ] T009 Add a reversible Alembic migration for ops state in `apps/coire-api/alembic/versions/0012_ops_confirmations.py`
 - [ ] T010 [P] Add migration upgrade/downgrade coverage in `apps/coire-api/tests/unit/test_migrations.py`
