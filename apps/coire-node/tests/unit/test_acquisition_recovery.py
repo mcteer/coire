@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 
 from coire_core.models.jobs import JobKind, JobStage, JobStatus
 from coire_core.settings import Settings
@@ -44,7 +45,7 @@ def test_resume_restarts_only_incomplete_jobs(tmp_path, monkeypatch) -> None:  #
     assert spawned == [active.job_id]
 
 
-def test_state_file_omits_unset_nullable_fields_for_rolling_upgrade(tmp_path) -> None:
+def test_state_file_omits_unset_nullable_fields_for_rolling_upgrade(tmp_path: Path) -> None:
     settings = Settings(  # type: ignore[call-arg]
         node_state_dir=str(tmp_path / "state"),
         node_store_dir=str(tmp_path / "models"),
