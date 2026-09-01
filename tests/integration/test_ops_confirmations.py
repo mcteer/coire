@@ -8,9 +8,7 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from pathlib import Path
-from threading import Event, Thread
 from typing import Any, cast
 
 import httpx
@@ -159,35 +157,6 @@ def _ready_instance(
     return model_id, ready
 
 
-@contextmanager
-def _session_heartbeats(api_url: str, service_headers: dict[str, str], session_id: str) -> Any:
-    """Keep a manual ops session alive while CI waits on a model lifecycle."""
-
-    stop = Event()
-    with httpx.Client(base_url=api_url, timeout=10) as initial_client:
-        initial = initial_client.patch(
-            f"/api/v1/internal/ops/sessions/{session_id}", headers=service_headers
-        )
-        assert initial.status_code == 200, initial.text
-
-    def heartbeat() -> None:
-        with httpx.Client(base_url=api_url, timeout=10) as heartbeat_client:
-            while not stop.wait(10):
-                response = heartbeat_client.patch(
-                    f"/api/v1/internal/ops/sessions/{session_id}", headers=service_headers
-                )
-                if response.status_code != 200:
-                    return
-
-    worker = Thread(target=heartbeat, name="ops-session-heartbeat", daemon=True)
-    worker.start()
-    try:
-        yield
-    finally:
-        stop.set()
-        worker.join(timeout=5)
-
-
 def _context(
     client: httpx.Client,
     human_headers: dict[str, str],
@@ -329,8 +298,11 @@ def test_confirmation_is_single_use_not_redirectable_and_restart_invalidates(
         assert statuses == [202, 409]
 
         # Resource-version drift is detected after authority consumption and before mutation.
-        with _session_heartbeats(api_url, service, session_id):
-            _, ready_again = _ready_instance(client, admin_headers)
+        _, ready_again = _ready_instance(client, admin_headers)
+        # The lifecycle above is intentionally allowed to run for several minutes in CI. Start
+        # a fresh volatile ops session for the next proposal instead of coupling this assertion
+        # to the stale-session timeout; session expiry is covered by the dedicated contract test.
+        session_id, conversation_id = _context(client, human, service)
         changed = _proposal(
             client,
             service,
