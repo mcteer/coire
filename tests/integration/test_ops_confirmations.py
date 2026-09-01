@@ -6,7 +6,7 @@ import os
 import subprocess
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, cast
@@ -30,6 +30,32 @@ pytestmark = [
 ]
 COMPOSE_DIR = Path(__file__).resolve().parents[2] / "deploy" / "compose"
 _VERIFIED_MODEL: tuple[str, str] | None = None
+
+
+@pytest.fixture(autouse=True)
+def stop_background_ops_service() -> Iterator[None]:
+    """Keep manual session tests from racing the real service's session generation.
+
+    These cases register synthetic ops sessions directly so they can exercise exact
+    confirmation transitions.  The compose ops process would heartbeat its own session
+    every ten seconds and legitimately supersede those sessions (revoking their pending
+    proposals).  The degradation case explicitly recreates the real service when needed.
+    """
+    subprocess.run(
+        ["docker", "compose", "-p", "coire-it", "stop", "--timeout", "10", "coire-ops"],
+        cwd=COMPOSE_DIR,
+        check=False,
+        capture_output=True,
+    )
+    try:
+        yield
+    finally:
+        subprocess.run(
+            ["docker", "compose", "-p", "coire-it", "stop", "--timeout", "10", "coire-ops"],
+            cwd=COMPOSE_DIR,
+            check=False,
+            capture_output=True,
+        )
 
 
 def _sql(statement: str) -> None:
