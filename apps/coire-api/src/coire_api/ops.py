@@ -413,3 +413,61 @@ async def decline_proposal(
     )
     await session.flush()
     return row
+
+
+async def execute_confirmed_proposal(
+    session: AsyncSession,
+    *,
+    proposal_id: uuid.UUID,
+    principal: Principal,
+    settings: object,
+) -> OpsProposalRow:
+    """Dispatch one already-consumed proposal through the fixed domain registry."""
+    from coire_api.ops_actions import OpsActionError, execute_action
+    from coire_core.settings import Settings
+
+    if not isinstance(settings, Settings):
+        raise TypeError("settings must be Settings")
+    row = await session.scalar(
+        select(OpsProposalRow).where(OpsProposalRow.id == proposal_id).with_for_update()
+    )
+    if row is None:
+        raise OpsNotFound("ops proposal not found")
+    if row.state is not OpsProposalState.CONFIRMED:
+        raise InvalidConfirmation("not_pending")
+    row.state = OpsProposalState.EXECUTING
+    await session.flush()
+    action = resolved_ops_action_adapter.validate_python(row.action)
+    try:
+        result = await execute_action(session, action, principal, settings)
+    except OpsActionError as exc:
+        row.state = OpsProposalState.STALE if exc.stale else OpsProposalState.FAILED
+        row.failure_code = exc.code
+        row.result = {"detail": exc.detail}
+        await write_principal_audit(
+            session,
+            principal=principal,
+            action="ops.action.refused" if exc.stale else "ops.action.failed",
+            target_type=action.target_type,
+            target_id=str(action.target_id),
+            outcome=AuditOutcome.REFUSED if exc.stale else AuditOutcome.ERROR,
+            detail={"code": exc.code, "proposer": row.proposer},
+        )
+    else:
+        row.state = OpsProposalState.EXECUTED
+        row.result = result
+        row.executed_at = datetime.now(UTC)
+        await write_principal_audit(
+            session,
+            principal=principal,
+            action="ops.action.executed",
+            target_type=action.target_type,
+            target_id=str(action.target_id),
+            detail={
+                "operation": action.operation,
+                "proposal_id": str(row.id),
+                "proposer": row.proposer,
+            },
+        )
+    await session.flush()
+    return row

@@ -47,7 +47,7 @@ approve it, observe stopped state and an audit naming the human actor and ops pr
 ### Tests for User Story 1
 
 - [ ] T015 [P] [US1] Add proposal/create/confirm/decline contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
-- [ ] T016 [P] [US1] Add exact resolved-action registry unit tests for unload, kill, pin, unpin, and load in `apps/coire-api/tests/unit/test_ops_actions.py`
+- [X] T016 [P] [US1] Add exact resolved-action registry unit tests for unload, kill, pin, unpin, and load in `apps/coire-api/tests/unit/test_ops_actions.py`
 - [ ] T017 [P] [US1] Add Ask Coire confirmation-card browser tests in `apps/coire-web/src/pages/admin/AskCoire.test.tsx`
 - [ ] T018 [US1] Add the normal unload approval and decline composed integration scenario in `tests/integration/test_ops_confirmations.py`
 
@@ -55,8 +55,8 @@ approve it, observe stopped state and an audit naming the human actor and ops pr
 
 - [X] T019 [US1] Implement canonical action digesting and proposal/token minting in `apps/coire-api/src/coire_api/ops_tokens.py`
 - [X] T020 [US1] Implement conversation/message/proposal persistence and projection in `apps/coire-api/src/coire_api/ops.py`
-- [ ] T021 [US1] Implement the fixed reversible action registry using existing domain services in `apps/coire-api/src/coire_api/ops_actions.py`
-- [ ] T022 [US1] Implement proposal, confirmation, decline, and status endpoints in `apps/coire-api/src/coire_api/routes/admin_ops.py` and `apps/coire-api/src/coire_api/routes/internal_ops.py`
+- [X] T021 [US1] Implement the fixed reversible action registry using existing domain services in `apps/coire-api/src/coire_api/ops_actions.py`
+- [X] T022 [US1] Implement proposal, confirmation, decline, and status endpoints in `apps/coire-api/src/coire_api/routes/admin_ops.py` and `apps/coire-api/src/coire_api/routes/internal_ops.py`
 - [ ] T023 [US1] Extend the ops-only admin client with typed read/propose methods and no confirm method in `apps/coire-agent/ops/coire_ops/admin_client.py`
 - [ ] T024 [US1] Implement model-backed answer/proposal orchestration with shallow validated output in `apps/coire-agent/ops/coire_ops/service.py` and `apps/coire-agent/ops/coire_ops/model.py`
 - [ ] T025 [US1] Wire `coire-api` Ask Coire forwarding to the internal ops service in `apps/coire-api/src/coire_api/routes/admin_ops.py`
@@ -78,16 +78,16 @@ service-token, non-admin, and stale-state variants; exactly one exact human conf
 ### Tests for User Story 2
 
 - [X] T029 [P] [US2] Add Argon2 token, canonical digest, expiry, and mismatch unit tests in `apps/coire-api/tests/unit/test_ops_tokens.py`
-- [ ] T030 [P] [US2] Add row-lock concurrency and stale-precondition tests in `apps/coire-api/tests/unit/test_ops_confirmation.py`
+- [X] T030 [P] [US2] Add row-lock concurrency and stale-precondition tests in `apps/coire-api/tests/unit/test_ops_confirmation.py`
 - [ ] T031 [P] [US2] Add non-admin, API-key, and ops-service confirmation refusal contract tests in `apps/coire-api/tests/contract/test_admin_ops.py`
 - [ ] T032 [US2] Extend composed integration for concurrent single use, replay, expiry, redirection, and stale state in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 2
 
-- [ ] T033 [US2] Implement constant-time token parsing/verification and bounded refusal reasons in `apps/coire-api/src/coire_api/ops_tokens.py`
-- [ ] T034 [US2] Atomically lock, validate, consume, and transition a pending proposal before dispatch in `apps/coire-api/src/coire_api/ops.py`
-- [ ] T035 [US2] Enforce current resource version/state preconditions in every action handler in `apps/coire-api/src/coire_api/ops_actions.py`
-- [ ] T036 [US2] Map confirmation failures to RFC 9457 problem details without leaking tokens or model output in `apps/coire-api/src/coire_api/routes/admin_ops.py`
+- [X] T033 [US2] Implement constant-time token parsing/verification and bounded refusal reasons in `apps/coire-api/src/coire_api/ops_tokens.py`
+- [X] T034 [US2] Atomically lock, validate, consume, and transition a pending proposal before dispatch in `apps/coire-api/src/coire_api/ops.py`
+- [X] T035 [US2] Enforce current resource version/state preconditions in every action handler in `apps/coire-api/src/coire_api/ops_actions.py`
+- [X] T036 [US2] Map confirmation failures to RFC 9457 problem details without leaking tokens or model output in `apps/coire-api/src/coire_api/routes/admin_ops.py`
 - [ ] T037 [US2] Add bounded confirmation-refusal metrics and structured proposal identifiers in `apps/coire-api/src/coire_api/ops.py`
 
 **Checkpoint**: No altered or repeated authority can execute, and concurrent redemption is exactly once.

@@ -8,12 +8,14 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Request, status
 
 from coire_api import ops
+from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
 from coire_api.console.ops import answer_from_snapshot
 from coire_api.console.service import project_snapshot
 from coire_api.db import OpsProposalRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.ops_tokens import InvalidConfirmation
+from coire_core.models.audit import AuditOutcome
 from coire_core.models.ops import (
     OpsConfirmRequest,
     OpsConversation,
@@ -129,6 +131,7 @@ async def confirm_proposal(
     body: OpsConfirmRequest,
     principal: CurrentAdmin,
     session: SessionDep,
+    settings: SettingsDep,
 ) -> OpsProposal:
     _human_user_id(principal)
     try:
@@ -140,13 +143,40 @@ async def confirm_proposal(
             principal=principal,
         )
     except InvalidConfirmation as exc:
-        await session.rollback()
+        await write_principal_audit(
+            session,
+            principal=principal,
+            action="ops.confirmation.refused",
+            target_type="ops_proposal",
+            target_id=str(proposal_id),
+            outcome=AuditOutcome.REFUSED,
+            detail={"reason": exc.reason},
+        )
+        await session.commit()
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             {"code": f"confirmation_{exc.reason}", "detail": "confirmation refused"},
         ) from exc
+    # Commit the single-use authority before invoking a mutation. A crash after this point can
+    # be reconciled, but can never make the token redeemable again.
     await session.commit()
-    return ops.project_proposal(row)
+    row = await ops.execute_confirmed_proposal(
+        session,
+        proposal_id=proposal_id,
+        principal=principal,
+        settings=settings,
+    )
+    await session.commit()
+    projected = ops.project_proposal(row)
+    if projected.state.value in {"stale", "failed"}:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "code": projected.failure_code or "action_refused",
+                "detail": (projected.result or {}).get("detail", "confirmed action refused"),
+            },
+        )
+    return projected
 
 
 @router.post("/proposals/{proposal_id}/decline", response_model=OpsProposal)

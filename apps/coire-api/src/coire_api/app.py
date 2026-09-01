@@ -268,8 +268,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(HTTPException)
     async def compatible_problem(request: Request, exc: HTTPException) -> JSONResponse:
         """Keep legacy control routes stable while `/v1` uses RFC 9457."""
-        run_problem = request.url.path.startswith(("/api/v1/runs", "/api/v1/admin/runs"))
-        if not request.url.path.startswith("/v1/") and not run_problem:
+        typed_problem = request.url.path.startswith(
+            ("/v1/", "/api/v1/runs", "/api/v1/admin/runs", "/api/v1/admin/ops")
+        )
+        if not typed_problem:
             return JSONResponse(
                 status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers
             )
