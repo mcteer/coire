@@ -956,6 +956,26 @@ export interface paths {
         patch: operations["heartbeat_ops_session_api_v1_internal_ops_sessions__session_id__patch"];
         trace?: never;
     };
+    "/api/v1/internal/ops/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Ops Snapshot
+         * @description Return the bounded control-plane facts available to the ops model.
+         */
+        get: operations["read_ops_snapshot_api_v1_internal_ops_snapshot_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -5847,6 +5867,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OpsSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_ops_snapshot_api_v1_internal_ops_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleSnapshot"];
                 };
             };
             /** @description Validation Error */

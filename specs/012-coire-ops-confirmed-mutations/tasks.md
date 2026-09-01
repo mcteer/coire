@@ -57,9 +57,9 @@ approve it, observe stopped state and an audit naming the human actor and ops pr
 - [X] T020 [US1] Implement conversation/message/proposal persistence and projection in `apps/coire-api/src/coire_api/ops.py`
 - [X] T021 [US1] Implement the fixed reversible action registry using existing domain services in `apps/coire-api/src/coire_api/ops_actions.py`
 - [X] T022 [US1] Implement proposal, confirmation, decline, and status endpoints in `apps/coire-api/src/coire_api/routes/admin_ops.py` and `apps/coire-api/src/coire_api/routes/internal_ops.py`
-- [ ] T023 [US1] Extend the ops-only admin client with typed read/propose methods and no confirm method in `apps/coire-agent/ops/coire_ops/admin_client.py`
-- [ ] T024 [US1] Implement model-backed answer/proposal orchestration with shallow validated output in `apps/coire-agent/ops/coire_ops/service.py` and `apps/coire-agent/ops/coire_ops/model.py`
-- [ ] T025 [US1] Wire `coire-api` Ask Coire forwarding to the internal ops service in `apps/coire-api/src/coire_api/routes/admin_ops.py`
+- [X] T023 [US1] Extend the ops-only admin client with typed read/propose methods and no confirm method in `apps/coire-agent/ops/coire_ops/admin_client.py`
+- [X] T024 [US1] Implement model-backed answer/proposal orchestration with shallow validated output in `apps/coire-agent/ops/coire_ops/service.py` and `apps/coire-agent/ops/coire_ops/model.py`
+- [X] T025 [US1] Wire `coire-api` Ask Coire forwarding to the internal ops service in `apps/coire-api/src/coire_api/routes/admin_ops.py`
 - [ ] T026 [US1] Render exact action details, expiry, approve, decline, pending, and terminal states in `apps/coire-web/src/pages/admin/AskCoire.tsx` and `apps/coire-web/src/components/OpsProposalCard.tsx`
 - [ ] T027 [US1] Add API client methods for conversations, messages, approval, and decline in `apps/coire-web/src/api/client.ts`
 - [ ] T028 [US1] Audit creation, decline, confirmation, dispatch, and terminal outcome with actor/proposer fields in `apps/coire-api/src/coire_api/ops.py` and `apps/coire-api/src/coire_api/ops_actions.py`
@@ -103,16 +103,16 @@ degraded snapshot answer and one proposal refusal with zero model calls; restore
 
 ### Tests for User Story 3
 
-- [ ] T038 [P] [US3] Add deterministic degraded status/action classification tests in `apps/coire-api/tests/unit/test_ops_degraded.py`
-- [ ] T039 [P] [US3] Add ops service model-health transition tests in `apps/coire-agent/tests/test_ops_service.py`
+- [X] T038 [P] [US3] Add deterministic degraded status/action classification tests in `apps/coire-api/tests/unit/test_ops_degraded.py`
+- [X] T039 [P] [US3] Add ops service model-health transition tests in `apps/coire-agent/tests/test_ops_service.py`
 - [ ] T040 [P] [US3] Add degraded banner and disabled approval UI tests in `apps/coire-web/src/pages/admin/AskCoire.test.tsx`
 - [ ] T041 [US3] Extend composed integration for unavailable/recovered admin model with zero core inference in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 3
 
-- [ ] T042 [US3] Extend the existing bounded snapshot responder to distinguish status questions from action requests in `apps/coire-api/src/coire_api/console/ops.py`
-- [ ] T043 [US3] Add pinned-model readiness probing and automatic healthy/degraded transitions in `apps/coire-agent/ops/coire_ops/service.py`
-- [ ] T044 [US3] Implement no-model degraded responses and proposal suppression in `apps/coire-api/src/coire_api/routes/admin_ops.py`
+- [X] T042 [US3] Extend the existing bounded snapshot responder to distinguish status questions from action requests in `apps/coire-api/src/coire_api/console/ops.py`
+- [X] T043 [US3] Add pinned-model readiness probing and automatic healthy/degraded transitions in `apps/coire-agent/ops/coire_ops/service.py`
+- [X] T044 [US3] Implement no-model degraded responses and proposal suppression in `apps/coire-api/src/coire_api/routes/admin_ops.py`
 - [ ] T045 [US3] Surface degraded status, source facts, and recovery in `apps/coire-web/src/pages/admin/AskCoire.tsx`
 
 **Checkpoint**: Ops remains useful and mutation-free while its Studio model is unavailable.
@@ -128,14 +128,14 @@ the image; no proposal exists and no shell, git, filesystem, Docker, acquisition
 
 ### Tests for User Story 4
 
-- [ ] T046 [P] [US4] Add tool enumeration and malformed/irreversible proposal tests in `apps/coire-agent/tests/test_ops_service.py`
+- [X] T046 [P] [US4] Add tool enumeration and malformed/irreversible proposal tests in `apps/coire-agent/tests/test_ops_service.py`
 - [ ] T047 [P] [US4] Add ops image boundary and package-content tests in `apps/coire-agent/tests/test_image_boundary.py`
 - [ ] T048 [P] [US4] Add compose topology tests proving core-only ops placement and no Docker/Studio networks in `tests/integration/test_topology.py`
 - [ ] T049 [US4] Extend composed integration with retire/delete-user refusal and zero audit mutation in `tests/integration/test_ops_confirmations.py`
 
 ### Implementation for User Story 4
 
-- [ ] T050 [US4] Restrict the Pydantic AI ops toolset to bounded read/propose tools in `apps/coire-agent/ops/coire_ops/model.py`
+- [X] T050 [US4] Restrict the Pydantic AI ops toolset to bounded read/propose tools in `apps/coire-agent/ops/coire_ops/model.py`
 - [ ] T051 [US4] Harden the ops image to contain only its runtime/client and no user harness or debug tools in `apps/coire-agent/ops.Dockerfile`
 - [ ] T052 [US4] Add the isolated, resource-limited, secret-backed `coire-ops` service and healthcheck in `deploy/compose/compose.yaml`
 - [ ] T053 [US4] Restrict `coire-ops` to internal API and telemetry networks and keep it off the Docker proxy/edge/database networks in `deploy/compose/compose.yaml`

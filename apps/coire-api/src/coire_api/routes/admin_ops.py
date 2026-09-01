@@ -5,12 +5,13 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
+import httpx
 from fastapi import APIRouter, HTTPException, Request, status
 
 from coire_api import ops
 from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
-from coire_api.console.ops import answer_from_snapshot
+from coire_api.console.ops import answer_from_snapshot, degraded_action_refusal, is_action_request
 from coire_api.console.service import project_snapshot
 from coire_api.db import OpsProposalRow
 from coire_api.deps import SessionDep, SettingsDep
@@ -25,6 +26,7 @@ from coire_core.models.ops import (
     OpsMessageCreate,
     OpsMessageRole,
     OpsProposal,
+    OpsServiceTurnRequest,
     OpsTurnResponse,
     OpsTurnStatus,
 )
@@ -84,10 +86,48 @@ async def post_message(
         )
     except ops.OpsNotFound as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ops conversation not found") from exc
-    # The deterministic path is the safe foundation. Model-backed forwarding replaces this
-    # branch only after the isolated service has registered a healthy session.
+    active = await ops.current_session(session)
+    if active is not None:
+        try:
+            async with httpx.AsyncClient(
+                base_url=settings.ops_service_url,
+                headers={
+                    "Authorization": (
+                        f"Bearer {settings.ops_service_token.get_secret_value()}"
+                    )
+                },
+                timeout=settings.ops_request_timeout_s,
+            ) as client:
+                response = await client.post(
+                    "/turn",
+                    json=OpsServiceTurnRequest(
+                        conversation_id=conversation_id,
+                        question=body.question,
+                    ).model_dump(mode="json"),
+                )
+                response.raise_for_status()
+                turn = OpsTurnResponse.model_validate(response.json())
+        except (httpx.HTTPError, ValueError):
+            pass
+        else:
+            await ops.append_message(
+                session,
+                conversation_id=conversation_id,
+                role=OpsMessageRole.OPS,
+                content=turn.answer,
+            )
+            conversation = await ops.get_conversation(session, conversation_id)
+            conversation.degraded = False
+            conversation.updated_at = datetime.now(UTC)
+            await session.commit()
+            return turn
+
     snapshot = await project_snapshot(request, principal, session, settings)
-    answer = answer_from_snapshot(snapshot)
+    answer = (
+        degraded_action_refusal(snapshot)
+        if is_action_request(body.question)
+        else answer_from_snapshot(snapshot)
+    )
     await ops.append_message(
         session,
         conversation_id=conversation_id,

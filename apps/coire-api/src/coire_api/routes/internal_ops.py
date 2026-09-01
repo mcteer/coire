@@ -5,12 +5,14 @@ from __future__ import annotations
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from coire_api import ops
 from coire_api.auth import Principal, require_ops_scope
+from coire_api.console.service import project_snapshot
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.ops_tokens import InvalidConfirmation
+from coire_core.models.console import ConsoleSnapshot
 from coire_core.models.ops import (
     OpsProposalIssued,
     OpsProposalSubmission,
@@ -21,6 +23,19 @@ from coire_core.models.ops import (
 router = APIRouter(prefix="/api/v1/internal/ops", tags=["internal: ops"])
 OpsSessionPrincipal = Annotated[Principal, Depends(require_ops_scope("ops:session"))]
 OpsProposalPrincipal = Annotated[Principal, Depends(require_ops_scope("ops:propose"))]
+OpsReadPrincipal = Annotated[Principal, Depends(require_ops_scope("ops:read"))]
+
+
+@router.get("/snapshot", response_model=ConsoleSnapshot)
+async def read_ops_snapshot(
+    request: Request,
+    principal: OpsReadPrincipal,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> ConsoleSnapshot:
+    """Return the bounded control-plane facts available to the ops model."""
+
+    return await project_snapshot(request, principal, session, settings)
 
 
 @router.post("/sessions", response_model=OpsSession, status_code=status.HTTP_201_CREATED)

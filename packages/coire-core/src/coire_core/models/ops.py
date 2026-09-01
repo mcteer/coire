@@ -160,6 +160,15 @@ class OpsMessageCreate(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
 
 
+class OpsServiceTurnRequest(BaseModel):
+    """Internal API-to-ops request; it carries no human confirmation authority."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    conversation_id: uuid.UUID
+    question: str = Field(min_length=1, max_length=1000)
+
+
 class OpsMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
