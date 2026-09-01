@@ -40,6 +40,12 @@ class AuditAction(StrEnum):
     MODEL_PIN = "model.pin"
     MODEL_UNPIN = "model.unpin"
     PLACEMENT_REQUEST = "placement.request"
+    INSTANCE_CREATE = "instance.create"
+    INSTANCE_DRAIN = "instance.drain"
+    INSTANCE_TRANSITION = "instance.transition"
+    NODE_DECLARE = "node.declare"
+    NODE_TOKEN_ROTATE = "node.registration_token.rotate"
+    NODE_TOKEN_REVOKE = "node.registration_token.revoke"
 
 
 class AuditRecord(BaseModel):

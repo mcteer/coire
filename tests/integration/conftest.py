@@ -12,10 +12,14 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import shutil
 import subprocess
+import tempfile
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 
 REPO = Path(__file__).resolve().parents[2]
@@ -47,8 +51,8 @@ POSTGRES_PASSWORD = f"it-{secrets.token_urlsafe(24)}"
 # The admin bearer for this run (ADR-0004). Generated, not fixed, for the same reason as the
 # password above: the leak test greps the tree for the literal value.
 ADMIN_TOKEN = f"it-admin-{secrets.token_urlsafe(24)}"
-NODE_TOKEN_A = f"it-node-a-{secrets.token_urlsafe(16)}"
-NODE_TOKEN_B = f"it-node-b-{secrets.token_urlsafe(16)}"
+NODE_TOKENS: dict[str, str] = {}
+SECRETS_DIR = Path(tempfile.mkdtemp(prefix="coire-it-secrets-"))
 
 INTEGRATION_PORT = os.environ.get("COIRE_IT_PORT", "18080")
 INTEGRATION_API_PORT = os.environ.get("COIRE_IT_API_PORT", "18081")
@@ -63,11 +67,13 @@ INTEGRATION_SECRETS = {
     "COIRE_SECRET_POSTGRES_PASSWORD": POSTGRES_PASSWORD,
     "COIRE_SECRET_KEY_SIGNING_SECRET": f"it-{secrets.token_urlsafe(32)}",
     "COIRE_SECRET_ADMIN_TOKEN": ADMIN_TOKEN,
-    "COIRE_SECRET_NODE_TOKENS": json.dumps(
-        {"coire-edge-a": NODE_TOKEN_A, "coire-edge-b": NODE_TOKEN_B}
-    ),
-    "COIRE_IT_NODE_TOKEN_A": NODE_TOKEN_A,
-    "COIRE_IT_NODE_TOKEN_B": NODE_TOKEN_B,
+    # Nodes are deliberately started without usable credentials. The fixture declares them
+    # through the admin API, installs the returned one-time tokens, and recreates the affected
+    # services. This proves a fresh database cannot materialise workers by self-registration.
+    "COIRE_SECRET_NODE_TOKENS": "{}",
+    "COIRE_IT_NODE_TOKEN_A": "unissued-a",
+    "COIRE_IT_NODE_TOKEN_B": "unissued-b",
+    "COIRE_SECRETS_DIR": str(SECRETS_DIR),
     "COIRE_IT_PORT": INTEGRATION_PORT,
     "COIRE_IT_API_PORT": INTEGRATION_API_PORT,
 }
@@ -75,6 +81,82 @@ INTEGRATION_SECRETS = {
 
 def integration_env(**extra: str) -> dict[str, str]:
     return {**os.environ, **INTEGRATION_SECRETS, **extra}
+
+
+def _declare_and_register_nodes(env: dict[str, str]) -> None:
+    headers = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+    declarations = {
+        "coire-edge-a": "coire-edge-a.fabric",
+        "coire-edge-b": "coire-edge-b.fabric",
+    }
+    with httpx.Client(base_url=API_URL, timeout=30) as client:
+        for name, data_host in declarations.items():
+            response = client.post(
+                "/api/v1/admin/nodes",
+                headers=headers,
+                json={
+                    "name": name,
+                    "control_host": name,
+                    "data_host": data_host,
+                    "memory_total_bytes": 64 * 1024**3,
+                    "disk_total_bytes": 64 * 1024**3,
+                },
+            )
+            assert response.status_code == 201, response.text
+            NODE_TOKENS[name] = str(response.json()["token"])
+
+    token_json = json.dumps(NODE_TOKENS)
+    INTEGRATION_SECRETS.update(
+        {
+            "COIRE_SECRET_NODE_TOKENS": token_json,
+            "COIRE_IT_NODE_TOKEN_A": NODE_TOKENS["coire-edge-a"],
+            "COIRE_IT_NODE_TOKEN_B": NODE_TOKENS["coire-edge-b"],
+        }
+    )
+    (SECRETS_DIR / "node_tokens").write_text(token_json)
+    recreate_env = integration_env(COMPOSE_PROJECT_NAME=PROJECT)
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-p",
+            PROJECT,
+            "up",
+            "-d",
+            "--force-recreate",
+            "coire-api",
+            "coire-scheduler",
+            "node-a",
+            "node-b",
+        ],
+        cwd=COMPOSE_DIR,
+        env=recreate_env,
+        check=True,
+        capture_output=True,
+    )
+    deadline = time.monotonic() + 60
+    with httpx.Client(base_url=API_URL, timeout=10) as client:
+        while time.monotonic() < deadline:
+            try:
+                state = client.get("/api/v1/state", headers=headers).json()
+                admin_nodes = client.get("/api/v1/admin/nodes", headers=headers).json()
+                ready = {
+                    item["name"]
+                    for item in state["nodes"]
+                    if item["reachability"] == "healthy" and item["budget_bytes"] > 0
+                }
+                reporting_capacity = {
+                    item["name"]
+                    for item in admin_nodes
+                    if item["status"] is not None
+                    and item["status"].get("memory_budget_bytes", 0) > 0
+                }
+                if ready >= set(declarations) and reporting_capacity >= set(declarations):
+                    return
+            except (httpx.HTTPError, ValueError):
+                pass
+            time.sleep(1)
+    raise AssertionError("declared integration nodes did not register")
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -120,6 +202,7 @@ def stack() -> Iterator[None]:
             f"\n--- ps ---\n{ps.stdout}\n--- logs ---\n{logs.stdout}",
             pytrace=False,
         )
+    _declare_and_register_nodes(env)
     try:
         yield
     finally:
@@ -130,6 +213,7 @@ def stack() -> Iterator[None]:
                 env=env,
                 capture_output=True,
             )
+            shutil.rmtree(SECRETS_DIR, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")
@@ -151,4 +235,4 @@ def admin_headers() -> dict[str, str]:
 
 @pytest.fixture(scope="session")
 def node_tokens() -> dict[str, str]:
-    return {"coire-edge-a": NODE_TOKEN_A, "coire-edge-b": NODE_TOKEN_B}
+    return dict(NODE_TOKENS)

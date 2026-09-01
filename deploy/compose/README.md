@@ -25,5 +25,7 @@ Placement uses `PLACEMENT_DEFAULT_BUDGET_BYTES` (230 GiB), `PLACEMENT_SANDBOX_BY
 `PLACEMENT_LEASE_TTL_S` (60). The budget is authoritative; measured resident memory is used
 only for drift telemetry. Reducing a budget below current reservations blocks admission but
 does not force eviction.
+Instance lifecycle uses `INSTANCE_DRAIN_TIMEOUT_S` (30) for bounded graceful drain and
+`INSTANCE_EVENT_POLL_INTERVAL_S` (0.5) for persisted SSE replay polling.
 Raw and converted files remain under the configured Studio model store; DBOS metadata remains in
 Postgres. See [`docs/runbooks/acquisition.md`](../../docs/runbooks/acquisition.md).

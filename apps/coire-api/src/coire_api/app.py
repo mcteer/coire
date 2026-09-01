@@ -24,6 +24,7 @@ from coire_api.routes import (
     admin_nodes,
     admin_variants,
     health,
+    instances,
     models,
     nodes,
     v1,
@@ -94,6 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     app.include_router(health.router)
+    app.include_router(instances.router)
     app.include_router(nodes.router)
     app.include_router(models.router)
     app.include_router(admin_acquisitions.router)

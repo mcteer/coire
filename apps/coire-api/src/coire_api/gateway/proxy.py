@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import httpx
 from sqlalchemy import select
 
-from coire_api.db import EngineProcessRow, MemoryReservationRow, session_scope
+from coire_api.db import EngineProcessRow, MemoryReservationRow, ModelInstanceRow, session_scope
 from coire_api.gateway.telemetry import queue_duration_ms, tracer
 from coire_api.placement.service import acquire_lease, refresh_lease, release_lease
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
@@ -113,11 +113,12 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
     async with session_scope() as session:
         engine = await session.get(EngineProcessRow, engine_id)
         if engine is not None and engine.model_id is not None:
+            holder_id = str(engine.instance_id or engine.model_id)
             reservation = await session.scalar(
                 select(MemoryReservationRow).where(
                     MemoryReservationRow.node_id == engine.node_id,
                     MemoryReservationRow.holder_type == ReservationHolder.MODEL,
-                    MemoryReservationRow.holder_id == str(engine.model_id),
+                    MemoryReservationRow.holder_id == holder_id,
                     MemoryReservationRow.state == MemoryReservationState.HELD,
                 )
             )
@@ -129,6 +130,10 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                     ttl_seconds=settings.placement_lease_ttl_s,
                 )
                 lease_id = lease.id
+                if engine.instance_id is not None:
+                    instance = await session.get(ModelInstanceRow, engine.instance_id)
+                    if instance is not None:
+                        instance.in_flight += 1
     try:
         stop_refresh = asyncio.Event()
 
@@ -155,6 +160,11 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
         if lease_id is not None:
             async with session_scope() as session:
                 await release_lease(session, lease_id)
+                engine = await session.get(EngineProcessRow, engine_id)
+                if engine is not None and engine.instance_id is not None:
+                    instance = await session.get(ModelInstanceRow, engine.instance_id)
+                    if instance is not None:
+                        instance.in_flight = max(0, instance.in_flight - 1)
 
 
 async def complete(

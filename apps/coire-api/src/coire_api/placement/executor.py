@@ -15,13 +15,16 @@ from coire_api.db import (
     EngineProcessRow,
     EvictionEventRow,
     MemoryReservationRow,
+    ModelInstanceRow,
     NodeRow,
     PlacementCommandRow,
     PlacementDecisionRow,
     session_scope,
 )
+from coire_api.instance.service import transition
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_core.models.engine import EngineState
+from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, PlacementState
 from coire_core.settings import Settings
 
@@ -141,6 +144,28 @@ class PlacementCommandExecutor:
                     if reservation is not None:
                         reservation.state = MemoryReservationState.RELEASED
                         reservation.released_at = datetime.now(UTC)
+                        try:
+                            instance_id = uuid.UUID(reservation.holder_id)
+                        except ValueError:
+                            instance_id = None
+                        instance = (
+                            await session.get(ModelInstanceRow, instance_id)
+                            if instance_id is not None
+                            else None
+                        )
+                        if instance is not None and instance.state is InstanceState.READY:
+                            await transition(
+                                session,
+                                instance.id,
+                                InstanceState.DRAINING,
+                                reason="placement unload requested",
+                            )
+                            await transition(
+                                session,
+                                instance.id,
+                                InstanceState.STOPPED,
+                                reason="engine unload confirmed",
+                            )
                     if engine is not None:
                         engine.state = EngineState.STOPPED
                         engine.stopped_at = datetime.now(UTC)

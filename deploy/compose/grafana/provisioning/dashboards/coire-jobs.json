@@ -51,6 +51,16 @@
       ],
       "links": [{"title": "Placement traces", "url": "/explore?left={\"datasource\":\"Tempo\",\"queries\":[{\"query\":\"coire.scheduler.placement\"}]}"}],
       "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+    },
+    {
+      "type": "timeseries",
+      "title": "Instance lifecycle transitions and failures",
+      "targets": [
+        {"expr": "sum by (state) (rate(coire_instance_transitions_total[5m]))", "legendFormat": "{{state}}"},
+        {"expr": "sum by (reason) (rate(coire_instance_failures_total[5m]))", "legendFormat": "failed {{reason}}"}
+      ],
+      "links": [{"title": "Instance traces", "url": "/explore?left={\"datasource\":\"Tempo\",\"queries\":[{\"query\":\"coire.scheduler.instance\"}]}"}],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
     }
   ]
 }

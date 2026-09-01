@@ -22,6 +22,7 @@ from sqlalchemy import select
 
 from coire_api.db import (
     AcquisitionWorkflowRow,
+    ModelInstanceRow,
     PlacementDecisionRow,
     dispose_engine,
     init_engine,
@@ -30,10 +31,12 @@ from coire_api.db import (
 from coire_api.telemetry import configure_telemetry
 from coire_core.models.acquisition import AcquisitionState
 from coire_core.models.health import ReadyResponse
+from coire_core.models.instance import InstanceState
 from coire_core.models.placement import PlacementState
 from coire_core.settings import get_settings
 from coire_scheduler.acquisition import acquisition_workflow
 from coire_scheduler.dbos_runtime import DBOSRuntime
+from coire_scheduler.instances import instance_drain_workflow, instance_launch_workflow
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
 
 SERVICE_NAME = "coire-scheduler"
@@ -78,7 +81,7 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
                                         PlacementState.LOADING,
                                     ]
                                 ),
-                                PlacementDecisionRow.policy != "idle-ttl",
+                                PlacementDecisionRow.policy.notin_(["idle-ttl", "instance-drain"]),
                             )
                         )
                     ).scalars()
@@ -86,6 +89,31 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
             for decision_id in placement_ids:
                 with SetWorkflowID(f"placement-{decision_id}"):
                     DBOS.start_workflow(placement_workflow, str(decision_id))
+            async with session_scope() as session:
+                instance_rows = list(
+                    (
+                        await session.execute(
+                            select(ModelInstanceRow.id, ModelInstanceRow.state).where(
+                                ModelInstanceRow.state.in_(
+                                    [
+                                        InstanceState.REQUESTED,
+                                        InstanceState.RESERVING,
+                                        InstanceState.LAUNCHING,
+                                        InstanceState.WARMING,
+                                        InstanceState.DRAINING,
+                                    ]
+                                )
+                            )
+                        )
+                    ).tuples()
+                )
+            for instance_id, instance_state in instance_rows:
+                if instance_state is InstanceState.DRAINING:
+                    with SetWorkflowID(f"instance-drain-{instance_id}"):
+                        DBOS.start_workflow(instance_drain_workflow, str(instance_id))
+                else:
+                    with SetWorkflowID(f"instance-{instance_id}"):
+                        DBOS.start_workflow(instance_launch_workflow, str(instance_id))
         except Exception:
             logger.exception("acquisition dispatcher pass failed")
         with suppress(TimeoutError):

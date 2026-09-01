@@ -357,8 +357,27 @@ export interface paths {
          */
         get: operations["list_nodes_api_v1_admin_nodes_get"];
         put?: never;
-        post?: never;
+        /** Declare Node */
+        post: operations["declare_node_api_v1_admin_nodes_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/nodes/{node_id}/registration-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rotate Registration Token */
+        post: operations["rotate_registration_token_api_v1_admin_nodes__node_id__registration_token_post"];
+        /** Revoke Registration Token */
+        delete: operations["revoke_registration_token_api_v1_admin_nodes__node_id__registration_token_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -373,6 +392,59 @@ export interface paths {
         };
         /** Get Placement */
         get: operations["get_placement_api_v1_admin_placements__decision_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Instances */
+        get: operations["list_instances_api_v1_instances_get"];
+        put?: never;
+        /** Create Instance */
+        post: operations["create_instance_api_v1_instances_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instances/{instance_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Instance */
+        get: operations["get_instance_api_v1_instances__instance_id__get"];
+        put?: never;
+        post?: never;
+        /** Drain Instance */
+        delete: operations["drain_instance_api_v1_instances__instance_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/instances/{instance_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Instance Events */
+        get: operations["instance_events_api_v1_instances__instance_id__events_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -418,6 +490,23 @@ export interface paths {
          * @description Register or re-register a declared node. Idempotent on name.
          */
         post: operations["register_node_api_v1_nodes_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cluster State */
+        get: operations["cluster_state_api_v1_state_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -605,6 +694,8 @@ export interface components {
         };
         /** AnthropicMessagesRequest */
         AnthropicMessagesRequest: {
+            /** Coire Affinity Node */
+            coire_affinity_node?: string | null;
             /**
              * Coire Wait For Model
              * @default true
@@ -748,6 +839,8 @@ export interface components {
         };
         /** ChatCompletionRequest */
         ChatCompletionRequest: {
+            /** Coire Affinity Node */
+            coire_affinity_node?: string | null;
             /**
              * Coire Wait For Model
              * @default true
@@ -799,6 +892,43 @@ export interface components {
             tool_call_id?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /** ClusterNodeState */
+        ClusterNodeState: {
+            /** Budget Bytes */
+            budget_bytes: number;
+            /** Cpu Percent */
+            cpu_percent?: number | null;
+            /** Gpu Percent */
+            gpu_percent?: number | null;
+            /** Health Observed At */
+            health_observed_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            reachability: components["schemas"]["Reachability"];
+            /** Reservations */
+            reservations?: components["schemas"]["MemoryReservation"][];
+            /** Reserved Bytes */
+            reserved_bytes: number;
+            /** @default unknown */
+            thermal_state: components["schemas"]["ThermalState"];
+        };
+        /** ClusterState */
+        ClusterState: {
+            /** Instances */
+            instances: components["schemas"]["ModelInstance"][];
+            /** Nodes */
+            nodes: components["schemas"]["ClusterNodeState"][];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
         };
         /** GatewayModel */
         GatewayModel: {
@@ -873,6 +1003,48 @@ export interface components {
          * @enum {string}
          */
         HealthStatus: "healthy" | "degraded" | "unhealthy";
+        /** InstanceCreate */
+        InstanceCreate: {
+            /** Affinity Node Id */
+            affinity_node_id?: string | null;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Policy */
+            policy?: string | null;
+            /**
+             * Variant Id
+             * Format: uuid
+             */
+            variant_id: string;
+        };
+        /** InstanceMember */
+        InstanceMember: {
+            /** Engine Id */
+            engine_id?: string | null;
+            /** Host */
+            host: string;
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            /** Node Name */
+            node_name: string;
+            /** Port */
+            port?: number | null;
+            /** Rank */
+            rank: number;
+            /** Reservation Id */
+            reservation_id?: string | null;
+        };
+        /**
+         * InstanceState
+         * @enum {string}
+         */
+        InstanceState: "requested" | "reserving" | "launching" | "warming" | "ready" | "draining" | "stopped" | "failed";
         /** LedgerUpdate */
         LedgerUpdate: {
             /** Budget Bytes */
@@ -987,6 +1159,55 @@ export interface components {
             repo_id: string;
             /** Tags */
             tags?: components["schemas"]["Tag"][];
+        };
+        /** ModelInstance */
+        ModelInstance: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Drain Deadline */
+            drain_deadline?: string | null;
+            effective_state: components["schemas"]["InstanceState"];
+            /** Failure Code */
+            failure_code?: string | null;
+            /** Failure Detail */
+            failure_detail?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** In Flight */
+            in_flight: number;
+            /** Members */
+            members?: components["schemas"]["InstanceMember"][];
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Placement Decision Id */
+            placement_decision_id?: string | null;
+            /** Policy */
+            policy: string;
+            state: components["schemas"]["InstanceState"];
+            /**
+             * Transitioned At
+             * Format: date-time
+             */
+            transitioned_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Variant Id
+             * Format: uuid
+             */
+            variant_id: string;
         };
         /**
          * ModelListing
@@ -1128,6 +1349,21 @@ export interface components {
             registered_at: string;
             role: components["schemas"]["NodeRole"];
         };
+        /** NodeDeclaration */
+        NodeDeclaration: {
+            /** Control Host */
+            control_host: string;
+            /** Data Host */
+            data_host?: string | null;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            /** Gpu Cores */
+            gpu_cores?: number | null;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /** Name */
+            name: string;
+        };
         /**
          * NodeEndpointSet
          * @description Stable endpoint identities advertised by a v2 node agent.
@@ -1170,6 +1406,24 @@ export interface components {
              * Token
              * Format: password
              */
+            token: string;
+        };
+        /**
+         * NodeRegistrationCredential
+         * @description One-time plaintext response. The database stores only its digest.
+         */
+        NodeRegistrationCredential: {
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            /** Token */
             token: string;
         };
         /**
@@ -1429,6 +1683,11 @@ export interface components {
          * @enum {string}
          */
         Tag: "coding" | "general" | "reasoning" | "vision" | "image";
+        /**
+         * ThermalState
+         * @enum {string}
+         */
+        ThermalState: "nominal" | "fair" | "serious" | "critical" | "unknown";
         /**
          * ToolCalling
          * @enum {string}
@@ -2389,6 +2648,105 @@ export interface operations {
             };
         };
     };
+    declare_node_api_v1_admin_nodes_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeDeclaration"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeRegistrationCredential"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rotate_registration_token_api_v1_admin_nodes__node_id__registration_token_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeRegistrationCredential"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_registration_token_api_v1_admin_nodes__node_id__registration_token_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                node_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_placement_api_v1_admin_placements__decision_id__get: {
         parameters: {
             query?: never;
@@ -2410,6 +2768,170 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["PlacementDecision"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_instances_api_v1_instances_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelInstance"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_instance_api_v1_instances_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstanceCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelInstance"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_instance_api_v1_instances__instance_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelInstance"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    drain_instance_api_v1_instances__instance_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelInstance"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    instance_events_api_v1_instances__instance_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Last-Event-ID"?: number | null;
+                "x-api-key"?: string | null;
+            };
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -2475,6 +2997,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Node"] | components["schemas"]["NodeV2"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cluster_state_api_v1_state_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClusterState"];
                 };
             };
             /** @description Validation Error */

@@ -15,6 +15,7 @@ from coire_api.db import (
     EngineProcessRow,
     EvictionEventRow,
     MemoryReservationRow,
+    ModelInstanceRow,
     ModelRow,
     ModelVariantRow,
     NodeMemoryLedgerRow,
@@ -254,6 +255,12 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             ledger = await session.get(NodeMemoryLedgerRow, node.id)
             if decision is None or model is None or variant is None or ledger is None:
                 raise RuntimeError("placement state disappeared")
+            instance = await session.scalar(
+                select(ModelInstanceRow).where(
+                    ModelInstanceRow.placement_decision_id == decision.id
+                )
+            )
+            target_holder_id = str(instance.id if instance is not None else model.id)
             async with node_admission_lock(session, node.id):
                 reservations = (
                     (
@@ -368,7 +375,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                     select(MemoryReservationRow).where(
                         MemoryReservationRow.node_id == node.id,
                         MemoryReservationRow.holder_type == ReservationHolder.MODEL,
-                        MemoryReservationRow.holder_id == str(model.id),
+                        MemoryReservationRow.holder_id == target_holder_id,
                     )
                 )
                 if target_reservation is None:
@@ -376,7 +383,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                         MemoryReservationRow(
                             node_id=node.id,
                             holder_type=ReservationHolder.MODEL,
-                            holder_id=str(model.id),
+                            holder_id=target_holder_id,
                             bytes=decision.required_bytes,
                             pinned=decision.policy.startswith("pinned:"),
                             state=MemoryReservationState.PENDING,
@@ -397,7 +404,10 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                 engine = await session.scalar(
                     select(EngineProcessRow).where(
                         EngineProcessRow.node_id == node.id,
-                        EngineProcessRow.model_id == uuid.UUID(reservation.holder_id),
+                        (
+                            (EngineProcessRow.instance_id == uuid.UUID(reservation.holder_id))
+                            | (EngineProcessRow.model_id == uuid.UUID(reservation.holder_id))
+                        ),
                         EngineProcessRow.state.in_([EngineState.READY, EngineState.STARTING]),
                     )
                 )
@@ -439,19 +449,25 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             variant = await session.get(ModelVariantRow, decision.variant_id) if decision else None
             if decision is None or model is None or variant is None:
                 raise RuntimeError("placement state disappeared before reserve")
+            instance = await session.scalar(
+                select(ModelInstanceRow).where(
+                    ModelInstanceRow.placement_decision_id == decision.id
+                )
+            )
+            target_holder_id = str(instance.id if instance is not None else model.id)
             async with node_admission_lock(session, node.id):
                 reservation = await session.scalar(
                     select(MemoryReservationRow).where(
                         MemoryReservationRow.node_id == node.id,
                         MemoryReservationRow.holder_type == ReservationHolder.MODEL,
-                        MemoryReservationRow.holder_id == str(model.id),
+                        MemoryReservationRow.holder_id == target_holder_id,
                     )
                 )
                 if reservation is None:
                     reservation = MemoryReservationRow(
                         node_id=node.id,
                         holder_type=ReservationHolder.MODEL,
-                        holder_id=str(model.id),
+                        holder_id=target_holder_id,
                         bytes=decision.required_bytes,
                         pinned=decision.policy.startswith("pinned:"),
                         state=MemoryReservationState.PENDING,
@@ -470,6 +486,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                 )
                 if engine is None:
                     engine = EngineProcessRow(
+                        instance_id=instance.id if instance is not None else None,
                         model_id=model.id,
                         node_id=node.id,
                         port=0,
@@ -538,11 +555,21 @@ async def execute_placement(decision_id: str) -> None:
                     decision.refusal_code = type(exc).__name__.lower()[:64]
                     decision.refusal_detail = "placement failed; inspect the correlated trace"
                     if decision.selected_node_id is not None:
+                        instance = await session.scalar(
+                            select(ModelInstanceRow).where(
+                                ModelInstanceRow.placement_decision_id == decision.id
+                            )
+                        )
                         reservation = await session.scalar(
                             select(MemoryReservationRow).where(
                                 MemoryReservationRow.node_id == decision.selected_node_id,
                                 MemoryReservationRow.holder_type == ReservationHolder.MODEL,
-                                MemoryReservationRow.holder_id == str(decision.model_id),
+                                MemoryReservationRow.holder_id.in_(
+                                    [
+                                        str(decision.model_id),
+                                        str(instance.id) if instance is not None else "",
+                                    ]
+                                ),
                                 MemoryReservationRow.state == MemoryReservationState.PENDING,
                             )
                         )
@@ -576,7 +603,11 @@ async def execute_idle_ttl_pass() -> int:
             .all()
         )
         for reservation in reservations:
-            model = await session.get(ModelRow, uuid.UUID(reservation.holder_id))
+            holder_uuid = uuid.UUID(reservation.holder_id)
+            instance = await session.get(ModelInstanceRow, holder_uuid)
+            model = await session.get(
+                ModelRow, instance.model_id if instance is not None else holder_uuid
+            )
             if model is None:
                 continue
             active = await session.scalar(
@@ -597,19 +628,28 @@ async def execute_idle_ttl_pass() -> int:
             engine = await session.scalar(
                 select(EngineProcessRow).where(
                     EngineProcessRow.model_id == model.id,
+                    *(
+                        [EngineProcessRow.instance_id == instance.id]
+                        if instance is not None
+                        else []
+                    ),
                     EngineProcessRow.node_id == reservation.node_id,
                     EngineProcessRow.state == EngineState.READY,
                 )
             )
-            variant = await session.scalar(
-                select(ModelVariantRow)
-                .where(
-                    ModelVariantRow.model_id == model.id,
-                    ModelVariantRow.validated.is_(True),
-                    ModelVariantRow.state == VariantState.READY,
+            variant = (
+                await session.get(ModelVariantRow, instance.variant_id)
+                if instance is not None
+                else await session.scalar(
+                    select(ModelVariantRow)
+                    .where(
+                        ModelVariantRow.model_id == model.id,
+                        ModelVariantRow.validated.is_(True),
+                        ModelVariantRow.state == VariantState.READY,
+                    )
+                    .order_by(ModelVariantRow.is_default.desc(), ModelVariantRow.created_at)
+                    .limit(1)
                 )
-                .order_by(ModelVariantRow.is_default.desc(), ModelVariantRow.created_at)
-                .limit(1)
             )
             if engine is None or variant is None:
                 continue

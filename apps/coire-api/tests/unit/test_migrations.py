@@ -108,3 +108,19 @@ def test_memory_ledger_migration_is_reversible() -> None:
     ):
         assert f'"{table}"' in source
     assert '"placement_commands",\n        "eviction_events"' in source
+
+
+def test_model_instance_migration_preserves_legacy_engines_and_is_reversible() -> None:
+    source = Path("apps/coire-api/alembic/versions/0007_model_instances.py").read_text()
+    assert 'revision: str = "0007_model_instances"' in source
+    assert 'down_revision: str | None = "0006_memory_ledger"' in source
+    for table in (
+        "model_instances",
+        "instance_members",
+        "instance_transitions",
+        "registration_attempts",
+    ):
+        assert f'"{table}"' in source
+    assert "UPDATE engine_processes SET instance_id=id" in source
+    assert "UPDATE memory_reservations r SET holder_id=e.instance_id::text" in source
+    assert 'op.drop_column("engine_processes", "instance_id")' in source

@@ -12,17 +12,18 @@ from sqlalchemy import select
 from coire_api.db import (
     EngineProcessRow,
     ModelCopyRow,
+    ModelInstanceRow,
     ModelRow,
     ModelVariantRow,
     NodeRow,
-    PlacementDecisionRow,
     session_scope,
 )
 from coire_api.gateway.telemetry import tracer
+from coire_api.instance.service import append_initial_transition
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_core.models.engine import EngineState
+from coire_core.models.instance import InstanceState
 from coire_core.models.node import Reachability
-from coire_core.models.placement import PlacementState
 from coire_core.settings import Settings
 
 
@@ -54,7 +55,7 @@ coordinator = LoadCoordinator()
 
 async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -> bool:
     """Use feature-004 placement for variant-backed models; return false for legacy rows."""
-    decision_id: uuid.UUID | None = None
+    instance_id: uuid.UUID | None = None
     async with session_scope() as session:
         model = await session.get(ModelRow, model_id)
         if model is None:
@@ -71,54 +72,51 @@ async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -
         if variant is None:
             return False
         ready = await session.scalar(
-            select(EngineProcessRow.id).where(
-                EngineProcessRow.model_id == model_id,
-                EngineProcessRow.state == EngineState.READY,
+            select(ModelInstanceRow.id).where(
+                ModelInstanceRow.model_id == model_id,
+                ModelInstanceRow.state == InstanceState.READY,
             )
         )
         if ready is not None:
             return True
         active = await session.scalar(
-            select(PlacementDecisionRow)
+            select(ModelInstanceRow)
             .where(
-                PlacementDecisionRow.model_id == model_id,
-                PlacementDecisionRow.state.in_(
+                ModelInstanceRow.model_id == model_id,
+                ModelInstanceRow.variant_id == variant.id,
+                ModelInstanceRow.state.in_(
                     [
-                        PlacementState.REQUESTED,
-                        PlacementState.WAITING_FOR_DRAIN,
-                        PlacementState.EVICTING,
-                        PlacementState.RESERVING,
-                        PlacementState.LOADING,
+                        InstanceState.REQUESTED,
+                        InstanceState.RESERVING,
+                        InstanceState.LAUNCHING,
+                        InstanceState.WARMING,
                     ]
                 ),
             )
-            .order_by(PlacementDecisionRow.created_at.desc())
+            .order_by(ModelInstanceRow.created_at.desc())
             .limit(1)
         )
         if active is None:
-            active = PlacementDecisionRow(
+            active = ModelInstanceRow(
                 model_id=model_id,
                 variant_id=variant.id,
                 policy=model.placement_policy,
-                required_bytes=max(1, variant.memory_estimate_bytes),
-                state=PlacementState.REQUESTED,
+                state=InstanceState.REQUESTED,
             )
             session.add(active)
             await session.flush()
-        decision_id = active.id
+            await append_initial_transition(session, active)
+        instance_id = active.id
     deadline = time.monotonic() + settings.gateway_wait_ceiling_s
     while time.monotonic() < deadline:
         async with session_scope() as session:
-            decision = await session.get(PlacementDecisionRow, decision_id)
-            if decision is None:
-                raise ModelLoadError("placement decision disappeared")
-            if decision.state is PlacementState.READY:
+            instance = await session.get(ModelInstanceRow, instance_id)
+            if instance is None:
+                raise ModelLoadError("model instance disappeared")
+            if instance.state is InstanceState.READY:
                 return True
-            if decision.state in {PlacementState.REFUSED, PlacementState.FAILED}:
-                detail = decision.refusal_detail or "placement failed"
-                if decision.occupants:
-                    detail += f"; occupants={decision.occupants}"
-                raise ModelLoadError(detail)
+            if instance.state is InstanceState.FAILED:
+                raise ModelLoadError(instance.failure_detail or "instance launch failed")
         await asyncio.sleep(settings.placement_poll_interval_s)
     raise ModelLoadError("placement did not complete before the gateway wait ceiling")
 
@@ -168,6 +166,10 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             if existing is None:
                 session.add(row)
                 await session.flush()
+                # Publish the stable engine identity before the node process can become
+                # visible to reconciliation. Holding this insert uncommitted across the
+                # network launch lets reconciliation race an orphan row with the same id.
+                await session.commit()
             try:
                 async with NodeClient(settings, timeout=settings.gateway_wait_ceiling_s) as client:
                     _, engine = await client.start_engine(

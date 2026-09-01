@@ -76,6 +76,8 @@ class NodeProber:
             async with ControlClient(timeout=5.0) as client:
                 for row in rows:
                     status = await self._probe_node(client, row, tokens.get(row.name, ""))
+                    row.health_observed_at = datetime.now(UTC)
+                    row.gpu_percent = status.gpu_percent if status is not None else None
                     ledger = await session.get(NodeMemoryLedgerRow, row.id)
                     if ledger is not None:
                         ledger.health = row.reachability

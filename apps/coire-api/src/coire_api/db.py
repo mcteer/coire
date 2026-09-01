@@ -44,6 +44,7 @@ from coire_core.models.acquisition import (
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.engine import EngineState
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
+from coire_core.models.instance import InstanceState
 from coire_core.models.jobs import DownloadStage
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.placement import (
@@ -103,6 +104,19 @@ class NodeRow(Base):
         default=Reachability.UNKNOWN,
     )
     probe_failures: Mapped[int] = mapped_column(default=0)
+    declared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    registration_token_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    token_issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    token_consumed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    token_revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    health_observed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    gpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
@@ -564,12 +578,99 @@ class PlacementCommandRow(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+# --------------------------------------------------------------------------- feature 005
+
+
+class ModelInstanceRow(Base):
+    __tablename__ = "model_instances"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("models.id", ondelete="CASCADE"), index=True
+    )
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
+    )
+    placement_decision_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("placement_decisions.id", ondelete="SET NULL"), nullable=True
+    )
+    policy: Mapped[str] = mapped_column(String(64))
+    state: Mapped[InstanceState] = mapped_column(_enum(InstanceState, "instance_state"), index=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    in_flight: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    transitioned_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    drain_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class InstanceMemberRow(Base):
+    __tablename__ = "instance_members"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "rank", name="uq_instance_member_rank"),
+        UniqueConstraint("instance_id", "node_id", name="uq_instance_member_node"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_instances.id", ondelete="CASCADE"), index=True
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    rank: Mapped[int] = mapped_column(Integer)
+    engine_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    reservation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("memory_reservations.id", ondelete="SET NULL"), nullable=True
+    )
+    host: Mapped[str] = mapped_column(String(255))
+    port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class InstanceTransitionRow(Base):
+    __tablename__ = "instance_transitions"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "sequence", name="uq_instance_transition_sequence"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_instances.id", ondelete="CASCADE"), index=True
+    )
+    sequence: Mapped[int] = mapped_column(Integer)
+    previous_state: Mapped[InstanceState | None] = mapped_column(
+        _enum(InstanceState, "instance_state"), nullable=True
+    )
+    state: Mapped[InstanceState] = mapped_column(_enum(InstanceState, "instance_state"))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RegistrationAttemptRow(Base):
+    __tablename__ = "registration_attempts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True
+    )
+    node_name: Mapped[str] = mapped_column(String(64), index=True)
+    outcome: Mapped[str] = mapped_column(String(16))
+    reason: Mapped[str] = mapped_column(String(64))
+    agent_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    remote_identity: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class EngineProcessRow(Base):
     """A running engine. Feature 005 generalises this into ModelInstance."""
 
     __tablename__ = "engine_processes"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    instance_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_instances.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # Nullable: an orphan is a running engine that matches no expectation, and it may not
     # correspond to any model this registry knows (spec FR-015).
     model_id: Mapped[uuid.UUID | None] = mapped_column(

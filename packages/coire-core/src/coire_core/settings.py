@@ -103,6 +103,8 @@ class Settings(BaseSettings):
     placement_poll_interval_s: float = Field(default=1.0, gt=0.0)
     placement_ttl_interval_s: float = Field(default=30.0, gt=0.0)
     placement_lease_ttl_s: float = Field(default=60.0, gt=0.0)
+    instance_drain_timeout_s: float = Field(default=30.0, gt=0.0)
+    instance_event_poll_interval_s: float = Field(default=0.5, gt=0.0)
 
     # --- compatible inference gateway ----------------------------------
     gateway_wait_ceiling_s: float = Field(default=600.0, gt=0.0)

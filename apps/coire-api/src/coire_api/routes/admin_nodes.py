@@ -5,9 +5,10 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,11 +16,15 @@ from coire_api.audit import write_audit
 from coire_api.auth import CurrentAdmin
 from coire_api.db import AuditRow, DownloadJobRow, EngineProcessRow, NodeRow
 from coire_api.deps import SessionDep, SettingsDep
+from coire_api.instance.registration import issue_token
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.placement.service import ensure_ledgers
 from coire_api.routes.admin_models import _engine, _job
 from coire_core.models.audit import AuditAction, AuditRecord
 from coire_core.models.engine import TERMINAL_ENGINE_STATES, EngineState
+from coire_core.models.instance import NodeDeclaration, NodeRegistrationCredential
 from coire_core.models.link import StudioDataLinkStatus
+from coire_core.models.node import NodeRole, Reachability
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/admin", tags=["admin: cluster"])
@@ -31,6 +36,98 @@ async def _client(settings: SettingsDep) -> AsyncGenerator[NodeClient]:
 
 
 ClientDep = Annotated[NodeClient, Depends(_client)]
+
+
+@router.post(
+    "/nodes", response_model=NodeRegistrationCredential, status_code=status.HTTP_201_CREATED
+)
+async def declare_node(
+    body: NodeDeclaration,
+    principal: CurrentAdmin,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> NodeRegistrationCredential:
+    existing = await session.scalar(select(NodeRow).where(NodeRow.name == body.name))
+    if existing is not None and existing.declared_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "node is already declared")
+    row = existing or NodeRow(
+        name=body.name,
+        role=NodeRole.STUDIO,
+        memory_total_bytes=body.memory_total_bytes,
+        disk_total_bytes=body.disk_total_bytes,
+        agent_version="unregistered",
+        reachability=Reachability.UNKNOWN,
+    )
+    if existing is None:
+        session.add(row)
+        await session.flush()
+    row.control_host = body.control_host
+    row.data_host = body.data_host
+    row.memory_total_bytes = body.memory_total_bytes
+    row.disk_total_bytes = body.disk_total_bytes
+    row.gpu_cores = body.gpu_cores
+    row.declared_at = datetime.now(UTC)
+    credential = issue_token(row, settings)
+    await ensure_ledgers(
+        session,
+        budget_bytes=settings.placement_default_budget_bytes,
+        sandbox_bytes=settings.placement_sandbox_bytes,
+    )
+    await write_audit(
+        session,
+        actor=principal.subject or "admin",
+        action="node.declare",
+        target_type="node",
+        target_id=str(row.id),
+        detail={"name": row.name},
+    )
+    await session.commit()
+    return credential
+
+
+@router.post(
+    "/nodes/{node_id}/registration-token",
+    response_model=NodeRegistrationCredential,
+    status_code=status.HTTP_201_CREATED,
+)
+async def rotate_registration_token(
+    node_id: uuid.UUID,
+    principal: CurrentAdmin,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> NodeRegistrationCredential:
+    row = await session.get(NodeRow, node_id)
+    if row is None or row.declared_at is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such declared node")
+    credential = issue_token(row, settings)
+    await write_audit(
+        session,
+        actor=principal.subject or "admin",
+        action="node.registration_token.rotate",
+        target_type="node",
+        target_id=str(row.id),
+    )
+    await session.commit()
+    return credential
+
+
+@router.delete("/nodes/{node_id}/registration-token", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_registration_token(
+    node_id: uuid.UUID, principal: CurrentAdmin, session: SessionDep
+) -> Response:
+    row = await session.get(NodeRow, node_id)
+    if row is None or row.declared_at is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such declared node")
+    row.token_revoked_at = datetime.now(UTC)
+    await write_audit(
+        session,
+        actor=principal.subject or "admin",
+        action="node.registration_token.revoke",
+        target_type="node",
+        target_id=str(row.id),
+    )
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/network/links/studios", response_model=StudioDataLinkStatus)

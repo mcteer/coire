@@ -65,6 +65,7 @@ class ChatCompletionRequest(BaseModel):
     tool_choice: Any = None
     response_format: dict[str, Any] | None = None
     coire_wait_for_model: bool = True
+    coire_affinity_node: str | None = Field(default=None, pattern=r"^coire-[a-z0-9-]+$")
 
 
 class AnthropicMessage(BaseModel):
@@ -96,6 +97,7 @@ class AnthropicMessagesRequest(BaseModel):
     container: str | dict[str, Any] | None = None
     mcp_servers: list[dict[str, Any]] | None = None
     coire_wait_for_model: bool = True
+    coire_affinity_node: str | None = Field(default=None, pattern=r"^coire-[a-z0-9-]+$")
 
 
 class EngineChatRequest(BaseModel):

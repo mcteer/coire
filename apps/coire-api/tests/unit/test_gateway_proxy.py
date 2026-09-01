@@ -80,7 +80,7 @@ async def test_node_proxy_request_acquires_and_releases_memory_lease(
 
     class Session:
         async def get(self, _model: object, _id: object) -> object:
-            return SimpleNamespace(model_id=uuid.uuid4(), node_id=uuid.uuid4())
+            return SimpleNamespace(model_id=uuid.uuid4(), instance_id=None, node_id=uuid.uuid4())
 
         async def scalar(self, _query: object) -> object:
             return SimpleNamespace(id=reservation_id)

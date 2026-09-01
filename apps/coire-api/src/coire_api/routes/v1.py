@@ -84,13 +84,17 @@ class _UsageStreamingResponse(StreamingResponse):
 
 
 async def _load_and_resolve(
-    body_model: uuid.UUID, principal: Principal, session: AsyncSession, settings: Settings
+    body_model: uuid.UUID,
+    principal: Principal,
+    session: AsyncSession,
+    settings: Settings,
+    affinity_node: str | None = None,
 ) -> ResolvedModel:
     await asyncio.wait_for(
         load_model(body_model, settings), timeout=settings.gateway_wait_ceiling_s
     )
     session.expire_all()
-    return await resolve_model(session, body_model, principal)
+    return await resolve_model(session, body_model, principal, affinity_node)
 
 
 async def _openai_cold_stream(
@@ -102,7 +106,9 @@ async def _openai_cold_stream(
     request: Request,
     timing: StreamTiming,
 ) -> AsyncIterator[bytes]:
-    task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
+    task = asyncio.create_task(
+        _load_and_resolve(body.model, principal, session, settings, body.coire_affinity_node)
+    )
     while not task.done():
         try:
             resolved = await asyncio.wait_for(
@@ -117,7 +123,11 @@ async def _openai_cold_stream(
             raise ModelLoadError("engine did not become ready")
         usage.model_id = resolved.model_id
         usage.engine_id = resolved.engine_id
-        payload = body.model_dump(mode="json", exclude={"coire_wait_for_model"}, exclude_none=True)
+        payload = body.model_dump(
+            mode="json",
+            exclude={"coire_wait_for_model", "coire_affinity_node"},
+            exclude_none=True,
+        )
         payload["model"] = resolved.model_path
         tracked = _tracked_stream(
             stream(resolved.engine_url, payload, settings, timing), usage, request, timing
@@ -232,7 +242,9 @@ async def _anthropic_cold_stream(
     request: Request,
     timing: StreamTiming,
 ) -> AsyncIterator[bytes]:
-    task = asyncio.create_task(_load_and_resolve(body.model, principal, session, settings))
+    task = asyncio.create_task(
+        _load_and_resolve(body.model, principal, session, settings, body.coire_affinity_node)
+    )
     while not task.done():
         try:
             resolved = await asyncio.wait_for(
@@ -318,7 +330,7 @@ async def chat_completions(
     usage = UsageTracker(principal, str(body.model), GatewayProtocol.OPENAI)
     timing = StreamTiming()
     try:
-        resolved = await resolve_model(session, body.model, principal)
+        resolved = await resolve_model(session, body.model, principal, body.coire_affinity_node)
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
@@ -355,7 +367,9 @@ async def chat_completions(
                 usage,
             )
         try:
-            resolved = await _load_and_resolve(body.model, principal, session, settings)
+            resolved = await _load_and_resolve(
+                body.model, principal, session, settings, body.coire_affinity_node
+            )
         except (ModelLoadError, TimeoutError) as exc:
             await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
             raise HTTPException(
@@ -368,7 +382,11 @@ async def chat_completions(
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "model load did not become ready"
             )
-    payload = body.model_dump(mode="json", exclude={"coire_wait_for_model"}, exclude_none=True)
+    payload = body.model_dump(
+        mode="json",
+        exclude={"coire_wait_for_model", "coire_affinity_node"},
+        exclude_none=True,
+    )
     payload["model"] = resolved.model_path
     try:
         if body.stream:
@@ -410,7 +428,7 @@ async def anthropic_messages(
     usage = UsageTracker(principal, str(body.model), GatewayProtocol.ANTHROPIC)
     timing = StreamTiming()
     try:
-        resolved = await resolve_model(session, body.model, principal)
+        resolved = await resolve_model(session, body.model, principal, body.coire_affinity_node)
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
@@ -445,7 +463,9 @@ async def anthropic_messages(
                 usage,
             )
         try:
-            resolved = await _load_and_resolve(body.model, principal, session, settings)
+            resolved = await _load_and_resolve(
+                body.model, principal, session, settings, body.coire_affinity_node
+            )
         except (ModelLoadError, TimeoutError) as exc:
             await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
             raise HTTPException(
