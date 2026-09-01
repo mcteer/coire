@@ -60,6 +60,10 @@ OPS_MODEL_ID = "10000000-0000-4000-8000-000000000099"
 NODE_TOKENS: dict[str, str] = {}
 SECRETS_DIR = Path(tempfile.mkdtemp(prefix="coire-it-secrets-"))
 RUN_WORKSPACE_ROOT = Path(tempfile.mkdtemp(prefix="coire-it-workspaces-"))
+# The run image is deliberately non-root.  On Linux CI a bind-mounted tempfile keeps
+# mkdtemp's owner-only mode, which prevents UID 65532 from reading request.json and produces
+# an opaque runner exit code 1 before the harness can contact the gateway.
+RUN_WORKSPACE_ROOT.chmod(0o777)
 os.environ.setdefault("COIRE_IT_RUN_WORKSPACE_ROOT", str(RUN_WORKSPACE_ROOT))
 
 INTEGRATION_PORT = os.environ.get("COIRE_IT_PORT", "18080")
