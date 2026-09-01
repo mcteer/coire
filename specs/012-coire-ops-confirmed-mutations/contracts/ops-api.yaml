@@ -1,0 +1,72 @@
+openapi: 3.1.0
+info:
+  title: Coire Ops Confirmation API
+  version: 0.1.0
+paths:
+  /api/v1/admin/ops/conversations:
+    post:
+      summary: Start an admin ops conversation
+      security: [{accessAdmin: []}]
+      responses:
+        '201': {description: Conversation created}
+  /api/v1/admin/ops/conversations/{conversation_id}/messages:
+    post:
+      summary: Ask the ops service and optionally receive an exact proposal
+      security: [{accessAdmin: []}]
+      responses:
+        '200': {description: Answer, degraded answer, or proposal}
+  /api/v1/admin/ops/proposals/{proposal_id}/confirm:
+    post:
+      summary: Atomically consume an exact-action token as a human admin
+      security: [{accessAdmin: []}]
+      responses:
+        '202': {description: Confirmed action accepted}
+        '409': {description: Used, expired, stale, restarted-session, or action mismatch}
+  /api/v1/admin/ops/proposals/{proposal_id}/decline:
+    post:
+      summary: Decline a pending proposal
+      security: [{accessAdmin: []}]
+      responses:
+        '200': {description: Proposal declined}
+  /api/v1/internal/ops/sessions:
+    post:
+      summary: Register a new volatile ops container session
+      security: [{opsService: []}]
+      responses:
+        '201': {description: Session registered; earlier pending proposals invalidated}
+  /api/v1/internal/ops/proposals:
+    post:
+      summary: Submit an allowlisted resolved proposal for a conversation
+      security: [{opsService: []}]
+      responses:
+        '201': {description: Proposal and one-time plaintext confirmation token}
+        '422': {description: Malformed or non-allowlisted action}
+components:
+  securitySchemes:
+    accessAdmin: {type: http, scheme: bearer}
+    opsService: {type: http, scheme: bearer}
+  schemas:
+    ResolvedAction:
+      type: object
+      additionalProperties: false
+      required: [operation, target_type, target_id, parameters, precondition]
+      properties:
+        operation:
+          enum: [instance.unload, run.kill, model.pin, model.unpin, instance.load]
+        target_type: {enum: [instance, run, model]}
+        target_id: {type: string, format: uuid}
+        parameters: {type: object}
+        precondition:
+          type: object
+          additionalProperties: false
+          required: [resource_version, expected_state]
+          properties:
+            resource_version: {type: string}
+            expected_state: {type: string}
+    ConfirmProposalRequest:
+      type: object
+      additionalProperties: false
+      required: [confirm_token, action]
+      properties:
+        confirm_token: {type: string, writeOnly: true}
+        action: {$ref: '#/components/schemas/ResolvedAction'}
