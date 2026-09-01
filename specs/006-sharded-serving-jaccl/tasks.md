@@ -64,7 +64,7 @@
 - [x] T040 Run full composed suite including fake ranks, failures, fallback and restart recovery
 - [x] T041 Build changed images and pass policy plus CRITICAL scans
 - [ ] T042 Execute `quickstart.md` on the real two-Studio JACCL fabric and record evidence
-- [ ] T043 Complete PR description with spec and Principles I–VII compliance
+- [x] T043 Complete PR description with spec and Principles I–VII compliance
 
 ## Dependencies
 
