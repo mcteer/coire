@@ -55,6 +55,7 @@ from coire_core.models.placement import (
     ReservationHolder,
 )
 from coire_core.models.registry import CopyRole, ModelState, Visibility
+from coire_core.models.runs import AgentRunState, RunCommandState, RunOperation
 from coire_core.models.sharding import (
     BenchmarkRunState,
     ProbeOutcome,
@@ -342,6 +343,103 @@ class HarnessEvaluationRow(Base):
     engine_version: Mapped[str] = mapped_column(String(64))
     diagnostics: Mapped[list[str]] = mapped_column(JSONB, default=list)
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# --------------------------------------------------------------------------- feature 011
+
+
+class AgentRunRow(Base):
+    __tablename__ = "agent_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    requester_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    profile: Mapped[str] = mapped_column(String(16))
+    primary_model_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("models.id", ondelete="RESTRICT"), index=True
+    )
+    node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    container_id: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
+    workspace_ref: Mapped[str] = mapped_column(String(128))
+    token_scope: Mapped[dict[str, object]] = mapped_column(JSONB)
+    state: Mapped[AgentRunState] = mapped_column(
+        _enum(AgentRunState, "agent_run_state"), index=True
+    )
+    limits: Mapped[dict[str, object]] = mapped_column(JSONB)
+    exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    failure_detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    resource_usage: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    killed_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    killed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentRunTransitionRow(Base):
+    __tablename__ = "agent_run_transitions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    from_state: Mapped[AgentRunState | None] = mapped_column(
+        _enum(AgentRunState, "agent_run_state"), nullable=True
+    )
+    to_state: Mapped[AgentRunState] = mapped_column(_enum(AgentRunState, "agent_run_state"))
+    reason: Mapped[str] = mapped_column(String(500))
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class RunTokenRow(Base):
+    __tablename__ = "run_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    prefix: Mapped[str] = mapped_column(String(12), unique=True, index=True)
+    secret_hash: Mapped[str] = mapped_column(String(255))
+    scope: Mapped[dict[str, object]] = mapped_column(JSONB)
+    spent_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RunCommandRow(Base):
+    __tablename__ = "run_commands"
+    __table_args__ = (
+        UniqueConstraint("run_id", "operation", "attempt", name="uq_run_command_attempt"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="CASCADE"), index=True
+    )
+    node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True
+    )
+    operation: Mapped[RunOperation] = mapped_column(_enum(RunOperation, "run_operation"))
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    state: Mapped[RunCommandState] = mapped_column(
+        _enum(RunCommandState, "run_command_state"), index=True
+    )
+    detail: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class AcquisitionWorkflowRow(Base):

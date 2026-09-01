@@ -141,6 +141,21 @@ class Settings(BaseSettings):
     harness_summary_threshold: float = Field(default=0.8, gt=0.0, le=1.0)
     harness_evaluation_pass_score: float = Field(default=0.8, ge=0.0, le=1.0)
 
+    # --- Studio container runs ----------------------------------------
+    run_concurrency_cap: int = Field(default=3, ge=1, le=32)
+    run_default_memory_bytes: int = Field(default=4 * 1024**3, ge=128 * 1024**2)
+    run_max_memory_bytes: int = Field(default=16 * 1024**3, ge=128 * 1024**2)
+    run_default_nano_cpus: int = Field(default=2_000_000_000, ge=100_000_000)
+    run_default_pids_limit: int = Field(default=256, ge=16, le=4096)
+    run_default_timeout_s: int = Field(default=900, ge=10, le=86_400)
+    run_max_log_bytes: int = Field(default=8 * 1024**2, ge=1024)
+    run_max_result_bytes: int = Field(default=4 * 1024**2, ge=1024)
+    run_token_ttl_s: int = Field(default=1200, ge=60, le=86_400)
+    run_workspace_root: str = "/opt/coire/workspaces"
+    run_agent_image: str = ""
+    run_gateway_url: str = "http://coire-core.lab:8080/v1"
+    run_docker_socket: str = "/var/run/docker.sock"
+
     # --- model store and engines (node side) ----------------------------
     node_store_dir: str = "/opt/coire/models"
     node_state_dir: str = "/opt/coire/state"

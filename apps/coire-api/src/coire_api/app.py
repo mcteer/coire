@@ -26,6 +26,7 @@ from coire_api.routes import (
     admin_ledger,
     admin_models,
     admin_nodes,
+    admin_runs,
     admin_sharding,
     admin_variants,
     health,
@@ -33,6 +34,7 @@ from coire_api.routes import (
     me,
     models,
     nodes,
+    runs,
     v1,
 )
 from coire_api.telemetry import configure_telemetry
@@ -137,6 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(instances.router)
     app.include_router(nodes.router)
     app.include_router(models.router)
+    app.include_router(runs.router)
     app.include_router(me.router)
     app.include_router(admin_acquisitions.router)
     app.include_router(admin_console.router)
@@ -146,6 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_variants.router)
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)
+    app.include_router(admin_runs.router)
     app.include_router(admin_sharding.router)
     app.include_router(v1.router)
 

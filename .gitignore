@@ -57,6 +57,8 @@ yarn-error.log*
 *.npz
 /outputs/
 /generated/
+/workspaces/
+/run-results/
 
 # --- Runtime / local state ---
 *.log
