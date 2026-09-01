@@ -74,6 +74,7 @@ services:
       RUN_AGENT_IMAGE: ${COIRE_RUN_AGENT_IMAGE:-}
       RUN_RELAY_IMAGE: ${COIRE_RUN_RELAY_IMAGE:-}
       OPS_SERVICE_URL: http://coire-ops:8003
+      OPS_SESSION_STALE_S: ${OPS_SESSION_STALE_S:-30}
     volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
     secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token]
     depends_on:
