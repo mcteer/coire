@@ -84,7 +84,7 @@
 - [x] T047 Run clean-stack integration scenarios for trace propagation, collector outage, alert evaluation, dashboards, health damping, and stale placement
 - [x] T048 Build every production image, enforce hardening, generate SPDX SBOMs, and scan for CRITICAL CVEs
 - [x] T049 Measure Studio collection under inference load and record CPU/RSS/backoff evidence in `specs/009-observability-stack/review.md`
-- [ ] T050 Run convergence, complete appended work, re-run all gates, commit, push, and open a draft PR with constitution/licence notes
+- [x] T050 Run convergence, complete appended work, re-run all gates, commit, push, and open a draft PR with constitution/licence notes
 
 ## Phase 9: Convergence
 
