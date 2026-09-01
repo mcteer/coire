@@ -48,15 +48,17 @@ class StubRuns:
             run_id=run_id,
             container_id=f"container-{run_id}",
             state=state,
-            resource_usage={},
         )
 
 
 def payload(run_id: uuid.UUID) -> dict[str, Any]:
     return {
         "run_id": str(run_id),
+        "profile": "general",
+        "model_id": str(uuid.uuid4()),
+        "variant_id": str(uuid.uuid4()),
         "image": f"ghcr.io/mcteer/coire-agent@sha256:{'a' * 64}",
-        "argv": ["python", "-m", "coire_agent"],
+        "argv": ["-m", "coire_agent"],
         "workspace_ref": "workspace-1",
         "run_token": "r" * 48,
         "gateway_url": "http://coire-core.lab:8080/v1",

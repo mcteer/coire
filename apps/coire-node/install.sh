@@ -22,6 +22,8 @@ AGENT_VERSION="0.2.0"
 WHEEL_DIR=""
 DRY_RUN=0
 NODE_NAME="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
+RUN_AGENT_IMAGE="${COIRE_RUN_AGENT_IMAGE:-}"
+RUN_RELAY_IMAGE="${COIRE_RUN_RELAY_IMAGE:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,12 +50,19 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   say "$PREFIX/models/               (model store: one directory per model slug)"
   say "$PREFIX/state/                (engine and job state; caches, never truth)"
   say "$PREFIX/hf-cache/             (Hugging Face metadata scratch; weights are not kept here)"
+  say "$PREFIX/workspaces/           (platform-prepared run workspaces)"
   say "$PLIST"
   say "keychain:coire-node-token    (System keychain, created by the operator)"
   say "keychain:coire-hf-token      (System keychain, created by the operator)"
   echo "and nothing under /usr/local, /opt/homebrew, or \$HOME."
   exit 0
 fi
+for IMAGE in "$RUN_AGENT_IMAGE" "$RUN_RELAY_IMAGE"; do
+  if [[ -n "$IMAGE" && ! "$IMAGE" =~ ^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$ ]]; then
+    echo "error: run images must be digest-pinned references" >&2
+    exit 2
+  fi
+done
 
 # --- preconditions ---------------------------------------------------------
 if [[ ! -d "$PREFIX" ]]; then
@@ -70,7 +79,7 @@ echo "installing coire-node $AGENT_VERSION into $PREFIX"
 mkdir -p "$PREFIX/bin" "$PREFIX/python" "$PREFIX/log" "$PREFIX/envs"
 # Feature 001: the model store, the agent's own state, and a metadata scratch cache. Weights
 # are written straight into the store (snapshot_download --local-dir), so hf-cache stays small.
-mkdir -p "$PREFIX/models" "$PREFIX/state/jobs" "$PREFIX/hf-cache"
+mkdir -p "$PREFIX/models" "$PREFIX/state/jobs" "$PREFIX/hf-cache" "$PREFIX/workspaces"
 
 # --- uv, confined to the prefix --------------------------------------------
 if [[ ! -x "$PREFIX/bin/uv" ]]; then
@@ -122,6 +131,8 @@ fi
 
 RENDERED="$(mktemp)"
 sed -e "s|__PREFIX__|$PREFIX|g" -e "s|__USER__|$(whoami)|g" -e "s|__NODE_NAME__|$NODE_NAME|g" \
+    -e "s|__RUN_AGENT_IMAGE__|$RUN_AGENT_IMAGE|g" \
+    -e "s|__RUN_RELAY_IMAGE__|$RUN_RELAY_IMAGE|g" \
     "$TEMPLATE" > "$RENDERED"
 
 echo

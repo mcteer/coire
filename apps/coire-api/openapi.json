@@ -243,6 +243,274 @@
         "title": "ActorType",
         "type": "string"
       },
+      "AgentRun": {
+        "additionalProperties": false,
+        "properties": {
+          "container_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Container Id"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "failure_detail": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Detail"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "killed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Killed At"
+          },
+          "killed_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Killed By"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/RunLimits"
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Id"
+          },
+          "node_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node Name"
+          },
+          "primary_model_id": {
+            "format": "uuid",
+            "title": "Primary Model Id",
+            "type": "string"
+          },
+          "primary_variant_id": {
+            "format": "uuid",
+            "title": "Primary Variant Id",
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileName"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "requester_user_id": {
+            "format": "uuid",
+            "title": "Requester User Id",
+            "type": "string"
+          },
+          "resource_usage": {
+            "$ref": "#/components/schemas/RunResourceUsage"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AgentRunState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workspace_ref": {
+            "title": "Workspace Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requester_user_id",
+          "profile",
+          "primary_model_id",
+          "primary_variant_id",
+          "workspace_ref",
+          "state",
+          "limits",
+          "requested_at",
+          "updated_at"
+        ],
+        "title": "AgentRun",
+        "type": "object"
+      },
+      "AgentRunCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "limits": {
+            "$ref": "#/components/schemas/RunLimits"
+          },
+          "permitted_model_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Permitted Model Ids",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "permitted_tools": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Permitted Tools",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "primary_model_id": {
+            "format": "uuid",
+            "title": "Primary Model Id",
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/ProfileName"
+          },
+          "spend_limit_tokens": {
+            "default": 100000,
+            "maximum": 100000000.0,
+            "minimum": 1.0,
+            "title": "Spend Limit Tokens",
+            "type": "integer"
+          },
+          "workspace_ref": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Workspace Ref",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile",
+          "primary_model_id",
+          "workspace_ref",
+          "permitted_model_ids"
+        ],
+        "title": "AgentRunCreate",
+        "type": "object"
+      },
+      "AgentRunState": {
+        "enum": [
+          "queued",
+          "placing",
+          "creating",
+          "running",
+          "collecting",
+          "succeeded",
+          "failed",
+          "result_collection_failed",
+          "timed_out",
+          "kill_requested",
+          "killed"
+        ],
+        "title": "AgentRunState",
+        "type": "string"
+      },
       "AnthropicMessage": {
         "additionalProperties": false,
         "properties": {
@@ -3820,6 +4088,16 @@
         "title": "ProbeTransport",
         "type": "string"
       },
+      "ProfileName": {
+        "enum": [
+          "coding",
+          "general",
+          "image",
+          "ops"
+        ],
+        "title": "ProfileName",
+        "type": "string"
+      },
       "QuantizationMode": {
         "enum": [
           "affine",
@@ -3897,6 +4175,94 @@
         ],
         "title": "ReservationHolder",
         "type": "string"
+      },
+      "RunKillRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "default": "killed by administrator",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "RunKillRequest",
+        "type": "object"
+      },
+      "RunLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "log_bytes": {
+            "default": 8388608,
+            "maximum": 134217728.0,
+            "minimum": 1024.0,
+            "title": "Log Bytes",
+            "type": "integer"
+          },
+          "memory_bytes": {
+            "default": 4294967296,
+            "maximum": 17179869184.0,
+            "minimum": 134217728.0,
+            "title": "Memory Bytes",
+            "type": "integer"
+          },
+          "nano_cpus": {
+            "default": 2000000000,
+            "maximum": 16000000000.0,
+            "minimum": 100000000.0,
+            "title": "Nano Cpus",
+            "type": "integer"
+          },
+          "pids_limit": {
+            "default": 256,
+            "maximum": 4096.0,
+            "minimum": 16.0,
+            "title": "Pids Limit",
+            "type": "integer"
+          },
+          "result_bytes": {
+            "default": 4194304,
+            "maximum": 67108864.0,
+            "minimum": 1024.0,
+            "title": "Result Bytes",
+            "type": "integer"
+          },
+          "timeout_seconds": {
+            "default": 900,
+            "maximum": 86400.0,
+            "minimum": 10.0,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "RunLimits",
+        "type": "object"
+      },
+      "RunResourceUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "cpu_nanoseconds": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Cpu Nanoseconds",
+            "type": "integer"
+          },
+          "log_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Log Bytes",
+            "type": "integer"
+          },
+          "peak_memory_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Peak Memory Bytes",
+            "type": "integer"
+          }
+        },
+        "title": "RunResourceUsage",
+        "type": "object"
       },
       "ServiceHealth": {
         "additionalProperties": false,
@@ -7835,6 +8201,138 @@
         ]
       }
     },
+    "/api/v1/admin/runs": {
+      "get": {
+        "operationId": "list_runs_api_v1_admin_runs_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentRun"
+                  },
+                  "title": "Response List Runs Api V1 Admin Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Runs",
+        "tags": [
+          "admin: runs"
+        ]
+      }
+    },
+    "/api/v1/admin/runs/{run_id}": {
+      "delete": {
+        "operationId": "kill_run_api_v1_admin_runs__run_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunKillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Kill Run",
+        "tags": [
+          "admin: runs"
+        ]
+      }
+    },
     "/api/v1/admin/users": {
       "get": {
         "operationId": "list_users_api_v1_admin_users_get",
@@ -8934,6 +9432,252 @@
         "summary": "Register Node",
         "tags": [
           "nodes"
+        ]
+      }
+    },
+    "/api/v1/runs": {
+      "get": {
+        "operationId": "list_agent_runs_api_v1_runs_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentRun"
+                  },
+                  "title": "Response List Agent Runs Api V1 Runs Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Agent Runs",
+        "tags": [
+          "runs"
+        ]
+      },
+      "post": {
+        "operationId": "create_agent_run_api_v1_runs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRunCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Agent Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}": {
+      "get": {
+        "operationId": "get_agent_run_api_v1_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentRun"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Agent Run",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/api/v1/runs/{run_id}/events": {
+      "get": {
+        "operationId": "run_events_api_v1_runs__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Run Events",
+        "tags": [
+          "runs"
         ]
       }
     },

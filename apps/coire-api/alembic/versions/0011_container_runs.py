@@ -71,6 +71,12 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column(
+            "primary_variant_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("model_variants.id", ondelete="RESTRICT"),
+            nullable=False,
+        ),
+        sa.Column(
             "node_id",
             postgresql.UUID(as_uuid=True),
             sa.ForeignKey("nodes.id", ondelete="SET NULL"),
@@ -96,7 +102,13 @@ def upgrade() -> None:
         ),
         sa.Column("killed_at", sa.DateTime(timezone=True)),
     )
-    for column in ("requester_user_id", "primary_model_id", "node_id", "state"):
+    for column in (
+        "requester_user_id",
+        "primary_model_id",
+        "primary_variant_id",
+        "node_id",
+        "state",
+    ):
         op.create_index(f"ix_agent_runs_{column}", "agent_runs", [column])
     op.create_table(
         "agent_run_transitions",

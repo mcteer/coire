@@ -9,6 +9,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
+from opentelemetry import metrics, trace
 from sqlalchemy import select
 
 from coire_api import runs
@@ -16,31 +17,48 @@ from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAuthenticated
 from coire_api.db import AgentRunRow, AgentRunTransitionRow
 from coire_api.deps import SessionDep
-from coire_core.models.runs import TERMINAL_RUN_STATES, AgentRun, AgentRunCreate
+from coire_core.models.runs import (
+    TERMINAL_RUN_STATES,
+    AgentRun,
+    AgentRunCreate,
+    RunProblemCode,
+)
 
 router = APIRouter(prefix="/api/v1/runs", tags=["runs"])
+tracer = trace.get_tracer("coire.api.runs")
+requests_total = metrics.get_meter("coire.api.runs").create_counter(
+    "coire_api_run_requests_total", unit="1"
+)
 
 
 @router.post("", response_model=AgentRun, status_code=status.HTTP_202_ACCEPTED)
 async def create_agent_run(
     body: AgentRunCreate, principal: CurrentAuthenticated, session: SessionDep
 ) -> AgentRun:
-    if principal.user_id is None:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "run requires a user identity")
-    try:
-        row = await runs.create_run(session, body, requester_user_id=principal.user_id)
-    except runs.RunConflict as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    await write_principal_audit(
-        session,
-        principal=principal,
-        action="agent_run.create",
-        target_type="agent_run",
-        target_id=str(row.id),
-        detail={"profile": row.profile, "primary_model_id": str(row.primary_model_id)},
-    )
-    await session.commit()
-    return await runs.project_run(session, row)
+    with tracer.start_as_current_span("coire.api.run.create") as span:
+        if principal.user_id is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "run requires a user identity")
+        try:
+            row = await runs.create_run(session, body, requester_user_id=principal.user_id)
+        except runs.RunConflict as exc:
+            requests_total.add(1, {"operation": "create", "outcome": "refused"})
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                {"code": RunProblemCode.MODEL_UNAVAILABLE.value, "detail": str(exc)},
+            ) from exc
+        span.set_attribute("run_id", str(row.id))
+        span.set_attribute("user_id", str(principal.user_id))
+        await write_principal_audit(
+            session,
+            principal=principal,
+            action="agent_run.create",
+            target_type="agent_run",
+            target_id=str(row.id),
+            detail={"profile": row.profile, "primary_model_id": str(row.primary_model_id)},
+        )
+        await session.commit()
+        requests_total.add(1, {"operation": "create", "outcome": "accepted"})
+        return await runs.project_run(session, row)
 
 
 @router.get("/{run_id}", response_model=AgentRun)
@@ -50,7 +68,10 @@ async def get_agent_run(
     try:
         row = await runs.get_visible_run(session, run_id, principal)
     except runs.RunNotFound as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such run") from exc
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            {"code": RunProblemCode.NOT_FOUND.value, "detail": "no such run"},
+        ) from exc
     return await runs.project_run(session, row)
 
 
@@ -69,7 +90,10 @@ async def run_events(
     try:
         await runs.get_visible_run(session, run_id, principal)
     except runs.RunNotFound as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such run") from exc
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            {"code": RunProblemCode.NOT_FOUND.value, "detail": "no such run"},
+        ) from exc
 
     async def events() -> AsyncIterator[bytes]:
         seen: set[uuid.UUID] = set()

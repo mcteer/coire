@@ -16,9 +16,15 @@ async def test_docker_api_uses_versioned_typed_routes() -> None:
         seen.append(request)
         routes = {
             ("POST", "/v1.46/networks/create"): (201, {"Id": "net-1"}),
+            ("POST", "/v1.46/networks/net-1/connect"): (200, None),
+            ("GET", "/v1.46/networks/net-1"): (200, {"Id": "net-1", "Internal": True}),
             ("POST", "/v1.46/containers/create"): (201, {"Id": "ctr-1"}),
             ("POST", "/v1.46/containers/ctr-1/start"): (204, None),
             ("POST", "/v1.46/containers/ctr-1/wait"): (200, {"StatusCode": 0}),
+            ("GET", "/v1.46/containers/ctr-1/stats"): (
+                200,
+                {"memory_stats": {"usage": 10}},
+            ),
             ("DELETE", "/v1.46/containers/ctr-1"): (204, None),
             ("DELETE", "/v1.46/networks/net-1"): (204, None),
         }
@@ -31,13 +37,17 @@ async def test_docker_api_uses_versioned_typed_routes() -> None:
         api = DockerAPI("/ignored", client=client)
         network = await api.create_network("coire-run-1")
         container = await api.create_container("coire-run-1", {"Image": "digest"})
+        await api.connect_network(network, container, aliases=["coire-gateway"])
+        assert (await api.inspect_network(network) or {})["Internal"] is True
         await api.start_container(container)
         assert await api.wait_container(container) == 0
+        assert (await api.stats(container) or {})["memory_stats"]["usage"] == 10
         await api.remove_container(container)
         await api.remove_network(network)
 
     assert json.loads(seen[0].content)["Internal"] is True
     assert seen[1].url.params["name"] == "coire-run-1"
+    assert json.loads(seen[2].content)["EndpointConfig"]["Aliases"] == ["coire-gateway"]
 
 
 @pytest.mark.anyio

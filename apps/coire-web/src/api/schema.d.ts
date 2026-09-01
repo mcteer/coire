@@ -644,6 +644,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Runs */
+        get: operations["list_runs_api_v1_admin_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Kill Run */
+        delete: operations["kill_run_api_v1_admin_runs__run_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -823,6 +857,58 @@ export interface paths {
          * @description Register or re-register a declared node. Idempotent on name.
          */
         post: operations["register_node_api_v1_nodes_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Agent Runs */
+        get: operations["list_agent_runs_api_v1_runs_get"];
+        put?: never;
+        /** Create Agent Run */
+        post: operations["create_agent_run_api_v1_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Agent Run */
+        get: operations["get_agent_run_api_v1_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run Events */
+        get: operations["run_events_api_v1_runs__run_id__events_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1051,6 +1137,95 @@ export interface components {
          * @enum {string}
          */
         ActorType: "user" | "api_key" | "service" | "anonymous";
+        /** AgentRun */
+        AgentRun: {
+            /** Container Id */
+            container_id?: string | null;
+            /** Exit Code */
+            exit_code?: number | null;
+            /** Failure Code */
+            failure_code?: string | null;
+            /** Failure Detail */
+            failure_detail?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Killed At */
+            killed_at?: string | null;
+            /** Killed By */
+            killed_by?: string | null;
+            limits: components["schemas"]["RunLimits"];
+            /** Node Id */
+            node_id?: string | null;
+            /** Node Name */
+            node_name?: string | null;
+            /**
+             * Primary Model Id
+             * Format: uuid
+             */
+            primary_model_id: string;
+            /**
+             * Primary Variant Id
+             * Format: uuid
+             */
+            primary_variant_id: string;
+            profile: components["schemas"]["ProfileName"];
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /**
+             * Requester User Id
+             * Format: uuid
+             */
+            requester_user_id: string;
+            resource_usage?: components["schemas"]["RunResourceUsage"];
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Started At */
+            started_at?: string | null;
+            state: components["schemas"]["AgentRunState"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Workspace Ref */
+            workspace_ref: string;
+        };
+        /** AgentRunCreate */
+        AgentRunCreate: {
+            limits?: components["schemas"]["RunLimits"];
+            /** Permitted Model Ids */
+            permitted_model_ids: string[];
+            /** Permitted Tools */
+            permitted_tools?: string[];
+            /**
+             * Primary Model Id
+             * Format: uuid
+             */
+            primary_model_id: string;
+            profile: components["schemas"]["ProfileName"];
+            /**
+             * Spend Limit Tokens
+             * @default 100000
+             */
+            spend_limit_tokens: number;
+            /** Workspace Ref */
+            workspace_ref: string;
+        };
+        /**
+         * AgentRunState
+         * @enum {string}
+         */
+        AgentRunState: "queued" | "placing" | "creating" | "running" | "collecting" | "succeeded" | "failed" | "result_collection_failed" | "timed_out" | "kill_requested" | "killed";
         /** AnthropicMessage */
         AnthropicMessage: {
             /** Content */
@@ -2435,6 +2610,11 @@ export interface components {
          */
         ProbeTransport: "jaccl" | "ring";
         /**
+         * ProfileName
+         * @enum {string}
+         */
+        ProfileName: "coding" | "general" | "image" | "ops";
+        /**
          * QuantizationMode
          * @enum {string}
          */
@@ -2476,6 +2656,65 @@ export interface components {
          * @enum {string}
          */
         ReservationHolder: "sandbox" | "model" | "conversion" | "training" | "image" | "run";
+        /** RunKillRequest */
+        RunKillRequest: {
+            /**
+             * Reason
+             * @default killed by administrator
+             */
+            reason: string;
+        };
+        /** RunLimits */
+        RunLimits: {
+            /**
+             * Log Bytes
+             * @default 8388608
+             */
+            log_bytes: number;
+            /**
+             * Memory Bytes
+             * @default 4294967296
+             */
+            memory_bytes: number;
+            /**
+             * Nano Cpus
+             * @default 2000000000
+             */
+            nano_cpus: number;
+            /**
+             * Pids Limit
+             * @default 256
+             */
+            pids_limit: number;
+            /**
+             * Result Bytes
+             * @default 4194304
+             */
+            result_bytes: number;
+            /**
+             * Timeout Seconds
+             * @default 900
+             */
+            timeout_seconds: number;
+        };
+        /** RunResourceUsage */
+        RunResourceUsage: {
+            /**
+             * Cpu Nanoseconds
+             * @default 0
+             */
+            cpu_nanoseconds: number;
+            /**
+             * Log Bytes
+             * @default 0
+             */
+            log_bytes: number;
+            /**
+             * Peak Memory Bytes
+             * @default 0
+             */
+            peak_memory_bytes: number;
+        };
         /**
          * ServiceHealth
          * @description One dependency's health as observed by the aggregate probe.
@@ -4299,6 +4538,74 @@ export interface operations {
             };
         };
     };
+    list_runs_api_v1_admin_runs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    kill_run_api_v1_admin_runs__run_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunKillRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_users_api_v1_admin_users_get: {
         parameters: {
             query?: {
@@ -4822,6 +5129,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Node"] | components["schemas"]["NodeV2"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_runs_api_v1_runs_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_agent_run_api_v1_runs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentRunCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_run_api_v1_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentRun"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_events_api_v1_runs__run_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
             /** @description Validation Error */

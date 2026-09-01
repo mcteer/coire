@@ -1,0 +1,13 @@
+{
+  "title": "Coire Container Runs",
+  "uid": "coire-container-runs",
+  "schemaVersion": 39,
+  "tags": ["coire", "runs"],
+  "panels": [
+    {"id": 1, "title": "Lifecycle transitions", "type": "timeseries", "targets": [{"expr": "sum by (state) (rate(coire_run_transitions_total[5m]))", "legendFormat": "{{state}}"}]},
+    {"id": 2, "title": "Node command outcomes", "type": "timeseries", "targets": [{"expr": "sum by (operation, outcome) (rate(coire_run_commands_total[5m]))", "legendFormat": "{{operation}} {{outcome}}"}]},
+    {"id": 3, "title": "Capacity waits", "type": "stat", "targets": [{"expr": "sum(increase(coire_run_capacity_waits_total[15m]))"}]},
+    {"id": 4, "title": "Orphans reaped", "type": "stat", "targets": [{"expr": "sum(increase(coire_run_orphans_total[1h]))"}]},
+    {"id": 5, "title": "Last terminal transition age", "type": "timeseries", "targets": [{"expr": "time() - max(coire_run_last_transition_timestamp_seconds{state=~\"succeeded|failed|result_collection_failed|timed_out|killed\"})"}]}
+  ]
+}

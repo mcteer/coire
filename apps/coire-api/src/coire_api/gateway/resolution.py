@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from sqlalchemy import case, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.auth import Principal
+from coire_api.auth import Principal, PrincipalKind
 from coire_api.db import (
     EngineProcessRow,
     InstanceMemberRow,
@@ -58,6 +58,12 @@ async def resolve_model(
 ) -> ResolvedModel:
     with tracer.start_as_current_span("coire.gateway.resolve") as span:
         span.set_attribute("coire.model.requested_id", str(requested_id))
+        if (
+            principal.kind is PrincipalKind.RUN
+            and requested_id not in principal.permitted_model_ids
+        ):
+            span.set_attribute("coire.gateway.resolution", "run_scope_refused")
+            raise ModelNotFoundError
         model = await session.get(ModelRow, requested_id)
         if model is None or not _visible(model, principal):
             span.set_attribute("coire.gateway.resolution", "refused")

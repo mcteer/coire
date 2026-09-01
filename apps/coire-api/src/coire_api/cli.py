@@ -27,6 +27,23 @@ def _parser() -> argparse.ArgumentParser:
     harness = kinds.add_parser("harness", help="run and persist the deterministic harness suite")
     harness.add_argument("variant_id")
     harness.add_argument("--engine-version", default="unknown")
+    run = commands.add_parser("run")
+    run_commands = run.add_subparsers(dest="run_command", required=True)
+    submit = run_commands.add_parser("submit")
+    submit.add_argument("--profile", choices=("coding", "general", "image"), required=True)
+    submit.add_argument("--model", required=True)
+    submit.add_argument("--workspace", required=True)
+    submit.add_argument("--permit-model", action="append", default=[])
+    submit.add_argument("--permit-tool", action="append", default=[])
+    submit.add_argument("--spend-limit-tokens", type=int, default=100_000)
+    run_commands.add_parser("list")
+    show = run_commands.add_parser("show")
+    show.add_argument("run_id")
+    kill = run_commands.add_parser("kill")
+    kill.add_argument("run_id")
+    kill.add_argument("--reason", default="killed by administrator")
+    events = run_commands.add_parser("events")
+    events.add_argument("run_id")
     return parser
 
 
@@ -35,6 +52,12 @@ def main(argv: list[str] | None = None) -> int:
     if not args.token:
         _parser().error("--token or COIRE_API_TOKEN is required")
     headers = {"Authorization": f"Bearer {args.token}"}
+    if args.command == "run":
+        return _run_command(args, headers)
+    return _evaluation_command(args, headers)
+
+
+def _evaluation_command(args: argparse.Namespace, headers: dict[str, str]) -> int:
     target_response = httpx.get(
         f"{args.api_url.rstrip('/')}/api/v1/admin/harness-evaluations/target/{args.variant_id}",
         headers=headers,
@@ -59,6 +82,57 @@ def main(argv: list[str] | None = None) -> int:
         json=submission.model_dump(mode="json"),
         timeout=30,
     )
+    if response.is_error:
+        print(response.text, file=sys.stderr)
+        return 1
+    print(json.dumps(response.json(), indent=2, sort_keys=True))
+    return 0
+
+
+def _run_command(args: argparse.Namespace, headers: dict[str, str]) -> int:
+    base = args.api_url.rstrip("/")
+    if args.run_command == "submit":
+        permitted = set(args.permit_model) | {args.model}
+        response = httpx.post(
+            f"{base}/api/v1/runs",
+            headers=headers,
+            json={
+                "profile": args.profile,
+                "primary_model_id": args.model,
+                "workspace_ref": args.workspace,
+                "permitted_model_ids": sorted(permitted),
+                "permitted_tools": sorted(set(args.permit_tool)),
+                "spend_limit_tokens": args.spend_limit_tokens,
+                "limits": {},
+            },
+            timeout=30,
+        )
+    elif args.run_command == "list":
+        response = httpx.get(f"{base}/api/v1/runs", headers=headers, timeout=30)
+    elif args.run_command == "show":
+        response = httpx.get(f"{base}/api/v1/runs/{args.run_id}", headers=headers, timeout=30)
+    elif args.run_command == "kill":
+        response = httpx.request(
+            "DELETE",
+            f"{base}/api/v1/admin/runs/{args.run_id}",
+            headers=headers,
+            json={"reason": args.reason},
+            timeout=30,
+        )
+    else:
+        with httpx.stream(
+            "GET",
+            f"{base}/api/v1/runs/{args.run_id}/events",
+            headers=headers,
+            timeout=None,
+        ) as stream:
+            if stream.is_error:
+                print(stream.read().decode(errors="replace"), file=sys.stderr)
+                return 1
+            for line in stream.iter_lines():
+                if line.startswith("data: "):
+                    print(line[6:])
+        return 0
     if response.is_error:
         print(response.text, file=sys.stderr)
         return 1

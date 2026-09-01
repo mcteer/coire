@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from coire_core.models.harness import ProfileName
+from coire_core.models.harness import PROFILE_TOOL_NAMES, ProfileName
 
 
 class AgentRunState(StrEnum):
@@ -55,6 +55,15 @@ class RunCommandState(StrEnum):
     FAILED = "failed"
 
 
+class RunProblemCode(StrEnum):
+    NOT_FOUND = "run_not_found"
+    CONFLICT = "run_conflict"
+    MODEL_UNAVAILABLE = "run_model_unavailable"
+    TOKEN_INVALID = "run_token_invalid"
+    TOKEN_SPEND_EXHAUSTED = "run_token_spend_exhausted"
+    RUNTIME_UNAVAILABLE = "run_runtime_unavailable"
+
+
 class RunLimits(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -87,6 +96,10 @@ class AgentRunCreate(BaseModel):
 
     @model_validator(mode="after")
     def primary_model_must_be_permitted(self) -> AgentRunCreate:
+        if self.profile is ProfileName.OPS:
+            raise ValueError("ops profile cannot be submitted as a user run")
+        if not self.permitted_tools.issubset(PROFILE_TOOL_NAMES[self.profile]):
+            raise ValueError("permitted_tools contains a tool outside the selected profile")
         if self.primary_model_id not in self.permitted_model_ids:
             raise ValueError("primary_model_id must be in permitted_model_ids")
         return self
@@ -107,6 +120,7 @@ class AgentRun(BaseModel):
     requester_user_id: uuid.UUID
     profile: ProfileName
     primary_model_id: uuid.UUID
+    primary_variant_id: uuid.UUID
     node_id: uuid.UUID | None = None
     node_name: str | None = None
     container_id: str | None = Field(default=None, max_length=128)
@@ -155,6 +169,9 @@ class RunContainerCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     run_id: uuid.UUID
+    profile: ProfileName
+    model_id: uuid.UUID
+    variant_id: uuid.UUID
     image: str = Field(pattern=r"^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$")
     argv: list[str] = Field(min_length=1, max_length=32)
     workspace_ref: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
@@ -206,3 +223,18 @@ class RunKillRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     reason: str = Field(default="killed by administrator", min_length=1, max_length=500)
+
+
+class RunReconcileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    authoritative_run_ids: frozenset[uuid.UUID] = Field(default_factory=frozenset)
+    reap_orphans: bool = True
+
+
+class RunReconcileResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observations: list[RunContainerObservation]
+    orphan_run_ids: list[uuid.UUID]
+    reaped_run_ids: list[uuid.UUID]

@@ -22,6 +22,7 @@ from sqlalchemy import select
 
 from coire_api.db import (
     AcquisitionWorkflowRow,
+    AgentRunRow,
     ModelInstanceRow,
     PlacementDecisionRow,
     dispose_engine,
@@ -33,11 +34,13 @@ from coire_core.models.acquisition import AcquisitionState
 from coire_core.models.health import ReadyResponse
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import PlacementState
+from coire_core.models.runs import AgentRunState
 from coire_core.settings import get_settings
 from coire_scheduler.acquisition import acquisition_workflow
 from coire_scheduler.dbos_runtime import DBOSRuntime
 from coire_scheduler.instances import instance_drain_workflow, instance_launch_workflow
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
+from coire_scheduler.runs import run_kill_workflow, run_workflow
 
 SERVICE_NAME = "coire-scheduler"
 __version__ = "0.1.0"
@@ -114,6 +117,31 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
                 else:
                     with SetWorkflowID(f"instance-{instance_id}"):
                         DBOS.start_workflow(instance_launch_workflow, str(instance_id))
+            async with session_scope() as session:
+                run_rows = list(
+                    (
+                        await session.execute(
+                            select(AgentRunRow.id, AgentRunRow.state).where(
+                                AgentRunRow.state.notin_(
+                                    [
+                                        AgentRunState.SUCCEEDED,
+                                        AgentRunState.FAILED,
+                                        AgentRunState.RESULT_COLLECTION_FAILED,
+                                        AgentRunState.TIMED_OUT,
+                                        AgentRunState.KILLED,
+                                    ]
+                                )
+                            )
+                        )
+                    ).tuples()
+                )
+            for run_id, run_state in run_rows:
+                if run_state is AgentRunState.KILL_REQUESTED:
+                    with SetWorkflowID(f"kill-{run_id}"):
+                        DBOS.start_workflow(run_kill_workflow, str(run_id))
+                else:
+                    with SetWorkflowID(str(run_id)):
+                        DBOS.start_workflow(run_workflow, str(run_id))
         except Exception:
             logger.exception("acquisition dispatcher pass failed")
         with suppress(TimeoutError):

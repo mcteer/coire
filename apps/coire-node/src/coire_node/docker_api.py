@@ -30,7 +30,7 @@ class DockerAPI:
         self._client = client or httpx.AsyncClient(
             transport=httpx.AsyncHTTPTransport(uds=socket_path),
             base_url="http://docker",
-            timeout=httpx.Timeout(30.0, read=900.0),
+            timeout=httpx.Timeout(30.0, read=None),
         )
         self._prefix = f"/{api_version}"
 
@@ -64,6 +64,28 @@ class DockerAPI:
 
     async def remove_network(self, network_id: str) -> None:
         await self._request("DELETE", f"/networks/{network_id}", expected=(204, 404))
+
+    async def inspect_network(self, network_id: str) -> dict[str, Any] | None:
+        response = await self._request("GET", f"/networks/{network_id}", expected=(200, 404))
+        if response.status_code == 404:
+            return None
+        body = response.json()
+        if not isinstance(body, dict):
+            raise DockerAPIError(502, "inspect network", "non-object response")
+        return body
+
+    async def connect_network(
+        self, network_id: str, container_id: str, *, aliases: list[str] | None = None
+    ) -> None:
+        await self._request(
+            "POST",
+            f"/networks/{network_id}/connect",
+            expected=(200, 403),
+            json={
+                "Container": container_id,
+                "EndpointConfig": {"Aliases": aliases or []},
+            },
+        )
 
     async def create_container(self, name: str, payload: Mapping[str, Any]) -> str:
         response = await self._request(
@@ -102,6 +124,20 @@ class DockerAPI:
             params={"stdout": True, "stderr": True, "timestamps": True, "since": since},
         )
         return response.content
+
+    async def stats(self, container_id: str) -> dict[str, Any] | None:
+        response = await self._request(
+            "GET",
+            f"/containers/{container_id}/stats",
+            expected=(200, 404),
+            params={"stream": False, "one-shot": True},
+        )
+        if response.status_code == 404:
+            return None
+        body = response.json()
+        if not isinstance(body, dict):
+            raise DockerAPIError(502, "stats", "non-object response")
+        return body
 
     async def archive(self, container_id: str, path: str) -> bytes | None:
         response = await self._request(

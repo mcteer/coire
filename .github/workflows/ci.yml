@@ -92,6 +92,8 @@ jobs:
             dockerfile: apps/coire-agent/Dockerfile
           - name: coire-agent-ops
             dockerfile: apps/coire-agent/ops.Dockerfile
+          - name: coire-run-relay
+            dockerfile: apps/coire-node/run-relay.Dockerfile
           - name: coire-web
             dockerfile: apps/coire-web/Dockerfile
           - name: coire-otel
@@ -245,7 +247,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        name: [coire-api, coire-mcp, coire-scheduler, coire-migrate, coire-agent, coire-agent-ops, coire-web, coire-otel]
+        name: [coire-api, coire-mcp, coire-scheduler, coire-migrate, coire-agent, coire-agent-ops, coire-run-relay, coire-web, coire-otel]
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4

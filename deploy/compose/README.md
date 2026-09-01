@@ -48,3 +48,14 @@ Harness limits use `HARNESS_RETRY_LIMIT` (2), `HARNESS_TOOL_OUTPUT_BYTE_CAP` (16
 `HARNESS_SUMMARY_THRESHOLD` (0.8), and `HARNESS_EVALUATION_PASS_SCORE` (0.8). The user and ops
 harnesses are separate images; only the ops image contains an admin client. See
 [`docs/runbooks/agent-harness.md`](../../docs/runbooks/agent-harness.md).
+
+Studio container orchestration uses `RUN_CONCURRENCY_CAP` (3),
+`RUN_DEFAULT_MEMORY_BYTES` (4 GiB), `RUN_MAX_MEMORY_BYTES` (16 GiB),
+`RUN_DEFAULT_NANO_CPUS` (2 CPUs), `RUN_DEFAULT_PIDS_LIMIT` (256),
+`RUN_DEFAULT_TIMEOUT_S` (900), `RUN_MAX_LOG_BYTES` (8 MiB),
+`RUN_MAX_RESULT_BYTES` (4 MiB), `RUN_TOKEN_TTL_S` (1200),
+`RUN_WORKSPACE_ROOT` (`/opt/coire/workspaces`), `RUN_DOCKER_SOCKET`
+(`/var/run/docker.sock`), and `RUN_GATEWAY_URL` (`http://coire-core.lab:8080/v1`).
+`RUN_AGENT_IMAGE` and `RUN_RELAY_IMAGE` have no default and must be release-image references
+pinned by digest. The relay caps each request with `RUN_RELAY_REQUEST_BYTES` (2 MiB). Never use
+a tag for either runtime image.

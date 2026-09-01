@@ -359,6 +359,9 @@ class AgentRunRow(Base):
     primary_model_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("models.id", ondelete="RESTRICT"), index=True
     )
+    primary_variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="RESTRICT"), index=True
+    )
     node_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True, index=True
     )
