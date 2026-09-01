@@ -94,7 +94,7 @@ INTEGRATION_SECRETS = {
     # acquisition workflows settle. Production remains intentionally strict at 30 seconds;
     # the fixture uses the configured upper bound so manually registered test sessions do not
     # expire between assertions (real ops containers heartbeat continuously).
-    "OPS_SESSION_STALE_S": "300",
+    "OPS_SESSION_STALE_S": "3600",
 }
 
 ACCESS_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
