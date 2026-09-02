@@ -655,6 +655,34 @@ async def teardown_sharded(instance_id: uuid.UUID, *, failed: bool, reason: str)
                             else MemoryReservationState.RELEASED
                         )
                         member_reservation.released_at = datetime.now(UTC)
+            # A partially materialized group can have an instance-owned reservation without a
+            # corresponding member row (for example, if admission failed between reservation
+            # creation and member insertion). Reconcile by owner as well so teardown never leaks
+            # model capacity.
+            owned_reservations = (
+                (
+                    await session.execute(
+                        select(MemoryReservationRow).where(
+                            MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                            MemoryReservationRow.holder_id == str(instance_id),
+                            MemoryReservationRow.state.in_(
+                                [
+                                    MemoryReservationState.PENDING,
+                                    MemoryReservationState.HELD,
+                                    MemoryReservationState.RELEASING,
+                                ]
+                            ),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for reservation in owned_reservations:
+                reservation.state = (
+                    MemoryReservationState.FAILED if failed else MemoryReservationState.RELEASED
+                )
+                reservation.released_at = datetime.now(UTC)
             if group is not None:
                 group.state = ShardGroupState.FAILED if failed else ShardGroupState.STOPPED
                 group.state_reason = reason
