@@ -102,10 +102,15 @@ class ShardCommandExecutor:
                 row.state = "succeeded"
                 row.result = result
                 row.updated_at = datetime.now(UTC)
-        if result.get("state") == ShardGroupState.STOPPED.value:
-            await self._finalize_stop(command_id)
+        if result.get("state") in {
+            ShardGroupState.STOPPED.value,
+            ShardGroupState.FAILED.value,
+        }:
+            await self._finalize_stop(
+                command_id, failed=result.get("state") == ShardGroupState.FAILED.value
+            )
 
-    async def _finalize_stop(self, command_id: uuid.UUID) -> None:
+    async def _finalize_stop(self, command_id: uuid.UUID, *, failed: bool = False) -> None:
         async with session_scope() as session:
             command = await session.get(ShardCommandRow, command_id)
             if command is None:
@@ -141,7 +146,11 @@ class ShardCommandExecutor:
                     if member.reservation_id is not None:
                         reservation = await session.get(MemoryReservationRow, member.reservation_id)
                         if reservation is not None:
-                            reservation.state = MemoryReservationState.RELEASED
+                            reservation.state = (
+                                MemoryReservationState.FAILED
+                                if failed
+                                else MemoryReservationState.RELEASED
+                            )
                             reservation.released_at = datetime.now(UTC)
                 # Admission creates the instance-owned reservations before member rows are
                 # materialized.  If a rank stopped after that partial write, member-based
@@ -160,7 +169,9 @@ class ShardCommandExecutor:
                     .all()
                 )
                 for reservation in owned_reservations:
-                    reservation.state = MemoryReservationState.RELEASED
+                    reservation.state = (
+                        MemoryReservationState.FAILED if failed else MemoryReservationState.RELEASED
+                    )
                     reservation.released_at = datetime.now(UTC)
                 instance = await session.get(ModelInstanceRow, group.instance_id)
                 if group.state is ShardGroupState.STOPPING:
