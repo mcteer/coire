@@ -208,6 +208,11 @@ The current read-only `/usr/local/bin` snapshot is identical on both hosts (`doc
 formulae in the non-interactive SSH environment. This is recorded as a current snapshot, not as
 proof of unchanged state because no pre-install baseline was captured.
 
+The same read-only probe against each Wi-Fi listener returned `401` without a bearer and `200`
+with its System-keychain node token. The listeners are reachable on `192.168.4.11` and
+`192.168.4.12`; loopback is intentionally not a listener. `bridge0` remains active at
+`192.168.100.11`/`192.168.100.12`, confirming the control and Studio data fabrics remain separate.
+
 ## CI: proving the shell check
 
 `SC-008` requires that a deliberately-introduced shell fails CI with a message naming the
