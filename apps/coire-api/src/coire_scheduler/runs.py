@@ -189,7 +189,7 @@ async def place_run(run_id_text: str) -> None:
 # step attempt. Keep the ceiling aligned with the workflow recovery budget so several supervisor
 # restarts cannot exhaust otherwise idempotent command replay while a container is still running.
 @DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
-async def execute_run(run_id_text: str) -> None:
+async def execute_run(run_id_text: str) -> str | None:
     run_id = uuid.UUID(run_id_text)
     with tracer.start_as_current_span("coire.scheduler.run.execute") as span:
         span.set_attribute("run_id", run_id_text)
@@ -223,9 +223,14 @@ async def execute_run(run_id_text: str) -> None:
                 usage.log_bytes = log_bytes
                 run.resource_usage = usage.model_dump(mode="json")
         if waited.get("state") == "timed_out":
-            raise TimeoutError("run_timeout")
+            # A container timeout is an expected terminal outcome, not a transient DBOS
+            # step failure. Returning the detail lets the workflow finalize immediately
+            # instead of retrying this step up to its recovery ceiling.
+            return "run_timeout"
         if waited.get("exit_code") not in (None, 0):
-            raise RuntimeError("run_container_failed")
+            # Likewise, non-zero exits (including an external/OOM kill such as 137) must
+            # become a terminal run state rather than replaying the whole execution step.
+            return "run_container_failed"
         await _advance(run_id, AgentRunState.COLLECTING, "collecting strict result")
         collected = await _submit(run_id, RunOperation.COLLECT)
         async with session_scope() as session:
@@ -233,6 +238,7 @@ async def execute_run(run_id_text: str) -> None:
             if run is not None:
                 result = collected.get("result")
                 run.result = result if isinstance(result, dict) else None
+    return None
 
 
 @DBOS.step(retries_allowed=True, max_attempts=5, interval_seconds=1.0)
@@ -277,9 +283,12 @@ async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> N
 async def run_workflow(run_id_text: str) -> None:
     try:
         await place_run(run_id_text)
-        await execute_run(run_id_text)
+        detail = await execute_run(run_id_text)
     except Exception as exc:
         await finalize_run(run_id_text, False, str(exc) or type(exc).__name__.lower())
+        return
+    if detail is not None:
+        await finalize_run(run_id_text, False, detail)
         return
     await finalize_run(run_id_text, True)
 
