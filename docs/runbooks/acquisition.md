@@ -52,3 +52,8 @@ the admin retry endpoint and wait for the durable node job to reach `done`; do n
 re-download the existing complete origin files. The live core host is not currently reachable
 with the available SSH identity, so this rollout remains an operator action. No model weights or
 credentials are recorded here.
+
+A 2026-09-02 read-only SSH check confirms the origin directory and manifest are still present on
+`coire-edge-a` (about 170 GiB); no GLM manifest or model directory is present on `coire-edge-b`.
+This is consistent with the failed visibility race and reinforces that retry must reuse the
+existing origin files rather than starting a second pull.
