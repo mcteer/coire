@@ -67,3 +67,8 @@ Run `33611416490` for commit `62dea08` passed every required gate, including the
 integration suite (`104 passed, 2 skipped`). It verifies the additional owner-based reservation
 reconciliation for partially materialized sharded groups. All image policy, CVE, SBOM, lint, type,
 web, unit/contract, and engine checks were green.
+
+The rerun attempt 2 of `33618455944` for commit `5a52339` passed every required gate, including the
+full composed integration suite (`104 passed, 2 skipped`). It includes the corrected reservation
+cleanup diagnostic and confirms all image policy, CVE, SBOM, lint, type, web, unit/contract, and
+engine checks remain green.
