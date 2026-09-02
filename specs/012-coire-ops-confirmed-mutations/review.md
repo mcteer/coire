@@ -51,3 +51,8 @@ GitHub Actions run `33595020338` for commit `67a0112` passed every required gate
 mypy, Python and web tests, digest-pinned production image builds with policy/CVE/SBOM checks, the
 engine suite, and the full composed integration suite (`103 passed, 2 skipped`). The integration
 run includes the sharding outage/fallback scenario after the cleanup-order stabilization.
+
+The follow-up run `33599562276` for commit `b161e80` also passed every required gate. Its full
+composed integration suite completed with `104 passed, 2 skipped` in 674.11 seconds, including the
+pre-group sharded-admission cleanup regression. Engine validation and all image policy, CVE, SBOM,
+lint, type, web, and unit/contract checks were green.
