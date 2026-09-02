@@ -62,3 +62,8 @@ integration suite (`104 passed, 2 skipped`). This run verifies the rank-loss tea
 failed shard groups remain in `STOPPING` until both stop commands complete, after which fallback
 launch proceeds without leaving model reservations or engines behind. Engine validation and all
 image policy, CVE, SBOM, lint, type, web, and unit/contract checks were green.
+
+Run `33611416490` for commit `62dea08` passed every required gate, including the full composed
+integration suite (`104 passed, 2 skipped`). It verifies the additional owner-based reservation
+reconciliation for partially materialized sharded groups. All image policy, CVE, SBOM, lint, type,
+web, unit/contract, and engine checks were green.
