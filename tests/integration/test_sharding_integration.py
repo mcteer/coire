@@ -100,6 +100,28 @@ def _open_link(client: httpx.Client, headers: dict[str, str]) -> None:
     assert response.json()["tp_eligible"] is True
 
 
+def _restore_node_a(api_url: str, headers: dict[str, str]) -> None:
+    """Restart the deliberately failed agent and wait for its control state to recover."""
+    subprocess.run(
+        ["docker", "compose", "-p", "coire-it", "restart", "node-a"],
+        cwd=COMPOSE_DIR,
+        check=True,
+        capture_output=True,
+    )
+    deadline = time.monotonic() + 60
+    with httpx.Client(base_url=api_url, timeout=30) as client:
+        while time.monotonic() < deadline:
+            state = client.get("/api/v1/state", headers=headers)
+            if state.status_code == 200:
+                node = next(
+                    item for item in state.json()["nodes"] if item["name"] == "coire-edge-a"
+                )
+                if node["reachability"] == "healthy":
+                    return
+            time.sleep(0.5)
+    raise AssertionError("node-a did not recover after the rank-failure test")
+
+
 def _create_tp(
     client: httpx.Client, headers: dict[str, str], model: dict[str, Any], variant: dict[str, Any]
 ) -> dict[str, Any]:
@@ -225,6 +247,10 @@ def test_probe_two_rank_gateway_drain_benchmark_and_rank_failure(
     api_url: str, admin_headers: dict[str, str], request: pytest.FixtureRequest
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=120) as client:
+        # This test kills node-a's fake engine to exercise rank-loss handling. Restore the
+        # agent after the assertions so the independent fallback test starts with a live
+        # Docker socket and no orphaned engine state.
+        request.addfinalizer(lambda: _restore_node_a(api_url, admin_headers))
         drain_runtime(client, admin_headers)
         model, variant = _candidate(client, admin_headers)
         ledgers = client.get("/api/v1/admin/ledger", headers=admin_headers).json()
