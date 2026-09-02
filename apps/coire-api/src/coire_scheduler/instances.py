@@ -21,6 +21,7 @@ from coire_api.db import (
     PlacementCommandRow,
     PlacementDecisionRow,
     RequestLeaseRow,
+    ShardGroupRow,
     session_scope,
 )
 from coire_api.instance.service import transition
@@ -38,6 +39,25 @@ meter = metrics.get_meter("coire.scheduler.instances")
 transitions = meter.create_counter("coire_instance_transitions_total", unit="1")
 failures = meter.create_counter("coire_instance_failures_total", unit="1")
 logger = logging.getLogger(__name__)
+
+
+async def _wait_for_fallback_teardown(instance_id: uuid.UUID) -> None:
+    """Do not launch a survivor fallback until its failed shard group is fully stopped."""
+    settings = get_settings()
+    deadline = asyncio.get_running_loop().time() + settings.gateway_wait_ceiling_s
+    while asyncio.get_running_loop().time() < deadline:
+        async with session_scope() as session:
+            parent = await session.scalar(
+                select(ModelInstanceRow).where(ModelInstanceRow.fallback_instance_id == instance_id)
+            )
+            if parent is None:
+                return
+            group = await session.scalar(
+                select(ShardGroupRow).where(ShardGroupRow.instance_id == parent.id)
+            )
+            if group is None or group.state.value == "stopped":
+                return
+        await asyncio.sleep(settings.placement_poll_interval_s)
 
 
 async def _advance(instance_id: uuid.UUID, state: InstanceState, reason: str) -> None:
@@ -64,6 +84,8 @@ async def execute_instance_launch(instance_id_text: str) -> None:
             async with session_scope() as session:
                 candidate = await session.get(ModelInstanceRow, instance_id)
                 sharded = candidate is not None and candidate.policy.startswith("sharded:")
+            if not sharded:
+                await _wait_for_fallback_teardown(instance_id)
             if sharded:
                 from coire_scheduler.sharded_instances import (
                     execute_sharded_launch,
