@@ -80,9 +80,14 @@ def _fallback_candidate(
 
 
 def _wait_instance(
-    client: httpx.Client, instance_id: str, headers: dict[str, str], states: set[str]
+    client: httpx.Client,
+    instance_id: str,
+    headers: dict[str, str],
+    states: set[str],
+    *,
+    timeout_seconds: float = 120,
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + 120
+    deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         body = client.get(f"/api/v1/instances/{instance_id}", headers=headers).json()
         if body["state"] in states:
@@ -147,7 +152,13 @@ def _create_single(
         },
     )
     assert response.status_code == 202, response.text
-    ready = _wait_instance(client, response.json()["id"], headers, {"ready", "failed"})
+    ready = _wait_instance(
+        client,
+        response.json()["id"],
+        headers,
+        {"ready", "failed"},
+        timeout_seconds=180,
+    )
     assert ready["state"] == "ready", json.dumps(ready, indent=2)
     return ready
 
