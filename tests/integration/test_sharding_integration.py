@@ -426,6 +426,16 @@ def test_probe_two_rank_gateway_drain_benchmark_and_rank_failure(
         state = client.get("/api/v1/state", headers=admin_headers).json()
         edge_a = next(node for node in state["nodes"] if node["name"] == "coire-edge-a")
         assert edge_a["reachability"] == "degraded"
+        # The rank-loss assertion above deliberately degrades node-a. Recover the node
+        # control state before exercising the independent single-node outage path; the
+        # simulated inter-Studio link failure remains in place below.
+        _sql_value(
+            "UPDATE nodes SET reachability='healthy'::reachability "
+            "WHERE name IN ('coire-edge-a','coire-edge-b'); "
+            "UPDATE node_memory_ledgers SET health='healthy'::reachability,health_reason=NULL "
+            "WHERE node_id IN (SELECT id FROM nodes WHERE name IN "
+            "('coire-edge-a','coire-edge-b')); SELECT 1"
+        )
 
 
 def test_rank_failure_creates_one_smaller_survivor_fallback(
