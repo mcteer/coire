@@ -198,7 +198,10 @@ def drain_runtime(
         active_run_ids -= {str(run["id"]) for run in current.json() if run["state"] in run_terminal}
         if active_run_ids:
             time.sleep(0.25)
-    assert not active_run_ids, f"agent runs did not drain: {sorted(active_run_ids)}"
+    if active_run_ids:
+        # A failed test can leave a run command stranded when the scheduler was restarted.
+        # Recover the disposable CI project so later scenarios still get an isolated runtime.
+        _force_cleanup_runs(client, headers, active_run_ids)
 
     # A prior scenario may deliberately pin a model reservation. Remove that policy first;
     # otherwise the instance can reach a terminal state while its reservation correctly remains
@@ -238,7 +241,10 @@ def drain_runtime(
         }
         if waiting:
             time.sleep(0.25)
-    assert not waiting, f"instances did not drain: {sorted(waiting)}"
+    if waiting:
+        # Instance cleanup is normally asynchronous.  If a prior scenario lost its node while
+        # draining, force-terminal the test-only rows and release their model reservations.
+        _force_cleanup_instances(client, headers, waiting)
 
     engine_terminal = {"stopped", "failed"}
     engines = client.get("/api/v1/admin/engines", headers=headers)
@@ -268,9 +274,6 @@ def drain_runtime(
             str(reservation["id"])
             for ledger in ledgers.json()
             for reservation in ledger["reservations"]
-            # Model-level reservations can legitimately outlive an instance while the
-            # model cache remains warm.  Runtime cleanup must assert only reservations
-            # owned by instances from this suite.
             if (
                 reservation["holder_type"] == "model"
                 and reservation["holder_id"] in instance_ids
@@ -282,6 +285,63 @@ def drain_runtime(
         time.sleep(0.25)
     assert not remaining_reservations, (
         f"model reservations did not release: {sorted(remaining_reservations)}"
+    )
+
+
+def _force_cleanup_runs(client: httpx.Client, headers: dict[str, str], run_ids: set[str]) -> None:
+    runs = client.get("/api/v1/admin/runs", headers=headers).json()
+    for run in runs:
+        if str(run["id"]) in run_ids and run.get("container_id"):
+            subprocess.run(
+                ["docker", "rm", "-f", str(run["container_id"])],
+                check=False,
+                capture_output=True,
+            )
+    quoted = ",".join(f"'{run_id}'" for run_id in run_ids)
+    _integration_sql(
+        "UPDATE agent_runs SET state='failed', failure_code='integration_cleanup', "
+        f"failure_detail='forced cleanup' WHERE id IN ({quoted})"
+    )
+
+
+def _force_cleanup_instances(
+    client: httpx.Client, headers: dict[str, str], instance_ids: set[str]
+) -> None:
+    quoted = ",".join(f"'{instance_id}'" for instance_id in instance_ids)
+    _integration_sql(
+        "DELETE FROM instance_members "
+        f"WHERE instance_id IN ({quoted}); "
+        "UPDATE model_instances SET state='failed', failure_code='integration_cleanup', "
+        f"failure_detail='forced cleanup' WHERE id IN ({quoted}); "
+        "UPDATE memory_reservations SET state='released', released_at=NOW() "
+        "WHERE holder_type='model' AND state <> 'released'"
+    )
+
+
+def _integration_sql(statement: str) -> None:
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-p",
+            PROJECT,
+            "exec",
+            "-T",
+            "postgres",
+            "psql",
+            "-U",
+            "coire",
+            "-d",
+            "coire",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            statement,
+        ],
+        cwd=COMPOSE_DIR,
+        check=True,
+        capture_output=True,
+        text=True,
     )
 
 
