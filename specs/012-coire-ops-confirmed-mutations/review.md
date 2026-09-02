@@ -77,3 +77,7 @@ Run `33626271284` for commit `9231a05` also passed every required gate, includin
 integration suite (`104 passed, 2 skipped`). It verifies terminal `FAILED` shard-stop responses and
 owner-based reservation reconciliation; image policy, CVE, SBOM, lint, type, web, unit/contract,
 and engine checks were green.
+
+Run `33627556014` for commit `bb779b8` passed every required gate (`104 passed, 2 skipped`),
+including the final current-Studio footprint evidence update. All image, security, lint, type,
+web, unit/contract, engine, and composed integration checks were green.
