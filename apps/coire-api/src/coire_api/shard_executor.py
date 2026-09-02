@@ -174,6 +174,35 @@ class ShardCommandExecutor:
                 if group is not None:
                     group.state = ShardGroupState.FAILED
                     group.state_reason = row.failure_detail
+                    # A failed stop command cannot prove that the engine released its
+                    # reservation.  Terminalize those reservations as FAILED rather than
+                    # leaving them HELD forever; the registry reconciler can safely retry
+                    # cleanup once the node returns.  Successful stops still use
+                    # _finalize_stop and become RELEASED.
+                    if row.operation == "stop":
+                        members = list(
+                            (
+                                await session.execute(
+                                    select(InstanceMemberRow).where(
+                                        InstanceMemberRow.instance_id == group.instance_id
+                                    )
+                                )
+                            )
+                            .scalars()
+                            .all()
+                        )
+                        async with node_admission_locks(
+                            session, [member.node_id for member in members]
+                        ):
+                            for member in members:
+                                if member.reservation_id is None:
+                                    continue
+                                reservation = await session.get(
+                                    MemoryReservationRow, member.reservation_id
+                                )
+                                if reservation is not None and reservation.released_at is None:
+                                    reservation.state = MemoryReservationState.FAILED
+                                    reservation.released_at = datetime.now(UTC)
                 logger.error(
                     "shard command failed group_id=%s command_id=%s operation=%s failure_code=%s",
                     row.group_id,
