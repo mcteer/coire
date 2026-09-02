@@ -326,7 +326,11 @@ def test_scheduler_restart_preserves_one_real_run_container(
                     "permitted_model_ids": [model_id],
                     "permitted_tools": [],
                     "spend_limit_tokens": 1000,
-                    "limits": {"memory_bytes": 268435456, "timeout_seconds": 60},
+                    # The fake harness itself sleeps five seconds, but a full composed run can
+                    # spend longer starting the non-root container while the node is under the
+                    # suite's model/engine load. Keep a bounded timeout without turning that
+                    # startup variance into a false scheduler-recovery failure.
+                    "limits": {"memory_bytes": 268435456, "timeout_seconds": 180},
                 },
             )
             assert response.status_code == 202, response.text
