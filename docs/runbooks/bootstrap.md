@@ -203,6 +203,11 @@ Both hosts reported LaunchDaemon `state = running`, `mlx_lm 0.31.3`, and both ke
 present. The sustained collection-budget-during-pull measurement and unchanged Homebrew/bin
 inventories remain operator evidence items.
 
+The current read-only `/usr/local/bin` snapshot is identical on both hosts (`docker`,
+`docker-compose`, `docker-credential-osxkeychain`, `kubectl`, `orb`, `orbctl`); Homebrew reports no
+formulae in the non-interactive SSH environment. This is recorded as a current snapshot, not as
+proof of unchanged state because no pre-install baseline was captured.
+
 ## CI: proving the shell check
 
 `SC-008` requires that a deliberately-introduced shell fails CI with a message naming the
