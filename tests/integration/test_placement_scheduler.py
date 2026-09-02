@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from conftest import drain_runtime
+from conftest import drain_runtime, wait_nodes_healthy
 
 pytestmark = [
     pytest.mark.integration,
@@ -68,6 +68,7 @@ def test_pin_refusal_then_unpin_lru_eviction_survives_scheduler_restart(
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=60.0) as client:
         drain_runtime(client, admin_headers)
+        wait_nodes_healthy(client, admin_headers)
         models = client.get("/api/v1/admin/models", headers=admin_headers).json()
         candidates: list[tuple[dict[str, object], dict[str, object]]] = []
         for model in models:
