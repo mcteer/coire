@@ -218,8 +218,20 @@ class AcquisitionCommandExecutor:
         raise RuntimeError(f"unknown acquisition operation {operation}")
 
     async def _wait(self, client: NodeClient, node: str, job_id: uuid.UUID) -> dict[str, object]:
+        # A node acknowledges job creation before its durable job record is visible to GET.
+        # Treat a short initial 404 as propagation, but never mask a genuinely lost job.
+        lookup_deadline = asyncio.get_running_loop().time() + 15.0
         while True:
-            status: JobStatus = await client.get_job(node, job_id)
+            try:
+                status: JobStatus = await client.get_job(node, job_id)
+            except NodeError as exc:
+                if (
+                    exc.kind is NodeErrorKind.NOT_FOUND
+                    and asyncio.get_running_loop().time() < lookup_deadline
+                ):
+                    await asyncio.sleep(self.settings.acquisition_poll_interval_s)
+                    continue
+                raise
             if status.stage is JobStage.DONE:
                 return status.model_dump(mode="json")
             if status.stage in {JobStage.FAILED, JobStage.CANCELLED}:
