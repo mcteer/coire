@@ -72,3 +72,8 @@ The rerun attempt 2 of `33618455944` for commit `5a52339` passed every required 
 full composed integration suite (`104 passed, 2 skipped`). It includes the corrected reservation
 cleanup diagnostic and confirms all image policy, CVE, SBOM, lint, type, web, unit/contract, and
 engine checks remain green.
+
+Run `33626271284` for commit `9231a05` also passed every required gate, including the full composed
+integration suite (`104 passed, 2 skipped`). It verifies terminal `FAILED` shard-stop responses and
+owner-based reservation reconciliation; image policy, CVE, SBOM, lint, type, web, unit/contract,
+and engine checks were green.
