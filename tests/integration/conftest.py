@@ -285,6 +285,24 @@ def drain_runtime(
     )
 
 
+def wait_nodes_healthy(
+    client: httpx.Client, headers: dict[str, str], *, timeout: float = 120
+) -> None:
+    """Wait until every declared node has recovered before an instance scenario starts."""
+    deadline = time.monotonic() + timeout
+    last: list[dict[str, object]] = []
+    while time.monotonic() < deadline:
+        response = client.get("/api/v1/admin/nodes", headers=headers)
+        response.raise_for_status()
+        last = response.json()
+        if last and all(item["reachability"] == "healthy" for item in last):
+            return
+        time.sleep(0.5)
+    raise AssertionError(
+        f"nodes did not become healthy: {[item.get('reachability') for item in last]}"
+    )
+
+
 def _digest_ref(image: str) -> str:
     inspected = subprocess.run(
         ["docker", "image", "inspect", image, "--format", "{{index .RepoDigests 0}}"],
