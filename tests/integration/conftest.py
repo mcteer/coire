@@ -287,7 +287,7 @@ def drain_runtime(
                 "state": reservation["state"],
                 "pinned": reservation["pinned"],
             }
-            for ledger in ledgers
+            for ledger in ledgers.json()
             for reservation in ledger["reservations"]
             if reservation["id"] in remaining_reservations
         ]
