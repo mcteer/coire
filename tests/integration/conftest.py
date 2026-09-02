@@ -273,10 +273,7 @@ def drain_runtime(
             str(reservation["id"])
             for ledger in ledgers.json()
             for reservation in ledger["reservations"]
-            if (
-                reservation["holder_type"] == "model"
-                and reservation["released_at"] is None
-            )
+            if (reservation["holder_type"] == "model" and reservation["released_at"] is None)
         ]
         if not remaining_reservations:
             break
