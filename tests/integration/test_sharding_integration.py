@@ -227,6 +227,7 @@ def test_probe_two_rank_gateway_drain_benchmark_and_rank_failure(
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=120) as client:
         drain_runtime(client, admin_headers)
+        wait_nodes_healthy(client, admin_headers)
         model, variant = _candidate(client, admin_headers)
         ledgers = client.get("/api/v1/admin/ledger", headers=admin_headers).json()
         original_budgets = {str(item["node_id"]): int(item["budget_bytes"]) for item in ledgers}

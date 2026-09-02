@@ -162,6 +162,10 @@ def test_restart_two_instances_drain_and_registration_token_reuse(
             first_data = next(line for line in events.iter_lines() if line.startswith("data: "))
             assert json.loads(first_data.removeprefix("data: "))["state"] == "ready"
 
+        # Scheduler restart can briefly leave the peer's registration stale while the first
+        # instance is already recovered.  Wait for both node heartbeats before placing the
+        # second instance on the other Studio.
+        wait_nodes_healthy(client, admin_headers)
         second = client.post(
             "/api/v1/instances",
             headers=admin_headers,
