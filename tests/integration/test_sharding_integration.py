@@ -311,6 +311,13 @@ def test_probe_two_rank_gateway_drain_benchmark_and_rank_failure(
             == "0"
         )
 
+        # Keep a known-good single-node instance resident before the deliberate data-link
+        # outage.  The outage scenario is about TP admission failing closed while an existing
+        # single-node service continues; creating a new engine after the failed TP workflow adds
+        # an unrelated scheduler/engine timing dependency.
+        single_before_outage = _ensure_single(client, admin_headers, model, variant, "coire-edge-a")
+        assert single_before_outage["state"] == "ready"
+
         _sql_value(
             "INSERT INTO link_observations "
             "(id,node_a_id,node_b_id,transport,outcome,os_version_a,os_version_b,"
@@ -327,10 +334,6 @@ def test_probe_two_rank_gateway_drain_benchmark_and_rank_failure(
         assert down["tp_eligible"] is False
         gated = _create_tp_failure(client, admin_headers, model, variant)
         assert gated["failure_code"] == "rdma_probe_required"
-        # The failed TP workflow releases its two reservations asynchronously.  Quiesce that
-        # cleanup before asking the scheduler for the single-node fallback; otherwise a transient
-        # reservation/engine race can leave the fallback in launching until the test timeout.
-        drain_runtime(client, admin_headers)
         single_during_outage = _ensure_single(client, admin_headers, model, variant, "coire-edge-a")
         single_completion = client.post(
             "/v1/chat/completions",
