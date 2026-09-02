@@ -56,3 +56,9 @@ The follow-up run `33599562276` for commit `b161e80` also passed every required 
 composed integration suite completed with `104 passed, 2 skipped` in 674.11 seconds, including the
 pre-group sharded-admission cleanup regression. Engine validation and all image policy, CVE, SBOM,
 lint, type, web, and unit/contract checks were green.
+
+Run `33606314647` for commit `000a3d0` passed every required gate, including the full composed
+integration suite (`104 passed, 2 skipped`). This run verifies the rank-loss teardown ordering:
+failed shard groups remain in `STOPPING` until both stop commands complete, after which fallback
+launch proceeds without leaving model reservations or engines behind. Engine validation and all
+image policy, CVE, SBOM, lint, type, web, and unit/contract checks were green.
