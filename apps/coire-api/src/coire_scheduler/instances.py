@@ -55,7 +55,7 @@ async def _wait_for_fallback_teardown(instance_id: uuid.UUID) -> None:
             group = await session.scalar(
                 select(ShardGroupRow).where(ShardGroupRow.instance_id == parent.id)
             )
-            if group is None or group.state.value == "stopped":
+            if group is None or group.state.value in {"stopped", "failed"}:
                 return
         await asyncio.sleep(settings.placement_poll_interval_s)
 
