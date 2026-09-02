@@ -165,7 +165,9 @@ services:
       COIRE_TEST_FAKE_CONVERSION: "1"
       COIRE_TEST_FAKE_VALIDATION: "1"
       HF_HUB_DISABLE_XET: "1"
-      DISK_RESERVE_BYTES: "268435456"
+      # Keep the credential-bearing origin deterministic in CI while still exercising the
+      # production most-free-disk policy: node-a has 768 MiB more usable store than node-b.
+      DISK_RESERVE_BYTES: "1073741824"
       OTLP_ENDPOINT: http://otel-collector:4317
     volumes:
       - node-b-opt:/opt/coire
