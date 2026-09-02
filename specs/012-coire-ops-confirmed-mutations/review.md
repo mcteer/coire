@@ -44,3 +44,10 @@ and 409 confirmation/decline responses were absent from OpenAPI. T066–T068 rem
 A repeat requirement-by-requirement audit mapped FR-001–FR-020 and SC-001–SC-008 to code, direct
 tests, composed evidence, image inspection, or deployment policy and found no remaining ambiguity,
 duplication, constitutional conflict, or unimplemented behavior.
+
+## Current CI evidence — 2026-09-02
+
+GitHub Actions run `33595020338` for commit `67a0112` passed every required gate: Ruff and strict
+mypy, Python and web tests, digest-pinned production image builds with policy/CVE/SBOM checks, the
+engine suite, and the full composed integration suite (`103 passed, 2 skipped`). The integration
+run includes the sharding outage/fallback scenario after the cleanup-order stabilization.
