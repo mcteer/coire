@@ -27,6 +27,7 @@ from coire_api.placement.service import node_admission_locks
 from coire_core.models import (
     InstanceState,
     MemoryReservationState,
+    ReservationHolder,
     ShardGroupCommand,
     ShardGroupState,
 )
@@ -142,6 +143,25 @@ class ShardCommandExecutor:
                         if reservation is not None:
                             reservation.state = MemoryReservationState.RELEASED
                             reservation.released_at = datetime.now(UTC)
+                # Admission creates the instance-owned reservations before member rows are
+                # materialized.  If a rank stopped after that partial write, member-based
+                # cleanup alone can leave one held reservation behind.  Reconcile by owner too.
+                owned_reservations = (
+                    (
+                        await session.execute(
+                            select(MemoryReservationRow).where(
+                                MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                                MemoryReservationRow.holder_id == str(group.instance_id),
+                                MemoryReservationRow.released_at.is_(None),
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for reservation in owned_reservations:
+                    reservation.state = MemoryReservationState.RELEASED
+                    reservation.released_at = datetime.now(UTC)
                 instance = await session.get(ModelInstanceRow, group.instance_id)
                 if group.state is ShardGroupState.STOPPING:
                     # Rank-loss teardown marks the instance failed before issuing stops. Keep
