@@ -572,6 +572,40 @@ async def teardown_sharded(instance_id: uuid.UUID, *, failed: bool, reason: str)
             .all()
         )
         if group is None:
+            # Admission can fail before a shard-group row is created.  The instance
+            # reservation is still owned by the instance and must be terminalized so
+            # a refused launch cannot hold capacity indefinitely.
+            reservations = (
+                (
+                    await session.execute(
+                        select(MemoryReservationRow).where(
+                            MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                            MemoryReservationRow.holder_id == str(instance_id),
+                            MemoryReservationRow.state.in_(
+                                [
+                                    MemoryReservationState.PENDING,
+                                    MemoryReservationState.HELD,
+                                    MemoryReservationState.RELEASING,
+                                ]
+                            ),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for reservation in reservations:
+                reservation.state = MemoryReservationState.FAILED
+                reservation.released_at = datetime.now(UTC)
+            instance = await session.get(ModelInstanceRow, instance_id)
+            if instance is not None and instance.state is not InstanceState.FAILED:
+                await transition(
+                    session,
+                    instance_id,
+                    InstanceState.FAILED,
+                    reason=reason,
+                    failure_code="shard_group_failed",
+                )
             return
         group.state = ShardGroupState.STOPPING
         for member in members:
@@ -611,14 +645,16 @@ async def teardown_sharded(instance_id: uuid.UUID, *, failed: bool, reason: str)
             for member in members:
                 member.rank_healthy = False
                 if member.reservation_id is not None:
-                    reservation = await session.get(MemoryReservationRow, member.reservation_id)
-                    if reservation is not None:
-                        reservation.state = (
+                    member_reservation = await session.get(
+                        MemoryReservationRow, member.reservation_id
+                    )
+                    if member_reservation is not None:
+                        member_reservation.state = (
                             MemoryReservationState.FAILED
                             if failed
                             else MemoryReservationState.RELEASED
                         )
-                        reservation.released_at = datetime.now(UTC)
+                        member_reservation.released_at = datetime.now(UTC)
             if group is not None:
                 group.state = ShardGroupState.FAILED if failed else ShardGroupState.STOPPED
                 group.state_reason = reason
