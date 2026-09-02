@@ -144,9 +144,17 @@ class ShardCommandExecutor:
                             reservation.released_at = datetime.now(UTC)
                 instance = await session.get(ModelInstanceRow, group.instance_id)
                 if group.state is ShardGroupState.STOPPING:
-                    group.state = ShardGroupState.STOPPED
+                    # Rank-loss teardown marks the instance failed before issuing stops. Keep
+                    # that terminal outcome while still waiting for both engines to disappear;
+                    # ordinary coordinated drains remain STOPPED.
+                    failed = instance is not None and instance.state is InstanceState.FAILED
+                    group.state = ShardGroupState.FAILED if failed else ShardGroupState.STOPPED
                     group.stopped_at = datetime.now(UTC)
-                    if instance is not None and instance.state is not InstanceState.STOPPED:
+                    if (
+                        instance is not None
+                        and not failed
+                        and instance.state is not InstanceState.STOPPED
+                    ):
                         await transition(
                             session,
                             instance.id,
