@@ -278,9 +278,20 @@ def drain_runtime(
         if not remaining_reservations:
             break
         time.sleep(0.25)
-    assert not remaining_reservations, (
-        f"model reservations did not release: {sorted(remaining_reservations)}"
-    )
+    if remaining_reservations:
+        details = [
+            {
+                "id": reservation["id"],
+                "node_id": ledger["node_id"],
+                "holder_id": reservation["holder_id"],
+                "state": reservation["state"],
+                "pinned": reservation["pinned"],
+            }
+            for ledger in ledgers
+            for reservation in ledger["reservations"]
+            if reservation["id"] in remaining_reservations
+        ]
+        raise AssertionError(f"model reservations did not release: {details}")
 
 
 def _force_cleanup_runs(client: httpx.Client, headers: dict[str, str], run_ids: set[str]) -> None:
