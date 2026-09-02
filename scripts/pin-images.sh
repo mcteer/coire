@@ -51,11 +51,25 @@ check_lock_present() {
     grep -qF "$digest" "$LOCK" || {
       echo "digest not recorded in images.lock: $digest" >&2; fail=1;
     }
-  done < <(grep -ohE 'sha256:[a-f0-9]{64}' "$COMPOSE" \
-             $(find "$REPO_ROOT" -name '*Dockerfile' \
-                 -not -path '*/node_modules/*' -not -path '*/.venv/*' \
-                 -not -path '*/tests/fixtures/*') \
-           2>/dev/null | sort -u)
+  done < <(
+    {
+      grep -ohE 'sha256:[a-f0-9]{64}' "$COMPOSE" || true
+      while IFS= read -r df; do
+        grep -iE '^[[:space:]]*FROM[[:space:]]' "$df" || true
+      done < <(find "$REPO_ROOT" -name '*Dockerfile' \
+        -not -path '*/node_modules/*' -not -path '*/.venv/*' \
+        -not -path '*/tests/fixtures/*')
+    } | grep -oE 'sha256:[a-f0-9]{64}' | sort -u
+  )
+}
+
+check_ops_image_wiring() {
+  grep -qF 'image: ${COIRE_REGISTRY:-}coire-agent-ops:${COIRE_TAG:-dev}' "$COMPOSE" || {
+    echo "coire-ops first-party image is not tag/digest controlled" >&2; fail=1;
+  }
+  grep -qF 'dockerfile: apps/coire-agent/ops.Dockerfile' "$COMPOSE" || {
+    echo "coire-ops does not use its isolated Dockerfile" >&2; fail=1;
+  }
 }
 
 case "$MODE" in
@@ -63,6 +77,7 @@ case "$MODE" in
     check_dockerfiles
     check_compose_third_party
     check_lock_present
+    check_ops_image_wiring
     if [[ "$fail" -ne 0 ]]; then
       echo "pin-images: FAILED — every base image and third-party image must carry a digest" >&2
       exit 1

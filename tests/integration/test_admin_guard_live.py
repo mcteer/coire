@@ -58,7 +58,7 @@ class TestEveryAdminRouteRefuses:
     def test_without_a_credential(self, api_url: str, method: str, path: str) -> None:
         with httpx.Client(base_url=api_url, timeout=15.0) as client:
             resp = client.request(method, path, json={})
-        assert resp.status_code == 403, f"{method} {path} -> {resp.status_code}"
+        assert resp.status_code == 401, f"{method} {path} -> {resp.status_code}"
 
     @pytest.mark.parametrize(("method", "path"), ADMIN_OPERATIONS)
     def test_with_a_wrong_credential(self, api_url: str, method: str, path: str) -> None:
@@ -66,7 +66,7 @@ class TestEveryAdminRouteRefuses:
             resp = client.request(
                 method, path, json={}, headers={"Authorization": "Bearer not-the-token"}
             )
-        assert resp.status_code == 403, f"{method} {path} -> {resp.status_code}"
+        assert resp.status_code == 401, f"{method} {path} -> {resp.status_code}"
 
     def test_refusals_change_nothing(self, api_url: str, admin_headers: dict[str, str]) -> None:
         with httpx.Client(base_url=api_url, timeout=15.0) as client:
@@ -97,14 +97,19 @@ class TestEveryAdminRouteRefuses:
         refused_after = sum(1 for r in after if r["outcome"] == "refused")
         assert refused_after >= refused_before + 2
         rows = [r for r in after if r["outcome"] == "refused"]
-        assert any(r["action"] == "admin.refused" for r in rows)
-        assert all(r["actor"] == "anonymous" for r in rows if r["action"] == "admin.refused")
+        assert any(r["action"] == "authentication.refused" for r in rows)
+        assert all(
+            r["actor"] == "anonymous" for r in rows if r["action"] == "authentication.refused"
+        )
 
 
-class TestUserRouteIsOpen:
-    def test_the_model_listing_needs_no_credential(self, api_url: str) -> None:
+class TestUserRouteIsAuthenticated:
+    def test_the_model_listing_requires_a_credential(
+        self, api_url: str, admin_headers: dict[str, str]
+    ) -> None:
         with httpx.Client(base_url=api_url, timeout=15.0) as client:
-            assert client.get("/api/v1/models").status_code == 200
+            assert client.get("/api/v1/models").status_code == 401
+            assert client.get("/api/v1/models", headers=admin_headers).status_code == 200
 
 
 class TestCredentialPlacement:

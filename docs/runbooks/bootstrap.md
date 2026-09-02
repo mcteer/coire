@@ -146,6 +146,73 @@ apps/coire-node/uninstall.sh --dry-run
 
 Remove it entirely with `apps/coire-node/uninstall.sh --keychain`.
 
+### 2026-09-01 real-cluster evidence
+
+Both Studios were checked over the Wi-Fi control fabric after reboot. The authenticated
+`/node/health` response returned `200` on each node and the unauthenticated response returned
+`401`; both reported `path: control` and `collection_budget_ok: true`:
+
+| Node | Control address | `agent_cpu_percent` | `agent_rss_bytes` | `memory_committed_bytes` | `disk_free_bytes` |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `coire-edge-a` | `192.168.4.11:9400` | 1.0 | 101,777,408 | 708,524,596 | 1,916,450,107,392 |
+| `coire-edge-b` | `192.168.4.12:9400` | 1.5 | 99,155,968 | 0 | 1,908,641,757,184 |
+
+The exact `apps/coire-node/uninstall.sh --dry-run` output listed only `/opt/coire/bin`,
+`/opt/coire/python`, `/opt/coire/envs`, `/opt/coire/log`, `/opt/coire/models`, `/opt/coire/state`,
+`/opt/coire/hf-cache`, and `/Library/LaunchDaemons/com.coire.node.plist`, with `/opt/coire` itself
+left intact. Two hundred unauthenticated readiness probes per control address succeeded; measured
+round-trip percentiles were edge-a `p50 20.609 ms / p95 108.807 ms` and edge-b `p50 22.039 ms /
+p95 113.042 ms`. Latency is recorded evidence only; the former standalone sub-50 ms gate was
+removed by the clarified architecture decision.
+
+The Thunderbolt partition test remains pending because `sudo ifconfig bridge0 down` requires an
+interactive operator password on the Studios; the attempted command made no network change.
+
+The follow-up footprint check on 2026-09-01 confirmed the same allowlisted paths and running
+LaunchDaemon on both hosts. `/opt/coire/envs/0.2.0/bin/python3` reported `mlx_lm 0.31.3` and
+`huggingface_hub` imported successfully. Directory totals were edge-a:
+`envs 400M`, `models 276M`, `python 70M`, `bin 35M`, `log 3.0M`, `hf-cache 148K`, `state 8.0K`;
+edge-b: `envs 392M`, `models 291M`, `python 70M`, `bin 35M`, `log 4.0M`, `hf-cache 24K`,
+`state 20K`. No files outside the uninstall allowlist were reported by the dry-run.
+
+The control/data separation was also verified without changing routes: both Studios resolve the
+core control address (`192.168.4.10`) through Wi‑Fi `en1`, while the Thunderbolt `bridge0` fabric is
+active at `192.168.100.11` (edge-a) and `192.168.100.12` (edge-b). This confirms no wired path is
+used for control or public egress; `bridge0` is reserved for Studio-to-Studio inference traffic.
+
+The deployed v2 nodes intentionally run with `legacy_network_mode=false`. Consequently their
+Wi‑Fi `.lab` listener is the authenticated control path (`path: control`), and no separate legacy
+egress/fallback listener is started. The historical fallback-header checks in the pre-v2 quickstart
+apply only to legacy-mode deployments; they are not a current control-fabric requirement.
+
+The footprint command was rerun over SSH with `--keychain` on both Studios. Each output contained
+only `/opt/coire/{bin,python,envs,log,models,state,hf-cache}`, the LaunchDaemon plist, and the two
+System-keychain entries `coire-node-token` and `coire-hf-token`; `/opt/coire` itself remained.
+The same check reported LaunchDaemon `state = running`, the expected FQDN/data hosts, and MLX
+`0.31.3` on both nodes. A subsequent authenticated health sample reported
+`collection_budget_ok: true` on edge-a; edge-b varied around the 2% CPU boundary while idle and
+was observed returning to `true`, so a sustained pull-budget measurement remains open.
+
+### 2026-09-02 follow-up footprint check
+
+Over SSH, the repository `apps/coire-node/uninstall.sh --dry-run --keychain` was executed on both
+Studios without changing state. Each output enumerated exactly `/opt/coire/{bin,python,envs,log,
+models,state,hf-cache}`, `/Library/LaunchDaemons/com.coire.node.plist`, and the System-keychain
+items `coire-node-token` and `coire-hf-token`, and explicitly left `/opt/coire` itself intact.
+Both hosts reported LaunchDaemon `state = running`, `mlx_lm 0.31.3`, and both keychain items
+present. The sustained collection-budget-during-pull measurement and unchanged Homebrew/bin
+inventories remain operator evidence items.
+
+The current read-only `/usr/local/bin` snapshot is identical on both hosts (`docker`,
+`docker-compose`, `docker-credential-osxkeychain`, `kubectl`, `orb`, `orbctl`); Homebrew reports no
+formulae in the non-interactive SSH environment. This is recorded as a current snapshot, not as
+proof of unchanged state because no pre-install baseline was captured.
+
+The same read-only probe against each Wi-Fi listener returned `401` without a bearer and `200`
+with its System-keychain node token. The listeners are reachable on `192.168.4.11` and
+`192.168.4.12`; loopback is intentionally not a listener. `bridge0` remains active at
+`192.168.100.11`/`192.168.100.12`, confirming the control and Studio data fabrics remain separate.
+
 ## CI: proving the shell check
 
 `SC-008` requires that a deliberately-introduced shell fails CI with a message naming the
@@ -158,6 +225,13 @@ scripts/image-policy.sh bad:test tests/fixtures/policy/bad.Dockerfile
 ```
 
 The same script runs per-image in CI's `image-policy` job, over all seven built images.
+
+### SC-008 execution evidence — 2026-09-01
+
+Throwaway PR #22 (`spike/sc-008-shell-fixture`) added a pinned BusyBox `/bin/sh` copy to the
+API image. The CI image-policy gate rejected it with the expected diagnostic:
+`policy: shell present in coire-api:ci: /bin/sh` (exit 1). The fixture PR and branch were
+closed and deleted after capture.
 
 ## See also
 

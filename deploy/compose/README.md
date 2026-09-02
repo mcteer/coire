@@ -13,3 +13,60 @@ Runtime configuration is supplied through `COIRE_` environment variables and Key
 compose secrets. Gateway tuning variables and operational procedures are documented in
 [`docs/runbooks/gateway.md`](../../docs/runbooks/gateway.md). Do not put credentials in this file,
 `.env`, an image, or a compose environment block.
+
+Identity requires `CLOUDFLARE_ACCESS_ISSUER` (the exact team issuer) and
+`CLOUDFLARE_ACCESS_AUDIENCE`. Seed `coire-bootstrap-admin-email` in Keychain by running
+`COIRE_BOOTSTRAP_ADMIN_EMAIL=you@example.com scripts/coire-secrets-init.sh`; it creates the first
+local admin row but is never itself an authenticator. JWKS cache/leeway defaults are controlled by
+`CLOUDFLARE_JWKS_TTL_S` (300) and `CLOUDFLARE_JWT_LEEWAY_S` (60). The legacy admin bearer is disabled
+unless the explicit rollback/test-only `IDENTITY_LEGACY_ADMIN_ENABLED` switch is set; production
+compose does not set it.
+
+Acquisition tuning uses `ACQUISITION_POLL_INTERVAL_S` (2), `ACQUISITION_STUCK_SECONDS` (1800),
+`ACQUISITION_PERPLEXITY_TOLERANCE` (0.10), `ACQUISITION_CONVERSION_MEMORY_OVERHEAD` (1.20),
+`ACQUISITION_DISK_SAFETY_FRACTION` (0.10), and `ACQUISITION_VALIDATION_FIXTURE_VERSION` (`v1`).
+
+Placement uses `PLACEMENT_DEFAULT_BUDGET_BYTES` (230 GiB), `PLACEMENT_SANDBOX_BYTES` (16 GiB),
+`PLACEMENT_HEALTH_FRESHNESS_S` (30), `PLACEMENT_BUSY_DRAIN_TIMEOUT_S` (10),
+`PLACEMENT_CPU_SATURATION_PERCENT` (90),
+`PLACEMENT_POLL_INTERVAL_S` (1), `PLACEMENT_TTL_INTERVAL_S` (30), and
+`PLACEMENT_LEASE_TTL_S` (60). The budget is authoritative; measured resident memory is used
+only for drift telemetry. Reducing a budget below current reservations blocks admission but
+does not force eviction.
+Instance lifecycle uses `INSTANCE_DRAIN_TIMEOUT_S` (30) for bounded graceful drain and
+`INSTANCE_EVENT_POLL_INTERVAL_S` (0.5) for persisted SSE replay polling.
+Sharding uses `LINK_PROBE_INTERVAL_S` (30), `LINK_PROBE_FRESHNESS_S` (120),
+`LINK_FAILURES_BEFORE_DOWN` (2), `LINK_SUCCESSES_BEFORE_UP` (3),
+`SHARDING_ALLOW_RING_FALLBACK` (true), `SHARDING_START_TIMEOUT_S` (600), and
+`SHARDING_PORT_RANGE` (`9600-9699`). The complete MLX-generated JACCL and ring hostfiles are
+configured with `SHARDING_JACCL_HOSTFILE` and `SHARDING_RING_HOSTFILE`; latency is telemetry,
+never an admission threshold. See [`docs/runbooks/sharded-serving.md`](../../docs/runbooks/sharded-serving.md).
+Raw and converted files remain under the configured Studio model store; DBOS metadata remains in
+Postgres. See [`docs/runbooks/acquisition.md`](../../docs/runbooks/acquisition.md).
+
+Harness limits use `HARNESS_RETRY_LIMIT` (2), `HARNESS_TOOL_OUTPUT_BYTE_CAP` (16384),
+`HARNESS_SUMMARY_THRESHOLD` (0.8), and `HARNESS_EVALUATION_PASS_SCORE` (0.8). The user and ops
+harnesses are separate images; only the ops image contains an admin client. See
+[`docs/runbooks/agent-harness.md`](../../docs/runbooks/agent-harness.md).
+
+The core-only ops harness uses `OPS_SERVICE_URL` (`http://coire-ops:8003`), `OPS_API_URL`
+(`http://coire-api:8000`), `OPS_GATEWAY_URL` (`http://coire-api:8000/v1`), and the registry UUID in
+`OPS_MODEL_ID`. Confirmation authority expires after `OPS_CONFIRMATION_TTL_S` (300; never more
+than five minutes). Session liveness uses `OPS_SESSION_HEARTBEAT_S` (10) and
+`OPS_SESSION_STALE_S` (30); internal/model calls use `OPS_REQUEST_TIMEOUT_S` (120). The
+`ops_service_token` compose secret is a dedicated read/propose credential mounted only in
+`coire-api` and `coire-ops`; it is not an admin credential and cannot confirm a proposal.
+Set the non-secret registry UUID as `COIRE_OPS_MODEL_ID` (see `.env.example`) before bring-up, and
+provision `coire-ops-service-token` with `scripts/coire-secrets-init.sh`. Operational procedures
+are in [`docs/runbooks/coire-ops.md`](../../docs/runbooks/coire-ops.md).
+
+Studio container orchestration uses `RUN_CONCURRENCY_CAP` (3),
+`RUN_DEFAULT_MEMORY_BYTES` (4 GiB), `RUN_MAX_MEMORY_BYTES` (16 GiB),
+`RUN_DEFAULT_NANO_CPUS` (2 CPUs), `RUN_DEFAULT_PIDS_LIMIT` (256),
+`RUN_DEFAULT_TIMEOUT_S` (900), `RUN_MAX_LOG_BYTES` (8 MiB),
+`RUN_MAX_RESULT_BYTES` (4 MiB), `RUN_TOKEN_TTL_S` (1200),
+`RUN_WORKSPACE_ROOT` (`/opt/coire/workspaces`), `RUN_DOCKER_SOCKET`
+(`/var/run/docker.sock`), and `RUN_GATEWAY_URL` (`http://coire-core.lab:8080/v1`).
+`RUN_AGENT_IMAGE` and `RUN_RELAY_IMAGE` have no default and must be release-image references
+pinned by digest. The relay caps each request with `RUN_RELAY_REQUEST_BYTES` (2 MiB). Never use
+a tag for either runtime image.

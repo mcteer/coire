@@ -23,13 +23,17 @@ COPY apps/coire-agent/pyproject.toml apps/coire-agent/
 
 # Dependencies first so a source-only change does not re-resolve the world.
 RUN uv venv --python 3.13 --relocatable /app/.venv \
- && uv sync --frozen --no-dev --no-editable --no-install-workspace --package coire-api
+ && uv sync --frozen --no-dev --no-editable --no-install-workspace --package coire-api \
+ && cp /usr/lib/aarch64-linux-gnu/libpcre2-8.so.0.11.2 \
+       /app/.venv/lib/python3.13/site-packages/psycopg_binary.libs/libpcre2-8-8701a61e.so.0.7.1
 
 COPY packages/coire-core packages/coire-core
 COPY apps/coire-api apps/coire-api
 # --no-editable: workspace packages must be copied into the venv, not linked back to /build,
 # which does not exist in the runtime stage.
-RUN uv sync --frozen --no-dev --no-editable --package coire-api
+RUN uv sync --frozen --no-dev --no-editable --package coire-api \
+ && cp /usr/lib/aarch64-linux-gnu/libpcre2-8.so.0.11.2 \
+       /app/.venv/lib/python3.13/site-packages/psycopg_binary.libs/libpcre2-8-8701a61e.so.0.7.1
 
 # The runtime must contain no package manager (image-policy rule 2). pip ships with the
 # builder's interpreter and would otherwise arrive via the /usr/local copy.

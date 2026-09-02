@@ -57,6 +57,8 @@ yarn-error.log*
 *.npz
 /outputs/
 /generated/
+/workspaces/
+/run-results/
 
 # --- Runtime / local state ---
 *.log
@@ -79,6 +81,8 @@ tmp/
 .claude/settings.local.json
 .coire-up.lock/
 deploy/compose/.env
+deploy/cluster/generated/*
+!deploy/cluster/generated/.gitkeep
 
 # Engine test measurements, written by the macOS engine job
 engine-measurements.md

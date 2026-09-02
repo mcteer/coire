@@ -11,7 +11,7 @@
 # Docker socket proxy (FR-006, FR-007).
 #
 # Absent by design: cloudflared (no tunnel until the platform faces external traffic —
-# ADR-0001), coire-ops (feature 012), coire-agent (built but never run on core — FR-017), and
+# ADR-0001), coire-agent (the user harness is built but never run on core — FR-017), and
 # the observability backends (feature 009 — ADR-0003).
 
 name: coire
@@ -66,8 +66,17 @@ services:
     environment:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
+      CLOUDFLARE_ACCESS_ISSUER: ${CLOUDFLARE_ACCESS_ISSUER:-}
+      CLOUDFLARE_ACCESS_AUDIENCE: ${CLOUDFLARE_ACCESS_AUDIENCE:-}
       NODE_INVENTORY_FILE: /app/nodes.yaml
-    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token]
+      SHARDING_JACCL_HOSTFILE: /run/coire/cluster/jaccl-hostfile.json
+      SHARDING_RING_HOSTFILE: /run/coire/cluster/ring-hostfile.json
+      RUN_AGENT_IMAGE: ${COIRE_RUN_AGENT_IMAGE:-}
+      RUN_RELAY_IMAGE: ${COIRE_RUN_RELAY_IMAGE:-}
+      OPS_SERVICE_URL: http://coire-ops:8003
+      OPS_SESSION_STALE_S: ${OPS_SESSION_STALE_S:-30}
+    volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
+    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token]
     depends_on:
       postgres: {condition: service_healthy}
       coire-migrate: {condition: service_completed_successfully}
@@ -77,14 +86,45 @@ services:
       test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2).status==200 else 1)"]
       <<: *python-health
 
+  coire-ops:
+    image: ${COIRE_REGISTRY:-}coire-agent-ops:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-agent/ops.Dockerfile
+    networks: [coire-internal, coire-telemetry]
+    environment:
+      OTLP_ENDPOINT: http://otel-collector:4317
+      OPS_API_URL: http://coire-api:8000
+      OPS_GATEWAY_URL: http://coire-api:8000/v1
+      OPS_MODEL_ID: ${COIRE_OPS_MODEL_ID:-}
+      OPS_SERVICE_INSTANCE: coire-ops
+    secrets: [ops_service_token]
+    depends_on:
+      coire-api: {condition: service_healthy}
+    <<: *hardening
+    user: "65532:65532"
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8003/ready',timeout=2).status==200 else 1)"]
+      <<: *python-health
+
   coire-mcp:
     image: ${COIRE_REGISTRY:-}coire-mcp:${COIRE_TAG:-dev}
     build:
       context: ../..
       dockerfile: apps/coire-api/docker/mcp.Dockerfile
-    networks: [coire-edge, coire-telemetry]
+    networks: [coire-edge, coire-db, coire-telemetry]
     environment:
       OTLP_ENDPOINT: http://otel-collector:4317
+      POSTGRES_HOST: postgres
+      CLOUDFLARE_ACCESS_ISSUER: ${CLOUDFLARE_ACCESS_ISSUER:-}
+      CLOUDFLARE_ACCESS_AUDIENCE: ${CLOUDFLARE_ACCESS_AUDIENCE:-}
+    secrets: [postgres_password]
+    depends_on:
+      postgres: {condition: service_healthy}
+      coire-migrate: {condition: service_completed_successfully}
     <<: *hardening
     user: "65532:65532"
     healthcheck:
@@ -97,12 +137,15 @@ services:
       context: ../..
       dockerfile: apps/coire-api/docker/scheduler.Dockerfile
     # The only service on coire-docker, and it reaches the socket solely through the proxy.
-    networks: [coire-db, coire-internal, coire-docker, coire-telemetry]
+    networks: [coire-edge, coire-db, coire-internal, coire-docker, coire-telemetry]
     environment:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
       DOCKER_HOST: tcp://docker-socket-proxy:2375
-    secrets: [postgres_password]
+      SHARDING_JACCL_HOSTFILE: /run/coire/cluster/jaccl-hostfile.json
+      SHARDING_RING_HOSTFILE: /run/coire/cluster/ring-hostfile.json
+    volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
+    secrets: [postgres_password, node_tokens]
     depends_on:
       postgres: {condition: service_healthy}
     <<: *hardening
@@ -255,3 +298,7 @@ secrets:
   # an authorisation decision, and a secret is only as confined as its narrowest mount.
   admin_token:
     file: ${COIRE_SECRETS_DIR}/admin_token
+  bootstrap_admin_email:
+    file: ${COIRE_SECRETS_DIR}/bootstrap_admin_email
+  ops_service_token:
+    file: ${COIRE_SECRETS_DIR}/ops_service_token

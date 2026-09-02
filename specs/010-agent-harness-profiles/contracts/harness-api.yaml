@@ -1,0 +1,27 @@
+openapi: 3.1.0
+info: {title: Coire Harness Evaluation API, version: 0.1.0}
+paths:
+  /api/v1/admin/harness-evaluations:
+    post:
+      summary: Persist a scorecard measured by the ops evaluator
+      responses:
+        "201": {description: Evaluation recorded}
+        "403": {description: Admin role required}
+    get:
+      summary: List append-only evaluation scorecards
+      responses:
+        "200": {description: Scorecard list}
+  /api/v1/admin/harness-evaluations/target/{variant_id}:
+    get:
+      summary: Resolve the registry-owned target and capability profile for an exact variant
+      responses:
+        "200": {description: Evaluation target}
+        "404": {description: Unknown variant}
+  /api/v1/admin/harness-evaluations/{evaluation_id}:
+    get:
+      summary: Read one evaluation scorecard
+      parameters:
+        - {name: evaluation_id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: Scorecard}
+        "404": {description: Unknown evaluation}

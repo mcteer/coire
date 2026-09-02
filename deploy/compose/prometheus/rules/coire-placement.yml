@@ -1,0 +1,23 @@
+groups:
+  - name: coire-placement
+    rules:
+      - alert: CoirePlacementLedgerDrift
+        expr: abs(coire_placement_ledger_drift_ratio) > 0.10
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Coire memory-ledger drift exceeds 10 percent
+          description: Node {{ $labels.node }} measured model residency differs from authoritative reservations.
+      - alert: CoirePlacementCapacityRefused
+        expr: increase(coire_placement_refusals_total{reason="capacity"}[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: Coire placement was refused for capacity
+          description: No eligible unpinned idle reservation could satisfy a placement request.
+      - alert: CoirePlacementQueueSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(coire_placement_queue_seconds_bucket[15m]))) > 30
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Coire placement queue p95 exceeds 30 seconds
+          description: Placement load or eviction work is taking longer than its operational bound.

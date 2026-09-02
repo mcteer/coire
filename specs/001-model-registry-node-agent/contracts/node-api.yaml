@@ -528,7 +528,7 @@ components:
       required: [job_id, kind, slug, stage, bytes_done, bytes_total, files_done, files_total, started_at, updated_at]
       properties:
         job_id: { type: string, format: uuid }
-        kind: { type: string, enum: [pull, import, verify] }
+        kind: { type: string, enum: [pull, import, verify, convert, validate, cleanup] }
         slug: { type: string }
         stage: { type: string, enum: [queued, resolving, transferring, hashing, done, failed, cancelled] }
         bytes_done: { type: integer }
@@ -536,10 +536,11 @@ components:
         files_done: { type: integer }
         files_total: { type: integer }
         error: { type: [string, "null"] }
-        error_kind: { type: [string, "null"], enum: [gated, not_found, network, checksum_mismatch, disk_full, cancelled, internal, null] }
+        error_kind: { type: [string, "null"], enum: [gated, not_found, network, checksum_mismatch, disk_full, cancelled, reservation_required, validation_failed, unsupported, internal, null] }
         mismatched_paths: { type: array, items: { type: string } }
         manifest: { oneOf: [{ $ref: "#/components/schemas/ChecksumManifest" }, { type: "null" }] }
         manifest_sha256: { type: [string, "null"] }
+        result: { type: [object, "null"] }
         worker_pid: { type: [integer, "null"] }
         worker_cpu_percent: { type: [number, "null"] }
         started_at: { type: string, format: date-time }

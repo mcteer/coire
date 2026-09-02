@@ -72,7 +72,12 @@ class JobFile:
         write_atomic(
             self.path,
             json.dumps(
-                {"params": self.params, "status": self.status.model_dump(mode="json")},
+                # Keep the on-disk job contract rolling-upgrade compatible; nullable fields are
+                # reconstructed from model defaults by an older supervisor.
+                {
+                    "params": self.params,
+                    "status": self.status.model_dump(mode="json", exclude_none=True),
+                },
                 indent=2,
             ).encode(),
         )
@@ -90,12 +95,18 @@ class JobFile:
         self.save(force=True)
         logger.error("job %s failed (%s): %s", self.status.job_id, kind.value, message)
 
-    def finish(self, manifest: ChecksumManifest | None = None) -> None:
+    def finish(
+        self,
+        manifest: ChecksumManifest | None = None,
+        *,
+        result: dict[str, object] | None = None,
+    ) -> None:
         self.status.stage = JobStage.DONE
         self.status.finished_at = datetime.now(UTC)
         if manifest is not None:
             self.status.manifest = manifest
             self.status.manifest_sha256 = manifest.sha256()
+        self.status.result = result
         self.save(force=True)
         logger.info("job %s done", self.status.job_id)
 
@@ -342,6 +353,87 @@ def run_verify(job: JobFile) -> int:
     return EXIT_OK
 
 
+def run_convert(job: JobFile) -> int:
+    from coire_node.conversion import (
+        convert_atomic,
+        dequantize_then_convert_atomic,
+        recipe_from_params,
+    )
+
+    store = _store(job)
+    source_slug = str(job.params["source_slug"])
+    job.status.stage = JobStage.TRANSFERRING
+    job.save(force=True)
+    operation = dequantize_then_convert_atomic if job.params.get("dequantize") else convert_atomic
+    operation(
+        source=store.path_for(source_slug),
+        destination=store.path_for(job.status.slug),
+        recipe=recipe_from_params(job.params["recipe"]),
+        job_suffix=str(job.status.job_id),
+    )
+    job.status.stage = JobStage.HASHING
+    job.save(force=True)
+    manifest = store.hash_tree(
+        job.status.slug,
+        repo_id=str(job.params["repo_id"]),
+        revision=str(job.params["revision"]),
+        on_progress=lambda n, i: _progress(job, n, i),
+    )
+    store.write_manifest(manifest)
+    job.finish(manifest)
+    return EXIT_OK
+
+
+def run_validate(job: JobFile) -> int:
+    from coire_node.validation import (
+        compare_perplexity,
+        measure_perplexity,
+        run_smoke,
+        run_template_check,
+    )
+
+    store = _store(job)
+    smoke, failure = run_smoke(store.path_for(job.status.slug))
+    measured = measure_perplexity(store.path_for(job.status.slug))
+    reference_raw = job.params.get("reference_perplexity")
+    reference = float(reference_raw) if reference_raw is not None else None
+    outcome = compare_perplexity(measured, reference, float(job.params.get("tolerance", 0.1)))
+    if bool(job.params.get("chat_template_present")):
+        template_outcome, template_failure = run_template_check(store.path_for(job.status.slug))
+        template = template_outcome.value
+    else:
+        template_failure = None
+        template = "not_applicable"
+    validated = smoke.value == "pass" and template != "fail" and outcome.value != "fail"
+    result: dict[str, object] = {
+        "validator_version": str(job.params.get("validator_version", "v1")),
+        "smoke": smoke.value,
+        "smoke_failure": failure,
+        "perplexity": measured,
+        "reference_variant_id": job.params.get("reference_variant_id"),
+        "reference_perplexity": reference,
+        "tolerance": float(job.params.get("tolerance", 0.1)),
+        "perplexity_outcome": outcome.value,
+        "template": template,
+        "template_failure": template_failure,
+        "validated": validated,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    if not validated:
+        job.status.result = result
+        job.fail(JobErrorKind.VALIDATION_FAILED, failure or "variant validation failed")
+        return EXIT_FAILED
+    job.finish(result=result)
+    return EXIT_OK
+
+
+def run_cleanup(job: JobFile) -> int:
+    store = _store(job)
+    store.delete(job.status.slug)
+    job.finish(result={"deleted": True})
+    return EXIT_OK
+
+
 def _progress(job: JobFile, delta: int, files_done: int) -> None:
     job.status.bytes_done += delta
     job.status.files_done = files_done
@@ -351,7 +443,14 @@ def _progress(job: JobFile, delta: int, files_done: int) -> None:
 # --------------------------------------------------------------------------- entry point
 
 
-RUNNERS = {JobKind.PULL: run_pull, JobKind.IMPORT: run_import, JobKind.VERIFY: run_verify}
+RUNNERS = {
+    JobKind.PULL: run_pull,
+    JobKind.IMPORT: run_import,
+    JobKind.VERIFY: run_verify,
+    JobKind.CONVERT: run_convert,
+    JobKind.VALIDATE: run_validate,
+    JobKind.CLEANUP: run_cleanup,
+}
 
 
 def main(argv: list[str] | None = None) -> int:

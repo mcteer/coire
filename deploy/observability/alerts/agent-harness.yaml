@@ -1,0 +1,15 @@
+groups:
+  - name: coire-agent-harness
+    rules:
+      - alert: CoireHarnessFailureRate
+        expr: sum(rate(coire_harness_failures_total[10m])) / clamp_min(sum(rate(coire_harness_runs_total[10m])), 0.001) > 0.10
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: Agent harness failures exceed 10%
+      - alert: CoireHarnessEvaluationRegression
+        expr: increase(coire_harness_evaluation_regressions_total[15m]) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: A previously verified exact variant failed its harness evaluation

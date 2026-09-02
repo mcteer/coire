@@ -154,3 +154,13 @@ match their preflight snapshots.
   independent Thunderbolt connection from edge-a to edge-b port 9401 remained reachable. Enabling
   Wi-Fi restored SSH, node registration, and aggregate `healthy` state automatically without
   restarting either node.
+
+## Execution record — 2026-09-01 follow-up
+
+- Read-only route inspection on both Studios resolved `coire-core.lab` to `192.168.4.10` via
+  Wi-Fi `en1`; default egress also remained on `en1`.
+- `bridge0` was active only on the Studios at `192.168.100.11` (edge-a) and `192.168.100.12`
+  (edge-b), with no corresponding data-fabric address or route on core.
+- Both node LaunchDaemons were `running`, reported MLX `0.31.3`, and matched the uninstall
+  allowlist. This confirms the clarified topology: Wi-Fi carries control/public egress and the
+  direct Thunderbolt bridge carries Studio-to-Studio inference traffic.

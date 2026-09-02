@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 DEFAULT_SECRETS_DIR = "/run/secrets"
@@ -67,6 +67,17 @@ class Settings(BaseSettings):
     safe default: an unset secret must never make every caller privileged. Feature 007 replaces
     this with edge identity and API keys."""
 
+    bootstrap_admin_email: SecretStr = SecretStr("")
+    """Configured first local administrator identity. It is sourced from Keychain like other
+    bootstrap material and never grants access without a separately verified Access assertion."""
+    cloudflare_access_issuer: str = ""
+    cloudflare_access_audience: str = ""
+    cloudflare_jwks_ttl_s: float = Field(default=300.0, gt=0.0)
+    cloudflare_jwt_leeway_s: float = Field(default=60.0, ge=0.0, le=300.0)
+    credential_stream_recheck_s: float = Field(default=1.0, gt=0.0, le=10.0)
+    identity_legacy_admin_enabled: bool = False
+    """Test/rollback-only bridge for pre-007 suites. Production compose never enables it."""
+
     hf_token: SecretStr = SecretStr("")
     """Hugging Face credential. Exists ONLY on a node agent, read from that Studio's System
     keychain (spec FR-005). It is never mounted into a control-plane container and never
@@ -87,6 +98,35 @@ class Settings(BaseSettings):
     node_collection_budget_rss_bytes: int = 150 * 1024 * 1024
     node_inventory_file: str = "/app/nodes.yaml"
     registry_reconcile_interval_s: float = 5.0
+    acquisition_poll_interval_s: float = Field(default=2.0, gt=0.0)
+    acquisition_stuck_seconds: int = Field(default=1800, ge=60)
+    acquisition_perplexity_tolerance: float = Field(default=0.10, ge=0.0, le=1.0)
+    acquisition_conversion_memory_overhead: float = Field(default=1.20, ge=1.0)
+    acquisition_disk_safety_fraction: float = Field(default=0.10, ge=0.0, le=1.0)
+    acquisition_validation_fixture_version: str = "v1"
+
+    # --- placement scheduler -------------------------------------------
+    placement_default_budget_bytes: int = Field(default=230 * 1024**3, gt=0)
+    placement_sandbox_bytes: int = Field(default=16 * 1024**3, ge=0)
+    placement_health_freshness_s: float = Field(default=30.0, gt=0.0)
+    placement_cpu_saturation_percent: float = Field(default=90.0, ge=0.0, le=100.0)
+    placement_busy_drain_timeout_s: float = Field(default=10.0, ge=0.0)
+    placement_poll_interval_s: float = Field(default=1.0, gt=0.0)
+    placement_ttl_interval_s: float = Field(default=30.0, gt=0.0)
+    placement_lease_ttl_s: float = Field(default=60.0, gt=0.0)
+    instance_drain_timeout_s: float = Field(default=30.0, gt=0.0)
+    instance_event_poll_interval_s: float = Field(default=0.5, gt=0.0)
+
+    # --- Studio data-link and sharding ---------------------------------
+    link_probe_interval_s: float = Field(default=30.0, gt=0.0)
+    link_probe_freshness_s: float = Field(default=120.0, gt=0.0)
+    link_failures_before_down: int = Field(default=2, ge=1)
+    link_successes_before_up: int = Field(default=3, ge=1)
+    sharding_allow_ring_fallback: bool = True
+    sharding_start_timeout_s: float = Field(default=600.0, gt=0.0)
+    sharding_port_range: str = "9600-9699"
+    sharding_jaccl_hostfile: str = "/opt/coire/state/jaccl-hostfile.json"
+    sharding_ring_hostfile: str = "/opt/coire/state/ring-hostfile.json"
 
     # --- compatible inference gateway ----------------------------------
     gateway_wait_ceiling_s: float = Field(default=600.0, gt=0.0)
@@ -94,6 +134,54 @@ class Settings(BaseSettings):
     gateway_max_inflight_per_engine: int = Field(default=1, ge=1)
     gateway_retry_after_s: int = Field(default=30, ge=1)
     gateway_engine_request_timeout_s: float = Field(default=900.0, gt=0.0)
+
+    # --- agent harness -------------------------------------------------
+    harness_retry_limit: int = Field(default=2, ge=0, le=5)
+    harness_tool_output_byte_cap: int = Field(default=16_384, ge=1024, le=1_048_576)
+    harness_summary_threshold: float = Field(default=0.8, gt=0.0, le=1.0)
+    harness_evaluation_pass_score: float = Field(default=0.8, ge=0.0, le=1.0)
+
+    # --- core-only ops harness -----------------------------------------
+    ops_service_token: SecretStr = SecretStr("")
+    """Dedicated read/propose credential mounted only into coire-ops and coire-api."""
+
+    ops_service_url: str = "http://coire-ops:8003"
+    ops_api_url: str = "http://coire-api:8000"
+    ops_gateway_url: str = "http://coire-api:8000/v1"
+    ops_model_id: str = ""
+    ops_confirmation_ttl_s: int = Field(default=300, ge=30, le=300)
+    ops_session_heartbeat_s: float = Field(default=10.0, gt=0.0, le=60.0)
+    ops_session_stale_s: float = Field(default=30.0, gt=0.0, le=300.0)
+    ops_request_timeout_s: float = Field(default=120.0, gt=0.0, le=900.0)
+    ops_service_instance: str = Field(default="coire-ops", min_length=1, max_length=128)
+
+    # --- Studio container runs ----------------------------------------
+    run_concurrency_cap: int = Field(default=3, ge=1, le=32)
+    run_default_memory_bytes: int = Field(default=4 * 1024**3, ge=128 * 1024**2)
+    run_max_memory_bytes: int = Field(default=16 * 1024**3, ge=128 * 1024**2)
+    run_default_nano_cpus: int = Field(default=2_000_000_000, ge=100_000_000)
+    run_default_pids_limit: int = Field(default=256, ge=16, le=4096)
+    run_default_timeout_s: int = Field(default=900, ge=10, le=86_400)
+    run_max_log_bytes: int = Field(default=8 * 1024**2, ge=1024)
+    run_max_result_bytes: int = Field(default=4 * 1024**2, ge=1024)
+    run_token_ttl_s: int = Field(default=1200, ge=60, le=86_400)
+    run_stuck_seconds: int = Field(default=1800, ge=60, le=86_400)
+    run_workspace_root: str = "/opt/coire/workspaces"
+    run_agent_image: str = ""
+    run_relay_image: str = ""
+    run_relay_request_bytes: int = Field(default=2 * 1024**2, ge=1024, le=16 * 1024**2)
+    run_relay_start_timeout_s: float = Field(default=15.0, gt=0.0, le=60.0)
+    run_gateway_url: str = "http://coire-core.lab:8080/v1"
+    run_docker_socket: str = "/var/run/docker.sock"
+
+    @field_validator("run_agent_image", "run_relay_image")
+    @classmethod
+    def run_images_are_digest_pinned(cls, value: str) -> str:
+        import re
+
+        if value and not re.fullmatch(r"[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}", value):
+            raise ValueError("run image must be digest-pinned")
+        return value
 
     # --- model store and engines (node side) ----------------------------
     node_store_dir: str = "/opt/coire/models"

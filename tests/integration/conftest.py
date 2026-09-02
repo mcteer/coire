@@ -12,11 +12,19 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import shutil
 import subprocess
+import tempfile
+import threading
+import time
 from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import httpx
+import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE_DIR = REPO / "deploy/compose"
@@ -47,8 +55,16 @@ POSTGRES_PASSWORD = f"it-{secrets.token_urlsafe(24)}"
 # The admin bearer for this run (ADR-0004). Generated, not fixed, for the same reason as the
 # password above: the leak test greps the tree for the literal value.
 ADMIN_TOKEN = f"it-admin-{secrets.token_urlsafe(24)}"
-NODE_TOKEN_A = f"it-node-a-{secrets.token_urlsafe(16)}"
-NODE_TOKEN_B = f"it-node-b-{secrets.token_urlsafe(16)}"
+OPS_SERVICE_TOKEN = f"coire_ops_{secrets.token_hex(32)}"
+OPS_MODEL_ID = "10000000-0000-4000-8000-000000000099"
+NODE_TOKENS: dict[str, str] = {}
+SECRETS_DIR = Path(tempfile.mkdtemp(prefix="coire-it-secrets-"))
+RUN_WORKSPACE_ROOT = Path(tempfile.mkdtemp(prefix="coire-it-workspaces-"))
+# The run image is deliberately non-root.  On Linux CI a bind-mounted tempfile keeps
+# mkdtemp's owner-only mode, which prevents UID 65532 from reading request.json and produces
+# an opaque runner exit code 1 before the harness can contact the gateway.
+RUN_WORKSPACE_ROOT.chmod(0o777)
+os.environ.setdefault("COIRE_IT_RUN_WORKSPACE_ROOT", str(RUN_WORKSPACE_ROOT))
 
 INTEGRATION_PORT = os.environ.get("COIRE_IT_PORT", "18080")
 INTEGRATION_API_PORT = os.environ.get("COIRE_IT_API_PORT", "18081")
@@ -60,30 +76,411 @@ DIRECT_API_URL = f"http://127.0.0.1:{INTEGRATION_API_PORT}"
 OVERRIDE = COMPOSE_DIR / "compose.override.it.yaml"
 
 INTEGRATION_SECRETS = {
+    "COIRE_TAG": os.environ.get("COIRE_TAG", "ci"),
     "COIRE_SECRET_POSTGRES_PASSWORD": POSTGRES_PASSWORD,
     "COIRE_SECRET_KEY_SIGNING_SECRET": f"it-{secrets.token_urlsafe(32)}",
     "COIRE_SECRET_ADMIN_TOKEN": ADMIN_TOKEN,
-    "COIRE_SECRET_NODE_TOKENS": json.dumps(
-        {"coire-edge-a": NODE_TOKEN_A, "coire-edge-b": NODE_TOKEN_B}
-    ),
-    "COIRE_IT_NODE_TOKEN_A": NODE_TOKEN_A,
-    "COIRE_IT_NODE_TOKEN_B": NODE_TOKEN_B,
+    "COIRE_SECRET_BOOTSTRAP_ADMIN_EMAIL": "admin@integration.test",
+    "COIRE_SECRET_OPS_SERVICE_TOKEN": OPS_SERVICE_TOKEN,
+    "COIRE_OPS_MODEL_ID": OPS_MODEL_ID,
+    # Nodes are deliberately started without usable credentials. The fixture declares them
+    # through the admin API, installs the returned one-time tokens, and recreates the affected
+    # services. This proves a fresh database cannot materialise workers by self-registration.
+    "COIRE_SECRET_NODE_TOKENS": "{}",
+    "COIRE_IT_NODE_TOKEN_A": "unissued-a",
+    "COIRE_IT_NODE_TOKEN_B": "unissued-b",
+    "COIRE_SECRETS_DIR": str(SECRETS_DIR),
     "COIRE_IT_PORT": INTEGRATION_PORT,
     "COIRE_IT_API_PORT": INTEGRATION_API_PORT,
+    "COIRE_CLUSTER_CONFIG_DIR": str(REPO / "tests/integration/testdata"),
+    "COIRE_IT_RUN_WORKSPACE_ROOT": str(RUN_WORKSPACE_ROOT),
+    # The composed suite can spend several minutes between operations while engines and
+    # acquisition workflows settle. Production remains intentionally strict at 30 seconds;
+    # the fixture uses the configured upper bound so manually registered test sessions do not
+    # expire between assertions (real ops containers heartbeat continuously).
+    # Settings cap this at 300 seconds; this is enough for the composed suite while
+    # preserving the production default of 30 seconds outside integration.
+    "OPS_SESSION_STALE_S": "300",
 }
+
+ACCESS_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+ACCESS_KID = "coire-integration-access"
+ACCESS_AUDIENCE = "coire-integration-audience"
+ACCESS_ISSUER = ""
+
+
+def _b64_int(value: int) -> str:
+    import base64
+
+    raw = value.to_bytes((value.bit_length() + 7) // 8, "big")
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
+
+
+class _JwksHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path != "/cdn-cgi/access/certs":
+            self.send_error(404)
+            return
+        numbers = ACCESS_KEY.public_key().public_numbers()
+        body = json.dumps(
+            {
+                "keys": [
+                    {
+                        "kty": "RSA",
+                        "kid": ACCESS_KID,
+                        "use": "sig",
+                        "alg": "RS256",
+                        "n": _b64_int(numbers.n),
+                        "e": _b64_int(numbers.e),
+                    }
+                ]
+            }
+        ).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+
+def access_assertion(*, email: str = "admin@integration.test", **claims: object) -> str:
+    now = int(time.time())
+    payload: dict[str, object] = {
+        "iss": ACCESS_ISSUER,
+        "aud": ACCESS_AUDIENCE,
+        "sub": "integration-browser-user",
+        "email": email,
+        "iat": now,
+        "nbf": now - 1,
+        "exp": now + 120,
+    }
+    payload.update(claims)
+    return jwt.encode(payload, ACCESS_KEY, algorithm="RS256", headers={"kid": ACCESS_KID})
 
 
 def integration_env(**extra: str) -> dict[str, str]:
     return {**os.environ, **INTEGRATION_SECRETS, **extra}
 
 
+def drain_runtime(
+    client: httpx.Client,
+    headers: dict[str, str],
+    *,
+    timeout: float = 180,
+) -> None:
+    """Drain prior runtime state through public APIs for independent scenarios."""
+    # Agent runs own containers and reservations independently of model instances.  A prior
+    # scenario can therefore leave a run container alive even after its publication cleanup;
+    # kill those runs first so later lifecycle/admission tests do not inherit their memory
+    # pressure or a serialized command executor that is still waiting on a container.
+    admin_runs = client.get("/api/v1/admin/runs", headers=headers)
+    admin_runs.raise_for_status()
+    run_terminal = {"succeeded", "failed", "result_collection_failed", "timed_out", "killed"}
+    active_run_ids: set[str] = set()
+    for run in admin_runs.json():
+        if run["state"] in run_terminal:
+            continue
+        response = client.request(
+            "DELETE",
+            f"/api/v1/admin/runs/{run['id']}",
+            headers=headers,
+            json={"reason": "integration runtime isolation"},
+        )
+        assert response.status_code == 202, response.text
+        active_run_ids.add(str(run["id"]))
+    deadline = time.monotonic() + timeout
+    while active_run_ids and time.monotonic() < deadline:
+        current = client.get("/api/v1/admin/runs", headers=headers)
+        current.raise_for_status()
+        active_run_ids -= {str(run["id"]) for run in current.json() if run["state"] in run_terminal}
+        if active_run_ids:
+            time.sleep(0.25)
+    if active_run_ids:
+        # A failed test can leave a run command stranded when the scheduler was restarted.
+        # Recover the disposable CI project so later scenarios still get an isolated runtime.
+        _force_cleanup_runs(client, headers, active_run_ids)
+
+    # A prior scenario may deliberately pin a model reservation. Remove that policy first;
+    # otherwise the instance can reach a terminal state while its reservation correctly remains
+    # held, contaminating the next scenario's capacity assumptions.
+    ledgers = client.get("/api/v1/admin/ledger", headers=headers)
+    ledgers.raise_for_status()
+    for ledger in ledgers.json():
+        for reservation in ledger["reservations"]:
+            if reservation["holder_type"] == "model" and reservation["pinned"]:
+                response = client.patch(
+                    f"/api/v1/admin/ledger/reservations/{reservation['id']}",
+                    headers=headers,
+                    json={"pinned": False},
+                )
+                assert response.status_code == 204, response.text
+
+    instance_terminal = {"stopped", "failed"}
+    instances = client.get("/api/v1/instances", headers=headers)
+    instances.raise_for_status()
+    waiting: set[str] = set()
+    for instance in instances.json():
+        if instance["state"] == "ready":
+            response = client.delete(f"/api/v1/instances/{instance['id']}", headers=headers)
+            assert response.status_code == 202, response.text
+            waiting.add(str(instance["id"]))
+        elif instance["state"] not in instance_terminal:
+            waiting.add(str(instance["id"]))
+    deadline = time.monotonic() + timeout
+    while waiting and time.monotonic() < deadline:
+        current = client.get("/api/v1/instances", headers=headers)
+        current.raise_for_status()
+        waiting -= {
+            str(instance["id"])
+            for instance in current.json()
+            if instance["state"] in instance_terminal
+        }
+        if waiting:
+            time.sleep(0.25)
+    if waiting:
+        # Instance cleanup is normally asynchronous.  If a prior scenario lost its node while
+        # draining, force-terminal the test-only rows and release their model reservations.
+        _force_cleanup_instances(client, headers, waiting)
+
+    engine_terminal = {"stopped", "failed"}
+    engines = client.get("/api/v1/admin/engines", headers=headers)
+    engines.raise_for_status()
+    active = [engine for engine in engines.json() if engine["state"] not in engine_terminal]
+    for engine in active:
+        response = client.delete(f"/api/v1/admin/engines/{engine['id']}", headers=headers)
+        assert response.status_code == 202, response.text
+    active_ids = {str(engine["id"]) for engine in active}
+    deadline = time.monotonic() + timeout
+    while active_ids and time.monotonic() < deadline:
+        current = client.get("/api/v1/admin/engines", headers=headers)
+        current.raise_for_status()
+        active_ids -= {
+            str(engine["id"]) for engine in current.json() if engine["state"] in engine_terminal
+        }
+        if active_ids:
+            time.sleep(0.25)
+    assert not active_ids, f"engines did not stop: {sorted(active_ids)}"
+
+    deadline = time.monotonic() + timeout
+    remaining_reservations: list[str] = []
+    while time.monotonic() < deadline:
+        ledgers = client.get("/api/v1/admin/ledger", headers=headers)
+        ledgers.raise_for_status()
+        remaining_reservations = [
+            str(reservation["id"])
+            for ledger in ledgers.json()
+            for reservation in ledger["reservations"]
+            if (reservation["holder_type"] == "model" and reservation["released_at"] is None)
+        ]
+        if not remaining_reservations:
+            break
+        time.sleep(0.25)
+    if remaining_reservations:
+        details = [
+            {
+                "id": reservation["id"],
+                "node_id": ledger["node_id"],
+                "holder_id": reservation["holder_id"],
+                "state": reservation["state"],
+                "pinned": reservation["pinned"],
+            }
+            for ledger in ledgers.json()
+            for reservation in ledger["reservations"]
+            if reservation["id"] in remaining_reservations
+        ]
+        raise AssertionError(f"model reservations did not release: {details}")
+
+
+def _force_cleanup_runs(client: httpx.Client, headers: dict[str, str], run_ids: set[str]) -> None:
+    runs = client.get("/api/v1/admin/runs", headers=headers).json()
+    for run in runs:
+        if str(run["id"]) in run_ids and run.get("container_id"):
+            subprocess.run(
+                ["docker", "rm", "-f", str(run["container_id"])],
+                check=False,
+                capture_output=True,
+            )
+    quoted = ",".join(f"'{run_id}'" for run_id in run_ids)
+    _integration_sql(
+        "UPDATE agent_runs SET state='failed', failure_code='integration_cleanup', "
+        f"failure_detail='forced cleanup' WHERE id IN ({quoted})"
+    )
+
+
+def _force_cleanup_instances(
+    client: httpx.Client, headers: dict[str, str], instance_ids: set[str]
+) -> None:
+    quoted = ",".join(f"'{instance_id}'" for instance_id in instance_ids)
+    _integration_sql(
+        "DELETE FROM instance_members "
+        f"WHERE instance_id IN ({quoted}); "
+        "UPDATE model_instances SET state='failed', failure_code='integration_cleanup', "
+        f"failure_detail='forced cleanup' WHERE id IN ({quoted}); "
+        "UPDATE memory_reservations SET state='released', released_at=NOW() "
+        "WHERE holder_type='model' AND state <> 'released'"
+    )
+
+
+def _integration_sql(statement: str) -> None:
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-p",
+            PROJECT,
+            "exec",
+            "-T",
+            "postgres",
+            "psql",
+            "-U",
+            "coire",
+            "-d",
+            "coire",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            statement,
+        ],
+        cwd=COMPOSE_DIR,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def wait_nodes_healthy(
+    client: httpx.Client, headers: dict[str, str], *, timeout: float = 120
+) -> None:
+    """Wait until every declared node has recovered before an instance scenario starts."""
+    deadline = time.monotonic() + timeout
+    last: list[dict[str, object]] = []
+    while time.monotonic() < deadline:
+        response = client.get("/api/v1/admin/nodes", headers=headers)
+        response.raise_for_status()
+        last = response.json()
+        if last and all(item["reachability"] == "healthy" for item in last):
+            return
+        time.sleep(0.5)
+    raise AssertionError(
+        f"nodes did not become healthy: {[item.get('reachability') for item in last]}"
+    )
+
+
+def _digest_ref(image: str) -> str:
+    inspected = subprocess.run(
+        ["docker", "image", "inspect", image, "--format", "{{index .RepoDigests 0}}"],
+        capture_output=True,
+        text=True,
+    )
+    if inspected.returncode != 0 or "@sha256:" not in inspected.stdout:
+        raise AssertionError(f"integration image has no digest-pinned reference: {image}")
+    return inspected.stdout.strip()
+
+
+def _declare_and_register_nodes(env: dict[str, str]) -> None:
+    headers = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+    declarations = {
+        "coire-edge-a": "coire-edge-a.fabric",
+        "coire-edge-b": "coire-edge-b.fabric",
+    }
+    with httpx.Client(base_url=API_URL, timeout=30) as client:
+        for name, data_host in declarations.items():
+            response = client.post(
+                "/api/v1/admin/nodes",
+                headers=headers,
+                json={
+                    "name": name,
+                    "control_host": name,
+                    "data_host": data_host,
+                    "memory_total_bytes": 64 * 1024**3,
+                    "disk_total_bytes": 64 * 1024**3,
+                },
+            )
+            assert response.status_code == 201, response.text
+            NODE_TOKENS[name] = str(response.json()["token"])
+
+    token_json = json.dumps(NODE_TOKENS)
+    INTEGRATION_SECRETS.update(
+        {
+            "COIRE_SECRET_NODE_TOKENS": token_json,
+            "COIRE_IT_NODE_TOKEN_A": NODE_TOKENS["coire-edge-a"],
+            "COIRE_IT_NODE_TOKEN_B": NODE_TOKENS["coire-edge-b"],
+        }
+    )
+    (SECRETS_DIR / "node_tokens").write_text(token_json)
+    recreate_env = integration_env(COMPOSE_PROJECT_NAME=PROJECT)
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-p",
+            PROJECT,
+            "up",
+            "-d",
+            "--force-recreate",
+            "coire-api",
+            "coire-scheduler",
+            "node-a",
+            "node-b",
+        ],
+        cwd=COMPOSE_DIR,
+        env=recreate_env,
+        check=True,
+        capture_output=True,
+    )
+    deadline = time.monotonic() + 60
+    with httpx.Client(base_url=API_URL, timeout=10) as client:
+        while time.monotonic() < deadline:
+            try:
+                state = client.get("/api/v1/state", headers=headers).json()
+                admin_nodes = client.get("/api/v1/admin/nodes", headers=headers).json()
+                ready = {
+                    item["name"]
+                    for item in state["nodes"]
+                    if item["reachability"] == "healthy" and item["budget_bytes"] > 0
+                }
+                reporting_capacity = {
+                    item["name"]
+                    for item in admin_nodes
+                    if item["status"] is not None
+                    and item["status"].get("memory_budget_bytes", 0) > 0
+                }
+                if ready >= set(declarations) and reporting_capacity >= set(declarations):
+                    return
+            except (httpx.HTTPError, ValueError):
+                pass
+            time.sleep(1)
+    raise AssertionError("declared integration nodes did not register")
+
+
 @pytest.fixture(scope="session", autouse=True)
-def stack() -> Iterator[None]:
+def stack(request: pytest.FixtureRequest) -> Iterator[None]:
     """Bring the control plane up for the whole session and tear it down at the end."""
     if os.environ.get("COIRE_INTEGRATION") != "1":
         yield
         return
 
+    INTEGRATION_SECRETS.update(
+        {
+            "COIRE_IT_RUN_AGENT_IMAGE": _digest_ref("coire-agent:ci"),
+            "COIRE_IT_RUN_RELAY_IMAGE": _digest_ref("coire-run-relay:ci"),
+        }
+    )
+
+    global ACCESS_ISSUER
+    jwks_server = ThreadingHTTPServer(("0.0.0.0", 0), _JwksHandler)
+    jwks_thread = threading.Thread(target=jwks_server.serve_forever, daemon=True)
+    jwks_thread.start()
+    ACCESS_ISSUER = f"http://host.docker.internal:{jwks_server.server_port}"
+    INTEGRATION_SECRETS.update(
+        {
+            "CLOUDFLARE_ACCESS_ISSUER": ACCESS_ISSUER,
+            "CLOUDFLARE_ACCESS_AUDIENCE": ACCESS_AUDIENCE,
+        }
+    )
     env = integration_env(COMPOSE_PROJECT_NAME=PROJECT)
     # Start from nothing: a leftover volume carries the previous run's credentials.
     subprocess.run(
@@ -120,15 +517,31 @@ def stack() -> Iterator[None]:
             f"\n--- ps ---\n{ps.stdout}\n--- logs ---\n{logs.stdout}",
             pytrace=False,
         )
+    _declare_and_register_nodes(env)
     try:
         yield
     finally:
-        subprocess.run(
-            ["docker", "compose", "-p", PROJECT, "down", "-v", "--remove-orphans"],
-            cwd=COMPOSE_DIR,
-            env=env,
-            capture_output=True,
-        )
+        jwks_server.shutdown()
+        jwks_server.server_close()
+        jwks_thread.join(timeout=5)
+        if request.session.testsfailed:
+            diagnostic = subprocess.run(
+                ["docker", "compose", "-p", PROJECT, "logs", "--no-color", "--tail=200"],
+                cwd=COMPOSE_DIR,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            print("\n--- integration compose logs (before teardown) ---\n" + diagnostic.stdout)
+        if os.environ.get("COIRE_IT_KEEP_STACK") != "1":
+            subprocess.run(
+                ["docker", "compose", "-p", PROJECT, "down", "-v", "--remove-orphans"],
+                cwd=COMPOSE_DIR,
+                env=env,
+                capture_output=True,
+            )
+            shutil.rmtree(SECRETS_DIR, ignore_errors=True)
+            shutil.rmtree(RUN_WORKSPACE_ROOT, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")
@@ -149,5 +562,10 @@ def admin_headers() -> dict[str, str]:
 
 
 @pytest.fixture(scope="session")
+def access_token_factory():  # type: ignore[no-untyped-def]
+    return access_assertion
+
+
+@pytest.fixture(scope="session")
 def node_tokens() -> dict[str, str]:
-    return {"coire-edge-a": NODE_TOKEN_A, "coire-edge-b": NODE_TOKEN_B}
+    return dict(NODE_TOKENS)

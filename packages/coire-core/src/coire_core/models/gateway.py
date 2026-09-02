@@ -46,7 +46,10 @@ class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     role: Literal["system", "user", "assistant", "tool"]
-    content: str | None
+    # OpenAI assistant tool-call messages omit content entirely.  The gateway serialises null
+    # fields away before crossing the node boundary, so the node contract must accept omission
+    # as equivalent to an explicit null on this OpenAI-compatible shape.
+    content: str | None = None
     name: str | None = None
     tool_call_id: str | None = None
 
@@ -65,6 +68,7 @@ class ChatCompletionRequest(BaseModel):
     tool_choice: Any = None
     response_format: dict[str, Any] | None = None
     coire_wait_for_model: bool = True
+    coire_affinity_node: str | None = Field(default=None, pattern=r"^coire-[a-z0-9-]+$")
 
 
 class AnthropicMessage(BaseModel):
@@ -96,6 +100,7 @@ class AnthropicMessagesRequest(BaseModel):
     container: str | dict[str, Any] | None = None
     mcp_servers: list[dict[str, Any]] | None = None
     coire_wait_for_model: bool = True
+    coire_affinity_node: str | None = Field(default=None, pattern=r"^coire-[a-z0-9-]+$")
 
 
 class EngineChatRequest(BaseModel):

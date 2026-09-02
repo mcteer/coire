@@ -62,6 +62,18 @@ granularity: files that completed are not fetched again.
 If a node was simply down, the job holds at its stage with `state_reason` naming the node and
 resumes on its own when the node returns — no retry needed.
 
+If a Studio was upgraded in place while its LaunchDaemon was still running, restart the agent
+before retrying. A stale in-memory supervisor can reject fields added to the job state schema and
+surface as `not_found: no such job`; this does not mean the repository disappeared and no model
+bytes need to be discarded. Run the restart interactively on that Studio, then confirm the node
+is healthy and retry the failed model through the API:
+
+```bash
+sudo launchctl kickstart -k system/com.coire.node
+scripts/coire nodes | jq '.[] | {name, reachability: .reachability}'
+scripts/coire model retry "$ID"
+```
+
 ## Curating
 
 ```bash

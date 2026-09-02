@@ -28,13 +28,23 @@ from opentelemetry import metrics as otel_metrics
 
 from coire_core.models.node import NetworkPath, NodePath, NodeStatus, NodeStatusV2
 from coire_core.settings import Settings
+from coire_node.benchmarks import BenchmarkRunner
+from coire_node.docker_api import DockerAPI
 from coire_node.engines import EngineManager
 from coire_node.grants import Grants
 from coire_node.jobs import JobSupervisor
+from coire_node.link_probes import LinkProbeRunner
+from coire_node.reservations import ReservationLedger
+from coire_node.routes import benchmarks as benchmark_routes
 from coire_node.routes import engines as engines_routes
 from coire_node.routes import export as export_routes
 from coire_node.routes import jobs as jobs_routes
+from coire_node.routes import link_probes as link_probe_routes
 from coire_node.routes import models as models_routes
+from coire_node.routes import runs as runs_routes
+from coire_node.routes import sharding as sharding_routes
+from coire_node.runs import RunManager
+from coire_node.sharding import ShardGroupManager
 from coire_node.store import Store
 
 logger = logging.getLogger(__name__)
@@ -125,6 +135,11 @@ def create_app(
     jobs: JobSupervisor | None = None,
     engines: EngineManager | None = None,
     grants: Grants | None = None,
+    reservations: ReservationLedger | None = None,
+    shard_groups: ShardGroupManager | None = None,
+    link_probes: LinkProbeRunner | None = None,
+    benchmarks: BenchmarkRunner | None = None,
+    runs: RunManager | None = None,
 ) -> FastAPI:
     """Build the agent app for one listener.
 
@@ -139,6 +154,11 @@ def create_app(
     app.state.jobs = jobs
     app.state.engines = engines
     app.state.grants = grants
+    app.state.reservations = reservations
+    app.state.shard_groups = shard_groups
+    app.state.link_probes = link_probes
+    app.state.benchmarks = benchmarks
+    app.state.runs = runs
     expected_token = settings.node_token.get_secret_value()
 
     async def require_node_token(credentials: BearerDep) -> None:
@@ -216,6 +236,10 @@ def create_app(
         app.include_router(models_routes.router, dependencies=guard)
         app.include_router(jobs_routes.router, dependencies=guard)
         app.include_router(engines_routes.router, dependencies=guard)
+        app.include_router(sharding_routes.router, dependencies=guard)
+        app.include_router(link_probe_routes.router, dependencies=guard)
+        app.include_router(benchmark_routes.router, dependencies=guard)
+        app.include_router(runs_routes.router, dependencies=guard)
 
         # The data path for peer replication. Mesh listener only, and authorised by the grant
         # in the URL rather than the node bearer, because the peer does not hold that token
@@ -246,6 +270,12 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     # Bare engines are private implementation details of coire-node. The authenticated
     # control listener is their sole network boundary; no engine port binds to Wi-Fi.
     engines = EngineManager(settings, store, "127.0.0.1")
+    reservations = ReservationLedger(settings, store, engines.committed_bytes)
+    shard_groups = ShardGroupManager(settings, store)
+    link_probes = LinkProbeRunner(settings)
+    benchmarks = BenchmarkRunner(settings, store)
+    docker = DockerAPI(settings.run_docker_socket)
+    runs = RunManager(settings, docker)
 
     # Re-own engines that outlived the previous agent process, and re-attach to jobs that were
     # running. Both happen before the listeners bind, so the first /node/health after a restart
@@ -273,6 +303,11 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         jobs=jobs,
                         engines=engines,
                         grants=grants,
+                        reservations=reservations,
+                        shard_groups=shard_groups,
+                        link_probes=link_probes,
+                        benchmarks=benchmarks,
+                        runs=runs,
                     ),
                     host=control_addr,
                     port=port,
@@ -294,6 +329,10 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                             jobs=jobs,
                             engines=engines,
                             grants=grants,
+                            reservations=reservations,
+                            shard_groups=shard_groups,
+                            link_probes=link_probes,
+                            benchmarks=benchmarks,
                         ),
                         host=data_addr,
                         port=settings.node_data_listen_port,
@@ -315,6 +354,8 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         jobs=jobs,
                         engines=engines,
                         grants=grants,
+                        reservations=reservations,
+                        runs=runs,
                     ),
                     host=mesh_addr,
                     port=port,
@@ -345,6 +386,8 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         jobs=jobs,
                         engines=engines,
                         grants=grants,
+                        reservations=reservations,
+                        runs=runs,
                     ),
                     host=egress_addr,
                     port=port,
@@ -362,6 +405,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
         await asyncio.gather(*(s.serve() for s in servers))
     finally:
         await engines_routes.close_engine_client()
+        await docker.close()
         # Engines are deliberately left running: the agent is restartable and they are not
         # (spec FR-015).
         engines.shutdown()

@@ -75,7 +75,7 @@ namespace_packages = true
 exclude = ["/conftest\\.py$"]
 
 [[tool.mypy.overrides]]
-module = ["psutil.*", "jsonschema.*"]
+module = ["psutil.*", "jsonschema.*", "mlx.*", "mlx_lm.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest

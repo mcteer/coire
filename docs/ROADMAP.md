@@ -101,6 +101,10 @@ procedure is recorded without state loss.
 
 **010 · `coire-ops` with confirmed mutations** — "Long-lived `coire-ops` container on core (the only harness core runs) using the pinned admin model on Studio B via the gateway; ops tools for admin actions with `confirm_token` flow; admin UI approval prompt; read-only degraded mode when the admin model is unreachable."
 *Done when:* "unload the idle 400B model" via chat results in a confirmation card and, on approval, an audited unload.
+The implementation boundary is a separate distroless `coire-agent-ops` image on only the internal
+API and telemetry networks. Its service credential can read, register a session, and propose; only
+an authenticated human-admin endpoint can consume an exact-action token. Container restart
+invalidates old proposals, and unavailable-model turns use the deterministic read-only responder.
 
 **011 · MCP server (research / plan / apply)** — "Streamable-HTTP MCP endpoint with exactly three coding tools backed by agent runs on cloned workspaces; `apply` produces a branch + diff + test summary."
 *Done when:* Claude Code / Cursor can add Coire as an MCP server and complete a research→plan→apply loop on a sample repo.

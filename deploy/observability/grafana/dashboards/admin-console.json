@@ -1,0 +1,55 @@
+{
+  "annotations": { "list": [] },
+  "editable": false,
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum(rate(coire_console_snapshots_total[5m]))",
+          "legendFormat": "snapshots/s",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(coire_console_stream_connections_total[5m]))",
+          "legendFormat": "connections/s",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(coire_console_activity_pages_total[5m]))",
+          "legendFormat": "activity pages/s",
+          "refId": "C"
+        }
+      ],
+      "title": "Admin console live state",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "id": 2,
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (increase(coire_console_ask_total[1h]))",
+          "legendFormat": "{{outcome}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Ask Coire outcomes",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["coire", "admin"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "Coire Admin Console",
+  "uid": "coire-admin-console",
+  "version": 1
+}

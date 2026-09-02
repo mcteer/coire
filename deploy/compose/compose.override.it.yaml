@@ -25,16 +25,47 @@ services:
     ports: !override ["127.0.0.1:${COIRE_IT_PORT:-18080}:8080"]
 
   coire-api:
-    ports: ["127.0.0.1:${COIRE_IT_API_PORT:-18081}:8000"]
+    # The run relay reaches the API through Docker's host gateway. Binding the
+    # published integration port to loopback makes that path unreachable on
+    # Linux CI (and causes the non-root harness to exit with a connection error).
+    # This overlay is test-only; production remains loopback-bound by default.
+    ports: ["0.0.0.0:${COIRE_IT_API_PORT:-18081}:8000"]
+    # The integration identity fixture serves JWKS from the host. Docker Desktop resolves
+    # this name automatically; Linux CI needs the explicit host-gateway mapping.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      # The Studios keep 50 GiB free; the test tmpfs is 4 GiB, so the production default
-      # would refuse every model on fit. The check itself is exercised by its own test.
+      # Integration storage may be much smaller than a Studio's reserved 50 GiB; the
+      # production default would refuse every fixture. The check itself has a focused test.
       DISK_RESERVE_BYTES: "268435456"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       GATEWAY_MAX_INFLIGHT_PER_ENGINE: "4"
+      PLACEMENT_POLL_INTERVAL_S: "0.2"
+      INSTANCE_DRAIN_TIMEOUT_S: "2"
+      # Pre-007 integration scenarios still use their generated static bearer. Feature 007's
+      # own scenario uses real keys; production compose never enables this rollback bridge.
+      IDENTITY_LEGACY_ADMIN_ENABLED: "1"
+      RUN_AGENT_IMAGE: ${COIRE_IT_RUN_AGENT_IMAGE:-}
+      RUN_RELAY_IMAGE: ${COIRE_IT_RUN_RELAY_IMAGE:-}
+      RUN_GATEWAY_URL: http://host.docker.internal:${COIRE_IT_API_PORT:-18081}/v1
     networks:
       coire-control-sim:
         aliases: [coire-core]
+
+  coire-scheduler:
+    environment:
+      PLACEMENT_POLL_INTERVAL_S: "0.2"
+      PLACEMENT_TTL_INTERVAL_S: "2"
+      RUN_CONCURRENCY_CAP: "1"
+    networks: [coire-control-sim]
+
+  otel-collector:
+    # Test nodes export over their simulated control fabric, matching the host-published
+    # collector path used by the real Studios without generating DNS/export noise.
+    networks:
+      - coire-telemetry
+      - coire-node-ingress
+      - coire-control-sim
 
   node-a:
     image: coire-node-test:${COIRE_TAG:-dev}
@@ -66,12 +97,28 @@ services:
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       # Selects the fake engine (research R9). The real one is Apple-Silicon only.
       COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
+      COIRE_SHARD_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      COIRE_PROBE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      COIRE_BENCHMARK_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      SHARDING_JACCL_HOSTFILE: /opt/coire/state/jaccl-hostfile.json
+      SHARDING_RING_HOSTFILE: /opt/coire/state/ring-hostfile.json
+      COIRE_TEST_FAKE_CONVERSION: "1"
+      COIRE_TEST_FAKE_VALIDATION: "1"
       HF_TOKEN: ${HF_TOKEN:-}
       HF_HUB_DISABLE_XET: "1"
       DISK_RESERVE_BYTES: "268435456"
       OTLP_ENDPOINT: http://otel-collector:4317
-    tmpfs:
-      - /opt/coire:size=4g
+      RUN_AGENT_IMAGE: ${COIRE_IT_RUN_AGENT_IMAGE:-}
+      RUN_RELAY_IMAGE: ${COIRE_IT_RUN_RELAY_IMAGE:-}
+      RUN_WORKSPACE_ROOT: ${COIRE_IT_RUN_WORKSPACE_ROOT:-/tmp/coire-it-workspaces}
+    volumes:
+      # Persistent across `docker compose restart`, like the Studio's /opt/coire volume.
+      # The session fixture removes it with `down -v` after every integration run.
+      - node-a-opt:/opt/coire
+      - ../../tests/integration/testdata/jaccl-hostfile.json:/opt/coire/state/jaccl-hostfile.json:ro
+      - ../../tests/integration/testdata/ring-hostfile.json:/opt/coire/state/ring-hostfile.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${COIRE_IT_RUN_WORKSPACE_ROOT:-/tmp/coire-it-workspaces}:${COIRE_IT_RUN_WORKSPACE_ROOT:-/tmp/coire-it-workspaces}
     healthcheck:
       # The agent binds its mesh address, not loopback, so the probe must use that address —
       # exactly as it does on a Studio.
@@ -110,11 +157,22 @@ services:
       CORE_API_PORT: "8000"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       COIRE_ENGINE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_engine
+      COIRE_SHARD_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      COIRE_PROBE_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      COIRE_BENCHMARK_COMMAND: /app/.venv/bin/python:-m:coire_node.testing.fake_mlx_launch
+      SHARDING_JACCL_HOSTFILE: /opt/coire/state/jaccl-hostfile.json
+      SHARDING_RING_HOSTFILE: /opt/coire/state/ring-hostfile.json
+      COIRE_TEST_FAKE_CONVERSION: "1"
+      COIRE_TEST_FAKE_VALIDATION: "1"
       HF_HUB_DISABLE_XET: "1"
-      DISK_RESERVE_BYTES: "268435456"
+      # Keep the credential-bearing origin deterministic in CI while still exercising the
+      # production most-free-disk policy: node-a has 768 MiB more usable store than node-b.
+      DISK_RESERVE_BYTES: "1073741824"
       OTLP_ENDPOINT: http://otel-collector:4317
-    tmpfs:
-      - /opt/coire:size=4g
+    volumes:
+      - node-b-opt:/opt/coire
+      - ../../tests/integration/testdata/jaccl-hostfile.json:/opt/coire/state/jaccl-hostfile.json:ro
+      - ../../tests/integration/testdata/ring-hostfile.json:/opt/coire/state/ring-hostfile.json:ro
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://coire-edge-b:9400/ready"]
       interval: 3s
@@ -129,3 +187,7 @@ networks:
     ipam:
       config:
         - subnet: 192.168.100.0/24
+
+volumes:
+  node-a-opt:
+  node-b-opt:
