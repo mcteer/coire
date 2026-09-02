@@ -147,17 +147,10 @@ def test_restart_two_instances_drain_and_registration_token_reuse(
         )
         assert first.status_code == 202, first.text
         first_id = first.json()["id"]
-        # Avoid restarting while the workflow is still in its requested/reserving hand-off.
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline:
-            state = client.get(f"/api/v1/instances/{first_id}", headers=admin_headers).json()[
-                "state"
-            ]
-            if state in {"launching", "warming", "ready"}:
-                break
-            time.sleep(0.25)
-        else:
-            raise AssertionError(f"instance did not enter launch before restart: {state}")
+        # Restart only after the first instance is ready; this tests durable state recovery
+        # without racing the placement workflow's initial command hand-off.
+        first_before_restart = _wait_instance(client, first_id, admin_headers, {"ready", "failed"})
+        assert first_before_restart["state"] == "ready", first_before_restart
         subprocess.run(
             ["docker", "compose", "-p", "coire-it", "restart", "coire-scheduler"],
             cwd=COMPOSE_DIR,
