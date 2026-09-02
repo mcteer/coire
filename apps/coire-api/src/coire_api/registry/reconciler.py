@@ -75,6 +75,10 @@ _engine_state_gauge = _meter.create_gauge(
 
 GRANT_TTL = timedelta(hours=24)
 ACTOR = "reconciler"
+# A create request and the node's engine registry are not atomic: a status poll can briefly
+# observe 404 between the control-plane row being inserted and the node accepting the request.
+# Keep this grace bounded so a genuinely lost startup is still failed on a later pass.
+ENGINE_START_GRACE_S = 30.0
 
 
 class RegistryReconciler:
@@ -445,6 +449,17 @@ class RegistryReconciler:
                 status = await client.get_engine(node.name, row.id)
             except NodeError as exc:
                 if exc.kind is NodeErrorKind.NOT_FOUND:
+                    if (
+                        row.state is EngineState.STARTING
+                        and (datetime.now(UTC) - row.started_at).total_seconds()
+                        < ENGINE_START_GRACE_S
+                    ):
+                        logger.debug(
+                            "engine %s is still starting on %s; deferring transient 404",
+                            row.id,
+                            node.name,
+                        )
+                        continue
                     row.state = EngineState.FAILED
                     row.state_reason = "the node no longer knows this engine"
                     row.stopped_at = datetime.now(UTC)
