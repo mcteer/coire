@@ -193,6 +193,16 @@ The same check reported LaunchDaemon `state = running`, the expected FQDN/data h
 `collection_budget_ok: true` on edge-a; edge-b varied around the 2% CPU boundary while idle and
 was observed returning to `true`, so a sustained pull-budget measurement remains open.
 
+### 2026-09-02 follow-up footprint check
+
+Over SSH, the repository `apps/coire-node/uninstall.sh --dry-run --keychain` was executed on both
+Studios without changing state. Each output enumerated exactly `/opt/coire/{bin,python,envs,log,
+models,state,hf-cache}`, `/Library/LaunchDaemons/com.coire.node.plist`, and the System-keychain
+items `coire-node-token` and `coire-hf-token`, and explicitly left `/opt/coire` itself intact.
+Both hosts reported LaunchDaemon `state = running`, `mlx_lm 0.31.3`, and both keychain items
+present. The sustained collection-budget-during-pull measurement and unchanged Homebrew/bin
+inventories remain operator evidence items.
+
 ## CI: proving the shell check
 
 `SC-008` requires that a deliberately-introduced shell fails CI with a message naming the
