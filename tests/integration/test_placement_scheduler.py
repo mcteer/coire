@@ -80,6 +80,15 @@ def test_pin_refusal_then_unpin_lru_eviction_survives_scheduler_restart(
                 candidates.append((model, verified[0]))
         assert len(candidates) >= 2, "acquisition scenarios must provide two verified models"
         (first_model, first_variant), (second_model, second_variant) = candidates[:2]
+        model_ids = (str(first_model["id"]), str(second_model["id"]))
+        request.addfinalizer(
+            lambda: _sql(
+                "UPDATE memory_reservations SET state='released', released_at=NOW() "
+                "WHERE holder_type='model' AND state<>'released' AND holder_id IN ("
+                + ",".join(f"'{model_id}'" for model_id in model_ids)
+                + ")"
+            )
+        )
 
         first = client.post(
             f"/api/v1/admin/models/{first_model['id']}/placement",
