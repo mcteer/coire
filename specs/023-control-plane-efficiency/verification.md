@@ -91,13 +91,42 @@
 - The broader isolated workflows, image policy, critical-severity vulnerability scans and
   SPDX SBOM generation passed as recorded above. No tiny real-model integration was run;
   there is no tiny test model available on this Mini, and no Studio engine was started.
-- Live rollout and project-scoped OrbStack cleanup await the operator's bootstrap admin
-  email. The live database and containers remain unchanged; the recoverable dump and existing
-  named volumes are retained. This missing Keychain value is required by the identity
-  migration and cannot be inferred from the existing data.
+- Before the operator supplied the bootstrap admin email, the live database and containers
+  remained unchanged and the recoverable dump and named volumes were retained.
 - The operator provided the bootstrap email, which was added to Keychain along with the
   previously absent ops credential while all existing credentials were retained. CI's first
   integration run exposed a clean-host omission: the installed release used `--pull never`
   before the pinned third-party socket proxy image was available. Startup now pulls only
   the digest-pinned PostgreSQL and socket proxy images when missing, while first-party
   release image IDs remain immutable. The integration rerun is pending.
+
+## Live Mini rollout
+
+- With the operator-supplied email in Keychain, `coire-up --recover-db-role --no-build`
+  installed the lean release and completed successfully. The pinned external images were
+  already cached locally, so the new missing-only pull skipped both. PostgreSQL, API,
+  scheduler, web, socket proxy, collector, Prometheus and Alertmanager started; seven of
+  these report Docker healthy, and the socket proxy runs without a Compose healthcheck.
+- The live database is at `0013_failover_event_receipts`; the existing 2 models, 2 nodes
+  and 2 download jobs remain. The audit log rose from 15 to 16 rows during bootstrap, and
+  there is one user. The `coire_coire-pgdata` volume is still mounted, and the private
+  pre-rollout dump remains under the project backups directory. The role-recovery path
+  was available but the installed credential passed the preflight, so no role change was
+  required during this invocation.
+- Authenticated `/health` from inside the API returned HTTP 200. PostgreSQL, scheduler,
+  collector, Prometheus and Alertmanager were healthy. The overall status was `degraded`
+  because both Studio nodes were already recorded unreachable; this rollout did not start
+  or change Studio engines. The host could not reach the existing VLAN-bound
+  `192.168.4.10:8180` address through its current network route, so external access was
+  not asserted from this Mac session.
+- A post-rollout 60-second log sample found zero authentication or exporter error matches
+  across API, scheduler and collector, compared with 17 API authentication failures and
+  82 collector retry/failure lines in the pre-rollout sample. One `docker stats` sample
+  showed API 103.4 MiB/0.47% CPU, scheduler 101.6 MiB/3.94%, web 11.62 MiB/0%,
+  PostgreSQL 78.96 MiB/0.52%, Prometheus 100 MiB/0.21%, Alertmanager 29.29 MiB/0.10%,
+  collector 25.09 MiB/0.04% and socket proxy 28.45 MiB/0%. Samples are not desktop
+  frame measurements and were taken at different workload moments.
+- After replacement health, removed only six Coire project containers: disabled MCP,
+  Grafana, Loki and Tempo, the old created API orphan, and the exited one-shot migration
+  container. The eight lean containers remain running. All Coire named volumes, including
+  historical monitoring volumes, were preserved; no unrelated container was removed.
