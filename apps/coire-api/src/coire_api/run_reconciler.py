@@ -12,6 +12,7 @@ from sqlalchemy import select
 from coire_api.audit import write_audit
 from coire_api.db import AgentRunRow, NodeRow, session_scope
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.polling import FailureSummary
 from coire_core.models.node import NodeRole
 from coire_core.models.runs import TERMINAL_RUN_STATES, RunReconcileRequest
 from coire_core.settings import Settings
@@ -28,6 +29,7 @@ class RunReconciliationCoordinator:
         self.settings = settings
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._node_failures: dict[str, FailureSummary] = {}
 
     async def start(self) -> None:
         if self._task is None:
@@ -80,8 +82,16 @@ class RunReconciliationCoordinator:
                             ),
                         )
                 except NodeError:
-                    logger.warning("run reconciliation deferred node=%s", node.name)
+                    summary = self._node_failures.setdefault(node.name, FailureSummary())
+                    suppressed = summary.failed()
+                    if suppressed is not None:
+                        logger.warning(
+                            "run reconciliation deferred node=%s suppressed=%d",
+                            node.name,
+                            suppressed,
+                        )
                     continue
+                self._node_failures.setdefault(node.name, FailureSummary()).succeeded()
                 if observed.orphan_run_ids:
                     # The first snapshot can race placement: a run may acquire its node and
                     # create a container after the database read but before the node observes

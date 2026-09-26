@@ -510,7 +510,7 @@ def test_rank_failure_creates_one_smaller_survivor_fallback(
         fallback = _wait_instance(
             client, failed["fallback_instance_id"], admin_headers, {"ready", "failed"}
         )
-        assert fallback["state"] == "ready", fallback
+        assert fallback["state"] == "ready", json.dumps(fallback, indent=2)
         assert fallback["policy"] == "single:coire-edge-b"
         assert fallback["variant_id"] != largest["id"]
         # Reconciliation is bounded: subsequent passes retain the same fallback identity.

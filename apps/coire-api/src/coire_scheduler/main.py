@@ -12,43 +12,56 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 
 import uvicorn
 from dbos import DBOS, SetWorkflowID
 from fastapi import FastAPI
-from sqlalchemy import select
+from opentelemetry import metrics
+from sqlalchemy import literal, select, union_all
 
 from coire_api.db import (
     AcquisitionWorkflowRow,
     AgentRunRow,
     ModelInstanceRow,
     PlacementDecisionRow,
+    RunCommandRow,
     dispose_engine,
     init_engine,
     session_scope,
 )
+from coire_api.polling import FailureSummary, PollBackoff, wait_or_stop
 from coire_api.telemetry import configure_telemetry
 from coire_core.models.acquisition import AcquisitionState
 from coire_core.models.health import ReadyResponse
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import PlacementState
-from coire_core.models.runs import AgentRunState
+from coire_core.models.runs import AgentRunState, RunCommandState, RunOperation
 from coire_core.settings import get_settings
 from coire_scheduler.acquisition import acquisition_workflow
 from coire_scheduler.dbos_runtime import DBOSRuntime
 from coire_scheduler.instances import instance_drain_workflow, instance_launch_workflow
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
 from coire_scheduler.runs import run_kill_workflow, run_workflow
+from coire_scheduler.workers import SchedulerWorkers
 
 SERVICE_NAME = "coire-scheduler"
 __version__ = "0.1.0"
 logger = logging.getLogger(__name__)
+kill_scan_failures = metrics.get_meter("coire.scheduler.dispatch").create_counter(
+    "coire_scheduler_kill_scan_failures_total", unit="1"
+)
 
 
 async def dispatch_queued(stop: asyncio.Event) -> None:
     settings = get_settings()
+    backoff = PollBackoff(
+        settings.acquisition_poll_interval_s,
+        settings.scheduler_idle_scan_max_s,
+        settings.scheduler_failure_backoff_max_s,
+    )
     while not stop.is_set():
         try:
             async with session_scope() as session:
@@ -129,23 +142,65 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
                                         AgentRunState.RESULT_COLLECTION_FAILED,
                                         AgentRunState.TIMED_OUT,
                                         AgentRunState.KILLED,
+                                        AgentRunState.KILL_REQUESTED,
                                     ]
                                 )
                             )
                         )
                     ).tuples()
                 )
-            for run_id, run_state in run_rows:
-                if run_state is AgentRunState.KILL_REQUESTED:
-                    with SetWorkflowID(f"kill-{run_id}"):
-                        DBOS.start_workflow(run_kill_workflow, str(run_id))
-                else:
-                    with SetWorkflowID(str(run_id)):
-                        DBOS.start_workflow(run_workflow, str(run_id))
+            for run_id, _run_state in run_rows:
+                with SetWorkflowID(str(run_id)):
+                    DBOS.start_workflow(run_workflow, str(run_id))
+            delay = (
+                settings.acquisition_poll_interval_s
+                if ids or placement_ids or instance_rows or run_rows
+                else backoff.idle()
+            )
+            if ids or placement_ids or instance_rows or run_rows:
+                backoff.active()
         except Exception:
             logger.exception("acquisition dispatcher pass failed")
-        with suppress(TimeoutError):
-            await asyncio.wait_for(stop.wait(), timeout=settings.acquisition_poll_interval_s)
+            delay = backoff.failed()
+        await wait_or_stop(stop, delay)
+
+
+async def dispatch_kills(stop: asyncio.Event, workers: SchedulerWorkers) -> None:
+    """One safety scan feeds both durable kill workflows and the independent node lane."""
+    settings = get_settings()
+    failures = FailureSummary()
+    while not stop.is_set():
+        try:
+            run_query = select(
+                AgentRunRow.id.label("id"),
+                AgentRunRow.node_id.label("node_id"),
+                literal("run").label("kind"),
+            ).where(AgentRunRow.state == AgentRunState.KILL_REQUESTED)
+            command_query = select(
+                RunCommandRow.id.label("id"),
+                RunCommandRow.node_id.label("node_id"),
+                literal("command").label("kind"),
+            ).where(
+                RunCommandRow.operation == RunOperation.KILL,
+                RunCommandRow.state.in_([RunCommandState.PENDING, RunCommandState.RUNNING]),
+            )
+            async with session_scope() as session:
+                rows = (await session.execute(union_all(run_query, command_query))).all()
+            commands: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+            for identifier, node_id, kind in rows:
+                if kind == "run":
+                    with SetWorkflowID(f"kill-{identifier}"):
+                        DBOS.start_workflow(run_kill_workflow, str(identifier))
+                else:
+                    commands.append((identifier, node_id))
+            workers.kill_executor.enqueue_kills(commands)
+            failures.succeeded()
+        except Exception:
+            kill_scan_failures.add(1)
+            suppressed = failures.failed()
+            if suppressed is not None:
+                logger.exception("run kill dispatcher pass failed suppressed=%d", suppressed)
+        await wait_or_stop(stop, settings.run_kill_poll_interval_s)
 
 
 async def dispatch_idle_ttl(stop: asyncio.Event) -> None:
@@ -169,19 +224,33 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         init_engine(settings)
-        runtime.launch()
+        workers = SchedulerWorkers(settings)
         stop = asyncio.Event()
-        dispatcher = asyncio.create_task(dispatch_queued(stop), name="acquisition-dispatcher")
-        ttl_dispatcher = asyncio.create_task(
-            dispatch_idle_ttl(stop), name="placement-ttl-dispatcher"
-        )
-        app.state.dbos = runtime
+        background: list[asyncio.Task[None]] = []
         try:
+            runtime.launch()
+            await workers.start()
+            background.append(
+                asyncio.create_task(dispatch_queued(stop), name="acquisition-dispatcher")
+            )
+            background.append(
+                asyncio.create_task(dispatch_kills(stop, workers), name="kill-dispatcher")
+            )
+            background.append(
+                asyncio.create_task(dispatch_idle_ttl(stop), name="placement-ttl-dispatcher")
+            )
+            app.state.dbos = runtime
             yield
         finally:
             stop.set()
-            await dispatcher
-            await ttl_dispatcher
+            if background:
+                _, pending = await asyncio.wait(
+                    background, timeout=settings.scheduler_shutdown_timeout_s
+                )
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*pending, return_exceptions=True)
+            await workers.stop()
             runtime.destroy()
             await dispose_engine()
 

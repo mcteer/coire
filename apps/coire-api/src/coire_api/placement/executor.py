@@ -6,7 +6,6 @@ import asyncio
 import logging
 import time
 import uuid
-from contextlib import suppress
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -23,6 +22,7 @@ from coire_api.db import (
 )
 from coire_api.instance.service import transition
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.polling import PollBackoff, wait_or_stop
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, PlacementState
@@ -48,23 +48,23 @@ class PlacementCommandExecutor:
             self._task = None
 
     async def _run(self) -> None:
+        backoff = PollBackoff(
+            self.settings.placement_poll_interval_s,
+            self.settings.scheduler_idle_scan_max_s,
+            self.settings.scheduler_failure_backoff_max_s,
+        )
         while not self._stop.is_set():
             try:
                 command_id = await self._next_command()
             except Exception:
                 logger.exception("placement command queue poll failed; retrying")
-                with suppress(TimeoutError):
-                    await asyncio.wait_for(
-                        self._stop.wait(), timeout=self.settings.placement_poll_interval_s
-                    )
+                await wait_or_stop(self._stop, backoff.failed())
                 continue
             if command_id is not None:
+                backoff.active()
                 await self._execute_safely(command_id)
                 continue
-            with suppress(TimeoutError):
-                await asyncio.wait_for(
-                    self._stop.wait(), timeout=self.settings.placement_poll_interval_s
-                )
+            await wait_or_stop(self._stop, backoff.idle())
 
     async def _next_command(self) -> uuid.UUID | None:
         async with session_scope() as session:

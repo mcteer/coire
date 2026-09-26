@@ -19,6 +19,7 @@ from coire_core.models.runs import (
     RunOperation,
 )
 from coire_core.settings import Settings
+from coire_scheduler import runs as scheduler_runs
 
 
 def test_run_command_identity_is_stable_across_replay() -> None:
@@ -111,3 +112,45 @@ async def test_create_replay_adopts_existing_labeled_container_without_remint(
     )
     result = await executor._execute(command_id)
     assert result["container_id"] == "existing-container"
+
+
+async def test_kill_workflow_keeps_request_pending_when_node_kill_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = uuid.uuid4()
+    run = AgentRunRow(
+        id=run_id,
+        requester_user_id=uuid.uuid4(),
+        profile="general",
+        primary_model_id=uuid.uuid4(),
+        primary_variant_id=uuid.uuid4(),
+        node_id=uuid.uuid4(),
+        workspace_ref="workspace",
+        token_scope={},
+        state=AgentRunState.KILL_REQUESTED,
+        limits={},
+        resource_usage={},
+    )
+
+    class Session:
+        async def get(self, model: object, identifier: uuid.UUID, **_: object) -> AgentRunRow:
+            assert model is AgentRunRow and identifier == run_id
+            return run
+
+    @asynccontextmanager
+    async def scope():  # type: ignore[no-untyped-def]
+        yield cast(AsyncSession, Session())
+
+    async def fail_submit(*_: object) -> None:
+        raise RuntimeError("node kill failed")
+
+    async def unexpected(*_: object, **__: object) -> None:
+        raise AssertionError("failed kill must not transition or audit completion")
+
+    monkeypatch.setattr(scheduler_runs, "session_scope", scope)
+    monkeypatch.setattr(scheduler_runs, "_submit", fail_submit)
+    monkeypatch.setattr(scheduler_runs, "transition", unexpected)
+    monkeypatch.setattr(scheduler_runs, "write_audit", unexpected)
+    with pytest.raises(RuntimeError, match="node kill failed"):
+        await scheduler_runs.run_kill_workflow.__wrapped__.__wrapped__(str(run_id))  # type: ignore[attr-defined]
+    assert run.state is AgentRunState.KILL_REQUESTED

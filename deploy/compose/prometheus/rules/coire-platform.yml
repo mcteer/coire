@@ -1,0 +1,59 @@
+groups:
+  - name: coire-platform
+    interval: 15s
+    rules:
+      - alert: CoireNodeUnreachable
+        expr: coire_node_health_verdict{verdict="unreachable"} == 1
+        for: 30s
+        labels: {severity: critical, subject: "{{ $labels.node }}"}
+        annotations: {summary: "Node {{ $labels.node }} is unreachable", runbook_url: "/docs/runbooks/observability#node-unreachable", dashboard: "/d/coire-cluster"}
+      - alert: CoireNodeDegraded
+        expr: coire_node_health_verdict{verdict="degraded"} == 1
+        for: 45s
+        labels: {severity: warning, subject: "{{ $labels.node }}"}
+        annotations: {summary: "Node {{ $labels.node }} is degraded", runbook_url: "/docs/runbooks/observability#node-degraded", dashboard: "/d/coire-cluster"}
+      - alert: CoireNodeSaturation
+        expr: max by (node) (coire_node_cpu_percent > 90 or coire_node_memory_used_bytes / coire_node_memory_budget_bytes > 0.9)
+        for: 5m
+        labels: {severity: warning, subject: "{{ $labels.node }}"}
+        annotations: {summary: "Sustained saturation on {{ $labels.node }}", runbook_url: "/docs/runbooks/observability#saturation", dashboard: "/d/coire-cluster"}
+      - alert: CoireThermalThrottling
+        expr: coire_node_thermal_state{state=~"serious|critical"} == 1
+        for: 1m
+        labels: {severity: critical, subject: "{{ $labels.node }}"}
+        annotations: {summary: "Thermal pressure on {{ $labels.node }}", runbook_url: "/docs/runbooks/observability#thermal", dashboard: "/d/coire-cluster"}
+      - alert: CoireInterconnectPeerDown
+        expr: coire_data_link_up == 0
+        for: 30s
+        labels: {severity: critical, subject: "{{ $labels.peer }}"}
+        annotations: {summary: "Data peer {{ $labels.peer }} is down", runbook_url: "/docs/runbooks/observability#interconnect", dashboard: "/d/coire-cluster"}
+      - alert: CoireInterconnectFlapping
+        expr: changes(coire_data_link_up[10m]) > 4
+        for: 1m
+        labels: {severity: warning, subject: "{{ $labels.peer }}"}
+        annotations: {summary: "Data peer {{ $labels.peer }} is flapping", runbook_url: "/docs/runbooks/observability#interconnect", dashboard: "/d/coire-cluster"}
+      - alert: CoireMemoryLedgerDrift
+        expr: abs(coire_node_memory_reserved_bytes - coire_node_process_rss_bytes) / clamp_min(coire_node_memory_reserved_bytes, 1) > 0.10
+        for: 5m
+        labels: {severity: warning, subject: "{{ $labels.node }}"}
+        annotations: {summary: "Memory ledger drift on {{ $labels.node }}", runbook_url: "/docs/runbooks/observability#ledger", dashboard: "/d/coire-cluster"}
+      - alert: CoireModelLoadSlow
+        expr: coire_model_load_duration_seconds > 600
+        for: 1m
+        labels: {severity: warning, subject: "{{ $labels.node }}"}
+        annotations: {summary: "Model load is slow on {{ $labels.node }}", runbook_url: "/docs/runbooks/observability#load", dashboard: "/d/coire-jobs"}
+      - alert: CoireAgentRunOvertime
+        expr: coire_agent_run_elapsed_seconds > coire_agent_run_timeout_seconds
+        for: 1m
+        labels: {severity: critical, subject: "{{ $labels.node }}"}
+        annotations: {summary: "Agent run exceeded timeout on {{ $labels.node }}", runbook_url: "/docs/runbooks/observability#run", dashboard: "/d/coire-jobs"}
+      - alert: CoireTunnelDown
+        expr: coire_tunnel_up == 0
+        for: 1m
+        labels: {severity: critical, subject: "{{ $labels.tunnel }}"}
+        annotations: {summary: "Tunnel {{ $labels.tunnel }} is down", runbook_url: "/docs/runbooks/observability#tunnel", dashboard: "/d/coire-cluster"}
+      - alert: CoireClockSkew
+        expr: abs(coire_node_clock_skew_seconds) > 2
+        for: 5m
+        labels: {severity: warning, subject: "{{ $labels.node }}"}
+        annotations: {summary: "Clock skew on {{ $labels.node }}", runbook_url: "/docs/runbooks/observability#clock-skew", dashboard: "/d/coire-cluster"}

@@ -37,6 +37,7 @@ from coire_core.models.instance import (
     ModelInstance,
 )
 from coire_core.models.node import ThermalState
+from coire_core.models.placement import MemoryLedger
 
 router = APIRouter(prefix="/api/v1", tags=["instances"])
 ACTIVE_STATES = (
@@ -121,6 +122,13 @@ async def cluster_state(
     principal: CurrentAuthenticated, session: SessionDep, settings: SettingsDep
 ) -> ClusterState:
     ledgers = await project_ledgers(session)
+    return await project_cluster_state(session, settings, ledgers)
+
+
+async def project_cluster_state(
+    session: SessionDep, settings: SettingsDep, ledgers: list[MemoryLedger]
+) -> ClusterState:
+    """Assemble cluster state from an already projected ledger."""
     node_rows = {row.id: row for row in (await session.execute(select(NodeRow))).scalars().all()}
     ledger_rows = {
         row.node_id: row

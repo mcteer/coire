@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Bring up the Coire control plane on core.
 #
-# Secrets are read from the macOS Keychain and written 0600 into a 0700 directory outside the
-# repository ($HOME/.coire/secrets by default), which compose file-sources into each container
-# at /run/secrets/. coire-down removes them.
+# Secrets are read from the macOS Keychain into complete, private generations outside Git.
+# Existing container bind mounts are never overwritten in place.
 #
 # Two measured constraints force this shape (research R4, amended): compose rejects
 # `environment:` secret sources for any read_only service, and a file source is a bind mount,
@@ -12,24 +11,38 @@
 #
 #   coire-up                      read secrets from the Keychain (normal path)
 #   coire-up --secrets-from-env   use COIRE_SECRET_* already in the environment (CI)
-#   coire-up --no-build           do not build images first
+#   coire-up --build              explicitly build images before startup
+#   coire-up --no-build           compatibility alias for normal startup
+#   coire-up --recover-db-role    back up existing data and align the persisted role
 #
 # Exit codes: 0 ok, 2 missing Keychain item, 3 another bring-up is already running.
 set -euo pipefail
 
 COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$COMPOSE_DIR/../.." && pwd)"
-LOCKDIR="$COMPOSE_DIR/.coire-up.lock"
+export COIRE_REPO_ROOT="$REPO_ROOT"
+STATE_ROOT="${COIRE_STATE_ROOT:-$HOME/.coire/projects}"
+PROJECT="${COMPOSE_PROJECT_NAME:-coire}"
+if [[ ! "$PROJECT" =~ ^[a-z][a-z0-9_-]{1,62}$ ]]; then
+  echo "invalid Compose project name" >&2
+  exit 2
+fi
+mkdir -p "$STATE_ROOT/$PROJECT"
+chmod 700 "$STATE_ROOT/$PROJECT"
+LOCKDIR="$STATE_ROOT/$PROJECT/.coire-up.lock"
 WAIT_TIMEOUT="${COIRE_WAIT_TIMEOUT:-180}"
 CONTROL_PORT="${COIRE_CONTROL_PORT:-8180}"
 export COIRE_CONTROL_PORT="$CONTROL_PORT"
 
 FROM_ENV=0
-BUILD=1
+BUILD=0
+RECOVER_DB_ROLE=0
 for arg in "$@"; do
   case "$arg" in
     --secrets-from-env) FROM_ENV=1 ;;
+    --build)            BUILD=1 ;;
     --no-build)         BUILD=0 ;;
+    --recover-db-role)  RECOVER_DB_ROLE=1 ;;
     -h|--help)          sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
@@ -65,16 +78,7 @@ if ! acquire_lock; then
   exit 3
 fi
 
-# --- secrets ---------------------------------------------------------------
-# Parallel indexed arrays, not an associative array: macOS ships bash 3.2, where `declare -A`
-# does not exist and silently produces a normal array — which would make this loop iterate
-# over garbage and report success while configuring nothing.
-SECRET_ITEMS=(coire-postgres-password coire-key-signing-secret coire-node-tokens coire-admin-token coire-bootstrap-admin-email coire-ops-service-token)
-SECRET_VARS=(COIRE_SECRET_POSTGRES_PASSWORD COIRE_SECRET_KEY_SIGNING_SECRET COIRE_SECRET_NODE_TOKENS COIRE_SECRET_ADMIN_TOKEN COIRE_SECRET_BOOTSTRAP_ADMIN_EMAIL COIRE_SECRET_OPS_SERVICE_TOKEN)
-
-# Where the materialised secrets live: outside the repository, 0700, removed by coire-down.
-SECRETS_DIR="${COIRE_SECRETS_DIR:-$HOME/.coire/secrets}"
-export COIRE_SECRETS_DIR="$SECRETS_DIR"
+# Resolve only the control-VLAN address; never widen the published listener.
 if [[ -z "${COIRE_CONTROL_BIND_ADDRESS:-}" ]]; then
   if command -v dscacheutil >/dev/null 2>&1; then
     COIRE_CONTROL_BIND_ADDRESS="$(dscacheutil -q host -a name coire-core 2>/dev/null | awk '/ip_address:/{print $2; exit}')"
@@ -83,89 +87,32 @@ if [[ -z "${COIRE_CONTROL_BIND_ADDRESS:-}" ]]; then
   fi
   export COIRE_CONTROL_BIND_ADDRESS="${COIRE_CONTROL_BIND_ADDRESS:-127.0.0.1}"
 fi
-SECRET_FILES=(postgres_password key_signing_secret node_tokens admin_token bootstrap_admin_email ops_service_token)
 
-write_secret() {  # $1 = filename, $2 = value
-  local target="$SECRETS_DIR/$1"
-  printf '%s' "$2" > "$target"
-  # 0644 inside a 0700 directory, deliberately.
-  #
-  # Compose file-secrets are bind mounts that preserve host ownership, and every first-party
-  # service runs as uid 65532. A 0600 file owned by the invoking user is unreadable to them:
-  # macOS hides this behind uid mapping, but on Linux the container gets
-  # "Permission denied: /run/secrets/postgres_password" and the whole control plane fails to
-  # start. Host-side confidentiality comes from the 0700 directory, which no other user can
-  # traverse; the file mode only governs what the container can read once the daemon has
-  # mounted it.
-  chmod 644 "$target"
-}
-
-mkdir -p "$SECRETS_DIR"
-chmod 700 "$SECRETS_DIR"
-
-# Record the resolved path so plain `docker compose ps/logs/restart` in this directory works
-# without the caller re-exporting it. Contains a path, never a secret; gitignored.
-printf 'COIRE_SECRETS_DIR=%s\nCOIRE_CONTROL_BIND_ADDRESS=%s\nCOIRE_CONTROL_PORT=%s\n' \
-  "$SECRETS_DIR" "$COIRE_CONTROL_BIND_ADDRESS" "$CONTROL_PORT" > "$COMPOSE_DIR/.env"
-
+# --- secrets and installed release -----------------------------------------
+# Collect every Keychain/environment input before touching a mounted credential.  A new
+# generation is selected only for container recreation; existing bind mounts keep their inode.
+export COIRE_SECRETS_BASE="${COIRE_SECRETS_BASE:-${COIRE_SECRETS_DIR:-$STATE_ROOT}}"
+secret_args=(prepare)
 if [[ "$FROM_ENV" -eq 1 ]]; then
-  for i in "${!SECRET_ITEMS[@]}"; do
-    var="${SECRET_VARS[$i]}"
-    if [[ -z "${!var:-}" ]]; then
-      echo "missing environment secret: $var (--secrets-from-env was given)" >&2
-      exit 2
-    fi
-    write_secret "${SECRET_FILES[$i]}" "${!var}"
-  done
-  echo "secrets: taken from the environment (${#SECRET_ITEMS[@]} items)"
-else
-  missing=()
-  for i in "${!SECRET_ITEMS[@]}"; do
-    item="${SECRET_ITEMS[$i]}"
-    var="${SECRET_VARS[$i]}"
-    if value="$(security find-generic-password -w -s "$item" 2>/dev/null)"; then
-      write_secret "${SECRET_FILES[$i]}" "$value"
-      unset value
-    else
-      missing+=("$item")
-    fi
-  done
-  if [[ ${#missing[@]} -gt 0 ]]; then
-    # Abort before touching compose: a partially-configured control plane is worse than none.
-    for m in "${missing[@]}"; do echo "missing keychain item: $m" >&2; done
-    echo "create them with scripts/coire-secrets-init.sh, then re-run" >&2
-    exit 2
-  fi
-  echo "secrets: read from the Keychain into $SECRETS_DIR (0700 dir, removed by coire-down)"
+  secret_args+=(--secrets-from-env)
 fi
-
-# The failover signing key remains optional until the core member is explicitly armed.
-# Compose still mounts an empty file in ordinary mode, so existing bring-up needs no
-# failover credential and the API refuses to participate.
-if [[ "${COIRE_FAILOVER_MEMBER_NAME:-}" == "coire-core" ]]; then
-  for name in COIRE_FAILOVER_CORE_PUBLIC_KEY COIRE_FAILOVER_EDGE_A_PUBLIC_KEY COIRE_FAILOVER_EDGE_B_PUBLIC_KEY; do
-    if [[ -z "${!name:-}" ]]; then
-      echo "missing failover membership key: $name" >&2
-      exit 2
-    fi
-  done
-  if [[ "$FROM_ENV" -eq 1 ]]; then
-    failover_key="${COIRE_SECRET_FAILOVER_PEER_KEY:-}"
-  else
-    failover_key="$(security find-generic-password -w -s coire-failover-peer-key 2>/dev/null || true)"
-  fi
-  if [[ -z "$failover_key" ]]; then
-    echo "missing core failover signing key" >&2
-    exit 2
-  fi
-  write_secret failover_peer_key "$failover_key"
-  unset failover_key
-  printf 'COIRE_FAILOVER_MEMBER_NAME=coire-core\nCOIRE_FAILOVER_CORE_PUBLIC_KEY=%s\nCOIRE_FAILOVER_EDGE_A_PUBLIC_KEY=%s\nCOIRE_FAILOVER_EDGE_B_PUBLIC_KEY=%s\n' \
-    "${COIRE_FAILOVER_CORE_PUBLIC_KEY:-}" "${COIRE_FAILOVER_EDGE_A_PUBLIC_KEY:-}" \
-    "${COIRE_FAILOVER_EDGE_B_PUBLIC_KEY:-}" >> "$COMPOSE_DIR/.env"
-else
-  write_secret failover_peer_key ""
+SECRETS_DIR="$(uv run python -m coire_core.deploy "${secret_args[@]}")"
+export COIRE_SECRETS_DIR="$SECRETS_DIR"
+RECREATE_SECRETS=0
+active_manifest="$STATE_ROOT/$PROJECT/current/compose.json"
+if [[ -f "$active_manifest" ]]; then
+  active_secret_dir="$(python3 -c 'import json,sys; from pathlib import Path; m=json.load(open(sys.argv[1])); print(Path(m["secrets"]["postgres_password"]["file"]).parent)' "$active_manifest" 2>/dev/null || true)"
+  [[ "$active_secret_dir" == "$SECRETS_DIR" ]] || RECREATE_SECRETS=1
+elif [[ -n "$(docker ps -q --filter "label=com.docker.compose.project=$PROJECT" --filter 'label=com.docker.compose.service=postgres')" ]]; then
+  RECREATE_SECRETS=1
 fi
+export MCP_ENABLED=false OPS_ENABLED=false
+export DIAGNOSTICS_ENABLED=false COIRE_OTEL_CONFIG=config.yaml
+case ",${COMPOSE_PROFILES:-}," in *,mcp,*) MCP_ENABLED=true ;; esac
+case ",${COMPOSE_PROFILES:-}," in *,ops,*) OPS_ENABLED=true ;; esac
+case ",${COMPOSE_PROFILES:-}," in *,diagnostics,*) DIAGNOSTICS_ENABLED=true; COIRE_OTEL_CONFIG=diagnostics.yaml ;; esac
+export COIRE_MCP_ENABLED="$MCP_ENABLED" COIRE_OPS_ENABLED="$OPS_ENABLED"
+export COIRE_DIAGNOSTICS_ENABLED="$DIAGNOSTICS_ENABLED"
 
 # --- control names ---------------------------------------------------------
 for node in coire-edge-a coire-edge-b; do
@@ -185,11 +132,26 @@ if [[ "$BUILD" -eq 1 ]]; then
   echo "building images..."
   docker compose build --quiet
 fi
+RELEASE="$(uv run python "$REPO_ROOT/scripts/coire-deploy.py" install "$SECRETS_DIR")"
+if ! uv run python "$REPO_ROOT/scripts/coire-deploy.py" preflight "$RELEASE"; then
+  if [[ "$RECOVER_DB_ROLE" -ne 1 ]]; then
+    echo "retry with --recover-db-role only after reviewing the retained release and backup location" >&2
+    exit 2
+  fi
+  uv run python "$REPO_ROOT/scripts/coire-deploy.py" recover-db-role "$SECRETS_DIR" \
+    --backup-dir "$STATE_ROOT/$PROJECT/backups" --apply
+  uv run python "$REPO_ROOT/scripts/coire-deploy.py" preflight "$RELEASE"
+fi
 
 echo "starting control plane (waiting up to ${WAIT_TIMEOUT}s for health)..."
-docker compose up -d --wait --wait-timeout "$WAIT_TIMEOUT"
+up_args=(up --no-build --pull never -d --wait --wait-timeout "$WAIT_TIMEOUT")
+if [[ "$RECREATE_SECRETS" -eq 1 ]]; then
+  up_args+=(--force-recreate)
+fi
+docker compose -p "$PROJECT" -f "$RELEASE/compose.json" "${up_args[@]}"
+uv run python "$REPO_ROOT/scripts/coire-deploy.py" select "$RELEASE"
 
 echo
-docker compose ps --format 'table {{.Service}}\t{{.Status}}'
+docker compose -p "$PROJECT" -f "$RELEASE/compose.json" ps --format 'table {{.Service}}\t{{.Status}}'
 echo
 echo "control plane up. health: http://${COIRE_CONTROL_BIND_ADDRESS}:${CONTROL_PORT}/health"

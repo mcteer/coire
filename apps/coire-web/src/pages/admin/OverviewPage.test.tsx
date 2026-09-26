@@ -52,3 +52,22 @@ test("distinguishes degraded, unreachable, and stale node state", () => {
   expect(screen.getByText("unreachable")).toBeInTheDocument();
   expect(screen.getAllByText("probe failed")).toHaveLength(2);
 });
+
+test("labels runtime capacity and unknown CPU without a fabricated percentage", () => {
+  const snapshot = consoleSnapshot({
+    core: {
+      host_name: "runtime",
+      health: "healthy",
+      memory_total_bytes: 100,
+      memory_free_bytes: 50,
+      disk_total_bytes: 200,
+      disk_free_bytes: 100,
+      cpu_percent: null,
+      observed_at: "2026-09-01T00:00:00Z",
+      source: "core-control-plane-runtime",
+    },
+  });
+  render(<Overview snapshot={snapshot} />);
+  expect(screen.getByText("Unknown")).toBeInTheDocument();
+  expect(screen.getByText("control-plane runtime")).toBeInTheDocument();
+});

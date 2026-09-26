@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1
+FROM docker.io/library/golang:1.26-bookworm@sha256:e8c859f5632dcfde7b32d2012b4351728f6437930887c2f6a91ea242459e5514 AS probe
+WORKDIR /src
+COPY apps/coire-web/healthcheck/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /healthcheck .
+
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca AS builder
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PROJECT_ENVIRONMENT=/app/.venv
 WORKDIR /build
@@ -19,6 +24,7 @@ FROM gcr.io/distroless/base-debian12:nonroot@sha256:7f0c72cd138b442ae0deeb69c08b
 COPY --from=builder /usr/lib/aarch64-linux-gnu/libz.so.1 /usr/lib/aarch64-linux-gnu/libffi.so.8 /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 /usr/lib/aarch64-linux-gnu/libstdc++.so.6 /usr/lib/aarch64-linux-gnu/libuuid.so.1 /usr/lib/aarch64-linux-gnu/liblzma.so.5 /usr/lib/aarch64-linux-gnu/libbz2.so.1.0 /usr/lib/aarch64-linux-gnu/libsqlite3.so.0 /usr/lib/aarch64-linux-gnu/
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=probe /healthcheck /healthcheck
 ENV PATH="/app/.venv/bin:${PATH}" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER 65532:65532
 WORKDIR /app

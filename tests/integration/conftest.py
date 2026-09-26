@@ -37,6 +37,7 @@ DOWN = COMPOSE_DIR / "coire-down"
 # exactly what happened locally while CI, always starting fresh, stayed green.
 PROJECT = "coire-it"
 os.environ.setdefault("COMPOSE_PROJECT_NAME", PROJECT)
+os.environ.setdefault("COMPOSE_PROFILES", "ops,mcp")
 
 # `coire-up` runs `docker compose up` from deploy/compose and relies on auto-discovery, so the
 # integration overlay is selected with COMPOSE_FILE rather than by teaching the script a flag
@@ -90,6 +91,8 @@ INTEGRATION_SECRETS = {
     "COIRE_IT_NODE_TOKEN_A": "unissued-a",
     "COIRE_IT_NODE_TOKEN_B": "unissued-b",
     "COIRE_SECRETS_DIR": str(SECRETS_DIR),
+    "COIRE_SECRETS_BASE": str(SECRETS_DIR),
+    "COIRE_STATE_ROOT": str(SECRETS_DIR / "state"),
     "COIRE_IT_PORT": INTEGRATION_PORT,
     "COIRE_IT_API_PORT": INTEGRATION_API_PORT,
     "COIRE_CLUSTER_CONFIG_DIR": str(REPO / "tests/integration/testdata"),
@@ -162,7 +165,14 @@ def access_assertion(*, email: str = "admin@integration.test", **claims: object)
 
 
 def integration_env(**extra: str) -> dict[str, str]:
-    return {**os.environ, **INTEGRATION_SECRETS, **extra}
+    result = {**os.environ, **INTEGRATION_SECRETS, **extra}
+    active_manifest = SECRETS_DIR / "state" / PROJECT / "current" / "compose.json"
+    if active_manifest.is_file():
+        manifest = json.loads(active_manifest.read_text())
+        result["COIRE_SECRETS_DIR"] = str(
+            Path(manifest["secrets"]["postgres_password"]["file"]).parent
+        )
+    return result
 
 
 def drain_runtime(
@@ -410,22 +420,9 @@ def _declare_and_register_nodes(env: dict[str, str]) -> None:
             "COIRE_IT_NODE_TOKEN_B": NODE_TOKENS["coire-edge-b"],
         }
     )
-    (SECRETS_DIR / "node_tokens").write_text(token_json)
     recreate_env = integration_env(COMPOSE_PROJECT_NAME=PROJECT)
     subprocess.run(
-        [
-            "docker",
-            "compose",
-            "-p",
-            PROJECT,
-            "up",
-            "-d",
-            "--force-recreate",
-            "coire-api",
-            "coire-scheduler",
-            "node-a",
-            "node-b",
-        ],
+        [str(UP), "--secrets-from-env", "--no-build"],
         cwd=COMPOSE_DIR,
         env=recreate_env,
         check=True,

@@ -1,5 +1,16 @@
 <!--
 SYNC IMPACT REPORT
+Version change: 1.0.0 → 2.0.0 (MAJOR: changes the continuous telemetry retention promise)
+Modified principle: VI. Observable or it doesn't ship
+Modified constraint: Observability in Technology Constraints
+Added sections: none
+Removed sections: none
+Follow-up: reconcile the architecture and feature 009 acceptance with lean and diagnostic
+profiles in specs/023-control-plane-efficiency, then implement and validate both modes.
+The full historical diagnostics capability remains available as an explicit profile.
+-->
+<!--
+SYNC IMPACT REPORT
 Version change: 0.1.1 → 1.0.0 (MAJOR — narrowly redefines the Studio role during a
 core-control-plane emergency)
 
@@ -52,7 +63,15 @@ The platform is internet-reachable through Cloudflare Tunnel + Access. Every req
 Only an admin, via the admin API/console, may add a model or trigger a download from Hugging Face; no user request, agent, or automation may. Every roster model is stored on both Studios before it is `ready`. Users see and select only `published` models they are entitled to, through a picker; the gateway rejects any model identifier that is not a registry id and never passes caller-supplied model or adapter strings to an engine. A model enters the roster as a registry record with placement policy, memory estimate, idle TTL, chat template, visibility, and a capability profile (tool calling, structured output, context, reasoning). Harness behaviour is selected from the profile, never hard-coded to a model name. A model is `verified` for coding/`apply` only after passing the harness evaluation suite; the router MUST refuse unverified models for write-capable tasks.
 
 ### VI. Observable or it doesn't ship
-Every service emits OpenTelemetry traces, Prometheus metrics, and structured logs to the local stack. A feature is not complete until its dashboard panel and at least one alert rule exist, and until a slow or failed request can be attributed to a span (gateway, queue, load, prefill, decode, node, network).
+Every service MUST emit OpenTelemetry traces, Prometheus metrics, and structured logs to the
+local control plane. A feature is not complete until its dashboard panel and at least one alert
+rule exist. The continuously running baseline MUST retain actionable metrics and alerts, full
+security and mutation audit records, and bounded local structured logs. Historical trace and
+centralized log storage MAY be enabled as a separate local diagnostics profile; the collector
+MUST NOT retry destinations that are disabled. With diagnostics enabled, a slow or failed request
+MUST be attributable to spans for the gateway, queue, load, prefill, decode, node, and network
+where applicable. Operators MUST be told when diagnostics is disabled and historical trace or
+log search is unavailable. Disabled storage MUST NOT suppress security audit records or alerts.
 
 ### VII. Spec-driven, test-gated, incremental
 Work flows `/speckit.specify → clarify → plan → tasks → implement` per feature, one feature branch per spec directory. Every feature ships with contract tests for its API surface and an integration test that runs against a tiny model (≤1 GB) so CI can run on a single Mac. Sharded, training, and image features additionally require a documented manual verification on the real cluster before merge. Prefer the smallest change that satisfies the spec; defer generality until a second concrete use appears.
@@ -63,7 +82,11 @@ Work flows `/speckit.specify → clarify → plan → tasks → implement` per f
 * Node runtime: macOS 26.2+, MLX / mlx-lm / JACCL / mflux pinned in a lockfile; versioned envs under `/opt/coire/envs` with symlink flip and rollback.
 * Containers: OrbStack on core; control plane deployed only via `deploy/compose/` with CI-built, tag-pinned images (`coire-api`, `coire-mcp`, `coire-web`, `coire-agent`); Docker socket reachable only through a docker-socket-proxy with an explicit allowlist. The Principle II failover frontend is the sole Studio-side control-plane exception and uses the same CI-built, digest-pinned image policy. `coire-agent` from a slim base, `uv sync --frozen`, non-root, read-only root filesystem, workspace volume only, run-network only.
 * Web: React + TypeScript + Vite, single SPA, SSE for streaming, served normally by an nginx container on core that is the sole Cloudflare ingress. During the Principle II failover exception, one Studio may serve only the stateless inference-only frontend through that existing authenticated edge; no Node runtime in production.
-* Observability: OTel Collector, Prometheus, Loki, Tempo, Grafana, Alertmanager via compose on OrbStack; Logfire SDK used only as an OTel instrumentation layer exporting locally.
+* Observability: OTel Collector, Prometheus, and Alertmanager run continuously via compose on
+  OrbStack. Loki, Tempo, and Grafana are separate local diagnostics capabilities with bounded
+  retention, enabled explicitly when historical traces, centralized log search, or dashboards
+  are needed. All enabled exporters have a corresponding running destination. Logfire SDK is
+  used only as an OTel instrumentation layer exporting locally; telemetry never egresses.
 * Edge and LAN: Cloudflare Tunnel, Access (OIDC), WAF and rate-limit rules; no inbound port forwards on the UDM SE, ever. Lab nodes live on an isolated VLAN with deny-by-default rules to other VLANs; hosts are addressed by UniFi DNS names, never raw IPs, in any config. Break-glass admin via UDM VPN or Tailscale.
 * Forbidden: inference wrappers (Principle I), long-lived static tokens for agents, direct Studio exposure, hand-edited production config on nodes (everything applied from `deploy/`).
 
@@ -80,4 +103,4 @@ Work flows `/speckit.specify → clarify → plan → tasks → implement` per f
 
 This constitution supersedes ad-hoc practice. Every `/speckit.plan` MUST include a "Constitution Check" listing each principle and stating compliance or a justified, time-boxed exception recorded as an ADR in `docs/adr/`. Amendments require a version bump below, a changelog line, and a review of open specs for conflicts. Principles are numbered so specs can cite them (e.g. "per Principle IV").
 
-**Version**: 1.0.0 | **Ratified**: 2026-08-28 | **Last Amended**: 2026-09-05
+**Version**: 2.0.0 | **Ratified**: 2026-08-28 | **Last Amended**: 2026-09-26

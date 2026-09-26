@@ -23,6 +23,7 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certifica
 COPY --from=build /healthcheck /healthcheck
 COPY --from=build /src/_build/coire-otel /otelcol-contrib
 COPY deploy/compose/otel-collector.yaml /etc/otelcol-contrib/config.yaml
+COPY deploy/compose/otel-collector-diagnostics.yaml /etc/otelcol-contrib/diagnostics.yaml
 
 EXPOSE 4317 4318 13133
 

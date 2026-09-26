@@ -11,7 +11,7 @@ from opentelemetry import metrics, trace
 from coire_api import runs
 from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
-from coire_api.db import RunCommandRow
+from coire_api.db import AgentRunRow, RunCommandRow
 from coire_api.deps import SessionDep
 from coire_api.run_tokens import revoke_run_token
 from coire_core.models.runs import (
@@ -49,6 +49,14 @@ async def kill_run(
         span.set_attribute("run_id", str(run_id))
         try:
             row = await runs.get_visible_run(session, run_id, principal)
+            locked = await session.get(
+                AgentRunRow, row.id, with_for_update=True, populate_existing=True
+            )
+            if locked is None:
+                raise runs.RunNotFound(str(run_id))
+            row = locked
+            if row.state in {AgentRunState.KILL_REQUESTED, AgentRunState.KILLED}:
+                return await runs.project_run(session, row)
             await revoke_run_token(session, run_id)
             await runs.transition(session, row, AgentRunState.KILL_REQUESTED, body.reason)
             if row.node_id is not None:
