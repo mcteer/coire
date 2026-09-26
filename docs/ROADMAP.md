@@ -133,7 +133,8 @@ invalidates old proposals, and unavailable-model turns use the deterministic rea
 
 **016 · control-plane failover** — "Poller on all three hosts electing a frontend host when core is unavailable; priority core → coire-edge-a → coire-edge-b; quorum-gated promotion; stateless inference-only degraded tier with no database on a Studio; capability tiers degrading with healthy membership; automatic demotion when core returns."
 *Done when:* powering off core yields inference service from a Studio within the failover threshold; a minority partition never promotes; no database or admin surface ever runs on a Studio; core returning restores full service with no operator action.
-*Blocked on:* an amendment to Principle II, which currently forbids a web tier on a Studio.
+*Design gate:* Principle II was amended for this inference-only exception; feature 020 remains
+release-gated on the real-cluster quickstart.
 
 **017 · node self-healing** — "Two-layer health agent per node: a minimal native supervisor running as an OS service outside the container runtime, plus a containerised diagnostic agent. Its entire mandate is restoring cluster membership — node-agent liveness, network reachability, registration — and nothing else; capacity concerns are escalated, and engines and engine environments are excluded because 004/005/019 own them. Deterministic symptom-to-action remediation, quorum-aware conservatism, circuit breaker with backoff, escalation for anything unlisted. Built on the agent framework's slim distribution with the model unbound, so the disconnected path needs no model."
 *Done when:* killing the node agent on a Studio rejoins it automatically; every autonomous action maps to membership restoration and nothing else; a crashed engine produces zero supervisor actions; a minority-partitioned node takes only local non-destructive actions; a persistent fault opens the circuit breaker.

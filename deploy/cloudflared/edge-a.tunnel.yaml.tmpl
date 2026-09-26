@@ -1,0 +1,7 @@
+# Rendered only on coire-edge-a. This tunnel is outbound-only and points to a stateless frontend.
+tunnel: ${COIRE_EDGE_A_TUNNEL_ID}
+credentials-file: /run/secrets/cloudflared_edge_a_credentials
+ingress:
+  - hostname: ${COIRE_PUBLIC_HOSTNAME}
+    service: http://127.0.0.1:8004
+  - service: http_status:404

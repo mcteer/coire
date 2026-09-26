@@ -2241,6 +2241,49 @@
         "title": "CursorPage[ActivityItem]",
         "type": "object"
       },
+      "ElectionVoteGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate": {
+            "title": "Candidate",
+            "type": "string"
+          },
+          "epoch": {
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "signature": {
+            "minLength": 1,
+            "title": "Signature",
+            "type": "string"
+          },
+          "term": {
+            "minimum": 1.0,
+            "title": "Term",
+            "type": "integer"
+          },
+          "voter": {
+            "title": "Voter",
+            "type": "string"
+          }
+        },
+        "required": [
+          "epoch",
+          "term",
+          "candidate",
+          "voter",
+          "expires_at",
+          "signature"
+        ],
+        "title": "ElectionVoteGrant",
+        "type": "object"
+      },
       "EmptyOpsParameters": {
         "additionalProperties": false,
         "properties": {},
@@ -2255,6 +2298,253 @@
         ],
         "title": "EvaluationVerdict",
         "type": "string"
+      },
+      "FailoverAccessVerifier": {
+        "additionalProperties": false,
+        "description": "Public Cloudflare Access verification material safe for a Studio snapshot.",
+        "properties": {
+          "audience": {
+            "minLength": 1,
+            "title": "Audience",
+            "type": "string"
+          },
+          "issuer": {
+            "minLength": 1,
+            "title": "Issuer",
+            "type": "string"
+          },
+          "jwks_url": {
+            "minLength": 1,
+            "title": "Jwks Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "audience",
+          "jwks_url"
+        ],
+        "title": "FailoverAccessVerifier",
+        "type": "object"
+      },
+      "FailoverHeartbeat": {
+        "additionalProperties": false,
+        "description": "A signed liveness beat. Latency of the exchange is measured by the caller.",
+        "properties": {
+          "member": {
+            "title": "Member",
+            "type": "string"
+          },
+          "sent_at": {
+            "format": "date-time",
+            "title": "Sent At",
+            "type": "string"
+          },
+          "signature": {
+            "minLength": 1,
+            "title": "Signature",
+            "type": "string"
+          }
+        },
+        "required": [
+          "member",
+          "sent_at",
+          "signature"
+        ],
+        "title": "FailoverHeartbeat",
+        "type": "object"
+      },
+      "FailoverMember": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "pattern": "^coire-(core|edge-[ab])$",
+            "title": "Name",
+            "type": "string"
+          },
+          "priority": {
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "public_key": {
+            "minLength": 1,
+            "title": "Public Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "priority",
+          "public_key"
+        ],
+        "title": "FailoverMember",
+        "type": "object"
+      },
+      "FailoverMembershipConfig": {
+        "additionalProperties": false,
+        "properties": {
+          "epoch": {
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/FailoverMember"
+            },
+            "maxItems": 3,
+            "minItems": 3,
+            "title": "Members",
+            "type": "array"
+          },
+          "signing_key_id": {
+            "minLength": 1,
+            "title": "Signing Key Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "epoch",
+          "members",
+          "signing_key_id"
+        ],
+        "title": "FailoverMembershipConfig",
+        "type": "object"
+      },
+      "FailoverModel": {
+        "additionalProperties": false,
+        "properties": {
+          "context_window": {
+            "exclusiveMinimum": 0.0,
+            "title": "Context Window",
+            "type": "integer"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "entitlement": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entitlement",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "display_name",
+          "context_window"
+        ],
+        "title": "FailoverModel",
+        "type": "object"
+      },
+      "FailoverOverride": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_id": {
+            "format": "uuid",
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FailoverOverrideKind"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "signature": {
+            "minLength": 1,
+            "title": "Signature",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "actor_id",
+          "reason",
+          "expires_at",
+          "signature"
+        ],
+        "title": "FailoverOverride",
+        "type": "object"
+      },
+      "FailoverOverrideKind": {
+        "enum": [
+          "inhibit",
+          "break_glass_promote"
+        ],
+        "title": "FailoverOverrideKind",
+        "type": "string"
+      },
+      "FailoverSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "access_verifier": {
+            "$ref": "#/components/schemas/FailoverAccessVerifier"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "membership": {
+            "$ref": "#/components/schemas/FailoverMembershipConfig"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/FailoverModel"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "signature": {
+            "minLength": 1,
+            "title": "Signature",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "format": "uuid",
+            "title": "Snapshot Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "issued_at",
+          "expires_at",
+          "membership",
+          "access_verifier",
+          "signature"
+        ],
+        "title": "FailoverSnapshot",
+        "type": "object"
       },
       "GatewayModel": {
         "additionalProperties": false,
@@ -6859,6 +7149,63 @@
         ]
       }
     },
+    "/api/v1/admin/failover/overrides": {
+      "post": {
+        "operationId": "apply_override_api_v1_admin_failover_overrides_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FailoverOverride"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Apply Override",
+        "tags": [
+          "admin: failover"
+        ]
+      }
+    },
     "/api/v1/admin/harness-evaluations": {
       "get": {
         "operationId": "list_evaluations_api_v1_admin_harness_evaluations_get",
@@ -10314,6 +10661,96 @@
         ]
       }
     },
+    "/api/v1/failover/events": {
+      "post": {
+        "operationId": "reconcile_api_v1_failover_events_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Reconcile Api V1 Failover Events Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reconcile",
+        "tags": [
+          "failover"
+        ]
+      }
+    },
+    "/api/v1/failover/heartbeat": {
+      "post": {
+        "description": "Signed liveness exchange. A user credential is not accepted here.",
+        "operationId": "heartbeat_api_v1_failover_heartbeat_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailoverHeartbeat"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Heartbeat",
+        "tags": [
+          "failover"
+        ]
+      }
+    },
+    "/api/v1/failover/snapshot": {
+      "post": {
+        "description": "Return the latest signed cache to an authenticated declared Studio.",
+        "operationId": "replicated_snapshot_api_v1_failover_snapshot_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailoverSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Replicated Snapshot",
+        "tags": [
+          "failover"
+        ]
+      }
+    },
+    "/api/v1/failover/votes": {
+      "post": {
+        "operationId": "cast_vote_api_v1_failover_votes_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ElectionVoteGrant"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Cast Vote",
+        "tags": [
+          "failover"
+        ]
+      }
+    },
     "/api/v1/instances": {
       "get": {
         "operationId": "list_instances_api_v1_instances_get",
@@ -11372,6 +11809,26 @@
         "summary": "Cluster State",
         "tags": [
           "instances"
+        ]
+      }
+    },
+    "/failover/ready": {
+      "get": {
+        "description": "Election gate for the public load balancer. Process liveness stays on `/ready`.",
+        "operationId": "failover_ready_failover_ready_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Failover Ready",
+        "tags": [
+          "failover"
         ]
       }
     },

@@ -1,0 +1,12 @@
+{
+  "title": "Coire failover",
+  "uid": "coire-failover",
+  "schemaVersion": 39,
+  "panels": [
+    {"id": 1, "title": "Election readiness", "type": "stat", "targets": [{"expr": "coire_failover_readiness", "legendFormat": "{{host}}"}]},
+    {"id": 2, "title": "Snapshot freshness", "type": "stat", "targets": [{"expr": "coire_failover_snapshot_fresh"}]},
+    {"id": 3, "title": "Elections", "type": "timeseries", "targets": [{"expr": "sum by (host, kind) (rate(coire_failover_elections_total[5m]))", "legendFormat": "{{host}} {{kind}}"}]},
+    {"id": 4, "title": "Hand-backs", "type": "timeseries", "targets": [{"expr": "sum by (host) (rate(coire_failover_handbacks_total[15m]))", "legendFormat": "{{host}}"}]},
+    {"id": 5, "title": "Ingress refusals", "type": "timeseries", "targets": [{"expr": "sum by (reason) (rate(coire_failover_ingress_refusals_total[5m]))", "legendFormat": "{{reason}}"}]}
+  ]
+}

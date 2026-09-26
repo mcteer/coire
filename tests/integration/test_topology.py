@@ -205,6 +205,10 @@ class TestImagesAndSecrets:
             item["source"] for item in config["services"]["coire-api"]["secrets"]
         }
 
+    def test_studio_failover_stays_off_the_core_project(self, config: dict[str, Any]) -> None:
+        """The frontend is a profiled Studio service. Core's default project does not run it."""
+        assert "coire-failover" not in config["services"]
+
     def test_the_ci_only_node_image_is_absent_from_production(self, config: dict[str, Any]) -> None:
         """`coire-node-test` carries a shell so the restart test can kill the agent. It is
         exempt from the image policy precisely because it never ships; this is the assertion

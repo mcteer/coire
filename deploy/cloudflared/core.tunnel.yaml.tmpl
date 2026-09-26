@@ -1,0 +1,7 @@
+# Rendered only on coire-core. Core is the normal full-service frontend.
+tunnel: ${COIRE_CORE_TUNNEL_ID}
+credentials-file: /run/secrets/cloudflared_core_credentials
+ingress:
+  - hostname: ${COIRE_PUBLIC_HOSTNAME}
+    service: http://coire-web:8080
+  - service: http_status:404

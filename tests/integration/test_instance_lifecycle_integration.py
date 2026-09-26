@@ -119,14 +119,25 @@ def _wait_instance(
 def _verified_candidate(
     client: httpx.Client, headers: dict[str, str]
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    ledgers = client.get("/api/v1/admin/ledger", headers=headers).json()
+    available = {
+        item["node_name"]: int(item["free_bytes"])
+        for item in ledgers
+        if item["node_name"] in {"coire-edge-a", "coire-edge-b"}
+    }
+    assert len(available) == 2, "both Studio ledgers are required"
     for model in client.get("/api/v1/admin/models", headers=headers).json():
         variants = client.get(
             f"/api/v1/admin/models/{model['id']}/variants", headers=headers
         ).json()
         for variant in variants:
-            if variant["validated"] and variant["state"] == "ready":
+            if (
+                variant["validated"]
+                and variant["state"] == "ready"
+                and int(variant["memory_estimate_bytes"]) <= min(available.values())
+            ):
                 return model, variant
-    raise AssertionError("acquisition tests must provide a verified model")
+    raise AssertionError("acquisition tests must provide a verified model fitting both Studios")
 
 
 def test_restart_two_instances_drain_and_registration_token_reuse(

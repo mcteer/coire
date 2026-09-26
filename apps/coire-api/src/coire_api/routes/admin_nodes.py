@@ -74,6 +74,7 @@ async def declare_node(
         session,
         budget_bytes=settings.placement_default_budget_bytes,
         sandbox_bytes=settings.placement_sandbox_bytes,
+        failover_bytes=settings.failover_reservation_bytes,
     )
     await write_principal_audit(
         session,

@@ -1,0 +1,7 @@
+# Rendered only on coire-edge-b. It remains standby unless it holds a valid quorum or break-glass proof.
+tunnel: ${COIRE_EDGE_B_TUNNEL_ID}
+credentials-file: /run/secrets/cloudflared_edge_b_credentials
+ingress:
+  - hostname: ${COIRE_PUBLIC_HOSTNAME}
+    service: http://127.0.0.1:8004
+  - service: http_status:404

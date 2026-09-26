@@ -73,8 +73,10 @@ async def node_admission_locks(
     yield
 
 
-async def ensure_ledgers(session: AsyncSession, *, budget_bytes: int, sandbox_bytes: int) -> None:
-    """Create ledger and standing sandbox rows for newly declared nodes."""
+async def ensure_ledgers(
+    session: AsyncSession, *, budget_bytes: int, sandbox_bytes: int, failover_bytes: int = 0
+) -> None:
+    """Create ledger and standing agent/failover reservations for declared nodes."""
     nodes = (await session.execute(select(NodeRow))).scalars().all()
     for node in nodes:
         ledger = await session.get(NodeMemoryLedgerRow, node.id)
@@ -101,6 +103,24 @@ async def ensure_ledgers(session: AsyncSession, *, budget_bytes: int, sandbox_by
                     holder_type=ReservationHolder.SANDBOX,
                     holder_id="agent-sandbox",
                     bytes=sandbox_bytes,
+                    pinned=True,
+                    state=MemoryReservationState.HELD,
+                )
+            )
+        failover = await session.scalar(
+            select(MemoryReservationRow).where(
+                MemoryReservationRow.node_id == node.id,
+                MemoryReservationRow.holder_type == ReservationHolder.SANDBOX,
+                MemoryReservationRow.holder_id == "failover-frontend",
+            )
+        )
+        if failover is None and failover_bytes:
+            session.add(
+                MemoryReservationRow(
+                    node_id=node.id,
+                    holder_type=ReservationHolder.SANDBOX,
+                    holder_id="failover-frontend",
+                    bytes=failover_bytes,
                     pinned=True,
                     state=MemoryReservationState.HELD,
                 )

@@ -185,6 +185,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/failover/overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Override */
+        post: operations["apply_override_api_v1_admin_failover_overrides_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/harness-evaluations": {
         parameters: {
             query?: never;
@@ -852,6 +869,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/failover/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile */
+        post: operations["reconcile_api_v1_failover_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/failover/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Heartbeat
+         * @description Signed liveness exchange. A user credential is not accepted here.
+         */
+        post: operations["heartbeat_api_v1_failover_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/failover/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replicated Snapshot
+         * @description Return the latest signed cache to an authenticated declared Studio.
+         */
+        post: operations["replicated_snapshot_api_v1_failover_snapshot_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/failover/votes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cast Vote */
+        post: operations["cast_vote_api_v1_failover_votes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instances": {
         parameters: {
             query?: never;
@@ -1097,6 +1188,26 @@ export interface paths {
         };
         /** Cluster State */
         get: operations["cluster_state_api_v1_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/failover/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Failover Ready
+         * @description Election gate for the public load balancer. Process liveness stays on `/ready`.
+         */
+        get: operations["failover_ready_failover_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2042,6 +2153,24 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** ElectionVoteGrant */
+        ElectionVoteGrant: {
+            /** Candidate */
+            candidate: string;
+            /** Epoch */
+            epoch: number;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Signature */
+            signature: string;
+            /** Term */
+            term: number;
+            /** Voter */
+            voter: string;
+        };
         /** EmptyOpsParameters */
         EmptyOpsParameters: Record<string, never>;
         /**
@@ -2049,6 +2178,114 @@ export interface components {
          * @enum {string}
          */
         EvaluationVerdict: "passed" | "failed" | "infrastructure_error";
+        /**
+         * FailoverAccessVerifier
+         * @description Public Cloudflare Access verification material safe for a Studio snapshot.
+         */
+        FailoverAccessVerifier: {
+            /** Audience */
+            audience: string;
+            /** Issuer */
+            issuer: string;
+            /** Jwks Url */
+            jwks_url: string;
+        };
+        /**
+         * FailoverHeartbeat
+         * @description A signed liveness beat. Latency of the exchange is measured by the caller.
+         */
+        FailoverHeartbeat: {
+            /** Member */
+            member: string;
+            /**
+             * Sent At
+             * Format: date-time
+             */
+            sent_at: string;
+            /** Signature */
+            signature: string;
+        };
+        /** FailoverMember */
+        FailoverMember: {
+            /** Name */
+            name: string;
+            /** Priority */
+            priority: number;
+            /** Public Key */
+            public_key: string;
+        };
+        /** FailoverMembershipConfig */
+        FailoverMembershipConfig: {
+            /** Epoch */
+            epoch: number;
+            /** Members */
+            members: components["schemas"]["FailoverMember"][];
+            /** Signing Key Id */
+            signing_key_id: string;
+        };
+        /** FailoverModel */
+        FailoverModel: {
+            /** Context Window */
+            context_window: number;
+            /** Display Name */
+            display_name: string;
+            /** Entitlement */
+            entitlement?: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+        };
+        /** FailoverOverride */
+        FailoverOverride: {
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            kind: components["schemas"]["FailoverOverrideKind"];
+            /** Reason */
+            reason: string;
+            /** Signature */
+            signature: string;
+        };
+        /**
+         * FailoverOverrideKind
+         * @enum {string}
+         */
+        FailoverOverrideKind: "inhibit" | "break_glass_promote";
+        /** FailoverSnapshot */
+        FailoverSnapshot: {
+            access_verifier: components["schemas"]["FailoverAccessVerifier"];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            membership: components["schemas"]["FailoverMembershipConfig"];
+            /** Models */
+            models?: components["schemas"]["FailoverModel"][];
+            /** Signature */
+            signature: string;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
+            snapshot_id: string;
+        };
         /** GatewayModel */
         GatewayModel: {
             /** Coire Context Window */
@@ -3937,6 +4174,39 @@ export interface operations {
             };
         };
     };
+    apply_override_api_v1_admin_failover_overrides_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FailoverOverride"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_evaluations_api_v1_admin_harness_evaluations_get: {
         parameters: {
             query: {
@@ -5687,6 +5957,88 @@ export interface operations {
             };
         };
     };
+    reconcile_api_v1_failover_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+    };
+    heartbeat_api_v1_failover_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailoverHeartbeat"];
+                };
+            };
+        };
+    };
+    replicated_snapshot_api_v1_failover_snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailoverSnapshot"];
+                };
+            };
+        };
+    };
+    cast_vote_api_v1_failover_votes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionVoteGrant"];
+                };
+            };
+        };
+    };
     list_instances_api_v1_instances_get: {
         parameters: {
             query?: never;
@@ -6241,6 +6593,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    failover_ready_failover_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

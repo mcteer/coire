@@ -75,15 +75,50 @@ services:
       RUN_RELAY_IMAGE: ${COIRE_RUN_RELAY_IMAGE:-}
       OPS_SERVICE_URL: http://coire-ops:8003
       OPS_SESSION_STALE_S: ${OPS_SESSION_STALE_S:-30}
+      FAILOVER_MEMBER_NAME: ${COIRE_FAILOVER_MEMBER_NAME:-}
+      FAILOVER_CORE_PUBLIC_KEY: ${COIRE_FAILOVER_CORE_PUBLIC_KEY:-}
+      FAILOVER_EDGE_A_PUBLIC_KEY: ${COIRE_FAILOVER_EDGE_A_PUBLIC_KEY:-}
+      FAILOVER_EDGE_B_PUBLIC_KEY: ${COIRE_FAILOVER_EDGE_B_PUBLIC_KEY:-}
     volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
-    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token]
+    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key]
     depends_on:
       postgres: {condition: service_healthy}
       coire-migrate: {condition: service_completed_successfully}
     <<: *hardening
+    tmpfs: [/tmp, /opt/coire/failover]
     user: "65532:65532"
     healthcheck:
       test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2).status==200 else 1)"]
+      <<: *python-health
+
+  # Studio-only. Enable with `--profile studio-failover` on a Studio, never on core.
+  # /ready stays election-gated, so the healthcheck only checks that the process is listening.
+  coire-failover:
+    profiles: ["studio-failover"]
+    container_name: coire-failover
+    image: ${COIRE_FAILOVER_IMAGE:-coire-failover:dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-failover/Dockerfile
+    ports: ["127.0.0.1:8004:8004"]
+    networks: [coire-edge]
+    environment:
+      OTLP_ENDPOINT: http://otel-collector:4317
+      FAILOVER_SNAPSHOT_PATH: /opt/coire/failover/snapshot.json
+      FAILOVER_PROOF_PATH: /opt/coire/failover/proof.json
+      FAILOVER_CORE_PUBLIC_KEY: ${COIRE_FAILOVER_CORE_PUBLIC_KEY:-}
+      FAILOVER_LOCAL_RELAY_URL: ${COIRE_FAILOVER_LOCAL_RELAY_URL:-}
+      FAILOVER_PEER_RELAY_URL: ${COIRE_FAILOVER_PEER_RELAY_URL:-}
+    volumes: ["/opt/coire/failover:/opt/coire/failover:ro"]
+    secrets: [failover_relay_token]
+    <<: *hardening
+    restart: "no"
+    user: "65532:65532"
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python3", "-c", "import socket; s=socket.create_connection(('127.0.0.1',8004),2); s.close()"]
       <<: *python-health
 
   coire-ops:
@@ -287,7 +322,8 @@ secrets:
   #     vanish from the running container and breaks `docker compose restart`. The file must
   #     therefore live for the lifetime of the stack, not be deleted immediately.
   #
-  # The secret is never in the repository, never in an image, and never on a Studio.
+  # The secret is never in the repository or an image. The Studio relay credential is
+  # materialized on its Studio by coire-studio-failover-create.
   postgres_password:
     file: ${COIRE_SECRETS_DIR}/postgres_password
   key_signing_secret:
@@ -302,3 +338,7 @@ secrets:
     file: ${COIRE_SECRETS_DIR}/bootstrap_admin_email
   ops_service_token:
     file: ${COIRE_SECRETS_DIR}/ops_service_token
+  failover_relay_token:
+    file: ${COIRE_SECRETS_DIR}/failover_relay_token
+  failover_peer_key:
+    file: ${COIRE_SECRETS_DIR}/failover_peer_key

@@ -84,6 +84,7 @@ async def _hold_conversion_memory(
             session,
             budget_bytes=settings.placement_default_budget_bytes,
             sandbox_bytes=settings.placement_sandbox_bytes,
+            failover_bytes=settings.failover_reservation_bytes,
         )
         ledger = await session.get(NodeMemoryLedgerRow, node_id)
         if ledger is None:

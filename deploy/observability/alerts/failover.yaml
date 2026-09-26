@@ -1,0 +1,22 @@
+groups:
+  - name: coire-failover
+    rules:
+      - alert: CoireFailoverNoReadyMember
+        expr: max(coire_failover_readiness) == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "No failover member is election-ready"}
+      - alert: CoireFailoverSnapshotStale
+        expr: coire_failover_snapshot_fresh == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "A failover snapshot is missing, expired, or unsigned"}
+      - alert: CoireFailoverSplitBrain
+        expr: count(coire_failover_readiness == 1) > 1
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "More than one failover member reports a serving lease"}
+      - alert: CoireFailoverIngressRefusals
+        expr: increase(coire_failover_ingress_refusals_total[10m]) > 20
+        labels: {severity: warning}
+        annotations: {summary: "Degraded ingress is refusing requests"}
