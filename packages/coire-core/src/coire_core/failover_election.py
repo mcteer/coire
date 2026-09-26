@@ -192,7 +192,7 @@ class ElectionParticipant:
         if term > self.term:
             self.term = term
         existing = self._issued.get(self.term)
-        if existing is not None and existing.candidate != candidate:
+        if existing is not None and existing.candidate != candidate and existing.is_current(now):
             return None
         if (
             existing is not None
@@ -305,7 +305,6 @@ class ElectionParticipant:
             if self._closed:
                 self.term += 1
                 self._received = {}
-                self._issued = {}
             self._closed = False
             self.role = ServiceRole.CANDIDATE
         self._ensure_self_grant(now)
@@ -384,7 +383,6 @@ class ElectionParticipant:
             and self._now - self._drain_started < self.timings.drain
         ):
             return
-        self.reservation_held = False
         self.role = ServiceRole.STANDBY
         self._closed = True
         self._record(FailoverEventKind.HANDBACK, None)
@@ -394,7 +392,6 @@ class ElectionParticipant:
         was_leader = self.role in (ServiceRole.ELECTED, ServiceRole.DRAINING)
         self.role = ServiceRole.STANDBY
         self.proof = None
-        self.reservation_held = False
         self._closed = True
         if outage:
             self._outage = True
@@ -402,6 +399,11 @@ class ElectionParticipant:
             self._record(FailoverEventKind.FENCED, previous)
 
     def _ensure_self_grant(self, now: datetime) -> None:
+        if any(
+            grant.candidate != self.name and grant.is_current(now)
+            for grant in self._issued.values()
+        ):
+            return
         existing = self._received.get((self.term, self.name))
         if (
             existing is not None
@@ -465,7 +467,6 @@ class ElectionParticipant:
             return
         self.term = term
         self._received = {}
-        self._issued = {}
 
     def _higher_status(self, name: str, now: datetime) -> str:
         observed = self._observed(name)

@@ -169,7 +169,7 @@ def test_flapping_core_does_not_drain_before_the_demotion_threshold(tmp_path: Pa
     )
     assert edge_a.accept_handback(notice, now)
     assert edge_a.role is ServiceRole.STANDBY
-    assert not edge_a.reservation_held
+    assert edge_a.reservation_held
 
 
 @pytest.mark.asyncio

@@ -197,12 +197,12 @@ def test_pin_refusal_then_unpin_lru_eviction_survives_scheduler_restart(
         else:
             raise AssertionError("idle TTL did not release the model reservation")
 
-        sandbox_bytes = next(
-            item["bytes"]
+        sandbox_bytes = sum(
+            int(item["bytes"])
             for item in after_ttl_a["reservations"]
             if item["holder_type"] == "sandbox"
         )
-        one_model_budget = int(sandbox_bytes) + max(
+        one_model_budget = sandbox_bytes + max(
             int(first_variant["memory_estimate_bytes"]),
             int(second_variant["memory_estimate_bytes"]),
         )

@@ -178,6 +178,34 @@ def test_elected_lease_renews_before_readiness_expires() -> None:
     assert edge_a.serving(now + _timings().lease + timedelta(seconds=1))
 
 
+def test_term_change_does_not_forget_an_unexpired_competing_vote() -> None:
+    material = _keys()
+    members = _participants(material, _membership(material))
+    edge_b = members["coire-edge-b"]
+    now = datetime.now(UTC)
+    edge_b.observe(
+        [
+            MemberObservation(
+                name=name,
+                health=MemberHealth.UNREACHABLE if name == "coire-core" else MemberHealth.HEALTHY,
+                since=now - timedelta(seconds=20),
+            )
+            for name in NAMES
+        ],
+        now,
+    )
+    prior = edge_b.vote(1, 1, "coire-edge-a", now)
+    assert prior is not None
+    edge_b.adopt_term(2)
+    edge_b.observe(
+        [MemberObservation(name=name, health=MemberHealth.HEALTHY, since=now) for name in NAMES],
+        now,
+    )
+    assert edge_b.vote(1, 2, "coire-core", now) is None
+    assert edge_b.vote(1, 1, "coire-core", prior.expires_at + timedelta(seconds=1)) is None
+    assert edge_b.vote(1, 2, "coire-core", prior.expires_at + timedelta(seconds=1)) is not None
+
+
 def _override(private_key: str, kind: FailoverOverrideKind, expires: datetime) -> FailoverOverride:
     unsigned = FailoverOverride(
         kind=kind,
@@ -307,7 +335,7 @@ def test_quorum_loss_fences_core_and_a_promoted_studio() -> None:
     assert not core.frontend_ready(now)
 
 
-def test_hand_back_drains_in_flight_work_then_releases_the_reservation() -> None:
+def test_hand_back_drains_in_flight_work_and_keeps_the_reservation() -> None:
     material = _keys()
     members = _participants(material, _membership(material))
     now = datetime.now(UTC)
@@ -334,7 +362,7 @@ def test_hand_back_drains_in_flight_work_then_releases_the_reservation() -> None
     assert not edge_a.serving(now)
     assert edge_a.reservation_held
     assert edge_a.observe(ready, now, in_flight=0) is ServiceRole.STANDBY
-    assert not edge_a.reservation_held
+    assert edge_a.reservation_held
 
 
 def test_inhibit_blocks_studio_promotion() -> None:

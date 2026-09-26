@@ -207,6 +207,6 @@ def test_hand_back_keeps_the_reservation_until_in_flight_work_finishes(tmp_path:
     assert _held(edge_a)
     assert not edge_a.proof_path.exists()
     assert edge_a.observe(recovered, now, in_flight=0) is ServiceRole.STANDBY
-    assert not _held(edge_a)
+    assert _held(edge_a)
     journal = ElectionJournal(tmp_path / "coire-edge-a.json")
     assert [entry.kind.value for entry in journal.entries()] == ["promoted", "draining", "handback"]
