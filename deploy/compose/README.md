@@ -6,6 +6,8 @@ symlink in that project directory. The manifest, copied cluster config and mount
 generation survive source checkout changes. Host port 8180 (nginx 8080) and OTLP 4317 bind only
 to the control address. Override with `COIRE_CONTROL_PORT` or `COIRE_CONTROL_BIND_ADDRESS` only
 during reviewed recovery; never use `0.0.0.0`.
+On a clean host, startup pulls only the digest-pinned PostgreSQL and Docker socket proxy
+images when missing; first-party images must already be present or be built explicitly.
 
 Secrets are materialised from Keychain in complete generations under
 `~/.coire/projects/<project>/secrets/` and mounted as files. A missing late Keychain item leaves

@@ -95,3 +95,9 @@
   email. The live database and containers remain unchanged; the recoverable dump and existing
   named volumes are retained. This missing Keychain value is required by the identity
   migration and cannot be inferred from the existing data.
+- The operator provided the bootstrap email, which was added to Keychain along with the
+  previously absent ops credential while all existing credentials were retained. CI's first
+  integration run exposed a clean-host omission: the installed release used `--pull never`
+  before the pinned third-party socket proxy image was available. Startup now pulls only
+  the digest-pinned PostgreSQL and socket proxy images when missing, while first-party
+  release image IDs remain immutable. The integration rerun is pending.

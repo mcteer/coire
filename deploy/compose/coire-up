@@ -133,6 +133,10 @@ if [[ "$BUILD" -eq 1 ]]; then
   docker compose build --quiet
 fi
 RELEASE="$(uv run python "$REPO_ROOT/scripts/coire-deploy.py" install "$SECRETS_DIR")"
+# A clean host has no cached third-party base services. Pull only their pinned digest
+# references; first-party services remain frozen to the locally installed image IDs.
+docker compose -p "$PROJECT" -f "$RELEASE/compose.json" pull --policy missing \
+  postgres docker-socket-proxy
 if ! uv run python "$REPO_ROOT/scripts/coire-deploy.py" preflight "$RELEASE"; then
   if [[ "$RECOVER_DB_ROLE" -ne 1 ]]; then
     echo "retry with --recover-db-role only after reviewing the retained release and backup location" >&2
