@@ -96,6 +96,14 @@ class DockerAPI:
     async def start_container(self, container_id: str) -> None:
         await self._request("POST", f"/containers/{container_id}/start", expected=(204, 304))
 
+    async def stop_container(self, container_id: str, *, timeout_s: int = 30) -> None:
+        await self._request(
+            "POST",
+            f"/containers/{container_id}/stop",
+            expected=(204, 304, 404),
+            params={"t": timeout_s},
+        )
+
     async def inspect_container(self, container_id: str) -> dict[str, Any] | None:
         response = await self._request(
             "GET", f"/containers/{container_id}/json", expected=(200, 404)

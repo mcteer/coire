@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 DEFAULT_SECRETS_DIR = "/run/secrets"
@@ -154,6 +154,47 @@ class Settings(BaseSettings):
     ops_session_stale_s: float = Field(default=30.0, gt=0.0, le=300.0)
     ops_request_timeout_s: float = Field(default=120.0, gt=0.0, le=900.0)
     ops_service_instance: str = Field(default="coire-ops", min_length=1, max_length=128)
+
+    # --- stateless control-plane failover ------------------------------
+    failover_snapshot_path: str = "/opt/coire/failover/snapshot.json"
+    failover_proof_path: str = "/opt/coire/failover/proof.json"
+    failover_snapshot_max_age_s: float = Field(default=120.0, gt=0.0, le=3600.0)
+    failover_reservation_bytes: int = Field(default=256 * 1024 * 1024, ge=0)
+    failover_lease_ttl_s: float = Field(default=15.0, gt=0.0, le=300.0)
+    failover_election_interval_s: float = Field(default=2.0, gt=0.0, le=30.0)
+    failover_promotion_threshold_s: float = Field(default=15.0, gt=0.0, le=300.0)
+    failover_demotion_threshold_s: float = Field(default=45.0, gt=0.0, le=900.0)
+    failover_drain_timeout_s: float = Field(default=30.0, gt=0.0, le=300.0)
+    failover_heartbeat_latency_budget_ms: float = Field(default=50.0, gt=0.0, le=1000.0)
+    """A beat slower than this is degraded, not unreachable. Control-path RTT on the lab is ~1 ms."""
+    failover_member_name: str = ""
+    failover_core_public_key: str = ""
+    failover_edge_a_public_key: str = ""
+    failover_edge_b_public_key: str = ""
+    failover_membership_epoch: int = Field(default=1, ge=1)
+    failover_signing_key_id: str = "core-1"
+    failover_local_relay_url: str = ""
+    failover_peer_relay_url: str = ""
+    failover_peer_key: SecretStr = SecretStr("")
+    """Per-host Keychain-sourced signing material; never a node registration token."""
+    failover_relay_token: SecretStr = SecretStr("")
+    """Studio peer inference relay credential, scoped only to the failover proxy route."""
+    failover_frontend_image: str = ""
+
+    @field_validator("failover_frontend_image")
+    @classmethod
+    def failover_image_is_digest_pinned(cls, value: str) -> str:
+        import re
+
+        if value and not re.fullmatch(r"[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}", value):
+            raise ValueError("failover frontend image must be digest-pinned")
+        return value
+
+    @model_validator(mode="after")
+    def failover_demotion_outlasts_promotion(self) -> Settings:
+        if self.failover_demotion_threshold_s <= self.failover_promotion_threshold_s:
+            raise ValueError("failover demotion threshold must exceed the promotion threshold")
+        return self
 
     # --- Studio container runs ----------------------------------------
     run_concurrency_cap: int = Field(default=3, ge=1, le=32)

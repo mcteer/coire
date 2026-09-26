@@ -10,7 +10,7 @@ Decisions confirmed in the design session:
 
 | Decision | Choice | Consequence |
 |---|---|---|
-| Topology | Mac Mini ("core") is the control node; Studios are the workers | Studios never run Postgres or the web tier; their RAM is for models, with a small fixed slice for user agent sandboxes (below) |
+| Topology | Mac Mini ("core") is the control node; Studios are the workers | Studios never run Postgres; during a core outage, one elected Studio may run only a stateless inference frontend behind the authenticated edge. Both Studios hold a fixed memory slice for this tier and user agent sandboxes. |
 | Control-plane packaging | API, MCP server, and web frontend run as OrbStack containers on core, alongside Postgres and observability | Nothing on core runs natively except OrbStack; the whole control plane is one `docker compose` project |
 | What core may never do | Core hosts **no language models** and runs **no agent harness except `ops`** — the one that talks to models elsewhere to do the platform's own operational work | The admin model is a pinned small model on a Studio; user-facing harnesses (`coding`, `general`, `image`) run as containers on the Studios, brokered by the node agent |
 | Training scope (v1) | LoRA/QLoRA/DoRA adapters; objectives SFT (`mlx_lm.lora`) and DPO/ORPO (`mlx-lm-lora`), single-Studio or data-parallel across both; see §8.1 | No distributed full fine-tuning; `training` is a first-class job type with `parameterization` × `objective` |
@@ -53,6 +53,16 @@ Verified facts the design leans on (as of August 2026): `mlx_lm.server` natively
 ```
 
 Studio A (the 80-core-GPU unit) is rank 0 for every sharded run and the default home for the largest single-node model. Studio B is rank 1 and the default host for image generation, the pinned admin model (~4B, 4-bit, ~3 GB, `idle_ttl: never`), and other small resident models. Each Studio also runs OrbStack with a fixed memory ceiling (16 GB to start, deducted from that node's model budget) purely to host user-facing agent sandboxes; those containers never touch Metal and exist on the Studios only because core is forbidden from running them. Tensor parallelism proceeds at the pace of the slower GPU, so expect sharded throughput closer to 2× the 60-core unit than 2× the 80-core one; that is still the only way to run models above ~200 GB of weights.
+
+**Emergency inference frontend (feature 020).** Core publishes a signed, expiring model and
+identity snapshot to both Studios. A three-member priority election (core, edge-a, edge-b)
+grants a short lease only with quorum or an audited break-glass override. The elected Studio's
+node agent starts a precreated, hardened frontend container; Cloudflare Access and an
+election-gated load-balancer monitor admit requests to it. The frontend can query only
+already-resident engines through scoped node relays. It holds no Postgres, scheduler, MCP,
+admin mutation, or conversation state. Each Studio's 256 MiB standing ledger reservation
+remains held after hand-back so a later promotion needs no model eviction. See
+`specs/020-control-plane-failover/` and `docs/runbooks/control-plane-failover.md`.
 
 ### 2.1 Network
 

@@ -1,15 +1,20 @@
 <!--
 SYNC IMPACT REPORT
-Version change: 0.1.0 → 0.1.1 (PATCH — normative-keyword normalisation, no semantic change)
+Version change: 0.1.1 → 1.0.0 (MAJOR — narrowly redefines the Studio role during a
+core-control-plane emergency)
 
-Modified principles: none (all seven principles and II-a unchanged in name and substance)
+Modified principles: II. Control node is disposable, workers are sacred
 Added sections:      none
 Removed sections:    none
 
 Changes in this amendment:
-- Quality and Operations Standards → Correctness bullet: lowercase "must"/"must never"
-  raised to RFC-2119 "MUST"/"MUST NOT" to match the register used in Principles I-VII.
-- This Sync Impact Report added as required by the constitution workflow.
+- Principle II permits exactly one declared Studio to host a stateless, inference-only failover
+  frontend while core is unavailable. It may not host a database, scheduler, admin/API mutation,
+  MCP service, model/engine, or other control-plane state; it remains behind the existing edge,
+  uses a digest-pinned hardened image, activates only through quorum-gated failover or a
+  break-glass operator action, and must hand back to core when core recovers.
+- Technology Constraints permits the corresponding exceptional frontend placement; core remains
+  the normal and sole control-plane frontend host.
 
 Template conformance (checked against constitution-template, core layer):
 - Heading hierarchy matches exactly: H1 title, ## Core Principles, ## <section 2>,
@@ -19,7 +24,9 @@ Template conformance (checked against constitution-template, core layer):
 - No unreplaced [ALL_CAPS] placeholders, no residual template comments, no TODO markers.
 - Dates ISO-8601; no trailing whitespace; single blank line between sections.
 
-Deferred items: none.
+Deferred items:
+- Specify, plan, and review the emergency frontend activation, authentication, observability,
+  rollback, and hand-back behavior before implementation or deployment.
 -->
 
 # Coire Constitution
@@ -30,7 +37,7 @@ Deferred items: none.
 Coire drives `mlx_lm.server`, `mlx.launch`, `mlx_lm.lora`, and `mflux` directly. No inference wrappers (Ollama, LM Studio, exo, LocalAI) are introduced. Process lifecycle, placement, memory accounting, and unloading are Coire's responsibility and MUST be observable and reversible from the admin API. Engines are never network-reachable except from the node agent and the gateway.
 
 ### II. Control node is disposable, workers are sacred
-The Mac Mini ("core") hosts every stateful and orchestrating service as OrbStack containers in one compose project (gateway/API, MCP server, scheduler, web frontend, Postgres, observability). Core MUST NOT host a language model or any inference/generation engine, and the only agent harness core may run is `ops` — the harness that calls models hosted elsewhere in order to perform the platform's own operational duties. All user-facing harnesses (`coding`, `general`, `image`) run as containers on the Studios, brokered by the node agent within a fixed memory slice. Mac Studios run the node agent, model/training/image processes, and those agent sandboxes — nothing else: no databases, no web tier. Nothing on a Studio may be a single source of truth; a Studio reboot MUST be recoverable by the scheduler with no manual steps.
+The Mac Mini ("core") hosts every stateful and orchestrating service as OrbStack containers in one compose project (gateway/API, MCP server, scheduler, web frontend, Postgres, observability). Core MUST NOT host a language model or any inference/generation engine, and the only agent harness core may run is `ops` — the harness that calls models hosted elsewhere in order to perform the platform's own operational duties. All user-facing harnesses (`coding`, `general`, `image`) run as containers on the Studios, brokered by the node agent within a fixed memory slice. Mac Studios run the node agent, model/training/image processes, and those agent sandboxes — nothing else: no databases and no web tier, except during a core-control-plane failover. In that exception, exactly one declared Studio MAY run a stateless, inference-only failover frontend behind the existing authenticated edge. It MUST not expose admin or other mutation routes, MCP, a database, scheduler, model/engine lifecycle, or any other source of truth; it MUST use the same digest-pinned hardened image policy, emit observability signals, activate only through quorum-gated failover or a break-glass operator action after core is unavailable, and hand back to core when core recovers. Nothing on a Studio may be a single source of truth; a Studio reboot MUST be recoverable by the scheduler with no manual steps.
 
 ### II-a. One service, one container, bare image
 Every control-plane service runs as its own container with exactly one process and can be stopped, upgraded, or rolled back without affecting any other service; no image is shared between services and no container hosts two roles (API, MCP, scheduler, web, migrate are all separate). Production images are minimal: distroless/Chainguard or `scratch` bases, multi-stage builds, only the runtime and the service's own dependencies, no shell, package manager, or debug tooling. Non-root, read-only root filesystem, all capabilities dropped, per-concern networks only, healthcheck required, CVE scan and SBOM in CI. Debugging uses ephemeral containers, never baked-in tools.
@@ -54,8 +61,8 @@ Work flows `/speckit.specify → clarify → plan → tasks → implement` per f
 
 * Python 3.13, `uv` workspace, FastAPI, Pydantic v2, Pydantic AI, SQLAlchemy 2 + asyncpg, Alembic, DBOS for durable workflows, Postgres 17.
 * Node runtime: macOS 26.2+, MLX / mlx-lm / JACCL / mflux pinned in a lockfile; versioned envs under `/opt/coire/envs` with symlink flip and rollback.
-* Containers: OrbStack on core; control plane deployed only via `deploy/compose/` with CI-built, tag-pinned images (`coire-api`, `coire-mcp`, `coire-web`, `coire-agent`); Docker socket reachable only through a docker-socket-proxy with an explicit allowlist. `coire-agent` from a slim base, `uv sync --frozen`, non-root, read-only root filesystem, workspace volume only, run-network only.
-* Web: React + TypeScript + Vite, single SPA, SSE for streaming, served by an nginx container that is the sole ingress for cloudflared; no Node runtime in production.
+* Containers: OrbStack on core; control plane deployed only via `deploy/compose/` with CI-built, tag-pinned images (`coire-api`, `coire-mcp`, `coire-web`, `coire-agent`); Docker socket reachable only through a docker-socket-proxy with an explicit allowlist. The Principle II failover frontend is the sole Studio-side control-plane exception and uses the same CI-built, digest-pinned image policy. `coire-agent` from a slim base, `uv sync --frozen`, non-root, read-only root filesystem, workspace volume only, run-network only.
+* Web: React + TypeScript + Vite, single SPA, SSE for streaming, served normally by an nginx container on core that is the sole Cloudflare ingress. During the Principle II failover exception, one Studio may serve only the stateless inference-only frontend through that existing authenticated edge; no Node runtime in production.
 * Observability: OTel Collector, Prometheus, Loki, Tempo, Grafana, Alertmanager via compose on OrbStack; Logfire SDK used only as an OTel instrumentation layer exporting locally.
 * Edge and LAN: Cloudflare Tunnel, Access (OIDC), WAF and rate-limit rules; no inbound port forwards on the UDM SE, ever. Lab nodes live on an isolated VLAN with deny-by-default rules to other VLANs; hosts are addressed by UniFi DNS names, never raw IPs, in any config. Break-glass admin via UDM VPN or Tailscale.
 * Forbidden: inference wrappers (Principle I), long-lived static tokens for agents, direct Studio exposure, hand-edited production config on nodes (everything applied from `deploy/`).
@@ -73,4 +80,4 @@ Work flows `/speckit.specify → clarify → plan → tasks → implement` per f
 
 This constitution supersedes ad-hoc practice. Every `/speckit.plan` MUST include a "Constitution Check" listing each principle and stating compliance or a justified, time-boxed exception recorded as an ADR in `docs/adr/`. Amendments require a version bump below, a changelog line, and a review of open specs for conflicts. Principles are numbered so specs can cite them (e.g. "per Principle IV").
 
-**Version**: 0.1.1 | **Ratified**: 2026-08-28 | **Last Amended**: 2026-08-29
+**Version**: 1.0.0 | **Ratified**: 2026-08-28 | **Last Amended**: 2026-09-05

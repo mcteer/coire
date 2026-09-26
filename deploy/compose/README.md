@@ -70,3 +70,43 @@ Studio container orchestration uses `RUN_CONCURRENCY_CAP` (3),
 `RUN_AGENT_IMAGE` and `RUN_RELAY_IMAGE` have no default and must be release-image references
 pinned by digest. The relay caps each request with `RUN_RELAY_REQUEST_BYTES` (2 MiB). Never use
 a tag for either runtime image.
+
+## Control-plane failover
+
+Failover is disabled unless the three members are provisioned with a current, core-signed snapshot
+and distinct Keychain-sourced secrets. The core publishes only the public verification material and
+the approved resident-model roster in `FAILOVER_SNAPSHOT_PATH` (default
+`/opt/coire/failover/snapshot.json`); a Studio treats a missing, expired, or invalid snapshot as an
+outage. Never place private keys, relay tokens, API keys, or a snapshot in the repository.
+Provision the core Ed25519 public key separately as `FAILOVER_CORE_PUBLIC_KEY` on each node and
+`COIRE_FAILOVER_CORE_PUBLIC_KEY` for compose. A snapshot cannot declare its own trusted key.
+Core also needs `COIRE_FAILOVER_EDGE_A_PUBLIC_KEY` and `COIRE_FAILOVER_EDGE_B_PUBLIC_KEY`.
+When `COIRE_FAILOVER_MEMBER_NAME=coire-core`, `coire-up` reads `coire-failover-peer-key` from
+the login Keychain (or `COIRE_SECRET_FAILOVER_PEER_KEY` in its CI mode), mounts it only into
+`coire-api`, and publishes the ready, published registry roster every 30 seconds or sooner.
+Studios fetch and verify that snapshot over the signed peer route; a Studio node agent that
+starts before the first snapshot keeps retrying without a restart.
+
+Provision `coire-failover-peer-key` in the System Keychain on each member and
+`coire-failover-relay-token` separately on each Studio. The node agent reads these at startup;
+they are not node registration tokens and must not be reused for any other route. The relay token
+value must match on both Studios because either frontend may relay to the other's node listener.
+It is mounted only into the failover frontend as `failover_relay_token`. The release job supplies the exact
+digest-pinned `COIRE_FAILOVER_IMAGE` to the Studio compose deployment.
+On each Studio run `deploy/compose/coire-studio-failover-create` after setting the image and
+both relay URLs. It reads the relay credential from the System Keychain, writes the
+Compose file secret under `/opt/coire/secrets`, and creates only the failover container.
+`coire-node` starts and stops that precreated container according to its election role.
+Set `COIRE_FAILOVER_LOCAL_RELAY_URL` and `COIRE_FAILOVER_PEER_RELAY_URL` to the local and
+other Studio's control-listener DNS names (port 9400), reachable from the frontend container.
+An unset address refuses inference. Container loopback cannot reach the host node agent.
+
+Configuration defaults are
+`FAILOVER_SNAPSHOT_MAX_AGE_S=120`, `FAILOVER_LEASE_TTL_S=15`,
+`FAILOVER_ELECTION_INTERVAL_S=2`, `FAILOVER_PROMOTION_THRESHOLD_S=15`,
+`FAILOVER_DEMOTION_THRESHOLD_S=45`, and `FAILOVER_DRAIN_TIMEOUT_S=30`; demotion must stay longer
+than promotion. Set `FAILOVER_MEMBER_NAME` to this host's name (`coire-core`, `coire-edge-a`, or
+`coire-edge-b`) so it polls the other two; leave it empty to keep the poller off. A beat slower
+than `FAILOVER_HEARTBEAT_LATENCY_BUDGET_MS` (default 50) is degraded. Three missed beats mark a
+peer unreachable. Changing any is a reviewed
+recovery operation. See `docs/runbooks/control-plane-failover.md` for activation and break-glass.

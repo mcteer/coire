@@ -1054,6 +1054,20 @@ class AuditRow(Base):
     context: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
 
 
+class FailoverEventReceiptRow(Base):
+    """Core-side idempotency receipt for an event replayed from a Studio journal."""
+
+    __tablename__ = "failover_event_receipts"
+
+    event_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    host: Mapped[str] = mapped_column(String(32), index=True)
+    term: Mapped[int] = mapped_column(BigInteger)
+    audit_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("audit_log.id", ondelete="RESTRICT"))
+    reconciled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class OpsSessionRow(Base):
     __tablename__ = "ops_sessions"
 

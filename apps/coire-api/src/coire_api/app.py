@@ -22,6 +22,7 @@ from coire_api.routes import (
     admin_acquisitions,
     admin_console,
     admin_evaluations,
+    admin_failover,
     admin_identity,
     admin_ledger,
     admin_models,
@@ -30,6 +31,7 @@ from coire_api.routes import (
     admin_runs,
     admin_sharding,
     admin_variants,
+    failover,
     health,
     instances,
     internal_ops,
@@ -121,10 +123,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         benchmark_executor = BenchmarkCommandExecutor(settings)
         await benchmark_executor.start()
         app.state.benchmark_executor = benchmark_executor
+        from coire_api.failover.poller import build_poller
+        from coire_api.failover.publication import CoreSnapshotService, configured_membership
+
+        membership = (
+            configured_membership(settings)
+            if settings.failover_member_name == "coire-core"
+            else None
+        )
+        snapshot_service = (
+            CoreSnapshotService(settings, membership) if membership is not None else None
+        )
+        if snapshot_service is not None:
+            await snapshot_service.start()
+        app.state.failover_snapshot_service = snapshot_service
+        failover_poller = build_poller(settings)
+        if failover_poller is not None:
+            await failover_poller.start()
+        app.state.failover_poller = failover_poller
         logger.info("coire-api %s started", __version__)
         try:
             yield
         finally:
+            if failover_poller is not None:
+                await failover_poller.stop()
+            if snapshot_service is not None:
+                await snapshot_service.stop()
             await benchmark_executor.stop()
             await shard_reconciler.stop()
             await shard_executor.stop()
@@ -166,6 +190,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_ops.router)
     app.include_router(admin_runs.router)
     app.include_router(admin_sharding.router)
+    app.include_router(admin_failover.router)
+    app.include_router(failover.router)
     app.include_router(internal_ops.router)
     app.include_router(v1.router)
 
@@ -180,8 +206,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         from coire_api.identity.limits import MonthlyQuotaExceeded, RateLimitExceeded
 
-        anonymous_paths = {"/ready", "/health"}
-        separately_authenticated_paths = {"/api/v1/nodes/register"}
+        anonymous_paths = {"/ready", "/health", "/failover/ready"}
+        separately_authenticated_paths = {
+            "/api/v1/nodes/register",
+            "/api/v1/failover/votes",
+            "/api/v1/failover/heartbeat",
+            "/api/v1/failover/snapshot",
+            "/api/v1/failover/events",
+        }
         try:
             principal = (
                 ANONYMOUS

@@ -139,6 +139,34 @@ else
   echo "secrets: read from the Keychain into $SECRETS_DIR (0700 dir, removed by coire-down)"
 fi
 
+# The failover signing key remains optional until the core member is explicitly armed.
+# Compose still mounts an empty file in ordinary mode, so existing bring-up needs no
+# failover credential and the API refuses to participate.
+if [[ "${COIRE_FAILOVER_MEMBER_NAME:-}" == "coire-core" ]]; then
+  for name in COIRE_FAILOVER_CORE_PUBLIC_KEY COIRE_FAILOVER_EDGE_A_PUBLIC_KEY COIRE_FAILOVER_EDGE_B_PUBLIC_KEY; do
+    if [[ -z "${!name:-}" ]]; then
+      echo "missing failover membership key: $name" >&2
+      exit 2
+    fi
+  done
+  if [[ "$FROM_ENV" -eq 1 ]]; then
+    failover_key="${COIRE_SECRET_FAILOVER_PEER_KEY:-}"
+  else
+    failover_key="$(security find-generic-password -w -s coire-failover-peer-key 2>/dev/null || true)"
+  fi
+  if [[ -z "$failover_key" ]]; then
+    echo "missing core failover signing key" >&2
+    exit 2
+  fi
+  write_secret failover_peer_key "$failover_key"
+  unset failover_key
+  printf 'COIRE_FAILOVER_MEMBER_NAME=coire-core\nCOIRE_FAILOVER_CORE_PUBLIC_KEY=%s\nCOIRE_FAILOVER_EDGE_A_PUBLIC_KEY=%s\nCOIRE_FAILOVER_EDGE_B_PUBLIC_KEY=%s\n' \
+    "${COIRE_FAILOVER_CORE_PUBLIC_KEY:-}" "${COIRE_FAILOVER_EDGE_A_PUBLIC_KEY:-}" \
+    "${COIRE_FAILOVER_EDGE_B_PUBLIC_KEY:-}" >> "$COMPOSE_DIR/.env"
+else
+  write_secret failover_peer_key ""
+fi
+
 # --- control names ---------------------------------------------------------
 for node in coire-edge-a coire-edge-b; do
   if command -v dscacheutil >/dev/null 2>&1; then

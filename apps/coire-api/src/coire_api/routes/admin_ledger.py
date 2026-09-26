@@ -51,6 +51,7 @@ async def list_ledger(
         session,
         budget_bytes=settings.placement_default_budget_bytes,
         sandbox_bytes=settings.placement_sandbox_bytes,
+        failover_bytes=settings.failover_reservation_bytes,
     )
     await session.commit()
     return await service.project_ledgers(session)

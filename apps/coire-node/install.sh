@@ -24,6 +24,7 @@ DRY_RUN=0
 NODE_NAME="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
 RUN_AGENT_IMAGE="${COIRE_RUN_AGENT_IMAGE:-}"
 RUN_RELAY_IMAGE="${COIRE_RUN_RELAY_IMAGE:-}"
+FAILOVER_IMAGE="${COIRE_FAILOVER_IMAGE:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,7 +58,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "and nothing under /usr/local, /opt/homebrew, or \$HOME."
   exit 0
 fi
-for IMAGE in "$RUN_AGENT_IMAGE" "$RUN_RELAY_IMAGE"; do
+for IMAGE in "$RUN_AGENT_IMAGE" "$RUN_RELAY_IMAGE" "$FAILOVER_IMAGE"; do
   if [[ -n "$IMAGE" && ! "$IMAGE" =~ ^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$ ]]; then
     echo "error: run images must be digest-pinned references" >&2
     exit 2
@@ -131,6 +132,7 @@ fi
 
 RENDERED="$(mktemp)"
 sed -e "s|__PREFIX__|$PREFIX|g" -e "s|__USER__|$(whoami)|g" -e "s|__NODE_NAME__|$NODE_NAME|g" \
+    -e "s|__FAILOVER_IMAGE__|$FAILOVER_IMAGE|g" \
     -e "s|__RUN_AGENT_IMAGE__|$RUN_AGENT_IMAGE|g" \
     -e "s|__RUN_RELAY_IMAGE__|$RUN_RELAY_IMAGE|g" \
     "$TEMPLATE" > "$RENDERED"

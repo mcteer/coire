@@ -54,6 +54,10 @@
         <string>studio</string>
         <key>NODE_NAME</key>
         <string>__NODE_NAME__</string>
+        <key>FAILOVER_MEMBER_NAME</key>
+        <string>__NODE_NAME__</string>
+        <key>FAILOVER_FRONTEND_IMAGE</key>
+        <string>__FAILOVER_IMAGE__</string>
         <key>MESH_HOSTS_FILE</key>
         <string>/etc/hosts</string>
         <key>NODE_CONTROL_HOST</key>

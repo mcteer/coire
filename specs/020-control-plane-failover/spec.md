@@ -6,7 +6,7 @@
 
 **Created**: 2026-08-29
 
-**Status**: Draft — **blocked on a governance decision, see Constitutional Conflict below**
+**Status**: Draft — governance approved 2026-09-05; ready for clarification and planning
 
 **Input**: User description: "Some sort of poller on all three hosts where someone else gets elected to host the frontend in OrbStack if the mini goes down. Mini = primary, edge-a = secondary, edge-b = tertiary, with degrading capabilities depending on how many healthy members there are."
 
@@ -16,20 +16,16 @@ Today core is a single point of failure for everything a human touches: the fron
 
 The deliberate limit is that failover restores **access to inference**, not the control plane. Postgres stays on core and is never promoted, so a degraded frontend has no history, no admin, no audit, and no credential management. That limit is what keeps the feature compatible with the constitution's rule that nothing on a Studio may be a single source of truth.
 
-## Constitutional Conflict — must be resolved before planning
+## Constitutional Alignment
 
-This feature as requested conflicts with the ratified constitution and **cannot proceed until an amendment or a recorded exception exists**:
+The 2026-09-05 amendment to Constitution v1.0.0 authorises exactly this limited Studio-side
+role: one declared Studio may host a stateless, inference-only failover frontend behind the
+existing authenticated edge when core is unavailable. It prohibits a database, scheduler, MCP,
+admin or mutation surface, model/engine lifecycle, and every source-of-truth role. Activation is
+quorum-gated (or an audited break-glass action), and the tier hands back to core on recovery.
 
-- **Principle II** states the Studios run the node agent, model/training/image processes and agent sandboxes — *"nothing else: no databases, no web tier."* Electing a Studio to host the frontend is a web tier on a Studio.
-- **Principle II-a** places every control-plane service in one compose project on core.
-- **Principle II** also states *"Nothing on a Studio may be a single source of truth"* — with which the stateless design below is compatible, and which a Postgres failover would violate outright.
-
-Two governance routes, per the constitution's own Governance section:
-
-1. **Amend Principle II** (MINOR version bump) to permit a stateless, inference-only emergency tier on a Studio, explicitly excluding databases and any durable state. Recommended — it makes the exception a stated rule rather than a standing violation.
-2. **Record a time-boxed ADR exception** under `docs/adr/`, if failover is to be treated as provisional.
-
-The rest of this specification is written assuming route 1.
+This feature implements that constitutional exception without extending it into a replicated
+control plane.
 
 ## Clarifications
 
@@ -67,14 +63,17 @@ Promotion follows the declared order — core primary, `coire-edge-a` secondary,
 
 **Why this priority**: A deterministic order is what makes the failure mode predictable, and predictability is the stated design value throughout this platform.
 
-**Independent Test**: Fail core and confirm edge-a promotes; then fail edge-a and confirm edge-b takes over.
+**Independent Test**: Fail core and confirm edge-a promotes. Then fail edge-a as well and confirm
+edge-b remains unpromoted without quorum; an audited break-glass action may then promote it.
 
 **Acceptance Scenarios**:
 
 1. **Given** core unreachable and both Studios healthy, **When** promotion occurs, **Then** `coire-edge-a` is promoted and `coire-edge-b` is not.
-2. **Given** core and `coire-edge-a` both unreachable, **When** promotion occurs, **Then** `coire-edge-b` is promoted.
+2. **Given** core and `coire-edge-a` both unreachable, **When** `coire-edge-b` has no quorum,
+   **Then** it MUST NOT promote automatically; only an audited break-glass action may promote it.
 3. **Given** any moment in the cluster's life, **When** promotion state is inspected, **Then** at most one host is promoted.
-4. **Given** `coire-edge-a` promoted, **When** it becomes unreachable, **Then** `coire-edge-b` promotes within the failover threshold.
+4. **Given** `coire-edge-a` promoted, **When** it becomes unreachable and edge-b still has quorum,
+   **Then** edge-b promotes within the failover threshold; otherwise it fails closed.
 
 ---
 
@@ -123,7 +122,7 @@ Core comes back and the cluster returns to full service without an operator inte
 **Acceptance Scenarios**:
 
 1. **Given** a promoted Studio and core returning, **When** core is confirmed healthy beyond the demotion threshold, **Then** the Studio demotes and core resumes full service.
-2. **Given** demotion, **When** it completes, **Then** the emergency frontend is stopped and its ledger reservation is released for model use.
+2. **Given** demotion, **When** it completes, **Then** the emergency frontend is stopped and the standing ledger reservation remains available for the next failover.
 3. **Given** core flapping repeatedly, **When** health is evaluated, **Then** damping prevents repeated promotion and demotion.
 4. **Given** a completed failover and recovery, **When** core is back, **Then** the event, its duration, and the tier reached are recorded for later audit.
 
@@ -137,7 +136,8 @@ Core comes back and the cluster returns to full service without an operator inte
 - Core returns while a request is in flight on the promoted node: in-flight requests MUST complete before demotion stops the emergency frontend.
 - Both Studios are promoted due to a bug: the quorum check MUST cause all but one to demote on the next evaluation, and the condition MUST alert.
 - The promoted node is also running a large sharded rank: the emergency tier's reservation MUST already be accounted for, and promotion MUST NOT evict a running instance.
-- Public ingress points at core: failover MUST redirect ingress to the promoted host, and if that cannot be automated the manual step MUST be documented in a runbook.
+- Public ingress health is stale or ambiguous: it MUST fail closed rather than route a request to an
+  unelected Studio.
 - All three hosts are unreachable from each other: no host may promote, since none has quorum.
 - An operator wants to force or prevent failover: a manual override MUST exist and MUST be audited.
 
@@ -154,19 +154,34 @@ Core comes back and the cluster returns to full service without an operator inte
 - **FR-007**: At most one host may be promoted at any time; the system MUST converge to one on the next evaluation if this is ever violated, and MUST alert.
 - **FR-008**: A promoted Studio MUST run only a stateless frontend and inference gateway. It MUST NOT run a database, scheduler, MCP server, admin surface, ops harness, or observability backend.
 - **FR-009**: The system MUST NOT promote or replicate the system of record to a Studio; Postgres remains on core exclusively.
-- **FR-010**: A read-only snapshot containing the published model roster, capability profiles, and credential verification material MUST be replicated to each Studio while core is healthy.
-- **FR-011**: The snapshot MUST be treated as a non-authoritative cache, MUST carry its replication time, and MUST be refused for credential verification when older than its staleness bound.
+- **FR-010**: A signed, read-only snapshot containing the published model roster, capability profiles,
+  credential verification material, and election peer keys MUST be replicated atomically to each
+  Studio while core is healthy.
+- **FR-011**: The snapshot MUST be treated as a non-authoritative cache, MUST carry its replication
+  time and expiry, and MUST be rejected for credential verification when stale, expired, or the
+  signature is invalid.
 - **FR-012**: Degraded mode MUST NOT persist conversations, usage, feedback, or audit records, and MUST state this to the user before they invest in a conversation.
 - **FR-013**: Degraded mode MUST serve inference only against models already resident on the cluster, and MUST refuse requests requiring acquisition, conversion, training, or image generation with a clear reason.
 - **FR-014**: The system MUST report its current tier — full, degraded-inference, or minimal — and MUST enumerate unavailable capabilities explicitly rather than failing them individually on use.
 - **FR-015**: The emergency frontend MUST have a standing reservation in each Studio's memory ledger, held from this feature's delivery, so its arrival does not change admission behaviour.
 - **FR-016**: Promotion MUST NOT evict a running model instance.
 - **FR-017**: Demotion MUST occur when core is confirmed healthy beyond a demotion threshold longer than the promotion threshold, and MUST allow in-flight requests to complete.
-- **FR-018**: Demotion MUST stop the emergency frontend and release its ledger reservation.
-- **FR-019**: Public ingress MUST be redirected to the promoted host on failover; where this cannot be automated, the manual procedure MUST be documented in a runbook.
+- **FR-018**: Demotion MUST stop the emergency frontend after drain. The standing ledger reservation MUST remain held for the next failover.
+- **FR-019**: Public ingress MUST use separate outbound-only tunnels for core and each Studio plus
+  an authenticated-edge load balancer that probes election-gated readiness; it MUST route only to
+  the elected serving tier and fail closed when none is eligible.
 - **FR-020**: An operator MUST be able to force or inhibit failover manually, and every such action MUST be audited.
 - **FR-021**: Every promotion, demotion, quorum loss, and tier change MUST be recorded, and MUST be reconciled into the audit trail when core returns.
-- **FR-022**: The poller's own resource use on a Studio MUST stay within a configured budget, consistent with the Studios' inference-only footprint.
+- **FR-022**: The poller's own resource use on a Studio MUST stay within a configured budget,
+  consistent with the Studios' inference-only footprint.
+- **FR-023**: The failover frontend MUST be a separate stateless service with only health/tier,
+  model-listing, and authenticated inference routes. Every admin, mutation, MCP, image, run,
+  scheduler, and acquisition route MUST be absent.
+- **FR-024**: Inference targets MUST be authorised by the snapshot and proved currently resident by
+  live node health. The service MUST never load, place, acquire, or create a request lease.
+- **FR-025**: Studio peers MUST authenticate election and cross-Studio inference relay with
+  separately scoped, Keychain-sourced credentials; node registration or broad node tokens MUST NOT
+  be reused.
 
 ### Key Entities
 
@@ -190,14 +205,22 @@ Core comes back and the cluster returns to full service without an operator inte
 - **SC-008**: A flapping core produces no repeated promotion and demotion.
 - **SC-009**: Promotion never evicts a running model instance.
 - **SC-010**: Every failover event is reconciled into the audit trail once core returns.
+- **SC-011**: A lone surviving Studio never promotes automatically in 100% of induced tests; an
+  audited break-glass promotion is the only permitted override.
 
 ## Assumptions
 
-- **This feature requires a constitutional amendment or a recorded ADR exception before planning may begin.** See Constitutional Conflict above. Route 1, amending Principle II to permit a stateless inference-only emergency tier, is recommended.
+- **The Constitution v1.0.0 amendment authorises this feature's exact Studio-side failover role.**
+  The implementation remains limited to that role and cannot add a replicated control plane.
 - Features 001–011 have shipped, in particular the health model from feature 009, the memory ledger from feature 004, instances from feature 005, and credentials from feature 007.
 - OrbStack is already installed and running on both Studios (verified 2026-08-29), so the emergency tier needs no new runtime — only an image and a compose definition held ready.
-- The Studios' inference-only footprint constraint applies: the poller and the emergency frontend must be small, budgeted, and removable.
-- Public ingress runs through a tunnel terminating at core. Whether ingress can be repointed automatically depends on that tunnel's capabilities and is the main open question in this design; if it cannot, failover restores LAN access and the public path requires the documented manual step.
-- Quorum over three hosts means two. This gives no protection if two hosts fail simultaneously, which is accepted: with three nodes there is no configuration that survives that and still avoids split-brain.
+- The Studios' inference-only footprint constraint applies: the poller and the failover frontend
+  must be small, budgeted, and removable.
+- Public ingress uses a Cloudflare Load Balancer with distinct, outbound-only tunnel endpoints for
+  core, edge-a, and edge-b. The existing Access policy remains attached to the stable public
+  hostname; individual tunnel routes are deny-by-default.
+- Quorum over three hosts means two. This gives no protection if two hosts fail simultaneously,
+  which is accepted: automatic promotion is unavailable to a lone survivor; a break-glass action
+  is required and must be reconciled to audit when core returns.
 - Degraded mode is deliberately not a full control plane. Extending it toward one would require replicating the system of record to a Studio, which Principle II forbids and which this design rejects.
 - Per Principle VII this feature requires documented manual verification on the real cluster before merge; failover cannot be meaningfully exercised in CI.

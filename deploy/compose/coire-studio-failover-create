@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Prepare a Studio's failover frontend without starting it. coire-node owns its lifecycle.
+set -euo pipefail
+
+COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="$COMPOSE_DIR/compose.yaml"
+COIRE_SECRETS_DIR="${COIRE_SECRETS_DIR:-/opt/coire/secrets}"
+export COIRE_SECRETS_DIR
+
+if [[ ! "${COIRE_FAILOVER_IMAGE:-}" =~ ^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$ ]]; then
+  echo "COIRE_FAILOVER_IMAGE must be a digest-pinned reference" >&2
+  exit 2
+fi
+for name in COIRE_FAILOVER_LOCAL_RELAY_URL COIRE_FAILOVER_PEER_RELAY_URL; do
+  if [[ -z "${!name:-}" || "${!name}" == *127.0.0.1* ]]; then
+    echo "$name must name a Studio control listener reachable from the container" >&2
+    exit 2
+  fi
+done
+if [[ -z "${COIRE_FAILOVER_CORE_PUBLIC_KEY:-}" ]]; then
+  COIRE_FAILOVER_CORE_PUBLIC_KEY="$(security find-generic-password -w \
+    -s coire-failover-core-public-key /Library/Keychains/System.keychain)"
+  export COIRE_FAILOVER_CORE_PUBLIC_KEY
+fi
+if [[ -z "$COIRE_FAILOVER_CORE_PUBLIC_KEY" ]]; then
+  echo "core public verification key is missing" >&2
+  exit 2
+fi
+
+relay_token="$(security find-generic-password -w \
+  -s coire-failover-relay-token /Library/Keychains/System.keychain)"
+if [[ -z "$relay_token" ]]; then
+  echo "Studio relay token is missing" >&2
+  exit 2
+fi
+mkdir -p "$COIRE_SECRETS_DIR" /opt/coire/failover
+chmod 700 "$COIRE_SECRETS_DIR"
+chmod 755 /opt/coire/failover
+umask 077
+printf '%s' "$relay_token" > "$COIRE_SECRETS_DIR/failover_relay_token"
+chmod 644 "$COIRE_SECRETS_DIR/failover_relay_token"
+unset relay_token
+
+docker compose --profile studio-failover -f "$COMPOSE_FILE" create --no-deps coire-failover
+echo "coire-failover is precreated; coire-node starts it after election"
