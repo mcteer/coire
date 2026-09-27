@@ -209,14 +209,25 @@ async def execute_run(run_id_text: str) -> str | None:
     run_id = uuid.UUID(run_id_text)
     with tracer.start_as_current_span("coire.scheduler.run.execute") as span:
         span.set_attribute("run_id", run_id_text)
-        await _advance(run_id, AgentRunState.CREATING, "creating hardened container")
-        created = await _submit(run_id, RunOperation.CREATE)
         async with session_scope() as session:
             run = await session.get(AgentRunRow, run_id)
-            if run is not None:
-                run.container_id = str(created["container_id"])
+            container_id = run.container_id if run is not None else None
+            current_state = run.state if run is not None else None
+        if container_id is None:
+            await _advance(run_id, AgentRunState.CREATING, "creating hardened container")
+            created = await _submit(run_id, RunOperation.CREATE)
+            async with session_scope() as session:
+                run = await session.get(AgentRunRow, run_id)
+                if run is not None:
+                    run.container_id = str(created["container_id"])
+            current_state = AgentRunState.CREATING
         await _submit(run_id, RunOperation.START)
-        await _advance(run_id, AgentRunState.RUNNING, "container started")
+        if current_state in {
+            AgentRunState.QUEUED,
+            AgentRunState.PLACING,
+            AgentRunState.CREATING,
+        }:
+            await _advance(run_id, AgentRunState.RUNNING, "container started")
         waited = await _submit(run_id, RunOperation.WAIT)
         logs = await _submit(run_id, RunOperation.LOGS)
         async with session_scope() as session:
@@ -247,7 +258,11 @@ async def execute_run(run_id_text: str) -> str | None:
             # Likewise, non-zero exits (including an external/OOM kill such as 137) must
             # become a terminal run state rather than replaying the whole execution step.
             return "run_container_failed"
-        await _advance(run_id, AgentRunState.COLLECTING, "collecting strict result")
+        async with session_scope() as session:
+            run = await session.get(AgentRunRow, run_id)
+            current_state = run.state if run is not None else None
+        if current_state is not AgentRunState.COLLECTING:
+            await _advance(run_id, AgentRunState.COLLECTING, "collecting strict result")
         collected = await _submit(run_id, RunOperation.COLLECT)
         async with session_scope() as session:
             run = await session.get(AgentRunRow, run_id)
