@@ -53,6 +53,22 @@ def upgrade() -> None:
     op.add_column("agent_runs", sa.Column("output_ref", sa.String(128), nullable=True))
 
     op.create_table(
+        "registered_workspaces",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column(
+            "owner_user_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("users.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        sa.Column("repository_url", sa.String(2048), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index(
+        "ix_registered_workspaces_owner_user_id", "registered_workspaces", ["owner_user_id"]
+    )
+
+    op.create_table(
         "mcp_calls",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("tool", _enum("mcp_tool_name", "research", "plan", "apply"), nullable=False),
@@ -102,6 +118,7 @@ def upgrade() -> None:
         sa.Column("failure_code", sa.String(64)),
         sa.Column("requested_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("finished_at", sa.DateTime(timezone=True)),
+        sa.Column("workspace_cleaned_at", sa.DateTime(timezone=True)),
     )
     op.create_index("ix_mcp_calls_owner_user_id", "mcp_calls", ["owner_user_id"])
     op.create_index("ix_mcp_calls_state", "mcp_calls", ["state"])
@@ -146,6 +163,8 @@ def downgrade() -> None:
     op.drop_index("ix_mcp_calls_state", table_name="mcp_calls")
     op.drop_index("ix_mcp_calls_owner_user_id", table_name="mcp_calls")
     op.drop_table("mcp_calls")
+    op.drop_index("ix_registered_workspaces_owner_user_id", table_name="registered_workspaces")
+    op.drop_table("registered_workspaces")
     op.drop_column("agent_runs", "output_ref")
     op.drop_column("agent_runs", "prepared_request_id")
     op.drop_column("agent_runs", "task_class")

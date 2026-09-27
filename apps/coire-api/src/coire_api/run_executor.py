@@ -12,11 +12,20 @@ from functools import partial
 from opentelemetry import metrics, trace
 from sqlalchemy import select
 
-from coire_api.db import AgentRunRow, McpCallRow, ModelRow, NodeRow, RunCommandRow, session_scope
+from coire_api.db import (
+    AgentRunRow,
+    McpCallRow,
+    ModelRow,
+    ModelVariantRow,
+    NodeRow,
+    RunCommandRow,
+    session_scope,
+)
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.polling import PollBackoff, wait_or_stop
 from coire_api.run_tokens import rotate_run_token
-from coire_core.models.harness import HarnessRunRequest, ProfileName
+from coire_api.workspaces import resolve_source
+from coire_core.models.harness import HarnessRunRequest, ProfileName, TaskClass
 from coire_core.models.mcp import WorkspaceSource
 from coire_core.models.node import WorkspacePrepareRequest
 from coire_core.models.registry import CapabilityProfile
@@ -259,12 +268,19 @@ class RunCommandExecutor:
                                 raise RuntimeError("MCP run preparation identity is invalid")
                             prepare = WorkspacePrepareRequest(
                                 run_id=run_id,
-                                source=WorkspaceSource.model_validate(mcp_call.source),
+                                source=await resolve_source(
+                                    session,
+                                    owner_user_id=run.requester_user_id,
+                                    source=WorkspaceSource.model_validate(mcp_call.source),
+                                    settings=self.settings,
+                                ),
                                 task_class=run.task_class,
                                 harness_request=HarnessRunRequest(
                                     profile=ProfileName(run.profile),
                                     variant_id=run.primary_variant_id,
                                     task_class=run.task_class,
+                                    coding_mode=mcp_call.tool,
+                                    coding_call_id=mcp_call.id,
                                     task=mcp_call.task,
                                     capability_profile=CapabilityProfile.model_validate(
                                         model.capability_profile or {}
@@ -281,6 +297,17 @@ class RunCommandExecutor:
                             raise RuntimeError("run disappeared before token mint")
                         if locked.state is AgentRunState.KILL_REQUESTED:
                             raise RuntimeError("run kill requested before container creation")
+                        variant = await session.get(ModelVariantRow, locked.primary_variant_id)
+                        if (
+                            variant is None
+                            or not variant.validated
+                            or not variant.published
+                            or (
+                                locked.task_class is TaskClass.WRITE
+                                and not variant.harness_verified
+                            )
+                        ):
+                            raise RuntimeError("run variant is no longer eligible")
                         if prepared is not None:
                             locked.workspace_ref = prepared.workspace_ref
                             locked.output_ref = prepared.output_ref
@@ -300,6 +327,7 @@ class RunCommandExecutor:
                             profile=ProfileName(locked.profile),
                             model_id=locked.primary_model_id,
                             variant_id=locked.primary_variant_id,
+                            harness_verified=variant.harness_verified,
                             image=self.settings.run_agent_image,
                             argv=["-m", "coire_agent"],
                             workspace_ref=locked.workspace_ref,

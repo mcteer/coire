@@ -418,6 +418,17 @@ class AgentRunTransitionRow(Base):
     )
 
 
+class RegisteredWorkspaceRow(Base):
+    __tablename__ = "registered_workspaces"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    repository_url: Mapped[str] = mapped_column(String(2048))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class McpCallRow(Base):
     __tablename__ = "mcp_calls"
 
@@ -443,6 +454,9 @@ class McpCallRow(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    workspace_cleaned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class McpArtifactRow(Base):

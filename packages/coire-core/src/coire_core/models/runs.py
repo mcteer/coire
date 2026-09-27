@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from coire_core.models.harness import PROFILE_TOOL_NAMES, ProfileName, TaskClass
+from coire_core.models.mcp import McpCallState, McpToolName
 
 
 class AgentRunState(StrEnum):
@@ -129,6 +130,9 @@ class AgentRun(BaseModel):
     container_id: str | None = Field(default=None, max_length=128)
     workspace_ref: str
     task_class: TaskClass = TaskClass.WRITE
+    mcp_tool: McpToolName | None = None
+    mcp_outcome: McpCallState | None = None
+    duration_seconds: float | None = Field(default=None, ge=0)
     output_ref: str | None = None
     state: AgentRunState
     limits: RunLimits
@@ -177,6 +181,7 @@ class RunContainerCreate(BaseModel):
     profile: ProfileName
     model_id: uuid.UUID
     variant_id: uuid.UUID
+    harness_verified: bool = True
     image: str = Field(pattern=r"^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$")
     argv: list[str] = Field(min_length=1, max_length=32)
     workspace_ref: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")

@@ -10,8 +10,10 @@ Every call goes to the node's declared control DNS name. There is no data-fabric
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import uuid
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from enum import StrEnum
 from types import TracebackType
@@ -26,6 +28,7 @@ from coire_core.models.link import StudioDataLinkStatus
 from coire_core.models.node import (
     NodeStatus,
     NodeStatusV2,
+    WorkspaceArtifactStatus,
     WorkspaceCleanupRequest,
     WorkspacePrepareRequest,
     WorkspacePrepareResult,
@@ -517,6 +520,41 @@ class NodeClient:
             json=command.model_dump(mode="json"),
             expect=(204,),
         )
+
+    async def workspace_artifact_status(
+        self, node: str, run_id: uuid.UUID
+    ) -> WorkspaceArtifactStatus:
+        _, body = await self._call(
+            "GET", node, f"/node/workspaces/{run_id}/artifact/status", expect=(200,)
+        )
+        return WorkspaceArtifactStatus.model_validate(body)
+
+    async def stream_workspace_artifact(
+        self, node: str, run_id: uuid.UUID, *, expected_size: int, expected_sha256: str
+    ) -> AsyncIterator[bytes]:
+        received = 0
+        digest = hashlib.sha256()
+        async with self._control.stream(
+            "GET", node, f"/node/workspaces/{run_id}/artifact",
+            port=self._settings.node_listen_port, headers=self._headers(node),
+        ) as response:
+            if response.status_code != 200:
+                raise NodeError(
+                    _STATUS_KINDS.get(response.status_code, NodeErrorKind.SERVER),
+                    node, status=response.status_code, detail="branch artifact unavailable",
+                )
+            if response.headers.get("content-length") != str(expected_size):
+                raise NodeError(NodeErrorKind.PROTOCOL, node, detail="branch artifact size changed")
+            async for chunk in response.aiter_bytes(1024 * 1024):
+                received += len(chunk)
+                if received > expected_size:
+                    raise NodeError(NodeErrorKind.PROTOCOL, node, detail="branch artifact exceeded cap")
+                digest.update(chunk)
+                yield chunk
+        if received != expected_size:
+            raise NodeError(NodeErrorKind.PROTOCOL, node, detail="branch artifact was truncated")
+        if digest.hexdigest() != expected_sha256:
+            raise NodeError(NodeErrorKind.PROTOCOL, node, detail="branch artifact digest changed")
 
     async def create_run(self, node: str, command: RunContainerCreate) -> RunContainerStatus:
         _, body = await self._call(

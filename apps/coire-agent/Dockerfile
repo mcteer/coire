@@ -4,8 +4,7 @@
 #
 # Built here and distributed by core, but NEVER started on core (FR-017): core hosts no user
 # harness (Principle II). It runs as an ephemeral container on a Studio, brokered by the node
-# agent, from feature 011. The Pydantic AI harness itself is feature 010; this is a stub that
-# prints its version and exits.
+# agent, from feature 011. Git is required locally for feature 013 branch artifacts.
 #
 # The topology test asserts no compose service uses this image.
 
@@ -17,6 +16,9 @@ ENV UV_COMPILE_BYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /build
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git=1:2.39.5-0+deb12u3 \
+ && rm -rf /var/lib/apt/lists/*
 COPY pyproject.toml uv.lock ./
 COPY packages/coire-core/pyproject.toml packages/coire-core/
 COPY apps/coire-api/pyproject.toml apps/coire-api/
@@ -48,10 +50,12 @@ COPY --from=builder \
      /usr/lib/aarch64-linux-gnu/liblzma.so.5 \
      /usr/lib/aarch64-linux-gnu/libbz2.so.1.0 \
      /usr/lib/aarch64-linux-gnu/libsqlite3.so.0 \
+     /usr/lib/aarch64-linux-gnu/libpcre2-8.so.0 \
      /usr/lib/aarch64-linux-gnu/
 
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /usr/bin/git /usr/bin/git
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \

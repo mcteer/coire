@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -80,12 +81,21 @@ class StubRuns:
 class LocalWorkspaces(WorkspaceManager):
     """Exercise preparation boundaries without reaching an external Git host."""
 
-    async def _check_public_dns(self, host: str) -> None:
+    async def _check_public_dns(self, host: str) -> str:
         assert host == "github.com"
+        return "140.82.112.3"
 
     async def _git(
-        self, args: list[str], *, cwd: Path, max_bytes: int, timeout_seconds: int
+        self,
+        args: list[str],
+        *,
+        cwd: Path,
+        max_bytes: int,
+        timeout_seconds: int,
+        resolved_host: tuple[str, str] | None = None,
     ) -> str:
+        if args[0] == "fetch":
+            assert resolved_host == ("github.com", "140.82.112.3")
         if args[0] == "checkout":
             (cwd / "README.md").write_text("sample\n", encoding="utf-8")
         return "a" * 40 if args[0] == "rev-parse" else ""
@@ -159,3 +169,49 @@ async def test_preparation_is_idempotent_and_cleanup_removes_only_this_run(tmp_p
     await manager.cleanup(WorkspaceCleanupRequest(run_id=run_id))
     assert not (tmp_path / first.workspace_ref).exists()
     assert not (tmp_path / first.output_ref).exists()
+
+
+async def test_silent_git_process_is_killed_at_prepare_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stopped = asyncio.Event()
+
+    class SilentProcess:
+        pid = 424242
+        returncode: int | None = None
+        stdout = None
+
+        async def wait(self) -> int:
+            await stopped.wait()
+            self.returncode = -9
+            return -9
+
+    async def spawn(*_args: object, **_kwargs: object) -> SilentProcess:
+        return SilentProcess()
+
+    monkeypatch.setattr("coire_node.workspaces.asyncio.create_subprocess_exec", spawn)
+    monkeypatch.setattr("coire_node.workspaces.os.killpg", lambda _pid, _signal: stopped.set())
+    manager = WorkspaceManager(
+        Settings(_secrets_dir="/nonexistent", run_workspace_root=str(tmp_path))  # type: ignore[call-arg]
+    )
+    with pytest.raises(WorkspaceError, match="timed out"):
+        await manager._git(["fetch"], cwd=tmp_path, max_bytes=1024, timeout_seconds=0)
+    assert stopped.is_set()
+
+
+async def test_clone_dns_pin_rejects_private_address_in_answer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Resolver:
+        async def getaddrinfo(self, _host: str, _port: int, **_kwargs: object):  # type: ignore[no-untyped-def]
+            return [
+                (None, None, None, None, ("140.82.112.3", 443)),
+                (None, None, None, None, ("127.0.0.1", 443)),
+            ]
+
+    monkeypatch.setattr("coire_node.workspaces.asyncio.get_running_loop", lambda: Resolver())
+    manager = WorkspaceManager(
+        Settings(_secrets_dir="/nonexistent", run_workspace_root=str(tmp_path))  # type: ignore[call-arg]
+    )
+    with pytest.raises(WorkspaceError, match="outside public space"):
+        await manager._check_public_dns("github.com")

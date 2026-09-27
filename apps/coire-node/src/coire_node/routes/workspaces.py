@@ -6,8 +6,10 @@ import uuid
 from typing import cast
 
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import FileResponse
 
 from coire_core.models.node import (
+    WorkspaceArtifactStatus,
     WorkspaceCleanupRequest,
     WorkspacePrepareRequest,
     WorkspacePrepareResult,
@@ -30,6 +32,8 @@ def _translate(exc: WorkspaceError) -> HTTPException:
     http_status = (
         status.HTTP_409_CONFLICT
         if code in {"workspace_prepare_conflict", "workspace_cleanup_conflict"}
+        else status.HTTP_404_NOT_FOUND
+        if code == "artifact_missing"
         else status.HTTP_422_UNPROCESSABLE_ENTITY
     )
     return HTTPException(http_status, {"code": code, "detail": str(exc)})
@@ -41,6 +45,27 @@ async def prepare_workspace(
 ) -> WorkspacePrepareResult:
     try:
         return await _manager(request).workspaces.prepare(body)
+    except WorkspaceError as exc:
+        raise _translate(exc) from exc
+
+
+@router.get("/{run_id}/artifact/status", response_model=WorkspaceArtifactStatus)
+async def artifact_status(run_id: uuid.UUID, request: Request) -> WorkspaceArtifactStatus:
+    try:
+        metadata, _ = await _manager(request).workspaces.artifact(run_id)
+        return metadata
+    except WorkspaceError as exc:
+        raise _translate(exc) from exc
+
+
+@router.get("/{run_id}/artifact", response_class=FileResponse)
+async def download_artifact(run_id: uuid.UUID, request: Request) -> FileResponse:
+    try:
+        metadata, path = await _manager(request).workspaces.artifact(run_id)
+        return FileResponse(
+            path, media_type="application/octet-stream", filename=f"{metadata.artifact_id}.bundle",
+            headers={"X-Coire-Sha256": metadata.sha256},
+        )
     except WorkspaceError as exc:
         raise _translate(exc) from exc
 

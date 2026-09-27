@@ -69,7 +69,7 @@ class RunManager:
             resolved = candidate.resolve(strict=True)
         except OSError as exc:
             raise RunRuntimeError("run_workspace_missing", "workspace does not exist") from exc
-        if resolved.parent != root or resolved.is_symlink() or not resolved.is_dir():
+        if candidate.is_symlink() or resolved.parent != root or not resolved.is_dir():
             raise RunRuntimeError("run_workspace_invalid", "workspace escapes configured root")
         return resolved
 
@@ -80,6 +80,20 @@ class RunManager:
             raise RunRuntimeError("run_image_invalid", "run image is not allowlisted")
         if command.limits.memory_bytes > self.settings.run_max_memory_bytes:
             raise RunRuntimeError("run_limit_invalid", "run memory exceeds node maximum")
+        if command.task_class is TaskClass.WRITE and not command.harness_verified:
+            raise RunRuntimeError(
+                "run_variant_unverified", "write run requires harness verification"
+            )
+        if (
+            command.workspace_ref.startswith("mcp-")
+            or (command.output_ref is not None and command.output_ref.startswith("mcp-out-"))
+        ) and (
+            command.workspace_ref != self.workspaces.workspace_ref(command.run_id)
+            or command.output_ref != self.workspaces.output_ref(command.run_id)
+        ):
+            raise RunRuntimeError(
+                "run_workspace_invalid", "MCP workspace and output must match the run ID"
+            )
         workspace = self.workspace(command.workspace_ref)
         binds = [f"{workspace}:/workspace:{'ro' if command.task_class is TaskClass.READ else 'rw'}"]
         result_path = RESULT_PATH
@@ -100,6 +114,7 @@ class RunManager:
                 f"COIRE_PROFILE={command.profile.value}",
                 f"COIRE_MODEL_ID={command.model_id}",
                 f"COIRE_VERIFIED_VARIANT_ID={command.variant_id}",
+                f"COIRE_HARNESS_VERIFIED={'true' if command.harness_verified else 'false'}",
                 "COIRE_API_URL=http://coire-gateway:8080/v1",
                 f"COIRE_RUN_TOKEN={command.run_token}",
                 *(["COIRE_OUTPUT_DIR=/coire-output"] if command.output_ref else []),

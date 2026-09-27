@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Mapping
 from pathlib import Path
 
+from coire_agent.coding import CodingWorkspace, run_coding
 from coire_agent.gateway_model import GatewayTransport
 from coire_agent.harness import Harness
 from coire_agent.pydantic_runtime import OUTPUT_TYPES
@@ -45,6 +46,10 @@ async def execute(
         raise ValueError("workspace profile differs from admitted run")
     if request.variant_id != verified_variant_id:
         raise ValueError("workspace variant is not the admitted verified variant")
+    if request.coding_mode is not None and env.get("COIRE_OUTPUT_DIR") != str(result_path.parent):
+        raise ValueError("MCP coding run requires a separate output mount")
+    if request.coding_mode is not None and "COIRE_HARNESS_VERIFIED" not in env:
+        raise ValueError("MCP coding run requires explicit variant verification state")
 
     transport = GatewayTransport(
         gateway_url=env["COIRE_API_URL"],
@@ -53,7 +58,9 @@ async def execute(
     )
 
     async def verified(candidate: uuid.UUID) -> bool:
-        return candidate == verified_variant_id
+        return (
+            candidate == verified_variant_id and env.get("COIRE_HARNESS_VERIFIED", "true") == "true"
+        )
 
     async def repair(invalid: str, error: str) -> str:
         return await transport.complete_repair(invalid=invalid, error=error)
@@ -65,7 +72,15 @@ async def execute(
         retry_limit=int(env.get("COIRE_HARNESS_RETRY_LIMIT", "2")),
         tool_byte_cap=int(env.get("COIRE_HARNESS_TOOL_OUTPUT_BYTE_CAP", "16384")),
     )
-    result = await harness.run_structured(request, OUTPUT_TYPES[profile])
+    if request.coding_mode is None:
+        result = await harness.run_structured(request, OUTPUT_TYPES[profile])
+    else:
+        result = await run_coding(
+            request,
+            harness,
+            workspace=CodingWorkspace(request_path.parent.parent, result_path.parent),
+            run_id=run_id,
+        )
     result.run_id = run_id
     result_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     temporary = result_path.with_suffix(".json.tmp")

@@ -68,6 +68,8 @@ COMPOSE_PROFILES=diagnostics deploy/compose/coire-up
 
 The `mcp` profile exposes `/mcp` through the same nginx ingress and requires a user-bound API key with the `mcp` scope. The `diagnostics` profile adds bounded Loki, Tempo, and Grafana storage; Prometheus and Alertmanager remain in the lean profile. `deploy/compose/coire-down` stops the stack while preserving data volumes by default. See the deployment guide for credential rotation, state directories, ports, recovery, and profile behavior.
 
+The [MCP runbook](docs/runbooks/mcp-server.md) covers the coding tools, branch bundles, cancellation, and artifact expiry.
+
 No secrets, `.env` files, model weights, datasets, or generated images belong in Git. Model acquisition is an audited admin operation. The runtime accepts registry model IDs, never arbitrary engine paths.
 
 ## Contributing and operations

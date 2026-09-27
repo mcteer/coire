@@ -15,6 +15,7 @@ from coire_core.models.mcp import (
     ApplyInput,
     ApplyResult,
     FileCitation,
+    McpToolName,
     PlanResult,
     PlanStep,
     ResearchInput,
@@ -86,6 +87,26 @@ def test_node_prepare_cannot_change_harness_task_class() -> None:
             task_class=TaskClass.WRITE,
             harness_request=harness,
         )
+
+
+def test_coding_mode_and_write_class_are_bound_in_request() -> None:
+    call_id = uuid.uuid4()
+    variant_id = uuid.uuid4()
+    base = {
+        "profile": "coding",
+        "variant_id": str(variant_id),
+        "task_class": "read",
+        "coding_mode": McpToolName.RESEARCH.value,
+        "coding_call_id": str(call_id),
+        "task": "find the entrypoint",
+        "capability_profile": {},
+        "context_window": 2048,
+    }
+    assert HarnessRunRequest.model_validate(base).coding_call_id == call_id
+    with pytest.raises(ValidationError):
+        HarnessRunRequest.model_validate({**base, "task_class": "write"})
+    with pytest.raises(ValidationError):
+        HarnessRunRequest.model_validate({**base, "coding_call_id": None})
 
 
 def test_existing_run_callers_keep_write_default() -> None:

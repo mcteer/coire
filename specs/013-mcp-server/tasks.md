@@ -29,13 +29,13 @@
 - [X] T009 [US1] Implement owner-checked MCP call/result/plan-ID persistence in apps/coire-api/src/coire_api/mcp_calls.py
 - [X] T010 [US1] Implement bounded HTTPS source validation, immutable revision resolution, and unique per-run clone preparation on the Studio in apps/coire-node/src/coire_node/workspaces.py
 - [X] T011 [US1] Add typed workspace prepare/cleanup routes with node auth and idempotent run IDs in apps/coire-node/src/coire_node/routes/workspaces.py
-- [ ] T012 [US1] Deliver a validated HarnessRunRequest before container create and mount a task-class-appropriate repository plus separate writable output directory in apps/coire-api/src/coire_api/run_executor.py and apps/coire-node/src/coire_node/runs.py
-- [ ] T013 [US1] Implement bounded read/search and read-only citation extraction tools in apps/coire-agent/src/coire_agent/tools.py and apps/coire-agent/src/coire_agent/coding.py
-- [ ] T014 [US1] Implement task-specific research/plan output validators and prior-result handling in apps/coire-agent/src/coire_agent/pydantic_runtime.py and apps/coire-agent/src/coire_agent/__main__.py
-- [ ] T015 [US1] Implement bounded patch/test/git-commit tools, generated feature branch names, structured argv test-runner allowlist, and passed/failed/not_found/unsupported reporting in apps/coire-agent/src/coire_agent/coding.py and apps/coire-agent/Dockerfile; record shipped git executable license in specs/013-mcp-server/review.md
-- [ ] T016 [US1] Collect a committed branch artifact capped at 64 MiB, digest, diff excerpt capped at 1 MiB, and test result even when tests fail; retain a clone on collection failure for bounded recovery in apps/coire-node/src/coire_node/workspaces.py and apps/coire-api/src/coire_api/mcp_calls.py
-- [ ] T017 [US1] Add owner-scoped branch artifact download and expiry cleanup routes in apps/coire-api/src/coire_api/routes/mcp_artifacts.py; regenerate apps/coire-api/openapi.json and apps/coire-web/src/api/schema.d.ts
-- [ ] T018 [US1] Wire research, plan, and apply to existing API/scheduler run creation, wait, and result collection in apps/coire-api/src/coire_mcp/tools.py
+- [X] T012 [US1] Deliver a validated HarnessRunRequest before container create and mount a task-class-appropriate repository plus separate writable output directory in apps/coire-api/src/coire_api/run_executor.py and apps/coire-node/src/coire_node/runs.py
+- [X] T013 [US1] Implement bounded read/search and read-only citation extraction tools in apps/coire-agent/src/coire_agent/tools.py and apps/coire-agent/src/coire_agent/coding.py
+- [X] T014 [US1] Implement task-specific research/plan output validators and prior-result handling in apps/coire-agent/src/coire_agent/pydantic_runtime.py and apps/coire-agent/src/coire_agent/__main__.py
+- [X] T015 [US1] Implement bounded patch/test/git-commit tools, generated feature branch names, structured argv test-runner allowlist, and passed/failed/not_found/unsupported reporting in apps/coire-agent/src/coire_agent/coding.py and apps/coire-agent/Dockerfile; record shipped git executable license in specs/013-mcp-server/review.md
+- [X] T016 [US1] Collect a committed branch artifact capped at 64 MiB, digest, diff excerpt capped at 1 MiB, and test result even when tests fail; retain a clone on collection failure for bounded recovery in apps/coire-node/src/coire_node/workspaces.py and apps/coire-api/src/coire_api/mcp_calls.py
+- [X] T017 [US1] Add owner-scoped branch artifact download and expiry cleanup routes in apps/coire-api/src/coire_api/routes/mcp_artifacts.py; regenerate apps/coire-api/openapi.json and apps/coire-web/src/api/schema.d.ts
+- [X] T018 [US1] Wire research, plan, and apply to existing API/scheduler run creation, wait, and result collection in apps/coire-api/src/coire_mcp/tools.py
 - [ ] T019 [US1] Add tiny-model composed loop, concurrent apply, missing-tests, failing-tests, and artifact-import tests in tests/integration/test_mcp_loop.py
 
 ## Phase 4: User Story 2 — Narrow authenticated surface (P1)
@@ -44,10 +44,10 @@
 
 **Independent test**: Enumerate tools with an MCP client, then try missing credentials, a non-MCP key, and absent chat/admin/image names.
 
-- [ ] T020 [US2] Add MCP protocol, key-scope, identity, origin, entitlement, and method-enumeration contract tests in apps/coire-api/tests/contract/test_mcp_security.py
-- [ ] T021 [US2] Mount the official SDK Streamable HTTP ASGI app with correct host lifespan and exactly three tools in apps/coire-api/src/coire_mcp/main.py
-- [ ] T022 [US2] Enforce bearer API key with MCP scope on every MCP request and reject unapproved origins/oversized bodies in apps/coire-api/src/coire_mcp/main.py
-- [ ] T023 [US2] Keep nginx routing limited to the MCP endpoint and health probe in apps/coire-web/nginx/nginx.conf
+- [X] T020 [US2] Add MCP protocol, key-scope, identity, origin, entitlement, and method-enumeration contract tests in apps/coire-api/tests/contract/test_mcp_security.py
+- [X] T021 [US2] Mount the official SDK Streamable HTTP ASGI app with correct host lifespan and exactly three tools in apps/coire-api/src/coire_mcp/main.py
+- [X] T022 [US2] Enforce bearer API key with MCP scope on every MCP request and reject unapproved origins/oversized bodies in apps/coire-api/src/coire_mcp/main.py
+- [X] T023 [US2] Keep nginx routing limited to the MCP endpoint and health probe in apps/coire-web/nginx/nginx.conf
 
 ## Phase 5: User Story 3 — Sandboxed and killable calls (P1)
 
@@ -55,10 +55,10 @@
 
 **Independent test**: Start a long apply, disconnect and separately admin-kill it; both stop within five seconds and revoke the run token.
 
-- [ ] T024 [US3] Add node workspace/mount isolation and timeout contract tests in apps/coire-node/apps/coire-api/tests/contract/test_mcp_workspace.py
-- [ ] T025 [US3] Harden repository/output mounts against symlink escape and unauthorized writes while retaining per-run internal networking in apps/coire-node/src/coire_node/runs.py and apps/coire-agent/src/coire_agent/__main__.py
-- [ ] T026 [US3] Propagate MCP HTTP disconnect to owner-scoped run kill and token revocation in apps/coire-api/src/coire_mcp/tools.py and apps/coire-api/src/coire_api/routes/runs.py
-- [ ] T027 [US3] Record tool, owner, duration, and outcome on AgentRun and expose them through the run listing in apps/coire-api/src/coire_api/runs.py and packages/coire-core/src/coire_core/models/runs.py
+- [X] T024 [US3] Add node workspace/mount isolation and timeout contract tests in apps/coire-node/apps/coire-api/tests/contract/test_mcp_workspace.py
+- [X] T025 [US3] Harden repository/output mounts against symlink escape and unauthorized writes while retaining per-run internal networking in apps/coire-node/src/coire_node/runs.py and apps/coire-agent/src/coire_agent/__main__.py
+- [X] T026 [US3] Propagate MCP HTTP disconnect to owner-scoped run kill and token revocation in apps/coire-api/src/coire_mcp/tools.py and apps/coire-api/src/coire_api/routes/runs.py
+- [X] T027 [US3] Record tool, owner, duration, and outcome on AgentRun and expose them through the run listing in apps/coire-api/src/coire_api/runs.py and packages/coire-core/src/coire_core/models/runs.py
 - [ ] T028 [US3] Add composed disconnect, timeout, admin kill, and MCP-only restart tests in tests/integration/test_mcp_lifecycle.py
 
 ## Phase 6: User Story 4 — Verified apply, permissive reads (P2)
@@ -67,17 +67,18 @@
 
 **Independent test**: The same unverified published model succeeds for research/plan and is refused for apply before a Studio run starts.
 
-- [ ] T029 [US4] Add read/write admission and entitlement contract tests in apps/coire-api/tests/contract/test_mcp_model_admission.py
-- [ ] T030 [US4] Resolve eligible published variants for read-only tasks and require harness verification for apply in apps/coire-api/src/coire_api/runs.py
-- [ ] T031 [US4] Enforce the selected task class and verification a second time in apps/coire-agent/src/coire_agent/harness.py and apps/coire-agent/src/coire_agent/__main__.py
+- [X] T029 [US4] Add read/write admission and entitlement contract tests in apps/coire-api/tests/contract/test_mcp_model_admission.py
+- [X] T030 [US4] Resolve eligible published variants for read-only tasks and require harness verification for apply in apps/coire-api/src/coire_api/runs.py
+- [X] T031 [US4] Enforce the selected task class and verification a second time in apps/coire-agent/src/coire_agent/harness.py and apps/coire-agent/src/coire_agent/__main__.py
 - [ ] T032 [US4] Add tiny-model read/write verification gate integration coverage in tests/integration/test_mcp_loop.py
 
 ## Phase 7: Polish and operational proof
 
-- [ ] T033 Add MCP, workspace, artifact, and cancellation spans/metrics/structured fields in apps/coire-api/src/coire_mcp/telemetry.py and apps/coire-node/src/coire_node/workspaces.py
-- [ ] T034 [P] Add a baseline MCP panel and failure/cancellation alert in deploy/observability/grafana/dashboards/runs.json and deploy/observability/alerts/container-runs.yaml
-- [ ] T035 [P] Document startup, visibility, kill, cleanup, expiry, and rollback in docs/runbooks/mcp-server.md and config variables in deploy/compose/README.md
+- [X] T033 Add MCP, workspace, artifact, and cancellation spans/metrics/structured fields in apps/coire-api/src/coire_mcp/telemetry.py and apps/coire-node/src/coire_node/workspaces.py
+- [X] T034 [P] Add a baseline MCP panel and failure/cancellation alert in deploy/observability/grafana/dashboards/runs.json and deploy/observability/alerts/container-runs.yaml
+- [X] T035 [P] Document startup, visibility, kill, cleanup, expiry, and rollback in docs/runbooks/mcp-server.md and config variables in deploy/compose/README.md
 - [ ] T036 Run Ruff, mypy, pytest unit/contract, web type/lint/test, OpenAPI freshness, tiny-model integration, image build/policy/CVE scan; record results and license in specs/013-mcp-server/review.md and quickstart.md
+- [X] T037 Write and verify the root README.md with topology, development checks, deployment profiles, repository map, and operator links; include it in the feature 013 PR
 
 ## Dependencies
 

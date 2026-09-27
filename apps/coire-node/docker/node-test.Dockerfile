@@ -42,7 +42,7 @@ FROM python:3.13-slim-bookworm@sha256:c45a22ea000adfd9cda29364bbe7edd23001ce5cc2
 # procps for `pkill`, which the restart test uses to kill the agent while its engines keep
 # running — the whole point of this image.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends procps curl tini \
+ && apt-get install -y --no-install-recommends procps curl tini git=1:2.39.5-0+deb12u3 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/.venv /app/.venv

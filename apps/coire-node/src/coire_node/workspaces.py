@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import logging
 import os
 import shutil
 import signal
@@ -16,12 +17,22 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from opentelemetry import metrics, trace
+
+from coire_core.models.harness import HarnessRunResult
+from coire_core.models.mcp import ApplyResult
 from coire_core.models.node import (
+    WorkspaceArtifactStatus,
     WorkspaceCleanupRequest,
     WorkspacePrepareRequest,
     WorkspacePrepareResult,
 )
 from coire_core.settings import Settings
+
+logger = logging.getLogger(__name__)
+tracer = trace.get_tracer("coire.node.workspaces")
+meter = metrics.get_meter("coire.node.workspaces")
+workspace_operations = meter.create_counter("coire_mcp_workspace_operations_total", unit="1")
 
 
 class WorkspaceError(RuntimeError):
@@ -67,7 +78,7 @@ class WorkspaceManager:
             )
         return host
 
-    async def _check_public_dns(self, host: str) -> None:
+    async def _check_public_dns(self, host: str) -> str:
         try:
             addresses = await asyncio.get_running_loop().getaddrinfo(
                 host, 443, type=socket.SOCK_STREAM
@@ -76,12 +87,13 @@ class WorkspaceManager:
             raise WorkspaceError(
                 "workspace_source_unreachable", "repository host did not resolve"
             ) from exc
-        if not addresses or any(
-            not ipaddress.ip_address(item[4][0]).is_global for item in addresses
-        ):
+        resolved = [ipaddress.ip_address(item[4][0]) for item in addresses]
+        if not resolved or any(not address.is_global for address in resolved):
             raise WorkspaceError(
                 "workspace_source_denied", "repository host resolves outside public space"
             )
+        chosen = sorted(resolved, key=lambda address: (address.version != 4, str(address)))[0]
+        return f"[{chosen}]" if chosen.version == 6 else str(chosen)
 
     @staticmethod
     def _size(path: Path) -> int:
@@ -95,7 +107,13 @@ class WorkspaceManager:
         return total
 
     async def _git(
-        self, args: list[str], *, cwd: Path, max_bytes: int, timeout_seconds: int
+        self,
+        args: list[str],
+        *,
+        cwd: Path,
+        max_bytes: int,
+        timeout_seconds: int,
+        resolved_host: tuple[str, str] | None = None,
     ) -> str:
         git = "/usr/bin/git"
         environment = {
@@ -114,6 +132,11 @@ class WorkspaceManager:
                 "http.followRedirects=false",
                 "-c",
                 "core.hooksPath=/dev/null",
+                *(
+                    ["-c", f"http.curloptResolve={resolved_host[0]}:443:{resolved_host[1]}"]
+                    if resolved_host is not None
+                    else []
+                ),
                 *args,
                 cwd=cwd,
                 env=environment,
@@ -176,11 +199,21 @@ class WorkspaceManager:
     async def prepare(self, command: WorkspacePrepareRequest) -> WorkspacePrepareResult:
         lock = self._locks.setdefault(command.run_id, asyncio.Lock())
         async with lock:
-            return await self._prepare(command)
+            with tracer.start_as_current_span("coire.node.workspace.prepare") as span:
+                span.set_attribute("run_id", str(command.run_id))
+                try:
+                    result = await self._prepare(command)
+                except Exception:
+                    workspace_operations.add(1, {"operation": "prepare", "outcome": "failed"})
+                    logger.exception("MCP workspace prepare failed run_id=%s", command.run_id)
+                    raise
+                workspace_operations.add(1, {"operation": "prepare", "outcome": "succeeded"})
+                logger.info("MCP workspace prepared run_id=%s", command.run_id)
+                return result
 
     async def _prepare(self, command: WorkspacePrepareRequest) -> WorkspacePrepareResult:
         host = self._source_host(command)
-        await self._check_public_dns(host)
+        address = await self._check_public_dns(host)
         maximum = min(command.max_bytes, self.settings.mcp_workspace_max_bytes)
         timeout = min(command.timeout_seconds, self.settings.mcp_workspace_prepare_timeout_s)
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -224,6 +257,7 @@ class WorkspaceManager:
                 cwd=workspace,
                 max_bytes=maximum,
                 timeout_seconds=timeout,
+                resolved_host=(host, address),
             )
             await self._git(
                 ["checkout", "--quiet", "--detach", "FETCH_HEAD"],
@@ -266,11 +300,69 @@ class WorkspaceManager:
             return
         lock = self._locks.setdefault(command.run_id, asyncio.Lock())
         async with lock:
-            for reference in (self.workspace_ref(command.run_id), self.output_ref(command.run_id)):
-                target = self.root / reference
-                if target.is_symlink():
-                    raise WorkspaceError(
-                        "workspace_cleanup_conflict", "workspace path is a symlink"
-                    )
-                if target.is_dir():
-                    await asyncio.to_thread(shutil.rmtree, target)
+            with tracer.start_as_current_span("coire.node.workspace.cleanup") as span:
+                span.set_attribute("run_id", str(command.run_id))
+                for reference in (
+                    self.workspace_ref(command.run_id),
+                    self.output_ref(command.run_id),
+                ):
+                    target = self.root / reference
+                    if target.is_symlink():
+                        raise WorkspaceError(
+                            "workspace_cleanup_conflict", "workspace path is a symlink"
+                        )
+                    if target.is_dir():
+                        await asyncio.to_thread(shutil.rmtree, target)
+                workspace_operations.add(1, {"operation": "cleanup", "outcome": "succeeded"})
+                logger.info("MCP workspace removed run_id=%s", command.run_id)
+
+    async def artifact(self, run_id: uuid.UUID) -> tuple[WorkspaceArtifactStatus, Path]:
+        """Inspect a completed apply artifact without trusting a caller-supplied path."""
+        with tracer.start_as_current_span("coire.node.workspace.artifact") as span:
+            span.set_attribute("run_id", str(run_id))
+            try:
+                result = await self._artifact(run_id)
+            except Exception:
+                workspace_operations.add(1, {"operation": "artifact", "outcome": "failed"})
+                logger.exception("MCP artifact unavailable run_id=%s", run_id)
+                raise
+            workspace_operations.add(1, {"operation": "artifact", "outcome": "succeeded"})
+            logger.info("MCP artifact inspected run_id=%s", run_id)
+            return result
+
+    async def _artifact(self, run_id: uuid.UUID) -> tuple[WorkspaceArtifactStatus, Path]:
+        output = self.root / self.output_ref(run_id)
+        bundle = output / "branch.bundle"
+        result_path = output / "result.json"
+        for target in (output, bundle, result_path):
+            if (
+                not target.exists()
+                or target.is_symlink()
+                or not target.resolve(strict=True).is_relative_to(self.root)
+            ):
+                raise WorkspaceError("artifact_missing", "branch artifact is unavailable")
+        if not bundle.is_file() or not result_path.is_file():
+            raise WorkspaceError("artifact_missing", "branch artifact is unavailable")
+        size = bundle.stat().st_size
+        if size <= 0 or size > 64 * 1024 * 1024:
+            raise WorkspaceError("artifact_size_invalid", "branch artifact exceeds size cap")
+        result = HarnessRunResult.model_validate_json(result_path.read_bytes())
+        if result.run_id != run_id:
+            raise WorkspaceError("artifact_identity_invalid", "run result identity differs")
+        apply = ApplyResult.model_validate(result.output)
+        digest = await asyncio.to_thread(self._sha256_file, bundle)
+        return WorkspaceArtifactStatus(
+            run_id=run_id,
+            artifact_id=apply.artifact_id,
+            sha256=digest,
+            size_bytes=size,
+            collected_at=datetime.fromtimestamp(bundle.stat().st_mtime, UTC),
+        ), bundle
+
+    @staticmethod
+    def _sha256_file(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                digest.update(chunk)
+        return digest.hexdigest()

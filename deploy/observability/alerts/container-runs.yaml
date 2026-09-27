@@ -16,3 +16,18 @@ groups:
         for: 10m
         labels: {severity: warning}
         annotations: {summary: "Studio sandbox slots have remained saturated"}
+      - alert: CoireMcpCallFailures
+        expr: sum(increase(coire_mcp_calls_total{outcome="failed"}[10m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations: {summary: "An MCP coding call failed; inspect its run ID and node logs"}
+      - alert: CoireMcpWorkspaceCleanupFailures
+        expr: sum(increase(coire_mcp_workspace_cleanup_total{outcome="failed"}[30m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations: {summary: "A Studio MCP workspace could not be cleaned up"}
+      - alert: CoireMcpCallCancellations
+        expr: sum(increase(coire_mcp_calls_total{outcome="cancelled"}[15m])) > 3
+        for: 0m
+        labels: {severity: warning}
+        annotations: {summary: "Several MCP coding calls were cancelled in fifteen minutes"}

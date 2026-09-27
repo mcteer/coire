@@ -35,11 +35,13 @@ from coire_api.routes import (
     health,
     instances,
     internal_ops,
+    mcp_artifacts,
     me,
     models,
     nodes,
     runs,
     v1,
+    workspaces,
 )
 from coire_api.telemetry import configure_telemetry
 from coire_core.settings import Settings, get_settings
@@ -139,6 +141,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(nodes.router)
     app.include_router(models.router)
     app.include_router(runs.router)
+    app.include_router(workspaces.router)
+    app.include_router(mcp_artifacts.router)
     app.include_router(me.router)
     app.include_router(admin_acquisitions.router)
     app.include_router(admin_console.router)

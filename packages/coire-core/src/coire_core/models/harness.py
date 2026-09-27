@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from coire_core.models.mcp import McpToolName
 from coire_core.models.registry import (
     CapabilityProfile,
     StructuredOutput,
@@ -99,11 +100,25 @@ class HarnessRunRequest(BaseModel):
     profile: ProfileName
     variant_id: uuid.UUID
     task_class: TaskClass
+    coding_mode: McpToolName | None = None
+    coding_call_id: uuid.UUID | None = None
     task: str = Field(min_length=1, max_length=100_000)
     history: list[HarnessMessage] = Field(default_factory=list, max_length=4096)
     capability_profile: CapabilityProfile
     context_window: int = Field(ge=256)
     thinking_token_limit: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def coding_mode_matches_task_class(self) -> HarnessRunRequest:
+        if (self.coding_mode is None) != (self.coding_call_id is None):
+            raise ValueError("coding mode and call ID must be supplied together")
+        if self.coding_mode is not None:
+            if self.profile is not ProfileName.CODING:
+                raise ValueError("MCP coding mode requires the coding profile")
+            required = TaskClass.WRITE if self.coding_mode is McpToolName.APPLY else TaskClass.READ
+            if self.task_class is not required:
+                raise ValueError("coding mode does not match task class")
+        return self
 
     @property
     def tool_strategy(self) -> HarnessStrategy:

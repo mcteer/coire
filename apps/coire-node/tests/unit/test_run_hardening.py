@@ -104,6 +104,13 @@ def test_read_run_mounts_repository_read_only_and_output_separately(tmp_path: Pa
     assert payload["Labels"]["com.coire.result-path"] == "/coire-output/result.json"
     with pytest.raises(RunRuntimeError, match="must differ"):
         manager.create_payload(command_read.model_copy(update={"output_ref": "repo"}), "network")
+    with pytest.raises(RunRuntimeError, match="harness verification"):
+        manager.create_payload(
+            command_read.model_copy(
+                update={"task_class": TaskClass.WRITE, "harness_verified": False}
+            ),
+            "network",
+        )
 
 
 def test_workspace_cannot_escape_root(tmp_path: Path) -> None:
@@ -118,6 +125,39 @@ def test_workspace_cannot_escape_root(tmp_path: Path) -> None:
     )
     with pytest.raises(RunRuntimeError, match="escapes"):
         manager.workspace("link")
+    internal = root / "internal"
+    internal.mkdir()
+    (root / "alias").symlink_to(internal)
+    with pytest.raises(RunRuntimeError, match="escapes"):
+        manager.workspace("alias")
+
+
+def test_mcp_run_cannot_mount_another_runs_workspace(tmp_path: Path) -> None:
+    root = tmp_path / "workspaces"
+    first = uuid.uuid4()
+    second = uuid.uuid4()
+    for run_id in (first, second):
+        (root / f"mcp-{run_id.hex}").mkdir(parents=True)
+        (root / f"mcp-out-{run_id.hex}").mkdir()
+    allowed = command(f"mcp-{first.hex}").model_copy(
+        update={
+            "run_id": first,
+            "output_ref": f"mcp-out-{first.hex}",
+        }
+    )
+    manager = RunManager(
+        Settings(  # type: ignore[call-arg]
+            _secrets_dir="/none",
+            run_workspace_root=str(root),
+            run_agent_image=allowed.image,
+        ),
+        NoopDocker(),  # type: ignore[arg-type]
+    )
+    assert manager.create_payload(allowed, "network")["HostConfig"]["Binds"]
+    with pytest.raises(RunRuntimeError, match="match the run ID"):
+        manager.create_payload(
+            allowed.model_copy(update={"workspace_ref": f"mcp-{second.hex}"}), "network"
+        )
 
 
 def test_docker_multiplexed_logs_are_decoded() -> None:
