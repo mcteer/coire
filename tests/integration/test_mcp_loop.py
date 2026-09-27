@@ -35,6 +35,7 @@ def _call(
     arguments: dict[str, object],
     identifier: int,
 ) -> dict[str, Any]:
+    __tracebackhide__ = True
     response = client.post(
         "/mcp",
         headers={
@@ -51,7 +52,22 @@ def _call(
     assert response.status_code == 200, response.text
     message = response.json()
     assert "error" not in message, message
-    assert not message["result"].get("isError", False), message
+    if message["result"].get("isError", False):
+        runs = client.get("/api/v1/runs", headers={"Authorization": f"Bearer {key}"})
+        detail = (
+            [
+                {
+                    "id": run["id"],
+                    "state": run["state"],
+                    "failure_code": run.get("failure_code"),
+                    "mcp_tool": run.get("mcp_tool"),
+                }
+                for run in runs.json()[:6]
+            ]
+            if runs.status_code == 200
+            else {"runs_status": runs.status_code}
+        )
+        pytest.fail(f"MCP {tool} failed: {detail}", pytrace=False)
     return cast(dict[str, Any], message["result"]["structuredContent"])
 
 
@@ -60,7 +76,7 @@ def test_composed_research_plan_apply_and_branch_import(
     admin_headers: dict[str, str],
     tmp_path: Path,
 ) -> None:
-    with httpx.Client(base_url=api_url, timeout=1250) as client:
+    with httpx.Client(base_url=api_url, timeout=240) as client:
         model_id, variant_id = prepare_verified_model(client, admin_headers)
         model = client.get(f"/api/v1/admin/models/{model_id}", headers=admin_headers).json()
         prior_tags = model["tags"]
@@ -201,7 +217,7 @@ def test_composed_research_plan_apply_and_branch_import(
             assert failing["artifact_id"]
 
             def another(index: int) -> dict[str, Any]:
-                with httpx.Client(base_url=api_url, timeout=1250) as concurrent:
+                with httpx.Client(base_url=api_url, timeout=240) as concurrent:
                     return _call(
                         concurrent,
                         key,
