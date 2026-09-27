@@ -98,6 +98,7 @@ A write operation is refused when the model backing it has not passed the harnes
 
 - The repository cannot be cloned: the tool MUST return a clear error naming the clone failure rather than an empty result.
 - Tests are absent from the repository: apply MUST report that no tests were found rather than claiming success or failure.
+- Tests are found but their runtime is unavailable in the approved agent image: apply MUST report `unsupported` with the discovered command; it MUST NOT run a shell string or claim the tests passed.
 - Tests fail after the change: apply MUST still return the branch and diff with a failing test summary, since a failing result the developer can inspect is more useful than a discarded one.
 - The diff is very large: it MUST be truncated with the truncation stated, and the branch MUST remain complete.
 - Two applies run against one workspace concurrently: each MUST work on its own clone and produce its own branch.
