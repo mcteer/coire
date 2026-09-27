@@ -277,9 +277,12 @@ async def execute_run(run_id_text: str) -> str | None:
             run = await session.get(AgentRunRow, run_id)
             call = (
                 await session.get(McpCallRow, run.prepared_request_id)
-                if run is not None and run.prepared_request_id is not None else None
+                if run is not None and run.prepared_request_id is not None
+                else None
             )
-            node = await session.get(NodeRow, run.node_id) if run is not None and run.node_id else None
+            node = (
+                await session.get(NodeRow, run.node_id) if run is not None and run.node_id else None
+            )
             output = run.result.get("output") if run is not None and run.result else None
             if call is not None and call.tool is McpToolName.APPLY:
                 if node is None or not isinstance(output, dict):
@@ -291,16 +294,20 @@ async def execute_run(run_id_text: str) -> str | None:
                 if artifact.artifact_id != apply.artifact_id or artifact.run_id != run_id:
                     raise RuntimeError("MCP branch artifact identity mismatch")
                 if await session.get(McpArtifactRow, artifact.artifact_id) is None:
-                    session.add(McpArtifactRow(
-                        id=artifact.artifact_id, call_id=call.id,
-                        owner_user_id=call.owner_user_id, run_id=run_id,
-                        sha256=artifact.sha256, size_bytes=artifact.size_bytes,
-                        storage_ref=node.name,
-                        collected_at=artifact.collected_at,
-                        expires_at=artifact.collected_at + timedelta(
-                            hours=settings.mcp_artifact_retention_hours
-                        ),
-                    ))
+                    session.add(
+                        McpArtifactRow(
+                            id=artifact.artifact_id,
+                            call_id=call.id,
+                            owner_user_id=call.owner_user_id,
+                            run_id=run_id,
+                            sha256=artifact.sha256,
+                            size_bytes=artifact.size_bytes,
+                            storage_ref=node.name,
+                            collected_at=artifact.collected_at,
+                            expires_at=artifact.collected_at
+                            + timedelta(hours=settings.mcp_artifact_retention_hours),
+                        )
+                    )
     return None
 
 

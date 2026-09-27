@@ -535,20 +535,27 @@ class NodeClient:
         received = 0
         digest = hashlib.sha256()
         async with self._control.stream(
-            "GET", node, f"/node/workspaces/{run_id}/artifact",
-            port=self._settings.node_listen_port, headers=self._headers(node),
+            "GET",
+            node,
+            f"/node/workspaces/{run_id}/artifact",
+            port=self._settings.node_listen_port,
+            headers=self._headers(node),
         ) as response:
             if response.status_code != 200:
                 raise NodeError(
                     _STATUS_KINDS.get(response.status_code, NodeErrorKind.SERVER),
-                    node, status=response.status_code, detail="branch artifact unavailable",
+                    node,
+                    status=response.status_code,
+                    detail="branch artifact unavailable",
                 )
             if response.headers.get("content-length") != str(expected_size):
                 raise NodeError(NodeErrorKind.PROTOCOL, node, detail="branch artifact size changed")
             async for chunk in response.aiter_bytes(1024 * 1024):
                 received += len(chunk)
                 if received > expected_size:
-                    raise NodeError(NodeErrorKind.PROTOCOL, node, detail="branch artifact exceeded cap")
+                    raise NodeError(
+                        NodeErrorKind.PROTOCOL, node, detail="branch artifact exceeded cap"
+                    )
                 digest.update(chunk)
                 yield chunk
         if received != expected_size:

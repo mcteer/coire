@@ -36,10 +36,15 @@ def test_write_variant_gate_requires_harness_verification() -> None:
     assert "model_variants.harness_verified" in query
 
 
-async def test_mcp_model_selection_refuses_unentitled_requested_model(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_mcp_model_selection_refuses_unentitled_requested_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     model = ModelRow(
-        id=uuid.uuid4(), state=ModelState.READY, visibility=Visibility.PUBLISHED,
-        tags=["coding"], entitlement=["paid"],
+        id=uuid.uuid4(),
+        state=ModelState.READY,
+        visibility=Visibility.PUBLISHED,
+        tags=["coding"],
+        entitlement=["paid"],
     )
 
     class Rows:
@@ -59,7 +64,9 @@ async def test_mcp_model_selection_refuses_unentitled_requested_model(monkeypatc
 
     monkeypatch.setattr(tools, "session_scope", session_scope)
     principal = Principal(
-        kind=PrincipalKind.API_KEY, user_id=uuid.uuid4(), scopes=frozenset({"mcp"}),
+        kind=PrincipalKind.API_KEY,
+        user_id=uuid.uuid4(),
+        scopes=frozenset({"mcp"}),
     )
     with pytest.raises(ValueError, match="no entitled"):
         await tools._choose_model(principal, model.id, TaskClass.READ)

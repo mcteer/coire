@@ -8,7 +8,7 @@ returns its diff and test summary even when discovered tests fail. No tool pushe
 
 ## Start and check
 
-Start with `COMPOSE_PROFILES=mcp scripts/coire-up` using the normal release flow. The MCP
+Start with `COMPOSE_PROFILES=mcp deploy/compose/coire-up` using the normal release flow. The MCP
 service and scheduler must both be healthy. Check `GET /ready` on the internal service and
 `POST /mcp` through the public nginx address with a user-bound API key that has the `mcp`
 scope. Browser `Origin` headers are refused. The external nginx route is exactly `/mcp`;

@@ -36,13 +36,17 @@ def create_app() -> FastAPI:
     settings = get_settings()
     configure_telemetry(SERVICE_NAME, settings.service_version, settings.otlp_endpoint)
     server: MCPServer[object] = MCPServer(
-        name="Coire", version=__version__,
+        name="Coire",
+        version=__version__,
         instructions="Use research, plan, and apply for repository coding work.",
     )
     register_tools(server)
     protocol_app = server.streamable_http_app(
-        streamable_http_path="/mcp", stateless_http=True, json_response=True,
-        max_request_body_size=4 * 1024 * 1024, host="0.0.0.0",
+        streamable_http_path="/mcp",
+        stateless_http=True,
+        json_response=True,
+        max_request_body_size=4 * 1024 * 1024,
+        host="0.0.0.0",
         transport_security=TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
             allowed_hosts=["coire-mcp:8001", "localhost:*", "127.0.0.1:*"],

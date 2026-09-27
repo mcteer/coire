@@ -26,16 +26,22 @@ class Session:
 async def test_artifact_owner_and_expiry_gate() -> None:
     owner = uuid.uuid4()
     row = McpArtifactRow(
-        id=uuid.uuid4(), owner_user_id=owner, run_id=uuid.uuid4(),
-        call_id=uuid.uuid4(), storage_ref="edge-a", sha256="a" * 64,
-        size_bytes=512, expires_at=datetime.now(UTC) + timedelta(hours=1),
+        id=uuid.uuid4(),
+        owner_user_id=owner,
+        run_id=uuid.uuid4(),
+        call_id=uuid.uuid4(),
+        storage_ref="edge-a",
+        sha256="a" * 64,
+        size_bytes=512,
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
     session = Session(row)
     principal = Principal(kind=PrincipalKind.USER, user_id=owner)
     assert await _owned_artifact(row.id, principal, session) is row  # type: ignore[arg-type]
     with pytest.raises(HTTPException) as other_user:
         await _owned_artifact(
-            row.id, Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4()),
+            row.id,
+            Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4()),
             session,  # type: ignore[arg-type]
         )
     assert other_user.value.status_code == 404

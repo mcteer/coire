@@ -55,7 +55,7 @@
 
 **Independent test**: Start a long apply, disconnect and separately admin-kill it; both stop within five seconds and revoke the run token.
 
-- [X] T024 [US3] Add node workspace/mount isolation and timeout contract tests in apps/coire-node/apps/coire-api/tests/contract/test_mcp_workspace.py
+- [X] T024 [US3] Add node workspace/mount isolation and timeout contract tests in apps/coire-node/tests/contract/test_mcp_workspace.py
 - [X] T025 [US3] Harden repository/output mounts against symlink escape and unauthorized writes while retaining per-run internal networking in apps/coire-node/src/coire_node/runs.py and apps/coire-agent/src/coire_agent/__main__.py
 - [X] T026 [US3] Propagate MCP HTTP disconnect to owner-scoped run kill and token revocation in apps/coire-api/src/coire_mcp/tools.py and apps/coire-api/src/coire_api/routes/runs.py
 - [X] T027 [US3] Record tool, owner, duration, and outcome on AgentRun and expose them through the run listing in apps/coire-api/src/coire_api/runs.py and packages/coire-core/src/coire_core/models/runs.py

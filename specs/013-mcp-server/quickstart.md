@@ -24,3 +24,13 @@
 5. Restart only `coire-mcp` during chat traffic and confirm chat continues. Inspect run listing, audit row, metric, span, dashboard panel, alert rule, and bounded cleanup.
 
 Record commands, counts, CI links, and real-cluster evidence here during implementation. Do not mark acceptance complete on an unrun or skipped test.
+
+## Local validation record (2026-09-27)
+
+- `uv run ruff check .` and `uv run mypy apps packages`: passed (389 source files).
+- `uv run pytest -q -m 'not integration'`: 790 passed, 8 skipped, 109 deselected.
+- `uv run python -m coire_api.openapi --check`: passed.
+- `pnpm -C apps/coire-web test`, `lint`, and `exec tsc --noEmit`: passed (19 web tests).
+- `uv run alembic -c apps/coire-api/alembic.ini heads`: one head, `0014_mcp_calls`.
+- Local arm64 agent and MCP images: build and image-policy passed. Trivy CRITICAL scans passed. The agent image ran Git and produced a branch bundle.
+- `uv run pytest --collect-only -q tests/integration/test_mcp_loop.py`: one composed loop test collected. CI and real tiny-model results are pending.

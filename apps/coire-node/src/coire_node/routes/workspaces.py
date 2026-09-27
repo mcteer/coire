@@ -63,7 +63,9 @@ async def download_artifact(run_id: uuid.UUID, request: Request) -> FileResponse
     try:
         metadata, path = await _manager(request).workspaces.artifact(run_id)
         return FileResponse(
-            path, media_type="application/octet-stream", filename=f"{metadata.artifact_id}.bundle",
+            path,
+            media_type="application/octet-stream",
+            filename=f"{metadata.artifact_id}.bundle",
             headers={"X-Coire-Sha256": metadata.sha256},
         )
     except WorkspaceError as exc:

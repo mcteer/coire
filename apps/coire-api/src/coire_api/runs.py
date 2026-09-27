@@ -63,11 +63,13 @@ async def project_run(session: AsyncSession, row: AgentRunRow) -> AgentRun:
     node = await session.get(NodeRow, row.node_id) if row.node_id else None
     mcp_call = (
         await session.get(McpCallRow, row.prepared_request_id)
-        if row.prepared_request_id is not None else None
+        if row.prepared_request_id is not None
+        else None
     )
     duration = (
         max(0.0, (row.finished_at - row.started_at).total_seconds())
-        if row.finished_at is not None and row.started_at is not None else None
+        if row.finished_at is not None and row.started_at is not None
+        else None
     )
     return AgentRun(
         id=row.id,
