@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
+from urllib.parse import quote
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 DEFAULT_SECRETS_DIR = "/run/secrets"
@@ -86,6 +87,9 @@ class Settings(BaseSettings):
     # --- telemetry ------------------------------------------------------
     otlp_endpoint: str = "http://otel-collector:4317"
     service_version: str = "0.1.0"
+    mcp_enabled: bool = False
+    ops_enabled: bool = False
+    diagnostics_enabled: bool = False
 
     # --- node probing ---------------------------------------------------
     mesh_hosts_file: str = "/etc/hosts"
@@ -116,6 +120,11 @@ class Settings(BaseSettings):
     placement_lease_ttl_s: float = Field(default=60.0, gt=0.0)
     instance_drain_timeout_s: float = Field(default=30.0, gt=0.0)
     instance_event_poll_interval_s: float = Field(default=0.5, gt=0.0)
+    console_snapshot_interval_s: float = Field(default=2.0, ge=0.25, le=30.0)
+    scheduler_idle_scan_max_s: float = Field(default=5.0, ge=1.0, le=60.0)
+    scheduler_failure_backoff_max_s: float = Field(default=30.0, ge=1.0, le=300.0)
+    scheduler_shutdown_timeout_s: float = Field(default=10.0, ge=1.0, le=60.0)
+    run_kill_poll_interval_s: float = Field(default=0.25, gt=0.0, le=0.5)
 
     # --- Studio data-link and sharding ---------------------------------
     link_probe_interval_s: float = Field(default=30.0, gt=0.0)
@@ -140,6 +149,61 @@ class Settings(BaseSettings):
     harness_tool_output_byte_cap: int = Field(default=16_384, ge=1024, le=1_048_576)
     harness_summary_threshold: float = Field(default=0.8, gt=0.0, le=1.0)
     harness_evaluation_pass_score: float = Field(default=0.8, ge=0.0, le=1.0)
+
+    # --- core-only ops harness -----------------------------------------
+    ops_service_token: SecretStr = SecretStr("")
+    """Dedicated read/propose credential mounted only into coire-ops and coire-api."""
+
+    ops_service_url: str = "http://coire-ops:8003"
+    ops_api_url: str = "http://coire-api:8000"
+    ops_gateway_url: str = "http://coire-api:8000/v1"
+    ops_model_id: str = ""
+    ops_confirmation_ttl_s: int = Field(default=300, ge=30, le=300)
+    ops_session_heartbeat_s: float = Field(default=10.0, gt=0.0, le=60.0)
+    ops_session_stale_s: float = Field(default=30.0, gt=0.0, le=300.0)
+    ops_request_timeout_s: float = Field(default=120.0, gt=0.0, le=900.0)
+    ops_service_instance: str = Field(default="coire-ops", min_length=1, max_length=128)
+
+    # --- stateless control-plane failover ------------------------------
+    failover_snapshot_path: str = "/opt/coire/failover/snapshot.json"
+    failover_proof_path: str = "/opt/coire/failover/proof.json"
+    failover_snapshot_max_age_s: float = Field(default=120.0, gt=0.0, le=3600.0)
+    failover_reservation_bytes: int = Field(default=256 * 1024 * 1024, ge=0)
+    failover_lease_ttl_s: float = Field(default=15.0, gt=0.0, le=300.0)
+    failover_election_interval_s: float = Field(default=2.0, gt=0.0, le=30.0)
+    failover_promotion_threshold_s: float = Field(default=15.0, gt=0.0, le=300.0)
+    failover_demotion_threshold_s: float = Field(default=45.0, gt=0.0, le=900.0)
+    failover_drain_timeout_s: float = Field(default=30.0, gt=0.0, le=300.0)
+    failover_heartbeat_latency_budget_ms: float = Field(default=50.0, gt=0.0, le=1000.0)
+    """A beat slower than this is degraded, not unreachable. Control-path RTT on the lab is ~1 ms."""
+    failover_member_name: str = ""
+    failover_core_public_key: str = ""
+    failover_edge_a_public_key: str = ""
+    failover_edge_b_public_key: str = ""
+    failover_membership_epoch: int = Field(default=1, ge=1)
+    failover_signing_key_id: str = "core-1"
+    failover_local_relay_url: str = ""
+    failover_peer_relay_url: str = ""
+    failover_peer_key: SecretStr = SecretStr("")
+    """Per-host Keychain-sourced signing material; never a node registration token."""
+    failover_relay_token: SecretStr = SecretStr("")
+    """Studio peer inference relay credential, scoped only to the failover proxy route."""
+    failover_frontend_image: str = ""
+
+    @field_validator("failover_frontend_image")
+    @classmethod
+    def failover_image_is_digest_pinned(cls, value: str) -> str:
+        import re
+
+        if value and not re.fullmatch(r"[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}", value):
+            raise ValueError("failover frontend image must be digest-pinned")
+        return value
+
+    @model_validator(mode="after")
+    def failover_demotion_outlasts_promotion(self) -> Settings:
+        if self.failover_demotion_threshold_s <= self.failover_promotion_threshold_s:
+            raise ValueError("failover demotion threshold must exceed the promotion threshold")
+        return self
 
     # --- Studio container runs ----------------------------------------
     run_concurrency_cap: int = Field(default=3, ge=1, le=32)
@@ -220,10 +284,11 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Async SQLAlchemy URL. The password is only materialised here."""
-        pw = self.postgres_password.get_secret_value()
+        user = quote(self.postgres_user, safe="")
+        pw = quote(self.postgres_password.get_secret_value(), safe="")
+        database = quote(self.postgres_db, safe="")
         return (
-            f"postgresql+asyncpg://{self.postgres_user}:{pw}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"postgresql+asyncpg://{user}:{pw}@{self.postgres_host}:{self.postgres_port}/{database}"
         )
 
     @property

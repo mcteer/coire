@@ -8,6 +8,9 @@
     {"id": 2, "title": "Node command outcomes", "type": "timeseries", "targets": [{"expr": "sum by (operation, outcome) (rate(coire_run_commands_total[5m]))", "legendFormat": "{{operation}} {{outcome}}"}]},
     {"id": 3, "title": "Capacity waits", "type": "stat", "targets": [{"expr": "sum(increase(coire_run_capacity_waits_total[15m]))"}]},
     {"id": 4, "title": "Orphans reaped", "type": "stat", "targets": [{"expr": "sum(increase(coire_run_orphans_total[1h]))"}]},
-    {"id": 5, "title": "Last terminal transition age", "type": "timeseries", "targets": [{"expr": "time() - max(coire_run_last_transition_timestamp_seconds{state=~\"succeeded|failed|result_collection_failed|timed_out|killed\"})"}]}
+    {"id": 5, "title": "Last terminal transition age", "type": "timeseries", "targets": [{"expr": "time() - max(coire_run_last_transition_timestamp_seconds{state=~\"succeeded|failed|result_collection_failed|timed_out|killed\"})"}]},
+    {"id": 6, "title": "Ops proposal outcomes", "type": "timeseries", "targets": [{"expr": "sum by (operation, outcome) (rate(coire_ops_proposals_total[5m]))", "legendFormat": "{{operation}} {{outcome}}"}]},
+    {"id": 7, "title": "Ops confirmation refusals", "type": "timeseries", "targets": [{"expr": "sum by (reason) (rate(coire_ops_confirmations_total{outcome=\"refused\"}[5m]))", "legendFormat": "{{reason}}"}]},
+    {"id": 8, "title": "Ops degraded turns", "type": "stat", "targets": [{"expr": "sum(increase(coire_ops_turns_total{outcome=\"degraded\"}[15m]))"}]}
   ]
 }

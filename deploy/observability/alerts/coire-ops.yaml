@@ -1,0 +1,15 @@
+groups:
+  - name: coire-ops
+    rules:
+      - alert: CoireOpsRepeatedConfirmationRefusals
+        expr: sum(increase(coire_ops_confirmations_total{outcome="refused"}[10m])) > 5
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Repeated exact-action confirmation refusals detected
+      - alert: CoireOpsModelDegraded
+        expr: sum(increase(coire_ops_turns_total{outcome="degraded"}[15m])) > 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: The pinned ops model has remained unavailable

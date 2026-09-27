@@ -38,9 +38,10 @@ SERVICE_NAME = "coire-api"
 
 # Probing these is best-effort: their absence degrades, it does not fail (US2 scenario 3).
 _HTTP_DEPENDENCIES: tuple[tuple[str, str], ...] = (
-    ("mcp", "http://coire-mcp:8001/ready"),
     ("scheduler", "http://coire-scheduler:8002/ready"),
     ("otel-collector", "http://otel-collector:13133/"),
+    ("prometheus", "http://prometheus:9090/-/ready"),
+    ("alertmanager", "http://alertmanager:9093/-/ready"),
 )
 
 
@@ -61,11 +62,11 @@ async def _probe_postgres(session: AsyncSession) -> ServiceHealth:
             checked_at=datetime.now(UTC),
             latency_ms=(time.perf_counter() - started) * 1000,
         )
-    except Exception as exc:
+    except Exception:
         return ServiceHealth(
             name="postgres",
             healthy=False,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail="database probe failed; inspect correlated service logs",
             checked_at=datetime.now(UTC),
             latency_ms=(time.perf_counter() - started) * 1000,
         )
@@ -83,11 +84,11 @@ async def _probe_http(client: httpx.AsyncClient, name: str, url: str) -> Service
             checked_at=datetime.now(UTC),
             latency_ms=(time.perf_counter() - started) * 1000,
         )
-    except Exception as exc:
+    except Exception:
         return ServiceHealth(
             name=name,
             healthy=False,
-            detail=f"{type(exc).__name__}: {exc}",
+            detail="dependency probe failed; inspect correlated service logs",
             checked_at=datetime.now(UTC),
             latency_ms=(time.perf_counter() - started) * 1000,
         )
@@ -120,9 +121,22 @@ async def get_health(
     record, so its failure is `unhealthy` (HTTP 503). Everything else degrades.
     """
     async with httpx.AsyncClient() as client:
+        dependencies = list(_HTTP_DEPENDENCIES)
+        if settings.mcp_enabled:
+            dependencies.append(("mcp", "http://coire-mcp:8001/ready"))
+        if settings.ops_enabled:
+            dependencies.append(("ops", "http://coire-ops:8003/ready"))
+        if settings.diagnostics_enabled:
+            dependencies.extend(
+                [
+                    ("loki", "http://loki:3100/ready"),
+                    ("tempo", "http://tempo:3200/ready"),
+                    ("grafana", "http://grafana:3000/api/health"),
+                ]
+            )
         results = await asyncio.gather(
             _probe_postgres(session),
-            *(_probe_http(client, name, url) for name, url in _HTTP_DEPENDENCIES),
+            *(_probe_http(client, name, url) for name, url in dependencies),
         )
 
     postgres, *others = results

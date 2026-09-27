@@ -4,9 +4,11 @@
 #   coire-secrets-init.sh            create any that are missing
 #   coire-secrets-init.sh --force    replace existing items
 #   coire-secrets-init.sh --show-node-tokens   print the per-node tokens to store on each Studio
+#   coire-secrets-init.sh --force --rotate-postgres   explicit database credential rotation
 #
 # Creates: coire-postgres-password, coire-key-signing-secret, coire-node-tokens,
-#          coire-admin-token (rollback-only), and coire-bootstrap-admin-email.
+#          coire-admin-token (rollback-only), coire-bootstrap-admin-email, and the isolated
+#          coire-ops service credential.
 # Does NOT create the Hugging Face token: that lives only in each Studio's System keychain.
 #
 # The generated values are written straight into the login Keychain and never echoed, except
@@ -15,10 +17,12 @@ set -euo pipefail
 
 FORCE=0
 SHOW=0
+ROTATE_POSTGRES=0
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=1 ;;
     --show-node-tokens) SHOW=1 ;;
+    --rotate-postgres) ROTATE_POSTGRES=1 ;;
     -h|--help) sed -n '2,9p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $arg" >&2; exit 2 ;;
   esac
@@ -27,6 +31,10 @@ done
 create() {  # $1 = service name, $2 = value
   if security find-generic-password -s "$1" >/dev/null 2>&1; then
     if [[ "$FORCE" -eq 1 ]]; then
+      if [[ "$1" == coire-postgres-password && "$ROTATE_POSTGRES" -ne 1 ]]; then
+        echo "  $1: retained (use --force --rotate-postgres, then coire-up --recover-db-role)"
+        return 0
+      fi
       security delete-generic-password -s "$1" >/dev/null 2>&1 || true
     else
       echo "  $1: already present (use --force to replace)"
@@ -54,6 +62,7 @@ echo "creating Coire secrets in the login Keychain:"
 create coire-postgres-password "$(openssl rand -base64 32)"
 create coire-key-signing-secret "$(openssl rand -base64 48)"
 create coire-admin-token "$(openssl rand -base64 32)"
+create coire-ops-service-token "coire_ops_$(openssl rand -hex 32)"
 create coire-node-tokens "$(python3 -c '
 import json, secrets
 print(json.dumps({n: secrets.token_urlsafe(32) for n in ("coire-edge-a", "coire-edge-b")}))

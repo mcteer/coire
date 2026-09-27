@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from coire_api.app import create_app
+from coire_api.console.service import project_core_capacity
+from coire_core.models.console import CoreHostCapacity
 from coire_core.settings import Settings
 
 
@@ -45,6 +48,14 @@ def test_console_contracts_forbid_extra_fields_and_mutation_shapes() -> None:
         assert schemas[name]["additionalProperties"] is False
     ask_response = schemas["AskResponse"]["properties"]
     assert not ({"action", "tool", "confirm_token"} & ask_response.keys())
+
+
+def test_console_projects_truthful_core_runtime_capacity() -> None:
+    observed = project_core_capacity(datetime.now(UTC))
+    assert isinstance(observed, CoreHostCapacity)
+    assert observed.source == "core-control-plane-runtime"
+    assert observed.memory_total_bytes >= observed.memory_free_bytes >= 0
+    assert observed.disk_total_bytes >= observed.disk_free_bytes >= 0
 
 
 def test_model_collection_is_paginated_and_edits_are_versioned() -> None:

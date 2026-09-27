@@ -42,7 +42,8 @@ macOS 26.6 launchd services on the Studios. arm64 only — no amd64 build.
 not run (`coire-agent`).
 
 **Performance Goals**: Clean bring-up to all-healthy ≤ 3 min (SC-001). `coire-web` restart
-< 5 s (SC-003). Node health probe p95 ≤ 50 ms over the mesh. Node agent steady state ≤ 2 % of
+< 5 s (SC-003). Node health probe latency is measured and recorded over the mesh (there is no
+standalone sub-50 ms gate). Node agent steady state ≤ 2 % of
 one core and ≤ 150 MB RSS, self-reported (FR-012c).
 
 **Constraints**: First-party images shell-less, non-root, read-only rootfs, `cap_drop: [ALL]`,

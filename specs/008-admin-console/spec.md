@@ -1,5 +1,7 @@
 # Feature Specification: Admin Console
 
+> **2026-09-26 operational amendment:** Feature 023 makes historical diagnostics optional per [ADR-0007](../../docs/adr/0007-lean-control-plane-diagnostics.md). Dashboard links must indicate when diagnostics is disabled; live admin state and audit remain available.
+
 **Feature Branch**: `008-admin-console`
 
 **Roadmap ID**: 006 (Phase 2 — Identity, users, admin)

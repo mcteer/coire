@@ -78,7 +78,11 @@ class JobSupervisor:
         write_atomic(
             self._path(status.job_id),
             json.dumps(
-                {"params": params, "status": status.model_dump(mode="json")}, indent=2
+                # State files are consumed by older agents during a rolling upgrade.  Omit
+                # unset fields so a newly added nullable field cannot make an older supervisor
+                # reject an otherwise valid in-flight job (the wire response still includes it).
+                {"params": params, "status": status.model_dump(mode="json", exclude_none=True)},
+                indent=2,
             ).encode(),
         )
 

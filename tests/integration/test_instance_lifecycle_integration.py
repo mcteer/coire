@@ -10,7 +10,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
-from conftest import drain_runtime
+from conftest import drain_runtime, wait_nodes_healthy
 
 COMPOSE_DIR = Path(__file__).resolve().parents[2] / "deploy/compose"
 pytestmark = [
@@ -119,14 +119,25 @@ def _wait_instance(
 def _verified_candidate(
     client: httpx.Client, headers: dict[str, str]
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    ledgers = client.get("/api/v1/admin/ledger", headers=headers).json()
+    available = {
+        item["node_name"]: int(item["free_bytes"])
+        for item in ledgers
+        if item["node_name"] in {"coire-edge-a", "coire-edge-b"}
+    }
+    assert len(available) == 2, "both Studio ledgers are required"
     for model in client.get("/api/v1/admin/models", headers=headers).json():
         variants = client.get(
             f"/api/v1/admin/models/{model['id']}/variants", headers=headers
         ).json()
         for variant in variants:
-            if variant["validated"] and variant["state"] == "ready":
+            if (
+                variant["validated"]
+                and variant["state"] == "ready"
+                and int(variant["memory_estimate_bytes"]) <= min(available.values())
+            ):
                 return model, variant
-    raise AssertionError("acquisition tests must provide a verified model")
+    raise AssertionError("acquisition tests must provide a verified model fitting both Studios")
 
 
 def test_restart_two_instances_drain_and_registration_token_reuse(
@@ -134,6 +145,7 @@ def test_restart_two_instances_drain_and_registration_token_reuse(
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=60) as client:
         drain_runtime(client, admin_headers)
+        wait_nodes_healthy(client, admin_headers)
         model, variant = _verified_candidate(client, admin_headers)
         first = client.post(
             "/api/v1/instances",
@@ -146,6 +158,10 @@ def test_restart_two_instances_drain_and_registration_token_reuse(
         )
         assert first.status_code == 202, first.text
         first_id = first.json()["id"]
+        # Restart only after the first instance is ready; this tests durable state recovery
+        # without racing the placement workflow's initial command hand-off.
+        first_before_restart = _wait_instance(client, first_id, admin_headers, {"ready", "failed"})
+        assert first_before_restart["state"] == "ready", first_before_restart
         subprocess.run(
             ["docker", "compose", "-p", "coire-it", "restart", "coire-scheduler"],
             cwd=COMPOSE_DIR,
@@ -161,6 +177,10 @@ def test_restart_two_instances_drain_and_registration_token_reuse(
             first_data = next(line for line in events.iter_lines() if line.startswith("data: "))
             assert json.loads(first_data.removeprefix("data: "))["state"] == "ready"
 
+        # Scheduler restart can briefly leave the peer's registration stale while the first
+        # instance is already recovered.  Wait for both node heartbeats before placing the
+        # second instance on the other Studio.
+        wait_nodes_healthy(client, admin_headers)
         second = client.post(
             "/api/v1/instances",
             headers=admin_headers,

@@ -98,6 +98,18 @@ jobs:
             dockerfile: apps/coire-web/Dockerfile
           - name: coire-otel
             dockerfile: deploy/compose/otel.Dockerfile
+          - name: coire-prometheus
+            dockerfile: deploy/compose/prometheus.Dockerfile
+          - name: coire-alertmanager
+            dockerfile: deploy/compose/alertmanager.Dockerfile
+          - name: coire-loki
+            dockerfile: deploy/compose/loki.Dockerfile
+          - name: coire-tempo
+            dockerfile: deploy/compose/tempo.Dockerfile
+          - name: coire-grafana
+            dockerfile: deploy/compose/grafana.Dockerfile
+          - name: coire-failover
+            dockerfile: apps/coire-failover/Dockerfile
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
@@ -269,7 +281,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        name: [coire-api, coire-mcp, coire-scheduler, coire-migrate, coire-agent, coire-agent-ops, coire-run-relay, coire-web, coire-otel]
+        name: [coire-api, coire-mcp, coire-scheduler, coire-migrate, coire-agent, coire-agent-ops, coire-run-relay, coire-web, coire-otel, coire-prometheus, coire-alertmanager, coire-loki, coire-tempo, coire-grafana, coire-failover]
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4

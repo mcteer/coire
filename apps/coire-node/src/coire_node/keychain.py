@@ -6,6 +6,8 @@ Two secrets live on a Studio and nowhere else:
     (feature 000 FR-013; a static token until feature 005 issues real ones, ADR-0001);
   * `coire-hf-token` — the Hugging Face credential. Spec FR-005 puts it *only* here, so the
     node agent is the one component that can talk to Hugging Face at all.
+  * `coire-failover-peer-key` and `coire-failover-relay-token` — per-Studio election signing
+    and inference-relay credentials; neither is a node registration token.
 
 They are in the **System** keychain, not the login keychain, because the agent is a
 LaunchDaemon that starts before anyone logs in and the login keychain is still locked at that
@@ -29,6 +31,9 @@ logger = logging.getLogger(__name__)
 SYSTEM_KEYCHAIN = "/Library/Keychains/System.keychain"
 NODE_TOKEN_ITEM = "coire-node-token"
 HF_TOKEN_ITEM = "coire-hf-token"
+FAILOVER_PEER_KEY_ITEM = "coire-failover-peer-key"
+FAILOVER_RELAY_TOKEN_ITEM = "coire-failover-relay-token"
+FAILOVER_CORE_PUBLIC_KEY_ITEM = "coire-failover-core-public-key"
 _TIMEOUT_S = 10.0
 
 
@@ -100,3 +105,12 @@ def load_node_secrets(settings: object) -> None:
                 HF_TOKEN_ITEM,
                 SYSTEM_KEYCHAIN,
             )
+
+    if not settings.failover_peer_key.get_secret_value():
+        settings.failover_peer_key = read_item(FAILOVER_PEER_KEY_ITEM)
+    if not settings.failover_core_public_key:
+        settings.failover_core_public_key = read_item(
+            FAILOVER_CORE_PUBLIC_KEY_ITEM
+        ).get_secret_value()
+    if not settings.failover_relay_token.get_secret_value():
+        settings.failover_relay_token = read_item(FAILOVER_RELAY_TOKEN_ITEM)

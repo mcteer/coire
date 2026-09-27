@@ -8,6 +8,10 @@ export type ApiKey = components["schemas"]["ApiKey"];
 export type ModelVariant = components["schemas"]["ModelVariant"];
 export type ActivityItem = components["schemas"]["ActivityItem"];
 export type ActivityPage = components["schemas"]["CursorPage_ActivityItem_"];
+export type OpsConversation = components["schemas"]["OpsConversation"];
+export type OpsProposal = components["schemas"]["OpsProposal"];
+export type OpsProposalIssued = components["schemas"]["OpsProposalIssued"];
+export type OpsTurnResponse = components["schemas"]["OpsTurnResponse"];
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -42,3 +46,30 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
+
+export const startOpsConversation = () =>
+  api<OpsConversation>("/api/v1/admin/ops/conversations", {
+    method: "POST",
+    body: "{}",
+  });
+
+export const sendOpsMessage = (conversationId: string, question: string) =>
+  api<OpsTurnResponse>(`/api/v1/admin/ops/conversations/${conversationId}/messages`, {
+    method: "POST",
+    body: JSON.stringify({ question }),
+  });
+
+export const confirmOpsProposal = (issued: OpsProposalIssued) =>
+  api<OpsProposal>(`/api/v1/admin/ops/proposals/${issued.proposal.id}/confirm`, {
+    method: "POST",
+    body: JSON.stringify({
+      confirm_token: issued.confirm_token,
+      action: issued.proposal.action,
+    }),
+  });
+
+export const declineOpsProposal = (proposalId: string, reason?: string) =>
+  api<OpsProposal>(`/api/v1/admin/ops/proposals/${proposalId}/decline`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason || null }),
+  });

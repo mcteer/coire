@@ -6,13 +6,13 @@ import asyncio
 import logging
 import secrets
 import uuid
-from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 
 from coire_api.db import AcquisitionCommandRow, AcquisitionWorkflowRow, NodeRow, session_scope
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
+from coire_api.polling import PollBackoff, wait_or_stop
 from coire_core.models.acquisition import AcquisitionState, ReservationRequest, VariantRecipe
 from coire_core.models.jobs import JobStage, JobStatus
 from coire_core.settings import Settings
@@ -37,23 +37,23 @@ class AcquisitionCommandExecutor:
             self._task = None
 
     async def _run(self) -> None:
+        backoff = PollBackoff(
+            self.settings.acquisition_poll_interval_s,
+            self.settings.scheduler_idle_scan_max_s,
+            self.settings.scheduler_failure_backoff_max_s,
+        )
         while not self._stop.is_set():
             try:
                 command_id = await self._next_command()
             except Exception:
                 logger.exception("acquisition command queue poll failed; retrying")
-                with suppress(TimeoutError):
-                    await asyncio.wait_for(
-                        self._stop.wait(), timeout=self.settings.acquisition_poll_interval_s
-                    )
+                await wait_or_stop(self._stop, backoff.failed())
                 continue
             if command_id is not None:
+                backoff.active()
                 await self._execute_safely(command_id)
                 continue
-            with suppress(TimeoutError):
-                await asyncio.wait_for(
-                    self._stop.wait(), timeout=self.settings.acquisition_poll_interval_s
-                )
+            await wait_or_stop(self._stop, backoff.idle())
 
     async def _next_command(self) -> uuid.UUID | None:
         async with session_scope() as session:
@@ -218,8 +218,20 @@ class AcquisitionCommandExecutor:
         raise RuntimeError(f"unknown acquisition operation {operation}")
 
     async def _wait(self, client: NodeClient, node: str, job_id: uuid.UUID) -> dict[str, object]:
+        # A node acknowledges job creation before its durable job record is visible to GET.
+        # Treat a short initial 404 as propagation, but never mask a genuinely lost job.
+        lookup_deadline = asyncio.get_running_loop().time() + 15.0
         while True:
-            status: JobStatus = await client.get_job(node, job_id)
+            try:
+                status: JobStatus = await client.get_job(node, job_id)
+            except NodeError as exc:
+                if (
+                    exc.kind is NodeErrorKind.NOT_FOUND
+                    and asyncio.get_running_loop().time() < lookup_deadline
+                ):
+                    await asyncio.sleep(self.settings.acquisition_poll_interval_s)
+                    continue
+                raise
             if status.stage is JobStage.DONE:
                 return status.model_dump(mode="json")
             if status.stage in {JobStage.FAILED, JobStage.CANCELLED}:

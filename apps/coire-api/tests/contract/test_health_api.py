@@ -65,7 +65,9 @@ class FakeSession:
         return FakeResult([])
 
 
-def build_app(*, db_fails: bool = False) -> FastAPI:
+def build_app(
+    *, db_fails: bool = False, ops_enabled: bool = False, diagnostics_enabled: bool = False
+) -> FastAPI:
     app = FastAPI()
     app.include_router(health.router)
 
@@ -76,7 +78,14 @@ def build_app(*, db_fails: bool = False) -> FastAPI:
     from coire_core.settings import get_settings
 
     app.dependency_overrides[get_session] = _session
-    app.dependency_overrides[get_settings] = lambda: Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+
+    def settings() -> Settings:
+        value = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+        value.ops_enabled = ops_enabled
+        value.diagnostics_enabled = diagnostics_enabled
+        return value
+
+    app.dependency_overrides[get_settings] = settings
     return app
 
 
@@ -111,16 +120,34 @@ async def test_health_is_503_and_unhealthy_when_postgres_fails(contract: dict[st
     pg = next(s for s in body["services"] if s["name"] == "postgres")
     assert pg["healthy"] is False
     assert pg["detail"]
+    assert "postgres is down" not in pg["detail"]
 
 
 async def test_health_reports_every_dependency() -> None:
     body = (await call(build_app(), "/health")).json()
     assert {s["name"] for s in body["services"]} == {
         "postgres",
-        "mcp",
         "scheduler",
         "otel-collector",
+        "prometheus",
+        "alertmanager",
     }
+
+
+async def test_health_omits_disabled_optional_mcp() -> None:
+    app = build_app()
+    body = (await call(app, "/health")).json()
+    assert "mcp" not in {service["name"] for service in body["services"]}
+
+
+async def test_health_probes_enabled_ops_only() -> None:
+    body = (await call(build_app(ops_enabled=True), "/health")).json()
+    assert "ops" in {service["name"] for service in body["services"]}
+
+
+async def test_health_probes_historical_services_only_when_enabled() -> None:
+    body = (await call(build_app(diagnostics_enabled=True), "/health")).json()
+    assert {"loki", "tempo", "grafana"} <= {service["name"] for service in body["services"]}
 
 
 async def test_health_records_latency_for_each_probe() -> None:

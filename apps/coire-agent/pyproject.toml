@@ -8,6 +8,14 @@ dependencies = [
     "pydantic-ai-slim[openai]==2.37.0",
 ]
 
+[project.optional-dependencies]
+# MIT. The long-lived ops-only distribution exposes a narrow internal HTTP/health boundary;
+# keeping these optional prevents either server dependency from entering the Studio user image.
+ops = [
+    "fastapi==0.135.1",
+    "uvicorn==0.41.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

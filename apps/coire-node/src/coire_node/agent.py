@@ -38,6 +38,7 @@ from coire_node.reservations import ReservationLedger
 from coire_node.routes import benchmarks as benchmark_routes
 from coire_node.routes import engines as engines_routes
 from coire_node.routes import export as export_routes
+from coire_node.routes import failover as failover_routes
 from coire_node.routes import jobs as jobs_routes
 from coire_node.routes import link_probes as link_probe_routes
 from coire_node.routes import models as models_routes
@@ -240,6 +241,10 @@ def create_app(
         app.include_router(link_probe_routes.router, dependencies=guard)
         app.include_router(benchmark_routes.router, dependencies=guard)
         app.include_router(runs_routes.router, dependencies=guard)
+        # Failover's separately scoped credential has access only to resident metadata and
+        # this inference relay. It cannot use the broad node-registration credential.
+        if listener in (NetworkPath.CONTROL, NodePath.MESH):
+            app.include_router(failover_routes.router)
 
         # The data path for peer replication. Mesh listener only, and authorised by the grant
         # in the URL rather than the node bearer, because the peer does not hold that token
@@ -401,9 +406,16 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     if not servers:
         raise RuntimeError("no address to bind: neither a mesh nor an egress address resolved")
 
+    from coire_node.failover.poller import build_controller
+
+    failover_controller = build_controller(settings, docker)
+    if failover_controller is not None:
+        await failover_controller.start()
     try:
         await asyncio.gather(*(s.serve() for s in servers))
     finally:
+        if failover_controller is not None:
+            await failover_controller.stop()
         await engines_routes.close_engine_client()
         await docker.close()
         # Engines are deliberately left running: the agent is restartable and they are not

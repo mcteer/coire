@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import time
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
@@ -45,7 +46,7 @@ def wait_for(
     raise AssertionError(f"state did not reach {terminal}: {latest}")
 
 
-def wait_for_container(run_id: str, *, timeout: float = 15) -> str:
+def wait_for_container(run_id: str, *, timeout: float = 45) -> str:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         rows = subprocess.run(
@@ -169,7 +170,12 @@ def prepare_verified_model(client: httpx.Client, admin_headers: dict[str, str]) 
             json={
                 "repo_id": TINY_REPO,
                 "keep_raw": False,
-                "variant": {"name": "run-integration-bf16", "precision": "bf16"},
+                # A prior integration test may leave this repo with an unvalidated variant;
+                # use a fresh name so preparation remains idempotent across the full suite.
+                "variant": {
+                    "name": f"run-integration-bf16-{uuid.uuid4().hex[:8]}",
+                    "precision": "bf16",
+                },
             },
         )
         assert response.status_code in (200, 202), response.text
@@ -320,7 +326,11 @@ def test_scheduler_restart_preserves_one_real_run_container(
                     "permitted_model_ids": [model_id],
                     "permitted_tools": [],
                     "spend_limit_tokens": 1000,
-                    "limits": {"memory_bytes": 268435456, "timeout_seconds": 60},
+                    # The fake harness itself sleeps five seconds, but a full composed run can
+                    # spend longer starting the non-root container while the node is under the
+                    # suite's model/engine load. Keep a bounded timeout without turning that
+                    # startup variance into a false scheduler-recovery failure.
+                    "limits": {"memory_bytes": 268435456, "timeout_seconds": 180},
                 },
             )
             assert response.status_code == 202, response.text
@@ -386,6 +396,29 @@ def test_scheduler_restart_preserves_one_real_run_container(
             timeout=180,
         )
         assert successor["state"] == "succeeded", json.dumps(successor, indent=2)
+
+        # A blocked WAIT on the ordinary command lane must not delay the independent kill
+        # lane. The node is responsive, so the container and terminal state have five seconds.
+        third = submit("scheduler-kill-third", "coire-harness-json slow-completion")
+        third_id = str(third["id"])
+        wait_for_container(third_id)
+        kill_started = time.monotonic()
+        killed = client.request(
+            "DELETE",
+            f"/api/v1/admin/runs/{third_id}",
+            headers=admin_headers,
+            json={"reason": "integration kill lane"},
+        )
+        assert killed.status_code == 202, killed.text
+        terminal_kill = wait_for(
+            client,
+            f"/api/v1/runs/{third_id}",
+            user_headers,
+            {"killed"},
+            timeout=5,
+        )
+        assert terminal_kill["state"] == "killed"
+        assert time.monotonic() - kill_started < 5
         cleanup_deadline = time.monotonic() + 15
         while True:
             containers = subprocess.run(

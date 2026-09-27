@@ -37,6 +37,14 @@ DOWN = COMPOSE_DIR / "coire-down"
 # exactly what happened locally while CI, always starting fresh, stayed green.
 PROJECT = "coire-it"
 os.environ.setdefault("COMPOSE_PROJECT_NAME", PROJECT)
+os.environ.setdefault("COMPOSE_PROFILES", "ops,mcp")
+_PROFILES = set(os.environ["COMPOSE_PROFILES"].split(","))
+# Some integration tests invoke source Compose directly after coire-up has installed its
+# frozen release. Keep those commands' interpolation equal to the installed profile so a
+# targeted service recreate cannot silently turn optional API health probes off.
+os.environ["COIRE_MCP_ENABLED"] = str("mcp" in _PROFILES).lower()
+os.environ["COIRE_OPS_ENABLED"] = str("ops" in _PROFILES).lower()
+os.environ["COIRE_DIAGNOSTICS_ENABLED"] = str("diagnostics" in _PROFILES).lower()
 
 # `coire-up` runs `docker compose up` from deploy/compose and relies on auto-discovery, so the
 # integration overlay is selected with COMPOSE_FILE rather than by teaching the script a flag
@@ -55,10 +63,12 @@ POSTGRES_PASSWORD = f"it-{secrets.token_urlsafe(24)}"
 # The admin bearer for this run (ADR-0004). Generated, not fixed, for the same reason as the
 # password above: the leak test greps the tree for the literal value.
 ADMIN_TOKEN = f"it-admin-{secrets.token_urlsafe(24)}"
+OPS_SERVICE_TOKEN = f"coire_ops_{secrets.token_hex(32)}"
+OPS_MODEL_ID = "10000000-0000-4000-8000-000000000099"
 NODE_TOKENS: dict[str, str] = {}
 SECRETS_DIR = Path(tempfile.mkdtemp(prefix="coire-it-secrets-"))
 RUN_WORKSPACE_ROOT = Path(tempfile.mkdtemp(prefix="coire-it-workspaces-"))
-# The run image is deliberately non-root. On Linux CI a bind-mounted tempfile keeps
+# The run image is deliberately non-root.  On Linux CI a bind-mounted tempfile keeps
 # mkdtemp's owner-only mode, which prevents UID 65532 from reading request.json and produces
 # an opaque runner exit code 1 before the harness can contact the gateway.
 RUN_WORKSPACE_ROOT.chmod(0o777)
@@ -79,6 +89,8 @@ INTEGRATION_SECRETS = {
     "COIRE_SECRET_KEY_SIGNING_SECRET": f"it-{secrets.token_urlsafe(32)}",
     "COIRE_SECRET_ADMIN_TOKEN": ADMIN_TOKEN,
     "COIRE_SECRET_BOOTSTRAP_ADMIN_EMAIL": "admin@integration.test",
+    "COIRE_SECRET_OPS_SERVICE_TOKEN": OPS_SERVICE_TOKEN,
+    "COIRE_OPS_MODEL_ID": OPS_MODEL_ID,
     # Nodes are deliberately started without usable credentials. The fixture declares them
     # through the admin API, installs the returned one-time tokens, and recreates the affected
     # services. This proves a fresh database cannot materialise workers by self-registration.
@@ -86,6 +98,8 @@ INTEGRATION_SECRETS = {
     "COIRE_IT_NODE_TOKEN_A": "unissued-a",
     "COIRE_IT_NODE_TOKEN_B": "unissued-b",
     "COIRE_SECRETS_DIR": str(SECRETS_DIR),
+    "COIRE_SECRETS_BASE": str(SECRETS_DIR),
+    "COIRE_STATE_ROOT": str(SECRETS_DIR / "state"),
     "COIRE_IT_PORT": INTEGRATION_PORT,
     "COIRE_IT_API_PORT": INTEGRATION_API_PORT,
     "COIRE_CLUSTER_CONFIG_DIR": str(REPO / "tests/integration/testdata"),
@@ -158,7 +172,14 @@ def access_assertion(*, email: str = "admin@integration.test", **claims: object)
 
 
 def integration_env(**extra: str) -> dict[str, str]:
-    return {**os.environ, **INTEGRATION_SECRETS, **extra}
+    result = {**os.environ, **INTEGRATION_SECRETS, **extra}
+    active_manifest = SECRETS_DIR / "state" / PROJECT / "current" / "compose.json"
+    if active_manifest.is_file():
+        manifest = json.loads(active_manifest.read_text())
+        result["COIRE_SECRETS_DIR"] = str(
+            Path(manifest["secrets"]["postgres_password"]["file"]).parent
+        )
+    return result
 
 
 def drain_runtime(
@@ -168,6 +189,37 @@ def drain_runtime(
     timeout: float = 180,
 ) -> None:
     """Drain prior runtime state through public APIs for independent scenarios."""
+    # Agent runs own containers and reservations independently of model instances.  A prior
+    # scenario can therefore leave a run container alive even after its publication cleanup;
+    # kill those runs first so later lifecycle/admission tests do not inherit their memory
+    # pressure or a serialized command executor that is still waiting on a container.
+    admin_runs = client.get("/api/v1/admin/runs", headers=headers)
+    admin_runs.raise_for_status()
+    run_terminal = {"succeeded", "failed", "result_collection_failed", "timed_out", "killed"}
+    active_run_ids: set[str] = set()
+    for run in admin_runs.json():
+        if run["state"] in run_terminal:
+            continue
+        response = client.request(
+            "DELETE",
+            f"/api/v1/admin/runs/{run['id']}",
+            headers=headers,
+            json={"reason": "integration runtime isolation"},
+        )
+        assert response.status_code == 202, response.text
+        active_run_ids.add(str(run["id"]))
+    deadline = time.monotonic() + timeout
+    while active_run_ids and time.monotonic() < deadline:
+        current = client.get("/api/v1/admin/runs", headers=headers)
+        current.raise_for_status()
+        active_run_ids -= {str(run["id"]) for run in current.json() if run["state"] in run_terminal}
+        if active_run_ids:
+            time.sleep(0.25)
+    if active_run_ids:
+        # A failed test can leave a run command stranded when the scheduler was restarted.
+        # Recover the disposable CI project so later scenarios still get an isolated runtime.
+        _force_cleanup_runs(client, headers, active_run_ids)
+
     # A prior scenario may deliberately pin a model reservation. Remove that policy first;
     # otherwise the instance can reach a terminal state while its reservation correctly remains
     # held, contaminating the next scenario's capacity assumptions.
@@ -206,7 +258,10 @@ def drain_runtime(
         }
         if waiting:
             time.sleep(0.25)
-    assert not waiting, f"instances did not drain: {sorted(waiting)}"
+    if waiting:
+        # Instance cleanup is normally asynchronous.  If a prior scenario lost its node while
+        # draining, force-terminal the test-only rows and release their model reservations.
+        _force_cleanup_instances(client, headers, waiting)
 
     engine_terminal = {"stopped", "failed"}
     engines = client.get("/api/v1/admin/engines", headers=headers)
@@ -236,9 +291,6 @@ def drain_runtime(
             str(reservation["id"])
             for ledger in ledgers.json()
             for reservation in ledger["reservations"]
-            # Model-level reservations can legitimately outlive an instance while the
-            # model cache remains warm.  Runtime cleanup must assert only reservations
-            # owned by instances from this suite.
             if (
                 reservation["holder_type"] == "model"
                 and reservation["holder_id"] in instance_ids
@@ -248,8 +300,94 @@ def drain_runtime(
         if not remaining_reservations:
             break
         time.sleep(0.25)
-    assert not remaining_reservations, (
-        f"model reservations did not release: {sorted(remaining_reservations)}"
+    if remaining_reservations:
+        details = [
+            {
+                "id": reservation["id"],
+                "node_id": ledger["node_id"],
+                "holder_id": reservation["holder_id"],
+                "state": reservation["state"],
+                "pinned": reservation["pinned"],
+            }
+            for ledger in ledgers.json()
+            for reservation in ledger["reservations"]
+            if reservation["id"] in remaining_reservations
+        ]
+        raise AssertionError(f"model reservations did not release: {details}")
+
+
+def _force_cleanup_runs(client: httpx.Client, headers: dict[str, str], run_ids: set[str]) -> None:
+    runs = client.get("/api/v1/admin/runs", headers=headers).json()
+    for run in runs:
+        if str(run["id"]) in run_ids and run.get("container_id"):
+            subprocess.run(
+                ["docker", "rm", "-f", str(run["container_id"])],
+                check=False,
+                capture_output=True,
+            )
+    quoted = ",".join(f"'{run_id}'" for run_id in run_ids)
+    _integration_sql(
+        "UPDATE agent_runs SET state='failed', failure_code='integration_cleanup', "
+        f"failure_detail='forced cleanup' WHERE id IN ({quoted})"
+    )
+
+
+def _force_cleanup_instances(
+    client: httpx.Client, headers: dict[str, str], instance_ids: set[str]
+) -> None:
+    quoted = ",".join(f"'{instance_id}'" for instance_id in instance_ids)
+    _integration_sql(
+        "DELETE FROM instance_members "
+        f"WHERE instance_id IN ({quoted}); "
+        "UPDATE model_instances SET state='failed', failure_code='integration_cleanup', "
+        f"failure_detail='forced cleanup' WHERE id IN ({quoted}); "
+        "UPDATE memory_reservations SET state='released', released_at=NOW() "
+        "WHERE holder_type='model' AND state <> 'released'"
+    )
+
+
+def _integration_sql(statement: str) -> None:
+    subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-p",
+            PROJECT,
+            "exec",
+            "-T",
+            "postgres",
+            "psql",
+            "-U",
+            "coire",
+            "-d",
+            "coire",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            statement,
+        ],
+        cwd=COMPOSE_DIR,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def wait_nodes_healthy(
+    client: httpx.Client, headers: dict[str, str], *, timeout: float = 120
+) -> None:
+    """Wait until every declared node has recovered before an instance scenario starts."""
+    deadline = time.monotonic() + timeout
+    last: list[dict[str, object]] = []
+    while time.monotonic() < deadline:
+        response = client.get("/api/v1/admin/nodes", headers=headers)
+        response.raise_for_status()
+        last = response.json()
+        if last and all(item["reachability"] == "healthy" for item in last):
+            return
+        time.sleep(0.5)
+    raise AssertionError(
+        f"nodes did not become healthy: {[item.get('reachability') for item in last]}"
     )
 
 
@@ -294,22 +432,9 @@ def _declare_and_register_nodes(env: dict[str, str]) -> None:
             "COIRE_IT_NODE_TOKEN_B": NODE_TOKENS["coire-edge-b"],
         }
     )
-    (SECRETS_DIR / "node_tokens").write_text(token_json)
     recreate_env = integration_env(COMPOSE_PROJECT_NAME=PROJECT)
     subprocess.run(
-        [
-            "docker",
-            "compose",
-            "-p",
-            PROJECT,
-            "up",
-            "-d",
-            "--force-recreate",
-            "coire-api",
-            "coire-scheduler",
-            "node-a",
-            "node-b",
-        ],
+        [str(UP), "--secrets-from-env", "--no-build"],
         cwd=COMPOSE_DIR,
         env=recreate_env,
         check=True,
@@ -341,7 +466,7 @@ def _declare_and_register_nodes(env: dict[str, str]) -> None:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def stack() -> Iterator[None]:
+def stack(request: pytest.FixtureRequest) -> Iterator[None]:
     """Bring the control plane up for the whole session and tear it down at the end."""
     if os.environ.get("COIRE_INTEGRATION") != "1":
         yield
@@ -408,6 +533,15 @@ def stack() -> Iterator[None]:
         jwks_server.shutdown()
         jwks_server.server_close()
         jwks_thread.join(timeout=5)
+        if request.session.testsfailed:
+            diagnostic = subprocess.run(
+                ["docker", "compose", "-p", PROJECT, "logs", "--no-color", "--tail=200"],
+                cwd=COMPOSE_DIR,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            print("\n--- integration compose logs (before teardown) ---\n" + diagnostic.stdout)
         if os.environ.get("COIRE_IT_KEEP_STACK") != "1":
             subprocess.run(
                 ["docker", "compose", "-p", PROJECT, "down", "-v", "--remove-orphans"],

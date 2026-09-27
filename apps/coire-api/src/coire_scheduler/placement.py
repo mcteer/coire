@@ -228,6 +228,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             session,
             budget_bytes=settings.placement_default_budget_bytes,
             sandbox_bytes=settings.placement_sandbox_bytes,
+            failover_bytes=settings.failover_reservation_bytes,
         )
         decision = await session.get(PlacementDecisionRow, decision_id)
         if decision is None or decision.state is PlacementState.READY:

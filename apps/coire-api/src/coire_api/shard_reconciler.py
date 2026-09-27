@@ -146,10 +146,12 @@ class ShardReconciler:
                 .scalars()
                 .all()
             )
-            group.state = ShardGroupState.FAILED
+            # Keep the group in STOPPING until both rank stop commands are confirmed.  The
+            # fallback launch gate uses this state to avoid starting a survivor while the
+            # failed group's engine is still tearing down.
+            group.state = ShardGroupState.STOPPING
             rank_failures.add(1, {"node_id": str(failed_node_id)})
             group.state_reason = "rank health conjunction failed"
-            group.stopped_at = datetime.now(UTC)
             if instance is not None and instance.state is not InstanceState.FAILED:
                 await transition(
                     session,

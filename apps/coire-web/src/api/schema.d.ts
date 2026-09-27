@@ -185,6 +185,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/failover/overrides": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Override */
+        post: operations["apply_override_api_v1_admin_failover_overrides_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/harness-evaluations": {
         parameters: {
             query?: never;
@@ -627,6 +644,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/ops/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Conversation */
+        post: operations["start_conversation_api_v1_admin_ops_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Conversation */
+        get: operations["get_conversation_api_v1_admin_ops_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Message */
+        post: operations["post_message_api_v1_admin_ops_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Proposal */
+        get: operations["get_proposal_api_v1_admin_ops_proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/proposals/{proposal_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Proposal */
+        post: operations["confirm_proposal_api_v1_admin_ops_proposals__proposal_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/ops/proposals/{proposal_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline Proposal */
+        post: operations["decline_proposal_api_v1_admin_ops_proposals__proposal_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/placements/{decision_id}": {
         parameters: {
             query?: never;
@@ -750,6 +869,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/failover/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile */
+        post: operations["reconcile_api_v1_failover_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/failover/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Heartbeat
+         * @description Signed liveness exchange. A user credential is not accepted here.
+         */
+        post: operations["heartbeat_api_v1_failover_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/failover/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replicated Snapshot
+         * @description Return the latest signed cache to an authenticated declared Studio.
+         */
+        post: operations["replicated_snapshot_api_v1_failover_snapshot_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/failover/votes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cast Vote */
+        post: operations["cast_vote_api_v1_failover_votes_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instances": {
         parameters: {
             query?: never;
@@ -795,6 +988,77 @@ export interface paths {
         };
         /** Instance Events */
         get: operations["instance_events_api_v1_instances__instance_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/ops/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit Ops Proposal */
+        post: operations["submit_ops_proposal_api_v1_internal_ops_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/ops/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Register Ops Session */
+        post: operations["register_ops_session_api_v1_internal_ops_sessions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/ops/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Heartbeat Ops Session */
+        patch: operations["heartbeat_ops_session_api_v1_internal_ops_sessions__session_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/internal/ops/snapshot": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read Ops Snapshot
+         * @description Return the bounded control-plane facts available to the ops model.
+         */
+        get: operations["read_ops_snapshot_api_v1_internal_ops_snapshot_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -924,6 +1188,26 @@ export interface paths {
         };
         /** Cluster State */
         get: operations["cluster_state_api_v1_state_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/failover/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Failover Ready
+         * @description Election gate for the public load balancer. Process liveness stays on `/ready`.
+         */
+        get: operations["failover_ready_failover_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1696,7 +1980,7 @@ export interface components {
         /** ChatMessage */
         ChatMessage: {
             /** Content */
-            content: string | null;
+            content?: string | null;
             /** Name */
             name?: string | null;
             /**
@@ -1817,6 +2101,7 @@ export interface components {
             alerts?: components["schemas"]["ConsoleAlert"][];
             capabilities: components["schemas"]["ConsoleCapabilities"];
             cluster: components["schemas"]["ClusterState"];
+            core?: components["schemas"]["CoreHostCapacity"] | null;
             /** Cursor */
             cursor: string;
             /** Ledgers */
@@ -1827,6 +2112,40 @@ export interface components {
              */
             observed_at: string;
         };
+        /**
+         * CoreHostCapacity
+         * @description Capacity visible to the core control-plane runtime, not fabricated host telemetry.
+         */
+        CoreHostCapacity: {
+            /** Cpu Percent */
+            cpu_percent?: number | null;
+            /** Disk Free Bytes */
+            disk_free_bytes: number;
+            /** Disk Total Bytes */
+            disk_total_bytes: number;
+            /**
+             * Health
+             * @enum {string}
+             */
+            health: "healthy" | "degraded" | "unreachable";
+            /** Host Name */
+            host_name: string;
+            /** Memory Free Bytes */
+            memory_free_bytes: number;
+            /** Memory Total Bytes */
+            memory_total_bytes: number;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /**
+             * Source
+             * @default core-control-plane-runtime
+             * @constant
+             */
+            source: "core-control-plane-runtime";
+        };
         /** CursorPage[ActivityItem] */
         CursorPage_ActivityItem_: {
             /** Items */
@@ -1834,11 +2153,139 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** ElectionVoteGrant */
+        ElectionVoteGrant: {
+            /** Candidate */
+            candidate: string;
+            /** Epoch */
+            epoch: number;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Signature */
+            signature: string;
+            /** Term */
+            term: number;
+            /** Voter */
+            voter: string;
+        };
+        /** EmptyOpsParameters */
+        EmptyOpsParameters: Record<string, never>;
         /**
          * EvaluationVerdict
          * @enum {string}
          */
         EvaluationVerdict: "passed" | "failed" | "infrastructure_error";
+        /**
+         * FailoverAccessVerifier
+         * @description Public Cloudflare Access verification material safe for a Studio snapshot.
+         */
+        FailoverAccessVerifier: {
+            /** Audience */
+            audience: string;
+            /** Issuer */
+            issuer: string;
+            /** Jwks Url */
+            jwks_url: string;
+        };
+        /**
+         * FailoverHeartbeat
+         * @description A signed liveness beat. Latency of the exchange is measured by the caller.
+         */
+        FailoverHeartbeat: {
+            /** Member */
+            member: string;
+            /**
+             * Sent At
+             * Format: date-time
+             */
+            sent_at: string;
+            /** Signature */
+            signature: string;
+        };
+        /** FailoverMember */
+        FailoverMember: {
+            /** Name */
+            name: string;
+            /** Priority */
+            priority: number;
+            /** Public Key */
+            public_key: string;
+        };
+        /** FailoverMembershipConfig */
+        FailoverMembershipConfig: {
+            /** Epoch */
+            epoch: number;
+            /** Members */
+            members: components["schemas"]["FailoverMember"][];
+            /** Signing Key Id */
+            signing_key_id: string;
+        };
+        /** FailoverModel */
+        FailoverModel: {
+            /** Context Window */
+            context_window: number;
+            /** Display Name */
+            display_name: string;
+            /** Entitlement */
+            entitlement?: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+        };
+        /** FailoverOverride */
+        FailoverOverride: {
+            /**
+             * Actor Id
+             * Format: uuid
+             */
+            actor_id: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            kind: components["schemas"]["FailoverOverrideKind"];
+            /** Reason */
+            reason: string;
+            /** Signature */
+            signature: string;
+        };
+        /**
+         * FailoverOverrideKind
+         * @enum {string}
+         */
+        FailoverOverrideKind: "inhibit" | "break_glass_promote";
+        /** FailoverSnapshot */
+        FailoverSnapshot: {
+            access_verifier: components["schemas"]["FailoverAccessVerifier"];
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            membership: components["schemas"]["FailoverMembershipConfig"];
+            /** Models */
+            models?: components["schemas"]["FailoverModel"][];
+            /** Signature */
+            signature: string;
+            /**
+             * Snapshot Id
+             * Format: uuid
+             */
+            snapshot_id: string;
+        };
         /** GatewayModel */
         GatewayModel: {
             /** Coire Context Window */
@@ -1990,6 +2437,36 @@ export interface components {
              */
             variant_id: string;
         };
+        /** InstanceLoadAction */
+        InstanceLoadAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "instance.load";
+            parameters: components["schemas"]["InstanceLoadParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "model";
+        };
+        /** InstanceLoadParameters */
+        InstanceLoadParameters: {
+            /** Policy */
+            policy?: string | null;
+            /**
+             * Variant Id
+             * Format: uuid
+             */
+            variant_id: string;
+        };
         /** InstanceMember */
         InstanceMember: {
             /** Engine Id */
@@ -2015,6 +2492,26 @@ export interface components {
          * @enum {string}
          */
         InstanceState: "requested" | "reserving" | "launching" | "warming" | "ready" | "draining" | "stopped" | "failed";
+        /** InstanceUnloadAction */
+        InstanceUnloadAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "instance.unload";
+            parameters?: components["schemas"]["EmptyOpsParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "instance";
+        };
         /** LedgerUpdate */
         LedgerUpdate: {
             /** Budget Bytes */
@@ -2256,6 +2753,46 @@ export interface components {
             precision: string;
             /** Tags */
             tags?: components["schemas"]["Tag"][];
+        };
+        /** ModelPinAction */
+        ModelPinAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "model.pin";
+            parameters?: components["schemas"]["EmptyOpsParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "model";
+        };
+        /** ModelUnpinAction */
+        ModelUnpinAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "model.unpin";
+            parameters?: components["schemas"]["EmptyOpsParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "model";
         };
         /**
          * ModelUpdateRequest
@@ -2518,6 +3055,241 @@ export interface components {
          * @enum {string}
          */
         OccupantReason: "pinned" | "in_use" | "eligible";
+        /** OpsActionPrecondition */
+        OpsActionPrecondition: {
+            /** Expected State */
+            expected_state: string;
+            /** Resource Version */
+            resource_version: string;
+        };
+        /** OpsConfirmRequest */
+        OpsConfirmRequest: {
+            /** Action */
+            action: components["schemas"]["InstanceUnloadAction"] | components["schemas"]["RunKillAction"] | components["schemas"]["ModelPinAction"] | components["schemas"]["ModelUnpinAction"] | components["schemas"]["InstanceLoadAction"];
+            /** Confirm Token */
+            confirm_token: string;
+        };
+        /** OpsConversation */
+        OpsConversation: {
+            /**
+             * Admin User Id
+             * Format: uuid
+             */
+            admin_user_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Degraded */
+            degraded: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Ops Session Id */
+            ops_session_id?: string | null;
+            state: components["schemas"]["OpsConversationState"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** OpsConversationCreate */
+        OpsConversationCreate: Record<string, never>;
+        /** OpsConversationDetail */
+        OpsConversationDetail: {
+            conversation: components["schemas"]["OpsConversation"];
+            /** Messages */
+            messages?: components["schemas"]["OpsMessage"][];
+            /** Proposals */
+            proposals?: components["schemas"]["OpsProposal"][];
+        };
+        /**
+         * OpsConversationState
+         * @enum {string}
+         */
+        OpsConversationState: "active" | "closed";
+        /** OpsDeclineRequest */
+        OpsDeclineRequest: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /** OpsMessage */
+        OpsMessage: {
+            /** Content */
+            content: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            role: components["schemas"]["OpsMessageRole"];
+        };
+        /** OpsMessageCreate */
+        OpsMessageCreate: {
+            /** Question */
+            question: string;
+        };
+        /**
+         * OpsMessageRole
+         * @enum {string}
+         */
+        OpsMessageRole: "admin" | "ops" | "system";
+        /** OpsProposal */
+        OpsProposal: {
+            /** Action */
+            action: components["schemas"]["InstanceUnloadAction"] | components["schemas"]["RunKillAction"] | components["schemas"]["ModelPinAction"] | components["schemas"]["ModelUnpinAction"] | components["schemas"]["InstanceLoadAction"];
+            /** Confirmed By User Id */
+            confirmed_by_user_id?: string | null;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Executed At */
+            executed_at?: string | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Failure Code */
+            failure_code?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Ops Session Id
+             * Format: uuid
+             */
+            ops_session_id: string;
+            /** Proposer */
+            proposer: string;
+            /** Rationale */
+            rationale: string;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            state: components["schemas"]["OpsProposalState"];
+        };
+        /** OpsProposalIssued */
+        OpsProposalIssued: {
+            /** Confirm Token */
+            confirm_token: string;
+            proposal: components["schemas"]["OpsProposal"];
+        };
+        /**
+         * OpsProposalState
+         * @enum {string}
+         */
+        OpsProposalState: "pending" | "confirmed" | "executing" | "executed" | "declined" | "expired" | "stale" | "failed";
+        /** OpsProposalSubmission */
+        OpsProposalSubmission: {
+            /** Action */
+            action: components["schemas"]["InstanceUnloadAction"] | components["schemas"]["RunKillAction"] | components["schemas"]["ModelPinAction"] | components["schemas"]["ModelUnpinAction"] | components["schemas"]["InstanceLoadAction"];
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Rationale */
+            rationale: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+        };
+        /** OpsSession */
+        OpsSession: {
+            /** Ended At */
+            ended_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Service Instance */
+            service_instance: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            state: components["schemas"]["OpsSessionState"];
+        };
+        /** OpsSessionRegistration */
+        OpsSessionRegistration: {
+            /** Service Instance */
+            service_instance: string;
+            /**
+             * Session Id
+             * Format: uuid
+             */
+            session_id: string;
+        };
+        /**
+         * OpsSessionState
+         * @enum {string}
+         */
+        OpsSessionState: "active" | "superseded" | "expired";
+        /** OpsTurnResponse */
+        OpsTurnResponse: {
+            /** Answer */
+            answer: string;
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            proposal?: components["schemas"]["OpsProposalIssued"] | null;
+            /** Sources */
+            sources?: string[];
+            status: components["schemas"]["OpsTurnStatus"];
+        };
+        /**
+         * OpsTurnStatus
+         * @enum {string}
+         */
+        OpsTurnStatus: "answered" | "proposed" | "degraded" | "unavailable";
         /** PinUpdate */
         PinUpdate: {
             /** Pinned */
@@ -2610,6 +3382,27 @@ export interface components {
          */
         ProbeTransport: "jaccl" | "ring";
         /**
+         * ProblemDetails
+         * @description RFC 9457 problem detail used by the compatible gateway.
+         */
+        ProblemDetails: {
+            /** Detail */
+            detail?: string | null;
+            /** Instance */
+            instance?: string | null;
+            /** Status */
+            status: number;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @default about:blank
+             */
+            type: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
          * ProfileName
          * @enum {string}
          */
@@ -2656,6 +3449,26 @@ export interface components {
          * @enum {string}
          */
         ReservationHolder: "sandbox" | "model" | "conversion" | "training" | "image" | "run";
+        /** RunKillAction */
+        RunKillAction: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "run.kill";
+            parameters?: components["schemas"]["EmptyOpsParameters"];
+            precondition: components["schemas"]["OpsActionPrecondition"];
+            /**
+             * Target Id
+             * Format: uuid
+             */
+            target_id: string;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "run";
+        };
         /** RunKillRequest */
         RunKillRequest: {
             /**
@@ -3349,6 +4162,39 @@ export interface operations {
                         [key: string]: unknown;
                     };
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_override_api_v1_admin_failover_overrides_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FailoverOverride"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -4505,6 +5351,236 @@ export interface operations {
             };
         };
     };
+    start_conversation_api_v1_admin_ops_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsConversationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsConversation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_conversation_api_v1_admin_ops_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsConversationDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_message_api_v1_admin_ops_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsMessageCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsTurnResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_proposal_api_v1_admin_ops_proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsProposal"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_proposal_api_v1_admin_ops_proposals__proposal_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsProposal"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_proposal_api_v1_admin_ops_proposals__proposal_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsDeclineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsProposal"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_placement_api_v1_admin_placements__decision_id__get: {
         parameters: {
             query?: never;
@@ -4881,6 +5957,88 @@ export interface operations {
             };
         };
     };
+    reconcile_api_v1_failover_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+    };
+    heartbeat_api_v1_failover_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailoverHeartbeat"];
+                };
+            };
+        };
+    };
+    replicated_snapshot_api_v1_failover_snapshot_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FailoverSnapshot"];
+                };
+            };
+        };
+    };
+    cast_vote_api_v1_failover_votes_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ElectionVoteGrant"];
+                };
+            };
+        };
+    };
     list_instances_api_v1_instances_get: {
         parameters: {
             query?: never;
@@ -5033,6 +6191,140 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_ops_proposal_api_v1_internal_ops_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsProposalSubmission"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsProposalIssued"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_ops_session_api_v1_internal_ops_sessions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsSessionRegistration"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    heartbeat_ops_session_api_v1_internal_ops_sessions__session_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpsSession"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_ops_snapshot_api_v1_internal_ops_snapshot_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConsoleSnapshot"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -5301,6 +6593,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    failover_ready_failover_ready_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

@@ -75,6 +75,10 @@ _engine_state_gauge = _meter.create_gauge(
 
 GRANT_TTL = timedelta(hours=24)
 ACTOR = "reconciler"
+# A create request and the node's engine registry are not atomic: a status poll can briefly
+# observe 404 between the control-plane row being inserted and the node accepting the request.
+# Keep this grace bounded so a genuinely lost startup is still failed on a later pass.
+ENGINE_START_GRACE_S = 30.0
 
 
 class RegistryReconciler:
@@ -137,10 +141,53 @@ class RegistryReconciler:
             await self._refresh_statuses(session, client)
             await self._advance_downloads(session, client)
             await self._sync_engines(session, client)
+            await self._release_terminal_instance_reservations(session)
             await self._drive_retirement(session, client)
             await self._reconcile_nodes(session, client)
             await self._publish_metrics(session)
             await session.commit()
+
+    async def _release_terminal_instance_reservations(self, session: AsyncSession) -> None:
+        """Enforce that terminal instances cannot retain active model capacity."""
+        terminal_ids = {
+            str(instance_id)
+            for instance_id in (
+                await session.execute(
+                    select(ModelInstanceRow.id).where(
+                        ModelInstanceRow.state.in_([InstanceState.STOPPED, InstanceState.FAILED])
+                    )
+                )
+            ).scalars()
+        }
+        if not terminal_ids:
+            return
+        reservations = (
+            (
+                await session.execute(
+                    select(MemoryReservationRow).where(
+                        MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                        MemoryReservationRow.holder_id.in_(terminal_ids),
+                        MemoryReservationRow.state.in_(
+                            [
+                                MemoryReservationState.PENDING,
+                                MemoryReservationState.HELD,
+                                MemoryReservationState.RELEASING,
+                            ]
+                        ),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for reservation in reservations:
+            reservation.state = MemoryReservationState.RELEASED
+            reservation.released_at = datetime.now(UTC)
+        if reservations:
+            logger.info(
+                "released %d active reservations owned by terminal instances",
+                len(reservations),
+            )
 
     # -- node status -------------------------------------------------------
     async def _refresh_statuses(self, session: AsyncSession, client: NodeClient) -> None:
@@ -445,6 +492,17 @@ class RegistryReconciler:
                 status = await client.get_engine(node.name, row.id)
             except NodeError as exc:
                 if exc.kind is NodeErrorKind.NOT_FOUND:
+                    if (
+                        row.state is EngineState.STARTING
+                        and (datetime.now(UTC) - row.started_at).total_seconds()
+                        < ENGINE_START_GRACE_S
+                    ):
+                        logger.debug(
+                            "engine %s is still starting on %s; deferring transient 404",
+                            row.id,
+                            node.name,
+                        )
+                        continue
                     row.state = EngineState.FAILED
                     row.state_reason = "the node no longer knows this engine"
                     row.stopped_at = datetime.now(UTC)
@@ -517,6 +575,19 @@ class RegistryReconciler:
             for dead_id in result.dead:
                 row = by_id.get(dead_id)
                 if row is None:
+                    continue
+                # Reconciliation may overlap a newly dispatched engine create. The row is
+                # persisted before the node accepts the process, so a transient "dead"
+                # observation has the same startup grace as a transient status 404.
+                if (
+                    row.state is EngineState.STARTING
+                    and (datetime.now(UTC) - row.started_at).total_seconds() < ENGINE_START_GRACE_S
+                ):
+                    logger.debug(
+                        "engine %s is still starting on %s; deferring transient reconcile miss",
+                        row.id,
+                        node.name,
+                    )
                     continue
                 row.state = EngineState.FAILED
                 row.state_reason = "process gone during agent restart"

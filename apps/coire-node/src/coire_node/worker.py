@@ -72,7 +72,12 @@ class JobFile:
         write_atomic(
             self.path,
             json.dumps(
-                {"params": self.params, "status": self.status.model_dump(mode="json")},
+                # Keep the on-disk job contract rolling-upgrade compatible; nullable fields are
+                # reconstructed from model defaults by an older supervisor.
+                {
+                    "params": self.params,
+                    "status": self.status.model_dump(mode="json", exclude_none=True),
+                },
                 indent=2,
             ).encode(),
         )

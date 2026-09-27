@@ -1,5 +1,7 @@
 # Feature Specification: Observability Stack
 
+> **2026-09-26 operational amendment:** Feature 023 and [ADR-0007](../../docs/adr/0007-lean-control-plane-diagnostics.md) supersede the always-running Loki/Tempo/Grafana and seven-day historical retention default below. The original requirements describe the full diagnostics profile. Continuous metrics, alerts, audit and bounded local logs remain mandatory; trace attribution and historical central log search apply when diagnostics is enabled.
+
 **Feature Branch**: `009-observability-stack`
 
 **Roadmap ID**: 007 (Phase 2 — Identity, users, admin)

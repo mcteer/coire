@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 from coire_api.app import create_app
 from coire_core.settings import Settings
 
-EXEMPT = {"/ready", "/health", "/api/v1/nodes/register"}
+EXEMPT = {"/ready", "/health", "/failover/ready", "/api/v1/nodes/register"}
 
 
 def _path(template: str) -> str:

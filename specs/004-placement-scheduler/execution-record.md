@@ -18,3 +18,18 @@ scheduler during the next decision, and observed confirmed LRU unload before adm
 
 The real-cluster ≤1 GB/no-swap and three-node quickstart remain pending until the updated node
 processes and core images are activated together. No live-engine command was issued from CI.
+
+## Read-only cluster preflight — 2026-09-02
+
+Both Studios were reachable over the control fabric and reported healthy node-agent heartbeats.
+The installed `/opt/coire/envs/0.2.0/bin/python3` reported `mlx_lm==0.31.3` on both hosts. Running
+`apps/coire-node/uninstall.sh --dry-run` remotely enumerated only the expected `/opt/coire/{bin,
+python,envs,log,models,state,hf-cache}` paths and
+`/Library/LaunchDaemons/com.coire.node.plist`; both System Keychain entries (`coire-node-token`
+and `coire-hf-token`) were present. The live API reported `collection_budget_ok=true` for both
+nodes at the final sample, with no loaded engine on edge-b and the tiny test engine resident on
+edge-a. No model engine was started or stopped during this preflight.
+
+This is preflight evidence only. The bounded-budget eviction, no-swap proof, and complete real
+three-node quickstart remain pending until the current control-plane images are deployed and the
+operator runs the prescribed workload measurements.

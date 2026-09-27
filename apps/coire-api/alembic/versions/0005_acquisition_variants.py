@@ -1,7 +1,7 @@
 """Add durable acquisition workflows and model variants.
 
 Revision ID: 0005_acquisition_variants
-Revises: 0004_merge_gateway_fabrics
+Revises: 0005_observability_health
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0005_acquisition_variants"
-down_revision = "0004_merge_gateway_fabrics"
+down_revision = "0005_observability_health"
 branch_labels = None
 depends_on = None
 

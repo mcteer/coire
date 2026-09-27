@@ -129,8 +129,10 @@ async def choose_studio(run_id: uuid.UUID) -> uuid.UUID | None:
 
 async def _advance(run_id: uuid.UUID, state: AgentRunState, reason: str) -> None:
     async with session_scope() as session:
-        run = await session.get(AgentRunRow, run_id)
+        run = await session.get(AgentRunRow, run_id, with_for_update=True)
         if run is not None and run.state is not state and run.state not in TERMINAL_RUN_STATES:
+            if run.state is AgentRunState.KILL_REQUESTED:
+                return
             await transition(session, run, state, reason)
             transitions_total.add(1, {"state": state.value})
             last_transition.set(time.time(), {"state": state.value})
@@ -140,9 +142,14 @@ async def _advance(run_id: uuid.UUID, state: AgentRunState, reason: str) -> None
 async def _submit(run_id: uuid.UUID, operation: RunOperation) -> dict[str, Any]:
     identifier = run_command_id(run_id, operation)
     async with session_scope() as session:
-        run = await session.get(AgentRunRow, run_id)
+        run = await session.get(AgentRunRow, run_id, with_for_update=True)
         if run is None or run.node_id is None:
             raise RuntimeError("run has no Studio placement")
+        if run.state is AgentRunState.KILL_REQUESTED and operation not in {
+            RunOperation.KILL,
+            RunOperation.REMOVE,
+        }:
+            raise RuntimeError("run kill requested")
         row = await session.get(RunCommandRow, identifier)
         if row is None:
             session.add(
@@ -165,7 +172,12 @@ async def _submit(run_id: uuid.UUID, operation: RunOperation) -> dict[str, Any]:
                 return dict(row.detail)
             if row.state is RunCommandState.FAILED:
                 raise RuntimeError(str(row.detail.get("failure_code", "run_command_failed")))
-        await asyncio.sleep(get_settings().placement_poll_interval_s)
+        settings = get_settings()
+        await asyncio.sleep(
+            settings.run_kill_poll_interval_s
+            if operation is RunOperation.KILL
+            else settings.placement_poll_interval_s
+        )
 
 
 @DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
@@ -177,7 +189,11 @@ async def place_run(run_id_text: str) -> None:
         if node_id is not None:
             async with session_scope() as session:
                 run = await session.get(AgentRunRow, run_id, with_for_update=True)
-                if run is not None and run.node_id is None:
+                if (
+                    run is not None
+                    and run.node_id is None
+                    and run.state is not AgentRunState.KILL_REQUESTED
+                ):
                     run.node_id = node_id
                     run.updated_at = datetime.now(UTC)
             return
@@ -185,24 +201,11 @@ async def place_run(run_id_text: str) -> None:
         await asyncio.sleep(get_settings().placement_poll_interval_s)
 
 
-def _retry_execution_error(exc: BaseException) -> bool:
-    """Retry transport/control failures, but never a durable terminal run outcome."""
-
-    return str(exc) not in {"run_timeout", "run_container_failed"} and not str(exc).startswith(
-        "run_result_"
-    )
-
-
-# Commands are deterministic and durable, so a recovered step resumes from their recorded
-# results. Keep transient retries linear and exclude terminal container/result outcomes.
-@DBOS.step(
-    retries_allowed=True,
-    max_attempts=100,
-    interval_seconds=1.0,
-    backoff_rate=1.0,
-    should_retry=_retry_execution_error,
-)
-async def execute_run(run_id_text: str) -> None:
+# A process restart interrupts the active WAIT command and DBOS records the recovery as another
+# step attempt. Keep the ceiling aligned with the workflow recovery budget so several supervisor
+# restarts cannot exhaust otherwise idempotent command replay while a container is still running.
+@DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
+async def execute_run(run_id_text: str) -> str | None:
     run_id = uuid.UUID(run_id_text)
     with tracer.start_as_current_span("coire.scheduler.run.execute") as span:
         span.set_attribute("run_id", run_id_text)
@@ -218,17 +221,13 @@ async def execute_run(run_id_text: str) -> None:
                 if run is not None:
                     run.container_id = str(created["container_id"])
             current_state = AgentRunState.CREATING
+        await _submit(run_id, RunOperation.START)
         if current_state in {
             AgentRunState.QUEUED,
             AgentRunState.PLACING,
             AgentRunState.CREATING,
         }:
-            await _submit(run_id, RunOperation.START)
             await _advance(run_id, AgentRunState.RUNNING, "container started")
-        else:
-            # START is idempotent and may already be recorded, but a recovered running or
-            # collecting run must never be transitioned backwards.
-            await _submit(run_id, RunOperation.START)
         waited = await _submit(run_id, RunOperation.WAIT)
         logs = await _submit(run_id, RunOperation.LOGS)
         async with session_scope() as session:
@@ -251,9 +250,14 @@ async def execute_run(run_id_text: str) -> None:
                 usage.log_bytes = log_bytes
                 run.resource_usage = usage.model_dump(mode="json")
         if waited.get("state") == "timed_out":
-            raise TimeoutError("run_timeout")
+            # A container timeout is an expected terminal outcome, not a transient DBOS
+            # step failure. Returning the detail lets the workflow finalize immediately
+            # instead of retrying this step up to its recovery ceiling.
+            return "run_timeout"
         if waited.get("exit_code") not in (None, 0):
-            raise RuntimeError("run_container_failed")
+            # Likewise, non-zero exits (including an external/OOM kill such as 137) must
+            # become a terminal run state rather than replaying the whole execution step.
+            return "run_container_failed"
         async with session_scope() as session:
             run = await session.get(AgentRunRow, run_id)
             current_state = run.state if run is not None else None
@@ -265,17 +269,18 @@ async def execute_run(run_id_text: str) -> None:
             if run is not None:
                 result = collected.get("result")
                 run.result = result if isinstance(result, dict) else None
+    return None
 
 
 @DBOS.step(retries_allowed=True, max_attempts=5, interval_seconds=1.0)
 async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> None:
     run_id = uuid.UUID(run_id_text)
     async with session_scope() as session:
-        run = await session.get(AgentRunRow, run_id)
+        run = await session.get(AgentRunRow, run_id, with_for_update=True)
         if run is None:
             return
-        await revoke_run_token(session, run_id)
-        if run.state not in TERMINAL_RUN_STATES:
+        if run.state not in TERMINAL_RUN_STATES and run.state is not AgentRunState.KILL_REQUESTED:
+            await revoke_run_token(session, run_id)
             state = AgentRunState.SUCCEEDED
             if not succeeded:
                 state = (
@@ -309,9 +314,12 @@ async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> N
 async def run_workflow(run_id_text: str) -> None:
     try:
         await place_run(run_id_text)
-        await execute_run(run_id_text)
+        detail = await execute_run(run_id_text)
     except Exception as exc:
         await finalize_run(run_id_text, False, str(exc) or type(exc).__name__.lower())
+        return
+    if detail is not None:
+        await finalize_run(run_id_text, False, detail)
         return
     await finalize_run(run_id_text, True)
 
@@ -319,18 +327,22 @@ async def run_workflow(run_id_text: str) -> None:
 @DBOS.workflow(name="coire.run.kill", max_recovery_attempts=100)
 async def run_kill_workflow(run_id_text: str) -> None:
     run_id = uuid.UUID(run_id_text)
-    try:
+    async with session_scope() as session:
+        run = await session.get(AgentRunRow, run_id)
+        if run is None or run.state is not AgentRunState.KILL_REQUESTED:
+            return
+        placed = run.node_id is not None
+    if placed:
         await _submit(run_id, RunOperation.KILL)
-    finally:
-        async with session_scope() as session:
-            run = await session.get(AgentRunRow, run_id)
-            if run is not None and run.state is AgentRunState.KILL_REQUESTED:
-                await transition(session, run, AgentRunState.KILLED, "container kill completed")
-                await write_audit(
-                    session,
-                    actor="coire-scheduler",
-                    action="agent_run.killed",
-                    target_type="agent_run",
-                    target_id=run_id_text,
-                    detail={"node_id": str(run.node_id)},
-                )
+    async with session_scope() as session:
+        run = await session.get(AgentRunRow, run_id, with_for_update=True)
+        if run is not None and run.state is AgentRunState.KILL_REQUESTED:
+            await transition(session, run, AgentRunState.KILLED, "container kill completed")
+            await write_audit(
+                session,
+                actor="coire-scheduler",
+                action="agent_run.killed",
+                target_type="agent_run",
+                target_id=run_id_text,
+                detail={"node_id": str(run.node_id)},
+            )

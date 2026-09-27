@@ -46,7 +46,10 @@ class ChatMessage(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     role: Literal["system", "user", "assistant", "tool"]
-    content: str | None
+    # OpenAI assistant tool-call messages omit content entirely.  The gateway serialises null
+    # fields away before crossing the node boundary, so the node contract must accept omission
+    # as equivalent to an explicit null on this OpenAI-compatible shape.
+    content: str | None = None
     name: str | None = None
     tool_call_id: str | None = None
 

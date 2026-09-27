@@ -88,8 +88,8 @@ procedure is recorded without state loss.
 **006 · admin console** — "React admin routes: nodes & memory ledger, models (add from HF / publish / unpublish / retire / pin / load / unload / convert, with download & replication progress, disk per Studio, per-task defaults), users & keys, runs & jobs with kill, upgrades, audit viewer, 'ask Coire' box wired to the ops agent (read-only until 010)."
 *Done when:* every operation in Principle I/II is reachable without a terminal.
 
-**007 · observability stack** — "OTel/Prometheus/Loki/Tempo/Grafana compose, instrumentation across api/node, three seed dashboards, alert rules from the architecture doc."
-*Done when:* a deliberately slow request is attributable to a span; alerts fire on node-down and tunnel-down.
+**007 · observability stack** — "OTel/Prometheus/Alertmanager continuously; optional Loki/Tempo/Grafana history, instrumentation across api/node, three seed dashboards, alert rules from the architecture doc ([ADR-0007](adr/0007-lean-control-plane-diagnostics.md))."
+*Done when:* alerts fire on node-down and tunnel-down in the baseline; a deliberately slow request is attributable to a span with diagnostics enabled.
 
 ## Phase 3 — Agents
 
@@ -101,6 +101,10 @@ procedure is recorded without state loss.
 
 **010 · `coire-ops` with confirmed mutations** — "Long-lived `coire-ops` container on core (the only harness core runs) using the pinned admin model on Studio B via the gateway; ops tools for admin actions with `confirm_token` flow; admin UI approval prompt; read-only degraded mode when the admin model is unreachable."
 *Done when:* "unload the idle 400B model" via chat results in a confirmation card and, on approval, an audited unload.
+The implementation boundary is a separate distroless `coire-agent-ops` image on only the internal
+API and telemetry networks. Its service credential can read, register a session, and propose; only
+an authenticated human-admin endpoint can consume an exact-action token. Container restart
+invalidates old proposals, and unavailable-model turns use the deterministic read-only responder.
 
 **011 · MCP server (research / plan / apply)** — "Streamable-HTTP MCP endpoint with exactly three coding tools backed by agent runs on cloned workspaces; `apply` produces a branch + diff + test summary."
 *Done when:* Claude Code / Cursor can add Coire as an MCP server and complete a research→plan→apply loop on a sample repo.
@@ -129,7 +133,8 @@ procedure is recorded without state loss.
 
 **016 · control-plane failover** — "Poller on all three hosts electing a frontend host when core is unavailable; priority core → coire-edge-a → coire-edge-b; quorum-gated promotion; stateless inference-only degraded tier with no database on a Studio; capability tiers degrading with healthy membership; automatic demotion when core returns."
 *Done when:* powering off core yields inference service from a Studio within the failover threshold; a minority partition never promotes; no database or admin surface ever runs on a Studio; core returning restores full service with no operator action.
-*Blocked on:* an amendment to Principle II, which currently forbids a web tier on a Studio.
+*Design gate:* Principle II was amended for this inference-only exception; feature 020 remains
+release-gated on the real-cluster quickstart.
 
 **017 · node self-healing** — "Two-layer health agent per node: a minimal native supervisor running as an OS service outside the container runtime, plus a containerised diagnostic agent. Its entire mandate is restoring cluster membership — node-agent liveness, network reachability, registration — and nothing else; capacity concerns are escalated, and engines and engine environments are excluded because 004/005/019 own them. Deterministic symptom-to-action remediation, quorum-aware conservatism, circuit breaker with backoff, escalation for anything unlisted. Built on the agent framework's slim distribution with the model unbound, so the disconnected path needs no model."
 *Done when:* killing the node agent on a Studio rejoins it automatically; every autonomous action maps to membership restoration and nothing else; a crashed engine produces zero supervisor actions; a minority-partitioned node takes only local non-destructive actions; a persistent fault opens the circuit breaker.

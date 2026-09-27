@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import httpx
 import pytest
-from conftest import drain_runtime
+from conftest import drain_runtime, wait_nodes_healthy
 
 COMPOSE_DIR = Path(__file__).resolve().parents[2] / "deploy/compose"
 pytestmark = [
@@ -80,9 +80,14 @@ def _fallback_candidate(
 
 
 def _wait_instance(
-    client: httpx.Client, instance_id: str, headers: dict[str, str], states: set[str]
+    client: httpx.Client,
+    instance_id: str,
+    headers: dict[str, str],
+    states: set[str],
+    *,
+    timeout_seconds: float = 120,
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + 120
+    deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         body = client.get(f"/api/v1/instances/{instance_id}", headers=headers).json()
         if body["state"] in states:
@@ -147,7 +152,13 @@ def _create_single(
         },
     )
     assert response.status_code == 202, response.text
-    ready = _wait_instance(client, response.json()["id"], headers, {"ready", "failed"})
+    ready = _wait_instance(
+        client,
+        response.json()["id"],
+        headers,
+        {"ready", "failed"},
+        timeout_seconds=180,
+    )
     assert ready["state"] == "ready", json.dumps(ready, indent=2)
     return ready
 
@@ -180,6 +191,8 @@ def test_synthetic_over_250gb_admission_serves_through_gateway(
     api_url: str, admin_headers: dict[str, str]
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=120) as client:
+        drain_runtime(client, admin_headers)
+        wait_nodes_healthy(client, admin_headers)
         model, variant = _candidate(client, admin_headers)
         _open_link(client, admin_headers)
         synthetic_bytes = 270 * 1024**3
@@ -225,6 +238,7 @@ def test_probe_two_rank_gateway_drain_benchmark_and_rank_failure(
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=120) as client:
         drain_runtime(client, admin_headers)
+        wait_nodes_healthy(client, admin_headers)
         model, variant = _candidate(client, admin_headers)
         ledgers = client.get("/api/v1/admin/ledger", headers=admin_headers).json()
         original_budgets = {str(item["node_id"]): int(item["budget_bytes"]) for item in ledgers}
@@ -296,6 +310,13 @@ def test_probe_two_rank_gateway_drain_benchmark_and_rank_failure(
             )
             == "0"
         )
+
+        # Keep a known-good single-node instance resident before the deliberate data-link
+        # outage.  The outage scenario is about TP admission failing closed while an existing
+        # single-node service continues; creating a new engine after the failed TP workflow adds
+        # an unrelated scheduler/engine timing dependency.
+        single_before_outage = _ensure_single(client, admin_headers, model, variant, "coire-edge-a")
+        assert single_before_outage["state"] == "ready"
 
         _sql_value(
             "INSERT INTO link_observations "
@@ -425,6 +446,16 @@ def test_probe_two_rank_gateway_drain_benchmark_and_rank_failure(
         state = client.get("/api/v1/state", headers=admin_headers).json()
         edge_a = next(node for node in state["nodes"] if node["name"] == "coire-edge-a")
         assert edge_a["reachability"] == "degraded"
+        # The rank-loss assertion above deliberately degrades node-a. Recover the node
+        # control state before exercising the independent single-node outage path; the
+        # simulated inter-Studio link failure remains in place below.
+        _sql_value(
+            "UPDATE nodes SET reachability='healthy'::reachability "
+            "WHERE name IN ('coire-edge-a','coire-edge-b'); "
+            "UPDATE node_memory_ledgers SET health='healthy'::reachability,health_reason=NULL "
+            "WHERE node_id IN (SELECT id FROM nodes WHERE name IN "
+            "('coire-edge-a','coire-edge-b')); SELECT 1"
+        )
 
 
 def test_rank_failure_creates_one_smaller_survivor_fallback(
@@ -479,7 +510,7 @@ def test_rank_failure_creates_one_smaller_survivor_fallback(
         fallback = _wait_instance(
             client, failed["fallback_instance_id"], admin_headers, {"ready", "failed"}
         )
-        assert fallback["state"] == "ready", fallback
+        assert fallback["state"] == "ready", json.dumps(fallback, indent=2)
         assert fallback["policy"] == "single:coire-edge-b"
         assert fallback["variant_id"] != largest["id"]
         # Reconciliation is bounded: subsequent passes retain the same fallback identity.

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from conftest import drain_runtime
+from conftest import drain_runtime, wait_nodes_healthy
 
 pytestmark = [
     pytest.mark.integration,
@@ -68,6 +68,7 @@ def test_pin_refusal_then_unpin_lru_eviction_survives_scheduler_restart(
 ) -> None:
     with httpx.Client(base_url=api_url, timeout=60.0) as client:
         drain_runtime(client, admin_headers)
+        wait_nodes_healthy(client, admin_headers)
         models = client.get("/api/v1/admin/models", headers=admin_headers).json()
         candidates: list[tuple[dict[str, object], dict[str, object]]] = []
         for model in models:
@@ -79,6 +80,15 @@ def test_pin_refusal_then_unpin_lru_eviction_survives_scheduler_restart(
                 candidates.append((model, verified[0]))
         assert len(candidates) >= 2, "acquisition scenarios must provide two verified models"
         (first_model, first_variant), (second_model, second_variant) = candidates[:2]
+        model_ids = (str(first_model["id"]), str(second_model["id"]))
+        request.addfinalizer(
+            lambda: _sql(
+                "UPDATE memory_reservations SET state='released', released_at=NOW() "
+                "WHERE holder_type='model' AND state<>'released' AND holder_id IN ("
+                + ",".join(f"'{model_id}'" for model_id in model_ids)
+                + ")"
+            )
+        )
 
         first = client.post(
             f"/api/v1/admin/models/{first_model['id']}/placement",
@@ -196,12 +206,12 @@ def test_pin_refusal_then_unpin_lru_eviction_survives_scheduler_restart(
         else:
             raise AssertionError("idle TTL did not release the model reservation")
 
-        sandbox_bytes = next(
-            item["bytes"]
+        sandbox_bytes = sum(
+            int(item["bytes"])
             for item in after_ttl_a["reservations"]
             if item["holder_type"] == "sandbox"
         )
-        one_model_budget = int(sandbox_bytes) + max(
+        one_model_budget = sandbox_bytes + max(
             int(first_variant["memory_estimate_bytes"]),
             int(second_variant["memory_estimate_bytes"]),
         )

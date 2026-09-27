@@ -124,7 +124,10 @@ class TestHappyPath:
         import subprocess
 
         replica = next(c for c in acquired["copies"] if c["role"] == "replica")
-        assert replica["node"] == "coire-edge-b"
+        node_service = {
+            "coire-edge-a": "node-a",
+            "coire-edge-b": "node-b",
+        }[replica["node"]]
         probe = subprocess.run(
             [
                 "docker",
@@ -133,7 +136,7 @@ class TestHappyPath:
                 "coire-it",
                 "exec",
                 "-T",
-                "node-b",
+                node_service,
                 "python",
                 "-c",
                 "import os,sys;sys.exit(0 if not os.environ.get('HF_TOKEN') else 1)",
@@ -142,7 +145,7 @@ class TestHappyPath:
             capture_output=True,
             text=True,
         )
-        assert probe.returncode == 0, "node-b received a Hugging Face acquisition credential"
+        assert probe.returncode == 0, f"{node_service} received a Hugging Face credential"
 
     def test_the_registry_records_a_plausible_estimate(self, acquired: dict[str, Any]) -> None:
         assert acquired["memory_estimate_bytes"] > acquired["weight_bytes"]

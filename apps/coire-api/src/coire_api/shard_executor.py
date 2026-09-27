@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from contextlib import suppress
 from datetime import UTC, datetime
 from typing import cast
 
@@ -24,9 +23,11 @@ from coire_api.db import (
 from coire_api.instance.service import transition
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.placement.service import node_admission_locks
+from coire_api.polling import PollBackoff, wait_or_stop
 from coire_core.models import (
     InstanceState,
     MemoryReservationState,
+    ReservationHolder,
     ShardGroupCommand,
     ShardGroupState,
 )
@@ -51,21 +52,23 @@ class ShardCommandExecutor:
             await self._task
 
     async def _run(self) -> None:
+        backoff = PollBackoff(
+            self.settings.placement_poll_interval_s,
+            self.settings.scheduler_idle_scan_max_s,
+            self.settings.scheduler_failure_backoff_max_s,
+        )
         while not self._stop.is_set():
             try:
                 command_id = await self._next_command()
             except Exception:
                 logger.exception("shard command queue poll failed; retrying")
-                with suppress(TimeoutError):
-                    await asyncio.wait_for(
-                        self._stop.wait(), self.settings.placement_poll_interval_s
-                    )
+                await wait_or_stop(self._stop, backoff.failed())
                 continue
             if command_id is not None:
+                backoff.active()
                 await self._execute_safely(command_id)
                 continue
-            with suppress(TimeoutError):
-                await asyncio.wait_for(self._stop.wait(), self.settings.placement_poll_interval_s)
+            await wait_or_stop(self._stop, backoff.idle())
 
     async def _next_command(self) -> uuid.UUID | None:
         async with session_scope() as session:
@@ -101,10 +104,15 @@ class ShardCommandExecutor:
                 row.state = "succeeded"
                 row.result = result
                 row.updated_at = datetime.now(UTC)
-        if result.get("state") == ShardGroupState.STOPPED.value:
-            await self._finalize_stop(command_id)
+        if result.get("state") in {
+            ShardGroupState.STOPPED.value,
+            ShardGroupState.FAILED.value,
+        }:
+            await self._finalize_stop(
+                command_id, failed=result.get("state") == ShardGroupState.FAILED.value
+            )
 
-    async def _finalize_stop(self, command_id: uuid.UUID) -> None:
+    async def _finalize_stop(self, command_id: uuid.UUID, *, failed: bool = False) -> None:
         async with session_scope() as session:
             command = await session.get(ShardCommandRow, command_id)
             if command is None:
@@ -140,13 +148,46 @@ class ShardCommandExecutor:
                     if member.reservation_id is not None:
                         reservation = await session.get(MemoryReservationRow, member.reservation_id)
                         if reservation is not None:
-                            reservation.state = MemoryReservationState.RELEASED
+                            reservation.state = (
+                                MemoryReservationState.FAILED
+                                if failed
+                                else MemoryReservationState.RELEASED
+                            )
                             reservation.released_at = datetime.now(UTC)
+                # Admission creates the instance-owned reservations before member rows are
+                # materialized.  If a rank stopped after that partial write, member-based
+                # cleanup alone can leave one held reservation behind.  Reconcile by owner too.
+                owned_reservations = (
+                    (
+                        await session.execute(
+                            select(MemoryReservationRow).where(
+                                MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                                MemoryReservationRow.holder_id == str(group.instance_id),
+                                MemoryReservationRow.released_at.is_(None),
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for reservation in owned_reservations:
+                    reservation.state = (
+                        MemoryReservationState.FAILED if failed else MemoryReservationState.RELEASED
+                    )
+                    reservation.released_at = datetime.now(UTC)
                 instance = await session.get(ModelInstanceRow, group.instance_id)
                 if group.state is ShardGroupState.STOPPING:
-                    group.state = ShardGroupState.STOPPED
+                    # Rank-loss teardown marks the instance failed before issuing stops. Keep
+                    # that terminal outcome while still waiting for both engines to disappear;
+                    # ordinary coordinated drains remain STOPPED.
+                    failed = instance is not None and instance.state is InstanceState.FAILED
+                    group.state = ShardGroupState.FAILED if failed else ShardGroupState.STOPPED
                     group.stopped_at = datetime.now(UTC)
-                    if instance is not None and instance.state is not InstanceState.STOPPED:
+                    if (
+                        instance is not None
+                        and not failed
+                        and instance.state is not InstanceState.STOPPED
+                    ):
                         await transition(
                             session,
                             instance.id,
@@ -166,6 +207,35 @@ class ShardCommandExecutor:
                 if group is not None:
                     group.state = ShardGroupState.FAILED
                     group.state_reason = row.failure_detail
+                    # A failed stop command cannot prove that the engine released its
+                    # reservation.  Terminalize those reservations as FAILED rather than
+                    # leaving them HELD forever; the registry reconciler can safely retry
+                    # cleanup once the node returns.  Successful stops still use
+                    # _finalize_stop and become RELEASED.
+                    if row.operation == "stop":
+                        members = list(
+                            (
+                                await session.execute(
+                                    select(InstanceMemberRow).where(
+                                        InstanceMemberRow.instance_id == group.instance_id
+                                    )
+                                )
+                            )
+                            .scalars()
+                            .all()
+                        )
+                        async with node_admission_locks(
+                            session, [member.node_id for member in members]
+                        ):
+                            for member in members:
+                                if member.reservation_id is None:
+                                    continue
+                                reservation = await session.get(
+                                    MemoryReservationRow, member.reservation_id
+                                )
+                                if reservation is not None and reservation.released_at is None:
+                                    reservation.state = MemoryReservationState.FAILED
+                                    reservation.released_at = datetime.now(UTC)
                 logger.error(
                     "shard command failed group_id=%s command_id=%s operation=%s failure_code=%s",
                     row.group_id,

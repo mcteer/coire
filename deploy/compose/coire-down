@@ -1,34 +1,57 @@
 #!/usr/bin/env bash
-# Stop the Coire control plane.
-#
-#   coire-down            stop and remove containers; the Postgres volume is kept
-#   coire-down --purge    also remove the volume (destroys the system of record)
+# Stop a Coire Compose project and clean its owned credential generations.
+# Data volumes remain unless the operator explicitly invokes --purge.
 set -euo pipefail
 
 COMPOSE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$COMPOSE_DIR"
-
-# The secrets directory must outlive bring-up (a file: source is a bind mount, so removing it
-# under a running container breaks restart) but must not outlive the stack.
-SECRETS_DIR="${COIRE_SECRETS_DIR:-$HOME/.coire/secrets}"
-export COIRE_SECRETS_DIR="$SECRETS_DIR"
-remove_secrets() {
-  if [[ -d "$SECRETS_DIR" ]]; then
-    rm -f "$SECRETS_DIR"/postgres_password "$SECRETS_DIR"/key_signing_secret "$SECRETS_DIR"/node_tokens
-    rmdir "$SECRETS_DIR" 2>/dev/null || true
-    echo "secrets: removed from $SECRETS_DIR"
+PROJECT="${COMPOSE_PROJECT_NAME:-coire}"
+if [[ ! "$PROJECT" =~ ^[a-z][a-z0-9_-]{1,62}$ ]]; then
+  echo "invalid Compose project name" >&2
+  exit 2
+fi
+STATE_ROOT="${COIRE_STATE_ROOT:-$HOME/.coire/projects}"
+SECRETS_BASE="${COIRE_SECRETS_BASE:-${COIRE_SECRETS_DIR:-$STATE_ROOT}}"
+OWNED_ROOT="$SECRETS_BASE/$PROJECT/secrets"
+LOCKDIR="$STATE_ROOT/$PROJECT/.coire-up.lock"
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+  holder="$(cat "$LOCKDIR/pid" 2>/dev/null || true)"
+  if [[ -n "$holder" ]] && ! kill -0 "$holder" 2>/dev/null; then
+    rm -rf -- "$LOCKDIR"
+    mkdir "$LOCKDIR" 2>/dev/null || { echo "project operation in progress" >&2; exit 3; }
+  else
+    echo "project operation in progress" >&2
+    exit 3
   fi
-}
+fi
+echo "$$" > "$LOCKDIR/pid"
+trap 'rm -rf -- "$LOCKDIR"' EXIT
 
+RELEASE="$STATE_ROOT/$PROJECT/current/compose.json"
+if [[ ! -f "$RELEASE" ]]; then
+  echo "no installed release for $PROJECT" >&2
+  exit 2
+fi
+compose=(docker compose -p "$PROJECT" -f "$RELEASE")
 if [[ "${1:-}" == "--purge" ]]; then
   echo "This removes the coire-pgdata volume and every row in it."
   read -r -p "Type 'yes' to confirm: " reply
   [[ "$reply" == "yes" ]] || { echo "aborted"; exit 1; }
-  docker compose down -v
-  remove_secrets
-  echo "control plane down; volume removed"
+  "${compose[@]}" down -v --remove-orphans
 else
-  docker compose down
-  remove_secrets
-  echo "control plane down; coire-pgdata volume kept"
+  "${compose[@]}" down --remove-orphans
 fi
+
+# Delete only the files that this script created under the validated project root.
+# Docker bind mounts have been released by the successful down operation.
+if [[ -d "$OWNED_ROOT" && ! -L "$OWNED_ROOT" ]]; then
+  for generation in "$OWNED_ROOT"/generation-*; do
+    [[ -d "$generation" && ! -L "$generation" ]] || continue
+    for name in postgres_password key_signing_secret node_tokens admin_token \
+      bootstrap_admin_email ops_service_token failover_peer_key failover_relay_token; do
+      [[ -f "$generation/$name" && ! -L "$generation/$name" ]] && rm -f -- "$generation/$name"
+    done
+    rmdir "$generation" 2>/dev/null || true
+  done
+  rmdir "$OWNED_ROOT" 2>/dev/null || true
+fi
+echo "control plane down; ${1:---purge not requested}"

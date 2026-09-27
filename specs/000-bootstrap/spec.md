@@ -1,5 +1,7 @@
 # Feature Specification: Bootstrap Control Plane Skeleton
 
+> **2026-09-26 operational amendment:** Feature 023 makes the MCP stub and historical diagnostics optional at startup. The one-image-per-service and healthcheck contracts remain in force for enabled services; see [ADR-0007](../../docs/adr/0007-lean-control-plane-diagnostics.md).
+
 **Feature Branch**: `000-bootstrap`
 
 **Roadmap ID**: 000 · bootstrap (Phase 0 — Foundation)

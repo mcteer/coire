@@ -78,9 +78,12 @@ def test_gateway_and_fabric_migration_heads_are_merged() -> None:
 
 
 def test_acquisition_variant_migration_is_additive_and_guards_downgrade() -> None:
+    historical = Path("apps/coire-api/alembic/versions/0005_observability_health.py").read_text()
+    assert 'revision = "0005_observability_health"' in historical
+    assert 'down_revision = "0004_merge_gateway_fabrics"' in historical
     source = Path("apps/coire-api/alembic/versions/0005_acquisition_variants.py").read_text()
     assert 'revision = "0005_acquisition_variants"' in source
-    assert 'down_revision = "0004_merge_gateway_fabrics"' in source
+    assert 'down_revision = "0005_observability_health"' in source
     for table in (
         "model_variants",
         "acquisition_workflows",
@@ -166,3 +169,32 @@ def test_identity_migration_is_reversible_and_extends_audit() -> None:
         assert f'"{column}"' in source
     assert 'postgresql.ENUM(name="audit_actor_type").drop' in source
     assert 'postgresql.ENUM(name="user_role").drop' in source
+
+
+def test_ops_confirmation_migration_is_reversible_and_chained() -> None:
+    source = Path("apps/coire-api/alembic/versions/0012_ops_confirmations.py").read_text()
+    assert 'revision: str = "0012_ops_confirmations"' in source
+    assert 'down_revision: str | None = "0011_container_runs"' in source
+    tables = (
+        "ops_sessions",
+        "ops_conversations",
+        "ops_messages",
+        "ops_proposals",
+        "ops_confirmation_tokens",
+    )
+    for table in tables:
+        assert f'"{table}"' in source
+        assert f'op.drop_table("{table}")' in source
+    assert source.index('op.drop_table("ops_confirmation_tokens")') < source.index(
+        'op.drop_table("ops_proposals")'
+    )
+    assert "postgresql.ENUM(name=name).drop(bind, checkfirst=True)" in source
+
+
+def test_failover_event_receipt_migration_is_reversible_and_chained() -> None:
+    source = Path("apps/coire-api/alembic/versions/0013_failover_event_receipts.py").read_text()
+    assert 'revision: str = "0013_failover_event_receipts"' in source
+    assert 'down_revision: str | None = "0012_ops_confirmations"' in source
+    assert '"failover_event_receipts",' in source
+    assert 'op.drop_table("failover_event_receipts")' in source
+    assert 'sa.ForeignKey("audit_log.id", ondelete="RESTRICT")' in source

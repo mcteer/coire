@@ -22,15 +22,19 @@ from coire_api.routes import (
     admin_acquisitions,
     admin_console,
     admin_evaluations,
+    admin_failover,
     admin_identity,
     admin_ledger,
     admin_models,
     admin_nodes,
+    admin_ops,
     admin_runs,
     admin_sharding,
     admin_variants,
+    failover,
     health,
     instances,
+    internal_ops,
     me,
     models,
     nodes,
@@ -84,52 +88,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await reconciler.start()
         app.state.reconciler = reconciler
         prober.set_reconciler(reconciler)
-        from coire_api.registry.acquisition_executor import AcquisitionCommandExecutor
+        from coire_api.failover.poller import build_poller
+        from coire_api.failover.publication import CoreSnapshotService, configured_membership
 
-        acquisition_executor = AcquisitionCommandExecutor(settings)
-        await acquisition_executor.start()
-        app.state.acquisition_executor = acquisition_executor
-        from coire_api.placement.executor import PlacementCommandExecutor
-
-        placement_executor = PlacementCommandExecutor(settings)
-        await placement_executor.start()
-        app.state.placement_executor = placement_executor
-        from coire_api.run_executor import RunCommandExecutor
-
-        run_executor = RunCommandExecutor(settings)
-        await run_executor.start()
-        app.state.run_executor = run_executor
-        from coire_api.run_reconciler import RunReconciliationCoordinator
-
-        run_reconciler = RunReconciliationCoordinator(settings)
-        await run_reconciler.start()
-        app.state.run_reconciler = run_reconciler
-        from coire_api.shard_executor import ShardCommandExecutor
-
-        shard_executor = ShardCommandExecutor(settings)
-        await shard_executor.start()
-        app.state.shard_executor = shard_executor
-        from coire_api.shard_reconciler import ShardReconciler
-
-        shard_reconciler = ShardReconciler(settings)
-        await shard_reconciler.start()
-        app.state.shard_reconciler = shard_reconciler
-        from coire_api.benchmark_executor import BenchmarkCommandExecutor
-
-        benchmark_executor = BenchmarkCommandExecutor(settings)
-        await benchmark_executor.start()
-        app.state.benchmark_executor = benchmark_executor
+        membership = (
+            configured_membership(settings)
+            if settings.failover_member_name == "coire-core"
+            else None
+        )
+        snapshot_service = (
+            CoreSnapshotService(settings, membership) if membership is not None else None
+        )
+        if snapshot_service is not None:
+            await snapshot_service.start()
+        app.state.failover_snapshot_service = snapshot_service
+        failover_poller = build_poller(settings)
+        if failover_poller is not None:
+            await failover_poller.start()
+        app.state.failover_poller = failover_poller
         logger.info("coire-api %s started", __version__)
         try:
             yield
         finally:
-            await benchmark_executor.stop()
-            await shard_reconciler.stop()
-            await shard_executor.stop()
-            await run_reconciler.stop()
-            await run_executor.stop()
-            await placement_executor.stop()
-            await acquisition_executor.stop()
+            if failover_poller is not None:
+                await failover_poller.stop()
+            if snapshot_service is not None:
+                await snapshot_service.stop()
             await reconciler.stop()
             await prober.stop()
             await link_probe_coordinator.stop()
@@ -144,6 +128,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     app.state.settings = settings
+    from coire_api.console.service import SnapshotCache
+
+    app.state.console_snapshot_cache = SnapshotCache()
     from coire_api.identity.access import AccessVerifier
 
     app.state.access_verifier = AccessVerifier(settings)
@@ -161,8 +148,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_variants.router)
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)
+    app.include_router(admin_ops.router)
     app.include_router(admin_runs.router)
     app.include_router(admin_sharding.router)
+    app.include_router(admin_failover.router)
+    app.include_router(failover.router)
+    app.include_router(internal_ops.router)
     app.include_router(v1.router)
 
     @app.middleware("http")
@@ -176,8 +167,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         from coire_api.identity.limits import MonthlyQuotaExceeded, RateLimitExceeded
 
-        anonymous_paths = {"/ready", "/health"}
-        separately_authenticated_paths = {"/api/v1/nodes/register"}
+        anonymous_paths = {"/ready", "/health", "/failover/ready"}
+        separately_authenticated_paths = {
+            "/api/v1/nodes/register",
+            "/api/v1/failover/votes",
+            "/api/v1/failover/heartbeat",
+            "/api/v1/failover/snapshot",
+            "/api/v1/failover/events",
+        }
         try:
             principal = (
                 ANONYMOUS
@@ -264,8 +261,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.exception_handler(HTTPException)
     async def compatible_problem(request: Request, exc: HTTPException) -> JSONResponse:
         """Keep legacy control routes stable while `/v1` uses RFC 9457."""
-        run_problem = request.url.path.startswith(("/api/v1/runs", "/api/v1/admin/runs"))
-        if not request.url.path.startswith("/v1/") and not run_problem:
+        typed_problem = request.url.path.startswith(
+            ("/v1/", "/api/v1/runs", "/api/v1/admin/runs", "/api/v1/admin/ops")
+        )
+        if not typed_problem:
             return JSONResponse(
                 status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers
             )
@@ -321,5 +320,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers=dict(response.headers),
         )
 
-    FastAPIInstrumentor.instrument_app(app)
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="/ready,/failover/ready")
     return app
