@@ -153,4 +153,7 @@
   reported its pinned model unavailable despite a loaded gateway listing. Its existing
   assertion remains intact for the full rerun.
 - Ruff, strict mypy (369 source files), six focused scheduler/polling unit tests and the
-  affected composed tests passed after these corrections. A final full CI run is pending.
+  affected composed tests passed after these corrections. The final full CI run passed:
+  106 integration cases, two existing skips and 767 non-integration cases deselected;
+  lint, unit/contract, engine, image policy, critical-severity scans, SBOM, pin-check and
+  every image build passed. The publish job was expectedly skipped for the PR.
