@@ -11,11 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.auth import Principal, PrincipalKind
 from coire_api.db import McpCallRow
 from coire_core.models.mcp import (
+    ApplyInput,
     ApplyResult,
     McpCall,
     McpCallState,
     McpToolName,
+    PlanInput,
     PlanResult,
+    ResearchInput,
     ResearchResult,
     WorkspaceSource,
 )
@@ -62,13 +65,26 @@ async def create_call(
     tool: McpToolName,
     source: WorkspaceSource,
     model_id: uuid.UUID,
+    input: ResearchInput | PlanInput | ApplyInput,
+    task: str,
 ) -> McpCallRow:
     owner_id = require_mcp_owner(principal)
+    if (
+        (tool is McpToolName.RESEARCH and not isinstance(input, ResearchInput))
+        or (tool is McpToolName.PLAN and not isinstance(input, PlanInput))
+        or (tool is McpToolName.APPLY and not isinstance(input, ApplyInput))
+        or input.source != source
+    ):
+        raise McpCallConflict("tool input and source do not match call")
+    if not task or len(task) > 100_000:
+        raise McpCallConflict("MCP task must contain 1 to 100000 characters")
     row = McpCallRow(
         tool=tool,
         owner_user_id=owner_id,
         credential_id=principal.api_key_id,
         source=source.model_dump(mode="json"),
+        input=input.model_dump(mode="json"),
+        task=task,
         model_id=model_id,
         state=McpCallState.ACCEPTED,
     )

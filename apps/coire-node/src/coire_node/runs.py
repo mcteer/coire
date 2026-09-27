@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from coire_core.models.harness import TaskClass
 from coire_core.models.runs import (
     RunCollectedResult,
     RunContainerCreate,
@@ -24,11 +25,13 @@ from coire_core.models.runs import (
 )
 from coire_core.settings import Settings
 from coire_node.docker_api import DockerAPI, DockerAPIError
+from coire_node.workspaces import WorkspaceManager
 
 RUN_LABEL = "com.coire.agent-run"
 MANAGED_LABEL = "com.coire.managed"
 NODE_LABEL = "com.coire.node"
 RESULT_PATH = "/workspace/.coire/result.json"
+SEPARATE_RESULT_PATH = "/coire-output/result.json"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
@@ -42,6 +45,7 @@ class RunManager:
     def __init__(self, settings: Settings, docker: DockerAPI) -> None:
         self.settings = settings
         self.docker = docker
+        self.workspaces = WorkspaceManager(settings)
         self._create_locks: dict[uuid.UUID, asyncio.Lock] = {}
 
     @staticmethod
@@ -77,6 +81,14 @@ class RunManager:
         if command.limits.memory_bytes > self.settings.run_max_memory_bytes:
             raise RunRuntimeError("run_limit_invalid", "run memory exceeds node maximum")
         workspace = self.workspace(command.workspace_ref)
+        binds = [f"{workspace}:/workspace:{'ro' if command.task_class is TaskClass.READ else 'rw'}"]
+        result_path = RESULT_PATH
+        if command.output_ref is not None:
+            if command.output_ref == command.workspace_ref:
+                raise RunRuntimeError("run_output_invalid", "output and workspace must differ")
+            output = self.workspace(command.output_ref)
+            binds.append(f"{output}:/coire-output:rw")
+            result_path = SEPARATE_RESULT_PATH
         gateway_host = urlparse(command.gateway_url).hostname
         if not gateway_host:
             raise RunRuntimeError("run_gateway_invalid", "gateway URL has no host")
@@ -90,6 +102,7 @@ class RunManager:
                 f"COIRE_VERIFIED_VARIANT_ID={command.variant_id}",
                 "COIRE_API_URL=http://coire-gateway:8080/v1",
                 f"COIRE_RUN_TOKEN={command.run_token}",
+                *(["COIRE_OUTPUT_DIR=/coire-output"] if command.output_ref else []),
             ],
             "Labels": {
                 RUN_LABEL: str(command.run_id),
@@ -99,6 +112,7 @@ class RunManager:
                 "com.coire.timeout-seconds": str(command.limits.timeout_seconds),
                 "com.coire.log-bytes": str(command.limits.log_bytes),
                 "com.coire.result-bytes": str(command.limits.result_bytes),
+                "com.coire.result-path": result_path,
             },
             "User": "65532:65532",
             "WorkingDir": "/workspace",
@@ -115,7 +129,7 @@ class RunManager:
                 "NanoCpus": command.limits.nano_cpus,
                 "PidsLimit": command.limits.pids_limit,
                 "RestartPolicy": {"Name": "no", "MaximumRetryCount": 0},
-                "Binds": [f"{workspace}:/workspace:rw"],
+                "Binds": binds,
                 "Tmpfs": {"/tmp": "rw,noexec,nosuid,nodev,size=67108864,mode=1777"},
                 "PortBindings": {},
                 "PublishAllPorts": False,
@@ -306,7 +320,10 @@ class RunManager:
             self.settings.run_max_result_bytes,
             int(labels.get("com.coire.result-bytes", self.settings.run_max_result_bytes)),
         )
-        archive = await self.docker.archive(name, RESULT_PATH)
+        result_path = labels.get("com.coire.result-path", RESULT_PATH)
+        if result_path not in {RESULT_PATH, SEPARATE_RESULT_PATH}:
+            raise RunRuntimeError("run_result_unreadable", "invalid result path label")
+        archive = await self.docker.archive(name, result_path)
         if archive is None:
             raise RunRuntimeError("run_result_missing", "run result is absent")
         if len(archive) > limit + 1024 * 1024:

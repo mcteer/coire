@@ -27,8 +27,8 @@
 
 - [X] T008 [US1] Write MCP three-tool input/output contract tests in apps/coire-api/tests/contract/test_mcp_contracts.py
 - [X] T009 [US1] Implement owner-checked MCP call/result/plan-ID persistence in apps/coire-api/src/coire_api/mcp_calls.py
-- [ ] T010 [US1] Implement bounded HTTPS source validation, immutable revision resolution, and unique per-run clone preparation on the Studio in apps/coire-node/src/coire_node/workspaces.py
-- [ ] T011 [US1] Add typed workspace prepare/cleanup routes with node auth and idempotent run IDs in apps/coire-node/src/coire_node/routes/workspaces.py
+- [X] T010 [US1] Implement bounded HTTPS source validation, immutable revision resolution, and unique per-run clone preparation on the Studio in apps/coire-node/src/coire_node/workspaces.py
+- [X] T011 [US1] Add typed workspace prepare/cleanup routes with node auth and idempotent run IDs in apps/coire-node/src/coire_node/routes/workspaces.py
 - [ ] T012 [US1] Deliver a validated HarnessRunRequest before container create and mount a task-class-appropriate repository plus separate writable output directory in apps/coire-api/src/coire_api/run_executor.py and apps/coire-node/src/coire_node/runs.py
 - [ ] T013 [US1] Implement bounded read/search and read-only citation extraction tools in apps/coire-agent/src/coire_agent/tools.py and apps/coire-agent/src/coire_agent/coding.py
 - [ ] T014 [US1] Implement task-specific research/plan output validators and prior-result handling in apps/coire-agent/src/coire_agent/pydantic_runtime.py and apps/coire-agent/src/coire_agent/__main__.py

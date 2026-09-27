@@ -68,6 +68,8 @@ def upgrade() -> None:
             sa.ForeignKey("api_keys.id", ondelete="SET NULL"),
         ),
         sa.Column("source", postgresql.JSONB(), nullable=False),
+        sa.Column("input", postgresql.JSONB(), nullable=False),
+        sa.Column("task", sa.Text(), nullable=False),
         sa.Column(
             "model_id",
             postgresql.UUID(as_uuid=True),

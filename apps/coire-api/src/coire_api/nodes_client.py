@@ -23,7 +23,13 @@ from coire_core.models.acquisition import Reservation, ReservationRequest, Varia
 from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileResult
 from coire_core.models.jobs import ChecksumManifest, JobStatus, RepoInspection
 from coire_core.models.link import StudioDataLinkStatus
-from coire_core.models.node import NodeStatus, NodeStatusV2
+from coire_core.models.node import (
+    NodeStatus,
+    NodeStatusV2,
+    WorkspaceCleanupRequest,
+    WorkspacePrepareRequest,
+    WorkspacePrepareResult,
+)
 from coire_core.models.runs import (
     RunCollectedResult,
     RunContainerCreate,
@@ -491,6 +497,27 @@ class NodeClient:
         return ReconcileResult.model_validate(body)
 
     # -- ephemeral runs ----------------------------------------------------
+    async def prepare_workspace(
+        self, node: str, command: WorkspacePrepareRequest
+    ) -> WorkspacePrepareResult:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/workspaces",
+            json=command.model_dump(mode="json"),
+            expect=(201,),
+        )
+        return WorkspacePrepareResult.model_validate(body)
+
+    async def cleanup_workspace(self, node: str, command: WorkspaceCleanupRequest) -> None:
+        await self._call(
+            "POST",
+            node,
+            f"/node/workspaces/{command.run_id}/cleanup",
+            json=command.model_dump(mode="json"),
+            expect=(204,),
+        )
+
     async def create_run(self, node: str, command: RunContainerCreate) -> RunContainerStatus:
         _, body = await self._call(
             "POST",

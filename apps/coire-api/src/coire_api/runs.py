@@ -13,13 +13,15 @@ from coire_api.db import (
     AgentRunRow,
     AgentRunTransitionRow,
     EntitlementRow,
+    McpCallRow,
     ModelRow,
     ModelVariantRow,
     NodeRow,
     UserRow,
 )
 from coire_core.models.auth import UserRole
-from coire_core.models.harness import PROFILE_MODEL_TAGS, ProfileName
+from coire_core.models.harness import PROFILE_MODEL_TAGS, ProfileName, TaskClass
+from coire_core.models.mcp import McpCallState, McpToolName
 from coire_core.models.registry import ModelState, Visibility
 from coire_core.models.runs import (
     TERMINAL_RUN_STATES,
@@ -60,6 +62,8 @@ async def project_run(session: AsyncSession, row: AgentRunRow) -> AgentRun:
         node_name=node.name if node else None,
         container_id=row.container_id,
         workspace_ref=row.workspace_ref,
+        task_class=row.task_class or TaskClass.WRITE,
+        output_ref=row.output_ref,
         state=row.state,
         limits=RunLimits.model_validate(row.limits),
         exit_code=row.exit_code,
@@ -79,6 +83,20 @@ async def project_run(session: AsyncSession, row: AgentRunRow) -> AgentRun:
 async def create_run(
     session: AsyncSession, request: AgentRunCreate, *, requester_user_id: uuid.UUID
 ) -> AgentRunRow:
+    mcp_call = None
+    if request.prepared_request_id is not None:
+        mcp_call = await session.get(McpCallRow, request.prepared_request_id, with_for_update=True)
+        if (
+            mcp_call is None
+            or mcp_call.owner_user_id != requester_user_id
+            or mcp_call.model_id != request.primary_model_id
+            or mcp_call.state is not McpCallState.ACCEPTED
+            or mcp_call.run_id is not None
+            or request.profile is not ProfileName.CODING
+            or request.task_class
+            is not (TaskClass.WRITE if mcp_call.tool is McpToolName.APPLY else TaskClass.READ)
+        ):
+            raise RunConflict("MCP call is not eligible for this run")
     user = await session.get(UserRow, requester_user_id)
     is_admin = user is not None and user.role is UserRole.ADMIN
     entitlements = set(
@@ -149,6 +167,9 @@ async def create_run(
         primary_model_id=request.primary_model_id,
         primary_variant_id=variant.id,
         workspace_ref=request.workspace_ref,
+        task_class=request.task_class,
+        prepared_request_id=request.prepared_request_id,
+        output_ref=request.output_ref,
         token_scope=scope.model_dump(mode="json"),
         state=AgentRunState.QUEUED,
         limits=request.limits.model_dump(mode="json"),
@@ -156,6 +177,11 @@ async def create_run(
     )
     session.add(row)
     await session.flush()
+    if mcp_call is not None:
+        row.workspace_ref = f"mcp-{row.id.hex}"
+        row.output_ref = f"mcp-out-{row.id.hex}"
+        mcp_call.run_id = row.id
+        mcp_call.state = McpCallState.QUEUED
     session.add(
         AgentRunTransitionRow(
             run_id=row.id,

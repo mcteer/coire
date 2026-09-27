@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from coire_core.models.harness import ProfileName
+from coire_core.models.harness import ProfileName, TaskClass
 from coire_core.models.runs import RunContainerCreate, RunLimits
 from coire_core.settings import Settings
 from coire_node.runs import RunManager, RunRuntimeError
@@ -78,6 +78,32 @@ def test_create_payload_rejects_non_allowlisted_image_or_command(tmp_path: Path)
             allowed.model_copy(update={"image": f"ghcr.io/attacker/image@sha256:{'b' * 64}"}),
             "network",
         )
+
+
+def test_read_run_mounts_repository_read_only_and_output_separately(tmp_path: Path) -> None:
+    root = tmp_path / "workspaces"
+    (root / "repo").mkdir(parents=True)
+    (root / "output").mkdir()
+    command_read = command("repo").model_copy(
+        update={"task_class": TaskClass.READ, "output_ref": "output"}
+    )
+    manager = RunManager(
+        Settings(  # type: ignore[call-arg]
+            _secrets_dir="/none",
+            run_workspace_root=str(root),
+            run_agent_image=command_read.image,
+        ),
+        NoopDocker(),  # type: ignore[arg-type]
+    )
+    payload = manager.create_payload(command_read, "network")
+    assert payload["HostConfig"]["Binds"] == [
+        f"{root / 'repo'}:/workspace:ro",
+        f"{root / 'output'}:/coire-output:rw",
+    ]
+    assert "COIRE_OUTPUT_DIR=/coire-output" in payload["Env"]
+    assert payload["Labels"]["com.coire.result-path"] == "/coire-output/result.json"
+    with pytest.raises(RunRuntimeError, match="must differ"):
+        manager.create_payload(command_read.model_copy(update={"output_ref": "repo"}), "network")
 
 
 def test_workspace_cannot_escape_root(tmp_path: Path) -> None:

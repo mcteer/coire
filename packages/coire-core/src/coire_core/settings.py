@@ -217,6 +217,10 @@ class Settings(BaseSettings):
     run_token_ttl_s: int = Field(default=1200, ge=60, le=86_400)
     run_stuck_seconds: int = Field(default=1800, ge=60, le=86_400)
     run_workspace_root: str = "/opt/coire/workspaces"
+    mcp_source_hosts: str = "github.com"
+    """Comma-separated HTTPS repository hosts allowed for Studio workspace preparation."""
+    mcp_workspace_max_bytes: int = Field(default=512 * 1024**2, ge=1024, le=8 * 1024**3)
+    mcp_workspace_prepare_timeout_s: int = Field(default=120, ge=1, le=900)
     run_agent_image: str = ""
     run_relay_image: str = ""
     run_relay_request_bytes: int = Field(default=2 * 1024**2, ge=1024, le=16 * 1024**2)

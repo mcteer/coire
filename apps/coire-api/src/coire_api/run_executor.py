@@ -12,11 +12,14 @@ from functools import partial
 from opentelemetry import metrics, trace
 from sqlalchemy import select
 
-from coire_api.db import AgentRunRow, NodeRow, RunCommandRow, session_scope
+from coire_api.db import AgentRunRow, McpCallRow, ModelRow, NodeRow, RunCommandRow, session_scope
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.polling import PollBackoff, wait_or_stop
 from coire_api.run_tokens import rotate_run_token
-from coire_core.models.harness import ProfileName
+from coire_core.models.harness import HarnessRunRequest, ProfileName
+from coire_core.models.mcp import WorkspaceSource
+from coire_core.models.node import WorkspacePrepareRequest
+from coire_core.models.registry import CapabilityProfile
 from coire_core.models.runs import (
     AgentRunState,
     RunCommandState,
@@ -223,7 +226,10 @@ class RunCommandExecutor:
             # run is retried forever in the command ledger after five seconds.
             node_timeout = 5.0
             if operation is RunOperation.CREATE:
-                node_timeout = self.settings.run_relay_start_timeout_s + 10.0
+                node_timeout = max(
+                    self.settings.run_relay_start_timeout_s + 10.0,
+                    self.settings.mcp_workspace_prepare_timeout_s + 10.0,
+                )
             elif operation is RunOperation.WAIT:
                 node_timeout = float(run_limits.timeout_seconds + 5)
             async with NodeClient(self.settings, timeout=node_timeout) as client:
@@ -239,12 +245,45 @@ class RunCommandExecutor:
                         }
                     if not self.settings.run_agent_image:
                         raise RuntimeError("COIRE_RUN_AGENT_IMAGE must be digest-pinned")
+                    prepared = None
+                    if run.prepared_request_id is not None:
+                        async with session_scope() as session:
+                            mcp_call = await session.get(McpCallRow, run.prepared_request_id)
+                            model = await session.get(ModelRow, run.primary_model_id)
+                            if (
+                                mcp_call is None
+                                or mcp_call.run_id != run_id
+                                or mcp_call.owner_user_id != run.requester_user_id
+                                or model is None
+                            ):
+                                raise RuntimeError("MCP run preparation identity is invalid")
+                            prepare = WorkspacePrepareRequest(
+                                run_id=run_id,
+                                source=WorkspaceSource.model_validate(mcp_call.source),
+                                task_class=run.task_class,
+                                harness_request=HarnessRunRequest(
+                                    profile=ProfileName(run.profile),
+                                    variant_id=run.primary_variant_id,
+                                    task_class=run.task_class,
+                                    task=mcp_call.task,
+                                    capability_profile=CapabilityProfile.model_validate(
+                                        model.capability_profile or {}
+                                    ),
+                                    context_window=model.context_window or 4096,
+                                ),
+                            )
+                        prepared = await client.prepare_workspace(node_name, prepare)
+                        if prepared.run_id != run_id:
+                            raise RuntimeError("Studio returned another run workspace")
                     async with session_scope() as session:
                         locked = await session.get(AgentRunRow, run_id, with_for_update=True)
                         if locked is None:
                             raise RuntimeError("run disappeared before token mint")
                         if locked.state is AgentRunState.KILL_REQUESTED:
                             raise RuntimeError("run kill requested before container creation")
+                        if prepared is not None:
+                            locked.workspace_ref = prepared.workspace_ref
+                            locked.output_ref = prepared.output_ref
                         scope = RunTokenScope.model_validate(locked.token_scope)
                         limits = RunLimits.model_validate(locked.limits)
                         _, plaintext = await rotate_run_token(
@@ -264,6 +303,8 @@ class RunCommandExecutor:
                             image=self.settings.run_agent_image,
                             argv=["-m", "coire_agent"],
                             workspace_ref=locked.workspace_ref,
+                            task_class=locked.task_class,
+                            output_ref=locked.output_ref,
                             run_token=plaintext,
                             gateway_url=self.settings.run_gateway_url,
                             limits=limits,

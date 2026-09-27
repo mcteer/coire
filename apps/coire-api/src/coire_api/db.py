@@ -430,6 +430,8 @@ class McpCallRow(Base):
         ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
     )
     source: Mapped[dict[str, object]] = mapped_column(JSONB)
+    input: Mapped[dict[str, object]] = mapped_column(JSONB)
+    task: Mapped[str] = mapped_column(Text)
     model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="RESTRICT"))
     run_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True, unique=True

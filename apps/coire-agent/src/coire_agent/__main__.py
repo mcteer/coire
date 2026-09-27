@@ -16,6 +16,7 @@ from coire_core.models.harness import HarnessRunRequest, ProfileName
 
 REQUEST_PATH = Path("/workspace/.coire/request.json")
 RESULT_PATH = Path("/workspace/.coire/result.json")
+SEPARATE_RESULT_PATH = Path("/coire-output/result.json")
 MAX_REQUEST_BYTES = 2 * 1024**2
 
 
@@ -30,9 +31,11 @@ async def execute(
     *,
     environ: Mapping[str, str] | None = None,
     request_path: Path = REQUEST_PATH,
-    result_path: Path = RESULT_PATH,
+    result_path: Path | None = None,
 ) -> None:
     env = environ or os.environ
+    if result_path is None:
+        result_path = SEPARATE_RESULT_PATH if env.get("COIRE_OUTPUT_DIR") else RESULT_PATH
     run_id = uuid.UUID(env["COIRE_RUN_ID"])
     profile = ProfileName(env["COIRE_PROFILE"])
     model_id = uuid.UUID(env["COIRE_MODEL_ID"])
