@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from coire_core.models.harness import PROFILE_TOOL_NAMES, ProfileName
+from coire_core.models.harness import PROFILE_TOOL_NAMES, ProfileName, TaskClass
 
 
 class AgentRunState(StrEnum):
@@ -89,6 +89,9 @@ class AgentRunCreate(BaseModel):
     profile: ProfileName
     primary_model_id: uuid.UUID
     workspace_ref: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+    task_class: TaskClass = TaskClass.WRITE
+    prepared_request_id: uuid.UUID | None = None
+    output_ref: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
     permitted_model_ids: frozenset[uuid.UUID] = Field(min_length=1, max_length=16)
     permitted_tools: frozenset[str] = Field(default_factory=frozenset, max_length=10)
     spend_limit_tokens: int = Field(default=100_000, ge=1, le=100_000_000)
@@ -125,6 +128,8 @@ class AgentRun(BaseModel):
     node_name: str | None = None
     container_id: str | None = Field(default=None, max_length=128)
     workspace_ref: str
+    task_class: TaskClass = TaskClass.WRITE
+    output_ref: str | None = None
     state: AgentRunState
     limits: RunLimits
     exit_code: int | None = None
@@ -175,6 +180,8 @@ class RunContainerCreate(BaseModel):
     image: str = Field(pattern=r"^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$")
     argv: list[str] = Field(min_length=1, max_length=32)
     workspace_ref: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+    task_class: TaskClass = TaskClass.WRITE
+    output_ref: str | None = Field(default=None, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
     run_token: str = Field(min_length=32, max_length=512, repr=False)
     gateway_url: str = Field(pattern=r"^https?://[^\s]+/v1/?$")
     limits: RunLimits

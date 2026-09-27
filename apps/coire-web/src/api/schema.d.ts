@@ -1447,6 +1447,8 @@ export interface components {
             node_id?: string | null;
             /** Node Name */
             node_name?: string | null;
+            /** Output Ref */
+            output_ref?: string | null;
             /**
              * Primary Model Id
              * Format: uuid
@@ -1476,6 +1478,8 @@ export interface components {
             /** Started At */
             started_at?: string | null;
             state: components["schemas"]["AgentRunState"];
+            /** @default write */
+            task_class: components["schemas"]["TaskClass"];
             /**
              * Updated At
              * Format: date-time
@@ -1487,10 +1491,14 @@ export interface components {
         /** AgentRunCreate */
         AgentRunCreate: {
             limits?: components["schemas"]["RunLimits"];
+            /** Output Ref */
+            output_ref?: string | null;
             /** Permitted Model Ids */
             permitted_model_ids: string[];
             /** Permitted Tools */
             permitted_tools?: string[];
+            /** Prepared Request Id */
+            prepared_request_id?: string | null;
             /**
              * Primary Model Id
              * Format: uuid
@@ -1502,6 +1510,8 @@ export interface components {
              * @default 100000
              */
             spend_limit_tokens: number;
+            /** @default write */
+            task_class: components["schemas"]["TaskClass"];
             /** Workspace Ref */
             workspace_ref: string;
         };
@@ -3628,6 +3638,11 @@ export interface components {
          * @enum {string}
          */
         Tag: "coding" | "general" | "reasoning" | "vision" | "image";
+        /**
+         * TaskClass
+         * @enum {string}
+         */
+        TaskClass: "read" | "write";
         /**
          * ThermalState
          * @enum {string}

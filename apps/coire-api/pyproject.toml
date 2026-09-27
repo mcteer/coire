@@ -16,6 +16,8 @@ dependencies = [
     "asyncpg>=0.30",
     "alembic>=1.14",
     "httpx>=0.28",
+    # MIT. Official Streamable HTTP MCP protocol implementation; avoids hand-written JSON-RPC.
+    "mcp==2.2.0",
     "pyyaml>=6.0",
     "opentelemetry-sdk>=1.29",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",

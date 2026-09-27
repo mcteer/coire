@@ -360,6 +360,17 @@
             ],
             "title": "Node Name"
           },
+          "output_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Ref"
+          },
           "primary_model_id": {
             "format": "uuid",
             "title": "Primary Model Id",
@@ -413,6 +424,10 @@
           "state": {
             "$ref": "#/components/schemas/AgentRunState"
           },
+          "task_class": {
+            "$ref": "#/components/schemas/TaskClass",
+            "default": "write"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -444,6 +459,18 @@
           "limits": {
             "$ref": "#/components/schemas/RunLimits"
           },
+          "output_ref": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Ref"
+          },
           "permitted_model_ids": {
             "items": {
               "format": "uuid",
@@ -464,6 +491,18 @@
             "type": "array",
             "uniqueItems": true
           },
+          "prepared_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepared Request Id"
+          },
           "primary_model_id": {
             "format": "uuid",
             "title": "Primary Model Id",
@@ -478,6 +517,10 @@
             "minimum": 1.0,
             "title": "Spend Limit Tokens",
             "type": "integer"
+          },
+          "task_class": {
+            "$ref": "#/components/schemas/TaskClass",
+            "default": "write"
           },
           "workspace_ref": {
             "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
@@ -5810,6 +5853,14 @@
           "image"
         ],
         "title": "Tag",
+        "type": "string"
+      },
+      "TaskClass": {
+        "enum": [
+          "read",
+          "write"
+        ],
+        "title": "TaskClass",
         "type": "string"
       },
       "ThermalState": {
