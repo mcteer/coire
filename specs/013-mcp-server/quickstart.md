@@ -33,4 +33,5 @@ Record commands, counts, CI links, and real-cluster evidence here during impleme
 - `pnpm -C apps/coire-web test`, `lint`, and `exec tsc --noEmit`: passed (19 web tests).
 - `uv run alembic -c apps/coire-api/alembic.ini heads`: one head, `0014_mcp_calls`.
 - Local arm64 agent and MCP images: build and image-policy passed. Trivy CRITICAL scans passed. The agent image ran Git and produced a branch bundle.
-- `uv run pytest --collect-only -q tests/integration/test_mcp_loop.py`: one composed loop test collected. CI and real tiny-model results are pending.
+- `uv run pytest --collect-only -q tests/integration/test_mcp_loop.py`: one composed loop test collected.
+- [CI run 36358492241](https://github.com/mcteer/coire/actions/runs/36358492241): all jobs passed; composed integration reported 107 passed and 2 skipped. The MCP loop proved cited research, prior-result plan, a committed branch, failing and missing test status, a downloadable/importable bundle, and two separate concurrent branches on the ready CI Studio. The CI engine is deterministic; a real tiny-model run remains pending.

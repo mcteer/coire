@@ -10,7 +10,7 @@ The optional `coire-mcp` service has its own distroless image, non-root read-onl
 
 ## Validation
 
-Ruff, mypy (389 source files), and the non-integration suite passed after OpenAPI regeneration (790 tests passed, 8 skipped, 109 integration deselected). The web suite passed (19 tests), as did ESLint and TypeScript. The local arm64 agent image built at 68.6 MB and passed all seven image-policy rules. Its Git 2.39.5 executable ran and created a branch bundle in the distroless runtime. The arm64 MCP image also passed image policy. Trivy CRITICAL scans passed for both images. The composed MCP loop test collects successfully, but CI execution and a real tiny-model run remain pending.
+Ruff, mypy (389 source files), and the non-integration suite passed after OpenAPI regeneration (790 tests passed, 8 skipped, 109 integration deselected). The web suite passed (19 tests), as did ESLint and TypeScript. The local arm64 agent image built at 68.6 MB and passed all seven image-policy rules. Its Git 2.39.5 executable ran and created a branch bundle in the distroless runtime. The arm64 MCP image also passed image policy. Trivy CRITICAL scans passed for both images. [CI run 36358492241](https://github.com/mcteer/coire/actions/runs/36358492241) passed all jobs, including 107 composed integration tests with 2 skipped. The composed loop used a tiny-model acquisition and the deterministic CI fake engine. A real tiny-model run and the separate lifecycle and unverified-read composed cases remain pending.
 # Coding runner dependencies
 
 The Studio agent image adds `pytest==9.1.1` (MIT) so the initial allowlisted test runner

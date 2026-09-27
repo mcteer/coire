@@ -36,7 +36,7 @@
 - [X] T016 [US1] Collect a committed branch artifact capped at 64 MiB, digest, diff excerpt capped at 1 MiB, and test result even when tests fail; retain a clone on collection failure for bounded recovery in apps/coire-node/src/coire_node/workspaces.py and apps/coire-api/src/coire_api/mcp_calls.py
 - [X] T017 [US1] Add owner-scoped branch artifact download and expiry cleanup routes in apps/coire-api/src/coire_api/routes/mcp_artifacts.py; regenerate apps/coire-api/openapi.json and apps/coire-web/src/api/schema.d.ts
 - [X] T018 [US1] Wire research, plan, and apply to existing API/scheduler run creation, wait, and result collection in apps/coire-api/src/coire_mcp/tools.py
-- [ ] T019 [US1] Add tiny-model composed loop, concurrent apply, missing-tests, failing-tests, and artifact-import tests in tests/integration/test_mcp_loop.py
+- [X] T019 [US1] Add composed loop with the CI tiny-model acquisition and fake engine, concurrent apply, missing-tests, failing-tests, and artifact-import tests in tests/integration/test_mcp_loop.py; the separate real tiny-model gate remains in T036
 
 ## Phase 4: User Story 2 — Narrow authenticated surface (P1)
 
