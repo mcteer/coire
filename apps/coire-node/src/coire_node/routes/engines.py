@@ -95,10 +95,14 @@ async def proxy_chat_completion(
     if engine.state is not EngineState.READY:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "engine is not ready")
     expected_model = str(store.path_for(engine.slug or ""))
-    if not engine.slug or request.model != expected_model:
+    if not engine.slug or request.model not in {engine.slug, expected_model}:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "model does not match engine")
     url = f"http://127.0.0.1:{engine.port}/v1/chat/completions"
     payload = request.model_dump(mode="json", exclude_none=True)
+    # Variant-copy contracts store the validated registry slug, while the bare engine must
+    # receive the node-local absolute path. Resolve it only after matching the running
+    # engine's immutable slug so no caller-controlled path can cross this boundary.
+    payload["model"] = expected_model
     if not request.stream:
         try:
             response = await _engine_client().post(url, json=payload, timeout=300)

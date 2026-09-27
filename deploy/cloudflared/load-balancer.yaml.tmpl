@@ -1,0 +1,16 @@
+# Applied by the reviewed edge deployment, never from a Studio.
+# Each pool has an HTTPS monitor for /ready with expected_code 200 and no cached response.
+hostname: ${COIRE_PUBLIC_HOSTNAME}
+access_application: ${COIRE_ACCESS_APPLICATION_ID}
+pools:
+  - name: coire-core
+    tunnel: ${COIRE_CORE_TUNNEL_ID}
+    monitor: {path: /failover/ready, expected_code: 200, no_cache: true, follow_redirects: false}
+  - name: coire-edge-a
+    tunnel: ${COIRE_EDGE_A_TUNNEL_ID}
+    monitor: {path: /ready, expected_code: 200, no_cache: true, follow_redirects: false}
+  - name: coire-edge-b
+    tunnel: ${COIRE_EDGE_B_TUNNEL_ID}
+    monitor: {path: /ready, expected_code: 200, no_cache: true, follow_redirects: false}
+fallback_pool: null
+steering: priority

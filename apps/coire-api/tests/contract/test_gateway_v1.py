@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 import httpx
 import pytest
 from fastapi import FastAPI
+from pydantic import SecretStr
 
 from coire_api.app import create_app
 from coire_api.auth import ADMIN, ANONYMOUS, require_principal
@@ -18,10 +19,14 @@ from coire_api.routes.v1 import _tracked_stream
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
 from coire_core.settings import Settings, get_settings
 
+ADMIN_TOKEN = "gateway-contract-admin"
+
 
 @pytest.fixture
 def app(gateway_fake_session: object, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    settings.admin_token = SecretStr(ADMIN_TOKEN)
+    settings.identity_legacy_admin_enabled = True
     application = create_app(settings)
 
     async def session() -> AsyncIterator[object]:
@@ -39,12 +44,18 @@ def app(gateway_fake_session: object, monkeypatch: pytest.MonkeyPatch) -> FastAP
 
 
 async def request(
-    app: FastAPI, method: str, path: str, *, json: object | None = None
+    app: FastAPI,
+    method: str,
+    path: str,
+    *,
+    json: object | None = None,
+    authenticated: bool = True,
 ) -> httpx.Response:
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
-        return await client.request(method, path, json=json)
+        headers = {"Authorization": f"Bearer {ADMIN_TOKEN}"} if authenticated else {}
+        return await client.request(method, path, json=json, headers=headers)
 
 
 async def test_models_has_openai_list_shape(app: FastAPI) -> None:
@@ -60,7 +71,7 @@ async def test_every_compatible_route_requires_authentication(app: FastAPI) -> N
         ("POST", "/v1/chat/completions", {}),
         ("POST", "/v1/messages", {}),
     ):
-        response = await request(app, method, path, json=body)
+        response = await request(app, method, path, json=body, authenticated=False)
         assert response.status_code == 401, path
         assert response.headers["www-authenticate"] == "Bearer"
 

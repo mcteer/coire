@@ -1,0 +1,32 @@
+groups:
+  - name: coire-control-plane-efficiency
+    interval: 15s
+    rules:
+      - alert: CoireSchedulerWorkersMissing
+        expr: absent(coire_scheduler_workers_running) or coire_scheduler_workers_running < 7
+        for: 1m
+        labels: {severity: critical, subject: scheduler}
+        annotations:
+          summary: Scheduler command workers are missing
+          runbook_url: /docs/runbooks/control-plane-efficiency#scheduler-workers
+      - alert: CoireRunKillSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(coire_run_kill_queue_latency_seconds_bucket{outcome="succeeded"}[5m]))) > 5
+        for: 5m
+        labels: {severity: critical, subject: run-kill}
+        annotations:
+          summary: Run kill latency exceeds the five-second safety budget
+          runbook_url: /docs/runbooks/control-plane-efficiency#kill-lane
+      - alert: CoireKillScanFailing
+        expr: rate(coire_scheduler_kill_scan_failures_total[2m]) > 0
+        for: 2m
+        labels: {severity: critical, subject: run-kill}
+        annotations:
+          summary: Scheduler cannot inspect pending kill requests
+          runbook_url: /docs/runbooks/control-plane-efficiency#kill-lane
+      - alert: CoireConsoleSnapshotChurn
+        expr: rate(coire_console_projections_total[5m]) > 1
+        for: 5m
+        labels: {severity: warning, subject: console}
+        annotations:
+          summary: Admin console projections are refreshing more than once per second
+          runbook_url: /docs/runbooks/control-plane-efficiency#console-refresh

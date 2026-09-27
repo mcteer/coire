@@ -10,16 +10,28 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncGenerator
+from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status
-from sqlalchemy import select
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import CurrentAdmin
 from coire_api.db import DownloadJobRow, EngineProcessRow, ModelCopyRow, ModelRow, NodeRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.preconditions import require_current
 from coire_api.registry import service
 from coire_api.registry.placement import NoCandidate, choose_load_node
 from coire_core.models.audit import AuditAction
@@ -186,12 +198,24 @@ async def add_model(
 
 
 @router.get("/models")
-async def list_models(principal: CurrentAdmin, session: SessionDep) -> list[dict[str, object]]:
-    rows = (
-        (await session.execute(select(ModelRow).order_by(ModelRow.created_at.desc())))
-        .scalars()
-        .all()
-    )
+async def list_models(
+    principal: CurrentAdmin,
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    before: datetime | None = None,
+    before_id: uuid.UUID | None = None,
+) -> list[dict[str, object]]:
+    query = select(ModelRow).order_by(ModelRow.created_at.desc(), ModelRow.id.desc()).limit(limit)
+    if before is not None:
+        query = query.where(
+            or_(
+                ModelRow.created_at < before,
+                and_(ModelRow.created_at == before, ModelRow.id < before_id),
+            )
+            if before_id is not None
+            else ModelRow.created_at < before
+        )
+    rows = (await session.execute(query)).scalars().all()
     return [await _detail(session, row) for row in rows]
 
 
@@ -208,8 +232,10 @@ async def update_model(
     request: ModelUpdateRequest,
     principal: CurrentAdmin,
     session: SessionDep,
+    if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> dict[str, object]:
     model = await _get(session, model_id)
+    require_current(if_match, model.updated_at)
     try:
         await service.update_model(session, model, request, actor=principal.subject or "admin")
     except service.RegistryError as exc:
@@ -406,11 +432,11 @@ async def load_model(
     row.process_create_time = engine_status.process_create_time
     row.state = engine_status.state
     row.chat_template_sha256 = engine_status.chat_template_sha256
-    from coire_api.audit import write_audit
+    from coire_api.audit import write_principal_audit
 
-    await write_audit(
+    await write_principal_audit(
         session,
-        actor=principal.subject or "admin",
+        principal=principal,
         action=AuditAction.ENGINE_LOAD,
         target_type="engine",
         target_id=str(engine_id),

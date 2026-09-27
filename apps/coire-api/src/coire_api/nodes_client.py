@@ -19,10 +19,30 @@ from typing import Any
 
 import httpx
 
+from coire_core.models.acquisition import Reservation, ReservationRequest, VariantRecipe
 from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileResult
 from coire_core.models.jobs import ChecksumManifest, JobStatus, RepoInspection
 from coire_core.models.link import StudioDataLinkStatus
 from coire_core.models.node import NodeStatus, NodeStatusV2
+from coire_core.models.runs import (
+    RunCollectedResult,
+    RunContainerCreate,
+    RunContainerObservation,
+    RunContainerStatus,
+    RunLogChunk,
+    RunReconcileRequest,
+    RunReconcileResult,
+)
+from coire_core.models.sharding import (
+    BenchmarkCommand,
+    BenchmarkMeasurement,
+    LinkObservation,
+    LinkProbeCommand,
+    ShardCapabilityRequest,
+    ShardCapabilityResult,
+    ShardGroupCommand,
+    ShardGroupStatus,
+)
 from coire_core.net import ControlClient, FabricUnreachable
 from coire_core.settings import Settings
 
@@ -169,6 +189,64 @@ class NodeClient:
         _, body = await self._call("GET", node, "/node/data-link", expect=(200,))
         return StudioDataLinkStatus.model_validate(body)
 
+    async def run_link_probe(self, node: str, command: LinkProbeCommand) -> LinkObservation:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/link-probes",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return LinkObservation.model_validate(body)
+
+    async def run_benchmark(self, node: str, command: BenchmarkCommand) -> BenchmarkMeasurement:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/benchmarks",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return BenchmarkMeasurement.model_validate(body)
+
+    async def prepare_shard_group(self, node: str, command: ShardGroupCommand) -> ShardGroupStatus:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/shard-groups",
+            json=command.model_dump(mode="json"),
+            expect=(200, 202),
+        )
+        return ShardGroupStatus.model_validate(body)
+
+    async def shard_capability(
+        self, node: str, request: ShardCapabilityRequest
+    ) -> ShardCapabilityResult:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/shard-groups/capabilities",
+            json=request.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return ShardCapabilityResult.model_validate(body)
+
+    async def shard_group(self, node: str, group_id: uuid.UUID) -> ShardGroupStatus:
+        _, body = await self._call("GET", node, f"/node/shard-groups/{group_id}", expect=(200,))
+        return ShardGroupStatus.model_validate(body)
+
+    async def stop_shard_group(self, node: str, group_id: uuid.UUID) -> ShardGroupStatus:
+        _, body = await self._call(
+            "DELETE", node, f"/node/shard-groups/{group_id}", expect=(200, 202)
+        )
+        return ShardGroupStatus.model_validate(body)
+
+    async def mark_shard_group_ready(self, node: str, group_id: uuid.UUID) -> ShardGroupStatus:
+        _, body = await self._call(
+            "POST", node, f"/node/shard-groups/{group_id}/ready", expect=(200,)
+        )
+        return ShardGroupStatus.model_validate(body)
+
     # -- repositories and copies -------------------------------------------
     async def inspect(self, node: str, repo_id: str, revision: str = "main") -> RepoInspection:
         _, body = await self._call(
@@ -263,6 +341,94 @@ class NodeClient:
         )
         return JobStatus.model_validate(body)
 
+    async def hold_reservation(self, node: str, request: ReservationRequest) -> Reservation:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/jobs/reservations",
+            json=request.model_dump(mode="json"),
+            expect=(200, 201),
+        )
+        return Reservation.model_validate(body)
+
+    async def release_reservation(self, node: str, reservation_id: uuid.UUID) -> None:
+        await self._call(
+            "DELETE",
+            node,
+            f"/node/jobs/reservations/{reservation_id}",
+            expect=(204,),
+        )
+
+    async def start_convert(
+        self,
+        node: str,
+        *,
+        job_id: uuid.UUID,
+        repo_id: str,
+        revision: str,
+        source_slug: str,
+        target_slug: str,
+        reservation_id: uuid.UUID,
+        recipe: VariantRecipe,
+        dequantize: bool = False,
+        expected_total_bytes: int | None = None,
+    ) -> JobStatus:
+        payload: dict[str, Any] = {
+            "job_id": str(job_id),
+            "repo_id": repo_id,
+            "revision": revision,
+            "source_slug": source_slug,
+            "target_slug": target_slug,
+            "reservation_id": str(reservation_id),
+            "recipe": recipe.model_dump(mode="json"),
+            "dequantize": dequantize,
+        }
+        if expected_total_bytes is not None:
+            payload["expected_total_bytes"] = expected_total_bytes
+        _, body = await self._call(
+            "POST", node, "/node/jobs/convert", json=payload, expect=(200, 202)
+        )
+        return JobStatus.model_validate(body)
+
+    async def start_validate(
+        self,
+        node: str,
+        *,
+        job_id: uuid.UUID,
+        slug: str,
+        tolerance: float,
+        validator_version: str,
+        chat_template_present: bool,
+        reference_perplexity: float | None = None,
+        reference_variant_id: uuid.UUID | None = None,
+    ) -> JobStatus:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/jobs/validate",
+            json={
+                "job_id": str(job_id),
+                "slug": slug,
+                "tolerance": tolerance,
+                "validator_version": validator_version,
+                "chat_template_present": chat_template_present,
+                "reference_perplexity": reference_perplexity,
+                "reference_variant_id": str(reference_variant_id) if reference_variant_id else None,
+            },
+            expect=(200, 202),
+        )
+        return JobStatus.model_validate(body)
+
+    async def start_cleanup(self, node: str, *, job_id: uuid.UUID, slug: str) -> JobStatus:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/jobs/cleanup",
+            json={"job_id": str(job_id), "slug": slug},
+            expect=(200, 202),
+        )
+        return JobStatus.model_validate(body)
+
     async def get_job(self, node: str, job_id: uuid.UUID) -> JobStatus:
         _, body = await self._call("GET", node, f"/node/jobs/{job_id}", expect=(200,))
         return JobStatus.model_validate(body)
@@ -323,3 +489,50 @@ class NodeClient:
             expect=(200,),
         )
         return ReconcileResult.model_validate(body)
+
+    # -- ephemeral runs ----------------------------------------------------
+    async def create_run(self, node: str, command: RunContainerCreate) -> RunContainerStatus:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/runs",
+            json=command.model_dump(mode="json"),
+            expect=(200, 201),
+        )
+        return RunContainerStatus.model_validate(body)
+
+    async def start_run(self, node: str, run_id: uuid.UUID) -> RunContainerStatus:
+        _, body = await self._call("POST", node, f"/node/runs/{run_id}/start", expect=(200,))
+        return RunContainerStatus.model_validate(body)
+
+    async def run_logs(self, node: str, run_id: uuid.UUID, *, offset: int = 0) -> list[RunLogChunk]:
+        _, body = await self._call(
+            "GET", node, f"/node/runs/{run_id}/logs?offset={offset}", expect=(200,)
+        )
+        return [RunLogChunk.model_validate(item) for item in body.get("items", [])]
+
+    async def wait_run(self, node: str, run_id: uuid.UUID) -> RunContainerStatus:
+        _, body = await self._call("POST", node, f"/node/runs/{run_id}/wait", expect=(200,))
+        return RunContainerStatus.model_validate(body)
+
+    async def collect_run(self, node: str, run_id: uuid.UUID) -> RunCollectedResult:
+        _, body = await self._call("GET", node, f"/node/runs/{run_id}/result", expect=(200,))
+        return RunCollectedResult.model_validate(body)
+
+    async def remove_run(self, node: str, run_id: uuid.UUID, *, kill: bool = False) -> None:
+        suffix = "?kill=true" if kill else ""
+        await self._call("DELETE", node, f"/node/runs/{run_id}{suffix}", expect=(204, 404))
+
+    async def list_runs(self, node: str) -> list[RunContainerObservation]:
+        _, body = await self._call("GET", node, "/node/runs", expect=(200,))
+        return [RunContainerObservation.model_validate(item) for item in body.get("items", [])]
+
+    async def reconcile_runs(self, node: str, request: RunReconcileRequest) -> RunReconcileResult:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/runs/reconcile",
+            json=request.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return RunReconcileResult.model_validate(body)

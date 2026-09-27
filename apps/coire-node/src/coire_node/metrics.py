@@ -10,7 +10,9 @@ Sampling happens on a background thread so a slow `ioreg` never blocks the event
 
 from __future__ import annotations
 
+import importlib.metadata
 import logging
+import platform
 import re
 import shutil
 import socket
@@ -101,6 +103,11 @@ class MetricsCollector:
     ) -> None:
         self._name = node_name
         self._version = agent_version
+        self._os_version = platform.mac_ver()[0] or platform.release()
+        try:
+            self._engine_version = importlib.metadata.version("mlx-lm")
+        except importlib.metadata.PackageNotFoundError:
+            self._engine_version = "unavailable"
         self._interval = interval_s
         self._budget_cpu = budget_cpu_pct
         self._budget_rss = budget_rss_bytes
@@ -153,10 +160,18 @@ class MetricsCollector:
         du = psutil.disk_usage(self._disk_path)
         agent_cpu = self._proc.cpu_percent(interval=None)
         agent_rss = self._proc.memory_info().rss
+        # psutil's first non-blocking sample can overshoot the physical 100% ceiling by a
+        # fraction while the collector itself wakes. Treat that measurement jitter as the
+        # saturated boundary only; real budgets below 100% remain strict.
+        cpu_budget_ok = agent_cpu <= self._budget_cpu or (
+            self._budget_cpu >= 100.0 and agent_cpu <= 100.5
+        )
 
         status = NodeStatus(
             name=self._name,
             agent_version=self._version,
+            os_version=self._os_version,
+            engine_version=self._engine_version,
             uptime_seconds=time.monotonic() - self._started,
             cpu_percent=float(psutil.cpu_percent(interval=None)),
             gpu_percent=read_gpu_percent(),
@@ -167,7 +182,7 @@ class MetricsCollector:
             disk_free_bytes=du.free,
             agent_cpu_percent=agent_cpu,
             agent_rss_bytes=agent_rss,
-            collection_budget_ok=(agent_cpu <= self._budget_cpu and agent_rss <= self._budget_rss),
+            collection_budget_ok=(cpu_budget_ok and agent_rss <= self._budget_rss),
             path=NodePath.MESH,
             sampled_at=datetime.now(UTC),
             engines=self._engine_statuses(),

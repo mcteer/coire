@@ -1,0 +1,23 @@
+groups:
+  - name: coire-acquisition
+    rules:
+      - alert: CoireAcquisitionStageStuck
+        expr: time() - max by (stage) (timestamp(coire_acquisition_stage_transitions_total{outcome="started"})) > 1800
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Coire acquisition stage is stuck
+          description: An acquisition stage has not completed within the configured 30-minute bound.
+      - alert: CoireAcquisitionConversionFailed
+        expr: increase(coire_acquisition_stage_transitions_total{stage="convert",outcome="failed"}[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: Coire model conversion failed
+          description: A durable conversion stage exhausted its retries in the last ten minutes.
+      - alert: CoireAcquisitionEstimateDrift
+        expr: abs(coire_acquisition_estimate_delta_ratio) > 0.10
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Coire model size estimate drift exceeds 10 percent
+          description: Actual converted size differs materially from the pre-transfer estimate.

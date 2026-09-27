@@ -10,17 +10,30 @@ Append-only. Nothing in this module updates or deletes, and no route exposes a w
 from __future__ import annotations
 
 import logging
+import re
+import uuid
 from typing import Any
 
+from opentelemetry import trace
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import AuditRow
 from coire_core.models.audit import AuditOutcome
+from coire_core.models.auth import ActorType
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer("coire.api.audit")
 
 _SECRET_HINTS = ("token", "secret", "password", "credential", "authorization", "bearer", "grant")
 _MAX_VALUE_CHARS = 500
+_CREDENTIAL_PATTERN = re.compile(
+    r"(?:coire_[A-Za-z0-9_-]{12}_[A-Za-z0-9_-]{20,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})"
+)
+
+
+def _safe_string(value: str) -> str:
+    redacted = _CREDENTIAL_PATTERN.sub("[redacted]", value)
+    return redacted[:_MAX_VALUE_CHARS] + "…" if len(redacted) > _MAX_VALUE_CHARS else redacted
 
 
 def redact(detail: dict[str, Any] | None) -> dict[str, Any]:
@@ -39,8 +52,13 @@ def redact(detail: dict[str, Any] | None) -> dict[str, Any]:
             out[key] = "[redacted]"
         elif isinstance(value, dict):
             out[key] = redact(value)
-        elif isinstance(value, str) and len(value) > _MAX_VALUE_CHARS:
-            out[key] = value[:_MAX_VALUE_CHARS] + "…"
+        elif isinstance(value, list):
+            out[key] = [
+                redact({"value": item})["value"] if isinstance(item, (dict, str)) else item
+                for item in value
+            ]
+        elif isinstance(value, str):
+            out[key] = _safe_string(value)
         else:
             out[key] = value
     return out
@@ -55,6 +73,12 @@ async def write_audit(
     target_id: str,
     outcome: AuditOutcome = AuditOutcome.OK,
     detail: dict[str, Any] | None = None,
+    actor_type: ActorType = ActorType.SERVICE,
+    actor_user_id: uuid.UUID | None = None,
+    request_id: uuid.UUID | None = None,
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
+    context: dict[str, Any] | None = None,
 ) -> AuditRow:
     """Append one audit record.
 
@@ -62,16 +86,29 @@ async def write_audit(
     it records, so a rolled-back mutation does not leave a row claiming it happened. Refusals
     are the exception and commit their own session — see `auth.require_admin`.
     """
-    row = AuditRow(
-        actor=actor,
-        action=str(action),
-        target_type=target_type,
-        target_id=target_id,
-        outcome=outcome,
-        detail=redact(detail),
-    )
-    session.add(row)
-    await session.flush()
+    if request_id is None:
+        from coire_api.auth import current_request_id
+
+        request_id = current_request_id()
+    with tracer.start_as_current_span("coire.audit.write") as span:
+        span.set_attribute("coire.audit.action", str(action))
+        span.set_attribute("coire.audit.outcome", outcome.value)
+        row = AuditRow(
+            actor=actor,
+            actor_type=actor_type,
+            actor_user_id=actor_user_id,
+            request_id=request_id,
+            action=str(action),
+            target_type=target_type,
+            target_id=target_id,
+            outcome=outcome,
+            detail=redact(detail),
+            before=redact(before),
+            after=redact(after),
+            context=redact(context),
+        )
+        session.add(row)
+        await session.flush()
     logger.info(
         "audit actor=%s action=%s target=%s/%s outcome=%s",
         actor,
@@ -81,3 +118,38 @@ async def write_audit(
         outcome.value,
     )
     return row
+
+
+async def write_principal_audit(
+    session: AsyncSession,
+    *,
+    principal: object,
+    action: str,
+    target_type: str,
+    target_id: str,
+    outcome: AuditOutcome = AuditOutcome.OK,
+    detail: dict[str, Any] | None = None,
+    before: dict[str, Any] | None = None,
+    after: dict[str, Any] | None = None,
+    context: dict[str, Any] | None = None,
+) -> AuditRow:
+    """Write an audit row with the complete typed identity projection."""
+    from coire_api.auth import Principal, audit_actor
+
+    if not isinstance(principal, Principal):
+        raise TypeError("principal must be a verified Principal")
+    actor, actor_type, actor_user_id = audit_actor(principal)
+    return await write_audit(
+        session,
+        actor=actor,
+        actor_type=actor_type,
+        actor_user_id=actor_user_id,
+        action=action,
+        target_type=target_type,
+        target_id=target_id,
+        outcome=outcome,
+        detail=detail,
+        before=before,
+        after=after,
+        context=context,
+    )

@@ -1,7 +1,0 @@
-{
-  "hosts": [
-    {"rank": 0, "host": "coire-edge-a.fabric"},
-    {"rank": 1, "host": "coire-edge-b.fabric"}
-  ],
-  "backend": "jaccl"
-}

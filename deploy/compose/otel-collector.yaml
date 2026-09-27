@@ -1,8 +1,6 @@
 # OpenTelemetry Collector — feature 000.
 #
-# Export only (FR-014). Everything stays local and nothing egresses. The metrics, logs and
-# traces backends, the dashboards and the alert rules are feature 009 (ADR-0003), at which
-# point exporters are added here rather than instrumentation being retrofitted everywhere.
+# Lean profile: metrics are scraped locally; spans have bounded debug visibility.
 
 receivers:
   otlp:
@@ -25,9 +23,8 @@ extensions:
     endpoint: 0.0.0.0:13133
 
 exporters:
-  # Until feature 009 provides Tempo/Prometheus/Loki, spans and metrics are counted and
-  # dropped. `basic` keeps one line per batch so the quickstart can assert arrival without
-  # filling core's disk.
+  prometheus:
+    endpoint: 0.0.0.0:8889
   debug:
     verbosity: basic
 
@@ -44,4 +41,4 @@ service:
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [debug]
+      exporters: [prometheus]

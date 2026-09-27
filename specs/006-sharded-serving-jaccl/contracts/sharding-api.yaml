@@ -1,0 +1,32 @@
+openapi: 3.1.0
+info:
+  title: Coire sharded serving additions
+  version: 0.1.0
+paths:
+  /api/v1/admin/links/studios/probe:
+    post:
+      summary: Run and persist the two-transport Studio link probe
+      security: [{bearerAuth: []}]
+      responses:
+        "202": {description: Probe accepted}
+  /api/v1/admin/links/studios:
+    get:
+      summary: Read the projected link and observation history
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: Typed link state}
+  /api/v1/admin/benchmarks:
+    post:
+      summary: Run one append-only placement benchmark
+      security: [{bearerAuth: []}]
+      responses:
+        "202": {description: Benchmark accepted}
+    get:
+      summary: List benchmark results
+      security: [{bearerAuth: []}]
+      responses:
+        "200": {description: Typed benchmark result list}
+components:
+  securitySchemes:
+    bearerAuth: {type: http, scheme: bearer}
+

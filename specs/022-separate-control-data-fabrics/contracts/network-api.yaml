@@ -125,10 +125,12 @@ components:
     NodeStatusV2:
       type: object
       additionalProperties: false
-      required: [name, agent_version, uptime_seconds, cpu_percent, thermal_state, memory_total_bytes, memory_free_bytes, disk_total_bytes, disk_free_bytes, agent_cpu_percent, agent_rss_bytes, collection_budget_ok, path, sampled_at, engines, jobs, memory_budget_bytes, memory_committed_bytes, store_free_bytes]
+      required: [name, agent_version, os_version, engine_version, uptime_seconds, cpu_percent, thermal_state, memory_total_bytes, memory_free_bytes, disk_total_bytes, disk_free_bytes, agent_cpu_percent, agent_rss_bytes, collection_budget_ok, path, sampled_at, engines, jobs, memory_budget_bytes, memory_committed_bytes, store_free_bytes]
       properties:
         name: { type: string }
         agent_version: { type: string }
+        os_version: { type: string }
+        engine_version: { type: string }
         uptime_seconds: { type: number, minimum: 0 }
         cpu_percent: { type: number, minimum: 0, maximum: 100 }
         gpu_percent: { type: [number, "null"], minimum: 0, maximum: 100 }

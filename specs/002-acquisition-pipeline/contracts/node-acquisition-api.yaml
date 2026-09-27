@@ -1,0 +1,131 @@
+openapi: 3.1.0
+info:
+  title: Coire node acquisition API
+  version: 0.2.0
+paths:
+  /jobs:
+    post:
+      summary: Submit an idempotent pull, convert, validate, replicate, or cleanup job
+      security: [{nodeToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/NodeJobRequest'}
+      responses:
+        '202':
+          description: Job accepted or existing idempotent job returned
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NodeJob'}
+        '409':
+          description: Reservation or disk conflict
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
+  /jobs/{job_id}:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: {type: string, format: uuid}
+    get:
+      summary: Read node job progress
+      security: [{nodeToken: []}]
+      responses:
+        '200':
+          description: Job state
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/NodeJob'}
+  /reservations:
+    post:
+      summary: Hold conversion memory and disk before process launch
+      security: [{nodeToken: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ReservationRequest'}
+      responses:
+        '201':
+          description: Reservation held
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Reservation'}
+        '409':
+          description: Currently unavailable or impossible placement
+          content:
+            application/problem+json:
+              schema: {$ref: '#/components/schemas/Problem'}
+  /reservations/{reservation_id}:
+    delete:
+      summary: Idempotently release a reservation
+      security: [{nodeToken: []}]
+      parameters:
+        - name: reservation_id
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '204': {description: Released or already absent}
+components:
+  securitySchemes:
+    nodeToken: {type: http, scheme: bearer}
+  schemas:
+    NodeJobRequest:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key, operation, model_id, variant_id]
+      properties:
+        idempotency_key: {type: string, format: uuid}
+        operation: {type: string, enum: [pull, convert, validate, replicate, cleanup]}
+        model_id: {type: string, format: uuid}
+        variant_id: {type: string, format: uuid}
+        source_revision: {type: [string, 'null']}
+        reservation_id: {type: [string, 'null'], format: uuid}
+        recipe: {type: [object, 'null'], additionalProperties: false}
+        peer_node_id: {type: [string, 'null'], format: uuid}
+    NodeJob:
+      type: object
+      additionalProperties: false
+      required: [id, operation, state, progress_bytes, total_bytes]
+      properties:
+        id: {type: string, format: uuid}
+        operation: {type: string}
+        state: {type: string, enum: [queued, running, succeeded, failed, cancelled]}
+        progress_bytes: {type: integer, minimum: 0}
+        total_bytes: {type: integer, minimum: 0}
+        result_digest: {type: [string, 'null']}
+        failure_code: {type: [string, 'null']}
+        failure_detail: {type: [string, 'null']}
+    ReservationRequest:
+      type: object
+      additionalProperties: false
+      required: [idempotency_key, workflow_id, variant_id, memory_bytes, disk_bytes]
+      properties:
+        idempotency_key: {type: string, format: uuid}
+        workflow_id: {type: string, format: uuid}
+        variant_id: {type: string, format: uuid}
+        memory_bytes: {type: integer, minimum: 1}
+        disk_bytes: {type: integer, minimum: 1}
+    Reservation:
+      type: object
+      additionalProperties: false
+      required: [id, state, memory_bytes, disk_bytes, occupants]
+      properties:
+        id: {type: string, format: uuid}
+        state: {type: string, enum: [held, released, expired]}
+        memory_bytes: {type: integer}
+        disk_bytes: {type: integer}
+        occupants:
+          type: array
+          items: {type: string}
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: {type: string, format: uri-reference}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}

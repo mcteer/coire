@@ -1,0 +1,22 @@
+groups:
+  - name: coire-instances
+    rules:
+      - alert: CoireInstanceFailure
+        expr: increase(coire_instance_failures_total[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: A Coire model instance failed
+          description: Inspect the correlated instance lifecycle trace and cluster state.
+      - alert: CoireInstanceTransitionsStalled
+        expr: sum(increase(coire_instance_transitions_total{state=~"reserving|launching|warming"}[15m])) > 0 and sum(increase(coire_instance_transitions_total{state="ready"}[15m])) == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Coire instance lifecycle may be stalled
+          description: Launch states advanced without an instance becoming ready.
+      - alert: CoireNodeRegistrationRefused
+        expr: increase(coire_node_registration_attempts_total{outcome="refused"}[10m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: A node registration attempt was refused
+          description: Inspect audited refusal reason; repeated attempts may indicate stale credentials or an unknown host.

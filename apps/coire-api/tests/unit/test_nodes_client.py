@@ -12,7 +12,9 @@ import pytest
 
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_core.models.engine import ReconcileRequest
+from coire_core.models.harness import ProfileName
 from coire_core.models.jobs import ChecksumManifest
+from coire_core.models.runs import RunContainerCreate, RunLimits
 from coire_core.net import ControlClient
 from coire_core.settings import Settings
 
@@ -109,6 +111,56 @@ class TestErrorMapping:
 
 
 class TestVerbs:
+    async def test_run_verbs_are_typed_and_bounded(self) -> None:
+        status_body = {
+            "run_id": str(JOB_ID),
+            "container_id": "container-1",
+            "state": "created",
+            "hardened": True,
+        }
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/logs"):
+                assert request.url.params["offset"] == "7"
+                return _json(
+                    [
+                        {
+                            "run_id": str(JOB_ID),
+                            "offset": 7,
+                            "stream": "stdout",
+                            "content": "bounded",
+                        }
+                    ]
+                )
+            if request.url.path.endswith("/result"):
+                return _json({"run_id": str(JOB_ID), "result": {"ok": True}})
+            if request.method == "DELETE":
+                assert request.url.params["kill"] == "true"
+                return httpx.Response(204)
+            return _json(status_body, 201 if request.url.path.endswith("/runs") else 200)
+
+        client, seen = _client(handler)
+        command = RunContainerCreate(
+            run_id=JOB_ID,
+            profile=ProfileName.GENERAL,
+            model_id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            image=f"registry.invalid/coire-agent@sha256:{'a' * 64}",
+            argv=["-m", "coire_agent"],
+            workspace_ref="workspace-1",
+            run_token="x" * 32,
+            gateway_url="http://gateway.invalid/v1",
+            limits=RunLimits(),
+        )
+        assert (await client.create_run("coire-edge-a", command)).hardened
+        assert (await client.start_run("coire-edge-a", JOB_ID)).container_id == "container-1"
+        assert (await client.run_logs("coire-edge-a", JOB_ID, offset=7))[0].content == "bounded"
+        assert (await client.wait_run("coire-edge-a", JOB_ID)).state == "created"
+        assert (await client.collect_run("coire-edge-a", JOB_ID)).result == {"ok": True}
+        await client.remove_run("coire-edge-a", JOB_ID, kill=True)
+        await client.aclose()
+        assert len(seen) == 6
+
     async def test_inspect_parses_into_the_model(self) -> None:
         client, _seen = _client(
             lambda r: _json(

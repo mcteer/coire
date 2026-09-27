@@ -1,0 +1,7 @@
+{
+  "backend": "jaccl",
+  "hosts": [
+    {"ssh": "coire-edge-a.fabric", "ips": [], "rdma": [null, "fake_rdma_a"]},
+    {"ssh": "coire-edge-b.fabric", "ips": [], "rdma": ["fake_rdma_b", null]}
+  ]
+}

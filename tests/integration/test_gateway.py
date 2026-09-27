@@ -10,6 +10,8 @@ import socket
 import struct
 import subprocess
 import time
+import uuid
+from collections.abc import Iterator
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -30,7 +32,7 @@ TEST_REPO = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
 
 
 @pytest.fixture(scope="module")
-def gateway_model(api_url: str, admin_headers: dict[str, str]) -> str:
+def gateway_model(api_url: str, admin_headers: dict[str, str]) -> Iterator[str]:
     with httpx.Client(base_url=api_url, timeout=30) as client:
         models = client.get("/api/v1/admin/models", headers=admin_headers).json()
         found = next((model for model in models if model["repo_id"] == TEST_REPO), None)
@@ -49,11 +51,32 @@ def gateway_model(api_url: str, admin_headers: dict[str, str]) -> str:
         assert found["state"] == "ready", found.get("state_reason")
         response = client.patch(
             f"/api/v1/admin/models/{found['id']}",
-            headers=admin_headers,
+            headers={**admin_headers, "If-Match": found["updated_at"]},
             json={"visibility": "published"},
         )
         assert response.status_code == 200, response.text
-        return str(found["id"])
+        yield str(found["id"])
+
+        detail = client.get(f"/api/v1/admin/models/{found['id']}", headers=admin_headers).json()
+        for engine in detail.get("engines", []):
+            if engine["state"] not in ("stopped", "failed"):
+                stopped = client.delete(
+                    f"/api/v1/admin/engines/{engine['id']}", headers=admin_headers
+                )
+                assert stopped.status_code in (200, 202, 204), stopped.text
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            detail = client.get(f"/api/v1/admin/models/{found['id']}", headers=admin_headers).json()
+            if all(engine["state"] in ("stopped", "failed") for engine in detail["engines"]):
+                break
+            time.sleep(0.5)
+        current = client.get(f"/api/v1/admin/models/{found['id']}", headers=admin_headers).json()
+        hidden = client.patch(
+            f"/api/v1/admin/models/{found['id']}",
+            headers={**admin_headers, "If-Match": current["updated_at"]},
+            json={"visibility": "admin_only"},
+        )
+        assert hidden.status_code == 200, hidden.text
 
 
 async def test_official_openai_sdk_lists_and_streams(
@@ -240,6 +263,54 @@ async def test_failed_stream_is_persisted(
             break
         await asyncio.sleep(0.2)
     assert "failed" in outcomes
+
+
+async def test_api_key_revocation_terminates_an_inflight_stream(
+    api_url: str, gateway_model: str, admin_headers: dict[str, str]
+) -> None:
+    async with httpx.AsyncClient(base_url=api_url, timeout=30) as client:
+        user = await client.post(
+            "/api/v1/admin/users",
+            headers=admin_headers,
+            json={
+                "email": f"stream-{uuid.uuid4()}@integration.test",
+                "display_name": "Stream Revocation",
+                "role": "user",
+            },
+        )
+        assert user.status_code == 201, user.text
+        issued = await client.post(
+            f"/api/v1/admin/users/{user.json()['id']}/keys",
+            headers=admin_headers,
+            json={
+                "name": "stream",
+                "scopes": ["chat"],
+                "requests_per_minute": 100,
+                "monthly_budget_tokens": 10_000,
+            },
+        )
+        assert issued.status_code == 201, issued.text
+        key = issued.json()
+        key_headers = {"Authorization": f"Bearer {key['secret']}"}
+        async with client.stream(
+            "POST",
+            "/v1/chat/completions",
+            headers=key_headers,
+            json={
+                "model": gateway_model,
+                "stream": True,
+                "messages": [{"role": "user", "content": "slow-stream"}],
+            },
+        ) as response:
+            assert response.status_code == 200, await response.aread()
+            lines = response.aiter_lines()
+            first = await asyncio.wait_for(anext(lines), timeout=10)
+            assert first.startswith("data:")
+            revoked = await client.delete(f"/api/v1/admin/keys/{key['id']}", headers=admin_headers)
+            assert revoked.status_code == 204, revoked.text
+            remainder = "\n".join([line async for line in lines])
+        assert "credential_revoked" in remainder
+        assert "[DONE]" in remainder
 
 
 async def test_abandoned_stream_is_persisted(

@@ -15,8 +15,8 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from coire_api.db import NodeRow, create_engine
-from coire_core.models.node import Reachability
+from coire_api.db import NodeMemoryLedgerRow, NodeRow, create_engine
+from coire_core.models.node import NodeStatus, NodeStatusV2, Reachability
 from coire_core.net import ControlClient
 from coire_core.settings import Settings
 
@@ -31,9 +31,13 @@ class NodeProber:
         self._reconciler = reconciler
         self._task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
+        self._link_probe_coordinator: object | None = None
 
     def set_reconciler(self, reconciler: object) -> None:
         self._reconciler = reconciler
+
+    def set_link_probe_coordinator(self, coordinator: object) -> None:
+        self._link_probe_coordinator = coordinator
 
     async def start(self) -> None:
         self._stopping.clear()
@@ -75,10 +79,31 @@ class NodeProber:
                 return
             async with ControlClient(timeout=5.0) as client:
                 for row in rows:
-                    await self._probe_node(client, row, tokens.get(row.name, ""))
+                    status = await self._probe_node(client, row, tokens.get(row.name, ""))
+                    row.health_observed_at = datetime.now(UTC)
+                    row.gpu_percent = status.gpu_percent if status is not None else None
+                    ledger = await session.get(NodeMemoryLedgerRow, row.id)
+                    if ledger is not None:
+                        ledger.health = row.reachability
+                        ledger.health_reason = (
+                            None if status is not None else "node health probe failed"
+                        )
+                        ledger.health_sampled_at = datetime.now(UTC)
+                        ledger.measured_resident_bytes = (
+                            sum(engine.resident_bytes or 0 for engine in status.engines)
+                            if status is not None
+                            else ledger.measured_resident_bytes
+                        )
+                        ledger.cpu_percent = status.cpu_percent if status is not None else None
+                        ledger.thermal_state = (
+                            status.thermal_state.value if status is not None else None
+                        )
+                        ledger.updated_at = datetime.now(UTC)
             await session.commit()
 
-    async def _probe_node(self, client: ControlClient, row: NodeRow, token: str) -> None:
+    async def _probe_node(
+        self, client: ControlClient, row: NodeRow, token: str
+    ) -> NodeStatus | NodeStatusV2 | None:
         headers = {"Authorization": f"Bearer {token}"} if token else {}
         try:
             resp = await client.get(
@@ -88,6 +113,15 @@ class NodeProber:
                 headers=headers,
             )
             ok = resp.status_code == 200
+            if ok:
+                body = resp.json()
+                status = (
+                    NodeStatusV2.model_validate(body)
+                    if body.get("path") == "control"
+                    else NodeStatus.model_validate(body)
+                )
+            else:
+                status = None
             if not ok:
                 logger.warning("probe of %s returned HTTP %d", row.name, resp.status_code)
         except Exception as exc:
@@ -95,8 +129,12 @@ class NodeProber:
             ok = False
 
         if ok:
-            recovered = row.reachability is not Reachability.HEALTHY
-            row.reachability = Reachability.HEALTHY
+            recovered = row.reachability in {Reachability.UNKNOWN, Reachability.UNREACHABLE}
+            # A sharded rank failure is a semantic degradation, not a transport failure.
+            # Successful /health probes must not erase it; a later successful group launch
+            # clears it after the rank has done real work again.
+            if row.reachability is not Reachability.DEGRADED:
+                row.reachability = Reachability.HEALTHY
             row.probe_failures = 0
             row.last_seen_at = datetime.now(UTC)
             if recovered and self._reconciler is not None:
@@ -104,7 +142,9 @@ class NodeProber:
                 # know about, or may have lost something it does (spec FR-015).
                 logger.info("node %s recovered; requesting a reconcile", row.name)
                 self._reconciler.request_reconcile(row.name)  # type: ignore[attr-defined]
-            return
+            if self._link_probe_coordinator is not None:
+                self._link_probe_coordinator.observe(row.name, status)  # type: ignore[attr-defined]
+            return status
 
         row.probe_failures += 1
         if row.probe_failures >= self._settings.node_probe_failures_before_unreachable:
@@ -115,3 +155,4 @@ class NodeProber:
                     row.probe_failures,
                 )
             row.reachability = Reachability.UNREACHABLE
+        return None

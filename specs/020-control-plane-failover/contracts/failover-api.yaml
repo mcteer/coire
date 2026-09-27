@@ -1,0 +1,24 @@
+openapi: 3.1.0
+info:
+  title: Coire Failover API
+  version: 1.0.0
+paths:
+  /ready:
+    get:
+      responses:
+        '200': {description: This host is the elected, safe serving tier.}
+        '503': {description: Standby, fenced, draining, or unsafe to serve.}
+  /failover/tier:
+    get:
+      responses:
+        '200': {description: Current failover tier and explicit unavailable capabilities.}
+  /v1/models:
+    get:
+      responses:
+        '200': {description: Snapshot-authorised, currently resident model list.}
+  /v1/chat/completions:
+    post:
+      responses:
+        '200': {description: Authenticated resident-model completion.}
+        '401': {description: Missing, invalid, stale, or unverifiable identity.}
+        '503': {description: Unelected tier, unavailable snapshot, or nonresident model.}

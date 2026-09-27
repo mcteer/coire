@@ -1,0 +1,18 @@
+groups:
+  - name: coire-container-runs
+    rules:
+      - alert: CoireRunCommandFailures
+        expr: sum(increase(coire_run_commands_total{outcome="failed"}[10m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations: {summary: "A Studio run command failed"}
+      - alert: CoireRunOrphanDetected
+        expr: sum(increase(coire_run_orphans_total[10m])) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations: {summary: "An unauthorized or stale run container was reaped"}
+      - alert: CoireRunCapacitySaturated
+        expr: sum(increase(coire_run_capacity_waits_total[15m])) > 30
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "Studio sandbox slots have remained saturated"}

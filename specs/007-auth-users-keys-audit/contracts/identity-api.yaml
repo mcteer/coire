@@ -1,0 +1,201 @@
+openapi: 3.1.0
+info:
+  title: Coire identity contract
+  version: 0.1.0
+components:
+  securitySchemes:
+    coireKey:
+      type: http
+      scheme: bearer
+      bearerFormat: coire_<prefix>_<secret>
+    accessAssertion:
+      type: apiKey
+      in: header
+      name: Cf-Access-Jwt-Assertion
+  schemas:
+    User:
+      type: object
+      required: [id, email, display_name, role, active, entitlements, created_at, updated_at]
+      properties:
+        id: {type: string, format: uuid}
+        email: {type: string, format: email}
+        display_name: {type: string}
+        role: {type: string, enum: [admin, user]}
+        active: {type: boolean}
+        entitlements: {type: array, items: {type: string}}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+      additionalProperties: false
+    UserCreate:
+      type: object
+      required: [email, display_name, role]
+      properties:
+        email: {type: string, format: email}
+        display_name: {type: string, minLength: 1, maxLength: 120}
+        role: {type: string, enum: [admin, user]}
+      additionalProperties: false
+    UserUpdate:
+      type: object
+      properties:
+        display_name: {type: string, minLength: 1, maxLength: 120}
+        role: {type: string, enum: [admin, user]}
+        active: {type: boolean}
+      additionalProperties: false
+    ApiKeyCreate:
+      type: object
+      required: [name, scopes, requests_per_minute, monthly_budget_tokens]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+        scopes:
+          type: array
+          uniqueItems: true
+          items: {type: string, enum: [chat, images, 'images:explicit', mcp, admin]}
+        requests_per_minute: {type: integer, minimum: 1, maximum: 10000}
+        monthly_budget_tokens: {type: integer, minimum: 1}
+      additionalProperties: false
+    ApiKey:
+      type: object
+      required: [id, user_id, name, prefix, scopes, requests_per_minute, monthly_budget_tokens, tokens_consumed, period_resets_at, active, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        user_id: {type: string, format: uuid}
+        name: {type: string}
+        prefix: {type: string}
+        scopes: {type: array, items: {type: string}}
+        requests_per_minute: {type: integer}
+        monthly_budget_tokens: {type: integer}
+        tokens_consumed: {type: integer}
+        period_resets_at: {type: string, format: date-time}
+        active: {type: boolean}
+        created_at: {type: string, format: date-time}
+        rotated_at: {type: [string, 'null'], format: date-time}
+        last_used_at: {type: [string, 'null'], format: date-time}
+        revoked_at: {type: [string, 'null'], format: date-time}
+      additionalProperties: false
+    ApiKeyIssued:
+      allOf:
+        - {$ref: '#/components/schemas/ApiKey'}
+        - type: object
+          required: [secret]
+          properties:
+            secret: {type: string, writeOnly: true}
+    AuditRecord:
+      type: object
+      required: [id, at, actor, actor_type, action, target_type, target_id, outcome, before, after, context]
+      properties:
+        id: {type: string, format: uuid}
+        at: {type: string, format: date-time}
+        actor: {type: string}
+        actor_type: {type: string, enum: [user, api_key, service, anonymous]}
+        actor_user_id: {type: [string, 'null'], format: uuid}
+        request_id: {type: [string, 'null'], format: uuid}
+        action: {type: string}
+        target_type: {type: string}
+        target_id: {type: string}
+        outcome: {type: string, enum: [ok, refused, error]}
+        before: {type: object, additionalProperties: true}
+        after: {type: object, additionalProperties: true}
+        context: {type: object, additionalProperties: true}
+      additionalProperties: false
+    Problem:
+      type: object
+      required: [type, title, status, detail]
+      properties:
+        type: {type: string, format: uri-reference}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        code: {type: string}
+        retry_at: {type: string, format: date-time}
+        budget_tokens: {type: integer}
+        consumed_tokens: {type: integer}
+      additionalProperties: true
+paths:
+  /api/v1/me:
+    get:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      responses:
+        '200':
+          description: Current local user
+          content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}
+        '401': {description: Invalid or unmatched identity}
+  /api/v1/admin/users:
+    get:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      responses:
+        '200':
+          description: Users
+          content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/User'}}}}
+    post:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/UserCreate'}}}
+      responses:
+        '201':
+          description: Created
+          content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}
+  /api/v1/admin/users/{user_id}:
+    patch:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      parameters: [{name: user_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/UserUpdate'}}}
+      responses:
+        '200': {description: Updated, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+        '409': {description: Last administrator invariant}
+    delete:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      parameters: [{name: user_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '204': {description: Deactivated}
+        '409': {description: Last administrator invariant}
+  /api/v1/admin/users/{user_id}/entitlements/{name}:
+    put:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      parameters:
+        - {name: user_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Granted, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}
+    delete:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      parameters:
+        - {name: user_id, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+      responses:
+        '204': {description: Revoked}
+  /api/v1/admin/users/{user_id}/keys:
+    get:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      parameters: [{name: user_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: Key metadata only}
+    post:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      parameters: [{name: user_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ApiKeyCreate'}}}
+      responses:
+        '201': {description: One-time secret, content: {application/json: {schema: {$ref: '#/components/schemas/ApiKeyIssued'}}}}
+  /api/v1/admin/keys/{key_id}/rotate:
+    post:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      parameters: [{name: key_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '200': {description: Replacement one-time secret, content: {application/json: {schema: {$ref: '#/components/schemas/ApiKeyIssued'}}}}
+  /api/v1/admin/keys/{key_id}:
+    delete:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      parameters: [{name: key_id, in: path, required: true, schema: {type: string, format: uuid}}]
+      responses:
+        '204': {description: Revoked immediately}
+  /api/v1/admin/audit:
+    get:
+      security: [{coireKey: []}, {accessAssertion: []}]
+      responses:
+        '200':
+          description: Ordered append-only records
+          content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/AuditRecord'}}}}

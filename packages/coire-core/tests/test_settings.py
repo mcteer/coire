@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
@@ -25,6 +26,31 @@ def test_secrets_are_read_from_files_not_environment(tmp_path: Path, monkeypatch
 def test_database_url_is_assembled_from_parts(tmp_path: Path) -> None:
     settings = _settings(tmp_path, postgres_password="pw")
     assert settings.database_url == "postgresql+asyncpg://coire:pw@postgres:5432/coire"
+
+
+def test_database_url_round_trips_reserved_credentials(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, postgres_password="p@:/?#% space")
+    settings.postgres_user = "user@lab"
+    settings.postgres_db = "coire/test"
+    parsed = urlsplit(settings.database_url)
+    assert unquote(parsed.username or "") == "user@lab"
+    assert unquote(parsed.password or "") == "p@:/?#% space"
+    assert parsed.hostname == "postgres"
+    assert parsed.port == 5432
+    assert unquote(parsed.path.lstrip("/")) == "coire/test"
+
+
+def test_efficiency_controls_preserve_kill_headroom(tmp_path: Path) -> None:
+    settings = Settings(_secrets_dir=str(tmp_path))  # type: ignore[call-arg]
+    assert settings.console_snapshot_interval_s == 2.0
+    assert settings.scheduler_idle_scan_max_s == 5.0
+    assert settings.scheduler_failure_backoff_max_s == 30.0
+    assert settings.scheduler_shutdown_timeout_s == 10.0
+    assert settings.run_kill_poll_interval_s == 0.25
+    assert settings.placement_poll_interval_s == 1.0
+
+    with pytest.raises(ValueError):
+        Settings(_secrets_dir=str(tmp_path), run_kill_poll_interval_s=1.0)  # type: ignore[call-arg]
 
 
 def test_secret_absent_yields_empty_not_error(tmp_path: Path) -> None:
@@ -65,6 +91,21 @@ def test_admin_token_is_read_from_the_mounted_file(tmp_path: Path) -> None:
 
 def test_admin_token_is_not_in_repr(tmp_path: Path) -> None:
     assert "sekrit" not in repr(_settings(tmp_path, admin_token="sekrit"))
+
+
+def test_identity_defaults_are_fail_closed(tmp_path: Path) -> None:
+    settings = Settings(_secrets_dir=str(tmp_path))  # type: ignore[call-arg]
+    assert settings.cloudflare_access_issuer == ""
+    assert settings.cloudflare_access_audience == ""
+    assert settings.bootstrap_admin_email.get_secret_value() == ""
+    assert settings.cloudflare_jwks_ttl_s == 300.0
+    assert settings.cloudflare_jwt_leeway_s == 60.0
+
+
+def test_bootstrap_admin_email_is_file_sourced_and_redacted(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, bootstrap_admin_email="admin@example.test")
+    assert settings.bootstrap_admin_email.get_secret_value() == "admin@example.test"
+    assert "admin@example.test" not in repr(settings)
 
 
 def test_engine_port_range_parses(tmp_path: Path) -> None:

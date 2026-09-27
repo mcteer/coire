@@ -1,0 +1,66 @@
+{
+  "title": "Coire Acquisition Jobs",
+  "uid": "coire-acquisition-jobs",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Stage transitions",
+      "targets": [{"expr": "sum by (stage, outcome) (rate(coire_acquisition_stage_transitions_total[5m]))", "legendFormat": "{{stage}} {{outcome}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Stage p95 duration",
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, stage) (rate(coire_acquisition_stage_duration_seconds_bucket[15m])))", "legendFormat": "{{stage}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Conversion reservation bytes",
+      "targets": [{"expr": "sum by (node) (coire_acquisition_reservation_bytes)", "legendFormat": "{{node}}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Validation outcomes and estimate drift",
+      "targets": [
+        {"expr": "sum by (outcome) (rate(coire_acquisition_validation_total[15m]))", "legendFormat": "validation {{outcome}}"},
+        {"expr": "max(abs(coire_acquisition_estimate_delta_ratio))", "legendFormat": "estimate drift"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+    },
+    {
+      "type": "timeseries",
+      "title": "Placement reserved bytes and drift",
+      "targets": [
+        {"expr": "sum by (node) (coire_placement_reserved_bytes)", "legendFormat": "{{node}} reserved"},
+        {"expr": "max by (node) (abs(coire_placement_ledger_drift_ratio))", "legendFormat": "{{node}} drift"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+    },
+    {
+      "type": "timeseries",
+      "title": "Placement admissions, evictions, and refusals",
+      "targets": [
+        {"expr": "sum by (outcome) (rate(coire_placement_admissions_total[5m]))", "legendFormat": "admit {{outcome}}"},
+        {"expr": "sum by (reason) (rate(coire_placement_evictions_total[5m]))", "legendFormat": "evict {{reason}}"},
+        {"expr": "sum by (reason) (rate(coire_placement_refusals_total[5m]))", "legendFormat": "refuse {{reason}}"}
+      ],
+      "links": [{"title": "Placement traces", "url": "/explore?left={\"datasource\":\"Tempo\",\"queries\":[{\"query\":\"coire.scheduler.placement\"}]}"}],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+    },
+    {
+      "type": "timeseries",
+      "title": "Instance lifecycle transitions and failures",
+      "targets": [
+        {"expr": "sum by (state) (rate(coire_instance_transitions_total[5m]))", "legendFormat": "{{state}}"},
+        {"expr": "sum by (reason) (rate(coire_instance_failures_total[5m]))", "legendFormat": "failed {{reason}}"}
+      ],
+      "links": [{"title": "Instance traces", "url": "/explore?left={\"datasource\":\"Tempo\",\"queries\":[{\"query\":\"coire.scheduler.instance\"}]}"}],
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24}
+    }
+  ]
+}

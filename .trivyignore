@@ -1,0 +1,5 @@
+# psycopg-binary's SBOM records the AlmaLinux PCRE2 originally shipped in its wheel. Every
+# coire-api-derived image replaces that file in the same build layer with Debian Bookworm's
+# fixed 10.42 library; Trivy continues to report the wheel's immutable package metadata.
+CVE-2022-1586
+CVE-2022-1587

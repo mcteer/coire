@@ -10,6 +10,11 @@
 #
 # No shell, no package manager, non-root, read-only-root compatible (image-policy rules 1-4).
 
+FROM docker.io/library/golang:1.26-bookworm@sha256:e8c859f5632dcfde7b32d2012b4351728f6437930887c2f6a91ea242459e5514 AS probe
+WORKDIR /src
+COPY apps/coire-web/healthcheck/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /healthcheck .
+
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca AS builder
 
 # UV_PROJECT_ENVIRONMENT is what uv honours for the target venv; VIRTUAL_ENV is ignored by
@@ -28,13 +33,17 @@ COPY apps/coire-agent/pyproject.toml apps/coire-agent/
 
 # Dependencies first so a source-only change does not re-resolve the world.
 RUN uv venv --python 3.13 --relocatable /app/.venv \
- && uv sync --frozen --no-dev --no-editable --no-install-workspace --package coire-api
+ && uv sync --frozen --no-dev --no-editable --no-install-workspace --package coire-api \
+ && cp /usr/lib/aarch64-linux-gnu/libpcre2-8.so.0.11.2 \
+       /app/.venv/lib/python3.13/site-packages/psycopg_binary.libs/libpcre2-8-8701a61e.so.0.7.1
 
 COPY packages/coire-core packages/coire-core
 COPY apps/coire-api apps/coire-api
 # --no-editable: workspace packages must be copied into the venv, not linked back to /build,
 # which does not exist in the runtime stage.
-RUN uv sync --frozen --no-dev --no-editable --package coire-api
+RUN uv sync --frozen --no-dev --no-editable --package coire-api \
+ && cp /usr/lib/aarch64-linux-gnu/libpcre2-8.so.0.11.2 \
+       /app/.venv/lib/python3.13/site-packages/psycopg_binary.libs/libpcre2-8-8701a61e.so.0.7.1
 
 # The runtime must contain no package manager (image-policy rule 2). pip ships with the
 # builder's interpreter and would otherwise arrive via the /usr/local copy.
@@ -64,6 +73,7 @@ COPY --from=builder \
 
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=probe /healthcheck /healthcheck
 COPY --from=builder /build/apps/coire-api/alembic /app/alembic
 COPY --from=builder /build/apps/coire-api/alembic.ini /app/alembic.ini
 COPY deploy/cluster/nodes.yaml /app/nodes.yaml
@@ -76,10 +86,8 @@ USER 65532:65532
 WORKDIR /app
 EXPOSE 8000
 
-# There is no shell and no curl in this image, so the probe is the interpreter itself.
-HEALTHCHECK --interval=5s --timeout=2s --retries=3 --start-period=10s \
-    CMD ["/app/.venv/bin/python3", "-c", \
-         "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2).status==200 else 1)"]
+HEALTHCHECK --interval=20s --timeout=2s --retries=3 --start-period=10s \
+    CMD ["/healthcheck", "http://127.0.0.1:8000/ready"]
 
 ENTRYPOINT ["/app/.venv/bin/python3"]
 CMD ["-m", "coire_api"]

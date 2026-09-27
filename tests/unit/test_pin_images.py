@@ -35,3 +35,21 @@ def test_fixtures_are_exempt_from_the_lock() -> None:
     """Test fixtures are pinned but never deployed, so they need no images.lock entry."""
     assert (REPO / "tests/fixtures/policy/bad.Dockerfile").read_text().count("@sha256:") == 2
     assert run("--check").returncode == 0
+
+
+def test_copy_from_digest_is_not_required_in_deployment_lock() -> None:
+    """A pinned build-stage source is not a deployed base image and needs no lock entry."""
+    dockerfile = REPO / "apps/coire-api/docker/.tmp-copy-source.Dockerfile"
+    dockerfile.write_text(
+        "FROM gcr.io/distroless/base-debian12:nonroot@sha256:"
+        "7f0c72cd138b442ae0deeb69c08b1acf5525439ba251a49ad93c320a061567e5\n"
+        "COPY --from=docker.io/library/busybox:1.36-musl@sha256:"
+        "3c6ae8008e2c2eedd141725c30b20d9c36b026eb796688f88205845ef17aa213 "
+        "/bin/sh /bin/sh\n"
+        'ENTRYPOINT ["/bin/true"]\n'
+    )
+    try:
+        proc = run("--check")
+        assert proc.returncode == 0, proc.stderr
+    finally:
+        dockerfile.unlink()

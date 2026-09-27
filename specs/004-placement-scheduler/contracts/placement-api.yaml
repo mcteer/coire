@@ -1,0 +1,29 @@
+openapi: 3.1.0
+info: {title: Coire Placement API, version: 0.1.0}
+paths:
+  /api/v1/admin/ledger:
+    get:
+      security: [{AdminBearer: []}]
+      responses:
+        '200':
+          description: Per-node authoritative ledgers
+          content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/MemoryLedger'}}}}
+  /api/v1/admin/ledger/{node_id}:
+    patch:
+      security: [{AdminBearer: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LedgerUpdate'}}}}
+      responses: {'200': {description: Updated ledger}}
+  /api/v1/admin/models/{model_id}/placement:
+    post:
+      security: [{AdminBearer: []}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PlacementRequest'}}}}
+      responses:
+        '202': {description: Durable placement accepted}
+        '409': {description: Typed capacity refusal}
+components:
+  securitySchemes:
+    AdminBearer: {type: http, scheme: bearer}
+  schemas:
+    MemoryLedger: {type: object, additionalProperties: false, required: [node_id, budget_bytes, reserved_bytes, free_bytes, reservations]}
+    LedgerUpdate: {type: object, additionalProperties: false, properties: {budget_bytes: {type: integer}, sandbox_bytes: {type: integer}}}
+    PlacementRequest: {type: object, additionalProperties: false, required: [variant_id], properties: {variant_id: {type: string, format: uuid}, policy: {type: string}}}

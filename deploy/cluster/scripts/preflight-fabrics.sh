@@ -46,7 +46,8 @@ for node in coire-edge-a coire-edge-b; do
   ssh -o BatchMode=yes "mcteer@$node" 'test "$(scutil --get LocalHostName)" = "'"$node"'"'
 done
 
-"$ROOT/deploy/cluster/distributed_config.sh" "$STATE_DIR/jaccl-hostfile.json" >/dev/null
+: "${COIRE_JACCL_HOSTFILE:?set COIRE_JACCL_HOSTFILE to generated MLX JACCL inventory}"
+"$ROOT/deploy/cluster/distributed_config.sh" --check "$COIRE_JACCL_HOSTFILE" >/dev/null
 "$ROOT/deploy/cluster/scripts/apply-firewall.sh" --check >/dev/null
 
 if [[ "$MODE" == full ]]; then

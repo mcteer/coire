@@ -18,8 +18,8 @@ This feature unlocks the models that do not fit on one Studio: 200–480 GB weig
 
 ### Session 2026-08-29
 
-- Q: What gates a tensor-parallel placement? → A: The measured link record. A probe runs on first boot and after every macOS or engine upgrade, recording bandwidth and latency for an all-reduce plus a fallback path. Tensor parallelism is refused when the RDMA path is down or latency exceeds a configured threshold, falling back to pipeline parallelism, which tolerates a slower link.
-- Q: What happens when one rank of a running sharded instance dies? → A: The instance fails as a unit. Every rank is torn down, in-flight requests receive `503` with `Retry-After`, the affected node is marked `degraded`, and the scheduler may re-place the model as a smaller single-node variant if one fits on the survivor. There is no live repartitioning and no automatic re-sharding onto a different topology — with two nodes there is nothing to repartition onto, and predictability beats cleverness at 2 a.m.
+- Q: What gates a tensor-parallel placement? → A: The measured link record. A probe runs on first boot and after every macOS or engine upgrade, recording bandwidth and latency for an all-reduce plus a fallback path. Tensor parallelism is refused when the RDMA path is down or the required probe is absent/failed. Measured latency remains visible and alertable but is not an admission threshold; pipeline parallelism is the fallback for an unavailable RDMA path.
+- Q: What happens when one rank of a running sharded instance dies? → A: The instance fails as a unit. Every rank is torn down. A request that has not committed response headers receives HTTP `503` with `Retry-After`; after an SSE stream has committed HTTP 200, the stream terminates with an OpenAI-compatible error event, SSE `retry`, and `coire_retry_after` guidance because HTTP status and headers can no longer be changed. The affected node is marked `degraded`, and the scheduler may re-place the model as a smaller single-node variant if one fits on the survivor. There is no live repartitioning and no automatic re-sharding onto a different topology — with two nodes there is nothing to repartition onto, and predictability beats cleverness at 2 a.m.
 - Q: How are both nodes reserved without deadlocking against a competing load? → A: A sharded admission acquires both nodes' capacity as a single atomic decision, ordered consistently so two competing sharded admissions cannot each hold one node. If both cannot be satisfied, neither is reserved and the load is refused.
 - Q: Does the heterogeneity of the two Studios get compensated for? → A: No — the engine shards evenly, so the 60-core unit bounds throughput and the honest response is measurement, not weighting. The benchmark records tokens per second per placement so the admin can see when single-node on Studio A wins, and the recorded GPU core counts make the expected ceiling visible.
 - Q: Is sharded serving considered production-ready on delivery? → A: No. RDMA over Thunderbolt is treated as beta. Every single-node placement must remain fully functional with the RDMA path down, and pipeline parallelism must remain available as the fallback when tensor parallelism is gated off.
@@ -53,7 +53,7 @@ One node of a running sharded instance dies mid-stream. Callers get an immediate
 
 **Acceptance Scenarios**:
 
-1. **Given** a streaming request against a sharded instance, **When** rank 1 is killed, **Then** the caller receives `503` with `Retry-After` promptly rather than a truncated or hanging stream.
+1. **Given** a request against a sharded instance, **When** rank 1 is killed, **Then** an uncommitted response receives `503` with `Retry-After`, while an already-committed SSE response terminates promptly with a typed error event and retry guidance rather than hanging.
 2. **Given** that failure, **When** teardown runs, **Then** no engine process remains on either node and both reservations are released.
 3. **Given** that failure, **When** the node's state is read, **Then** it is marked `degraded`.
 4. **Given** a smaller variant that fits the surviving Studio, **When** re-placement runs, **Then** a single-node instance of that variant becomes ready within the configured TTL.
@@ -72,7 +72,7 @@ The platform probes the interconnect and records what it actually measured, and 
 **Acceptance Scenarios**:
 
 1. **Given** a healthy mesh, **When** the probe runs, **Then** measured bandwidth and latency are recorded on the link record with a timestamp.
-2. **Given** a link whose latency exceeds the threshold, **When** a tensor-parallel placement is requested, **Then** it is refused with the measured figures, and pipeline parallelism is offered.
+2. **Given** a measured link with high latency but a successful RDMA probe, **When** a tensor-parallel placement is requested, **Then** latency is reported but does not by itself refuse placement.
 3. **Given** an RDMA path that is down, **When** any sharded placement is requested, **Then** tensor parallelism is refused and pipeline parallelism is attempted over the fallback path.
 4. **Given** a macOS or engine upgrade on a node, **When** the node returns, **Then** the probe re-runs before that node is eligible for tensor parallelism.
 
@@ -116,11 +116,11 @@ A benchmark records throughput per placement for a model, so the choice between 
 - **FR-005**: Teardown of a sharded instance MUST stop every rank on both nodes and release both reservations together.
 - **FR-006**: No rank may outlive its group; a partially-launched group MUST be torn down completely.
 - **FR-007**: The system MUST probe the interconnect on first boot and after every macOS or engine upgrade, recording measured bandwidth and latency on a link record.
-- **FR-008**: Tensor parallelism MUST be refused when the RDMA path is down, when measured latency exceeds the configured threshold, or when no probe result exists.
+- **FR-008**: Tensor parallelism MUST be refused when the RDMA path is down, when the required probe failed, or when no probe result exists. Measured latency MUST NOT be used as a hard admission threshold.
 - **FR-009**: Pipeline parallelism MUST remain available when tensor parallelism is gated off.
 - **FR-010**: A placement request for an architecture that does not support the requested parallelism MUST be refused at placement time, naming the architecture.
 - **FR-011**: Failure of any rank MUST move the instance to `failed` and tear down the whole group.
-- **FR-012**: In-flight requests against a failed sharded instance MUST receive `503` with `Retry-After` promptly.
+- **FR-012**: Requests against a failed sharded instance MUST receive HTTP `503` with `Retry-After` before response commitment; an already-committed SSE stream MUST terminate promptly with a typed error event, SSE `retry`, and additive `coire_retry_after` guidance.
 - **FR-013**: A node whose rank failed MUST be marked `degraded`.
 - **FR-014**: After a rank failure the scheduler MUST attempt to re-place the model as a single-node instance of a smaller variant when one fits the surviving node.
 - **FR-015**: When no variant fits the survivor, the model MUST remain unavailable and an alert condition MUST be raised; the system MUST NOT repeatedly retry a placement that cannot fit.
@@ -144,11 +144,11 @@ A benchmark records throughput per placement for a model, so the choice between 
 ### Measurable Outcomes
 
 - **SC-001**: A model larger than 250 GB serves successfully through the gateway as a sharded instance.
-- **SC-002**: Killing rank 1 mid-stream yields a `503` with `Retry-After` and leaves no engine process on either node.
+- **SC-002**: Killing rank 1 yields HTTP `503`/`Retry-After` before commitment or a terminal typed SSE error with retry guidance after commitment, and leaves no engine process on either node.
 - **SC-003**: After a rank failure a re-placed single-node instance becomes ready within the configured TTL whenever a variant fits the survivor.
 - **SC-004**: A benchmark report compares single-node-A, tensor parallel, and pipeline parallel for a mid-size model with tokens per second for each.
 - **SC-005**: Measured link bandwidth and latency are recorded and visible for the node pair.
-- **SC-006**: Tensor parallelism is refused whenever the link is down, degraded beyond threshold, or unmeasured, in 100% of trials.
+- **SC-006**: Tensor parallelism is refused whenever the RDMA path is down, its required probe failed, or it is unmeasured, in 100% of trials; high latency alone never causes refusal.
 - **SC-007**: All single-node serving continues to function with the RDMA path disabled.
 - **SC-008**: A sharded admission never leaves a reservation held on one node when the other could not be satisfied.
 

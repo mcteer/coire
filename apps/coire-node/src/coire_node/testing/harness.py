@@ -15,9 +15,13 @@ from pydantic import SecretStr
 
 from coire_core.models.node import NetworkPath, NodePath, NodeStatus, ThermalState
 from coire_core.settings import Settings
+from coire_node.benchmarks import BenchmarkRunner
 from coire_node.engines import EngineManager
 from coire_node.grants import Grants
 from coire_node.jobs import JobSupervisor
+from coire_node.link_probes import LinkProbeRunner
+from coire_node.reservations import ReservationLedger
+from coire_node.sharding import ShardGroupManager
 from coire_node.store import Store
 
 TOKEN = "test-node-token"
@@ -81,6 +85,12 @@ class Agent:
         self.jobs = JobSupervisor(self.settings, self.store)
         self.grants = Grants()
         self.engines = EngineManager(self.settings, self.store, "127.0.0.1")
+        self.reservations = ReservationLedger(
+            self.settings, self.store, self.engines.committed_bytes
+        )
+        self.shard_groups = ShardGroupManager(self.settings, self.store)
+        self.link_probes = LinkProbeRunner(self.settings)
+        self.benchmarks = BenchmarkRunner(self.settings, self.store)
         self.collector = StubCollector()
         self.collector.attach(store=self.store, jobs=self.jobs, engines=self.engines)
 
@@ -95,6 +105,10 @@ class Agent:
             jobs=self.jobs,
             engines=self.engines,
             grants=self.grants,
+            reservations=self.reservations,
+            shard_groups=self.shard_groups,
+            link_probes=self.link_probes,
+            benchmarks=self.benchmarks,
         )
 
     def client(self, listener: NodePath | NetworkPath = NodePath.MESH) -> Any:

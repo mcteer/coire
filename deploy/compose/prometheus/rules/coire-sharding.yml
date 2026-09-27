@@ -1,0 +1,29 @@
+groups:
+  - name: coire-sharding
+    rules:
+      - alert: CoireShardedRankDown
+        expr: increase(coire_sharding_rank_failures_total[10m]) > 0
+        labels: {severity: critical}
+        annotations:
+          summary: A sharded inference rank failed
+          description: The entire group is being torn down; inspect instance state and correlated traces.
+      - alert: CoireShardingProbeStale
+        expr: time() - coire_sharding_link_last_success_timestamp_seconds{transport="jaccl"} > 120
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: JACCL evidence is stale
+          description: Tensor-parallel admission is closed until a current probe succeeds.
+      - alert: CoireShardingNoFitFallback
+        expr: increase(coire_sharding_fallbacks_total{outcome="no_fit"}[15m]) > 0
+        labels: {severity: warning}
+        annotations:
+          summary: No smaller survivor fallback fits
+          description: The model remains unavailable; review the memory ledger and verified variants.
+      - alert: CoireShardingLinkFlapping
+        expr: coire_sharding_link_flapping == 1
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: The Studio data link is flapping
+          description: Inspect raw JACCL observations before retrying tensor-parallel placement.

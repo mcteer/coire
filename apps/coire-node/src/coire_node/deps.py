@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from coire_node.engines import EngineManager
     from coire_node.grants import Grants
     from coire_node.jobs import JobSupervisor
+    from coire_node.reservations import ReservationLedger
     from coire_node.store import Store
 
 
@@ -40,8 +41,13 @@ def get_engines(request: Request) -> EngineManager:
     return request.app.state.engines  # type: ignore[no-any-return]
 
 
+def get_reservations(request: Request) -> ReservationLedger:
+    return request.app.state.reservations  # type: ignore[no-any-return]
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 StoreDep = Annotated["Store", Depends(get_store)]
 JobsDep = Annotated["JobSupervisor", Depends(get_jobs)]
 GrantsDep = Annotated["Grants", Depends(get_grants)]
 EngineDep = Annotated["EngineManager", Depends(get_engines)]
+ReservationsDep = Annotated["ReservationLedger", Depends(get_reservations)]

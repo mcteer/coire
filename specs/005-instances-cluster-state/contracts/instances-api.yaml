@@ -1,0 +1,18 @@
+openapi: 3.1.0
+info: {title: Coire instance additions, version: 0.1.0}
+paths:
+  /api/v1/instances:
+    get: {responses: {'200': {description: Instances}}}
+    post: {responses: {'202': {description: Instance accepted}}}
+  /api/v1/instances/{instance_id}:
+    get: {responses: {'200': {description: Instance}}}
+    delete: {responses: {'202': {description: Drain accepted}}}
+  /api/v1/instances/{instance_id}/events:
+    get: {responses: {'200': {description: text/event-stream}}}
+  /api/v1/state:
+    get: {responses: {'200': {description: Cluster state}}}
+  /api/v1/admin/nodes:
+    post: {responses: {'201': {description: Declared node and one-time token}}}
+  /api/v1/admin/nodes/{node_id}/registration-token:
+    post: {responses: {'201': {description: Rotated one-time token}}}
+    delete: {responses: {'204': {description: Token revoked}}}

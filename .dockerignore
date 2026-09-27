@@ -16,4 +16,6 @@ Dockerfile*
 .dockerignore
 *.log
 .env*
+workspaces/
+run-results/
 .DS_Store

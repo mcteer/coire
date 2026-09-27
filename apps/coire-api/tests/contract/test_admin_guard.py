@@ -8,6 +8,7 @@ appears here.
 from __future__ import annotations
 
 import uuid
+from contextlib import asynccontextmanager
 from typing import Any
 
 import pytest
@@ -28,6 +29,7 @@ def app(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
 
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     settings.admin_token = SecretStr(ADMIN_TOKEN)
+    settings.identity_legacy_admin_enabled = True
     monkeypatch.setattr(cs, "get_settings", lambda: settings)
     monkeypatch.setattr("coire_api.deps.get_settings", lambda: settings)
 
@@ -36,8 +38,9 @@ def app(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     async def _no_session():  # type: ignore[no-untyped-def]
         raise AssertionError("a refused request must not open a database session")
 
+    @asynccontextmanager
     async def _no_audit(*a: Any, **k: Any):  # type: ignore[no-untyped-def]
-        raise RuntimeError("no database in this test")
+        yield None
 
     monkeypatch.setattr("coire_api.db.session_scope", _no_audit)
     application = create_app(settings)
@@ -83,7 +86,7 @@ class TestEveryAdminRouteIsGuarded:
         async with AsyncClient(transport=transport, base_url="http://t") as client:
             for method, path in admin_operations(app):
                 resp = await client.request(method, concrete(path), headers=headers or {}, json={})
-                assert resp.status_code == 403, f"{method} {path} returned {resp.status_code}"
+                assert resp.status_code == 401, f"{method} {path} returned {resp.status_code}"
 
     async def test_the_user_listing_is_not_admin_gated(self, app: Any) -> None:
         """`/api/v1/models` is the one route in this feature anyone may call."""
@@ -98,7 +101,7 @@ class TestRefusalLeaksNothing:
             resp = await client.get(
                 "/api/v1/admin/models", headers={"Authorization": "Bearer nope"}
             )
-        assert resp.status_code == 403
+        assert resp.status_code == 401
         assert ADMIN_TOKEN not in resp.text
 
     async def test_a_wrong_token_is_indistinguishable_from_no_token(self, app: Any) -> None:
@@ -108,5 +111,5 @@ class TestRefusalLeaksNothing:
             wrong = await client.get(
                 "/api/v1/admin/models", headers={"Authorization": "Bearer nope"}
             )
-        assert absent.status_code == wrong.status_code == 403
+        assert absent.status_code == wrong.status_code == 401
         assert absent.json() == wrong.json()

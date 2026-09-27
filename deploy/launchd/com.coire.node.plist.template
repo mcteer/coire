@@ -54,6 +54,10 @@
         <string>studio</string>
         <key>NODE_NAME</key>
         <string>__NODE_NAME__</string>
+        <key>FAILOVER_MEMBER_NAME</key>
+        <string>__NODE_NAME__</string>
+        <key>FAILOVER_FRONTEND_IMAGE</key>
+        <string>__FAILOVER_IMAGE__</string>
         <key>MESH_HOSTS_FILE</key>
         <string>/etc/hosts</string>
         <key>NODE_CONTROL_HOST</key>
@@ -68,8 +72,18 @@
         <string>__PREFIX__/models</string>
         <key>NODE_STATE_DIR</key>
         <string>__PREFIX__/state</string>
+        <key>SHARDING_JACCL_HOSTFILE</key>
+        <string>__PREFIX__/state/jaccl-hostfile.json</string>
+        <key>SHARDING_RING_HOSTFILE</key>
+        <string>__PREFIX__/state/ring-hostfile.json</string>
         <key>NODE_HF_CACHE_DIR</key>
         <string>__PREFIX__/hf-cache</string>
+        <key>RUN_WORKSPACE_ROOT</key>
+        <string>__PREFIX__/workspaces</string>
+        <key>RUN_AGENT_IMAGE</key>
+        <string>__RUN_AGENT_IMAGE__</string>
+        <key>RUN_RELAY_IMAGE</key>
+        <string>__RUN_RELAY_IMAGE__</string>
         <key>HF_HOME</key>
         <string>__PREFIX__/hf-cache</string>
         <!-- Progress bars in a launchd log file are noise, not information. -->

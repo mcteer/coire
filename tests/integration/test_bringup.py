@@ -59,7 +59,15 @@ def test_reaches_all_services_healthy_within_budget() -> None:
     body = wait_healthy(BRINGUP_BUDGET_S)
     assert body is not None, "control plane never reached healthy"
     names = {s["name"] for s in body["services"]}  # type: ignore[index,union-attr]
-    assert names == {"postgres", "mcp", "scheduler", "otel-collector"}
+    assert names == {
+        "postgres",
+        "mcp",
+        "ops",
+        "scheduler",
+        "otel-collector",
+        "prometheus",
+        "alertmanager",
+    }
     assert all(s["healthy"] for s in body["services"])  # type: ignore[index,union-attr]
 
 

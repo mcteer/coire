@@ -64,4 +64,6 @@ def test_replication_names_resolve_only_on_the_data_attachment() -> None:
         hosts = compose["services"][node]["extra_hosts"]
         assert all(".fabric:" in entry for entry in hosts)
         assert not any(".mesh" in entry for entry in hosts)
-    assert "extra_hosts" not in compose["services"]["coire-api"]
+    api_hosts = compose["services"]["coire-api"].get("extra_hosts", [])
+    assert api_hosts == ["host.docker.internal:host-gateway"]
+    assert not any(".fabric:" in entry or ".mesh:" in entry for entry in api_hosts)

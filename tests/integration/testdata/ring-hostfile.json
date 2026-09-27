@@ -1,0 +1,7 @@
+{
+  "backend": "ring",
+  "hosts": [
+    {"ssh": "coire-edge-a.fabric", "ips": ["192.168.100.11"]},
+    {"ssh": "coire-edge-b.fabric", "ips": ["192.168.100.12"]}
+  ]
+}

@@ -1,0 +1,17 @@
+groups:
+  - name: coire-console
+    rules:
+      - alert: CoireConsoleHasNoLiveClients
+        expr: increase(coire_console_snapshots_total[15m]) > 0 and increase(coire_console_stream_connections_total[15m]) == 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: Admin console live stream appears unused or unavailable
+          description: The API is producing console snapshots but no browser stream has connected; inspect ingress SSE buffering and coire.api.console spans.
+      - alert: CoireConsoleReconnectSpike
+        expr: increase(coire_console_stream_connections_total{reconnect="true"}[10m]) > 10
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Admin console streams are reconnecting repeatedly
+          description: Check nginx buffering/timeouts, browser connectivity, and coire-api health.

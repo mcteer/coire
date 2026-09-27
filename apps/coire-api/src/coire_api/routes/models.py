@@ -9,17 +9,17 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
-from coire_api.auth import CurrentPrincipal
+from coire_api.auth import CurrentPrincipal, require_scope
 from coire_api.db import EngineProcessRow, ModelRow, NodeRow
 from coire_api.deps import SessionDep
 from coire_api.registry import service
 from coire_core.models.registry import ModelListing
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/v1", tags=["models"])
+router = APIRouter(prefix="/api/v1", tags=["models"], dependencies=[Depends(require_scope("chat"))])
 
 
 @router.get("/models", response_model=list[ModelListing])

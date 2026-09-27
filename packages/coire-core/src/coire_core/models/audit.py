@@ -16,6 +16,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from coire_core.models.auth import ActorType
+
 
 class AuditOutcome(StrEnum):
     OK = "ok"
@@ -36,6 +38,16 @@ class AuditAction(StrEnum):
     ENGINE_LOAD = "engine.load"
     ENGINE_UNLOAD = "engine.unload"
     ENGINE_RECONCILE = "engine.reconcile"
+    LEDGER_UPDATE = "ledger.update"
+    MODEL_PIN = "model.pin"
+    MODEL_UNPIN = "model.unpin"
+    PLACEMENT_REQUEST = "placement.request"
+    INSTANCE_CREATE = "instance.create"
+    INSTANCE_DRAIN = "instance.drain"
+    INSTANCE_TRANSITION = "instance.transition"
+    NODE_DECLARE = "node.declare"
+    NODE_TOKEN_ROTATE = "node.registration_token.rotate"
+    NODE_TOKEN_REVOKE = "node.registration_token.revoke"
 
 
 class AuditRecord(BaseModel):
@@ -44,8 +56,14 @@ class AuditRecord(BaseModel):
     id: uuid.UUID
     at: datetime
     actor: str
+    actor_type: ActorType = ActorType.SERVICE
+    actor_user_id: uuid.UUID | None = None
+    request_id: uuid.UUID | None = None
     action: str
     target_type: str
     target_id: str
     outcome: AuditOutcome
     detail: dict[str, object] = Field(default_factory=dict)
+    before: dict[str, object] = Field(default_factory=dict)
+    after: dict[str, object] = Field(default_factory=dict)
+    context: dict[str, object] = Field(default_factory=dict)
