@@ -36,39 +36,48 @@ def _call(
     identifier: int,
 ) -> dict[str, Any]:
     __tracebackhide__ = True
-    response = client.post(
-        "/mcp",
-        headers={
-            "Authorization": f"Bearer {key}",
-            "Accept": "application/json, text/event-stream",
-        },
-        json={
-            "jsonrpc": "2.0",
-            "id": identifier,
-            "method": "tools/call",
-            "params": {"name": tool, "arguments": arguments},
-        },
-    )
+    try:
+        response = client.post(
+            "/mcp",
+            headers={
+                "Authorization": f"Bearer {key}",
+                "Accept": "application/json, text/event-stream",
+            },
+            json={
+                "jsonrpc": "2.0",
+                "id": identifier,
+                "method": "tools/call",
+                "params": {"name": tool, "arguments": arguments},
+            },
+        )
+    except httpx.TimeoutException:
+        pytest.fail(f"MCP {tool} timed out: {_recent_runs(client, key)}", pytrace=False)
     assert response.status_code == 200, response.text
     message = response.json()
     assert "error" not in message, message
     if message["result"].get("isError", False):
-        runs = client.get("/api/v1/runs", headers={"Authorization": f"Bearer {key}"})
-        detail = (
-            [
-                {
-                    "id": run["id"],
-                    "state": run["state"],
-                    "failure_code": run.get("failure_code"),
-                    "mcp_tool": run.get("mcp_tool"),
-                }
-                for run in runs.json()[:6]
-            ]
-            if runs.status_code == 200
-            else {"runs_status": runs.status_code}
-        )
-        pytest.fail(f"MCP {tool} failed: {detail}", pytrace=False)
+        pytest.fail(f"MCP {tool} failed: {_recent_runs(client, key)}", pytrace=False)
     return cast(dict[str, Any], message["result"]["structuredContent"])
+
+
+def _recent_runs(client: httpx.Client, key: str) -> object:
+    try:
+        with httpx.Client(base_url=client.base_url, timeout=10) as diagnostic:
+            response = diagnostic.get("/api/v1/runs", headers={"Authorization": f"Bearer {key}"})
+        if response.status_code != 200:
+            return {"runs_status": response.status_code}
+        return [
+            {
+                "id": run["id"],
+                "state": run["state"],
+                "failure_code": run.get("failure_code"),
+                "mcp_tool": run.get("mcp_tool"),
+                "node_id": run.get("node_id"),
+            }
+            for run in response.json()[:6]
+        ]
+    except httpx.HTTPError as exc:
+        return {"runs_error": type(exc).__name__}
 
 
 def test_composed_research_plan_apply_and_branch_import(
