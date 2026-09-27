@@ -238,8 +238,45 @@ def test_composed_research_plan_apply_and_branch_import(
                         index + 5,
                     )
 
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                left, right = list(pool.map(another, (0, 1)))
+            # The CI mesh has two simulated nodes. Keep this clone-isolation check on
+            # node A, where the fake model instance is running; cross-node failover is
+            # exercised by its own integration suite.
+            subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    "coire-it-postgres-1",
+                    "psql",
+                    "-U",
+                    "coire",
+                    "-d",
+                    "coire",
+                    "-c",
+                    "UPDATE nodes SET control_host=NULL WHERE name='coire-edge-b'",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            try:
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    left, right = list(pool.map(another, (0, 1)))
+            finally:
+                subprocess.run(
+                    [
+                        "docker",
+                        "exec",
+                        "coire-it-postgres-1",
+                        "psql",
+                        "-U",
+                        "coire",
+                        "-d",
+                        "coire",
+                        "-c",
+                        "UPDATE nodes SET control_host='coire-edge-b' WHERE name='coire-edge-b'",
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
             assert left["branch"] != right["branch"]
             assert left["base_revision"] == right["base_revision"]
         finally:
