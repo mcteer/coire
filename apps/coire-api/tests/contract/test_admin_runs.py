@@ -19,7 +19,7 @@ class Session:
         self.committed = False
         self.added: list[object] = []
 
-    async def get(self, model: object, identifier: uuid.UUID) -> AgentRunRow | None:
+    async def get(self, model: object, identifier: uuid.UUID, **_: object) -> AgentRunRow | None:
         return self.row if identifier == self.row.id else None
 
     async def commit(self) -> None:
@@ -81,3 +81,40 @@ async def test_admin_kill_revokes_before_transition_and_audits(monkeypatch) -> N
     assert session.committed
     command = next(item for item in session.added if isinstance(item, RunCommandRow))
     assert command.operation.value == "kill"
+
+
+async def test_repeated_admin_kill_is_idempotent(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    admin_id = uuid.uuid4()
+    now = datetime.now(UTC)
+    row = AgentRunRow(
+        id=uuid.uuid4(),
+        requester_user_id=uuid.uuid4(),
+        profile="general",
+        primary_model_id=uuid.uuid4(),
+        primary_variant_id=uuid.uuid4(),
+        node_id=uuid.uuid4(),
+        workspace_ref="workspace",
+        token_scope={},
+        state=AgentRunState.KILL_REQUESTED,
+        limits={},
+        resource_usage={},
+        requested_at=now,
+        updated_at=now,
+    )
+    session = Session(row)
+
+    async def forbid(*_: object, **__: object) -> None:
+        raise AssertionError("repeated kill must not mutate state")
+
+    monkeypatch.setattr("coire_api.routes.admin_runs.revoke_run_token", forbid)
+    principal = Principal(
+        kind=PrincipalKind.ADMIN,
+        subject=str(admin_id),
+        user_id=admin_id,
+        role=UserRole.ADMIN,
+    )
+    result = await kill_run(
+        row.id, RunKillRequest(reason="again"), principal, cast(AsyncSession, session)
+    )
+    assert result.state is AgentRunState.KILL_REQUESTED
+    assert session.committed is False

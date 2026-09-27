@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
+from urllib.parse import quote
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
@@ -86,6 +87,9 @@ class Settings(BaseSettings):
     # --- telemetry ------------------------------------------------------
     otlp_endpoint: str = "http://otel-collector:4317"
     service_version: str = "0.1.0"
+    mcp_enabled: bool = False
+    ops_enabled: bool = False
+    diagnostics_enabled: bool = False
 
     # --- node probing ---------------------------------------------------
     mesh_hosts_file: str = "/etc/hosts"
@@ -116,6 +120,11 @@ class Settings(BaseSettings):
     placement_lease_ttl_s: float = Field(default=60.0, gt=0.0)
     instance_drain_timeout_s: float = Field(default=30.0, gt=0.0)
     instance_event_poll_interval_s: float = Field(default=0.5, gt=0.0)
+    console_snapshot_interval_s: float = Field(default=2.0, ge=0.25, le=30.0)
+    scheduler_idle_scan_max_s: float = Field(default=5.0, ge=1.0, le=60.0)
+    scheduler_failure_backoff_max_s: float = Field(default=30.0, ge=1.0, le=300.0)
+    scheduler_shutdown_timeout_s: float = Field(default=10.0, ge=1.0, le=60.0)
+    run_kill_poll_interval_s: float = Field(default=0.25, gt=0.0, le=0.5)
 
     # --- Studio data-link and sharding ---------------------------------
     link_probe_interval_s: float = Field(default=30.0, gt=0.0)
@@ -275,10 +284,11 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         """Async SQLAlchemy URL. The password is only materialised here."""
-        pw = self.postgres_password.get_secret_value()
+        user = quote(self.postgres_user, safe="")
+        pw = quote(self.postgres_password.get_secret_value(), safe="")
+        database = quote(self.postgres_db, safe="")
         return (
-            f"postgresql+asyncpg://{self.postgres_user}:{pw}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"postgresql+asyncpg://{user}:{pw}@{self.postgres_host}:{self.postgres_port}/{database}"
         )
 
     @property

@@ -1,0 +1,61 @@
+# OpenTelemetry Collector — feature 000.
+#
+# Export only (FR-014). Everything stays local and nothing egresses. The metrics, logs and
+# traces backends, the dashboards and the alert rules are feature 009 (ADR-0003), at which
+# point exporters are added here rather than instrumentation being retrofitted everywhere.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  attributes/redact:
+    actions:
+      - {pattern: "(?i).*(authorization|cookie|password|secret|token|prompt|response).*", action: delete}
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+    spike_limit_mib: 64
+  batch:
+    timeout: 5s
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    enable_open_metrics: true
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls: {insecure: true}
+    retry_on_failure: {enabled: true, max_elapsed_time: 30s}
+    sending_queue: {enabled: true, queue_size: 128, num_consumers: 2}
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    retry_on_failure: {enabled: true, max_elapsed_time: 30s}
+    sending_queue: {enabled: true, queue_size: 128, num_consumers: 2}
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact, batch]
+      exporters: [otlphttp/loki]

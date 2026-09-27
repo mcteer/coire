@@ -88,8 +88,8 @@ procedure is recorded without state loss.
 **006 · admin console** — "React admin routes: nodes & memory ledger, models (add from HF / publish / unpublish / retire / pin / load / unload / convert, with download & replication progress, disk per Studio, per-task defaults), users & keys, runs & jobs with kill, upgrades, audit viewer, 'ask Coire' box wired to the ops agent (read-only until 010)."
 *Done when:* every operation in Principle I/II is reachable without a terminal.
 
-**007 · observability stack** — "OTel/Prometheus/Loki/Tempo/Grafana compose, instrumentation across api/node, three seed dashboards, alert rules from the architecture doc."
-*Done when:* a deliberately slow request is attributable to a span; alerts fire on node-down and tunnel-down.
+**007 · observability stack** — "OTel/Prometheus/Alertmanager continuously; optional Loki/Tempo/Grafana history, instrumentation across api/node, three seed dashboards, alert rules from the architecture doc ([ADR-0007](adr/0007-lean-control-plane-diagnostics.md))."
+*Done when:* alerts fire on node-down and tunnel-down in the baseline; a deliberately slow request is attributable to a span with diagnostics enabled.
 
 ## Phase 3 — Agents
 

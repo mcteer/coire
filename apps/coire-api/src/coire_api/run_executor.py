@@ -7,15 +7,18 @@ import logging
 import uuid
 from contextlib import suppress
 from datetime import UTC, datetime
+from functools import partial
 
 from opentelemetry import metrics, trace
 from sqlalchemy import select
 
 from coire_api.db import AgentRunRow, NodeRow, RunCommandRow, session_scope
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.polling import PollBackoff, wait_or_stop
 from coire_api.run_tokens import rotate_run_token
 from coire_core.models.harness import ProfileName
 from coire_core.models.runs import (
+    AgentRunState,
     RunCommandState,
     RunContainerCreate,
     RunLimits,
@@ -28,43 +31,120 @@ logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("coire.api.runs")
 meter = metrics.get_meter("coire.api.runs")
 commands_total = meter.create_counter("coire_run_commands_total", unit="1")
+kill_latency = meter.create_histogram("coire_run_kill_queue_latency_seconds", unit="s")
 
 
 class RunCommandExecutor:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, *, external_kill_scan: bool = False) -> None:
         self.settings = settings
+        self.external_kill_scan = external_kill_scan
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._kill_task: asyncio.Task[None] | None = None
+        self._kills: dict[uuid.UUID, asyncio.Task[None]] = {}
+        self._kill_nodes: dict[uuid.UUID, uuid.UUID] = {}
 
     async def start(self) -> None:
         if self._task is None:
             self._task = asyncio.create_task(self._run(), name="run-command-executor")
+            if not self.external_kill_scan:
+                self._kill_task = asyncio.create_task(self._run_kills(), name="run-kill-executor")
 
     async def stop(self) -> None:
         self._stop.set()
         if self._task is not None:
-            await self._task
+            try:
+                await asyncio.wait_for(
+                    self._task, timeout=self.settings.scheduler_shutdown_timeout_s
+                )
+            except TimeoutError:
+                self._task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await self._task
             self._task = None
+        if self._kill_task is not None:
+            await self._kill_task
+            self._kill_task = None
+        if self._kills:
+            for task in self._kills.values():
+                task.cancel()
+            await asyncio.gather(*self._kills.values(), return_exceptions=True)
+            self._kills.clear()
+            self._kill_nodes.clear()
+
+    async def _run_kills(self) -> None:
+        """Reserve a short independent lane so WAIT cannot delay a kill."""
+        while not self._stop.is_set():
+            try:
+                async with session_scope() as session:
+                    rows = list(
+                        (
+                            await session.execute(
+                                select(RunCommandRow.id, RunCommandRow.node_id)
+                                .where(
+                                    RunCommandRow.operation == RunOperation.KILL,
+                                    RunCommandRow.state.in_(
+                                        [RunCommandState.PENDING, RunCommandState.RUNNING]
+                                    ),
+                                )
+                                .order_by(RunCommandRow.created_at)
+                            )
+                        ).tuples()
+                    )
+                self.enqueue_kills(rows)
+            except Exception:
+                logger.exception("run kill queue poll failed")
+            with suppress(TimeoutError):
+                await asyncio.wait_for(
+                    self._stop.wait(), timeout=self.settings.run_kill_poll_interval_s
+                )
+
+    def enqueue_kills(self, rows: list[tuple[uuid.UUID, uuid.UUID | None]]) -> None:
+        active_by_node: dict[uuid.UUID, int] = {}
+        for active_node_id in self._kill_nodes.values():
+            active_by_node[active_node_id] = active_by_node.get(active_node_id, 0) + 1
+        for command_id, node_id in rows:
+            if node_id is None or command_id in self._kills:
+                continue
+            if active_by_node.get(node_id, 0) >= self.settings.run_concurrency_cap:
+                continue
+            active_by_node[node_id] = active_by_node.get(node_id, 0) + 1
+            task = asyncio.create_task(self._execute_safely(command_id))
+            self._kills[command_id] = task
+            self._kill_nodes[command_id] = node_id
+            task.add_done_callback(partial(self._finished_kill, command_id))
+
+    def _finished_kill(self, command_id: uuid.UUID, _task: asyncio.Task[None]) -> None:
+        self._kills.pop(command_id, None)
+        self._kill_nodes.pop(command_id, None)
 
     async def _run(self) -> None:
+        backoff = PollBackoff(
+            self.settings.placement_poll_interval_s,
+            self.settings.scheduler_idle_scan_max_s,
+            self.settings.scheduler_failure_backoff_max_s,
+        )
         while not self._stop.is_set():
             try:
                 command_id = await self._next()
                 if command_id is not None:
+                    backoff.active()
                     await self._execute_safely(command_id)
                     continue
             except Exception:
                 logger.exception("run command queue poll failed")
-            with suppress(TimeoutError):
-                await asyncio.wait_for(
-                    self._stop.wait(), timeout=self.settings.placement_poll_interval_s
-                )
+                await wait_or_stop(self._stop, backoff.failed())
+                continue
+            await wait_or_stop(self._stop, backoff.idle())
 
     async def _next(self) -> uuid.UUID | None:
         async with session_scope() as session:
             command_id: uuid.UUID | None = await session.scalar(
                 select(RunCommandRow.id)
-                .where(RunCommandRow.state.in_([RunCommandState.PENDING, RunCommandState.RUNNING]))
+                .where(
+                    RunCommandRow.operation != RunOperation.KILL,
+                    RunCommandRow.state.in_([RunCommandState.PENDING, RunCommandState.RUNNING]),
+                )
                 .order_by(RunCommandRow.created_at)
                 .limit(1)
             )
@@ -89,6 +169,11 @@ class RunCommandExecutor:
                 row.detail = result
                 row.updated_at = datetime.now(UTC)
                 commands_total.add(1, {"operation": row.operation.value, "outcome": "succeeded"})
+                if row.operation is RunOperation.KILL:
+                    kill_latency.record(
+                        max(0.0, (datetime.now(UTC) - row.created_at).total_seconds()),
+                        {"outcome": "succeeded"},
+                    )
 
     async def _failed(self, command_id: uuid.UUID, exc: Exception) -> None:
         logger.exception("run command failed command_id=%s", command_id, exc_info=exc)
@@ -104,6 +189,11 @@ class RunCommandExecutor:
                 }
                 row.updated_at = datetime.now(UTC)
                 commands_total.add(1, {"operation": row.operation.value, "outcome": "failed"})
+                if row.operation is RunOperation.KILL:
+                    kill_latency.record(
+                        max(0.0, (datetime.now(UTC) - row.created_at).total_seconds()),
+                        {"outcome": "failed"},
+                    )
 
     async def _execute(self, command_id: uuid.UUID) -> dict[str, object]:
         with tracer.start_as_current_span("coire.api.run.command") as span:
@@ -116,6 +206,11 @@ class RunCommandExecutor:
                 node = await session.get(NodeRow, command.node_id) if command.node_id else None
                 if run is None or node is None:
                     raise RuntimeError("run command references missing state")
+                if run.state is AgentRunState.KILL_REQUESTED and command.operation not in {
+                    RunOperation.KILL,
+                    RunOperation.REMOVE,
+                }:
+                    raise RuntimeError("run kill requested")
                 command.state = RunCommandState.RUNNING
                 command.updated_at = datetime.now(UTC)
                 operation, node_name, run_id = command.operation, node.name, run.id
@@ -148,6 +243,8 @@ class RunCommandExecutor:
                         locked = await session.get(AgentRunRow, run_id, with_for_update=True)
                         if locked is None:
                             raise RuntimeError("run disappeared before token mint")
+                        if locked.state is AgentRunState.KILL_REQUESTED:
+                            raise RuntimeError("run kill requested before container creation")
                         scope = RunTokenScope.model_validate(locked.token_scope)
                         limits = RunLimits.model_validate(locked.limits)
                         _, plaintext = await rotate_run_token(

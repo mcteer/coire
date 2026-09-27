@@ -15,7 +15,7 @@ from sqlalchemy import and_, or_, select
 
 from coire_api.auth import CurrentAdmin
 from coire_api.console.ops import answer_from_snapshot
-from coire_api.console.service import project_snapshot
+from coire_api.console.service import cached_snapshot, project_snapshot
 from coire_api.db import DownloadJobRow, ModelInstanceRow, ModelRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_core.models.console import (
@@ -40,12 +40,25 @@ _asks = _meter.create_counter("coire_console_ask_total")
 _activity_pages = _meter.create_counter("coire_console_activity_pages_total")
 
 
+def _semantic_snapshot(snapshot: ConsoleSnapshot) -> dict[str, object]:
+    body: dict[str, object] = snapshot.model_dump(mode="json")
+    body.pop("observed_at", None)
+    body.pop("cursor", None)
+    cluster = body.get("cluster")
+    if isinstance(cluster, dict):
+        cluster.pop("observed_at", None)
+    core = body.get("core")
+    if isinstance(core, dict):
+        core.pop("observed_at", None)
+    return body
+
+
 @router.get("/console", response_model=ConsoleSnapshot)
 async def console_snapshot(
     request: Request, principal: CurrentAdmin, session: SessionDep, settings: SettingsDep
 ) -> ConsoleSnapshot:
     with _tracer.start_as_current_span("coire.api.console.snapshot"):
-        result = await project_snapshot(request, principal, session, settings)
+        result = await cached_snapshot(request, principal, settings)
         _snapshots.add(1)
         return result
 
@@ -138,14 +151,11 @@ async def console_events(
     _streams.add(1, {"reconnect": str(last_event_id is not None).lower()})
 
     async def stream() -> AsyncIterator[str]:
-        previous = ""
+        previous: dict[str, object] | None = None
         first = True
         while not await request.is_disconnected():
-            from coire_api.db import session_scope
-
-            async with session_scope() as session:
-                snapshot = await project_snapshot(request, principal, session, settings)
-            body = snapshot.model_dump_json()
+            snapshot = await cached_snapshot(request, principal, settings)
+            body = _semantic_snapshot(snapshot)
             if first or body != previous:
                 kind = (
                     ConsoleEventKind.RECONCILE
@@ -163,7 +173,7 @@ async def console_events(
                 first = False
             else:
                 yield ": keep-alive\n\n"
-            await asyncio.sleep(settings.instance_event_poll_interval_s)
+            await asyncio.sleep(settings.console_snapshot_interval_s)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 

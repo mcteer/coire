@@ -117,7 +117,7 @@ export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
               Disk free<b>{gb(snapshot.core.disk_free_bytes)}</b>
             </span>
             <span className="fact">
-              CPU<b>{snapshot.core.cpu_percent?.toFixed(0) ?? "—"}%</b>
+              CPU<b>{snapshot.core.cpu_percent == null ? "Unknown" : `${snapshot.core.cpu_percent.toFixed(0)}%`}</b>
             </span>
             <span className="fact">
               Source<b>control-plane runtime</b>

@@ -576,6 +576,19 @@ class RegistryReconciler:
                 row = by_id.get(dead_id)
                 if row is None:
                     continue
+                # Reconciliation may overlap a newly dispatched engine create. The row is
+                # persisted before the node accepts the process, so a transient "dead"
+                # observation has the same startup grace as a transient status 404.
+                if (
+                    row.state is EngineState.STARTING
+                    and (datetime.now(UTC) - row.started_at).total_seconds() < ENGINE_START_GRACE_S
+                ):
+                    logger.debug(
+                        "engine %s is still starting on %s; deferring transient reconcile miss",
+                        row.id,
+                        node.name,
+                    )
+                    continue
                 row.state = EngineState.FAILED
                 row.state_reason = "process gone during agent restart"
                 row.stopped_at = datetime.now(UTC)

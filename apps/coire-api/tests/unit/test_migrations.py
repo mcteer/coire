@@ -78,9 +78,12 @@ def test_gateway_and_fabric_migration_heads_are_merged() -> None:
 
 
 def test_acquisition_variant_migration_is_additive_and_guards_downgrade() -> None:
+    historical = Path("apps/coire-api/alembic/versions/0005_observability_health.py").read_text()
+    assert 'revision = "0005_observability_health"' in historical
+    assert 'down_revision = "0004_merge_gateway_fabrics"' in historical
     source = Path("apps/coire-api/alembic/versions/0005_acquisition_variants.py").read_text()
     assert 'revision = "0005_acquisition_variants"' in source
-    assert 'down_revision = "0004_merge_gateway_fabrics"' in source
+    assert 'down_revision = "0005_observability_health"' in source
     for table in (
         "model_variants",
         "acquisition_workflows",

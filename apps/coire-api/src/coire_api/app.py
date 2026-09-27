@@ -88,41 +88,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await reconciler.start()
         app.state.reconciler = reconciler
         prober.set_reconciler(reconciler)
-        from coire_api.registry.acquisition_executor import AcquisitionCommandExecutor
-
-        acquisition_executor = AcquisitionCommandExecutor(settings)
-        await acquisition_executor.start()
-        app.state.acquisition_executor = acquisition_executor
-        from coire_api.placement.executor import PlacementCommandExecutor
-
-        placement_executor = PlacementCommandExecutor(settings)
-        await placement_executor.start()
-        app.state.placement_executor = placement_executor
-        from coire_api.run_executor import RunCommandExecutor
-
-        run_executor = RunCommandExecutor(settings)
-        await run_executor.start()
-        app.state.run_executor = run_executor
-        from coire_api.run_reconciler import RunReconciliationCoordinator
-
-        run_reconciler = RunReconciliationCoordinator(settings)
-        await run_reconciler.start()
-        app.state.run_reconciler = run_reconciler
-        from coire_api.shard_executor import ShardCommandExecutor
-
-        shard_executor = ShardCommandExecutor(settings)
-        await shard_executor.start()
-        app.state.shard_executor = shard_executor
-        from coire_api.shard_reconciler import ShardReconciler
-
-        shard_reconciler = ShardReconciler(settings)
-        await shard_reconciler.start()
-        app.state.shard_reconciler = shard_reconciler
-        from coire_api.benchmark_executor import BenchmarkCommandExecutor
-
-        benchmark_executor = BenchmarkCommandExecutor(settings)
-        await benchmark_executor.start()
-        app.state.benchmark_executor = benchmark_executor
         from coire_api.failover.poller import build_poller
         from coire_api.failover.publication import CoreSnapshotService, configured_membership
 
@@ -149,13 +114,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await failover_poller.stop()
             if snapshot_service is not None:
                 await snapshot_service.stop()
-            await benchmark_executor.stop()
-            await shard_reconciler.stop()
-            await shard_executor.stop()
-            await run_reconciler.stop()
-            await run_executor.stop()
-            await placement_executor.stop()
-            await acquisition_executor.stop()
             await reconciler.stop()
             await prober.stop()
             await link_probe_coordinator.stop()
@@ -170,6 +128,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     app.state.settings = settings
+    from coire_api.console.service import SnapshotCache
+
+    app.state.console_snapshot_cache = SnapshotCache()
     from coire_api.identity.access import AccessVerifier
 
     app.state.access_verifier = AccessVerifier(settings)
@@ -359,5 +320,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             headers=dict(response.headers),
         )
 
-    FastAPIInstrumentor.instrument_app(app)
+    FastAPIInstrumentor.instrument_app(app, excluded_urls="/ready,/failover/ready")
     return app

@@ -23,9 +23,12 @@ x-hardening: &hardening
   security_opt: [no-new-privileges:true]
   restart: unless-stopped
   stop_grace_period: 5s
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
 
 x-python-health: &python-health
-  interval: 5s
+  interval: 20s
   timeout: 2s
   retries: 3
   start_period: 10s
@@ -47,11 +50,14 @@ services:
     # Declared explicitly rather than inherited from the image, so the topology test can
     # assert it and a base-image change cannot silently promote this container to root.
     user: "65532:65532"
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: "0.5"
     healthcheck:
       # Local, non-proxied path: probing /ready would reach coire-api, so an api restart
       # would mark web unhealthy and break restart isolation (SC-002).
       test: ["CMD", "/healthcheck", "http://127.0.0.1:8080/nginx-health"]
-      interval: 5s
+      interval: 20s
       timeout: 2s
       retries: 3
       start_period: 2s
@@ -66,6 +72,9 @@ services:
     environment:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
+      MCP_ENABLED: ${COIRE_MCP_ENABLED:-false}
+      OPS_ENABLED: ${COIRE_OPS_ENABLED:-false}
+      DIAGNOSTICS_ENABLED: ${COIRE_DIAGNOSTICS_ENABLED:-false}
       CLOUDFLARE_ACCESS_ISSUER: ${CLOUDFLARE_ACCESS_ISSUER:-}
       CLOUDFLARE_ACCESS_AUDIENCE: ${CLOUDFLARE_ACCESS_AUDIENCE:-}
       NODE_INVENTORY_FILE: /app/nodes.yaml
@@ -87,8 +96,11 @@ services:
     <<: *hardening
     tmpfs: [/tmp, /opt/coire/failover]
     user: "65532:65532"
+    pids_limit: 256
+    mem_limit: 1g
+    cpus: "2.0"
     healthcheck:
-      test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/ready',timeout=2).status==200 else 1)"]
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:8000/ready"]
       <<: *python-health
 
   # Studio-only. Enable with `--profile studio-failover` on a Studio, never on core.
@@ -122,6 +134,7 @@ services:
       <<: *python-health
 
   coire-ops:
+    profiles: ["ops"]
     image: ${COIRE_REGISTRY:-}coire-agent-ops:${COIRE_TAG:-dev}
     build:
       context: ../..
@@ -142,10 +155,11 @@ services:
     mem_limit: 1g
     cpus: 1.0
     healthcheck:
-      test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8003/ready',timeout=2).status==200 else 1)"]
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:8003/ready"]
       <<: *python-health
 
   coire-mcp:
+    profiles: ["mcp"]
     image: ${COIRE_REGISTRY:-}coire-mcp:${COIRE_TAG:-dev}
     build:
       context: ../..
@@ -162,8 +176,11 @@ services:
       coire-migrate: {condition: service_completed_successfully}
     <<: *hardening
     user: "65532:65532"
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "1.0"
     healthcheck:
-      test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/ready',timeout=2).status==200 else 1)"]
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:8001/ready"]
       <<: *python-health
 
   coire-scheduler:
@@ -179,14 +196,20 @@ services:
       DOCKER_HOST: tcp://docker-socket-proxy:2375
       SHARDING_JACCL_HOSTFILE: /run/coire/cluster/jaccl-hostfile.json
       SHARDING_RING_HOSTFILE: /run/coire/cluster/ring-hostfile.json
+      RUN_AGENT_IMAGE: ${COIRE_RUN_AGENT_IMAGE:-}
+      RUN_RELAY_IMAGE: ${COIRE_RUN_RELAY_IMAGE:-}
+      RUN_GATEWAY_URL: ${RUN_GATEWAY_URL:-http://coire-core.lab:8080/v1}
     volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
     secrets: [postgres_password, node_tokens]
     depends_on:
       postgres: {condition: service_healthy}
     <<: *hardening
     user: "65532:65532"
+    pids_limit: 256
+    mem_limit: 1536m
+    cpus: "2.0"
     healthcheck:
-      test: ["CMD", "/app/.venv/bin/python3", "-c", "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8002/ready',timeout=2).status==200 else 1)"]
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:8002/ready"]
       <<: *python-health
 
   coire-migrate:
@@ -208,6 +231,9 @@ services:
     security_opt: [no-new-privileges:true]
     user: "65532:65532"
     restart: "no"
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "1.0"
 
   # ---------------------------------------------------------------- stateful
   postgres:
@@ -229,9 +255,15 @@ services:
     cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
     security_opt: [no-new-privileges:true]
     restart: unless-stopped
+    pids_limit: 128
+    mem_limit: 2g
+    cpus: "2.0"
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U coire -d coire"]
-      interval: 5s
+      interval: 20s
       timeout: 3s
       retries: 5
       start_period: 10s
@@ -266,12 +298,19 @@ services:
       SESSION: "0"
     security_opt: [no-new-privileges:true]
     restart: unless-stopped
+    pids_limit: 64
+    mem_limit: 96m
+    cpus: "0.5"
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
 
   otel-collector:
     image: ${COIRE_REGISTRY:-}coire-otel:${COIRE_TAG:-dev}
     build:
       context: ../..
       dockerfile: deploy/compose/otel.Dockerfile
+    command: ["--config", "/etc/otelcol-contrib/${COIRE_OTEL_CONFIG:-config.yaml}"]
     # `coire-node-ingress` exists solely to make the host-published OTLP socket routable.
     # OrbStack does not create host forwards for a container attached only to internal
     # networks. The collector retains its separate internal telemetry attachment for services.
@@ -283,12 +322,134 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     restart: unless-stopped
+    pids_limit: 64
+    mem_limit: 384m
+    cpus: "1.0"
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
     healthcheck:
       test: ["CMD", "/healthcheck", "http://127.0.0.1:13133/"]
-      interval: 5s
+      interval: 20s
       timeout: 2s
       retries: 3
       start_period: 5s
+
+  prometheus:
+    image: ${COIRE_REGISTRY:-}coire-prometheus:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/prometheus.Dockerfile
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=${COIRE_METRIC_RETENTION:-48h}", "--storage.tsdb.retention.size=${COIRE_METRIC_RETENTION_SIZE:-2GB}"]
+    networks: [coire-telemetry]
+    volumes: [coire-prometheus:/prometheus]
+    user: "65534:65534"
+    <<: *hardening
+    pids_limit: 64
+    mem_limit: 384m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:9090/-/ready"]
+      interval: 20s
+      timeout: 2s
+      retries: 3
+
+  alertmanager:
+    image: ${COIRE_REGISTRY:-}coire-alertmanager:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/alertmanager.Dockerfile
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    networks: [coire-telemetry]
+    volumes: [coire-alertmanager:/alertmanager]
+    user: "65534:65534"
+    <<: *hardening
+    pids_limit: 64
+    mem_limit: 128m
+    cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:9093/-/ready"]
+      interval: 20s
+      timeout: 2s
+      retries: 3
+
+  loki:
+    profiles: ["diagnostics"]
+    image: ${COIRE_REGISTRY:-}coire-loki:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/loki.Dockerfile
+    command: ["-config.file=/etc/loki/loki.yml", "-config.expand-env=true"]
+    environment:
+      COIRE_LOG_RETENTION: ${COIRE_LOG_RETENTION:-48h}
+      COIRE_LOG_INGESTION_MBPS: ${COIRE_LOG_INGESTION_MBPS:-0.05}
+    networks: [coire-telemetry]
+    volumes: [coire-loki:/loki]
+    user: "10001:10001"
+    <<: *hardening
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:3100/ready"]
+      interval: 20s
+      timeout: 2s
+      retries: 3
+
+  tempo:
+    profiles: ["diagnostics"]
+    image: ${COIRE_REGISTRY:-}coire-tempo:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/tempo.Dockerfile
+    command: ["-config.file=/etc/tempo/tempo.yml", "-config.expand-env=true"]
+    environment:
+      COIRE_TRACE_RETENTION: ${COIRE_TRACE_RETENTION:-48h}
+      COIRE_TRACE_INGESTION_BPS: ${COIRE_TRACE_INGESTION_BPS:-50000}
+    networks: [coire-telemetry]
+    volumes: [coire-tempo:/var/tempo]
+    user: "10001:10001"
+    <<: *hardening
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:3200/ready"]
+      interval: 20s
+      timeout: 2s
+      retries: 3
+
+  grafana:
+    profiles: ["diagnostics"]
+    image: ${COIRE_REGISTRY:-}coire-grafana:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: deploy/compose/grafana.Dockerfile
+    networks: [coire-telemetry]
+    environment:
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/admin_token
+      GF_PATHS_DATA: /var/lib/grafana
+      GF_PATHS_LOGS: /var/lib/grafana/log
+      GF_PATHS_PLUGINS: /var/lib/grafana/plugins
+    volumes: [coire-grafana:/var/lib/grafana]
+    secrets: [admin_token]
+    user: "472:472"
+    <<: *hardening
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "/healthcheck", "http://127.0.0.1:3000/api/health"]
+      interval: 20s
+      timeout: 2s
+      retries: 3
 
 networks:
   # Only coire-edge is non-internal: it is where cloudflared attaches in feature 007. Even so,
@@ -308,6 +469,11 @@ networks:
 
 volumes:
   coire-pgdata:
+  coire-prometheus:
+  coire-alertmanager:
+  coire-loki:
+  coire-tempo:
+  coire-grafana:
 
 secrets:
   # File-sourced from a 0700 directory outside the repository, written by coire-up from the

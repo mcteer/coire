@@ -41,6 +41,15 @@ def stop_background_ops_service() -> Iterator[None]:
     every ten seconds and legitimately supersede those sessions (revoking their pending
     proposals).  The degradation case explicitly recreates the real service when needed.
     """
+    was_running = (
+        subprocess.run(
+            ["docker", "inspect", "coire-it-coire-ops-1", "--format", "{{.State.Running}}"],
+            check=False,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        == "true"
+    )
     subprocess.run(
         ["docker", "compose", "-p", "coire-it", "stop", "--timeout", "10", "coire-ops"],
         cwd=COMPOSE_DIR,
@@ -56,6 +65,13 @@ def stop_background_ops_service() -> Iterator[None]:
             check=False,
             capture_output=True,
         )
+        if was_running:
+            subprocess.run(
+                ["docker", "compose", "-p", "coire-it", "start", "coire-ops"],
+                cwd=COMPOSE_DIR,
+                check=True,
+                capture_output=True,
+            )
 
 
 def _sql(statement: str) -> None:
@@ -114,7 +130,16 @@ def _sql_scalar(statement: str) -> int:
 def _recreate_ops(model_id: str) -> None:
     INTEGRATION_SECRETS["COIRE_OPS_MODEL_ID"] = model_id
     subprocess.run(
-        ["docker", "compose", "-p", "coire-it", "up", "-d", "--force-recreate", "coire-ops"],
+        [
+            "docker",
+            "compose",
+            "-p",
+            "coire-it",
+            "up",
+            "-d",
+            "--force-recreate",
+            "coire-ops",
+        ],
         cwd=COMPOSE_DIR,
         env=integration_env(COMPOSE_PROJECT_NAME="coire-it"),
         check=True,
@@ -490,7 +515,7 @@ def test_ops_degrades_without_inference_and_recovers_without_restart(
             json={"question": f"Unload ready instance {restored['id']}."},
         )
         assert recovered.status_code == 200, recovered.text
-        assert recovered.json()["status"] == "proposed"
+        assert recovered.json()["status"] == "proposed", recovered.text
         assert recovered.json()["degraded"] is False
         assert recovered.json()["proposal"]["proposal"]["action"]["target_id"] == restored["id"]
         assert _sql_scalar("SELECT count(*) FROM usage_records") > usage_before

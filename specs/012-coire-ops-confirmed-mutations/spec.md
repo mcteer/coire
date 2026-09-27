@@ -1,5 +1,7 @@
 # Feature Specification: Coire-Ops with Confirmed Mutations
 
+> **2026-09-26 operational amendment:** Feature 023 permits the long-lived ops container to be explicitly enabled when the ops capability is used. Its privilege and resource constraints still apply whenever enabled; see [ADR-0007](../../docs/adr/0007-lean-control-plane-diagnostics.md).
+
 **Feature Branch**: `012-coire-ops-confirmed-mutations`
 
 **Roadmap ID**: 010 (Phase 3 — Agents)

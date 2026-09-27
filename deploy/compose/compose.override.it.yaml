@@ -57,6 +57,9 @@ services:
       PLACEMENT_POLL_INTERVAL_S: "0.2"
       PLACEMENT_TTL_INTERVAL_S: "2"
       RUN_CONCURRENCY_CAP: "1"
+      RUN_AGENT_IMAGE: ${COIRE_IT_RUN_AGENT_IMAGE:-}
+      RUN_RELAY_IMAGE: ${COIRE_IT_RUN_RELAY_IMAGE:-}
+      RUN_GATEWAY_URL: http://host.docker.internal:${COIRE_IT_API_PORT:-18081}/v1
     networks: [coire-control-sim]
 
   otel-collector:

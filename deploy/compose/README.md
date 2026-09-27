@@ -1,13 +1,36 @@
 # Core compose deployment
 
-`coire-up` resolves `coire-core` through UniFi DNS and records the observed bind address in the
-gitignored `.env`. Host port 8180 (forwarded to nginx 8080) and OTLP 4317 bind only to that
-control address. Override with `COIRE_CONTROL_PORT` or `COIRE_CONTROL_BIND_ADDRESS` only during a
-reviewed recovery; never use `0.0.0.0`.
+`coire-up` resolves `coire-core` through UniFi DNS and installs an image-ID-pinned Compose
+manifest under `~/.coire/projects/<project>/releases/`. The active release is the `current`
+symlink in that project directory. The manifest, copied cluster config and mounted credential
+generation survive source checkout changes. Host port 8180 (nginx 8080) and OTLP 4317 bind only
+to the control address. Override with `COIRE_CONTROL_PORT` or `COIRE_CONTROL_BIND_ADDRESS` only
+during reviewed recovery; never use `0.0.0.0`.
+On a clean host, startup pulls only the digest-pinned PostgreSQL and Docker socket proxy
+images when missing; first-party images must already be present or be built explicitly.
 
-Secrets are materialised from Keychain under `~/.coire/secrets` and mounted as files. Use
-`coire-down` to remove them. The integration override creates a shared control network and an
+Secrets are materialised from Keychain in complete generations under
+`~/.coire/projects/<project>/secrets/` and mounted as files. A missing late Keychain item leaves
+the current release untouched. `coire-up` checks existing PostgreSQL data with the candidate
+credential from the application network before migrations or replacement. If the persisted role
+differs, `coire-up --recover-db-role` writes a private `pg_dump` under the project's `backups/`,
+changes only that database role, then repeats the network check. `--build` explicitly builds
+source images; normal startup uses existing images without building. `coire-down` removes
+project credentials after the stack stops and preserves volumes unless `--purge` is confirmed.
+The integration override creates a shared control network and an
 internal Studio-only data network; core is deliberately absent from the latter.
+
+The lean profile starts PostgreSQL, API, web, scheduler, socket proxy, collector, Prometheus and
+Alertmanager. `COMPOSE_PROFILES=ops,mcp` enables the ops harness and MCP service;
+`COMPOSE_PROFILES=diagnostics` adds Loki, Tempo and Grafana, and switches the collector to its
+bounded historical exporters. Combine profiles with commas. The default collector never targets
+disabled history backends. The `ops` profile requires the `coire-ops-service-token` Keychain
+item; lean and diagnostics-only profiles do not require it. Prometheus retains 48 hours or
+2 GiB by default. The optional
+`COIRE_METRIC_RETENTION` and `COIRE_METRIC_RETENTION_SIZE` change these caps; historical log and
+trace retention use `COIRE_LOG_RETENTION` and `COIRE_TRACE_RETENTION` (48 hours by default).
+`COIRE_STATE_ROOT` and `COIRE_SECRETS_BASE` change the per-project state location for isolated
+test deployments. `COMPOSE_PROJECT_NAME` must be a single validated project component.
 
 Runtime configuration is supplied through `COIRE_` environment variables and Keychain-sourced
 compose secrets. Gateway tuning variables and operational procedures are documented in
@@ -35,6 +58,13 @@ only for drift telemetry. Reducing a budget below current reservations blocks ad
 does not force eviction.
 Instance lifecycle uses `INSTANCE_DRAIN_TIMEOUT_S` (30) for bounded graceful drain and
 `INSTANCE_EVENT_POLL_INTERVAL_S` (0.5) for persisted SSE replay polling.
+`CONSOLE_SNAPSHOT_INTERVAL_S` (2) bounds common admin snapshot refreshes independently of
+instance-event replay. `SCHEDULER_IDLE_SCAN_MAX_S` (5) and
+`SCHEDULER_FAILURE_BACKOFF_MAX_S` (30) cap ordinary empty-queue and failure backoff;
+`SCHEDULER_SHUTDOWN_TIMEOUT_S` (10) bounds cleanup. `RUN_KILL_POLL_INTERVAL_S` (0.25,
+maximum 0.5) is the separate safety scan and must not inherit ordinary backoff.
+`MCP_ENABLED`, `OPS_ENABLED`, and `DIAGNOSTICS_ENABLED` describe which optional capabilities
+the deployment starts and therefore which health dependencies it expects.
 Sharding uses `LINK_PROBE_INTERVAL_S` (30), `LINK_PROBE_FRESHNESS_S` (120),
 `LINK_FAILURES_BEFORE_DOWN` (2), `LINK_SUCCESSES_BEFORE_UP` (3),
 `SHARDING_ALLOW_RING_FALLBACK` (true), `SHARDING_START_TIMEOUT_S` (600), and

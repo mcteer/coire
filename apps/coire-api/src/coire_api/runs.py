@@ -194,6 +194,8 @@ async def transition(
 ) -> None:
     if row.state in TERMINAL_RUN_STATES:
         raise RunConflict(f"run is terminal ({row.state.value})")
+    if row.state is AgentRunState.KILL_REQUESTED and state is not AgentRunState.KILLED:
+        raise RunConflict("run kill is pending")
     previous = row.state
     now = datetime.now(UTC)
     row.state = state

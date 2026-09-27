@@ -29,9 +29,8 @@ textarea:focus-visible {
     radial-gradient(900px 600px at 100% 100%, var(--bg-tint-b), transparent 60%), var(--bg);
 }
 .glass {
-  background: var(--glass-bg);
+  background: var(--surface);
   border: 1px solid var(--glass-border);
-  backdrop-filter: blur(var(--glass-blur));
   border-radius: var(--r-2xl);
   box-shadow: var(--shadow-2);
 }
@@ -302,5 +301,11 @@ td {
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .chip,
+  .status {
+    background: var(--surface);
   }
 }

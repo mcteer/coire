@@ -5,6 +5,11 @@
 # Same runtime pattern as coire-api (research R1) but its own image and its own tag: no image
 # serves two roles (FR-003), so this can be stopped or upgraded without dropping chat traffic.
 
+FROM docker.io/library/golang:1.26-bookworm@sha256:e8c859f5632dcfde7b32d2012b4351728f6437930887c2f6a91ea242459e5514 AS probe
+WORKDIR /src
+COPY apps/coire-web/healthcheck/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /healthcheck .
+
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca AS builder
 
 # UV_PROJECT_ENVIRONMENT is what uv honours for the target venv; VIRTUAL_ENV is ignored by
@@ -63,6 +68,7 @@ COPY --from=builder \
 
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app/.venv /app/.venv
+COPY --from=probe /healthcheck /healthcheck
 
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
@@ -73,9 +79,8 @@ WORKDIR /app
 EXPOSE 8001
 
 # There is no shell and no curl in this image, so the probe is the interpreter itself.
-HEALTHCHECK --interval=5s --timeout=2s --retries=3 --start-period=10s \
-    CMD ["/app/.venv/bin/python3", "-c", \
-         "import sys,urllib.request;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8001/ready',timeout=2).status==200 else 1)"]
+HEALTHCHECK --interval=20s --timeout=2s --retries=3 --start-period=10s \
+    CMD ["/healthcheck", "http://127.0.0.1:8001/ready"]
 
 ENTRYPOINT ["/app/.venv/bin/python3"]
 CMD ["-m", "coire_mcp"]
