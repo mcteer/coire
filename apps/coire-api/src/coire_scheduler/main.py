@@ -59,7 +59,10 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
     settings = get_settings()
     backoff = PollBackoff(
         settings.acquisition_poll_interval_s,
-        settings.scheduler_idle_scan_max_s,
+        # Instance drains are submitted by the API and must be discovered promptly even
+        # after an idle period; a five-second idle scan plus command queue delay can miss
+        # the existing ten-second drain bound on a busy runner.
+        min(settings.scheduler_idle_scan_max_s, settings.acquisition_poll_interval_s),
         settings.scheduler_failure_backoff_max_s,
     )
     while not stop.is_set():

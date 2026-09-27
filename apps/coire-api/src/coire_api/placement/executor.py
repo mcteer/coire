@@ -50,7 +50,11 @@ class PlacementCommandExecutor:
     async def _run(self) -> None:
         backoff = PollBackoff(
             self.settings.placement_poll_interval_s,
-            self.settings.scheduler_idle_scan_max_s,
+            # A newly queued unload is on the instance drain path. Bound discovery
+            # independently of the longer idle budget for non-urgent workers.
+            min(
+                self.settings.scheduler_idle_scan_max_s, self.settings.placement_poll_interval_s * 2
+            ),
             self.settings.scheduler_failure_backoff_max_s,
         )
         while not self._stop.is_set():

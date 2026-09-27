@@ -98,7 +98,8 @@
   integration run exposed a clean-host omission: the installed release used `--pull never`
   before the pinned third-party socket proxy image was available. Startup now pulls only
   the digest-pinned PostgreSQL and socket proxy images when missing, while first-party
-  release image IDs remain immutable. The integration rerun is pending.
+  release image IDs remain immutable. The next CI run passed clean-host bring-up and 104
+  integration cases, with two later behavior/timing failures described below.
 
 ## Live Mini rollout
 
@@ -130,3 +131,26 @@
   Grafana, Loki and Tempo, the old created API orphan, and the exited one-shot migration
   container. The eight lean containers remain running. All Coire named volumes, including
   historical monitoring volumes, were preserved; no unrelated container was removed.
+
+## Final CI regressions
+
+- After the missing-image fix, two full CI runs each passed 104 integration cases and skipped
+  two, then failed the same two cases: the instance drain exceeded its existing ten-second
+  bound by about 0.7 seconds, and an MCP-stop health test found its optional probe disabled.
+- The drain path could wait for the scheduler's five-second idle scan, then the placement
+  executor's five-second idle scan, then an unconditional one-second sleep after command
+  creation. The urgent dispatcher and command lane now bound idle discovery at two seconds,
+  and command creation enters result polling without the extra sleep. The ten-second
+  assertion remains unchanged. An isolated acquisition-and-drain composition passed 2/2
+  in 117.92 seconds with the corrected scheduler image.
+- A direct source-Compose ops recreation in the integration suite could recreate API
+  dependencies with default `MCP_ENABLED=false` instead of the installed release's enabled
+  profile. Direct Compose calls now inherit the installed profile capability flags. The ops
+  test fixture also restores the previously running ops service after each case, so later
+  health checks see the same baseline. The isolated MCP-stop regression passed, including
+  after an ops scenario. The ops recovery scenario itself is sensitive to the prior suite's
+  published model setup: it passed in both full CI runs, while a standalone local run
+  reported its pinned model unavailable despite a loaded gateway listing. Its existing
+  assertion remains intact for the full rerun.
+- Ruff, strict mypy (369 source files), six focused scheduler/polling unit tests and the
+  affected composed tests passed after these corrections. A final full CI run is pending.

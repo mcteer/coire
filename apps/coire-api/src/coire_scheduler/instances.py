@@ -410,7 +410,8 @@ async def execute_instance_drain(instance_id_text: str) -> None:
                         )
                     )
                 reservation.state = MemoryReservationState.RELEASING
-        await asyncio.sleep(settings.placement_poll_interval_s)
+        if command_id is None:
+            await asyncio.sleep(settings.placement_poll_interval_s)
 
     while True:
         async with session_scope() as session:

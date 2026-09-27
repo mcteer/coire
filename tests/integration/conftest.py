@@ -38,6 +38,13 @@ DOWN = COMPOSE_DIR / "coire-down"
 PROJECT = "coire-it"
 os.environ.setdefault("COMPOSE_PROJECT_NAME", PROJECT)
 os.environ.setdefault("COMPOSE_PROFILES", "ops,mcp")
+_PROFILES = set(os.environ["COMPOSE_PROFILES"].split(","))
+# Some integration tests invoke source Compose directly after coire-up has installed its
+# frozen release. Keep those commands' interpolation equal to the installed profile so a
+# targeted service recreate cannot silently turn optional API health probes off.
+os.environ["COIRE_MCP_ENABLED"] = str("mcp" in _PROFILES).lower()
+os.environ["COIRE_OPS_ENABLED"] = str("ops" in _PROFILES).lower()
+os.environ["COIRE_DIAGNOSTICS_ENABLED"] = str("diagnostics" in _PROFILES).lower()
 
 # `coire-up` runs `docker compose up` from deploy/compose and relies on auto-discovery, so the
 # integration overlay is selected with COMPOSE_FILE rather than by teaching the script a flag
