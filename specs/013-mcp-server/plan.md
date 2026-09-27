@@ -35,6 +35,9 @@ Expose exactly three authenticated coding tools at `/mcp` using the official Pyt
 
 ## Project Structure
 
+The feature PR also adds a root README that orients new operators and contributors to the
+three-host deployment, local checks, optional profiles, and detailed runbooks.
+
 ### Documentation
 
 ```text
