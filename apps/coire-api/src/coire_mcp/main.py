@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 
 import uvicorn
@@ -11,6 +12,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from coire_api.auth import (
     ANONYMOUS,
@@ -30,6 +32,58 @@ from coire_mcp.tools import register_tools
 
 SERVICE_NAME = "coire-mcp"
 __version__ = "0.1.0"
+
+
+class DisconnectCancellingMiddleware:
+    """Propagate a dropped HTTP connection to the in-flight MCP tool task.
+
+    The SDK's JSON response transport does not poll the ASGI receive channel after
+    reading the request body. Without a separate reader, the server keeps executing a
+    Studio run after the client has gone away.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope.get("path") != "/mcp" or scope.get("method") != "POST":
+            await self.app(scope, receive, send)
+            return
+
+        messages: asyncio.Queue[Message] = asyncio.Queue(maxsize=8)
+
+        async def forwarded_receive() -> Message:
+            return await messages.get()
+
+        response_complete = False
+
+        async def forwarded_send(message: Message) -> None:
+            nonlocal response_complete
+            await send(message)
+            if message["type"] == "http.response.body" and not message.get("more_body", False):
+                response_complete = True
+
+        async def serve() -> None:
+            await self.app(scope, forwarded_receive, forwarded_send)
+
+        worker = asyncio.create_task(serve())
+
+        async def monitor() -> None:
+            while True:
+                message = await receive()
+                await messages.put(message)
+                if message["type"] == "http.disconnect":
+                    if not response_complete:
+                        worker.cancel()
+                    return
+
+        watcher = asyncio.create_task(monitor())
+        try:
+            await worker
+        finally:
+            watcher.cancel()
+            with suppress(asyncio.CancelledError):
+                await watcher
 
 
 def create_app() -> FastAPI:
@@ -142,6 +196,7 @@ def create_app() -> FastAPI:
         return ReadyResponse(service=SERVICE_NAME, version=__version__)
 
     app.mount("/", protocol_app)
+    app.add_middleware(DisconnectCancellingMiddleware)
 
     return app
 

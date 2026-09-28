@@ -76,8 +76,10 @@ os.environ.setdefault("COIRE_IT_RUN_WORKSPACE_ROOT", str(RUN_WORKSPACE_ROOT))
 
 INTEGRATION_PORT = os.environ.get("COIRE_IT_PORT", "18080")
 INTEGRATION_API_PORT = os.environ.get("COIRE_IT_API_PORT", "18081")
+INTEGRATION_MCP_PORT = os.environ.get("COIRE_IT_MCP_PORT", "18082")
 API_URL = f"http://127.0.0.1:{INTEGRATION_PORT}"
 DIRECT_API_URL = f"http://127.0.0.1:{INTEGRATION_API_PORT}"
+DIRECT_MCP_URL = f"http://127.0.0.1:{INTEGRATION_MCP_PORT}"
 
 # The integration overlay adds two node agents on a simulated mesh (research R9). Feature 000's
 # suite ran against compose.yaml alone; feature 001 needs nodes to exist at all.
@@ -102,6 +104,7 @@ INTEGRATION_SECRETS = {
     "COIRE_STATE_ROOT": str(SECRETS_DIR / "state"),
     "COIRE_IT_PORT": INTEGRATION_PORT,
     "COIRE_IT_API_PORT": INTEGRATION_API_PORT,
+    "COIRE_IT_MCP_PORT": INTEGRATION_MCP_PORT,
     "COIRE_CLUSTER_CONFIG_DIR": str(REPO / "tests/integration/testdata"),
     "COIRE_IT_RUN_WORKSPACE_ROOT": str(RUN_WORKSPACE_ROOT),
     # The composed suite can spend several minutes between operations while engines and
@@ -562,6 +565,12 @@ def api_url() -> str:
 def direct_api_url() -> str:
     """Test-only loopback route that exposes ASGI disconnects without nginx mediation."""
     return DIRECT_API_URL
+
+
+@pytest.fixture(scope="session")
+def direct_mcp_url() -> str:
+    """Loopback MCP service route for direct disconnect tests."""
+    return DIRECT_MCP_URL
 
 
 @pytest.fixture(scope="session")

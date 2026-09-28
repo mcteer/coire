@@ -18,6 +18,7 @@ def resolved(profiles: str = "") -> dict[str, Any]:
     if shutil.which("docker") is None:
         pytest.skip("Docker Compose is unavailable")
     env = {**os.environ, "COMPOSE_PROFILES": profiles}
+    env.pop("RUN_GATEWAY_URL", None)
     env["COIRE_OTEL_CONFIG"] = "diagnostics.yaml" if "diagnostics" in profiles else "config.yaml"
     result = subprocess.run(
         ["docker", "compose", "-f", str(COMPOSE), "config", "--format", "json"],
@@ -31,6 +32,10 @@ def resolved(profiles: str = "") -> dict[str, Any]:
 
 def test_lean_baseline_has_metrics_alerts_and_resource_bounds() -> None:
     services = resolved()["services"]
+    assert (
+        services["coire-scheduler"]["environment"]["RUN_GATEWAY_URL"]
+        == "http://coire-core.lab:8180/v1"
+    )
     assert {"prometheus", "alertmanager", "otel-collector"} <= services.keys()
     assert {"grafana", "loki", "tempo", "coire-ops", "coire-mcp"}.isdisjoint(services)
     assert services["otel-collector"]["command"][-1].endswith("/config.yaml")

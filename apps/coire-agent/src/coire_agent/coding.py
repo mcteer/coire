@@ -322,7 +322,7 @@ def _prompt(request: HarnessRunRequest, context: str, mode: McpToolName, schema:
     }[mode]
     instruction = (
         f"{mode_instruction}\nReturn only JSON matching the requested schema. "
-        "If the model uses delimited output, surround JSON with <output> and </output>.\n"
+        "Surround the JSON object with <output> and </output>. Do not use Markdown fences.\n"
         f"Schema:\n{schema}\nUser task:\n{request.task}\nRepository files with line numbers:\n{context}"
     )
     if len(instruction) > 100_000:

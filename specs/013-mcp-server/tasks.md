@@ -59,7 +59,7 @@
 - [X] T025 [US3] Harden repository/output mounts against symlink escape and unauthorized writes while retaining per-run internal networking in apps/coire-node/src/coire_node/runs.py and apps/coire-agent/src/coire_agent/__main__.py
 - [X] T026 [US3] Propagate MCP HTTP disconnect to owner-scoped run kill and token revocation in apps/coire-api/src/coire_mcp/tools.py and apps/coire-api/src/coire_api/routes/runs.py
 - [X] T027 [US3] Record tool, owner, duration, and outcome on AgentRun and expose them through the run listing in apps/coire-api/src/coire_api/runs.py and packages/coire-core/src/coire_core/models/runs.py
-- [ ] T028 [US3] Add composed disconnect, timeout, admin kill, and MCP-only restart tests in tests/integration/test_mcp_lifecycle.py
+- [X] T028 [US3] Add composed disconnect, timeout, admin kill, and MCP-only restart tests in tests/integration/test_mcp_lifecycle.py
 
 ## Phase 6: User Story 4 — Verified apply, permissive reads (P2)
 
@@ -70,14 +70,14 @@
 - [X] T029 [US4] Add read/write admission and entitlement contract tests in apps/coire-api/tests/contract/test_mcp_model_admission.py
 - [X] T030 [US4] Resolve eligible published variants for read-only tasks and require harness verification for apply in apps/coire-api/src/coire_api/runs.py
 - [X] T031 [US4] Enforce the selected task class and verification a second time in apps/coire-agent/src/coire_agent/harness.py and apps/coire-agent/src/coire_agent/__main__.py
-- [ ] T032 [US4] Add tiny-model read/write verification gate integration coverage in tests/integration/test_mcp_loop.py
+- [X] T032 [US4] Add tiny-model read/write verification gate integration coverage in tests/integration/test_mcp_loop.py
 
 ## Phase 7: Polish and operational proof
 
 - [X] T033 Add MCP, workspace, artifact, and cancellation spans/metrics/structured fields in apps/coire-api/src/coire_mcp/telemetry.py and apps/coire-node/src/coire_node/workspaces.py
 - [X] T034 [P] Add a baseline MCP panel and failure/cancellation alert in deploy/observability/grafana/dashboards/runs.json and deploy/observability/alerts/container-runs.yaml
 - [X] T035 [P] Document startup, visibility, kill, cleanup, expiry, and rollback in docs/runbooks/mcp-server.md and config variables in deploy/compose/README.md
-- [ ] T036 Run Ruff, mypy, pytest unit/contract, web type/lint/test, OpenAPI freshness, tiny-model integration, image build/policy/CVE scan; record results and license in specs/013-mcp-server/review.md and quickstart.md
+- [X] T036 Run Ruff, mypy, pytest unit/contract, web type/lint/test, OpenAPI freshness, tiny-model integration, image build/policy/CVE scan; record results and license in specs/013-mcp-server/review.md and quickstart.md
 - [X] T037 Write and verify the root README.md with topology, development checks, deployment profiles, repository map, and operator links; include it in the feature 013 PR
 
 ## Dependencies

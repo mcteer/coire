@@ -286,6 +286,12 @@ class RunManager:
         except TimeoutError:
             timed_out = True
             await self.docker.kill_container(name)
+            # Do not publish a terminal timeout while Docker still reports the run as
+            # active. The scheduler revokes its token when it observes this result.
+            await asyncio.wait_for(self.docker.wait_container(name), timeout=5)
+            relay = self.relay_name(run_id)
+            await self.docker.kill_container(relay)
+            await asyncio.wait_for(self.docker.wait_container(relay), timeout=5)
         observed = await self.docker.inspect_container(name)
         if observed is None:
             raise RunRuntimeError("run_container_missing", "run container disappeared")

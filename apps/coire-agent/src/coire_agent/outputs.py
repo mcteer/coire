@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Awaitable, Callable
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 from coire_core.models.harness import HarnessStrategy
 
@@ -25,9 +25,24 @@ def normalize_output(raw: str, strategy: HarnessStrategy) -> str:
     text = raw.strip()
     if strategy is HarnessStrategy.DELIMITED:
         start, end = "<output>", "</output>"
-        if start not in text or end not in text:
-            raise ValueError("delimited output is missing <output> markers")
-        return text.split(start, 1)[1].split(end, 1)[0].strip()
+        if start in text and end in text:
+            return text.split(start, 1)[1].split(end, 1)[0].strip()
+        # Small models commonly return a fenced object despite delimiter instructions.
+        # Decode one complete object; schema validation still rejects wrong or extra fields.
+        for prefix in ("```json", "```"):
+            if prefix in text:
+                text = text.split(prefix, 1)[1].split("```", 1)[0].strip()
+                break
+        opening = text.find("{")
+        if opening >= 0:
+            try:
+                value, _ = json.JSONDecoder().raw_decode(text[opening:])
+            except ValueError:
+                pass
+            else:
+                if isinstance(value, dict):
+                    return json.dumps(value)
+        raise ValueError("delimited output does not contain a JSON object")
     return text
 
 
@@ -40,14 +55,15 @@ async def validate_output[T: BaseModel](
     retry_limit: int = 2,
     strategy: HarnessStrategy = HarnessStrategy.JSON,
 ) -> tuple[T, int]:
-    candidate = normalize_output(raw, strategy)
+    candidate = raw
     for attempt in range(retry_limit + 1):
         try:
-            return output_type.model_validate(json.loads(candidate)), attempt
-        except (json.JSONDecodeError, ValidationError) as exc:
+            normalized = normalize_output(candidate, strategy)
+            return output_type.model_validate(json.loads(normalized)), attempt
+        except ValueError as exc:
             error = str(exc)[:1000]
             if attempt < retry_limit and retry is not None:
-                candidate = normalize_output(await retry(error), strategy)
+                candidate = await retry(error)
                 continue
             if repair is not None:
                 repaired = await repair(candidate, error)

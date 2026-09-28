@@ -222,11 +222,12 @@ class Settings(BaseSettings):
     mcp_workspace_max_bytes: int = Field(default=512 * 1024**2, ge=1024, le=8 * 1024**3)
     mcp_workspace_prepare_timeout_s: int = Field(default=120, ge=1, le=900)
     mcp_artifact_retention_hours: int = Field(default=168, ge=1, le=720)
+    mcp_run_timeout_seconds: int = Field(default=900, ge=10, le=900)
     run_agent_image: str = ""
     run_relay_image: str = ""
     run_relay_request_bytes: int = Field(default=2 * 1024**2, ge=1024, le=16 * 1024**2)
     run_relay_start_timeout_s: float = Field(default=15.0, gt=0.0, le=60.0)
-    run_gateway_url: str = "http://coire-core.lab:8080/v1"
+    run_gateway_url: str = "http://coire-core.lab:8180/v1"
     run_docker_socket: str = "/var/run/docker.sock"
 
     @field_validator("run_agent_image", "run_relay_image")

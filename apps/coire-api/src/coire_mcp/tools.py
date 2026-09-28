@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver.exceptions import ToolError
 from sqlalchemy import select
 
 from coire_api import mcp_calls, runs
@@ -39,8 +40,10 @@ from coire_core.models.runs import (
     AgentRunCreate,
     AgentRunState,
     RunCommandState,
+    RunLimits,
     RunOperation,
 )
+from coire_core.settings import get_settings
 from coire_mcp.telemetry import call_duration, calls_total, tracer
 
 
@@ -129,7 +132,10 @@ async def _execute(
     principal = bound_principal()
     owner_id = mcp_calls.require_mcp_owner(principal)
     task_class = TaskClass.WRITE if tool is McpToolName.APPLY else TaskClass.READ
-    model_id = await _choose_model(principal, payload.model_id, task_class)
+    try:
+        model_id = await _choose_model(principal, payload.model_id, task_class)
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
     started = asyncio.get_running_loop().time()
     run_id: uuid.UUID | None = None
     call_id: uuid.UUID | None = None
@@ -159,6 +165,7 @@ async def _execute(
                         task_class=task_class,
                         prepared_request_id=call.id,
                         permitted_model_ids=frozenset({model_id}),
+                        limits=RunLimits(timeout_seconds=get_settings().mcp_run_timeout_seconds),
                     ),
                     requester_user_id=owner_id,
                 )
