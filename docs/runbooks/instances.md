@@ -11,8 +11,12 @@ with `instance_id`, and node health. Restarting only the scheduler is safe becau
 
 The admin API returns a node registration token once. Store it as `coire-node-registration-token`
 in the Studio System Keychain, separately from `coire-node-token`, which authenticates core-to-node
-commands. Use `sudo security add-generic-password -a coire -s coire-node-registration-token -U
-/Library/Keychains/System.keychain -w` on the Studio and paste the issued token at its hidden prompt.
+commands. From core, copy the issued token to its clipboard and run `COIRE_REG_TOKEN="$(pbpaste)"`.
+Then run `ssh -tt mcteer@coire-edge-a.lab "sudo security add-generic-password -a coire -s
+coire-node-registration-token -U -w '$COIRE_REG_TOKEN' /Library/Keychains/System.keychain"`
+(substitute the declared Studio host). Immediately run `unset COIRE_REG_TOKEN` and clear the
+clipboard. The command contains no literal token in shell history and prompts for Studio sudo.
+macOS rejects `-w` with no value after the keychain path.
 Restart `com.coire.node` after adding it. A successful registration writes only its SHA-256
 fingerprint to `/opt/coire/state/registration-success.sha256`; subsequent agent restarts skip
 registration. If registration is refused, inspect the API `coire_node_registration_attempts_total`
