@@ -54,6 +54,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   say "$PREFIX/workspaces/           (platform-prepared run workspaces)"
   say "$PLIST"
   say "keychain:coire-node-token    (System keychain, created by the operator)"
+  say "keychain:coire-node-registration-token (one-time, System keychain)"
   say "keychain:coire-hf-token      (System keychain, created by the operator)"
   echo "and nothing under /usr/local, /opt/homebrew, or \$HOME."
   exit 0
@@ -147,6 +148,9 @@ echo
 echo "and the node token, in the SYSTEM keychain (the login keychain is locked at boot):"
 echo "  sudo security add-generic-password -a coire -s coire-node-token \\"
 echo "       -w '<token for $NODE_NAME>' /Library/Keychains/System.keychain"
+echo "the separately issued one-time registration token goes in the SYSTEM keychain:"
+echo "  sudo security add-generic-password -a coire -s coire-node-registration-token \\"
+echo "       /Library/Keychains/System.keychain -w"
 echo
 echo "and the Hugging Face token, which exists ONLY here - never on core (spec FR-005):"
 echo "  sudo security add-generic-password -a coire -s coire-hf-token \\"

@@ -273,6 +273,7 @@ class Settings(BaseSettings):
     # --- node agent only ------------------------------------------------
     node_name: str = ""
     node_token: SecretStr = SecretStr("")
+    node_registration_token: SecretStr = SecretStr("")
     node_listen_port: int = 9400
     node_data_listen_port: int = 9401
     node_control_host: str = ""
