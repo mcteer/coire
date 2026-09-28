@@ -77,7 +77,9 @@ class Handler(BaseHTTPRequestHandler):
         if time.monotonic() < (ready_at if isinstance(ready_at, float) else 0.0):
             self._send(503, {"detail": "model is still loading"})
             return
-        if "slow-completion" in str(request.get("messages", "")):
+        if "mcp-lifecycle-slow" in str(request.get("messages", "")):
+            time.sleep(40.0)
+        elif "slow-completion" in str(request.get("messages", "")):
             time.sleep(5.0)
         raw_tools = request.get("tools", [])
         tools = raw_tools if isinstance(raw_tools, list) else []

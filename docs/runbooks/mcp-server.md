@@ -21,6 +21,16 @@ digest in `RUN_AGENT_IMAGE`. `MCP_SOURCE_HOSTS` defaults to `github.com`; add on
 HTTPS Git hosts. Clone and preparation are capped by `MCP_WORKSPACE_MAX_BYTES` (512 MiB) and
 `MCP_WORKSPACE_PREPARE_TIMEOUT_S` (120). The API and node use the same allowlist. The artifact
 retention window is `MCP_ARTIFACT_RETENTION_HOURS` (168, maximum 720).
+After a Studio reboot, check `orb status` before running MCP calls. If it reports Stopped,
+run `orb start` as the Studio user and confirm `/var/run/docker.sock` exists. The node may
+remain healthy while run creation waits for that socket. The scheduler and node must carry
+the same digest-pinned `RUN_AGENT_IMAGE`; update the root-owned LaunchDaemon plist and reload
+it when deploying a new agent image.
+After a node reload, probe the bare engine through the authenticated gateway before
+resuming MCP calls. If an adopted engine accepts TCP but returns an empty response,
+unload it through `DELETE /api/v1/admin/engines/{engine_id}` and create a fresh
+`/api/v1/instances` placement for the validated variant. A fresh process restores
+its response stream; do not infer readiness from the retained PID alone.
 
 ## See a call and retrieve a branch
 
@@ -42,7 +52,9 @@ it before merging. An expired or different user's artifact returns 404.
 
 An administrator kills a running call with
 `DELETE /api/v1/admin/runs/{run_id}` and a `RunKillRequest` reason. The run token is revoked
-before the Studio kill command. A disconnected MCP call uses the same kill path. Research and
+before the Studio kill command. A disconnected MCP call uses the same kill path. A Studio run
+that exceeds `COIRE_MCP_RUN_TIMEOUT_SECONDS` (900 seconds by default) is terminated and
+reported as timed out; the MCP call has a separate 20-minute ceiling. Research and
 plan clones are removed after one hour; failed collection clones are retained for 24 hours
 for investigation; successful apply bundles and clones stay until the configured artifact
 expiry. The scheduler sweep runs every five minutes. A failed cleanup remains queued for a

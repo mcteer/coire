@@ -14,6 +14,7 @@ from coire_core.models.acquisition import AcquisitionStage
 from coire_core.models.jobs import JobKind, JobStage, JobStatus
 from coire_core.settings import Settings
 from coire_scheduler.acquisition import node_job_id
+from coire_scheduler.main import acquisition_dispatch_id
 
 
 def test_node_job_ids_are_deterministic_per_workflow_stage() -> None:
@@ -23,6 +24,14 @@ def test_node_job_ids_are_deterministic_per_workflow_stage() -> None:
     assert first != node_job_id(workflow, AcquisitionStage.VALIDATE)
     assert first != node_job_id(uuid.uuid4(), AcquisitionStage.CONVERT)
     assert first != node_job_id(workflow, AcquisitionStage.CONVERT, attempt=2)
+
+
+def test_acquisition_retry_gets_new_durable_workflow_id() -> None:
+    workflow = uuid.uuid4()
+    assert acquisition_dispatch_id(workflow, 1) == str(workflow)
+    assert acquisition_dispatch_id(workflow, 2) != str(workflow)
+    assert acquisition_dispatch_id(workflow, 2) == acquisition_dispatch_id(workflow, 2)
+    assert acquisition_dispatch_id(workflow, 3) != acquisition_dispatch_id(workflow, 2)
 
 
 @pytest.mark.asyncio
