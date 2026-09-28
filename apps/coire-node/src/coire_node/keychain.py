@@ -1,9 +1,10 @@
 """Reading the node's secrets from the macOS System keychain.
 
-Two secrets live on a Studio and nowhere else:
+Node secrets live on a Studio:
 
   * `coire-node-token` — the per-node bearer the control plane presents and the agent checks
-    (feature 000 FR-013; a static token until feature 005 issues real ones, ADR-0001);
+    (feature 000 FR-013); this is distinct from the registration credential;
+  * `coire-node-registration-token` — issued once by the admin API and consumed on registration;
   * `coire-hf-token` — the Hugging Face credential. Spec FR-005 puts it *only* here, so the
     node agent is the one component that can talk to Hugging Face at all.
   * `coire-failover-peer-key` and `coire-failover-relay-token` — per-Studio election signing
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_KEYCHAIN = "/Library/Keychains/System.keychain"
 NODE_TOKEN_ITEM = "coire-node-token"
+NODE_REGISTRATION_TOKEN_ITEM = "coire-node-registration-token"
 HF_TOKEN_ITEM = "coire-hf-token"
 FAILOVER_PEER_KEY_ITEM = "coire-failover-peer-key"
 FAILOVER_RELAY_TOKEN_ITEM = "coire-failover-relay-token"
@@ -63,7 +65,7 @@ def read_item(service: str, *, keychain: str = SYSTEM_KEYCHAIN) -> SecretStr:
 
 
 def load_node_secrets(settings: object) -> None:
-    """Fill `node_token` and `hf_token` on `settings` from the System keychain.
+    """Fill node and Hugging Face credentials from the System keychain.
 
     Anything already configured — an environment variable in a container, a mounted file —
     wins, so the Linux test image and the integration suite need no keychain at all. Only an
@@ -85,13 +87,16 @@ def load_node_secrets(settings: object) -> None:
         else:
             logger.error(
                 "no node token: %s is absent from %s and NODE_TOKEN is unset. The agent will "
-                "refuse every authenticated request and cannot register. Store it with: "
+                "refuse authenticated node requests. Store it with: "
                 "sudo security add-generic-password -a coire -s %s -w '<token>' %s",
                 NODE_TOKEN_ITEM,
                 SYSTEM_KEYCHAIN,
                 NODE_TOKEN_ITEM,
                 SYSTEM_KEYCHAIN,
             )
+
+    if not settings.node_registration_token.get_secret_value():
+        settings.node_registration_token = read_item(NODE_REGISTRATION_TOKEN_ITEM)
 
     if not settings.hf_token.get_secret_value():
         hf = read_item(HF_TOKEN_ITEM)

@@ -28,7 +28,7 @@ class Settings(BaseSettings):
         secrets_dir=DEFAULT_SECRETS_DIR,
         extra="ignore",
         case_sensitive=False,
-        # The node agent fills node_token and hf_token from the System keychain after
+        # The node agent fills its control, registration, and HF tokens from the System keychain after
         # construction (coire_node.keychain), because a keychain is not a settings source.
         validate_assignment=True,
     )
@@ -274,6 +274,7 @@ class Settings(BaseSettings):
     # --- node agent only ------------------------------------------------
     node_name: str = ""
     node_token: SecretStr = SecretStr("")
+    node_registration_token: SecretStr = SecretStr("")
     node_listen_port: int = 9400
     node_data_listen_port: int = 9401
     node_control_host: str = ""

@@ -1,20 +1,21 @@
 """Node registration (T057).
 
-The agent registers itself with the control plane at startup and re-registers periodically.
-It never exits on failure: a node whose control plane is down must keep trying, because the
-alternative is a node that silently stays out of the cluster after a transient outage (spec
-edge case: "starts before the network is up after a reboot").
+The agent retries a one-time registration credential until accepted. A persisted fingerprint
+prevents reuse after restart; probes maintain liveness after registration.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import logging
+import os
 import re
 import shutil
 import socket
 import subprocess
+from pathlib import Path
 
 import psutil
 
@@ -47,7 +48,7 @@ def build_registration(
 ) -> NodeRegistration:
     return NodeRegistration(
         name=settings.node_name or socket.gethostname().split(".")[0],
-        token=settings.node_token,
+        token=settings.node_registration_token,
         mesh_address=mesh_address,  # type: ignore[arg-type]
         egress_address=egress_address,  # type: ignore[arg-type]
         memory_total_bytes=psutil.virtual_memory().total,
@@ -61,7 +62,7 @@ def build_registration_v2(settings: Settings) -> NodeRegistrationV2:
     name = settings.node_name or socket.gethostname().split(".")[0]
     return NodeRegistrationV2(
         name=name,
-        token=settings.node_token,
+        token=settings.node_registration_token,
         endpoints=NodeEndpointSet(
             control_host=settings.node_control_host or name,
             data_host=settings.node_data_host or f"{name}.fabric",
@@ -74,7 +75,7 @@ def build_registration_v2(settings: Settings) -> NodeRegistrationV2:
 
 
 class Registrar:
-    """Registers with the control plane and keeps re-registering."""
+    """Retries until the one-time credential has been accepted once."""
 
     def __init__(
         self, settings: Settings, registration: NodeRegistration | NodeRegistrationV2
@@ -83,9 +84,34 @@ class Registrar:
         self._registration = registration
         self._task: asyncio.Task[None] | None = None
         self._stopping = asyncio.Event()
+        self._marker = Path(settings.node_state_dir) / "registration-success.sha256"
+
+    def _fingerprint(self) -> str:
+        token = self._registration.token.get_secret_value()
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    def _already_registered(self) -> bool:
+        try:
+            return self._marker.read_text().strip() == self._fingerprint()
+        except OSError:
+            return False
+
+    def _mark_registered(self) -> None:
+        self._marker.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self._marker.with_suffix(".tmp")
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as stream:
+            stream.write(self._fingerprint() + "\n")
+        os.replace(temporary, self._marker)
 
     async def start(self) -> None:
         self._stopping.clear()
+        if not self._registration.token.get_secret_value():
+            logger.info("registration deferred: no one-time registration token configured")
+            return
+        if self._already_registered():
+            logger.info("registration already accepted for %s", self._registration.name)
+            return
         self._task = asyncio.create_task(self._run(), name="registrar")
 
     async def stop(self) -> None:
@@ -114,13 +140,17 @@ class Registrar:
 
         if resp.status_code == 200:
             logger.info("registered with the control plane as %s", self._registration.name)
+            try:
+                self._mark_registered()
+            except OSError:
+                logger.exception("could not persist successful registration marker")
             return True
         if resp.status_code in (401, 403):
             # Not retryable by waiting, but do not exit: an admin may fix the inventory or
             # the token while the agent is running.
             logger.error(
                 "registration refused (HTTP %d): %s — check deploy/cluster/nodes.yaml and the "
-                "node token in the System keychain",
+                "one-time registration token in the System keychain",
                 resp.status_code,
                 resp.text[:200],
             )
@@ -130,13 +160,14 @@ class Registrar:
 
     async def _run(self) -> None:
         backoff = BACKOFF_INITIAL_S
-        interval = self._settings.node_probe_interval_s * 6
         client_type = MeshClient if self._settings.legacy_network_mode else ControlClient
         async with client_type(timeout=10.0) as client:
             while not self._stopping.is_set():
                 ok = await self.register_once(client)
-                delay = interval if ok else backoff
-                backoff = BACKOFF_INITIAL_S if ok else min(backoff * 2, BACKOFF_MAX_S)
+                if ok:
+                    return
+                delay = backoff
+                backoff = min(backoff * 2, BACKOFF_MAX_S)
                 try:
                     await asyncio.wait_for(self._stopping.wait(), timeout=delay)
                 except TimeoutError:
