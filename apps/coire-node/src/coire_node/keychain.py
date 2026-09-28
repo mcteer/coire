@@ -87,7 +87,7 @@ def load_node_secrets(settings: object) -> None:
         else:
             logger.error(
                 "no node token: %s is absent from %s and NODE_TOKEN is unset. The agent will "
-                "refuse every authenticated request and cannot register. Store it with: "
+                "refuse authenticated node requests. Store it with: "
                 "sudo security add-generic-password -a coire -s %s -w '<token>' %s",
                 NODE_TOKEN_ITEM,
                 SYSTEM_KEYCHAIN,

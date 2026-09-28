@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Install the Coire node agent on a Studio.
 #
-# Everything lands under one prefix (/opt/coire) plus exactly two things outside it: the
-# LaunchDaemon plist and one System-keychain item. Nothing general-purpose is installed: the
+# Everything lands under one prefix (/opt/coire) plus the LaunchDaemon plist and System-keychain
+# items. Nothing general-purpose is installed: the
 # Studios' compute is reserved for inference (FR-012a/b), and `uninstall.sh --dry-run`
 # enumerates the whole footprint.
 #

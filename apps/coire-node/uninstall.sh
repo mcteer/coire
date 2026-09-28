@@ -3,7 +3,7 @@
 #
 #   uninstall.sh --dry-run    list exactly what would be removed
 #   uninstall.sh              remove it
-#   uninstall.sh --keychain   also remove the System-keychain tokens (node + Hugging Face)
+#   uninstall.sh --keychain   also remove the System-keychain tokens
 #
 # The footprint is deliberately small enough to enumerate (FR-012b).
 set -euo pipefail
@@ -34,6 +34,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   for t in "${targets[@]:-}"; do [[ -n "$t" ]] && printf '  %s\n' "$t"; done
   if [[ "$KEYCHAIN" -eq 1 ]]; then
     printf '  keychain:coire-node-token (System keychain)\n'
+    printf '  keychain:coire-node-registration-token (System keychain)\n'
     printf '  keychain:coire-hf-token   (System keychain)\n'
   fi
   echo "NOTE: $PREFIX/models holds downloaded weights - potentially hundreds of GB."
@@ -55,6 +56,8 @@ done
 if [[ "$KEYCHAIN" -eq 1 ]]; then
   sudo security delete-generic-password -s coire-node-token /Library/Keychains/System.keychain \
     >/dev/null 2>&1 && echo "removed the node token" || true
+  sudo security delete-generic-password -s coire-node-registration-token /Library/Keychains/System.keychain \
+    >/dev/null 2>&1 && echo "removed the registration token" || true
   sudo security delete-generic-password -s coire-hf-token /Library/Keychains/System.keychain \
     >/dev/null 2>&1 && echo "removed the Hugging Face token" || true
 fi
