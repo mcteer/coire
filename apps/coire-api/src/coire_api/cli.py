@@ -144,11 +144,16 @@ def _run_suite(
     api_url: str, headers: dict[str, str], target: HarnessEvaluationTarget
 ) -> tuple[CategoryScores, EvaluationVerdict, list[str]]:
     sentinel = "coire-context-sentinel-7419"
+    # Distinct filler keeps the retrieval task long without inducing a repetition loop.
+    filler = " ".join(f"item{i:04d}" for i in range(1200))
     cases = {
         "tool_calling": 'Return only {"name":"read_file","arguments":{"path":"README.md"}}',
         "structured_output": 'Return only {"answer":"ok"}',
         "edit_application": "Return a unified diff that adds the line coire-eval to note.txt",
-        "long_context": f"Remember the final token. {'bounded ' * 1200} Final token: {sentinel}",
+        "long_context": (
+            "Read the entire following list and reply with only the value after "
+            f"'Final token:'.\n{filler}\nFinal token: {sentinel}\nWhat is the final token?"
+        ),
     }
     passed: dict[str, float] = {}
     diagnostics: list[str] = []
@@ -163,6 +168,8 @@ def _run_suite(
                         "messages": [{"role": "user", "content": prompt}],
                         "temperature": 0,
                         "max_tokens": 256,
+                        # MLX may include this chat-template terminator in the text body.
+                        "stop": ["<|im_end|>"],
                     },
                 )
                 response.raise_for_status()

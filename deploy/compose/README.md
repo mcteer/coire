@@ -96,7 +96,7 @@ Studio container orchestration uses `RUN_CONCURRENCY_CAP` (3),
 `RUN_DEFAULT_TIMEOUT_S` (900), `RUN_MAX_LOG_BYTES` (8 MiB),
 `RUN_MAX_RESULT_BYTES` (4 MiB), `RUN_TOKEN_TTL_S` (1200),
 `RUN_WORKSPACE_ROOT` (`/opt/coire/workspaces`), `RUN_DOCKER_SOCKET`
-(`/var/run/docker.sock`), and `RUN_GATEWAY_URL` (`http://coire-core.lab:8080/v1`).
+(`/var/run/docker.sock`), and `RUN_GATEWAY_URL` (`http://coire-core.lab:8180/v1`).
 `RUN_AGENT_IMAGE` and `RUN_RELAY_IMAGE` have no default and must be release-image references
 pinned by digest. The relay caps each request with `RUN_RELAY_REQUEST_BYTES` (2 MiB). Never use
 a tag for either runtime image.

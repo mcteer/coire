@@ -56,6 +56,11 @@ kill_scan_failures = metrics.get_meter("coire.scheduler.dispatch").create_counte
 )
 
 
+def acquisition_dispatch_id(workflow_id: uuid.UUID, attempt: int) -> str:
+    """Give each explicit retry a fresh DBOS execution while preserving restart recovery."""
+    return str(workflow_id) if attempt == 1 else f"{workflow_id}:attempt:{attempt}"
+
+
 async def dispatch_queued(stop: asyncio.Event) -> None:
     settings = get_settings()
     backoff = PollBackoff(
@@ -72,7 +77,7 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
                 ids = list(
                     (
                         await session.execute(
-                            select(AcquisitionWorkflowRow.id).where(
+                            select(AcquisitionWorkflowRow.id, AcquisitionWorkflowRow.attempt).where(
                                 AcquisitionWorkflowRow.state.in_(
                                     [
                                         AcquisitionState.QUEUED,
@@ -82,10 +87,10 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
                                 )
                             )
                         )
-                    ).scalars()
+                    ).all()
                 )
-            for workflow_id in ids:
-                with SetWorkflowID(str(workflow_id)):
+            for workflow_id, attempt in ids:
+                with SetWorkflowID(acquisition_dispatch_id(workflow_id, attempt)):
                     DBOS.start_workflow(acquisition_workflow, str(workflow_id))
             async with session_scope() as session:
                 placement_ids = list(

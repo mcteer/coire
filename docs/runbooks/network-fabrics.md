@@ -31,6 +31,24 @@ Never disconnect or reconfigure the cable before the full preflight stamp exists
 - Interrupt one Studio's Wi-Fi: only its control alert may fire; the peer state must not change.
 - Request an export route on port 9400: it must return 404 and increment the forbidden-path metric.
 
+## macOS Local Network refusal
+
+If `GET /api/v1/admin/network/links/studios` reports `ip_state: down` with
+`[Errno 65] No route to host` while an SSH-launched process can reach the peer's
+`.fabric` address, check System Settings → Privacy & Security → Local Network on the
+affected Studio for a Coire or Python entry. The node installer signs its uv-managed
+Python interpreter with a stable ad-hoc identity. Restart `system/com.coire.node` after
+an interpreter update and repeat the data-link probe. A successful SSH probe alone does
+not establish that the LaunchDaemon can reach the peer.
+
+If app permission is unavailable, [Apple's TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy) documents the
+`AllowedEthernetLocalNetworkAddresses` preference for a dedicated Ethernet subnet. It
+affects every process on that Mac and takes effect after a Mac restart. Obtain explicit
+operator approval before setting it, as required by repository network policy. Keep any
+exception confined to the needed peer address (`192.168.100.12/32` on edge-a or
+`192.168.100.11/32` on edge-b) and verify the authenticated
+data-link probe and a real acquisition retry afterward.
+
 ## Kill and recover
 
 Stop a node agent with `sudo launchctl bootout system/com.coire.node`. Restore it with

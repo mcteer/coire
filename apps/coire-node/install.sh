@@ -100,6 +100,14 @@ export UV_NO_CACHE=1
 # brings its own rather than depending on what happens to be installed (research R5).
 say "provisioning CPython $PYTHON_VERSION"
 uv python install "$PYTHON_VERSION" >/dev/null
+# macOS Local Network privacy tracks the executable's code identity.  The uv-managed
+# interpreter starts unsigned; a stable ad-hoc identity gives macOS a consistent
+# identity for Local Network permission across node upgrades.
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  NODE_PYTHON="$(uv python find "$PYTHON_VERSION")"
+  say "signing $NODE_PYTHON for Studio network access"
+  codesign --force --sign - --identifier com.coire.node.python "$NODE_PYTHON" >/dev/null
+fi
 
 # --- agent virtualenv ------------------------------------------------------
 say "creating $ENV_DIR"

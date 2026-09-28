@@ -77,7 +77,7 @@
 - [X] T033 Add MCP, workspace, artifact, and cancellation spans/metrics/structured fields in apps/coire-api/src/coire_mcp/telemetry.py and apps/coire-node/src/coire_node/workspaces.py
 - [X] T034 [P] Add a baseline MCP panel and failure/cancellation alert in deploy/observability/grafana/dashboards/runs.json and deploy/observability/alerts/container-runs.yaml
 - [X] T035 [P] Document startup, visibility, kill, cleanup, expiry, and rollback in docs/runbooks/mcp-server.md and config variables in deploy/compose/README.md
-- [ ] T036 Run Ruff, mypy, pytest unit/contract, web type/lint/test, OpenAPI freshness, tiny-model integration, image build/policy/CVE scan; record results and license in specs/013-mcp-server/review.md and quickstart.md
+- [X] T036 Run Ruff, mypy, pytest unit/contract, web type/lint/test, OpenAPI freshness, tiny-model integration, image build/policy/CVE scan; record results and license in specs/013-mcp-server/review.md and quickstart.md
 - [X] T037 Write and verify the root README.md with topology, development checks, deployment profiles, repository map, and operator links; include it in the feature 013 PR
 
 ## Dependencies

@@ -200,7 +200,7 @@ services:
       SHARDING_RING_HOSTFILE: /run/coire/cluster/ring-hostfile.json
       RUN_AGENT_IMAGE: ${COIRE_RUN_AGENT_IMAGE:-}
       RUN_RELAY_IMAGE: ${COIRE_RUN_RELAY_IMAGE:-}
-      RUN_GATEWAY_URL: ${RUN_GATEWAY_URL:-http://coire-core.lab:8080/v1}
+      RUN_GATEWAY_URL: ${RUN_GATEWAY_URL:-http://coire-core.lab:8180/v1}
       MCP_SOURCE_HOSTS: ${COIRE_MCP_SOURCE_HOSTS:-github.com}
       MCP_ARTIFACT_RETENTION_HOURS: ${COIRE_MCP_ARTIFACT_RETENTION_HOURS:-168}
     volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
