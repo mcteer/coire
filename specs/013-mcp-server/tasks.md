@@ -59,7 +59,7 @@
 - [X] T025 [US3] Harden repository/output mounts against symlink escape and unauthorized writes while retaining per-run internal networking in apps/coire-node/src/coire_node/runs.py and apps/coire-agent/src/coire_agent/__main__.py
 - [X] T026 [US3] Propagate MCP HTTP disconnect to owner-scoped run kill and token revocation in apps/coire-api/src/coire_mcp/tools.py and apps/coire-api/src/coire_api/routes/runs.py
 - [X] T027 [US3] Record tool, owner, duration, and outcome on AgentRun and expose them through the run listing in apps/coire-api/src/coire_api/runs.py and packages/coire-core/src/coire_core/models/runs.py
-- [ ] T028 [US3] Add composed disconnect, timeout, admin kill, and MCP-only restart tests in tests/integration/test_mcp_lifecycle.py
+- [X] T028 [US3] Add composed disconnect, timeout, admin kill, and MCP-only restart tests in tests/integration/test_mcp_lifecycle.py
 
 ## Phase 6: User Story 4 — Verified apply, permissive reads (P2)
 
@@ -70,7 +70,7 @@
 - [X] T029 [US4] Add read/write admission and entitlement contract tests in apps/coire-api/tests/contract/test_mcp_model_admission.py
 - [X] T030 [US4] Resolve eligible published variants for read-only tasks and require harness verification for apply in apps/coire-api/src/coire_api/runs.py
 - [X] T031 [US4] Enforce the selected task class and verification a second time in apps/coire-agent/src/coire_agent/harness.py and apps/coire-agent/src/coire_agent/__main__.py
-- [ ] T032 [US4] Add tiny-model read/write verification gate integration coverage in tests/integration/test_mcp_loop.py
+- [X] T032 [US4] Add tiny-model read/write verification gate integration coverage in tests/integration/test_mcp_loop.py
 
 ## Phase 7: Polish and operational proof
 

@@ -35,3 +35,8 @@ Record commands, counts, CI links, and real-cluster evidence here during impleme
 - Local arm64 agent and MCP images: build and image-policy passed. Trivy CRITICAL scans passed. The agent image ran Git and produced a branch bundle.
 - `uv run pytest --collect-only -q tests/integration/test_mcp_loop.py`: one composed loop test collected.
 - [CI run 36358492241](https://github.com/mcteer/coire/actions/runs/36358492241): all jobs passed; composed integration reported 107 passed and 2 skipped. The MCP loop proved cited research, prior-result plan, a committed branch, failing and missing test status, a downloadable/importable bundle, and two separate concurrent branches on the ready CI Studio. The CI engine is deterministic; a real tiny-model run remains pending.
+
+## Follow-up composed validation (2026-09-27)
+
+- `COIRE_INTEGRATION=1 uv run pytest -q tests/integration/test_mcp_lifecycle.py tests/integration/test_mcp_loop.py`: 6 passed in 323.36 seconds. This includes disconnect, timeout, admin kill, MCP-only restart with chat traffic, the original complete loop, and an unverified read/write gate followed by admin evaluation and successful apply.
+- The disposable compose project used the acquired tiny-model files with its deterministic CI engine. A real tiny-model execution on a Studio is still required for T036. The live core stack currently has no 013 migration or MCP service; use the reviewed release and an admin API credential before recording that gate.

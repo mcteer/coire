@@ -103,8 +103,9 @@ a tag for either runtime image.
 
 MCP coding uses `MCP_SOURCE_HOSTS` (comma-separated reviewed HTTPS Git hosts; default
 `github.com`), `MCP_WORKSPACE_MAX_BYTES` (512 MiB),
-`MCP_WORKSPACE_PREPARE_TIMEOUT_S` (120), and `MCP_ARTIFACT_RETENTION_HOURS` (168, maximum
-720). Each tool call uses a fresh Studio clone; branch bundles stay on the Studio and are
+`MCP_WORKSPACE_PREPARE_TIMEOUT_S` (120), `MCP_ARTIFACT_RETENTION_HOURS` (168, maximum
+720), and `COIRE_MCP_RUN_TIMEOUT_SECONDS` (900, range 10–900). The last setting caps the
+Studio run; the MCP call itself has a 20-minute ceiling. Each tool call uses a fresh Studio clone; branch bundles stay on the Studio and are
 streamed through the owner-scoped API. See
 [`docs/runbooks/mcp-server.md`](../../docs/runbooks/mcp-server.md).
 

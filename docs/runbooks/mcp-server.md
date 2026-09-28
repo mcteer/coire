@@ -42,7 +42,9 @@ it before merging. An expired or different user's artifact returns 404.
 
 An administrator kills a running call with
 `DELETE /api/v1/admin/runs/{run_id}` and a `RunKillRequest` reason. The run token is revoked
-before the Studio kill command. A disconnected MCP call uses the same kill path. Research and
+before the Studio kill command. A disconnected MCP call uses the same kill path. A Studio run
+that exceeds `COIRE_MCP_RUN_TIMEOUT_SECONDS` (900 seconds by default) is terminated and
+reported as timed out; the MCP call has a separate 20-minute ceiling. Research and
 plan clones are removed after one hour; failed collection clones are retained for 24 hours
 for investigation; successful apply bundles and clones stay until the configured artifact
 expiry. The scheduler sweep runs every five minutes. A failed cleanup remains queued for a

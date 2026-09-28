@@ -290,3 +290,181 @@ def test_composed_research_plan_apply_and_branch_import(
                     json={"tags": prior_tags},
                 )
             client.delete(f"/api/v1/admin/users/{user_id}", headers=admin_headers)
+
+
+def test_unverified_tiny_model_reads_but_cannot_apply(
+    api_url: str, admin_headers: dict[str, str]
+) -> None:
+    """Exercise the admission gate through MCP and the composed node/engine path."""
+    with httpx.Client(base_url=api_url, timeout=240) as client:
+        model_id, variant_id = prepare_verified_model(client, admin_headers)
+        model = client.get(f"/api/v1/admin/models/{model_id}", headers=admin_headers).json()
+        prior_tags = model["tags"]
+        patched = client.patch(
+            f"/api/v1/admin/models/{model_id}",
+            headers={**admin_headers, "If-Match": model["updated_at"]},
+            json={"tags": sorted(set(prior_tags) | {"coding"})},
+        )
+        assert patched.status_code == 200, patched.text
+        launched = client.post(
+            "/api/v1/instances",
+            headers=admin_headers,
+            json={"model_id": model_id, "variant_id": variant_id, "policy": "single:coire-edge-a"},
+        )
+        assert launched.status_code == 202, launched.text
+        instance_id = launched.json()["id"]
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            instance = client.get(f"/api/v1/instances/{instance_id}", headers=admin_headers)
+            assert instance.status_code == 200, instance.text
+            if instance.json()["state"] in {"ready", "failed"}:
+                break
+            time.sleep(0.5)
+        assert instance.json()["state"] == "ready", instance.text
+        created = client.post(
+            "/api/v1/admin/users",
+            headers=admin_headers,
+            json={
+                "email": f"mcp-gate-{uuid.uuid4().hex[:12]}@integration.test",
+                "display_name": "MCP gate test",
+                "role": "user",
+            },
+        )
+        assert created.status_code == 201, created.text
+        user_id = created.json()["id"]
+        issued = client.post(
+            f"/api/v1/admin/users/{user_id}/keys",
+            headers=admin_headers,
+            json={
+                "name": "mcp-gate",
+                "scopes": ["mcp"],
+                "requests_per_minute": 60,
+                "monthly_budget_tokens": 100000,
+            },
+        )
+        assert issued.status_code == 201, issued.text
+        key = issued.json()["secret"]
+
+        def set_verified(verified: bool) -> None:
+            # This is a disposable compose database. The admin API intentionally does not
+            # permit clearing an evaluation verdict, so toggle only this fixture's variant.
+            selection = f"id='{variant_id}'" if verified else f"model_id='{model_id}'"
+            sql = (
+                "UPDATE model_variants SET harness_verified="
+                f"{'true' if verified else 'false'} WHERE {selection}"
+            )
+            subprocess.run(
+                [
+                    "docker",
+                    "exec",
+                    "coire-it-postgres-1",
+                    "psql",
+                    "-U",
+                    "coire",
+                    "-d",
+                    "coire",
+                    "-c",
+                    sql,
+                ],
+                check=True,
+                capture_output=True,
+            )
+
+        try:
+            set_verified(False)
+            remaining = subprocess.check_output(
+                [
+                    "docker",
+                    "exec",
+                    "coire-it-postgres-1",
+                    "psql",
+                    "-U",
+                    "coire",
+                    "-d",
+                    "coire",
+                    "-t",
+                    "-A",
+                    "-c",
+                    "SELECT count(*) FROM model_variants WHERE "
+                    f"model_id='{model_id}' AND published AND validated AND harness_verified",
+                ],
+                text=True,
+            ).strip()
+            assert remaining == "0", remaining
+            research = _call(
+                client,
+                key,
+                "research",
+                {"source": SOURCE, "question": "Read README", "model_id": model_id},
+                101,
+            )
+            plan = _call(
+                client,
+                key,
+                "plan",
+                {"source": SOURCE, "goal": "Update README", "model_id": model_id},
+                102,
+            )
+            assert research["citations"] and plan["steps"]
+            before = client.get("/api/v1/runs", headers={"Authorization": f"Bearer {key}"}).json()
+            refused = client.post(
+                "/mcp",
+                headers={
+                    "Authorization": f"Bearer {key}",
+                    "Accept": "application/json, text/event-stream",
+                },
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 103,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "apply",
+                        "arguments": {
+                            "source": SOURCE,
+                            "plan": "Update README",
+                            "model_id": model_id,
+                        },
+                    },
+                },
+            )
+            assert refused.status_code == 200, refused.text
+            assert refused.json()["result"]["isError"] is True, refused.text
+            assert "verified" in refused.text.lower()
+            after = client.get("/api/v1/runs", headers={"Authorization": f"Bearer {key}"}).json()
+            assert {item["id"] for item in before} == {item["id"] for item in after}
+            evaluated = client.post(
+                "/api/v1/admin/harness-evaluations",
+                headers=admin_headers,
+                json={
+                    "variant_id": variant_id,
+                    "scores": {
+                        "tool_calling": 1,
+                        "structured_output": 1,
+                        "edit_application": 1,
+                        "long_context": 1,
+                    },
+                    "verdict": "passed",
+                    "harness_version": "mcp-gate-integration",
+                    "engine_version": "fake-mlx-lm",
+                },
+            )
+            assert evaluated.status_code == 201, evaluated.text
+            applied = _call(
+                client,
+                key,
+                "apply",
+                {"source": SOURCE, "plan": "Update README", "model_id": model_id},
+                104,
+            )
+            assert applied["branch"].startswith("coire/")
+        finally:
+            set_verified(True)
+            client.delete(f"/api/v1/instances/{instance_id}", headers=admin_headers)
+            current = client.get(f"/api/v1/admin/models/{model_id}", headers=admin_headers)
+            if current.status_code == 200:
+                client.patch(
+                    f"/api/v1/admin/models/{model_id}",
+                    headers={**admin_headers, "If-Match": current.json()["updated_at"]},
+                    json={"tags": prior_tags},
+                )
+            client.delete(f"/api/v1/admin/users/{user_id}", headers=admin_headers)

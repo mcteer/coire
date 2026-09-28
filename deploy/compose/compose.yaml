@@ -171,6 +171,7 @@ services:
       POSTGRES_HOST: postgres
       CLOUDFLARE_ACCESS_ISSUER: ${CLOUDFLARE_ACCESS_ISSUER:-}
       CLOUDFLARE_ACCESS_AUDIENCE: ${CLOUDFLARE_ACCESS_AUDIENCE:-}
+      MCP_RUN_TIMEOUT_SECONDS: ${COIRE_MCP_RUN_TIMEOUT_SECONDS:-900}
     secrets: [postgres_password]
     depends_on:
       postgres: {condition: service_healthy}
