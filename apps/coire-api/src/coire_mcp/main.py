@@ -1,9 +1,4 @@
-"""MCP server stub.
-
-Feature 000 ships only `/ready`, which is enough to prove independent restart (spec US2). The
-three coding tools — research, plan, apply — are feature 013. This is a separate image and a
-separate container so it can be stopped or upgraded without dropping chat traffic.
-"""
+"""Independent authenticated Streamable HTTP MCP coding service."""
 
 from __future__ import annotations
 
@@ -14,6 +9,8 @@ from datetime import UTC, datetime
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
 from coire_api.auth import (
     ANONYMOUS,
@@ -29,6 +26,7 @@ from coire_api.identity.limits import MonthlyQuotaExceeded, RateLimitExceeded
 from coire_api.telemetry import configure_telemetry
 from coire_core.models.health import ReadyResponse
 from coire_core.settings import get_settings
+from coire_mcp.tools import register_tools
 
 SERVICE_NAME = "coire-mcp"
 __version__ = "0.1.0"
@@ -37,12 +35,31 @@ __version__ = "0.1.0"
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_telemetry(SERVICE_NAME, settings.service_version, settings.otlp_endpoint)
+    server: MCPServer[object] = MCPServer(
+        name="Coire",
+        version=__version__,
+        instructions="Use research, plan, and apply for repository coding work.",
+    )
+    register_tools(server)
+    protocol_app = server.streamable_http_app(
+        streamable_http_path="/mcp",
+        stateless_http=True,
+        json_response=True,
+        max_request_body_size=4 * 1024 * 1024,
+        host="0.0.0.0",
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=["coire-mcp:8001", "localhost:*", "127.0.0.1:*"],
+            allowed_origins=[],
+        ),
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         init_engine(settings)
         try:
-            yield
+            async with protocol_app.router.lifespan_context(protocol_app):
+                yield
         finally:
             await dispose_engine()
 
@@ -58,6 +75,17 @@ def create_app() -> FastAPI:
 
     @app.middleware("http")
     async def authenticate_mcp(request: Request, call_next):  # type: ignore[no-untyped-def]
+        if request.url.path not in {"/ready", "/mcp"}:
+            return JSONResponse(status_code=404, content={"detail": "not found"})
+        if request.url.path == "/mcp" and request.method not in {"GET", "POST", "DELETE"}:
+            return JSONResponse(status_code=405, content={"detail": "method not allowed"})
+        if request.url.path == "/mcp":
+            try:
+                content_length = int(request.headers.get("content-length", "0") or "0")
+            except ValueError:
+                return JSONResponse(status_code=400, content={"detail": "invalid content length"})
+            if content_length < 0 or content_length > 4 * 1024 * 1024:
+                return JSONResponse(status_code=413, content={"detail": "MCP request too large"})
         try:
             principal = (
                 ANONYMOUS if request.url.path == "/ready" else await authenticate_request(request)
@@ -94,10 +122,10 @@ def create_app() -> FastAPI:
                 headers={"WWW-Authenticate": "Bearer"},
                 content={"detail": "valid identity or API key required"},
             )
-        if (
-            request.url.path != "/ready"
-            and principal.kind is PrincipalKind.API_KEY
-            and "mcp" not in principal.scopes
+        if request.url.path != "/ready" and (
+            principal.kind is not PrincipalKind.API_KEY
+            or principal.user_id is None
+            or "mcp" not in principal.scopes
         ):
             return JSONResponse(
                 status_code=403,
@@ -112,6 +140,8 @@ def create_app() -> FastAPI:
     @app.get("/ready", response_model=ReadyResponse)
     async def get_ready() -> ReadyResponse:
         return ReadyResponse(service=SERVICE_NAME, version=__version__)
+
+    app.mount("/", protocol_app)
 
     return app
 

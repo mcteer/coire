@@ -92,6 +92,36 @@ class Handler(BaseHTTPRequestHandler):
         content = "ok"
         if "coire-harness-json" in str(request.get("messages", "")):
             content = '{"answer":"bounded"}'
+        prompt = str(request.get("messages", ""))
+        if "Return complete UTF-8 content for each file" in prompt:
+            edits = [{"path": "README", "content": "Hello World!\nChanged by Coire.\n"}]
+            if "mcp-test-failing" in prompt:
+                edits.append(
+                    {
+                        "path": "test_failure.py",
+                        "content": "def test_failure():\n    assert False\n",
+                    }
+                )
+            content = json.dumps({"summary": "Update README", "edits": edits})
+        elif "Return ordered implementation steps" in prompt:
+            content = json.dumps(
+                {
+                    "goal": "Update README",
+                    "steps": [
+                        {
+                            "description": "Add a second line to README",
+                            "acceptance_criteria": ["README includes the new line"],
+                        }
+                    ],
+                }
+            )
+        elif "Answer the question using cited repository path" in prompt:
+            content = json.dumps(
+                {
+                    "answer": "The README begins at line one.",
+                    "citations": [{"path": "README", "line": 1}],
+                }
+            )
         completion = {
             "id": "fake-1",
             "object": "chat.completion",

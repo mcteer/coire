@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from coire_core.models.harness import ProfileName
+from coire_core.models.harness import ProfileName, TaskClass
 from coire_core.models.runs import RunContainerCreate, RunLimits
 from coire_core.settings import Settings
 from coire_node.runs import RunManager, RunRuntimeError
@@ -80,6 +80,39 @@ def test_create_payload_rejects_non_allowlisted_image_or_command(tmp_path: Path)
         )
 
 
+def test_read_run_mounts_repository_read_only_and_output_separately(tmp_path: Path) -> None:
+    root = tmp_path / "workspaces"
+    (root / "repo").mkdir(parents=True)
+    (root / "output").mkdir()
+    command_read = command("repo").model_copy(
+        update={"task_class": TaskClass.READ, "output_ref": "output"}
+    )
+    manager = RunManager(
+        Settings(  # type: ignore[call-arg]
+            _secrets_dir="/none",
+            run_workspace_root=str(root),
+            run_agent_image=command_read.image,
+        ),
+        NoopDocker(),  # type: ignore[arg-type]
+    )
+    payload = manager.create_payload(command_read, "network")
+    assert payload["HostConfig"]["Binds"] == [
+        f"{root / 'repo'}:/workspace:ro",
+        f"{root / 'output'}:/coire-output:rw",
+    ]
+    assert "COIRE_OUTPUT_DIR=/coire-output" in payload["Env"]
+    assert payload["Labels"]["com.coire.result-path"] == "/coire-output/result.json"
+    with pytest.raises(RunRuntimeError, match="must differ"):
+        manager.create_payload(command_read.model_copy(update={"output_ref": "repo"}), "network")
+    with pytest.raises(RunRuntimeError, match="harness verification"):
+        manager.create_payload(
+            command_read.model_copy(
+                update={"task_class": TaskClass.WRITE, "harness_verified": False}
+            ),
+            "network",
+        )
+
+
 def test_workspace_cannot_escape_root(tmp_path: Path) -> None:
     root = tmp_path / "workspaces"
     root.mkdir()
@@ -92,6 +125,39 @@ def test_workspace_cannot_escape_root(tmp_path: Path) -> None:
     )
     with pytest.raises(RunRuntimeError, match="escapes"):
         manager.workspace("link")
+    internal = root / "internal"
+    internal.mkdir()
+    (root / "alias").symlink_to(internal)
+    with pytest.raises(RunRuntimeError, match="escapes"):
+        manager.workspace("alias")
+
+
+def test_mcp_run_cannot_mount_another_runs_workspace(tmp_path: Path) -> None:
+    root = tmp_path / "workspaces"
+    first = uuid.uuid4()
+    second = uuid.uuid4()
+    for run_id in (first, second):
+        (root / f"mcp-{run_id.hex}").mkdir(parents=True)
+        (root / f"mcp-out-{run_id.hex}").mkdir()
+    allowed = command(f"mcp-{first.hex}").model_copy(
+        update={
+            "run_id": first,
+            "output_ref": f"mcp-out-{first.hex}",
+        }
+    )
+    manager = RunManager(
+        Settings(  # type: ignore[call-arg]
+            _secrets_dir="/none",
+            run_workspace_root=str(root),
+            run_agent_image=allowed.image,
+        ),
+        NoopDocker(),  # type: ignore[arg-type]
+    )
+    assert manager.create_payload(allowed, "network")["HostConfig"]["Binds"]
+    with pytest.raises(RunRuntimeError, match="match the run ID"):
+        manager.create_payload(
+            allowed.model_copy(update={"workspace_ref": f"mcp-{second.hex}"}), "network"
+        )
 
 
 def test_docker_multiplexed_logs_are_decoded() -> None:

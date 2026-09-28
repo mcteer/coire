@@ -1067,6 +1067,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcp/artifacts/{artifact_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Artifact */
+        get: operations["download_artifact_api_v1_mcp_artifacts__artifact_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcp/artifacts/{artifact_id}/metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Artifact Metadata */
+        get: operations["artifact_metadata_api_v1_mcp_artifacts__artifact_id__metadata_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -1191,6 +1225,41 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Registered Workspaces */
+        get: operations["list_registered_workspaces_api_v1_workspaces_get"];
+        put?: never;
+        /** Create Registered Workspace */
+        post: operations["create_registered_workspace_api_v1_workspaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Registered Workspace */
+        delete: operations["delete_registered_workspace_api_v1_workspaces__workspace_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1425,6 +1494,8 @@ export interface components {
         AgentRun: {
             /** Container Id */
             container_id?: string | null;
+            /** Duration Seconds */
+            duration_seconds?: number | null;
             /** Exit Code */
             exit_code?: number | null;
             /** Failure Code */
@@ -1443,10 +1514,14 @@ export interface components {
             /** Killed By */
             killed_by?: string | null;
             limits: components["schemas"]["RunLimits"];
+            mcp_outcome?: components["schemas"]["McpCallState"] | null;
+            mcp_tool?: components["schemas"]["McpToolName"] | null;
             /** Node Id */
             node_id?: string | null;
             /** Node Name */
             node_name?: string | null;
+            /** Output Ref */
+            output_ref?: string | null;
             /**
              * Primary Model Id
              * Format: uuid
@@ -1476,6 +1551,8 @@ export interface components {
             /** Started At */
             started_at?: string | null;
             state: components["schemas"]["AgentRunState"];
+            /** @default write */
+            task_class: components["schemas"]["TaskClass"];
             /**
              * Updated At
              * Format: date-time
@@ -1487,10 +1564,14 @@ export interface components {
         /** AgentRunCreate */
         AgentRunCreate: {
             limits?: components["schemas"]["RunLimits"];
+            /** Output Ref */
+            output_ref?: string | null;
             /** Permitted Model Ids */
             permitted_model_ids: string[];
             /** Permitted Tools */
             permitted_tools?: string[];
+            /** Prepared Request Id */
+            prepared_request_id?: string | null;
             /**
              * Primary Model Id
              * Format: uuid
@@ -1502,6 +1583,8 @@ export interface components {
              * @default 100000
              */
             spend_limit_tokens: number;
+            /** @default write */
+            task_class: components["schemas"]["TaskClass"];
             /** Workspace Ref */
             workspace_ref: string;
         };
@@ -1882,6 +1965,38 @@ export interface components {
          * @enum {string}
          */
         BenchmarkRunState: "queued" | "running" | "completed" | "failed";
+        /** BranchArtifact */
+        BranchArtifact: {
+            /**
+             * Collected At
+             * Format: date-time
+             */
+            collected_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Owner User Id
+             * Format: uuid
+             */
+            owner_user_id: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size Bytes */
+            size_bytes: number;
+        };
         /**
          * CapabilityProfile
          * @description Declared model behaviour. Harness behaviour is selected from this, never from a model
@@ -2568,6 +2683,16 @@ export interface components {
          * @enum {string}
          */
         LoadState: "loaded" | "loading" | "cold";
+        /**
+         * McpCallState
+         * @enum {string}
+         */
+        McpCallState: "accepted" | "preparing" | "queued" | "running" | "collecting" | "succeeded" | "failed" | "timed_out" | "cancelled";
+        /**
+         * McpToolName
+         * @enum {string}
+         */
+        McpToolName: "research" | "plan" | "apply";
         /** MemoryLedger */
         MemoryLedger: {
             /** Budget Bytes */
@@ -3444,6 +3569,29 @@ export interface components {
          * @enum {string}
          */
         Reasoning: "none" | "thinking" | "hybrid";
+        /** RegisteredWorkspace */
+        RegisteredWorkspace: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Owner User Id
+             * Format: uuid
+             */
+            owner_user_id: string;
+            /**
+             * Repository Url
+             * Format: uri
+             */
+            repository_url: string;
+        };
         /**
          * ReservationHolder
          * @enum {string}
@@ -3629,6 +3777,11 @@ export interface components {
          */
         Tag: "coding" | "general" | "reasoning" | "vision" | "image";
         /**
+         * TaskClass
+         * @enum {string}
+         */
+        TaskClass: "read" | "write";
+        /**
          * ThermalState
          * @enum {string}
          */
@@ -3761,6 +3914,14 @@ export interface components {
          * @enum {string}
          */
         Visibility: "admin_only" | "published";
+        /** WorkspaceRegistrationCreate */
+        WorkspaceRegistrationCreate: {
+            /**
+             * Repository Url
+             * Format: uri
+             */
+            repository_url: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -6337,6 +6498,72 @@ export interface operations {
             };
         };
     };
+    download_artifact_api_v1_mcp_artifacts__artifact_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    artifact_metadata_api_v1_mcp_artifacts__artifact_id__metadata_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BranchArtifact"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     me_api_v1_me_get: {
         parameters: {
             query?: never;
@@ -6585,6 +6812,103 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ClusterState"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_registered_workspaces_api_v1_workspaces_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegisteredWorkspace"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_registered_workspace_api_v1_workspaces_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceRegistrationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RegisteredWorkspace"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_registered_workspace_api_v1_workspaces__workspace_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

@@ -45,9 +45,10 @@ from coire_core.models.audit import AuditOutcome
 from coire_core.models.auth import ActorType, UserRole
 from coire_core.models.engine import EngineState
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
-from coire_core.models.harness import EvaluationVerdict
+from coire_core.models.harness import EvaluationVerdict, TaskClass
 from coire_core.models.instance import InstanceState
 from coire_core.models.jobs import DownloadStage
+from coire_core.models.mcp import McpCallState, McpToolName
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.ops import (
     OpsConversationState,
@@ -373,6 +374,11 @@ class AgentRunRow(Base):
     )
     container_id: Mapped[str | None] = mapped_column(String(128), nullable=True, unique=True)
     workspace_ref: Mapped[str] = mapped_column(String(128))
+    task_class: Mapped[TaskClass] = mapped_column(
+        _enum(TaskClass, "run_task_class"), default=TaskClass.WRITE
+    )
+    prepared_request_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    output_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     token_scope: Mapped[dict[str, object]] = mapped_column(JSONB)
     state: Mapped[AgentRunState] = mapped_column(
         _enum(AgentRunState, "agent_run_state"), index=True
@@ -408,6 +414,69 @@ class AgentRunTransitionRow(Base):
     to_state: Mapped[AgentRunState] = mapped_column(_enum(AgentRunState, "agent_run_state"))
     reason: Mapped[str] = mapped_column(String(500))
     occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class RegisteredWorkspaceRow(Base):
+    __tablename__ = "registered_workspaces"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    repository_url: Mapped[str] = mapped_column(String(2048))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class McpCallRow(Base):
+    __tablename__ = "mcp_calls"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    tool: Mapped[McpToolName] = mapped_column(_enum(McpToolName, "mcp_tool_name"))
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    credential_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
+    )
+    source: Mapped[dict[str, object]] = mapped_column(JSONB)
+    input: Mapped[dict[str, object]] = mapped_column(JSONB)
+    task: Mapped[str] = mapped_column(Text)
+    model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="RESTRICT"))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True, unique=True
+    )
+    state: Mapped[McpCallState] = mapped_column(_enum(McpCallState, "mcp_call_state"), index=True)
+    result: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    workspace_cleaned_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class McpArtifactRow(Base):
+    __tablename__ = "mcp_artifacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    call_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("mcp_calls.id", ondelete="CASCADE"), unique=True
+    )
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"), unique=True
+    )
+    sha256: Mapped[str] = mapped_column(String(64))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    storage_ref: Mapped[str] = mapped_column(String(255))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    collected_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
 

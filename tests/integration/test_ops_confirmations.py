@@ -265,10 +265,10 @@ def test_unload_requires_exact_human_approval_and_decline_mutates_nothing(
     admin_headers: dict[str, str],
     access_token_factory: Callable[..., str],
 ) -> None:
-    human = {"cf-access-jwt-assertion": access_token_factory()}
     service = {"Authorization": f"Bearer {OPS_SERVICE_TOKEN}"}
     with httpx.Client(base_url=api_url, timeout=120) as client:
         _, ready = _ready_instance(client, admin_headers)
+        human = {"cf-access-jwt-assertion": access_token_factory()}
         session_id, conversation_id = _context(client, human, service)
         declined = _proposal(
             client,

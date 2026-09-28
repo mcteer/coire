@@ -43,6 +43,7 @@ from coire_core.settings import get_settings
 from coire_scheduler.acquisition import acquisition_workflow
 from coire_scheduler.dbos_runtime import DBOSRuntime
 from coire_scheduler.instances import instance_drain_workflow, instance_launch_workflow
+from coire_scheduler.mcp_cleanup import sweep_mcp_workspaces
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
 from coire_scheduler.runs import run_kill_workflow, run_workflow
 from coire_scheduler.workers import SchedulerWorkers
@@ -219,6 +220,16 @@ async def dispatch_idle_ttl(stop: asyncio.Event) -> None:
             await asyncio.wait_for(stop.wait(), timeout=settings.placement_ttl_interval_s)
 
 
+async def dispatch_mcp_cleanup(stop: asyncio.Event) -> None:
+    settings = get_settings()
+    while not stop.is_set():
+        try:
+            await sweep_mcp_workspaces(settings)
+        except Exception:
+            logger.exception("MCP cleanup pass failed")
+        await wait_or_stop(stop, 300.0)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_telemetry(SERVICE_NAME, settings.service_version, settings.otlp_endpoint)
@@ -241,6 +252,9 @@ def create_app() -> FastAPI:
             )
             background.append(
                 asyncio.create_task(dispatch_idle_ttl(stop), name="placement-ttl-dispatcher")
+            )
+            background.append(
+                asyncio.create_task(dispatch_mcp_cleanup(stop), name="mcp-cleanup-dispatcher")
             )
             app.state.dbos = runtime
             yield

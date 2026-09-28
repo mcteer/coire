@@ -101,6 +101,13 @@ Studio container orchestration uses `RUN_CONCURRENCY_CAP` (3),
 pinned by digest. The relay caps each request with `RUN_RELAY_REQUEST_BYTES` (2 MiB). Never use
 a tag for either runtime image.
 
+MCP coding uses `MCP_SOURCE_HOSTS` (comma-separated reviewed HTTPS Git hosts; default
+`github.com`), `MCP_WORKSPACE_MAX_BYTES` (512 MiB),
+`MCP_WORKSPACE_PREPARE_TIMEOUT_S` (120), and `MCP_ARTIFACT_RETENTION_HOURS` (168, maximum
+720). Each tool call uses a fresh Studio clone; branch bundles stay on the Studio and are
+streamed through the owner-scoped API. See
+[`docs/runbooks/mcp-server.md`](../../docs/runbooks/mcp-server.md).
+
 ## Control-plane failover
 
 Failover is disabled unless the three members are provisioned with a current, core-signed snapshot

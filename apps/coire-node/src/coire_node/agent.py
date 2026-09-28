@@ -44,6 +44,7 @@ from coire_node.routes import link_probes as link_probe_routes
 from coire_node.routes import models as models_routes
 from coire_node.routes import runs as runs_routes
 from coire_node.routes import sharding as sharding_routes
+from coire_node.routes import workspaces as workspaces_routes
 from coire_node.runs import RunManager
 from coire_node.sharding import ShardGroupManager
 from coire_node.store import Store
@@ -241,6 +242,7 @@ def create_app(
         app.include_router(link_probe_routes.router, dependencies=guard)
         app.include_router(benchmark_routes.router, dependencies=guard)
         app.include_router(runs_routes.router, dependencies=guard)
+        app.include_router(workspaces_routes.router, dependencies=guard)
         # Failover's separately scoped credential has access only to resident metadata and
         # this inference relay. It cannot use the broad node-registration credential.
         if listener in (NetworkPath.CONTROL, NodePath.MESH):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import uuid
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,7 @@ from typing import Any
 import pytest
 
 from coire_agent.__main__ import execute, load_request
+from coire_agent.harness import UnverifiedWriteError
 from coire_core.models.harness import (
     ContextBudget,
     HarnessRunResult,
@@ -84,3 +86,61 @@ def test_entrypoint_rejects_oversized_request_and_identity_mismatch(
     oversized.write_bytes(b"x" * (2 * 1024**2 + 1))
     with pytest.raises(ValueError, match="size"):
         load_request(oversized)
+
+
+def _repository(tmp_path: Path) -> Path:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "main.py").write_text("VALUE = 1\n")
+    subprocess.run(["git", "init", "-q", str(repository)], check=True)
+    subprocess.run(["git", "-C", str(repository), "add", "main.py"], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repository),
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "initial",
+        ],
+        check=True,
+    )
+    return repository
+
+
+async def test_apply_rechecks_variant_verification_inside_harness(tmp_path: Path) -> None:
+    repository = _repository(tmp_path)
+    control = repository / ".coire"
+    control.mkdir()
+    output = tmp_path / "output"
+    output.mkdir()
+    variant_id = uuid.uuid4()
+    body = request(variant_id, profile="coding")
+    body.update(
+        {
+            "task_class": "write",
+            "coding_mode": "apply",
+            "coding_call_id": str(uuid.uuid4()),
+        }
+    )
+    request_path = control / "request.json"
+    request_path.write_text(json.dumps(body))
+    with pytest.raises(UnverifiedWriteError):
+        await execute(
+            environ={
+                "COIRE_RUN_ID": str(uuid.uuid4()),
+                "COIRE_PROFILE": "coding",
+                "COIRE_MODEL_ID": str(uuid.uuid4()),
+                "COIRE_VERIFIED_VARIANT_ID": str(variant_id),
+                "COIRE_HARNESS_VERIFIED": "false",
+                "COIRE_OUTPUT_DIR": str(output),
+                "COIRE_API_URL": "http://coire-api:8000/v1",
+                "COIRE_RUN_TOKEN": "placeholder",
+            },
+            request_path=request_path,
+            result_path=output / "result.json",
+        )

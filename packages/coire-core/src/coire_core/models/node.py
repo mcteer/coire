@@ -16,10 +16,58 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from coire_core.models.engine import EngineStatus
+from coire_core.models.harness import HarnessRunRequest, TaskClass
 from coire_core.models.jobs import JobStatus
+from coire_core.models.mcp import WorkspaceSource
 
 MESH_SUBNET = IPv4Network("192.168.100.0/24")
 """The unrouted Thunderbolt mesh. See docs/adr/0002 and ARCHITECTURE.md 2.1."""
+
+
+class WorkspacePrepareRequest(BaseModel):
+    """Scheduler-authored, bounded Studio workspace preparation command."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: uuid.UUID
+    source: WorkspaceSource
+    task_class: TaskClass
+    harness_request: HarnessRunRequest
+    max_bytes: int = Field(default=512 * 1024 * 1024, ge=1024, le=8 * 1024**3)
+    timeout_seconds: int = Field(default=120, ge=1, le=900)
+
+    @model_validator(mode="after")
+    def task_class_matches(self) -> WorkspacePrepareRequest:
+        if self.task_class is not self.harness_request.task_class:
+            raise ValueError("task class does not match harness request")
+        return self
+
+
+class WorkspacePrepareResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: uuid.UUID
+    workspace_ref: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+    output_ref: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+    source_revision: str = Field(pattern=r"^[a-f0-9]{40}$")
+    prepared_at: datetime
+
+
+class WorkspaceCleanupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: uuid.UUID
+    preserve_for_recovery: bool = False
+
+
+class WorkspaceArtifactStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: uuid.UUID
+    artifact_id: uuid.UUID
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    size_bytes: int = Field(ge=1, le=64 * 1024 * 1024)
+    collected_at: datetime
 
 
 class NodeRole(StrEnum):

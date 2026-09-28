@@ -88,8 +88,9 @@ def test_budget_flag_trips_when_the_agent_costs_too_much(monkeypatch: pytest.Mon
     assert c.sample().collection_budget_ok is False
 
 
-def test_budget_flag_is_true_within_limits() -> None:
+def test_budget_flag_is_true_within_limits(monkeypatch: pytest.MonkeyPatch) -> None:
     c = collector(budget_cpu_pct=100.0, budget_rss_bytes=10 * 1024**3)
+    monkeypatch.setattr(c._proc, "cpu_percent", lambda interval=None: 25.0)
     assert c.sample().collection_budget_ok is True
 
 
