@@ -20,12 +20,13 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 4. `014d` private chat persistence, typed failures and bounded settings.
 5. `014e` verified chat authorization and shared model eligibility.
 6. `014f` shared gateway stream execution and compatible regression protection.
-7. `014g` persistent text chat API and remaining shared inference admission.
-8. `014h` chat SPA, event transport and cold-model experience.
-9. `014i` history, recovery, cancellation and coding actions.
-10. `014j` private file processing worker, storage, quotas and previews.
-11. `014k` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
-12. `014l` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
+7. `014g` native Chat picker, private conversation creation and initial telemetry.
+8. `014h` persistent text turns and remaining shared inference admission.
+9. `014i` chat SPA, event transport and cold-model experience.
+10. `014j` history, recovery, cancellation and coding actions.
+11. `014k` private file processing worker, storage, quotas and previews.
+12. `014l` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
+13. `014m` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
 
 ## Runtime dependency gate (014b)
 
@@ -57,3 +58,9 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Moved streaming usage tracking, credential rechecks, cancellation-resistant finalization and public model rewriting into `gateway/execution.py`; `/v1` imports the same functions. The existing proxy still owns engine slots and leases.
 - Direct tests cover fragmented CRLF SSE usage, public model rewriting, cancellation and first-token metrics; the existing gateway auth test covers credential revocation. Gateway auth and compatible contract tests passed 16/16. The full suite passed 834 tests with 116 pre-existing conditional skips, as did Ruff, strict mypy (217 source files), OpenAPI freshness and web build. Parent T011/T012 remain open because shared load/admission and the canonical native text adapter are not yet built.
+
+## Native picker/create gate (014g)
+
+- Added default-off `/api/v1/chat/models` and `/conversations` routes. The strict Chat eligibility predicate applies to admins too; owner, revision and IDs are server-derived. Selected missing/ineligible models share a safe 404. Visual picker support requires measured, verified VLM capability. Exact browser Origin is enforced by the shared guard.
+- Added `COIRE_CHAT_ENABLED` and `COIRE_CHAT_PUBLIC_ORIGIN` compose settings, a CoireError problem mapper, spans/counter/content-free logs, provisioned dashboard/alert and an operations runbook. The default-off gate keeps partial 014 endpoints unavailable in a normal deployment.
+- Five new picker/create contract tests passed. The full Python suite passed 839 tests with 116 pre-existing conditional skips; Ruff, strict mypy (221 source files), OpenAPI freshness, web test/lint/build and `docker compose config --quiet` passed. Dashboard JSON and alert YAML parsed and their image packaging references were checked. Parent T009/T015/T018 remain open until turn send and its contracts are present.

@@ -869,6 +869,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Chat Conversation */
+        post: operations["create_chat_conversation_api_v1_chat_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Chat Models */
+        get: operations["list_chat_models_api_v1_chat_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/failover/events": {
         parameters: {
             query?: never;
@@ -2093,6 +2127,56 @@ export interface components {
             /** Top P */
             top_p?: number | null;
         };
+        /** ChatConversation */
+        ChatConversation: {
+            /** Active Turn Id */
+            active_turn_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Mode
+             * @default chat
+             * @enum {string}
+             */
+            mode: "chat" | "code";
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Revision */
+            revision: number;
+            /** Selected Model Id */
+            selected_model_id?: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ChatConversationCreate */
+        ChatConversationCreate: {
+            /**
+             * Mode
+             * @default chat
+             * @enum {string}
+             */
+            mode: "chat" | "code";
+            /** Model Id */
+            model_id?: string | null;
+            /** Title */
+            title?: string | null;
+        };
         /** ChatMessage */
         ChatMessage: {
             /** Content */
@@ -2108,6 +2192,47 @@ export interface components {
             tool_call_id?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /** ChatPickerEntry */
+        ChatPickerEntry: {
+            /**
+             * Accepts Images
+             * @default false
+             */
+            accepts_images: boolean;
+            /** Context Window */
+            context_window?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Estimated Warmup Seconds */
+            estimated_warmup_seconds?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            load_state: components["schemas"]["LoadState"];
+            /** Max Images */
+            max_images?: number | null;
+            /**
+             * Size Class
+             * @enum {string}
+             */
+            size_class: "small" | "medium" | "large" | "unknown";
+            /** Tags */
+            tags?: components["schemas"]["Tag"][];
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
+        };
+        /** ChatPickerResponse */
+        ChatPickerResponse: {
+            /** Data */
+            data?: components["schemas"]["ChatPickerEntry"][];
         };
         /** ClusterNodeState */
         ClusterNodeState: {
@@ -6171,6 +6296,75 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiKeyIssued"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_chat_conversation_api_v1_chat_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatConversationCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_chat_models_api_v1_chat_models_get: {
+        parameters: {
+            query?: {
+                mode?: "chat" | "code";
+                action?: "chat" | "research" | "plan" | "apply";
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatPickerResponse"];
                 };
             };
             /** @description Validation Error */

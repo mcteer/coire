@@ -1,0 +1,9 @@
+groups:
+  - name: coire-chat
+    rules:
+      - alert: CoireChatApiFailures
+        expr: sum(increase(coire_chat_requests_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Native Chat API request failed

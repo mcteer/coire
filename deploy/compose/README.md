@@ -37,6 +37,11 @@ compose secrets. Gateway tuning variables and operational procedures are documen
 [`docs/runbooks/gateway.md`](../../docs/runbooks/gateway.md). Do not put credentials in this file,
 `.env`, an image, or a compose environment block.
 
+Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 is incomplete).
+Before enabling it, set `COIRE_CHAT_PUBLIC_ORIGIN` to the exact HTTPS browser origin; local
+development may use `http://localhost` or `http://127.0.0.1` with an optional port. A missing
+origin refuses browser writes. See [`docs/runbooks/chat-web-ui.md`](../../docs/runbooks/chat-web-ui.md).
+
 Identity requires `CLOUDFLARE_ACCESS_ISSUER` (the exact team issuer) and
 `CLOUDFLARE_ACCESS_AUDIENCE`. Seed `coire-bootstrap-admin-email` in Keychain by running
 `COIRE_BOOTSTRAP_ADMIN_EMAIL=you@example.com scripts/coire-secrets-init.sh`; it creates the first

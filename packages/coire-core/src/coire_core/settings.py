@@ -145,6 +145,7 @@ class Settings(BaseSettings):
     gateway_engine_request_timeout_s: float = Field(default=900.0, gt=0.0)
 
     # --- private native chat and CPU file worker -----------------------
+    chat_enabled: bool = False
     chat_upload_max_bytes: int = Field(default=10 * 1024**2, ge=1, le=10 * 1024**2)
     chat_conversation_quota_bytes: int = Field(default=50 * 1024**2, ge=1, le=50 * 1024**2)
     chat_owner_quota_bytes: int = Field(default=500 * 1024**2, ge=1, le=500 * 1024**2)

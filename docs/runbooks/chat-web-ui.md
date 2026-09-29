@@ -1,0 +1,7 @@
+# Native Chat operations
+
+The native Chat API is gated by `COIRE_CHAT_ENABLED` and defaults to off while feature 014 is built. Set `COIRE_CHAT_PUBLIC_ORIGIN` to the exact HTTPS browser origin (scheme, host and optional port; no trailing slash) before enabling it. Local development may use `http://localhost` or `http://127.0.0.1` with a port. Browser writes with another or missing Origin are refused; user-owned API keys with `chat` scope use bearer authentication.
+
+Inspect picker/create request outcomes in the **Coire Chat** Grafana dashboard or `coire_chat_requests_total{operation,outcome}`. Trace spans are `coire.api.chat.picker` and `coire.api.chat.create`; logs include only operation, user ID, conversation ID or count. `CoireChatApiFailures` alerts on unexpected route failures. A 404 for a selected model can mean absent, unpublished, unready or not entitled; do not expose which case to callers.
+
+To stop new native Chat admission, set `COIRE_CHAT_ENABLED=false` and redeploy the API. This hides native routes but does not change the existing `/v1` gateway. Restore the previous API image and configuration to roll back this child; its only persisted addition is an owner-scoped conversation draft in the existing `0015_chat_conversations` schema. Before downgrading `0015`, export and delete all chat content per the migration guard and the release backup procedure. Later 014 children will add turn cancellation, file processing and purge procedures here.
