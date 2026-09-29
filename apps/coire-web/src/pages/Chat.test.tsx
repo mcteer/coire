@@ -788,6 +788,102 @@ test("expired send prompts sign-in and keeps the unsent same-tab draft", async (
   expect(loadChatDrafts(conversation.owner_id).get(conversationId)?.text).toBe("Keep this draft");
 });
 
+test("explicit retry keeps the partial answer and does not duplicate the user input", async () => {
+  const oldTurnId = "00000000-0000-0000-0000-000000000077";
+  const oldAnswerId = "00000000-0000-0000-0000-000000000078";
+  const savedConversation = { ...conversation, title: "Interrupted", revision: 2 };
+  const oldTurn = {
+    id: oldTurnId,
+    conversation_id: conversationId,
+    client_request_id: crypto.randomUUID(),
+    accepted_revision: 1,
+    input_message_id: inputId,
+    assistant_message_id: oldAnswerId,
+    model_id: modelId,
+    model_display_name: "Friendly model",
+    state: "interrupted",
+    action: "chat",
+    created_at: conversation.created_at,
+    updated_at: conversation.updated_at,
+  };
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [savedConversation], next_cursor: null }))
+    .mockResolvedValueOnce(
+      json({
+        conversation: savedConversation,
+        messages: [
+          {
+            id: inputId,
+            conversation_id: conversationId,
+            position: 1,
+            role: "user",
+            text: "Prompt",
+            reasoning: "",
+            model_id: modelId,
+            model_display_name: "Friendly model",
+            attachment_ids: [],
+            created_at: conversation.created_at,
+          },
+          {
+            id: oldAnswerId,
+            conversation_id: conversationId,
+            position: 2,
+            role: "assistant",
+            text: "Saved partial",
+            reasoning: "",
+            model_id: modelId,
+            model_display_name: "Friendly model",
+            attachment_ids: [],
+            created_at: conversation.created_at,
+          },
+        ],
+        turns: [oldTurn],
+        attachments: [],
+        event_cursor: 2,
+      }),
+    )
+    .mockResolvedValueOnce(
+      stream(
+        event(3, {
+          type: "turn.accepted",
+          turn: {
+            ...oldTurn,
+            id: turnId,
+            input_message_id: inputId,
+            assistant_message_id: answerId,
+            client_request_id: crypto.randomUUID(),
+            accepted_revision: 2,
+            retry_of: oldTurnId,
+            state: "accepted",
+          },
+        }) +
+          event(4, {
+            type: "turn.terminal",
+            state: "completed",
+            answer_length: 0,
+            reasoning_length: 0,
+          }),
+      ),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  const view = render(<Chat ownerId={conversation.owner_id} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Interrupted/ }));
+  expect(await screen.findByRole("button", { name: "Retry response" })).toBeEnabled();
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "New unsent draft" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Retry response" }));
+  await waitFor(() => expect(view.container.querySelectorAll("article.assistant")).toHaveLength(2));
+  expect(view.container.querySelectorAll("article.user")).toHaveLength(1);
+  expect(screen.getByText("Saved partial")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("New unsent draft");
+  const posted = JSON.parse(fetchMock.mock.calls[3]?.[1]?.body as string);
+  expect(posted.retry_of).toBe(oldTurnId);
+  expect(posted.content).toBe("Prompt");
+});
+
 test("restores same-tab text and an eligible model after reload", async () => {
   const second = {
     ...model,

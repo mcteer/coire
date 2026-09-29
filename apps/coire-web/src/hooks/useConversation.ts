@@ -19,6 +19,7 @@ import {
   type ChatMessage,
   type ChatPickerEntry,
   type ChatTurnCreate,
+  type ChatTurn,
 } from "../api/chat";
 import { useChatConversationObserver, useChatTurnStream } from "./useEventStream";
 
@@ -29,6 +30,7 @@ export function useConversation(ownerId: string) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [selections, setSelections] = useState<ChatAttachmentSelection[]>([]);
   const [fileBusy, setFileBusy] = useState(false);
@@ -40,6 +42,14 @@ export function useConversation(ownerId: string) {
       !attachment.detected_type.startsWith("image/")
     );
   });
+  const latestTurn = turns.at(-1);
+  const retryableTurn =
+    latestTurn &&
+    ["failed", "stopped", "interrupted"].includes(latestTurn.state) &&
+    messages.at(-1)?.id === latestTurn.assistant_message_id &&
+    !conversation?.active_turn_id
+      ? latestTurn
+      : null;
   const [history, setHistory] = useState<ChatConversation[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [olderPosition, setOlderPosition] = useState<number | null>(null);
@@ -158,41 +168,55 @@ export function useConversation(ownerId: string) {
       );
       const created = payload.turn.created_at;
       const selectedFiles = pending.current?.body.attachments ?? [];
+      setTurns((current) => [...current.filter((row) => row.id !== payload.turn.id), payload.turn]);
       setMessages((current) => {
-        if (current.some((message) => message.id === payload.turn.input_message_id)) return current;
+        const hasInput = current.some((message) => message.id === payload.turn.input_message_id);
+        const hasAssistant = current.some(
+          (message) => message.id === payload.turn.assistant_message_id,
+        );
         const position = (current.at(-1)?.position ?? 0) + 1;
         return [
           ...current,
-          {
-            id: payload.turn.input_message_id,
-            conversation_id: event.conversation_id,
-            position,
-            role: "user",
-            text: input,
-            reasoning: "",
-            model_id: payload.turn.model_id,
-            model_display_name: payload.turn.model_display_name,
-            created_at: created,
-            attachment_ids: selectedFiles.map((item) => item.file_id),
-            attachment_selections: selectedFiles,
-          },
-          {
-            id: payload.turn.assistant_message_id,
-            conversation_id: event.conversation_id,
-            position: position + 1,
-            role: "assistant",
-            text: "",
-            reasoning: "",
-            model_id: payload.turn.model_id,
-            model_display_name: payload.turn.model_display_name,
-            created_at: created,
-            attachment_ids: [],
-          },
+          ...(!hasInput
+            ? [
+                {
+                  id: payload.turn.input_message_id,
+                  conversation_id: event.conversation_id,
+                  position,
+                  role: "user",
+                  text: input,
+                  reasoning: "",
+                  model_id: payload.turn.model_id,
+                  model_display_name: payload.turn.model_display_name,
+                  created_at: created,
+                  attachment_ids: selectedFiles.map((item) => item.file_id),
+                  attachment_selections: selectedFiles,
+                } satisfies ChatMessage,
+              ]
+            : []),
+          ...(!hasAssistant
+            ? [
+                {
+                  id: payload.turn.assistant_message_id,
+                  conversation_id: event.conversation_id,
+                  position: position + (hasInput ? 0 : 1),
+                  role: "assistant",
+                  text: "",
+                  reasoning: "",
+                  model_id: payload.turn.model_id,
+                  model_display_name: payload.turn.model_display_name,
+                  created_at: created,
+                  attachment_ids: [],
+                } satisfies ChatMessage,
+              ]
+            : []),
         ];
       });
-      setDraft("");
-      setSelections([]);
-      forget(event.conversation_id);
+      if (!payload.turn.retry_of) {
+        setDraft("");
+        setSelections([]);
+        forget(event.conversation_id);
+      }
       pending.current = null;
       setHistory((current) => {
         const item = current.find((row) => row.id === event.conversation_id);
@@ -237,6 +261,11 @@ export function useConversation(ownerId: string) {
         ),
       );
     } else if (payload.type === "turn.terminal") {
+      setTurns((current) =>
+        current.map((turn) =>
+          turn.id === event.turn_id ? { ...turn, state: payload.state } : turn,
+        ),
+      );
       setConversation(
         (current) =>
           current && {
@@ -312,6 +341,53 @@ export function useConversation(ownerId: string) {
       if (!(cause instanceof DOMException && cause.name === "AbortError")) {
         reportError(cause);
         setStatus("Send failed. Check the message and try again.");
+      }
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const retry = async () => {
+    const current = conversation;
+    const previous = retryableTurn;
+    const input = messages.find((message) => message.id === previous?.input_message_id);
+    if (
+      !current ||
+      !previous ||
+      !input ||
+      !selectedId ||
+      busyRef.current ||
+      stream.active ||
+      fileBusy
+    )
+      return;
+    busyRef.current = true;
+    setBusy(true);
+    setError(null);
+    const key = [current.id, current.revision, selectedId, previous.id, "retry"].join("\0");
+    const body: ChatTurnCreate =
+      pending.current?.key === key
+        ? pending.current.body
+        : {
+            client_request_id: crypto.randomUUID(),
+            expected_revision: current.revision,
+            model_id: selectedId,
+            content: input.text,
+            attachments: input.attachment_selections ?? [],
+            action: "chat",
+            retry_of: previous.id,
+          };
+    pending.current = { key, body };
+    const generation = selection.current;
+    try {
+      await stream.send(current.id, body, (event) => {
+        if (selection.current === generation) onEvent(event, input.text);
+      });
+    } catch (cause) {
+      if (!(cause instanceof DOMException && cause.name === "AbortError")) {
+        reportError(cause);
+        setStatus("Retry failed. Review the response and try again.");
       }
     } finally {
       busyRef.current = false;
@@ -413,6 +489,7 @@ export function useConversation(ownerId: string) {
       eventCursor.current = detail.event_cursor;
       setConversation(detail.conversation);
       setMessages(detail.messages ?? []);
+      setTurns(detail.turns ?? []);
       setAttachments(detail.attachments ?? []);
       setOlderPosition(detail.next_message_position ?? null);
       const saved = drafts.current.get(id);
@@ -492,6 +569,7 @@ export function useConversation(ownerId: string) {
     pending.current = null;
     setConversation(null);
     setMessages([]);
+    setTurns([]);
     setAttachments([]);
     setSelections([]);
     const saved = drafts.current.get("new");
@@ -524,6 +602,7 @@ export function useConversation(ownerId: string) {
       forget(event.conversation_id);
       setConversation(null);
       setMessages([]);
+      setTurns([]);
       setAttachments([]);
       setSelections([]);
       setOlderPosition(null);
@@ -535,6 +614,7 @@ export function useConversation(ownerId: string) {
       const detail = event.payload.detail;
       setConversation(detail.conversation);
       setMessages(detail.messages ?? []);
+      setTurns(detail.turns ?? []);
       setAttachments(detail.attachments ?? []);
       setOlderPosition(detail.next_message_position ?? null);
       setHistory((rows) =>
@@ -556,6 +636,7 @@ export function useConversation(ownerId: string) {
             if (selection.current !== generation) return;
             setConversation(detail.conversation);
             setMessages(detail.messages ?? []);
+            setTurns(detail.turns ?? []);
             setAttachments(detail.attachments ?? []);
             setOlderPosition(detail.next_message_position ?? null);
             setHistory((rows) => rows.map((row) => (row.id === id ? detail.conversation : row)));
@@ -628,6 +709,7 @@ export function useConversation(ownerId: string) {
         if (selection.current === generation) {
           setConversation(detail.conversation);
           setMessages(detail.messages ?? []);
+          setTurns(detail.turns ?? []);
           setStatus(
             turn.state === "completed" ? null : "Response ended. Your partial answer was saved.",
           );
@@ -677,6 +759,7 @@ export function useConversation(ownerId: string) {
         pending.current = null;
         setConversation(null);
         setMessages([]);
+        setTurns([]);
         setAttachments([]);
         setSelections([]);
         setOlderPosition(null);
@@ -706,6 +789,8 @@ export function useConversation(ownerId: string) {
     setSelectedId: chooseModel,
     conversation,
     messages,
+    retryableTurn,
+    retry,
     attachments,
     selections,
     canSendSelections,

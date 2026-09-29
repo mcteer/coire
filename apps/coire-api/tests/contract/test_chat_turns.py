@@ -69,16 +69,21 @@ class Session:
         if "FROM chat_conversations" in sql:
             return self.conversation
         if "FROM chat_turns" in sql:
-            return self.turns[0] if self.turns else None
+            values = statement.compile().params.values()  # type: ignore[attr-defined]
+            return next((turn for turn in self.turns if turn.client_request_id in values), None)
         return None
 
     async def execute(self, statement: object) -> object:
-        self.sql.append(str(statement))
-        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: list(self.messages)))
+        sql = str(statement)
+        self.sql.append(sql)
+        rows = self.turns if "FROM chat_turns" in sql else self.messages
+        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: list(rows)))
 
-    async def get(self, model: object, identifier: uuid.UUID) -> ModelRow | None:
+    async def get(self, model: object, identifier: uuid.UUID) -> object | None:
         if model is ChatAttachmentRow:
-            return self.attachments.get(identifier)  # type: ignore[return-value]
+            return self.attachments.get(identifier)
+        if model is ChatTurnRow:
+            return next((turn for turn in self.turns if turn.id == identifier), None)
         return self.model if self.model.id == identifier else None
 
     def add(self, row: object) -> None:
@@ -183,6 +188,118 @@ async def test_text_file_selection_is_owner_scoped_and_saved_for_history() -> No
     assert saved.text == "Hello"
     assert saved.prompt_content == admission.history[-1].content
     assert project_message(saved).attachment_selections == body.attachments
+
+
+async def test_explicit_retry_uses_original_input_without_duplicate_user_message() -> None:
+    session, principal, body = _case()
+    first = await admit_turn(
+        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
+    )  # type: ignore[arg-type,call-arg]
+    first.turn.state = "interrupted"
+    session.conversation.active_turn_id = None
+    session.messages[-1].text = "Saved partial answer"
+    retry = ChatTurnCreate(
+        client_request_id=uuid.uuid4(),
+        expected_revision=2,
+        model_id=body.model_id,
+        content="Hello",
+        retry_of=first.turn.id,
+    )
+    admission = await admit_turn(
+        session, session.conversation.id, principal, retry, Settings(_secrets_dir="/nonexistent")
+    )  # type: ignore[arg-type,call-arg]
+    assert [message.role for message in session.messages] == ["user", "assistant", "assistant"]
+    assert [message.content for message in admission.history] == ["Hello"]
+    assert admission.turn.input_message_id == first.turn.input_message_id
+    assert admission.turn.assistant_message_id != first.turn.assistant_message_id
+    assert project_turn(admission.turn).retry_of == first.turn.id
+
+
+async def test_retry_refuses_changed_input_or_non_latest_response() -> None:
+    session, principal, body = _case()
+    first = await admit_turn(
+        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
+    )  # type: ignore[arg-type,call-arg]
+    first.turn.state = "interrupted"
+    session.conversation.active_turn_id = None
+    retry = ChatTurnCreate(
+        client_request_id=uuid.uuid4(),
+        expected_revision=2,
+        model_id=body.model_id,
+        content="Changed",
+        retry_of=first.turn.id,
+    )
+    with pytest.raises(ChatConflict, match="original input"):
+        await admit_turn(
+            session,
+            session.conversation.id,
+            principal,
+            retry,
+            Settings(_secrets_dir="/nonexistent"),
+        )  # type: ignore[arg-type,call-arg]
+    retry.content = body.content
+    session.messages.append(
+        ChatMessageRow(
+            id=uuid.uuid4(),
+            conversation_id=session.conversation.id,
+            position=3,
+            role="assistant",
+            text="Later",
+            reasoning="",
+            created_at=NOW,
+        )
+    )
+    with pytest.raises(ChatConflict, match="latest interrupted"):
+        await admit_turn(
+            session,
+            session.conversation.id,
+            principal,
+            retry,
+            Settings(_secrets_dir="/nonexistent"),
+        )  # type: ignore[arg-type,call-arg]
+
+
+async def test_later_turn_uses_only_latest_response_attempt_in_history() -> None:
+    session, principal, body = _case()
+    first = await admit_turn(
+        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
+    )  # type: ignore[arg-type,call-arg]
+    first.turn.state = "interrupted"
+    session.messages[-1].text = "Discarded partial"
+    session.conversation.active_turn_id = None
+    retried = await admit_turn(
+        session,
+        session.conversation.id,
+        principal,
+        ChatTurnCreate(
+            client_request_id=uuid.uuid4(),
+            expected_revision=2,
+            model_id=body.model_id,
+            content=body.content,
+            retry_of=first.turn.id,
+        ),
+        Settings(_secrets_dir="/nonexistent"),
+    )  # type: ignore[arg-type,call-arg]
+    retried.turn.state = "completed"
+    session.messages[-1].text = "Complete answer"
+    session.conversation.active_turn_id = None
+    next_turn = await admit_turn(
+        session,
+        session.conversation.id,
+        principal,
+        ChatTurnCreate(
+            client_request_id=uuid.uuid4(),
+            expected_revision=3,
+            model_id=body.model_id,
+            content="Next question",
+        ),
+        Settings(_secrets_dir="/nonexistent"),
+    )  # type: ignore[arg-type,call-arg]
+    assert [message.content for message in next_turn.history] == [
+        "Hello",
+        "Complete answer",
+        "Next question",
+    ]
 
 
 async def test_text_selection_refuses_foreign_file_and_empty_scan() -> None:

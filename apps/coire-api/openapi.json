@@ -3053,6 +3053,18 @@
             "title": "Model Id",
             "type": "string"
           },
+          "retry_of": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
+          },
           "state": {
             "enum": [
               "accepted",

@@ -165,6 +165,7 @@ class ChatTurn(BaseModel):
         "interrupted",
     ]
     action: Literal["chat", "research", "plan", "apply"] = "chat"
+    retry_of: uuid.UUID | None = None
     usage: ChatUsage | None = None
     created_at: datetime
     updated_at: datetime

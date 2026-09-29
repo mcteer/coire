@@ -158,6 +158,17 @@
   color: var(--ink-2);
   font-size: var(--text-sm);
 }
+.chat-retry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+.chat-retry p {
+  margin: 0;
+}
 .chat-composer {
   display: grid;
   gap: var(--s-3);

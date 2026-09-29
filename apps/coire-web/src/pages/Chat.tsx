@@ -88,6 +88,19 @@ function ChatSession({ ownerId }: { ownerId: string }) {
             </button>
           )}
           <MessageList messages={chat.messages} attachments={chat.attachments} />
+          {chat.retryableTurn && (
+            <div className="chat-retry glass">
+              <p>The last response ended early. Its partial text remains above.</p>
+              <button
+                className="button"
+                type="button"
+                disabled={!chat.selectedId || chat.active || chat.fileBusy}
+                onClick={() => void chat.retry()}
+              >
+                Retry response
+              </button>
+            </div>
+          )}
           <AttachmentList
             conversationId={chat.conversation?.id ?? null}
             attachments={chat.attachments}

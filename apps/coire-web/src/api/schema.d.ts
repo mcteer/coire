@@ -2760,6 +2760,8 @@ export interface components {
              * Format: uuid
              */
             model_id: string;
+            /** Retry Of */
+            retry_of?: string | null;
             /**
              * State
              * @enum {string}
