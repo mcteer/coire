@@ -38,6 +38,7 @@ from typing import Any
 import httpx
 import psutil
 from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace
 
 from coire_core.models.engine import (
     LIVE_ENGINE_STATES,
@@ -55,6 +56,7 @@ from coire_node.store import Store, write_atomic_json
 logger = logging.getLogger(__name__)
 
 _meter = otel_metrics.get_meter("coire.node.engines")
+_tracer = trace.get_tracer("coire.node.engines")
 _load_seconds = _meter.create_histogram(
     "coire_engine_load_seconds", unit="s", description="Time from spawn to first generation."
 )
@@ -466,6 +468,18 @@ class EngineManager:
         engine = self._engines.get(key)
         if engine is None:
             return
+        if engine.backend is EngineBackend.MLX_VLM:
+            with _tracer.start_as_current_span(
+                "coire.node.vision.load",
+                attributes={"engine_id": str(engine.engine_id), "backend": engine.backend.value},
+                record_exception=False,
+                set_status_on_exception=False,
+            ):
+                self._probe_until_ready(engine)
+            return
+        self._probe_until_ready(engine)
+
+    def _probe_until_ready(self, engine: _Engine) -> None:
         deadline = time.monotonic() + self._settings.node_engine_start_timeout_s
         url = f"http://{self._address}:{engine.port}"
         started = time.monotonic()

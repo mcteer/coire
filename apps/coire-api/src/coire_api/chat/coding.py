@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api import mcp_calls, runs
 from coire_api.audit import write_principal_audit
 from coire_api.auth import Principal
+from coire_api.chat.telemetry import stop_seconds, turns_total
 from coire_api.chat.turns import Admission, project_turn, request_hash
 from coire_api.coding_calls import create_coding_call, prepare_chat_coding_request
 from coire_api.db import (
@@ -374,6 +375,11 @@ async def _reconcile_chat_coding_result(run_id: uuid.UUID, settings: Settings) -
                     state=call_state,
                     code=run.failure_code or "coding_run_failed",
                 )
+        stop_duration = (
+            max(0.0, (now - turn.updated_at).total_seconds())
+            if turn.state == "stop_requested"
+            else None
+        )
         turn.state = state
         turn.updated_at = now
         if conversation.active_turn_id == turn.id:
@@ -388,5 +394,8 @@ async def _reconcile_chat_coding_result(run_id: uuid.UUID, settings: Settings) -
             )
         )
         coding_actions_total.add(1, {"action": call.tool.value, "outcome": state})
+        turns_total.add(1, {"mode": "coding", "outcome": state})
+        if stop_duration is not None:
+            stop_seconds.record(stop_duration, {"mode": "coding"})
         logger.info("chat coding reconciled run_id=%s state=%s", run_id, state)
         return True

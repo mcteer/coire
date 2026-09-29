@@ -10,10 +10,15 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 from pydantic import ValidationError
 
 from coire_core.models.engine import EngineStartRequest, EngineState
 from coire_core.models.registry import EngineBackend
+from coire_node import engines as engines_module
 from coire_node.engines import (
     BackendMismatch,
     BudgetExceeded,
@@ -202,6 +207,11 @@ def test_unowned_vision_process_is_reported_as_vision_orphan(
 def test_vision_readiness_generates_with_verified_local_model_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider(sampler=ALWAYS_ON)
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(engines_module, "_tracer", provider.get_tracer("test.vision"))
     agent = Agent(tmp_path / "node")
     slug = "fake--vision"
     _seed(agent, slug)
@@ -239,6 +249,10 @@ def test_vision_readiness_generates_with_verified_local_model_path(
     try:
         agent.engines._await_ready(str(engine_id))
         assert engine.state is EngineState.READY
+        span = exporter.get_finished_spans()[0]
+        assert span.name == "coire.node.vision.load"
+        assert span.attributes == {"engine_id": str(engine_id), "backend": "mlx_vlm"}
+        assert span.events == ()
         assert posts == [
             {
                 "messages": [{"role": "user", "content": "hi"}],

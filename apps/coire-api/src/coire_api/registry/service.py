@@ -614,10 +614,7 @@ async def update_model(
                 409,
                 f"{model.slug} is {model.state.value}; only a ready model can be published",
             )
-        if (
-            request.visibility is Visibility.PUBLISHED
-            and (model.source or "studio") == "studio"
-        ):
+        if request.visibility is Visibility.PUBLISHED and (model.source or "studio") == "studio":
             any_variant = await session.scalar(
                 select(ModelVariantRow.id).where(ModelVariantRow.model_id == model.id).limit(1)
             )

@@ -54,8 +54,6 @@ def test_admin_acquired_visual_source_cannot_publish_without_native_smoke(
             f"/api/v1/admin/models/{workflow['model_id']}/variants", headers=admin_headers
         )
         variants.raise_for_status()
-        variant = next(
-            item for item in variants.json() if item["id"] == workflow["variant_id"]
-        )
+        variant = next(item for item in variants.json() if item["id"] == workflow["variant_id"])
         assert variant["validated"] is False
         assert variant["state"] != "ready"

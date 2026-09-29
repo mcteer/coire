@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from opentelemetry import trace
+
 from coire_core.models.harness import TaskClass
 from coire_core.models.runs import (
     RUN_ACTIVITY_MAX_BYTES,
@@ -39,6 +41,7 @@ RESULT_PATH = "/workspace/.coire/result.json"
 SEPARATE_RESULT_PATH = "/coire-output/result.json"
 ACTIVITY_PATH_PREFIX = "/coire-output/activity-"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+_tracer = trace.get_tracer("coire.node.runs")
 
 
 class RunRuntimeError(RuntimeError):
@@ -377,6 +380,17 @@ class RunManager:
         self, run_id: uuid.UUID, *, after_sequence: int = 0, limit: int = 100
     ) -> RunActivityPage:
         """Read one assigned run's bounded, content-free output spool."""
+        with _tracer.start_as_current_span(
+            "coire.node.run.activity",
+            attributes={"run_id": str(run_id)},
+            record_exception=False,
+            set_status_on_exception=False,
+        ):
+            return await self._activity(run_id, after_sequence=after_sequence, limit=limit)
+
+    async def _activity(
+        self, run_id: uuid.UUID, *, after_sequence: int, limit: int
+    ) -> RunActivityPage:
         if not 0 <= after_sequence <= RUN_ACTIVITY_MAX_RECORDS or not 1 <= limit <= 100:
             raise RunRuntimeError("run_activity_invalid", "activity cursor is invalid")
         name = self.container_name(run_id)

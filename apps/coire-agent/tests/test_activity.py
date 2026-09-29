@@ -7,7 +7,12 @@ import uuid
 from pathlib import Path
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 
+from coire_agent import activity as activity_module
 from coire_agent.activity import ActivitySpool
 from coire_core.models.runs import RunActivity
 
@@ -39,6 +44,29 @@ def test_activity_records_lifecycle_without_arguments_or_error_text(tmp_path: Pa
     assert records[0].tool_call_id != records[2].tool_call_id
     assert b"private source content" not in path.read_bytes()
     assert path.stat().st_mode & 0o777 == 0o600
+
+
+def test_tool_span_correlates_receipt_without_exception_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider(sampler=ALWAYS_ON)
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(activity_module, "_tracer", provider.get_tracer("test.coding"))
+    run_id = uuid.uuid4()
+    spool = ActivitySpool(tmp_path / "activity.jsonl", run_id)
+    with pytest.raises(RuntimeError, match="private source content"), spool.step("read_file"):
+        raise RuntimeError("private source content")
+    span = exporter.get_finished_spans()[0]
+    records = _records(spool.path)
+    assert span.name == "coire.agent.coding.tool"
+    assert span.attributes == {
+        "run_id": str(run_id),
+        "tool_call_id": str(records[0].tool_call_id),
+        "tool_name": "read_file",
+    }
+    assert span.events == ()
 
 
 def test_activity_spool_emits_one_overflow_marker_and_stops(tmp_path: Path) -> None:

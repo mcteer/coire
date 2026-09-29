@@ -12,6 +12,8 @@ from pathlib import Path
 from time import monotonic
 from typing import Literal
 
+from opentelemetry import trace
+
 from coire_core.models.runs import (
     RUN_ACTIVITY_MAX_BYTES,
     RUN_ACTIVITY_MAX_RECORDS,
@@ -21,6 +23,7 @@ from coire_core.models.runs import (
 )
 
 _MARKER_RESERVE = 512
+_tracer = trace.get_tracer("coire.agent.coding")
 
 
 class ActivitySpool:
@@ -114,23 +117,33 @@ class ActivitySpool:
     @contextmanager
     def step(self, tool_name: str) -> Iterator[None]:
         tool_call_id = uuid.uuid4()
-        self.record(tool_name, "started", tool_call_id=tool_call_id)
-        started = monotonic()
-        try:
-            yield
-        except BaseException:
-            self.record(
-                tool_name,
-                "failed",
-                duration_ms=max(0, int((monotonic() - started) * 1000)),
-                safe_error="operation_failed",
-                tool_call_id=tool_call_id,
-            )
-            raise
-        else:
-            self.record(
-                tool_name,
-                "completed",
-                duration_ms=max(0, int((monotonic() - started) * 1000)),
-                tool_call_id=tool_call_id,
-            )
+        with _tracer.start_as_current_span(
+            "coire.agent.coding.tool",
+            attributes={
+                "run_id": str(self.run_id),
+                "tool_call_id": str(tool_call_id),
+                "tool_name": tool_name,
+            },
+            record_exception=False,
+            set_status_on_exception=False,
+        ):
+            self.record(tool_name, "started", tool_call_id=tool_call_id)
+            started = monotonic()
+            try:
+                yield
+            except BaseException:
+                self.record(
+                    tool_name,
+                    "failed",
+                    duration_ms=max(0, int((monotonic() - started) * 1000)),
+                    safe_error="operation_failed",
+                    tool_call_id=tool_call_id,
+                )
+                raise
+            else:
+                self.record(
+                    tool_name,
+                    "completed",
+                    duration_ms=max(0, int((monotonic() - started) * 1000)),
+                    tool_call_id=tool_call_id,
+                )

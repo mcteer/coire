@@ -107,7 +107,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 
 ## Phase 8 — Operational proof and release gates
 
-- [ ] T068 Add specified spans/metrics/content-free logs in apps/coire-api/src/coire_api/chat/telemetry.py, coire_scheduler/files.py and runs.py, apps/coire-file-worker/src/coire_file_worker/app.py, apps/coire-node/src/coire_node/otel.py and engines.py, and apps/coire-agent/src/coire_agent/telemetry.py; test privacy/correlation (FR-034).
+- [X] T068 Add specified spans/metrics/content-free logs in apps/coire-api/src/coire_api/chat/telemetry.py, coire_scheduler/files.py and runs.py, apps/coire-file-worker/src/coire_file_worker/app.py, apps/coire-node/src/coire_node/otel.py and engines.py, and apps/coire-agent/src/coire_agent/telemetry.py; test privacy/correlation (FR-034).
 - [X] T069 [P] Add chat/parser/vision panels and baseline failure/overdue-purge alerts in deploy/observability/grafana/dashboards/chat.json and deploy/observability/alerts/chat.yaml; verify rules and lean/diagnostic behavior (FR-034).
 - [X] T070 [P] Write docs/runbooks/chat-web-ui.md and update deploy/compose/README.md, docs/ARCHITECTURE.md and docs/adr/0008-multimodal-chat-processing.md with inspection/kill/parser failure/purge/diagnostics/locked-node install and audited visual-backend rollback procedures.
 - [ ] T071 Regenerate and freshness-check apps/coire-api/openapi.json and apps/coire-web/src/api/schema.d.ts after all routes, event components and visual schemas; verify every new/changed API surface has contract coverage (Constitution III/VII).

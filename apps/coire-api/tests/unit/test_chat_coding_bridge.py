@@ -275,10 +275,17 @@ async def test_successful_run_persists_result_then_terminal_once(
 
     monkeypatch.setattr("coire_api.db.session_scope", scope)
     monkeypatch.setattr(mcp_calls, "store_result", store_result)
+    terminal_metrics: list[dict[str, str]] = []
+    monkeypatch.setattr(
+        coding,
+        "turns_total",
+        SimpleNamespace(add=lambda _value, labels: terminal_metrics.append(labels)),
+    )
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     assert await coding.reconcile_chat_coding_result(session.run.id, settings)
     assert not await coding.reconcile_chat_coding_result(session.run.id, settings)
     assert session.turn.state == "completed"
+    assert terminal_metrics == [{"mode": "coding", "outcome": "completed"}]
     assert session.messages[0].text == "Found main.py"
     assert [row.type for row in session.events] == ["turn.result", "turn.terminal"]
     input_id = uuid.uuid4()

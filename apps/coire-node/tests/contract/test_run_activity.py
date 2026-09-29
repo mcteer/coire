@@ -7,13 +7,18 @@ import tarfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from fastapi.testclient import TestClient
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.sdk.trace.sampling import ALWAYS_ON
 
-from coire_core.models.runs import RunActivity, RunActivityPage
+from coire_core.models.runs import RunActivity, RunActivityPage, RunActivityTool
 from coire_core.settings import Settings
+from coire_node import runs as runs_module
 from coire_node.runs import RunManager, RunRuntimeError
 from coire_node.testing.harness import TOKEN, Agent
 
@@ -34,7 +39,7 @@ def _record(run_id: uuid.UUID, sequence: int, *, overflow: bool = False) -> RunA
     return RunActivity(
         run_id=run_id,
         sequence=sequence,
-        tool_name="activity_spool" if overflow else "read_file",
+        tool_name=RunActivityTool.ACTIVITY_SPOOL if overflow else RunActivityTool.READ_FILE,
         state="failed" if overflow else "completed",
         created_at=datetime.now(UTC),
         safe_error="limit_reached" if overflow else None,
@@ -82,6 +87,21 @@ async def test_activity_reader_pages_assigned_run_and_reports_overflow() -> None
     assert docker.archived_path == f"/coire-output/activity-{run_id}.jsonl"
 
 
+async def test_activity_span_only_carries_run_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider(sampler=ALWAYS_ON)
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    monkeypatch.setattr(runs_module, "_tracer", provider.get_tracer("test.node.activity"))
+    run_id = uuid.uuid4()
+    manager, _ = _manager(run_id, _archive(run_id, [_record(run_id, 1)]))
+    assert (await manager.activity(run_id)).data[0].sequence == 1
+    span = exporter.get_finished_spans()[0]
+    assert span.name == "coire.node.run.activity"
+    assert span.attributes == {"run_id": str(run_id)}
+    assert span.events == ()
+
+
 async def test_activity_reader_unavailable_without_separate_output_or_spool() -> None:
     run_id = uuid.uuid4()
     manager, docker = _manager(run_id, None)
@@ -107,7 +127,7 @@ async def test_activity_reader_refuses_invalid_archive(failure: str) -> None:
     elif failure == "marker":
         records[0] = _record(run_id, 1, overflow=True)
     elif failure == "unknown_tool":
-        records[1].tool_name = "private_filepath"
+        records[1].tool_name = cast(RunActivityTool, "private_filepath")
     archive = _archive(run_id, records, filename=filename)
     if failure == "oversize":
         archive += b"x" * (4 * 1024 * 1024)

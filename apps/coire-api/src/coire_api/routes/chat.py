@@ -469,7 +469,12 @@ async def send_chat_turn(
     session: SessionDep,
     settings: SettingsDep,
 ) -> StreamingResponse:
-    with tracer.start_as_current_span("coire.api.chat.send"):
+    with tracer.start_as_current_span(
+        "coire.api.chat.admit",
+        attributes={"conversation_id": str(conversation_id), "user_id": str(principal.user_id)},
+        record_exception=False,
+        set_status_on_exception=False,
+    ):
         try:
             admission = (
                 await admit_turn(session, conversation_id, principal, body, settings)

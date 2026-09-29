@@ -333,7 +333,13 @@ async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> N
         from coire_api.chat.activity import collect_run_activity
 
         try:
-            await collect_run_activity(run_id, node_name, get_settings(), final=True)
+            with tracer.start_as_current_span(
+                "coire.scheduler.chat.activity",
+                attributes={"run_id": str(run_id)},
+                record_exception=False,
+                set_status_on_exception=False,
+            ):
+                await collect_run_activity(run_id, node_name, get_settings(), final=True)
         except NodeError as exc:
             if exc.retryable:
                 raise
@@ -419,7 +425,13 @@ async def run_kill_workflow(run_id_text: str) -> None:
             from coire_api.chat.activity import collect_run_activity
 
             try:
-                await collect_run_activity(run_id, node.name, get_settings(), final=True)
+                with tracer.start_as_current_span(
+                    "coire.scheduler.chat.activity",
+                    attributes={"run_id": str(run_id)},
+                    record_exception=False,
+                    set_status_on_exception=False,
+                ):
+                    await collect_run_activity(run_id, node.name, get_settings(), final=True)
             except (NodeError, ValueError) as exc:
                 logger.error(
                     "chat kill activity unavailable run_id=%s error_type=%s",
