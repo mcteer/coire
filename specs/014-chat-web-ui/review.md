@@ -137,3 +137,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Added owner-scoped GET SSE replay over persisted conversation events, with scoped cursor validation and live user/key checks. A cursor gap caused by retention sends a replacement snapshot. The observer never opens a gateway stream or cancellation path.
 - Owner/foreign/cursor contract and snapshot-gap unit tests passed; OpenAPI and generated browser types updated. Parent T014/T034 remain open for browser observer reconciliation and two-tab acceptance.
+
+## Browser observer gate (014u)
+
+- The shared SSE hook module now follows a selected conversation using scoped GET and bounded reconnects, pauses while the tab owns a POST stream, and stops on revoked/deleted access. Observer events refresh saved detail at a bounded cadence; cursor replacement snapshots update the selected view. Navigation generation checks discard stale reads.
+- Browser tests cover scoped GET without POST and another tab's answer appearing within two seconds. Parent T034 remains open for full two-tab integration and explicit retry/continue.

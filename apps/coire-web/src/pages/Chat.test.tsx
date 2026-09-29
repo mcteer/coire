@@ -248,6 +248,61 @@ test("leaving an owned stream requests navigation Stop before switching conversa
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
+test("a selected viewing tab reconciles another tab's saved turn without a POST", async () => {
+  const saved = { ...conversation, title: "Shared view" };
+  let details = 0;
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url === "/api/v1/chat/models") return Promise.resolve(json({ data: [model] }));
+    if (url.startsWith("/api/v1/chat/conversations?"))
+      return Promise.resolve(json({ data: [saved], next_cursor: null }));
+    if (url.endsWith("/events"))
+      return Promise.resolve(
+        stream(
+          event(1, {
+            type: "turn.terminal",
+            state: "completed",
+            answer_length: 16,
+            reasoning_length: 0,
+          }),
+        ),
+      );
+    if (url.startsWith(`/api/v1/chat/conversations/${conversationId}?`)) {
+      details += 1;
+      return Promise.resolve(
+        json({
+          conversation: saved,
+          messages:
+            details === 1
+              ? []
+              : [
+                  {
+                    id: answerId,
+                    conversation_id: conversationId,
+                    position: 2,
+                    role: "assistant",
+                    text: "Other tab answer",
+                    reasoning: "",
+                    model_id: modelId,
+                    model_display_name: "Friendly model",
+                    attachment_ids: [],
+                    created_at: "2026-09-28T00:00:00Z",
+                  },
+                ],
+          turns: [],
+          attachments: [],
+          event_cursor: details === 1 ? 0 : 1,
+        }),
+      );
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Shared view/ }));
+  expect(await screen.findByText("Other tab answer", {}, { timeout: 2000 })).toBeInTheDocument();
+  expect(fetchMock.mock.calls.every(([url, options]) => !String(url).endsWith("/turns") || options?.method !== "POST")).toBe(true);
+});
+
 test("preserves the draft when admission refuses the send", async () => {
   const fetchMock = vi
     .fn()

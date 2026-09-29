@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { sendChatTurn, type ChatEvent, type ChatTurnCreate } from "../api/chat";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { openChatEvents, sendChatTurn, type ChatEvent, type ChatTurnCreate } from "../api/chat";
 import { openEventStream, readEventStream } from "../api/eventStream";
 
 type State<T> = { data: T | null; connected: boolean; error: string | null };
@@ -109,4 +109,71 @@ export function useChatTurnStream() {
 
   const abort = useCallback(() => controller.current?.abort(), []);
   return { active, error, send, abort };
+}
+
+/** A selected conversation is observed with GET only; it never replays its POST. */
+export function useChatConversationObserver(
+  conversationId: string | null,
+  enabled: boolean,
+  cursor: MutableRefObject<number>,
+  onEvent: (event: ChatEvent) => void,
+) {
+  const callback = useRef(onEvent);
+  useEffect(() => {
+    callback.current = onEvent;
+  }, [onEvent]);
+
+  useEffect(() => {
+    if (!conversationId || !enabled) return;
+    let disposed = false;
+    let controller: AbortController | null = null;
+    let retry: number | undefined;
+    let failures = 0;
+    let permanent = false;
+    const connect = async () => {
+      if (disposed || controller) return;
+      const active = new AbortController();
+      controller = active;
+      try {
+        const response = await openChatEvents(conversationId, cursor.current, active.signal);
+        if ([401, 403, 404].includes(response.status)) {
+          permanent = true;
+          return;
+        }
+        if (response.status === 409) cursor.current = 0;
+        if (!response.ok || !response.headers.get("content-type")?.startsWith("text/event-stream"))
+          throw new Error(`chat observer refused (${response.status})`);
+        await readEventStream(response, active.signal, (frame) => {
+          const parsed: unknown = JSON.parse(frame.data);
+          if (!parsed || typeof parsed !== "object") throw new Error("invalid chat event");
+          const event = parsed as ChatEvent;
+          if (
+            event.conversation_id !== conversationId ||
+            !Number.isSafeInteger(event.cursor) ||
+            event.cursor <= cursor.current ||
+            frame.id !== `${conversationId}:${event.cursor}` ||
+            frame.event !== event.payload?.type ||
+            (event.payload.type !== "snapshot" && event.cursor !== cursor.current + 1)
+          )
+            throw new Error("invalid chat event");
+          cursor.current = event.cursor;
+          failures = 0;
+          callback.current(event);
+        });
+      } catch {
+        // The selected conversation remains readable from its saved detail while reconnecting.
+      } finally {
+        if (controller === active) controller = null;
+        if (!disposed && !permanent) {
+          retry = window.setTimeout(() => void connect(), Math.min(500 * 2 ** failures++, 5000));
+        }
+      }
+    };
+    retry = window.setTimeout(() => void connect(), 500);
+    return () => {
+      disposed = true;
+      if (retry !== undefined) window.clearTimeout(retry);
+      controller?.abort();
+    };
+  }, [conversationId, enabled, cursor]);
 }

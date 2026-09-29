@@ -13,7 +13,7 @@ import {
   type ChatPickerEntry,
   type ChatTurnCreate,
 } from "../api/chat";
-import { useChatTurnStream } from "./useEventStream";
+import { useChatConversationObserver, useChatTurnStream } from "./useEventStream";
 
 export function useConversation(ownerId: string) {
   const [initialDrafts] = useState(() => loadChatDrafts(ownerId));
@@ -36,6 +36,9 @@ export function useConversation(ownerId: string) {
   const busyRef = useRef(false);
   const pending = useRef<{ key: string; body: ChatTurnCreate } | null>(null);
   const selection = useRef(0);
+  const eventCursor = useRef(0);
+  const refreshTimer = useRef<number | null>(null);
+  const refreshDirty = useRef(false);
   const stream = useChatTurnStream();
 
   const remember = (key: string, text: string, modelId: string | null) => {
@@ -107,6 +110,7 @@ export function useConversation(ownerId: string) {
   }, []);
 
   const onEvent = (event: ChatEvent, input: string) => {
+    eventCursor.current = Math.max(eventCursor.current, event.cursor);
     const payload = event.payload;
     if (payload.type === "turn.accepted") {
       setConversation(
@@ -231,6 +235,7 @@ export function useConversation(ownerId: string) {
     try {
       if (!current) {
         current = await createChatConversation({ mode: "chat", model_id: selectedId });
+        eventCursor.current = 0;
         setConversation(current);
         setHistory((rows) => [current!, ...rows.filter((row) => row.id !== current!.id)]);
         remember(current.id, input, selectedId);
@@ -285,6 +290,7 @@ export function useConversation(ownerId: string) {
     try {
       const detail = await getChatConversation(id);
       if (selection.current !== generation) return;
+      eventCursor.current = detail.event_cursor;
       setConversation(detail.conversation);
       setMessages(detail.messages ?? []);
       setOlderPosition(detail.next_message_position ?? null);
@@ -346,6 +352,7 @@ export function useConversation(ownerId: string) {
     if (!(await stopOwnedStreamForNavigation())) return;
     remember(conversation?.id ?? "new", draft, selectedId);
     selection.current += 1;
+    eventCursor.current = 0;
     pending.current = null;
     setConversation(null);
     setMessages([]);
@@ -370,6 +377,62 @@ export function useConversation(ownerId: string) {
       return false;
     }
   };
+
+  const refreshObserved = (event: ChatEvent) => {
+    if (event.conversation_id !== conversation?.id) return;
+    if (event.payload.type === "snapshot") {
+      const detail = event.payload.detail;
+      setConversation(detail.conversation);
+      setMessages(detail.messages ?? []);
+      setOlderPosition(detail.next_message_position ?? null);
+      setHistory((rows) =>
+        rows.map((row) => (row.id === event.conversation_id ? detail.conversation : row)),
+      );
+      setStatus(detail.conversation.active_turn_id ? "A response is still running." : null);
+      return;
+    }
+    if (refreshTimer.current !== null) {
+      refreshDirty.current = true;
+      return;
+    }
+    const id = event.conversation_id;
+    const generation = selection.current;
+    const refresh = () => {
+      refreshTimer.current = window.setTimeout(() => {
+        void getChatConversation(id)
+          .then((detail) => {
+            if (selection.current !== generation) return;
+            setConversation(detail.conversation);
+            setMessages(detail.messages ?? []);
+            setOlderPosition(detail.next_message_position ?? null);
+            setHistory((rows) =>
+              rows.map((row) => (row.id === id ? detail.conversation : row)),
+            );
+            setStatus(detail.conversation.active_turn_id ? "A response is still running." : null);
+          })
+          .catch((cause) => {
+            if (selection.current === generation) setError(String(cause));
+          })
+          .finally(() => {
+            refreshTimer.current = null;
+            if (refreshDirty.current && selection.current === generation) {
+              refreshDirty.current = false;
+              refresh();
+            }
+          });
+      }, 250);
+    };
+    refresh();
+  };
+
+  useChatConversationObserver(conversation?.id ?? null, !stream.active, eventCursor, refreshObserved);
+
+  useEffect(
+    () => () => {
+      if (refreshTimer.current !== null) window.clearTimeout(refreshTimer.current);
+    },
+    [],
+  );
 
   const stop = async () => {
     const current = conversation;

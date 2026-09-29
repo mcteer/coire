@@ -1,6 +1,6 @@
 import type { components } from "./schema";
 import { api, apiError } from "./client";
-import { readEventStream } from "./eventStream";
+import { openEventStream, readEventStream } from "./eventStream";
 
 export type ChatPickerResponse = components["schemas"]["ChatPickerResponse"];
 export type ChatConversation = components["schemas"]["ChatConversation"];
@@ -60,6 +60,18 @@ export function stopChatTurn(
   return api<ChatTurn>(
     `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/turns/${encodeURIComponent(turnId)}/stop`,
     { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
+export function openChatEvents(
+  conversationId: string,
+  cursor: number,
+  signal: AbortSignal,
+): Promise<Response> {
+  return openEventStream(
+    `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/events`,
+    `${conversationId}:${cursor}`,
+    signal,
   );
 }
 
