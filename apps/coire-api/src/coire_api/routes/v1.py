@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import uuid
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, Literal
 
@@ -29,6 +28,10 @@ from coire_api.gateway.context import (
 )
 from coire_api.gateway.execution import (
     cancel_pending_load,
+    compatible_text_payload,
+)
+from coire_api.gateway.execution import (
+    load_and_resolve as _load_and_resolve,
 )
 from coire_api.gateway.execution import (
     rewrite_openai_model as _rewrite_openai_model,
@@ -39,7 +42,7 @@ from coire_api.gateway.execution import (
 from coire_api.gateway.execution import (
     track_stream as _tracked_stream,
 )
-from coire_api.gateway.loading import ModelLoadError, load_model
+from coire_api.gateway.loading import ModelLoadError
 from coire_api.gateway.proxy import (
     EngineProxyError,
     EngineSaturatedError,
@@ -49,7 +52,6 @@ from coire_api.gateway.proxy import (
 )
 from coire_api.gateway.resolution import (
     ModelNotFoundError,
-    ResolvedModel,
     resolve_model,
     retry_after_seconds,
 )
@@ -122,25 +124,6 @@ async def _reserve_run_spend(
     usage.reserved_tokens = reservation
 
 
-async def _load_and_resolve(
-    body_model: uuid.UUID,
-    principal: Principal,
-    session: AsyncSession,
-    settings: Settings,
-    affinity_node: str | None = None,
-) -> ResolvedModel:
-    await asyncio.wait_for(
-        load_model(body_model, settings), timeout=settings.gateway_wait_ceiling_s
-    )
-    session.expire_all()
-    if principal.run_id is not None:
-        from coire_api.run_tokens import run_token_is_active
-
-        if not await run_token_is_active(session, principal.run_id):
-            raise ModelLoadError("run credential revoked")
-    return await resolve_model(session, body_model, principal, affinity_node)
-
-
 async def _openai_cold_stream(
     body: ChatCompletionRequest,
     principal: Principal,
@@ -168,12 +151,7 @@ async def _openai_cold_stream(
             raise ModelLoadError("engine did not become ready")
         usage.model_id = resolved.model_id
         usage.engine_id = resolved.engine_id
-        payload = body.model_dump(
-            mode="json",
-            exclude={"coire_wait_for_model", "coire_affinity_node"},
-            exclude_none=True,
-        )
-        payload["model"] = resolved.model_path
+        payload = compatible_text_payload(body, resolved.model_path)
         rewritten = _rewrite_openai_model(
             stream(resolved.engine_url, payload, settings, timing),
             body.model,
@@ -357,12 +335,7 @@ async def chat_completions(
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "model load did not become ready"
             )
-    payload = body.model_dump(
-        mode="json",
-        exclude={"coire_wait_for_model", "coire_affinity_node"},
-        exclude_none=True,
-    )
-    payload["model"] = resolved.model_path
+    payload = compatible_text_payload(body, resolved.model_path)
     try:
         if body.stream:
             rewritten = _rewrite_openai_model(

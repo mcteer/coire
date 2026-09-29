@@ -100,7 +100,7 @@ async def test_cold_turn_reports_observed_queue_before_running(
                 release_load.set()
         return _saved_event(admission, kind, len(statuses) + 1, **kwargs)
 
-    monkeypatch.setattr(streaming, "load_model", load_model)
+    monkeypatch.setattr("coire_api.gateway.execution.load_model", load_model)
     monkeypatch.setattr(streaming, "stream", upstream)
     monkeypatch.setattr(streaming, "persist_native_event", saved)
     monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
@@ -143,7 +143,7 @@ async def test_closing_native_cold_stream_cancels_pending_load(
     async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
         return _saved_event(admission, kind, 2, **kwargs)
 
-    monkeypatch.setattr(streaming, "load_model", load)
+    monkeypatch.setattr("coire_api.gateway.execution.load_model", load)
     monkeypatch.setattr(streaming, "persist_native_event", saved)
     request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
     settings = Settings(  # type: ignore[call-arg]
@@ -485,7 +485,7 @@ async def test_cold_then_ready_emits_loading_before_generation(
         "resolve_model",
         AsyncMock(side_effect=[_resolved(admission, cold=True), _resolved(admission)]),
     )
-    monkeypatch.setattr(streaming, "load_model", AsyncMock())
+    monkeypatch.setattr("coire_api.gateway.execution.load_model", AsyncMock())
     monkeypatch.setattr(streaming, "_measured_warmup_seconds", AsyncMock(return_value=estimate))
 
     async def upstream(*_args: object) -> AsyncIterator[bytes]:
@@ -530,7 +530,8 @@ async def test_cold_load_failure_has_safe_actionable_terminal(
     )
     monkeypatch.setattr(streaming, "_measured_warmup_seconds", AsyncMock(return_value=None))
     monkeypatch.setattr(
-        streaming, "load_model", AsyncMock(side_effect=RuntimeError("private node failure"))
+        "coire_api.gateway.execution.load_model",
+        AsyncMock(side_effect=RuntimeError("private node failure")),
     )
     monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
     saved_errors: list[str | None] = []
@@ -642,7 +643,7 @@ async def test_owner_stop_during_cold_load_finishes_without_generation(
     async def persist_usage(**kwargs: object) -> None:
         usage_outcomes.append(kwargs["outcome"])  # type: ignore[arg-type]
 
-    monkeypatch.setattr(streaming, "load_model", load)
+    monkeypatch.setattr("coire_api.gateway.execution.load_model", load)
     monkeypatch.setattr(streaming, "persist_native_event", saved)
     monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist_usage)
     request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))

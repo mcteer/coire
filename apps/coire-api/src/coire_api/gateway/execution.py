@@ -16,15 +16,66 @@ from time import monotonic, perf_counter
 
 from fastapi import Request
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import Receive, Scope, Send
 
-from coire_api.auth import PrincipalKind
+from coire_api.auth import Principal, PrincipalKind
+from coire_api.gateway.loading import ModelLoadError, load_model
 from coire_api.gateway.proxy import EngineProxyError, StreamTiming
+from coire_api.gateway.resolution import ResolvedModel, resolve_model
 from coire_api.gateway.telemetry import first_token_duration_ms, overhead_duration_ms
 from coire_api.gateway.usage import UsageTracker
-from coire_core.models.gateway import UsageOutcome
+from coire_core.models.gateway import ChatCompletionRequest, ChatMessage, UsageOutcome
+from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+def compatible_text_payload(body: ChatCompletionRequest, model_path: str) -> dict[str, object]:
+    """Serialize a compatible text request using only its resolved local model path."""
+    payload = body.model_dump(
+        mode="json", exclude={"coire_wait_for_model", "coire_affinity_node"}, exclude_none=True
+    )
+    payload["model"] = model_path
+    return payload
+
+
+def canonical_text_payload(
+    messages: list[ChatMessage], model_path: str, *, output_tokens: int
+) -> dict[str, object]:
+    """Adapt canonical Chat history to the same bare-engine text request shape."""
+    return {
+        "model": model_path,
+        "messages": [message.model_dump(mode="json", exclude_none=True) for message in messages],
+        "stream": True,
+        "max_tokens": output_tokens,
+    }
+
+
+async def load_and_resolve(
+    model_id: uuid.UUID,
+    principal: Principal,
+    session: AsyncSession,
+    settings: Settings,
+    affinity_node: str | None = None,
+) -> ResolvedModel:
+    """Cold-load a registry model and recheck run credentials before engine I/O."""
+    # The initial registry lookup may have opened a read transaction. Do not keep it
+    # across placement and engine startup, which can take minutes.
+    await session.rollback()
+    await load_with_ceiling(model_id, settings)
+    session.expire_all()
+    if principal.run_id is not None:
+        from coire_api.run_tokens import run_token_is_active
+
+        if not await run_token_is_active(session, principal.run_id):
+            raise ModelLoadError("run credential revoked")
+    return await resolve_model(session, model_id, principal, affinity_node)
+
+
+async def load_with_ceiling(model_id: uuid.UUID, settings: Settings) -> None:
+    """Apply the same bounded registry load to compatible and native Chat calls."""
+    await asyncio.wait_for(load_model(model_id, settings), timeout=settings.gateway_wait_ceiling_s)
 
 
 @asynccontextmanager

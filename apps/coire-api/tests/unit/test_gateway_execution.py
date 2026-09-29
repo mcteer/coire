@@ -8,14 +8,93 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from time import perf_counter
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.auth import ANONYMOUS
-from coire_api.gateway.execution import rewrite_openai_model, track_stream
+from coire_api.auth import ANONYMOUS, Principal, PrincipalKind
+from coire_api.gateway.execution import (
+    canonical_text_payload,
+    compatible_text_payload,
+    load_and_resolve,
+    rewrite_openai_model,
+    track_stream,
+)
+from coire_api.gateway.loading import ModelLoadError
 from coire_api.gateway.proxy import StreamTiming
+from coire_api.gateway.resolution import ResolvedModel
 from coire_api.gateway.usage import UsageTracker
-from coire_core.models.gateway import GatewayProtocol, UsageOutcome
+from coire_core.models.gateway import (
+    ChatCompletionRequest,
+    ChatMessage,
+    GatewayProtocol,
+    UsageOutcome,
+)
+from coire_core.settings import Settings
+
+
+def test_text_payload_adapters_keep_registry_path_private_and_preserve_content() -> None:
+    model_id = uuid.uuid4()
+    messages = [ChatMessage(role="user", content="hello")]
+    request = ChatCompletionRequest(model=model_id, messages=messages, max_tokens=32)
+    compatible = compatible_text_payload(request, "/owned/model")
+    canonical = canonical_text_payload(messages, "/owned/model", output_tokens=32)
+    assert compatible["model"] == canonical["model"] == "/owned/model"
+    assert compatible["messages"] == canonical["messages"] == [{"role": "user", "content": "hello"}]
+    assert compatible["max_tokens"] == canonical["max_tokens"] == 32
+    assert compatible["stream"] is False
+    assert canonical["stream"] is True
+    assert "coire_wait_for_model" not in compatible
+
+
+async def test_cold_load_releases_transaction_before_engine_io(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.gateway import execution
+
+    order: list[str] = []
+
+    async def rollback() -> None:
+        order.append("rollback")
+
+    async def load(_model: uuid.UUID, _settings: Settings) -> None:
+        order.append("load")
+
+    async def resolve(*_args: object) -> ResolvedModel:
+        order.append("resolve")
+        return ResolvedModel(uuid.uuid4(), "test", None, None, None, None, None)
+
+    session = SimpleNamespace(rollback=rollback, expire_all=lambda: order.append("expire"))
+    monkeypatch.setattr(execution, "load_model", load)
+    monkeypatch.setattr(execution, "resolve_model", resolve)
+    settings = SimpleNamespace(gateway_wait_ceiling_s=1)
+    await load_and_resolve(
+        uuid.uuid4(), ANONYMOUS, cast(AsyncSession, session), cast(Settings, settings)
+    )
+    assert order == ["rollback", "load", "expire", "resolve"]
+
+
+async def test_cold_load_refuses_revoked_run_before_resolving(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.gateway import execution
+
+    async def load(_model: uuid.UUID, _settings: Settings) -> None:
+        return None
+
+    resolve = AsyncMock()
+    monkeypatch.setattr(execution, "load_model", load)
+    monkeypatch.setattr(execution, "resolve_model", resolve)
+    monkeypatch.setattr("coire_api.run_tokens.run_token_is_active", AsyncMock(return_value=False))
+    session = SimpleNamespace(rollback=AsyncMock(), expire_all=lambda: None)
+    principal = Principal(kind=PrincipalKind.RUN, run_id=uuid.uuid4())
+    settings = SimpleNamespace(gateway_wait_ceiling_s=1)
+    with pytest.raises(ModelLoadError, match="run credential revoked"):
+        await load_and_resolve(
+            uuid.uuid4(), principal, cast(AsyncSession, session), cast(Settings, settings)
+        )
+    resolve.assert_not_awaited()
 
 
 async def test_fragmented_sse_usage_is_counted_once(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -32,8 +32,12 @@ from coire_api.db import (
     UserRow,
     session_scope,
 )
-from coire_api.gateway.execution import cancel_pending_load, track_stream
-from coire_api.gateway.loading import load_model
+from coire_api.gateway.execution import (
+    cancel_pending_load,
+    canonical_text_payload,
+    load_with_ceiling,
+    track_stream,
+)
 from coire_api.gateway.proxy import StreamTiming, stream
 from coire_api.gateway.resolution import ResolvedModel, resolve_model
 from coire_api.gateway.usage import UsageTracker
@@ -311,12 +315,7 @@ async def native_stream(
                 )
                 yield encode_event(loading)
                 last_load_state: Literal["queued", "loading"] = "loading"
-                task = asyncio.create_task(
-                    asyncio.wait_for(
-                        load_model(admission.turn.model_id, settings),
-                        timeout=settings.gateway_wait_ceiling_s,
-                    )
-                )
+                task = asyncio.create_task(load_with_ceiling(admission.turn.model_id, settings))
                 last_keepalive = monotonic()
                 async with cancel_pending_load(task):
                     while not task.done():
@@ -361,15 +360,9 @@ async def native_stream(
                 "status", admission, state="running", settings=settings
             )
             yield encode_event(running)
-            payload: dict[str, object] = {
-                "model": resolved.model_path,
-                "messages": [
-                    message.model_dump(mode="json", exclude_none=True)
-                    for message in admission.history
-                ],
-                "stream": True,
-                "max_tokens": admission.output_tokens,
-            }
+            payload = canonical_text_payload(
+                admission.history, resolved.model_path, output_tokens=admission.output_tokens
+            )
             done = False
             failed_frame = False
             reported_usage = False
