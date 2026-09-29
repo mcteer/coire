@@ -307,3 +307,7 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - OpenAI text parts now count actual text characters in context preflight. Inline image parts receive 400 before run spending or engine transport while the bounded temporary visual path is unfinished; core already refuses HTTP/file image URLs. Anthropic image and other unsupported blocks receive 400 before model resolution and cannot be silently dropped by the adapter. This is an interim refusal; parent T051/T057 stay open for verified VLM visual admission.
 - Route and unit contracts passed. Full Python suite: 989 passed, 117 conditional skipped. Strict mypy on 160 API/core source files, changed-file Ruff and OpenAPI freshness passed. Local arm64 API image built, passed policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-api-014az.spdx.json` (local evidence). Chat remains default-off.
+
+## Composer status acceptance tests (014ba)
+
+- Component tests verify that unknown warm-up, queue and failure status leave the draft intact and disable Send, then allow the same draft through Enter after recovery. Shift+Enter remains multiline. Parent T024 is complete; T026 still needs the browser/engine interaction timing acceptance. All 76 web tests, lint and build passed. This test-only slice changes no production image. Chat remains default-off.
