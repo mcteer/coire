@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Authenticated two-tab browser history (2026-09-29)
+
+- Playwright Chromium drove the actual `coire-web:ci` UI against a Chat-enabled disposable `coire-it` API with a generated per-run Access identity. Two tabs opened the same owner history at 1024×768 with reduced motion; the first renamed and deleted a conversation through browser controls, the second observed each persisted change after reload, and the deleted owner detail returned 404. No page errors occurred. The one-off browser acceptance script passed in 60.75 seconds and the fixture removed the disposable stack. This verifies real browser/API history behavior but does not exercise model streaming, Stop, actual Safari, or the unfamiliar-user flow, so T035/T073 remain open.
+
 ## Disposable Chat deletion and title purge (2026-09-29)
 
 - Added an opt-in disposable `coire-it` integration case that creates a private Chat conversation, deletes it, confirms owner detail and observer access return 404 immediately, restarts only that project's API, confirms the tombstone still denies detail and observer reads, then advances only that test row past the five-minute grace period and waits for maintenance to scrub its persisted title. The restart-extended case passed unskipped in 67.32 seconds with `COIRE_INTEGRATION=1`, Chat enabled and the local `ops,mcp` profile; its fixture removed the disposable Compose project and volumes. No Studio, model or provider was contacted. This supplies deletion, process-restart and background title-scrub evidence for T035, which remains open for the live two-tab, stream-recovery and healthy-Stop acceptance.
