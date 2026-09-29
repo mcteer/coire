@@ -12,6 +12,7 @@ from coire_core.models.chat import (
     ChatEvent,
     ChatMessageDelta,
     ChatTurnCreate,
+    ChatTurnDetail,
     ChatTurnStatus,
 )
 from coire_core.models.conversation import Conversation, ConversationMessage, TextPart
@@ -62,6 +63,11 @@ def test_turn_create_rejects_unbounded_or_ambiguous_selection() -> None:
         )
     with pytest.raises(ValidationError):
         ChatTurnCreate.model_validate({**request.model_dump(), "owner_id": str(uuid4())})
+
+
+def test_turn_detail_requires_saved_messages_and_cursor() -> None:
+    with pytest.raises(ValidationError):
+        ChatTurnDetail.model_validate({"event_cursor": 0})
 
 
 def test_event_payload_is_discriminated_and_cursor_is_scoped() -> None:

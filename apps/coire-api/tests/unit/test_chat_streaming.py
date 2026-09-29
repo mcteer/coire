@@ -1,0 +1,374 @@
+"""Native text streaming uses the existing proxy and persists each event before emission."""
+
+from __future__ import annotations
+
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+from coire_api.auth import Principal, PrincipalKind
+from coire_api.chat.streaming import native_stream, replay_saved_events
+from coire_api.chat.turns import Admission
+from coire_api.db import ChatConversationRow, ChatEventRow, ChatTurnRow, ModelRow, UserRow
+from coire_api.gateway.proxy import EngineProxyError
+from coire_api.gateway.resolution import ResolvedModel
+from coire_core.errors import ChatNotFound
+from coire_core.models.chat import (
+    ChatEvent,
+    ChatMessageDelta,
+    ChatTurnAccepted,
+    ChatTurnStatus,
+    ChatTurnTerminal,
+)
+from coire_core.models.gateway import ChatMessage as GatewayMessage
+from coire_core.models.gateway import UsageOutcome
+from coire_core.models.registry import ModelState, Visibility
+from coire_core.settings import Settings
+
+NOW = datetime.now(UTC)
+
+
+def _admission() -> Admission:
+    conversation_id, model_id, turn_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    row = ChatTurnRow(
+        id=turn_id,
+        conversation_id=conversation_id,
+        client_request_id=uuid.uuid4(),
+        request_hash="a" * 64,
+        accepted_revision=1,
+        input_message_id=uuid.uuid4(),
+        assistant_message_id=uuid.uuid4(),
+        model_id=model_id,
+        model_display_name="Named model",
+        action="chat",
+        state="accepted",
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    from coire_api.chat.turns import project_turn
+
+    event = ChatEvent(
+        conversation_id=conversation_id,
+        cursor=1,
+        turn_id=turn_id,
+        created_at=NOW,
+        payload=ChatTurnAccepted(turn=project_turn(row)),
+    )
+    return Admission(row, event, [GatewayMessage(role="user", content="hello")], 7, False)
+
+
+@asynccontextmanager
+async def _sessions() -> AsyncIterator[object]:
+    yield object()
+
+
+def _resolved(admission: Admission, *, cold: bool = False) -> ResolvedModel:
+    return ResolvedModel(
+        admission.turn.model_id,
+        "safe",
+        4096,
+        None if cold else "/opt/coire/models/safe",
+        None if cold else uuid.uuid4(),
+        None if cold else "edge",
+        None if cold else "http://engine",
+    )
+
+
+def _saved_event(admission: Admission, kind: str, cursor: int, **kwargs: object) -> ChatEvent:
+    if kind == "status":
+        payload = ChatTurnStatus(state=kwargs["state"])  # type: ignore[arg-type]
+    elif kind == "delta":
+        payload = ChatMessageDelta(
+            message_id=admission.turn.assistant_message_id,
+            channel="answer",
+            text=str(kwargs["text"]),
+            offset=len(str(kwargs["text"])),
+        )
+    else:
+        payload = ChatTurnTerminal(
+            state=kwargs["state"],
+            answer_length=0,
+            reasoning_length=0,  # type: ignore[arg-type]
+        )
+    return ChatEvent(
+        conversation_id=admission.turn.conversation_id,
+        cursor=cursor,
+        turn_id=admission.turn.id,
+        created_at=NOW,
+        payload=payload,
+    )
+
+
+async def test_text_stream_persists_before_each_native_event(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    sequence: list[str] = []
+    model_path: list[str] = []
+    actual_usage: list[object] = []
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "resolve_model", AsyncMock(return_value=_resolved(admission)))
+
+    async def upstream(
+        _url: str, payload: dict[str, object], _settings: Settings, _timing: object
+    ) -> AsyncIterator[bytes]:
+        model_path.append(str(payload["model"]))
+        yield b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'
+        yield b'data: {"choices":[],"usage":{"prompt_tokens":8,"completion_tokens":3}}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        sequence.append("persist:" + kind)
+        if kind == "terminal":
+            actual_usage.append(kwargs.get("usage"))
+        return _saved_event(admission, kind, len(sequence) + 1, **kwargs)
+
+    async def persist_usage(**_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist_usage)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    chunks = [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+    assert model_path == ["/opt/coire/models/safe"]
+    assert b"/opt/coire/models" not in b"".join(chunks)
+    assert b"Hello" not in chunks[0]
+    assert sequence == ["persist:status", "persist:delta", "persist:terminal"]
+    assert actual_usage[0].prompt_tokens == 8  # type: ignore[union-attr]
+    assert actual_usage[0].completion_tokens == 3  # type: ignore[union-attr]
+    assert chunks[-1].startswith(b"event: turn.terminal")
+
+
+async def test_cold_then_ready_emits_loading_before_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(
+        streaming,
+        "resolve_model",
+        AsyncMock(side_effect=[_resolved(admission, cold=True), _resolved(admission)]),
+    )
+    monkeypatch.setattr(streaming, "load_model", AsyncMock())
+
+    async def upstream(*_args: object) -> AsyncIterator[bytes]:
+        yield b"data: [DONE]\n\n"
+
+    cursor = 1
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        nonlocal cursor
+        cursor += 1
+        return _saved_event(admission, kind, cursor, **kwargs)
+
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    chunks = [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+    assert any(b"event: turn.status" in chunk for chunk in chunks)
+    assert any(b"turn.terminal" in chunk for chunk in chunks)
+
+
+@pytest.mark.parametrize("failure", ["engine", "disconnect"])
+async def test_failure_or_disconnect_saves_safe_terminal(
+    monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    saved_kinds: list[tuple[str, object]] = []
+    usage_outcomes: list[UsageOutcome] = []
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "resolve_model", AsyncMock(return_value=_resolved(admission)))
+
+    async def upstream(*_args: object) -> AsyncIterator[bytes]:
+        if failure == "engine":
+            raise EngineProxyError("private stack details")
+        yield b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        saved_kinds.append((kind, kwargs.get("state")))
+        return _saved_event(admission, kind, len(saved_kinds) + 1, **kwargs)
+
+    async def persist_usage(**kwargs: object) -> None:
+        usage_outcomes.append(kwargs["outcome"])  # type: ignore[arg-type]
+
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist_usage)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=failure == "disconnect"))
+    chunks = [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+    assert saved_kinds[-1][0] == "terminal"
+    assert saved_kinds[-1][1] in {"failed", "interrupted"}
+    assert b"private stack details" not in b"".join(chunks)
+    assert usage_outcomes == [
+        UsageOutcome.FAILED if failure == "engine" else UsageOutcome.DISCONNECTED
+    ]
+
+
+async def test_duplicate_replays_saved_events_without_engine(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    owner_id = uuid.uuid4()
+    principal = Principal(kind=PrincipalKind.USER, user_id=owner_id)
+    conversation = ChatConversationRow(
+        id=admission.turn.conversation_id,
+        owner_user_id=owner_id,
+        title="Saved",
+        mode="chat",
+        revision=2,
+        event_cursor=1,
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    turn = admission.turn
+    turn.state = "completed"
+    event = admission.event
+    assert event is not None
+    saved = ChatEventRow(
+        id=uuid.uuid4(),
+        conversation_id=event.conversation_id,
+        turn_id=event.turn_id,
+        cursor=event.cursor,
+        type=event.payload.type,
+        payload=event.payload.model_dump(mode="json"),
+        created_at=NOW,
+        expires_at=NOW,
+    )
+
+    class Session:
+        async def get(self, model: object, _identifier: object) -> object:
+            if model is UserRow:
+                return SimpleNamespace(active=True)
+            return conversation if model is ChatConversationRow else turn
+
+        async def execute(self, _statement: object) -> object:
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [saved]))
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(streaming, "session_scope", sessions)
+    monkeypatch.setattr(
+        streaming, "stream", AsyncMock(side_effect=AssertionError("duplicate invoked engine"))
+    )
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    chunks = [
+        chunk
+        async for chunk in replay_saved_events(
+            admission,
+            principal,
+            request,
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )  # type: ignore[arg-type]
+    ]
+    assert len(chunks) == 1
+    assert chunks[0].startswith(b"event: turn.accepted")
+
+
+async def test_entitlement_revocation_stops_stream_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    from coire_api.chat import streaming
+
+    owner_id, model_id = uuid.uuid4(), uuid.uuid4()
+    principal = Principal(
+        kind=PrincipalKind.USER, user_id=owner_id, entitlements=frozenset({"team-a"})
+    )
+    user = UserRow(id=owner_id, email="owner@example.test", display_name="Owner", active=True)
+    model = ModelRow(
+        id=model_id,
+        repo_id="owner/model",
+        slug="owner--model",
+        display_name="Model",
+        state=ModelState.READY,
+        visibility=Visibility.PUBLISHED,
+        entitlement=["team-a"],
+    )
+
+    class Session:
+        async def get(self, cls: object, _identifier: object) -> object:
+            return user if cls is UserRow else model
+
+        async def execute(self, _statement: object) -> object:
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: []))
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(streaming, "session_scope", sessions)
+    with pytest.raises(ChatNotFound):
+        await streaming._ensure_current_access(principal, model_id)
+
+
+async def test_persistence_failure_closes_stream_without_engine_details(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    outcomes: list[UsageOutcome] = []
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "resolve_model", AsyncMock(return_value=_resolved(admission)))
+    monkeypatch.setattr(
+        streaming,
+        "persist_native_event",
+        AsyncMock(side_effect=RuntimeError("private database error")),
+    )
+
+    async def persist_usage(**kwargs: object) -> None:
+        outcomes.append(kwargs["outcome"])  # type: ignore[arg-type]
+
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist_usage)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    chunks = [
+        chunk
+        async for chunk in native_stream(
+            admission,
+            principal,
+            request,
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )  # type: ignore[arg-type]
+    ]
+    assert len(chunks) == 1
+    assert b"private database error" not in chunks[0]
+    assert "private database error" not in caplog.text
+    assert outcomes == [UsageOutcome.FAILED]

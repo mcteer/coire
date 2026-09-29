@@ -102,3 +102,26 @@ async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyP
     timing.first_chunk_at = perf_counter()
     assert len([chunk async for chunk in track_stream(source(), usage, timing=timing)]) == 2
     assert recorded == ["first", "overhead"]
+
+
+async def test_disconnect_closes_upstream_before_return(monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    closed = False
+
+    async def source() -> AsyncIterator[bytes]:
+        nonlocal closed
+        try:
+            yield b'data: {"choices":[]}\n\n'
+        finally:
+            closed = True
+
+    async def persist(**_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist)
+    usage = UsageTracker(ANONYMOUS, str(uuid.uuid4()), GatewayProtocol.OPENAI)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=True))
+    assert [chunk async for chunk in track_stream(source(), usage, request)] == []  # type: ignore[arg-type]
+    assert closed

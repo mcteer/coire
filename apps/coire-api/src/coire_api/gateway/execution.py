@@ -171,6 +171,12 @@ async def track_stream(
         await usage.finish(UsageOutcome.FAILED, failure_code="engine_stream_failed")
     else:
         await usage.finish(UsageOutcome.SUCCEEDED)
+    finally:
+        # Returning on disconnect from an async-for does not close its source. Close the
+        # proxy generator explicitly so its engine slot and memory lease are released now.
+        close = getattr(source, "aclose", None)
+        if close is not None:
+            await close()
 
 
 async def rewrite_openai_model(

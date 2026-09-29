@@ -886,6 +886,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/conversations/{conversation_id}/turns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send Chat Turn */
+        post: operations["send_chat_turn_api_v1_chat_conversations__conversation_id__turns_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/conversations/{conversation_id}/turns/{turn_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chat Turn */
+        get: operations["get_chat_turn_api_v1_chat_conversations__conversation_id__turns__turn_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/models": {
         parameters: {
             query?: never;
@@ -2087,6 +2121,21 @@ export interface components {
             /** Tool Calling */
             tool_calling: number;
         };
+        /** ChatAttachmentSelection */
+        ChatAttachmentSelection: {
+            /**
+             * File Id
+             * Format: uuid
+             */
+            file_id: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "text" | "visual";
+            /** Pages */
+            pages?: number[];
+        };
         /** ChatCompletionRequest */
         ChatCompletionRequest: {
             /** Coire Affinity Node */
@@ -2099,7 +2148,7 @@ export interface components {
             /** Max Tokens */
             max_tokens?: number | null;
             /** Messages */
-            messages: components["schemas"]["ChatMessage"][];
+            messages: components["schemas"]["ChatMessage-Input"][];
             /**
              * Model
              * Format: uuid
@@ -2178,7 +2227,7 @@ export interface components {
             title?: string | null;
         };
         /** ChatMessage */
-        ChatMessage: {
+        "ChatMessage-Input": {
             /** Content */
             content?: string | (components["schemas"]["OpenAITextPart"] | components["schemas"]["OpenAIImagePart"])[] | null;
             /** Name */
@@ -2192,6 +2241,47 @@ export interface components {
             tool_call_id?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /** ChatMessage */
+        "ChatMessage-Output": {
+            /** Attachment Ids */
+            attachment_ids?: string[];
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model Display Name */
+            model_display_name?: string | null;
+            /** Model Id */
+            model_id?: string | null;
+            /** Position */
+            position: number;
+            /**
+             * Reasoning
+             * @default
+             */
+            reasoning: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant";
+            /**
+             * Text
+             * @default
+             */
+            text: string;
         };
         /** ChatPickerEntry */
         ChatPickerEntry: {
@@ -2233,6 +2323,115 @@ export interface components {
         ChatPickerResponse: {
             /** Data */
             data?: components["schemas"]["ChatPickerEntry"][];
+        };
+        /** ChatTurn */
+        ChatTurn: {
+            /** Accepted Revision */
+            accepted_revision: number;
+            /**
+             * Action
+             * @default chat
+             * @enum {string}
+             */
+            action: "chat" | "research" | "plan" | "apply";
+            /**
+             * Assistant Message Id
+             * Format: uuid
+             */
+            assistant_message_id: string;
+            /**
+             * Client Request Id
+             * Format: uuid
+             */
+            client_request_id: string;
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Input Message Id
+             * Format: uuid
+             */
+            input_message_id: string;
+            /** Model Display Name */
+            model_display_name: string;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "accepted" | "loading" | "running" | "completed" | "failed" | "stopped" | "interrupted";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            usage?: components["schemas"]["ChatUsage"] | null;
+        };
+        /** ChatTurnCreate */
+        ChatTurnCreate: {
+            /**
+             * Action
+             * @default chat
+             * @enum {string}
+             */
+            action: "chat" | "research" | "plan" | "apply";
+            /** Attachments */
+            attachments?: components["schemas"]["ChatAttachmentSelection"][];
+            /**
+             * Client Request Id
+             * Format: uuid
+             */
+            client_request_id: string;
+            /** Content */
+            content: string;
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Plan Id */
+            plan_id?: string | null;
+            /** Research Id */
+            research_id?: string | null;
+            /** Retry Of */
+            retry_of?: string | null;
+            /** Source Revision */
+            source_revision?: string | null;
+            /** Workspace Id */
+            workspace_id?: string | null;
+        };
+        /** ChatTurnDetail */
+        ChatTurnDetail: {
+            assistant_message: components["schemas"]["ChatMessage-Output"];
+            /** Event Cursor */
+            event_cursor: number;
+            input_message: components["schemas"]["ChatMessage-Output"];
+            turn: components["schemas"]["ChatTurn"];
+        };
+        /** ChatUsage */
+        ChatUsage: {
+            /** Completion Tokens */
+            completion_tokens: number;
+            /** Prompt Tokens */
+            prompt_tokens: number;
         };
         /** ClusterNodeState */
         ClusterNodeState: {
@@ -6331,6 +6530,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatConversation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_chat_turn_api_v1_chat_conversations__conversation_id__turns_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatTurnCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_turn_api_v1_chat_conversations__conversation_id__turns__turn_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTurnDetail"];
                 };
             };
             /** @description Validation Error */

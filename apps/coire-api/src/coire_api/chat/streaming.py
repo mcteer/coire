@@ -1,0 +1,446 @@
+"""Persist-before-emit native text events over the existing gateway proxy."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import suppress
+from datetime import UTC, datetime, timedelta
+from time import monotonic
+from typing import Literal
+
+from fastapi import Request
+from sqlalchemy import select
+
+from coire_api.auth import Principal
+from coire_api.chat.telemetry import requests_total, tracer
+from coire_api.chat.turns import Admission
+from coire_api.db import (
+    ChatConversationRow,
+    ChatEventRow,
+    ChatMessageRow,
+    ChatTurnRow,
+    EntitlementRow,
+    ModelRow,
+    UserRow,
+    session_scope,
+)
+from coire_api.gateway.execution import track_stream
+from coire_api.gateway.loading import load_model
+from coire_api.gateway.proxy import StreamTiming, stream
+from coire_api.gateway.resolution import ResolvedModel, resolve_model
+from coire_api.gateway.usage import UsageTracker
+from coire_api.registry.service import chat_model_eligible
+from coire_core.errors import ChatConflict, ChatNotFound
+from coire_core.models.chat import (
+    ChatEvent,
+    ChatMessageDelta,
+    ChatTurnStatus,
+    ChatTurnTerminal,
+    ChatUsage,
+)
+from coire_core.models.gateway import GatewayProtocol, UsageOutcome
+from coire_core.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+
+def encode_event(event: ChatEvent) -> bytes:
+    return (
+        f"event: {event.payload.type}\nid: {event.event_id}\ndata: {event.model_dump_json()}\n\n"
+    ).encode()
+
+
+async def persist_native_event(
+    kind: Literal["status", "delta", "terminal"],
+    admission: Admission,
+    *,
+    state: str | None = None,
+    text: str | None = None,
+    usage: ChatUsage | None = None,
+    safe_error: str | None = None,
+    settings: Settings,
+) -> ChatEvent:
+    """Commit state and event atomically, then return bytes to the streaming caller."""
+    turn_id = admission.turn.id
+    conversation_id = admission.turn.conversation_id
+    async with session_scope() as session:
+        conversation = await session.scalar(
+            select(ChatConversationRow)
+            .where(ChatConversationRow.id == conversation_id)
+            .with_for_update()
+        )
+        if conversation is None or conversation.deleted_at is not None:
+            raise ChatNotFound()
+        turn = await session.get(ChatTurnRow, turn_id)
+        if turn is None or turn.conversation_id != conversation_id:
+            raise ChatNotFound()
+        answer = await session.get(ChatMessageRow, turn.assistant_message_id)
+        if answer is None:
+            raise ChatNotFound()
+        if turn.state in {"completed", "failed", "stopped", "interrupted"}:
+            raise ChatConflict("turn is already terminal")
+        now = datetime.now(UTC)
+        payload: ChatTurnStatus | ChatMessageDelta | ChatTurnTerminal
+        if kind == "status":
+            assert state in {"loading", "running"}
+            turn.state = state
+            payload = ChatTurnStatus(state=state)  # type: ignore[arg-type]
+        elif kind == "delta":
+            assert text
+            if len(answer.text) + len(text) > 512 * 1024:
+                raise ChatConflict("assistant output limit exceeded")
+            answer.text += text
+            payload = ChatMessageDelta(
+                message_id=answer.id, channel="answer", text=text, offset=len(answer.text)
+            )
+        else:
+            assert state in {"completed", "failed", "interrupted", "stopped"}
+            turn.state = state
+            turn.finished_at = now
+            turn.usage = usage.model_dump(mode="json") if usage is not None else None
+            answer.usage = turn.usage
+            conversation.active_turn_id = None
+            payload = ChatTurnTerminal(
+                state=state,  # type: ignore[arg-type]
+                usage=usage,
+                answer_length=len(answer.text),
+                reasoning_length=len(answer.reasoning),
+                safe_error=safe_error,
+            )
+        turn.updated_at = now
+        conversation.event_cursor += 1
+        conversation.updated_at = now
+        event = ChatEvent(
+            conversation_id=conversation_id,
+            cursor=conversation.event_cursor,
+            turn_id=turn_id,
+            created_at=now,
+            payload=payload,
+        )
+        session.add(
+            ChatEventRow(
+                id=uuid.uuid4(),
+                conversation_id=conversation_id,
+                turn_id=turn_id,
+                cursor=event.cursor,
+                type=event.payload.type,
+                payload=event.payload.model_dump(mode="json"),
+                created_at=now,
+                expires_at=now + timedelta(hours=settings.chat_event_retention_hours),
+            )
+        )
+    if kind == "terminal":
+        requests_total.add(1, {"operation": "send_terminal", "outcome": state or "unknown"})
+        logger.info(
+            "chat turn terminal turn_id=%s model_id=%s state=%s",
+            turn_id,
+            admission.turn.model_id,
+            state,
+        )
+    return event
+
+
+async def _resolve(admission: Admission, principal: Principal) -> ResolvedModel:
+    async with session_scope() as session:
+        return await resolve_model(session, admission.turn.model_id, principal)
+
+
+async def _ensure_current_access(principal: Principal, model_id: uuid.UUID) -> None:
+    """Recheck live user/key/entitlements without trusting the stream-start snapshot."""
+    if principal.user_id is None:
+        raise ChatNotFound()
+    async with session_scope() as session:
+        user = await session.get(UserRow, principal.user_id)
+        model = await session.get(ModelRow, model_id)
+        if user is None or not user.active or model is None:
+            raise ChatNotFound()
+        entitlements = frozenset(
+            (
+                await session.execute(
+                    select(EntitlementRow.name).where(
+                        EntitlementRow.user_id == principal.user_id,
+                        EntitlementRow.revoked_at.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        current = principal.model_copy(update={"entitlements": entitlements})
+        if not chat_model_eligible(model, current):
+            raise ChatNotFound()
+        if principal.api_key_id is not None:
+            from coire_api.identity.keys import key_is_active
+
+            if not await key_is_active(session, principal):
+                raise ChatNotFound()
+
+
+async def native_stream(
+    admission: Admission, principal: Principal, request: Request, settings: Settings
+) -> AsyncIterator[bytes]:
+    """Stream one admitted turn; duplicate admissions replay their saved events elsewhere."""
+    assert admission.event is not None and not admission.replay
+    usage = UsageTracker(
+        principal,
+        str(admission.turn.model_id),
+        GatewayProtocol.OPENAI,
+        request_id=admission.turn.id,
+    )
+    usage.prompt_tokens = admission.prompt_tokens
+    last_access_check = 0.0
+    span = tracer.start_span("coire.api.chat.stream")
+    span.set_attribute("chat.turn_id", str(admission.turn.id))
+    span.set_attribute("chat.model_id", str(admission.turn.model_id))
+    terminal_saved = False
+    persistence_failed = False
+    try:
+        yield encode_event(admission.event)
+        try:
+            await _ensure_current_access(principal, admission.turn.model_id)
+            last_access_check = monotonic()
+            resolved = await _resolve(admission, principal)
+            if resolved.engine_url is None or resolved.model_path is None:
+                loading = await persist_native_event(
+                    "status", admission, state="loading", settings=settings
+                )
+                yield encode_event(loading)
+                task = asyncio.create_task(
+                    asyncio.wait_for(
+                        load_model(admission.turn.model_id, settings),
+                        timeout=settings.gateway_wait_ceiling_s,
+                    )
+                )
+                while not task.done():
+                    try:
+                        await asyncio.wait_for(
+                            asyncio.shield(task), timeout=settings.gateway_keepalive_interval_s
+                        )
+                    except TimeoutError:
+                        await _ensure_current_access(principal, admission.turn.model_id)
+                        last_access_check = monotonic()
+                        yield b": coire model loading\n\n"
+                await task
+                resolved = await _resolve(admission, principal)
+            if resolved.engine_url is None or resolved.model_path is None:
+                raise RuntimeError("model did not become ready")
+            usage.model_id = resolved.model_id
+            usage.engine_id = resolved.engine_id
+            running = await persist_native_event(
+                "status", admission, state="running", settings=settings
+            )
+            yield encode_event(running)
+            payload: dict[str, object] = {
+                "model": resolved.model_path,
+                "messages": [
+                    message.model_dump(mode="json", exclude_none=True)
+                    for message in admission.history
+                ],
+                "stream": True,
+                "max_tokens": admission.output_tokens,
+            }
+            done = False
+            failed_frame = False
+            reported_usage = False
+            timing = StreamTiming()
+            async for chunk in track_stream(
+                stream(resolved.engine_url, payload, settings, timing), usage, request, timing
+            ):
+                if monotonic() - last_access_check >= min(
+                    settings.credential_stream_recheck_s, 1.0
+                ):
+                    await _ensure_current_access(principal, admission.turn.model_id)
+                    last_access_check = monotonic()
+                for line in chunk.decode("utf-8", errors="replace").splitlines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:].strip()
+                    if data == "[DONE]":
+                        done = True
+                        continue
+                    try:
+                        frame = json.loads(data)
+                    except ValueError:
+                        failed_frame = True
+                        continue
+                    if not isinstance(frame, dict):
+                        failed_frame = True
+                        continue
+                    if "error" in frame:
+                        failed_frame = True
+                        continue
+                    reported = frame.get("usage")
+                    reported_usage = reported_usage or (
+                        isinstance(reported, dict)
+                        and isinstance(reported.get("prompt_tokens"), int)
+                        and isinstance(reported.get("completion_tokens"), int)
+                    )
+                    choices = frame.get("choices") or []
+                    if not isinstance(choices, list) or not choices:
+                        continue
+                    delta = choices[0].get("delta", {}) if isinstance(choices[0], dict) else {}
+                    content = delta.get("content") if isinstance(delta, dict) else None
+                    if not isinstance(content, str) or not content:
+                        continue
+                    for start in range(0, len(content), 64 * 1024):
+                        saved = await persist_native_event(
+                            "delta",
+                            admission,
+                            text=content[start : start + 64 * 1024],
+                            settings=settings,
+                        )
+                        yield encode_event(saved)
+            if not done or failed_frame:
+                disconnected = await request.is_disconnected()
+                state = "interrupted" if disconnected else "failed"
+                await usage.finish(
+                    UsageOutcome.DISCONNECTED if disconnected else UsageOutcome.FAILED,
+                    failure_code="client_disconnected" if disconnected else "engine_stream_failed",
+                )
+                safe_error = (
+                    "connection interrupted"
+                    if disconnected
+                    else "generation failed; retry this turn"
+                )
+            else:
+                state = "completed"
+                safe_error = None
+            actual = (
+                ChatUsage(
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                )
+                if reported_usage
+                else None
+            )
+            terminal = await persist_native_event(
+                "terminal",
+                admission,
+                state=state,
+                usage=actual,
+                safe_error=safe_error,
+                settings=settings,
+            )
+            terminal_saved = True
+            yield encode_event(terminal)
+        except asyncio.CancelledError:
+            raise
+        except (ChatNotFound, ChatConflict):
+            await usage.finish(UsageOutcome.DISCONNECTED, failure_code="chat_state_changed")
+            return
+        except Exception as exc:
+            logger.error(
+                "chat turn failed turn_id=%s model_id=%s error_type=%s",
+                admission.turn.id,
+                admission.turn.model_id,
+                type(exc).__name__,
+            )
+            await usage.finish(UsageOutcome.FAILED, failure_code="chat_generation_failed")
+            try:
+                terminal = await persist_native_event(
+                    "terminal",
+                    admission,
+                    state="failed",
+                    safe_error="generation failed; retry this turn",
+                    settings=settings,
+                )
+            except Exception as exc:
+                persistence_failed = True
+                logger.error(
+                    "chat terminal persistence failed turn_id=%s error_type=%s",
+                    admission.turn.id,
+                    type(exc).__name__,
+                )
+                return
+            terminal_saved = True
+            yield encode_event(terminal)
+    finally:
+        try:
+            if not terminal_saved and not persistence_failed:
+                await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
+                try:
+                    with suppress(ChatNotFound, ChatConflict):
+                        await persist_native_event(
+                            "terminal",
+                            admission,
+                            state="interrupted",
+                            safe_error="connection interrupted",
+                            settings=settings,
+                        )
+                except Exception as exc:
+                    logger.error(
+                        "chat terminal persistence failed turn_id=%s error_type=%s",
+                        admission.turn.id,
+                        type(exc).__name__,
+                    )
+        finally:
+            span.end()
+
+
+async def replay_saved_events(
+    admission: Admission, principal: Principal, request: Request, settings: Settings
+) -> AsyncIterator[bytes]:
+    """Follow one existing turn without acquiring a second engine or cancellation authority."""
+    cursor = 0
+    terminal_states = {"completed", "failed", "stopped", "interrupted"}
+    while True:
+        async with session_scope() as session:
+            if principal.user_id is None:
+                return
+            user = await session.get(UserRow, principal.user_id)
+            if user is None or not user.active:
+                return
+            if principal.api_key_id is not None:
+                from coire_api.identity.keys import key_is_active
+
+                if not await key_is_active(session, principal):
+                    return
+            conversation = await session.get(ChatConversationRow, admission.turn.conversation_id)
+            if (
+                conversation is None
+                or conversation.deleted_at is not None
+                or conversation.owner_user_id != principal.user_id
+            ):
+                return
+            rows = (
+                (
+                    await session.execute(
+                        select(ChatEventRow)
+                        .where(
+                            ChatEventRow.turn_id == admission.turn.id,
+                            ChatEventRow.cursor > cursor,
+                        )
+                        .order_by(ChatEventRow.cursor)
+                        .limit(100)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            turn = await session.get(ChatTurnRow, admission.turn.id)
+            finished = turn is None or turn.state in terminal_states
+        for row in rows:
+            event = ChatEvent.model_validate(
+                {
+                    "conversation_id": row.conversation_id,
+                    "cursor": row.cursor,
+                    "turn_id": row.turn_id,
+                    "created_at": row.created_at,
+                    "payload": row.payload,
+                }
+            )
+            cursor = row.cursor
+            yield encode_event(event)
+        if finished and len(rows) < 100:
+            return
+        if await request.is_disconnected():
+            return
+        try:
+            await asyncio.sleep(min(settings.credential_stream_recheck_s, 1.0))
+        except asyncio.CancelledError:
+            return
+        yield b": coire turn active\n\n"

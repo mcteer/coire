@@ -1766,6 +1766,38 @@
         "title": "CategoryScores",
         "type": "object"
       },
+      "ChatAttachmentSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "format": "uuid",
+            "title": "File Id",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "text",
+              "visual"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "pages": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 10,
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "file_id",
+          "mode"
+        ],
+        "title": "ChatAttachmentSelection",
+        "type": "object"
+      },
       "ChatCompletionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1800,7 +1832,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/ChatMessage"
+              "$ref": "#/components/schemas/ChatMessage-Input"
             },
             "minItems": 1,
             "title": "Messages",
@@ -2016,7 +2048,7 @@
         "title": "ChatConversationCreate",
         "type": "object"
       },
-      "ChatMessage": {
+      "ChatMessage-Input": {
         "additionalProperties": true,
         "properties": {
           "content": {
@@ -2085,6 +2117,93 @@
         },
         "required": [
           "role"
+        ],
+        "title": "ChatMessage",
+        "type": "object"
+      },
+      "ChatMessage-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Attachment Ids",
+            "type": "array"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_display_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Display Name"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "position": {
+            "minimum": 1.0,
+            "title": "Position",
+            "type": "integer"
+          },
+          "reasoning": {
+            "default": "",
+            "maxLength": 524288,
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 524288,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "position",
+          "role",
+          "created_at"
         ],
         "title": "ChatMessage",
         "type": "object"
@@ -2206,6 +2325,272 @@
           }
         },
         "title": "ChatPickerResponse",
+        "type": "object"
+      },
+      "ChatTurn": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_revision": {
+            "minimum": 1.0,
+            "title": "Accepted Revision",
+            "type": "integer"
+          },
+          "action": {
+            "default": "chat",
+            "enum": [
+              "chat",
+              "research",
+              "plan",
+              "apply"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "assistant_message_id": {
+            "format": "uuid",
+            "title": "Assistant Message Id",
+            "type": "string"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_message_id": {
+            "format": "uuid",
+            "title": "Input Message Id",
+            "type": "string"
+          },
+          "model_display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Model Display Name",
+            "type": "string"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "accepted",
+              "loading",
+              "running",
+              "completed",
+              "failed",
+              "stopped",
+              "interrupted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "client_request_id",
+          "accepted_revision",
+          "input_message_id",
+          "assistant_message_id",
+          "model_id",
+          "model_display_name",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatTurn",
+        "type": "object"
+      },
+      "ChatTurnCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "default": "chat",
+            "enum": [
+              "chat",
+              "research",
+              "plan",
+              "apply"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ChatAttachmentSelection"
+            },
+            "maxItems": 10,
+            "title": "Attachments",
+            "type": "array"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "content": {
+            "maxLength": 65536,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "research_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Id"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
+          },
+          "source_revision": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_revision",
+          "model_id",
+          "content"
+        ],
+        "title": "ChatTurnCreate",
+        "type": "object"
+      },
+      "ChatTurnDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "assistant_message": {
+            "$ref": "#/components/schemas/ChatMessage-Output"
+          },
+          "event_cursor": {
+            "minimum": 0.0,
+            "title": "Event Cursor",
+            "type": "integer"
+          },
+          "input_message": {
+            "$ref": "#/components/schemas/ChatMessage-Output"
+          },
+          "turn": {
+            "$ref": "#/components/schemas/ChatTurn"
+          }
+        },
+        "required": [
+          "turn",
+          "input_message",
+          "assistant_message",
+          "event_cursor"
+        ],
+        "title": "ChatTurnDetail",
+        "type": "object"
+      },
+      "ChatUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "completion_tokens": {
+            "minimum": 0.0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "minimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prompt_tokens",
+          "completion_tokens"
+        ],
+        "title": "ChatUsage",
         "type": "object"
       },
       "ClusterNodeState": {
@@ -11357,6 +11742,152 @@
           }
         ],
         "summary": "Create Chat Conversation",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/turns": {
+      "post": {
+        "operationId": "send_chat_turn_api_v1_chat_conversations__conversation_id__turns_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatTurnCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Chat Turn",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/turns/{turn_id}": {
+      "get": {
+        "operationId": "get_chat_turn_api_v1_chat_conversations__conversation_id__turns__turn_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Turn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTurnDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Chat Turn",
         "tags": [
           "chat"
         ]

@@ -41,6 +41,9 @@ Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 
 Before enabling it, set `COIRE_CHAT_PUBLIC_ORIGIN` to the exact HTTPS browser origin; local
 development may use `http://localhost` or `http://127.0.0.1` with an optional port. A missing
 origin refuses browser writes. See [`docs/runbooks/chat-web-ui.md`](../../docs/runbooks/chat-web-ui.md).
+`COIRE_CHAT_OUTPUT_TOKENS` (default 1024, maximum 4096) bounds each text generation and is
+reduced to at most one quarter of a selected model's context window. Persisted native event
+retention uses `COIRE_CHAT_EVENT_RETENTION_HOURS` (default and maximum 24).
 
 Identity requires `CLOUDFLARE_ACCESS_ISSUER` (the exact team issuer) and
 `CLOUDFLARE_ACCESS_AUDIENCE`. Seed `coire-bootstrap-admin-email` in Keychain by running

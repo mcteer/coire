@@ -170,6 +170,15 @@ class ChatConversationDetail(BaseModel):
     next_message_position: int | None = Field(default=None, ge=1)
 
 
+class ChatTurnDetail(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    turn: ChatTurn
+    input_message: ChatMessage
+    assistant_message: ChatMessage
+    event_cursor: int = Field(ge=0)
+
+
 class ChatTurnStatus(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

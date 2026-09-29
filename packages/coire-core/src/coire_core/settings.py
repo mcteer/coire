@@ -146,6 +146,7 @@ class Settings(BaseSettings):
 
     # --- private native chat and CPU file worker -----------------------
     chat_enabled: bool = False
+    chat_output_tokens: int = Field(default=1024, ge=1, le=4096)
     chat_upload_max_bytes: int = Field(default=10 * 1024**2, ge=1, le=10 * 1024**2)
     chat_conversation_quota_bytes: int = Field(default=50 * 1024**2, ge=1, le=50 * 1024**2)
     chat_owner_quota_bytes: int = Field(default=500 * 1024**2, ge=1, le=500 * 1024**2)
