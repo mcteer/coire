@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## PostgreSQL owner quota races (2026-09-29)
+
+- The disposable `coire-it` stack now has two opt-in, unskipped Chat file tests with a 34 MiB owner quota. Two simultaneous 1 MiB uploads in separate conversations produced one 202 and one 413. In the second test, a worker-unavailable file was given a test-only failed-output cleanup marker and its verified original-only reservation in the disposable database; explicit retry and a new upload raced from separate conversations, again producing one 202 and one 413. The committed owner reservation sum stayed within 34 MiB. Both tests passed in 63.01 seconds after rebuilding only local `coire-api:ci`, `coire-migrate:ci`, `coire-scheduler:ci` and `coire-web:ci`; the fixture removed its own Compose project and volumes. The full Python suite passed with 1146 passed and 128 conditional skips. Existing owner/preview/selection contracts and worker immutable-request/auth/cancel contracts complement the live quota races, completing parent T045. T049 remains open for temporary jobs and fault recovery.
+
 ## Shared VLM request outcome metric (2026-09-29)
 
 - The existing once-only gateway usage tracker now records `coire_vision_requests_total{outcome}` after a registry-resolved bare VLM request finishes, including native Chat and compatible `/v1` traffic. A unit test proves duplicate finish calls emit one fixed outcome label without model or content. The Chat dashboard and `CoireVisionRequestsFailed` alert consume it. Focused gateway/native-stream tests passed 29; changed source/test mypy and Ruff/format passed. Parent T068 remains open for the specified coding, node and agent path correlation.
