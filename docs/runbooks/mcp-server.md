@@ -41,6 +41,8 @@ workspace cleanup. Alerts `CoireMcpCallFailures` and `CoireMcpWorkspaceCleanupFa
 on failures. Structured logs include the call ID, run ID, owner, model, and node at their
 respective boundaries.
 
+The coding harness writes bounded, content-free activity receipts into its separate private output mount as `activity-<run_id>.jsonl`. Records name the actual context, model, edit, test and bundle phases, with started/completed/failed states and fixed error codes. An `activity_spool` failure with `limit_reached` means subsequent activity was truncated. The output mount is removed with the run; do not copy raw workspace or result files into diagnostics. The authenticated node reader and Chat event bridge are separate release gates, so keep native Chat disabled until they are complete.
+
 An apply result includes `artifact_id` and `artifact_url`. The owner can first read
 `GET /api/v1/mcp/artifacts/{artifact_id}/metadata`, then download the `.bundle` from the
 artifact URL using the same authenticated identity. Check `X-Coire-Sha256` against the

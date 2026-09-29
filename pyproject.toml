@@ -87,12 +87,14 @@ ignore_missing_imports = true
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["apps/coire-agent/ops"]
 # No collector exists in a test run, and the exporter's retry chatter drowns real output.
 # Export is verified by the integration suite, which does have one.
 testpaths = [
     "packages/coire-core/tests",
     "apps/coire-api/tests",
     "apps/coire-node/tests",
+    "apps/coire-agent/tests",
     "apps/coire-failover/tests",
     "apps/coire-file-worker/tests",
     "tests",

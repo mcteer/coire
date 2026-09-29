@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel
 
+from coire_agent.activity import ActivitySpool
 from coire_agent.harness import Harness
 from coire_core.models.harness import HarnessRunRequest, HarnessRunResult, TaskClass
 from coire_core.models.mcp import (
@@ -342,8 +343,10 @@ async def run_coding(
         raise CodingWorkspaceError("MCP coding request is missing call identity")
     if request.task_class is TaskClass.READ and mode is McpToolName.APPLY:
         raise CodingWorkspaceError("read task cannot apply edits")
-    revision = await workspace.revision()
-    context = workspace.context()
+    activity = ActivitySpool(workspace.output / f"activity-{run_id}.jsonl", run_id)
+    with activity.step("read_file"):
+        revision = await workspace.revision()
+        context = workspace.context()
     output_type: type[BaseModel]
     if mode is McpToolName.RESEARCH:
         output_type = ResearchDraft
@@ -353,11 +356,13 @@ async def run_coding(
         output_type = ApplyDraft
     schema = json.dumps(output_type.model_json_schema(), separators=(",", ":"))
     prompted = request.model_copy(update={"task": _prompt(request, context, mode, schema)})
-    draft_result = await harness.run_structured(prompted, output_type)
+    with activity.step("model_generation"):
+        draft_result = await harness.run_structured(prompted, output_type)
     if mode is McpToolName.RESEARCH:
         research_draft = ResearchDraft.model_validate(draft_result.output)
-        for citation in research_draft.citations:
-            workspace.validate_citation(citation)
+        with activity.step("read_file"):
+            for citation in research_draft.citations:
+                workspace.validate_citation(citation)
         result: ResearchResult | PlanResult | ApplyResult = ResearchResult(
             result_id=call_id,
             run_id=run_id,
@@ -376,58 +381,61 @@ async def run_coding(
         )
     else:
         apply_draft = ApplyDraft.model_validate(draft_result.output)
-        branch = f"coire/{run_id.hex[:12]}-{uuid.uuid4().hex[:8]}"
-        await workspace.git("switch", "-c", branch)
-        paths = workspace.apply_edits(apply_draft)
-        await workspace.git("add", "--", *paths)
-        status = await workspace.command(
-            [
-                "/usr/bin/git",
+        with activity.step("apply_patch"):
+            branch = f"coire/{run_id.hex[:12]}-{uuid.uuid4().hex[:8]}"
+            await workspace.git("switch", "-c", branch)
+            paths = workspace.apply_edits(apply_draft)
+            await workspace.git("add", "--", *paths)
+            status = await workspace.command(
+                [
+                    "/usr/bin/git",
+                    "-c",
+                    f"safe.directory={workspace.root}",
+                    "diff",
+                    "--cached",
+                    "--quiet",
+                ],
+            )
+            if status.status == 0:
+                raise CodingWorkspaceError("apply produced no changed files")
+            if status.status != 1:
+                raise CodingWorkspaceError("git diff failed")
+            await workspace.git(
                 "-c",
-                f"safe.directory={workspace.root}",
-                "diff",
-                "--cached",
-                "--quiet",
-            ],
-        )
-        if status.status == 0:
-            raise CodingWorkspaceError("apply produced no changed files")
-        if status.status != 1:
-            raise CodingWorkspaceError("git diff failed")
-        await workspace.git(
-            "-c",
-            "user.name=Coire",
-            "-c",
-            "user.email=coire@localhost",
-            "commit",
-            "-m",
-            f"coire: {apply_draft.summary[:120]}",
-        )
-        head = await workspace.revision()
-        diff = await workspace.git(
-            "diff", "--no-ext-diff", f"{revision}..{head}", "--", cap=MAX_DIFF_BYTES + 1
-        )
-        tests = await workspace.run_tests()
-        bundle = workspace.output / "branch.bundle"
-        bundle_result = await workspace.command(
-            [
-                "/usr/bin/git",
+                "user.name=Coire",
                 "-c",
-                f"safe.directory={workspace.root}",
-                "bundle",
-                "create",
-                str(bundle),
-                branch,
-            ],
-            timeout_seconds=120,
-            watch_file=bundle,
-            watch_limit=MAX_ARTIFACT_BYTES,
-        )
-        bundle_size = await asyncio.to_thread(_file_size, bundle)
-        if bundle_result.status != 0 or bundle_size < 0:
-            raise CodingWorkspaceError("branch artifact collection failed")
-        if bundle_size > MAX_ARTIFACT_BYTES:
-            raise CodingWorkspaceError("branch artifact exceeds size cap")
+                "user.email=coire@localhost",
+                "commit",
+                "-m",
+                f"coire: {apply_draft.summary[:120]}",
+            )
+            head = await workspace.revision()
+            diff = await workspace.git(
+                "diff", "--no-ext-diff", f"{revision}..{head}", "--", cap=MAX_DIFF_BYTES + 1
+            )
+        with activity.step("run_tests"):
+            tests = await workspace.run_tests()
+        with activity.step("branch_bundle"):
+            bundle = workspace.output / "branch.bundle"
+            bundle_result = await workspace.command(
+                [
+                    "/usr/bin/git",
+                    "-c",
+                    f"safe.directory={workspace.root}",
+                    "bundle",
+                    "create",
+                    str(bundle),
+                    branch,
+                ],
+                timeout_seconds=120,
+                watch_file=bundle,
+                watch_limit=MAX_ARTIFACT_BYTES,
+            )
+            bundle_size = await asyncio.to_thread(_file_size, bundle)
+            if bundle_result.status != 0 or bundle_size < 0:
+                raise CodingWorkspaceError("branch artifact collection failed")
+            if bundle_size > MAX_ARTIFACT_BYTES:
+                raise CodingWorkspaceError("branch artifact exceeds size cap")
         excerpt = diff.head[:MAX_DIFF_BYTES].decode("utf-8", errors="replace")
         artifact_id = uuid.uuid4()
         result = ApplyResult(
