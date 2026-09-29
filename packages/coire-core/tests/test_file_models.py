@@ -9,6 +9,9 @@ from pydantic import ValidationError
 from coire_core.models.files import (
     ChatAttachment,
     ChatAttachmentSelection,
+    ChatFileDeleteRequest,
+    ChatFileProcessRequest,
+    ChatUploadMetadata,
     FileProcessJob,
     FileProcessRequest,
     FileProcessResult,
@@ -72,3 +75,39 @@ def test_attachment_has_safe_metadata_and_byte_bounds() -> None:
     assert attachment.filename == "notes.txt"
     with pytest.raises(ValidationError):
         ChatAttachment.model_validate({**attachment.model_dump(), "filename": "../secret"})
+
+
+def test_upload_and_explicit_process_metadata_are_strict() -> None:
+    upload = ChatUploadMetadata(filename="diagram.png", expected_revision=2)
+    assert upload.filename == "diagram.png"
+    assert ChatFileDeleteRequest(expected_revision=1).expected_revision == 1
+    with pytest.raises(ValidationError):
+        ChatUploadMetadata(filename="../diagram.png", expected_revision=2)
+    with pytest.raises(ValidationError):
+        ChatUploadMetadata.model_validate({**upload.model_dump(), "storage_path": "/etc/passwd"})
+    with pytest.raises(ValidationError):
+        ChatUploadMetadata(filename="x", expected_revision=0)
+    render = ChatFileProcessRequest(
+        request_id=uuid4(), expected_revision=2, operation="render", selected_pages=[2, 1]
+    )
+    assert render.selected_pages == [2, 1]
+    with pytest.raises(ValidationError):
+        ChatFileProcessRequest(request_id=uuid4(), expected_revision=1, operation="render")
+    with pytest.raises(ValidationError):
+        ChatFileProcessRequest(
+            request_id=uuid4(), expected_revision=1, operation="render", selected_pages=[1, 1]
+        )
+
+
+def test_worker_rejects_duplicate_output_ids() -> None:
+    asset_id = uuid4()
+    with pytest.raises(ValidationError):
+        FileProcessRequest(
+            job_id="01JZ6F7Y6CFWPDKBSAADRS6F3Z",
+            input_id=uuid4(),
+            source_sha256="a" * 64,
+            operation="render",
+            selected_pages=[1, 2],
+            output_ids=[asset_id, asset_id],
+            deadline_at=datetime.now(UTC),
+        )

@@ -13,6 +13,57 @@ ULID_PATTERN = r"^[0-9A-HJKMNP-TV-Z]{26}$"
 SHA256_PATTERN = r"^[a-f0-9]{64}$"
 
 
+def _safe_basename(value: str) -> str:
+    if (
+        value in {".", ".."}
+        or ".." in value
+        or "/" in value
+        or "\\" in value
+        or any(ord(character) < 32 for character in value)
+    ):
+        raise ValueError("filename must be a safe basename")
+    return value
+
+
+class ChatUploadMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str = Field(min_length=1, max_length=255)
+    expected_revision: int = Field(ge=1)
+
+    @field_validator("filename")
+    @classmethod
+    def safe_filename(cls, value: str) -> str:
+        return _safe_basename(value)
+
+
+class ChatFileDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+
+
+class ChatFileProcessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    request_id: uuid.UUID
+    expected_revision: int = Field(ge=1)
+    operation: Literal["inspect", "render"]
+    selected_pages: list[int] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def valid_selection(self) -> ChatFileProcessRequest:
+        if self.operation == "render" and not self.selected_pages:
+            raise ValueError("render requires selected pages")
+        if self.operation == "inspect" and self.selected_pages:
+            raise ValueError("inspect has no selected pages")
+        if len(set(self.selected_pages)) != len(self.selected_pages) or any(
+            page < 1 or page > 50 for page in self.selected_pages
+        ):
+            raise ValueError("pages must be unique and within 1..50")
+        return self
+
+
 class ChatAttachmentSelection(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -51,15 +102,7 @@ class ChatAttachment(BaseModel):
     @field_validator("filename")
     @classmethod
     def safe_filename(cls, value: str) -> str:
-        if (
-            value in {".", ".."}
-            or ".." in value
-            or "/" in value
-            or "\\" in value
-            or any(ord(character) < 32 for character in value)
-        ):
-            raise ValueError("filename must be a safe basename")
-        return value
+        return _safe_basename(value)
 
 
 class FileProcessRequest(BaseModel):
@@ -81,6 +124,10 @@ class FileProcessRequest(BaseModel):
             raise ValueError("pages must be within 1..50")
         if len(set(self.selected_pages)) != len(self.selected_pages):
             raise ValueError("pages must be unique")
+        if len(set(self.output_ids)) != len(self.output_ids):
+            raise ValueError("output IDs must be unique")
+        if self.operation == "inspect" and self.selected_pages:
+            raise ValueError("inspect cannot select pages")
         if self.operation == "render" and not self.selected_pages:
             raise ValueError("render requires selected pages")
         if self.operation == "render" and len(self.output_ids) != len(self.selected_pages):
