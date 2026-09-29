@@ -66,4 +66,9 @@ Cold Chat turns now publish `queued` when the latest active model instance is re
 
 The node now records `mlx_vlm` as a separate bare engine backend and launches it only from a verified local store copy, with offline mode, no inherited Hub token or remote-code trust, and one concurrent sequence/cache entry unless registry control supplies bounded values. The backend survives agent re-adoption; a conflicting text/VLM duplicate load returns a conflict. Migration 0019 stores this backend in the control-plane engine row and backfills existing text rows. Check node engine status and process records for the backend and reservation when diagnosing a failed visual load. Stop/unload the owned engine through the existing node control path; a node agent restart re-adopts a still-live process. Do not enable visual Chat until acquisition, context, gateway and tiny-model gates pass.
 
+The native node install now consumes a lock-selected, hash-checked macOS arm64 wheelhouse and
+checks both bare server CLIs before moving `envs/current`. See [model instance operations](instances.md#locked-native-node-environment)
+for the build, install and rollback procedure. This smoke checks imports and command entry points
+only; visual model acceptance remains a separate gate. Keep `COIRE_CHAT_ENABLED=false`.
+
 Until temporary image normalization and measured VLM visual budgeting are connected, the compatible `/v1/chat/completions` route returns 400 for inline image parts before spending tokens or contacting an engine. HTTP/file image URLs are rejected by the core wire schema. The `/v1/messages` adapter returns 400 for image or other unsupported Anthropic blocks instead of silently omitting them. Text parts remain available and count their full text in context preflight. Keep visual admission disabled until the remaining visual gateway and tiny-model gates pass.

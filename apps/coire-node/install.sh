@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ENV_DIR="$PREFIX/envs/$AGENT_VERSION"
+ENV_DIR="$PREFIX/envs/$AGENT_VERSION-<locked-wheel-digest>"
 PLIST="/Library/LaunchDaemons/com.coire.node.plist"
 
 say() { printf '  %s\n' "$*"; }
@@ -110,25 +110,50 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   codesign --force --sign - --identifier com.coire.node.python "$NODE_PYTHON" >/dev/null
 fi
 
-# --- agent virtualenv ------------------------------------------------------
-say "creating $ENV_DIR"
-if [[ -x "$ENV_DIR/bin/python3" ]]; then
-  say "reusing existing versioned environment"
-else
-  uv venv --python "$PYTHON_VERSION" "$ENV_DIR" >/dev/null
-fi
-
-if [[ -n "$WHEEL_DIR" ]]; then
-  say "installing from wheels in $WHEEL_DIR"
-  VIRTUAL_ENV="$ENV_DIR" uv pip install --upgrade --python "$ENV_DIR/bin/python3" \
-    "$WHEEL_DIR"/coire_core-*.whl "$WHEEL_DIR"/coire_node-*.whl >/dev/null
-else
+# --- exact locked wheel graph ---------------------------------------------
+if [[ -z "$WHEEL_DIR" ]]; then
   echo "error: --wheel-dir is required." >&2
   echo "on core:  scripts/build-node-wheel.sh $NODE_NAME" >&2
   exit 2
 fi
+WHEELHOUSE="$WHEEL_DIR/node-wheels"
+REQUIREMENTS="$WHEELHOUSE/requirements.txt"
+CORE_WHEELS=("$WHEEL_DIR"/coire_core-*.whl)
+NODE_WHEELS=("$WHEEL_DIR"/coire_node-*.whl)
+if [[ ! -r "$REQUIREMENTS" || ! -d "$WHEELHOUSE" || \
+      ${#CORE_WHEELS[@]} -ne 1 || ${#NODE_WHEELS[@]} -ne 1 || \
+      ! -f "${CORE_WHEELS[0]}" || ! -f "${NODE_WHEELS[0]}" ]]; then
+  echo "error: stage one core/node wheel and the locked node-wheels directory" >&2
+  exit 2
+fi
+LOCK_ID="$(cat "$REQUIREMENTS" "${CORE_WHEELS[0]}" "${NODE_WHEELS[0]}" | shasum -a 256 | cut -c1-12)"
+ENV_DIR="$PREFIX/envs/$AGENT_VERSION-$LOCK_ID"
+STAGING="$ENV_DIR.staging.$$"
+cleanup_stage() { [[ ! -e "$STAGING" ]] || rm -rf "$STAGING"; }
+trap cleanup_stage EXIT
 
-ln -sfn "$ENV_DIR" "$PREFIX/envs/current"
+if [[ -e "$ENV_DIR" && ! -x "$ENV_DIR/bin/python3" ]]; then
+  echo "error: immutable node environment is incomplete: $ENV_DIR" >&2
+  exit 2
+fi
+if [[ ! -x "$ENV_DIR/bin/python3" ]]; then
+  say "creating isolated $ENV_DIR from locked wheels"
+  uv venv --python "$PYTHON_VERSION" "$STAGING" >/dev/null
+  uv pip sync --python "$STAGING/bin/python3" --require-hashes --no-index \
+    --find-links "$WHEELHOUSE" "$REQUIREMENTS" >/dev/null
+  uv pip install --python "$STAGING/bin/python3" --no-index --no-deps \
+    "${CORE_WHEELS[0]}" "${NODE_WHEELS[0]}" >/dev/null
+  uv pip check --python "$STAGING/bin/python3" >/dev/null
+  SMOKE_SOURCE="$STAGING"
+else
+  say "checking existing immutable $ENV_DIR"
+  SMOKE_SOURCE="$ENV_DIR"
+fi
+
+# A failed import or CLI flag check leaves the previous active environment untouched.
+"$SMOKE_SOURCE/bin/python3" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \
+  "$SMOKE_SOURCE" "$ENV_DIR" "$PREFIX/envs/current"
+
 say "flipped $PREFIX/envs/current -> $ENV_DIR"
 
 # --- launchd ---------------------------------------------------------------
