@@ -241,7 +241,27 @@ class TestVerbs:
             "estimate_bytes": 4096,
             "started_at": NOW,
         }
-        client, seen = _client(lambda _request: _json(body, 202))
+        health = {
+            "name": "coire-edge-a",
+            "agent_version": "0.2.0",
+            "uptime_seconds": 1,
+            "cpu_percent": 1,
+            "memory_total_bytes": 1024,
+            "memory_free_bytes": 1024,
+            "disk_total_bytes": 1024,
+            "disk_free_bytes": 1024,
+            "agent_cpu_percent": 1,
+            "agent_rss_bytes": 1,
+            "collection_budget_ok": True,
+            "sampled_at": NOW,
+            "path": "control",
+            "supported_backends": ["mlx_lm", "mlx_vlm"],
+        }
+        client, seen = _client(
+            lambda request: (
+                _json(health) if request.url.path == "/node/health" else _json(body, 202)
+            )
+        )
         created, status = await client.start_engine(
             "coire-edge-a",
             engine_id=JOB_ID,
@@ -253,11 +273,29 @@ class TestVerbs:
         )
         await client.aclose()
         assert not created and status.backend is EngineBackend.MLX_VLM
-        sent = json.loads(seen[0].read())
+        assert [request.url.path for request in seen] == ["/node/health", "/node/engines"]
+        sent = json.loads(seen[1].read())
         assert sent["backend"] == "mlx_vlm"
         assert sent["vision_cache_size"] == 2
         assert sent["max_num_seqs"] == 1
         assert sent["chat_template"] is None
+
+        client, seen = _client(
+            lambda _request: _json(
+                {key: value for key, value in health.items() if key != "supported_backends"}
+            )
+        )
+        with pytest.raises(NodeError) as unsupported:
+            await client.start_engine(
+                "coire-edge-a",
+                engine_id=JOB_ID,
+                slug="verified-vision",
+                estimate_bytes=4096,
+                backend=EngineBackend.MLX_VLM,
+            )
+        await client.aclose()
+        assert unsupported.value.kind is NodeErrorKind.PROTOCOL
+        assert [request.url.path for request in seen] == ["/node/health"]
 
     async def test_start_import_sends_the_manifest_and_grant(self) -> None:
         manifest = ChecksumManifest(

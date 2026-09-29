@@ -50,6 +50,7 @@ from coire_core.models import (
 )
 from coire_core.models.engine import EngineState
 from coire_core.models.node import Reachability
+from coire_core.models.registry import EngineBackend
 from coire_core.settings import get_settings
 from coire_scheduler.placement import (
     AdmissionPlan,
@@ -113,6 +114,16 @@ async def _execute_sharded_launch(instance_id: uuid.UUID) -> None:
                 InstanceState.FAILED,
                 reason="verified variant disappeared",
                 failure_code="variant_missing",
+            )
+            return
+        if variant.backend == EngineBackend.MLX_VLM:
+            admission_refusals.add(1, {"reason": "unsupported_visual_sharding"})
+            await transition(
+                session,
+                instance.id,
+                InstanceState.FAILED,
+                reason="visual models require a single Studio",
+                failure_code="unsupported_visual_sharding",
             )
             return
         mode = ShardingMode(instance.policy.split(":", 1)[1])

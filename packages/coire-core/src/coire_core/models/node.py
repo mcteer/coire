@@ -19,6 +19,7 @@ from coire_core.models.engine import EngineStatus
 from coire_core.models.harness import HarnessRunRequest, TaskClass
 from coire_core.models.jobs import JobStatus
 from coire_core.models.mcp import WorkspaceSource
+from coire_core.models.registry import EngineBackend
 
 MESH_SUBNET = IPv4Network("192.168.100.0/24")
 """The unrouted Thunderbolt mesh. See docs/adr/0002 and ARCHITECTURE.md 2.1."""
@@ -242,6 +243,7 @@ class NodeStatus(BaseModel):
     """Sum of the *estimates* of live engines, not their measured footprints. Admission on a
     number that moves under load is not reproducible (spec FR-020, research R6)."""
     store_free_bytes: int = 0
+    supported_backends: list[EngineBackend] = Field(default_factory=lambda: [EngineBackend.MLX_LM])
 
 
 class NodeStatusV2(BaseModel):
@@ -271,3 +273,4 @@ class NodeStatusV2(BaseModel):
     memory_budget_bytes: int = Field(default=0, ge=0)
     memory_committed_bytes: int = Field(default=0, ge=0)
     store_free_bytes: int = Field(default=0, ge=0)
+    supported_backends: list[EngineBackend] = Field(default_factory=lambda: [EngineBackend.MLX_LM])

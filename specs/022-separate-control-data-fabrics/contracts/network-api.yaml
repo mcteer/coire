@@ -149,6 +149,7 @@ components:
         memory_budget_bytes: { type: integer, minimum: 0 }
         memory_committed_bytes: { type: integer, minimum: 0 }
         store_free_bytes: { type: integer, minimum: 0 }
+        supported_backends: { type: array, items: { type: string, enum: [mlx_lm, mlx_vlm] }, description: "feature 014: optional; old nodes imply mlx_lm only" }
 
     StudioDataLinkStatus:
       type: object

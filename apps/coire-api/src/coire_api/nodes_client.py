@@ -473,6 +473,14 @@ class NodeClient:
         rather than starting a second one (spec FR-019); the caller needs to know which
         happened so it does not create a duplicate row.
         """
+        if backend is EngineBackend.MLX_VLM:
+            observed = await self.health(node)
+            if EngineBackend.MLX_VLM not in observed.supported_backends:
+                raise NodeError(
+                    NodeErrorKind.PROTOCOL,
+                    node,
+                    detail="node does not advertise the visual engine backend",
+                )
         status, body = await self._call(
             "POST",
             node,

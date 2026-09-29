@@ -43,6 +43,7 @@ from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.preconditions import require_current
 from coire_api.registry import service
 from coire_api.registry.placement import NoCandidate, choose_load_node
+from coire_api.registry.visual_memory import reservation_bytes
 from coire_core.models.audit import AuditAction
 from coire_core.models.engine import EngineProcess, EngineState
 from coire_core.models.jobs import DownloadJob
@@ -421,7 +422,9 @@ async def load_model(
     """Load a model on a node. Exercised by tests and the console; user traffic is feature 003."""
     model = await _get(session, model_id)
     if (model.source or "studio") != "studio":
-        raise HTTPException(status.HTTP_409_CONFLICT, "external provider model has no Studio engine")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "external provider model has no Studio engine"
+        )
     if model.state is not ModelState.READY:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -431,11 +434,12 @@ async def load_model(
             ).model_dump(mode="json"),
         )
 
+    required_bytes = reservation_bytes(model.memory_estimate_bytes, model.visual_capability)
     views = await service.node_views(session, _statuses(http_request))
     try:
         target = choose_load_node(
             model.placement_policy,
-            model.memory_estimate_bytes,
+            required_bytes,
             views,
             override=(body or {}).get("node"),
         )
@@ -477,7 +481,7 @@ async def load_model(
         node_id=node.id,
         port=0,
         state=EngineState.STARTING,
-        estimate_bytes=model.memory_estimate_bytes,
+        estimate_bytes=required_bytes,
         backend=model.backend,
     )
     session.add(row)
@@ -487,7 +491,7 @@ async def load_model(
             node.name,
             engine_id=engine_id,
             slug=model.slug,
-            estimate_bytes=model.memory_estimate_bytes,
+            estimate_bytes=required_bytes,
             chat_template=(model.chat_template if model.backend == EngineBackend.MLX_LM else None),
             backend=EngineBackend(model.backend),
         )

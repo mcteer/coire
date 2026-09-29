@@ -1,5 +1,10 @@
 # Feature 014 implementation review
 
+## Measured visual memory admission (2026-09-29)
+
+- Parent T056 is complete. VLM load and placement reserve the base model estimate plus measured encoder/cache memory and a bounded per-image working allowance. This also corrects older acquired rows at admission time. Admin, ops, gateway and scheduler paths use the same calculation; sharded VLM policy is refused before placement and again by the scheduler. Node health now advertises supported engine backends; the API refuses a VLM start before engine I/O if an older node omits that capability. Existing node contracts cover excess-reservation refusal. Focused placement/loading tests passed 20 and node-client/metrics tests passed 38; strict mypy passed on 216 API/core/node source files and Ruff passed. A live pre-prod VLM load must upgrade both node agents with this additive health contract first.
+- The first full suite run caught the legacy node-health YAML contract missing `supported_backends`; feature 000/001/022 health contracts now accept that optional additive field. The rerun passed 1,139 Python tests with 119 conditional skips and 435 warnings in 75.05 seconds. Ruff, strict mypy on 216 API/core/node source files, and API OpenAPI freshness passed. No Studio engine or Docker command was used for this gate.
+
 ## File UI audit (2026-09-29)
 
 - Parent T050 is complete: typed same-origin multipart upload, bounded file controls, visible processing/retry, explicit text versus PDF page-image choices, private previews, original download, and same-conversation selection reuse are implemented and covered by client/component/Chat tests. The UI never embeds the original PDF or places an access token in a preview URL; its visual selections remain blocked until native visual Chat is supported. The 89-test web suite, lint and build passed in the browser lifecycle gate. T049/T064/T065 remain open for backend visual delivery and acceptance.

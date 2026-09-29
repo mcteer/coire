@@ -446,6 +446,7 @@ components:
         memory_budget_bytes: { type: integer }
         memory_committed_bytes: { type: integer }
         store_free_bytes: { type: integer }
+        supported_backends: { type: array, items: { type: string, enum: [mlx_lm, mlx_vlm] }, description: "feature 014: optional; old nodes imply mlx_lm only" }
 
     RepoInspection:
       type: object
