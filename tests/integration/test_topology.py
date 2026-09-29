@@ -254,6 +254,12 @@ class TestImagesAndSecrets:
         mounts = {item["target"]: item for item in worker["volumes"]}
         assert mounts["/opt/coire/chat/originals"]["read_only"] is True
         assert mounts["/opt/coire/chat/derived"].get("read_only", False) is False
+        api_mounts = {item["target"]: item for item in services["coire-api"]["volumes"]}
+        assert (
+            api_mounts["/opt/coire/chat/originals"]["source"]
+            == mounts["/opt/coire/chat/originals"]["source"]
+        )
+        assert api_mounts["/opt/coire/chat/originals"].get("read_only", False) is False
 
     def test_studio_failover_stays_off_the_core_project(self, config: dict[str, Any]) -> None:
         """The frontend is a profiled Studio service. Core's default project does not run it."""

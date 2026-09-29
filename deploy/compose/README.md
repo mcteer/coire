@@ -40,8 +40,13 @@ published port, database mount, model weights, or harness. It reads `coire-chat-
 read-only and writes `coire-chat-derived`; both are private named volumes. The image seeds
 non-root ownership for its writable volume. `COIRE_FILE_WORKER_TIMEOUT_SECONDS` defaults to
 30 and is capped at 30 seconds; one conversion runs per worker process under 512 MiB/1 CPU.
-The profile remains opt-in while upload, durable dispatch, blob cleanup and visual serving
+The profile remains opt-in while durable dispatch, blob cleanup and visual serving
 are unfinished. `COIRE_CHAT_ENABLED` remains `false` during this stage.
+The API also mounts `coire-chat-originals` for generated-key upload and owner-scoped download;
+the worker sees that same volume read-only. Original admission limits individual files to
+10 MiB and reserves worst-case derived bytes against 50 MiB/conversation and 500 MiB/owner.
+Nginx permits an 11 MiB multipart envelope only on the native Chat upload route. Queued jobs
+remain pending until the scheduler dispatcher and result publication path are connected.
 
 Runtime configuration is supplied through `COIRE_` environment variables and Keychain-sourced
 compose secrets. Gateway tuning variables and operational procedures are documented in

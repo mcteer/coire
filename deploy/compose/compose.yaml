@@ -93,7 +93,9 @@ services:
       FAILOVER_CORE_PUBLIC_KEY: ${COIRE_FAILOVER_CORE_PUBLIC_KEY:-}
       FAILOVER_EDGE_A_PUBLIC_KEY: ${COIRE_FAILOVER_EDGE_A_PUBLIC_KEY:-}
       FAILOVER_EDGE_B_PUBLIC_KEY: ${COIRE_FAILOVER_EDGE_B_PUBLIC_KEY:-}
-    volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
+    volumes:
+      - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
+      - coire-chat-originals:/opt/coire/chat/originals
     secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key]
     depends_on:
       postgres: {condition: service_healthy}

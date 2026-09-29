@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal
 from coire_api.db import (
+    ChatAttachmentRow,
     ChatConversationRow,
     ChatEventRow,
     ChatMessageRow,
@@ -238,13 +239,30 @@ async def get_conversation_detail(
             .scalars()
             .all()
         )
+    attachments = list(
+        (
+            await session.execute(
+                select(ChatAttachmentRow)
+                .where(
+                    ChatAttachmentRow.conversation_id == conversation_id,
+                    ChatAttachmentRow.owner_user_id == principal.user_id,
+                    ChatAttachmentRow.deleted_at.is_(None),
+                )
+                .order_by(ChatAttachmentRow.created_at, ChatAttachmentRow.id)
+                .limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    from coire_api.chat.files import project_attachment
     from coire_api.chat.turns import project_message, project_turn
 
     return ChatConversationDetail(
         conversation=project_conversation(row),
         messages=[project_message(message) for message in page],
         turns=[project_turn(turn) for turn in turns],
-        attachments=[],
+        attachments=[project_attachment(attachment) for attachment in attachments],
         event_cursor=row.event_cursor,
         next_message_position=page[0].position if len(newest) > query.limit and page else None,
     )

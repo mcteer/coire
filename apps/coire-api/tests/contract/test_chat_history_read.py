@@ -63,6 +63,8 @@ class FakeHistorySession:
             rows = self.turns
         elif "FROM chat_messages" in sql:
             rows = self.messages
+        elif "FROM chat_attachments" in sql:
+            rows = []
         else:
             rows = self.conversations
         return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))

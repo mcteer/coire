@@ -2,14 +2,36 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from pathlib import Path
 from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-from fastapi.responses import StreamingResponse
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
+from fastapi.responses import Response, StreamingResponse
+from pydantic import ValidationError
 
-from coire_api.auth import CurrentChatUser
+from coire_api.auth import CurrentChatUser, require_owned_chat
+from coire_api.chat.files import (
+    admit_original,
+    owned_attachment,
+    project_attachment,
+    read_original,
+    stage_original,
+)
 from coire_api.chat.service import (
     create_conversation,
     delete_conversation,
@@ -41,6 +63,7 @@ from coire_core.models.chat import (
     ChatTurnCreate,
     ChatTurnDetail,
 )
+from coire_core.models.files import ChatAttachment, ChatUploadMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +76,102 @@ def require_chat_enabled(request: Request) -> None:
 router = APIRouter(
     prefix="/api/v1/chat", tags=["chat"], dependencies=[Depends(require_chat_enabled)]
 )
+
+
+@router.post(
+    "/conversations/{conversation_id}/files",
+    response_model=ChatAttachment,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def upload_chat_file(
+    conversation_id: uuid.UUID,
+    filename: Annotated[str, Form(max_length=255)],
+    expected_revision: Annotated[int, Form(ge=1)],
+    file: Annotated[UploadFile, File()],
+    principal: CurrentChatUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> ChatAttachment:
+    try:
+        parsed_metadata = ChatUploadMetadata(filename=filename, expected_revision=expected_revision)
+    except ValidationError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid upload metadata"
+        ) from exc
+    with tracer.start_as_current_span("coire.api.chat.upload") as span:
+        span.set_attribute("user_id", str(principal.user_id))
+        span.set_attribute("conversation_id", str(conversation_id))
+        try:
+            await require_owned_chat(session, conversation_id, principal)
+            staged = await stage_original(
+                file, Path(settings.chat_original_root), settings.chat_upload_max_bytes
+            )
+            result = await admit_original(
+                session, principal, conversation_id, parsed_metadata, staged, settings
+            )
+        except CoireError:
+            requests_total.add(1, {"operation": "upload", "outcome": "refused"})
+            raise
+        except Exception as exc:
+            requests_total.add(1, {"operation": "upload", "outcome": "failed"})
+            logger.error(
+                "chat upload failed user_id=%s conversation_id=%s error_type=%s",
+                principal.user_id,
+                conversation_id,
+                type(exc).__name__,
+            )
+            raise ChatModelUnavailable("chat file service temporarily unavailable") from None
+        requests_total.add(1, {"operation": "upload", "outcome": "accepted"})
+        logger.info(
+            "chat upload accepted user_id=%s conversation_id=%s file_id=%s",
+            principal.user_id,
+            conversation_id,
+            result.id,
+        )
+        return result
+
+
+@router.get("/conversations/{conversation_id}/files/{file_id}", response_model=ChatAttachment)
+async def get_chat_file(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    principal: CurrentChatUser,
+    session: SessionDep,
+) -> ChatAttachment:
+    return project_attachment(await owned_attachment(session, principal, conversation_id, file_id))
+
+
+@router.get(
+    "/conversations/{conversation_id}/files/{file_id}/content",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+            }
+        }
+    },
+)
+async def download_chat_file(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    principal: CurrentChatUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> Response:
+    attachment = await owned_attachment(session, principal, conversation_id, file_id)
+    data = await asyncio.to_thread(read_original, attachment, Path(settings.chat_original_root))
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{quote(attachment.filename, safe='')}",
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": "sandbox",
+            "Cross-Origin-Resource-Policy": "same-origin",
+        },
+    )
 
 
 @router.get("/models", response_model=ChatPickerResponse)

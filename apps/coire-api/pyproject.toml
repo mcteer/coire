@@ -18,6 +18,8 @@ dependencies = [
     "httpx>=0.28",
     # MIT. Official Streamable HTTP MCP protocol implementation; avoids hand-written JSON-RPC.
     "mcp==2.2.0",
+    # Apache-2.0. Parse bounded native Chat multipart originals at the API boundary.
+    "python-multipart==0.0.32",
     "pyyaml>=6.0",
     "opentelemetry-sdk>=1.29",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
