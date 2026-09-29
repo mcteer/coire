@@ -60,7 +60,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 - [X] T031 [US3] Implement history/new/delete, version-conflict reconciliation, model snapshots and responsive history drawer in apps/coire-web/src/components/chat/ConversationHistory.tsx and hooks/useConversation.ts (FR-009–011, FR-018, FR-023, FR-030).
 - [X] T032 [P] [US3] Add expired-session/draft/identity-change and logout tests in apps/coire-web/src/hooks/useConversation.test.tsx (FR-020, FR-031).
 - [X] T033 [US3] Implement owner-scoped same-tab draft restoration and cleanup in apps/coire-web/src/hooks/useConversation.ts and api/chat.ts; preserve text/model/file selections but no tokens or bytes (FR-020, FR-031).
-- [ ] T034 [US3] Test and wire hidden-tab preservation, navigation/tab-close cancellation, explicit retry/continue and observer reconciliation in apps/coire-web/src/pages/Chat.test.tsx, pages/Chat.tsx and hooks/useEventStream.ts (FR-018–019, FR-023–024).
+- [X] T034 [US3] Test and wire hidden-tab preservation, navigation/tab-close cancellation, explicit retry/continue and observer reconciliation in apps/coire-web/src/pages/Chat.test.tsx, pages/Chat.tsx and hooks/useEventStream.ts (FR-018–019, FR-023–024).
 - [ ] T035 [US3] Add two-tab/repeated-send, disconnect/restart, deleted access/purge and healthy-stop integration cases in tests/integration/test_chat_ui.py (SC-004–005, SC-008–009, SC-011, SC-013).
 
 ## Phase 6 — US4: Safe code mode (P2)

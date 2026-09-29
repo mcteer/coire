@@ -48,3 +48,31 @@ test("keeps a hidden generation connected and aborts on unmount", async () => {
   await expect(running).rejects.toMatchObject({ name: "AbortError" });
   expect(mockSendChatTurn).toHaveBeenCalledTimes(1);
 });
+
+test("aborts the owned generation on page unload without starting another turn", async () => {
+  let signal: AbortSignal | undefined;
+  mockSendChatTurn.mockImplementation(
+    (_id: string, _body: ChatTurnCreate, incoming: AbortSignal) =>
+      new Promise<void>((_resolve, reject) => {
+        signal = incoming;
+        incoming.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      }),
+  );
+  const view = render(<Probe />);
+  let running: Promise<void> | undefined;
+  act(() => {
+    running = controls.send("conversation", body, () => {});
+  });
+  await waitFor(() => expect(screen.getByText("active")).toBeInTheDocument());
+  await act(async () => {
+    window.dispatchEvent(new Event("pagehide"));
+    await expect(running).rejects.toMatchObject({ name: "AbortError" });
+  });
+  expect(signal?.aborted).toBe(true);
+  expect(mockSendChatTurn).toHaveBeenCalledTimes(1);
+  view.unmount();
+});

@@ -81,7 +81,14 @@ export function useChatTurnStream() {
   const [active, setActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => {
+    const leavePage = () => controller.current?.abort();
+    window.addEventListener("pagehide", leavePage);
+    return () => {
+      window.removeEventListener("pagehide", leavePage);
+      controller.current?.abort();
+    };
+  }, []);
 
   const send = useCallback(
     async (

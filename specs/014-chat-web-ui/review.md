@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Browser stream lifecycle (2026-09-29)
+
+- Parent T034 is complete. The native POST remains connected in hidden tabs; in-app navigation requests owner Stop, and `pagehide` now aborts the original stream on tab close or external navigation. Explicit Retry/Continue and a separate GET observer reconcile saved activity without a second generation POST. The page-unload regression test covers one abort and no replacement send. Web tests passed 89, lint and production build passed.
+
 ## History stop and purge audit (2026-09-29)
 
 - Parent T029 and T030 are complete after code and coverage audit. Owner Stop is durable and idempotent; only the original stream closes generation, and the observer path only replays saved events. Persisted terminal state plus once-only usage settlement handle Stop/disconnect, while an expired plain-chat lease saves one terminal event and preserves partial output. Deletion immediately tombstones and blocks owner reads, expiry blocks the existing `/mcp/artifacts` URL, and bounded maintenance sweeps text, files, staging uploads and expired events. The alternate artifact guard lives in `routes/mcp_artifacts.py` rather than the older task path `mcp_calls.py`. Focused stop/delete/artifact/maintenance/file-purge tests passed 23; streaming/observer tests passed 27. T027 remains open for broader history/version race contracts, and T066 remains open for complete visual/control-input cleanup.
