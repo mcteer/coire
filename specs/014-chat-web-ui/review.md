@@ -5,6 +5,11 @@
 - The Studio node now preserves the generated `.coire/request.json` as non-writable during workspace permission setup. MCP run containers mount that control directory separately read-only, including Apply runs that need a writable repository. Missing or symlinked control input refuses container creation. Eleven focused node tests passed. This closes the read-only control-input portion of T058; visual asset staging, gateway propagation and T059 remain open.
 - The full Python suite passed 1,162 tests with 129 conditional skips after this node change. Strict node source mypy, repository Ruff/format, OpenAPI freshness and diff checks passed. No real Studio run was started for this mount change.
 
+## Coding visual control staging (2026-09-29)
+
+- The shared node command now carries bounded typed PNG control inputs. It requires their asset IDs and dimensions to match every harness visual reference, verifies byte limits, PNG headers and SHA-256, and rejects missing, duplicate or changed staging data. The node writes each under a generated UUID filename in its protected `.coire/inputs` directory; cleanup reopens that directory only to erase the workspace. The coding harness keeps current visual references through context summarization and retry, reads only those fixed files, checks size and dimensions, and emits OpenAI-compatible image parts through the existing gateway. Eight focused agent/node tests passed. Chat admission to these command fields and full visual coding acceptance remain T058/T059.
+- The first full run caught that macOS could not remove the read-only generated image directory; node cleanup now changes only that directory back to owner-write immediately before erasure. The rerun passed 1,165 Python tests with 129 conditional skips. Strict core/node/agent source mypy, repository Ruff/format and OpenAPI freshness passed. No real engine or Studio was contacted.
+
 ## Bounded temporary visual admission (2026-09-29)
 
 - PostgreSQL transaction advisory locking now serializes temporary image admission per principal. At most eight unexpired jobs can hold that principal's generated originals and derived workspace; a ninth is refused with HTTP 429 before engine I/O and its staged original is removed. A quota refusal is recorded as a fixed gateway outcome. Focused unit and `/v1` contracts cover staging cleanup and the 429 boundary.

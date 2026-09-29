@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 
+from coire_core.models.conversation import ImagePart
 from coire_core.models.harness import ContextBudget, HarnessMessage
 
 SummaryFn = Callable[[Sequence[HarnessMessage]], Awaitable[str | None]]
@@ -28,6 +29,7 @@ async def prepare_context(
     reported_prompt_tokens: int,
     summarize: SummaryFn | None,
     tool_byte_cap: int,
+    visual_inputs: Sequence[ImagePart] = (),
 ) -> tuple[list[HarnessMessage], ContextBudget]:
     projected = list(history)
     truncations = 0
@@ -54,7 +56,7 @@ async def prepare_context(
     transmitted = [
         HarnessMessage(role="system", content=system_prompt),
         *projected,
-        HarnessMessage(role="user", content=task),
+        HarnessMessage(role="user", content=task, visual_inputs=list(visual_inputs)),
     ]
     return transmitted, ContextBudget(
         token_limit=token_limit,

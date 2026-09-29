@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import ipaddress
 import json
@@ -199,6 +200,13 @@ class WorkspaceManager:
                     target.chmod(target.stat().st_mode | stat.S_IROTH | stat.S_IWOTH)
         path.chmod(path.stat().st_mode | stat.S_IRWXO)
 
+    @staticmethod
+    def _remove_workspace(path: Path) -> None:
+        images = path / ".coire" / "inputs"
+        if images.is_dir() and not images.is_symlink():
+            images.chmod(0o700)
+        shutil.rmtree(path)
+
     async def prepare(self, command: WorkspacePrepareRequest) -> WorkspacePrepareResult:
         lock = self._locks.setdefault(command.run_id, asyncio.Lock())
         async with lock:
@@ -275,6 +283,14 @@ class WorkspaceManager:
                 raise WorkspaceError("workspace_revision_invalid", "fetched revision is invalid")
             control = workspace / ".coire"
             control.mkdir(mode=0o755)
+            if command.visual_inputs:
+                images = control / "inputs"
+                images.mkdir(mode=0o755)
+                for visual in command.visual_inputs:
+                    image_path = images / f"{visual.asset_id}.png"
+                    image_path.write_bytes(base64.b64decode(visual.data_base64, validate=True))
+                    image_path.chmod(0o444)
+                images.chmod(0o555)
             request_path = control / "request.json"
             request_path.write_text(command.harness_request.model_dump_json(), encoding="utf-8")
             request_path.chmod(0o444)
@@ -294,7 +310,7 @@ class WorkspaceManager:
             self._allow_container_write(workspace)
             return result
         except BaseException:
-            await asyncio.to_thread(shutil.rmtree, workspace)
+            await asyncio.to_thread(self._remove_workspace, workspace)
             await asyncio.to_thread(shutil.rmtree, output)
             raise
 
@@ -315,7 +331,7 @@ class WorkspaceManager:
                             "workspace_cleanup_conflict", "workspace path is a symlink"
                         )
                     if target.is_dir():
-                        await asyncio.to_thread(shutil.rmtree, target)
+                        await asyncio.to_thread(self._remove_workspace, target)
                 workspace_operations.add(1, {"operation": "cleanup", "outcome": "succeeded"})
                 logger.info("MCP workspace removed run_id=%s", command.run_id)
 

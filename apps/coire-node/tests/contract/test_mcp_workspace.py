@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import io
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +13,9 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
+from coire_core.models.conversation import ImagePart
 from coire_core.models.harness import HarnessRunRequest, ProfileName, TaskClass
 from coire_core.models.node import (
     WorkspaceCleanupRequest,
@@ -173,6 +178,46 @@ async def test_preparation_is_idempotent_and_cleanup_removes_only_this_run(tmp_p
     assert not (tmp_path / first.workspace_ref).exists()
     assert not (tmp_path / first.output_ref).exists()
     assert not activity.exists()
+
+
+@pytest.mark.asyncio
+async def test_visual_control_input_is_verified_and_staged_read_only(tmp_path: Path) -> None:
+    manager = LocalWorkspaces(
+        Settings(_secrets_dir="/nonexistent", run_workspace_root=str(tmp_path))  # type: ignore[call-arg]
+    )
+    output = io.BytesIO()
+    Image.new("RGB", (16, 16), (240, 32, 16)).save(output, format="PNG")
+    image = output.getvalue()
+    asset_id = uuid.uuid4()
+    payload = _command(uuid.uuid4())
+    payload["harness_request"]["visual_inputs"] = [
+        ImagePart(asset_id=asset_id, media_type="image/png", width=16, height=16).model_dump(
+            mode="json"
+        )
+    ]
+    payload["visual_inputs"] = [
+        {
+            "asset_id": str(asset_id),
+            "sha256": hashlib.sha256(image).hexdigest(),
+            "width": 16,
+            "height": 16,
+            "data_base64": base64.b64encode(image).decode("ascii"),
+        }
+    ]
+    command = WorkspacePrepareRequest.model_validate(payload)
+    prepared = await manager.prepare(command)
+    staged = tmp_path / prepared.workspace_ref / ".coire" / "inputs" / f"{asset_id}.png"
+    assert staged.read_bytes() == image
+    assert staged.stat().st_mode & 0o222 == 0
+    assert await manager.prepare(command) == prepared
+    payload["visual_inputs"][0]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="manifest"):
+        WorkspacePrepareRequest.model_validate(payload)
+    payload["visual_inputs"] = []
+    with pytest.raises(ValueError, match="do not match"):
+        WorkspacePrepareRequest.model_validate(payload)
+    await manager.cleanup(WorkspaceCleanupRequest(run_id=command.run_id))
+    assert not staged.exists()
 
 
 async def test_silent_git_process_is_killed_at_prepare_timeout(

@@ -93,6 +93,7 @@ class Harness:
             reported_prompt_tokens=reported_prompt_tokens,
             summarize=self._summarize,
             tool_byte_cap=self._tool_byte_cap,
+            visual_inputs=request.visual_inputs,
         )
         attributes = {"profile": request.profile.value, "strategy": request.tool_strategy.value}
         with harness_span(request.profile.value, request.tool_strategy.value):
