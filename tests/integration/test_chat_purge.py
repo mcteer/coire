@@ -84,6 +84,25 @@ def test_deleted_conversation_is_denied_then_scrubbed(
         assert client.get(path).status_code == 404
         assert client.get(f"{path}/events").status_code == 404
 
+        subprocess.run(
+            ["docker", "compose", "-p", "coire-it", "restart", "coire-api"],
+            cwd=COMPOSE_DIR,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        restart_deadline = time.monotonic() + 30
+        while time.monotonic() < restart_deadline:
+            try:
+                if client.get(path).status_code == 404:
+                    break
+            except httpx.TransportError:
+                pass
+            time.sleep(0.5)
+        else:
+            pytest.fail("Deleted conversation was not denied after API restart")
+        assert client.get(f"{path}/events").status_code == 404
+
         # Advance only this private fixture past the fixed five-minute grace period.
         _sql(
             "UPDATE chat_conversations SET deleted_at = now() - interval '6 minutes' "
