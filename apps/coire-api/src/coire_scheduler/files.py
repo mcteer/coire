@@ -48,7 +48,7 @@ failed_cleanup_total = metrics.get_meter("coire.scheduler.files").create_counter
 
 async def _tombstoned(job: ChatFileProcessingRow) -> bool:
     if job.attachment_id is None:
-        return False
+        return job.expires_at <= datetime.now(UTC)
     async with session_scope() as session:
         attachment = await session.get(ChatAttachmentRow, job.attachment_id)
         if attachment is None or attachment.deleted_at is not None:
@@ -64,17 +64,26 @@ async def _prepare(job_id: str, settings: Settings) -> tuple[FileProcessRequest,
         job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
         if job is None or job.state in TERMINAL:
             return None
-        if job.attachment_id is None:
-            job.state = "failed"
-            job.safe_error = "temporary_jobs_not_supported"
-            return None
-        attachment = await session.get(ChatAttachmentRow, job.attachment_id)
+        temporary = job.attachment_id is None
+        attachment = (
+            await session.get(ChatAttachmentRow, job.attachment_id)
+            if job.attachment_id is not None
+            else None
+        )
         conversation = (
             await session.get(ChatConversationRow, attachment.conversation_id)
             if attachment is not None
             else None
         )
-        if (
+        if temporary and (
+            job.expires_at <= datetime.now(UTC)
+            or job.operation != "inspect"
+            or bool(job.selected_pages)
+            or not job.principal_subject
+        ):
+            job.state = "cancelled"
+            return None
+        if not temporary and (
             attachment is None
             or conversation is None
             or attachment.deleted_at is not None
@@ -82,25 +91,37 @@ async def _prepare(job_id: str, settings: Settings) -> tuple[FileProcessRequest,
         ):
             job.state = "cancelled"
             return None
-        if (
-            job.source_key != str(attachment.id)
-            or attachment.original_key != str(attachment.id)
-            or job.source_sha256 != attachment.original_sha256
-            or job.owner_user_id != attachment.owner_user_id
-            or attachment.owner_user_id != conversation.owner_user_id
-        ):
-            job.state = "failed"
-            job.safe_error = "source_identity_mismatch"
-            attachment.state = "failed"
-            attachment.safe_error = job.safe_error
-            return None
+        if not temporary:
+            assert attachment is not None and conversation is not None
+            if (
+                job.source_key != str(attachment.id)
+                or attachment.original_key != str(attachment.id)
+                or job.source_sha256 != attachment.original_sha256
+                or job.owner_user_id != attachment.owner_user_id
+                or attachment.owner_user_id != conversation.owner_user_id
+            ):
+                job.state = "failed"
+                job.safe_error = "source_identity_mismatch"
+                attachment.state = "failed"
+                attachment.safe_error = job.safe_error
+                return None
+        if temporary:
+            try:
+                source_id = uuid.UUID(job.source_key)
+            except ValueError:
+                job.state = "failed"
+                job.safe_error = "source_identity_mismatch"
+                return None
+        else:
+            assert attachment is not None
+            source_id = attachment.id
         if job.state == "running":
             try:
                 manifest = job.output_manifest or {}
                 request = FileProcessRequest.model_validate(manifest["request"])
                 if (
                     request.job_id != job.id
-                    or request.input_id != attachment.id
+                    or request.input_id != source_id
                     or request.source_sha256 != job.source_sha256
                     or request.operation != job.operation
                     or request.selected_pages != (job.selected_pages or [])
@@ -110,8 +131,9 @@ async def _prepare(job_id: str, settings: Settings) -> tuple[FileProcessRequest,
             except (KeyError, ValueError, TypeError):
                 job.state = "failed"
                 job.safe_error = "missing_worker_request"
-                attachment.state = "failed"
-                attachment.safe_error = job.safe_error
+                if attachment is not None:
+                    attachment.state = "failed"
+                    attachment.safe_error = job.safe_error
                 return None
         if job.state != "queued":
             return None
@@ -124,8 +146,8 @@ async def _prepare(job_id: str, settings: Settings) -> tuple[FileProcessRequest,
         try:
             request = FileProcessRequest(
                 job_id=job.id,
-                input_id=attachment.id,
-                source_sha256=attachment.original_sha256,
+                input_id=source_id,
+                source_sha256=job.source_sha256,
                 operation=cast(Literal["inspect", "render"], job.operation),
                 selected_pages=job.selected_pages or [],
                 output_ids=output_ids,
@@ -134,8 +156,9 @@ async def _prepare(job_id: str, settings: Settings) -> tuple[FileProcessRequest,
         except ValueError:
             job.state = "failed"
             job.safe_error = "invalid_job_selection"
-            attachment.state = "failed"
-            attachment.safe_error = job.safe_error
+            if attachment is not None:
+                attachment.state = "failed"
+                attachment.safe_error = job.safe_error
             return None
         job.deadline_at = deadline
         client_request = (job.output_manifest or {}).get("client_request")
@@ -169,11 +192,14 @@ async def _finish(
             if attachment is not None
             else None
         )
-        if (
-            attachment is None
-            or conversation is None
-            or attachment.deleted_at is not None
-            or conversation.deleted_at is not None
+        if (job.attachment_id is None and job.expires_at <= datetime.now(UTC)) or (
+            job.attachment_id is not None
+            and (
+                attachment is None
+                or conversation is None
+                or attachment.deleted_at is not None
+                or conversation.deleted_at is not None
+            )
         ):
             state = "cancelled"
             result = None
@@ -335,6 +361,49 @@ async def purge_deleted_file_outputs(settings: Settings) -> int:
                     purged += 1
             purge_total.add(1, {"outcome": "purged"})
             logger.info("file output purged job_id=%s", job_id)
+    return purged
+
+
+async def purge_expired_temporary_outputs(settings: Settings) -> int:
+    """Erase worker output for expired attachment-free visual jobs before API erases originals."""
+    async with session_scope() as session:
+        job_ids = list(
+            (
+                await session.execute(
+                    select(ChatFileProcessingRow.id)
+                    .where(
+                        ChatFileProcessingRow.attachment_id.is_(None),
+                        ChatFileProcessingRow.expires_at <= datetime.now(UTC),
+                        ChatFileProcessingRow.state != "purged",
+                    )
+                    .order_by(ChatFileProcessingRow.expires_at, ChatFileProcessingRow.id)
+                    .limit(10)
+                )
+            ).scalars()
+        )
+    purged = 0
+    for job_id in job_ids:
+        with tracer.start_as_current_span("coire.scheduler.files.temporary_purge") as span:
+            span.set_attribute("job_id", job_id)
+            try:
+                async with FileWorkerClient(settings) as client:
+                    await client.purge(job_id)
+            except FileWorkerError:
+                purge_total.add(1, {"outcome": "retry"})
+                continue
+            async with session_scope() as session:
+                job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
+                if (
+                    job is not None
+                    and job.attachment_id is None
+                    and job.expires_at <= datetime.now(UTC)
+                    and job.state != "purged"
+                ):
+                    job.state = "purged"
+                    job.output_manifest = None
+                    job.updated_at = datetime.now(UTC)
+                    purged += 1
+            purge_total.add(1, {"outcome": "purged"})
     return purged
 
 

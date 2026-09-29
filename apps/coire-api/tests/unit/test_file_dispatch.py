@@ -174,6 +174,40 @@ async def test_queued_request_commits_before_worker_post(monkeypatch: pytest.Mon
     assert session.attachment.state == "processing"  # API verifies/publishes later.
 
 
+async def test_temporary_request_uses_generated_source_and_recovers_by_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeSession()
+    session.job.attachment_id = None
+    source_id = uuid.uuid4()
+    session.job.source_key = str(source_id)
+    client = FakeClient(session)
+    _wire(monkeypatch, session, client)
+    await files.drive_file_job(JOB_ID, _settings())
+    assert client.calls == ["process"]
+    assert client.request is not None and client.request.input_id == source_id
+    assert session.job.state == "processed"
+    assert session.attachment.state == "processing"
+    session.job.state = "running"
+    client.calls.clear()
+    await files.drive_file_job(JOB_ID, _settings())
+    assert client.calls == ["status"]
+    assert session.job.state == "processed"
+
+
+async def test_expired_temporary_request_never_dispatches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeSession()
+    session.job.attachment_id = None
+    session.job.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    client = FakeClient(session)
+    _wire(monkeypatch, session, client)
+    await files.drive_file_job(JOB_ID, _settings())
+    assert session.job.state == "cancelled"
+    assert client.calls == ["cancel"]
+
+
 async def test_running_recovery_queries_status_only(monkeypatch: pytest.MonkeyPatch) -> None:
     session = FakeSession()
     session.job.state = "running"

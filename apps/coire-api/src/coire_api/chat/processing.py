@@ -284,7 +284,10 @@ async def publish_processed_files(settings: Settings) -> int:
             (
                 await session.execute(
                     select(ChatFileProcessingRow.id)
-                    .where(ChatFileProcessingRow.state == "processed")
+                    .where(
+                        ChatFileProcessingRow.state == "processed",
+                        ChatFileProcessingRow.attachment_id.is_not(None),
+                    )
                     .order_by(ChatFileProcessingRow.updated_at, ChatFileProcessingRow.id)
                     .limit(20)
                 )

@@ -350,8 +350,13 @@ async def test_verified_visual_request_reaches_registry_selected_engine(
             "usage": {"prompt_tokens": 280, "completion_tokens": 2},
         }
 
+    async def normalized(messages: list[object], *_args: object) -> list[object]:
+        seen["worker_normalized"] = True
+        return messages
+
     monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
     monkeypatch.setattr("coire_api.routes.v1.complete", complete)
+    monkeypatch.setattr("coire_api.routes.v1.normalize_inline_images", normalized)
     response = await request(
         app,
         "POST",
@@ -374,8 +379,72 @@ async def test_verified_visual_request_reaches_registry_selected_engine(
     )
     assert response.status_code == 200
     assert seen["model"] == "/opt/coire/models/vision"
+    assert seen["worker_normalized"] is True
     assert encoded in str(seen["messages"])
     assert response.json()["model"] == str(model_id)
+
+
+async def test_visual_worker_failure_refuses_before_engine_io(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from coire_api.gateway.temporary import TemporaryVisualUnavailable
+
+    model_id = uuid.uuid4()
+    image = io.BytesIO()
+    Image.new("RGB", (16, 16), (255, 0, 0)).save(image, format="PNG")
+    app.dependency_overrides[get_settings]().gateway_inline_visual_enabled = True
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id,
+            "vision",
+            4096,
+            "/opt/coire/models/vision",
+            uuid.uuid4(),
+            "coire-edge-b",
+            "http://engine",
+            EngineBackend.MLX_VLM,
+            VisualCapability(
+                verified=True,
+                max_images=1,
+                max_image_pixels=256,
+                max_encoded_bytes=len(image.getvalue()),
+            ),
+        )
+
+    async def unavailable(*_args: object) -> None:
+        raise TemporaryVisualUnavailable("image processing unavailable")
+
+    async def complete(*_args: object) -> None:
+        pytest.fail("unprocessed image must not reach the engine")
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.v1.normalize_inline_images", unavailable)
+    monkeypatch.setattr("coire_api.routes.v1.complete", complete)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": str(model_id),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/png;base64,"
+                                + base64.b64encode(image.getvalue()).decode()
+                            },
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 503
+    assert "image processing unavailable" in response.text
 
 
 async def test_anthropic_image_block_is_refused_before_model_resolution(

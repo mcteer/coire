@@ -73,9 +73,11 @@ compose secrets. Gateway tuning variables and operational procedures are documen
 Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 is incomplete).
 See [native Chat operations](../../docs/runbooks/chat-web-ui.md) for turn inspection,
 Stop, parser alerts, private-file purge, diagnostics and visual rollback.
-The experimental inline PNG `/v1` visual route is separately gated by
-`COIRE_GATEWAY_INLINE_VISUAL_ENABLED` (default `false`). Keep it disabled until temporary
-normalization, asset verification and the visual gateway acceptance in feature 014 are complete.
+The experimental inline PNG/JPEG/WebP `/v1` visual route is separately gated by
+`COIRE_GATEWAY_INLINE_VISUAL_ENABLED` (default `false`). It requires the `chat-files` Compose
+profile and its Keychain-sourced worker token: the API stages generated-key originals, the
+private CPU worker normalizes them, and expiry erases worker outputs before originals. Keep the
+flag disabled until temporary-job integration and visual gateway acceptance in feature 014 pass.
 Before enabling it, set `COIRE_CHAT_PUBLIC_ORIGIN` to the exact HTTPS browser origin; local
 development may use `http://localhost` or `http://127.0.0.1` with an optional port. A missing
 origin refuses browser writes. See [`docs/runbooks/chat-web-ui.md`](../../docs/runbooks/chat-web-ui.md).

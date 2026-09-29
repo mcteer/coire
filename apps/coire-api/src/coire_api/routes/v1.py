@@ -63,6 +63,7 @@ from coire_api.gateway.resolution import (
     resolve_model,
     retry_after_seconds,
 )
+from coire_api.gateway.temporary import TemporaryVisualUnavailable, normalize_inline_images
 from coire_api.gateway.usage import UsageTracker
 from coire_api.registry.service import load_state_for, published_ready_entitled, visible_to
 from coire_core.models.gateway import (
@@ -376,15 +377,19 @@ async def chat_completions(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "provider supports plain text only")
         body.max_tokens = body.max_tokens or min(resolved.max_output_tokens or 0, 1024)
     try:
-        if (
-            any(
-                isinstance(message.content, list)
-                and any(part.type == "image_url" for part in message.content)
-                for message in body.messages
-            )
-            and not settings.gateway_inline_visual_enabled
-        ):
+        has_images = any(
+            isinstance(message.content, list)
+            and any(part.type == "image_url" for part in message.content)
+            for message in body.messages
+        )
+        if has_images and not settings.gateway_inline_visual_enabled:
             raise VisualContextUnavailable("inline image processing is not available yet")
+        if has_images and resolved.backend is EngineBackend.MLX_VLM:
+            if resolved.visual_capability is None:
+                raise VisualContextUnavailable("selected model has no verified visual input")
+            body.messages = await normalize_inline_images(
+                body.messages, principal, settings, resolved.visual_capability
+            )
         usage.prompt_tokens = enforce_context(
             body.messages,
             limit=resolved.context_window,
@@ -399,6 +404,9 @@ async def chat_completions(
     except ContextLengthError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="context_length")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    except TemporaryVisualUnavailable as exc:
+        await usage.finish(UsageOutcome.FAILED, failure_code="visual_worker_unavailable")
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
     try:
         body.max_tokens = _enforce_run_request_scope(
             principal,

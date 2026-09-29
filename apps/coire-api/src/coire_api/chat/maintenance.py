@@ -357,6 +357,49 @@ async def purge_deleted_files(settings: Settings) -> int:
     return purged
 
 
+async def purge_expired_temporary_originals(settings: Settings) -> int:
+    """Erase generated temporary originals only after worker output erasure is durable."""
+    async with session_scope() as session:
+        job_ids = list(
+            (
+                await session.execute(
+                    select(ChatFileProcessingRow.id)
+                    .where(
+                        ChatFileProcessingRow.attachment_id.is_(None),
+                        ChatFileProcessingRow.state == "purged",
+                        ChatFileProcessingRow.expires_at <= datetime.now(UTC),
+                    )
+                    .order_by(ChatFileProcessingRow.expires_at, ChatFileProcessingRow.id)
+                    .limit(100)
+                )
+            ).scalars()
+        )
+    erased = 0
+    for job_id in job_ids:
+        async with session_scope() as session:
+            job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
+            if (
+                job is None
+                or job.attachment_id is not None
+                or job.state != "purged"
+                or job.expires_at > datetime.now(UTC)
+            ):
+                continue
+            try:
+                source_id = uuid.UUID(job.source_key)
+                (Path(settings.chat_original_root) / str(source_id)).unlink(missing_ok=True)
+            except (ValueError, OSError) as exc:
+                logger.error(
+                    "temporary original purge deferred job_id=%s error_type=%s",
+                    job_id,
+                    type(exc).__name__,
+                )
+                continue
+            await session.delete(job)
+        erased += 1
+    return erased
+
+
 async def reclaim_failed_file_quota() -> int:
     """Release derivative capacity only after the worker confirmed failed-output purge."""
 
@@ -541,6 +584,7 @@ class ChatMaintenance:
                 await publish_processed_files(self._settings)
                 await reclaim_failed_file_quota()
                 await purge_deleted_files(self._settings)
+                await purge_expired_temporary_originals(self._settings)
                 await purge_deleted_text()
                 stale_uploads = await asyncio.to_thread(
                     purge_stale_uploads, Path(self._settings.chat_original_root)

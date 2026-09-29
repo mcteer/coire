@@ -64,6 +64,7 @@ POSTGRES_PASSWORD = f"it-{secrets.token_urlsafe(24)}"
 # password above: the leak test greps the tree for the literal value.
 ADMIN_TOKEN = f"it-admin-{secrets.token_urlsafe(24)}"
 OPS_SERVICE_TOKEN = f"coire_ops_{secrets.token_hex(32)}"
+FILE_WORKER_SERVICE_TOKEN = f"coire_file_worker_{secrets.token_hex(32)}"
 OPS_MODEL_ID = "10000000-0000-4000-8000-000000000099"
 NODE_TOKENS: dict[str, str] = {}
 SECRETS_DIR = Path(tempfile.mkdtemp(prefix="coire-it-secrets-"))
@@ -92,6 +93,7 @@ INTEGRATION_SECRETS = {
     "COIRE_SECRET_ADMIN_TOKEN": ADMIN_TOKEN,
     "COIRE_SECRET_BOOTSTRAP_ADMIN_EMAIL": "admin@integration.test",
     "COIRE_SECRET_OPS_SERVICE_TOKEN": OPS_SERVICE_TOKEN,
+    "COIRE_SECRET_FILE_WORKER_SERVICE_TOKEN": FILE_WORKER_SERVICE_TOKEN,
     "COIRE_OPS_MODEL_ID": OPS_MODEL_ID,
     # Nodes are deliberately started without usable credentials. The fixture declares them
     # through the admin API, installs the returned one-time tokens, and recreates the affected
