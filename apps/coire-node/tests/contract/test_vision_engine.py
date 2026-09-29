@@ -10,8 +10,9 @@ from typing import Any
 
 import pytest
 
+from coire_core.models.engine import EngineState
 from coire_core.models.registry import EngineBackend
-from coire_node.engines import BackendMismatch, build_engine_env, build_vision_argv
+from coire_node.engines import BackendMismatch, _Engine, build_engine_env, build_vision_argv
 from coire_node.testing.harness import Agent
 
 
@@ -172,5 +173,57 @@ def test_unowned_vision_process_is_reported_as_vision_orphan(
         orphans = agent.engines.find_orphans()
         assert len(orphans) == 1
         assert orphans[0].backend is EngineBackend.MLX_VLM
+    finally:
+        agent.close()
+
+
+def test_vision_readiness_generates_with_verified_local_model_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = Agent(tmp_path / "node")
+    slug = "fake--vision"
+    _seed(agent, slug)
+    engine_id = uuid.uuid4()
+    engine = _Engine(
+        engine_id=engine_id,
+        slug=slug,
+        port=9500,
+        estimate_bytes=2048,
+        backend=EngineBackend.MLX_VLM,
+    )
+    agent.engines._engines[str(engine_id)] = engine
+    posts: list[dict[str, object]] = []
+
+    class Client:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def __enter__(self) -> Client:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def get(self, _url: str) -> object:
+            return object()
+
+        def post(self, _url: str, *, json: dict[str, object], timeout: float) -> object:
+            assert timeout == 30.0
+            posts.append(json)
+            return type("Response", (), {"status_code": 200})()
+
+    monkeypatch.setattr("coire_node.engines.httpx.Client", Client)
+    monkeypatch.setattr(agent.engines, "_sample", lambda _engine: None)
+    try:
+        agent.engines._await_ready(str(engine_id))
+        assert engine.state is EngineState.READY
+        assert posts == [
+            {
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1,
+                "temperature": 0.0,
+                "model": str(agent.store.path_for(slug)),
+            }
+        ]
     finally:
         agent.close()

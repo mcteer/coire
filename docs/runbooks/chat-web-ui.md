@@ -71,4 +71,9 @@ checks both bare server CLIs before moving `envs/current`. See [model instance o
 for the build, install and rollback procedure. This smoke checks imports and command entry points
 only; visual model acceptance remains a separate gate. Keep `COIRE_CHAT_ENABLED=false`.
 
+The node's VLM readiness probe sends one token of text generation with the owned verified local
+model path, as required by the pinned bare server endpoint. A health response alone is insufficient.
+If a visual instance remains starting, inspect node process state and the generation probe result;
+stop the owned engine through node control before retrying. Tiny-model acceptance is still open.
+
 Until temporary image normalization and measured VLM visual budgeting are connected, the compatible `/v1/chat/completions` route returns 400 for inline image parts before spending tokens or contacting an engine. HTTP/file image URLs are rejected by the core wire schema. The `/v1/messages` adapter returns 400 for image or other unsupported Anthropic blocks instead of silently omitting them. Text parts remain available and count their full text in context preflight. Keep visual admission disabled until the remaining visual gateway and tiny-model gates pass.

@@ -474,13 +474,19 @@ class EngineManager:
                     time.sleep(0.5)
                     continue
                 try:
+                    payload: dict[str, Any] = {
+                        "messages": [{"role": "user", "content": "hi"}],
+                        "max_tokens": 1,
+                        "temperature": 0.0,
+                    }
+                    if engine.backend is EngineBackend.MLX_VLM:
+                        # mlx-vlm's chat endpoint requires the model field even when
+                        # --model already preloaded the local verified store copy.
+                        assert engine.slug is not None
+                        payload["model"] = str(self._store.path_for(engine.slug))
                     resp = client.post(
                         f"{url}/v1/chat/completions",
-                        json={
-                            "messages": [{"role": "user", "content": "hi"}],
-                            "max_tokens": 1,
-                            "temperature": 0.0,
-                        },
+                        json=payload,
                         timeout=30.0,
                     )
                 except httpx.HTTPError:
