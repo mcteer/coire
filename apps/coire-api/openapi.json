@@ -4465,6 +4465,10 @@
             "title": "Coire Load State",
             "type": "string"
           },
+          "coire_source": {
+            "$ref": "#/components/schemas/ModelSource",
+            "default": "studio"
+          },
           "coire_tags": {
             "items": {
               "type": "string"

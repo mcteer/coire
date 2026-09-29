@@ -38,6 +38,7 @@ from coire_api.db import (
     NodeRow,
 )
 from coire_api.deps import SessionDep, SettingsDep
+from coire_api.gateway.providers import credential_present
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.preconditions import require_current
 from coire_api.registry import service
@@ -52,6 +53,7 @@ from coire_core.models.registry import (
     Model,
     ModelAddRequest,
     ModelCopy,
+    ModelSource,
     ModelState,
     ModelUpdateRequest,
     ProviderModelAddRequest,
@@ -303,12 +305,24 @@ async def update_model(
     request: ModelUpdateRequest,
     principal: CurrentAdmin,
     session: SessionDep,
+    settings: SettingsDep,
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> dict[str, object]:
     model = await _get(session, model_id)
     require_current(if_match, model.updated_at)
     try:
-        await service.update_model(session, model, request, actor=principal.subject or "admin")
+        provider_ready = (
+            settings.provider_chat_enabled
+            and (model.source or "studio") != "studio"
+            and credential_present(ModelSource(model.source), settings)
+        )
+        await service.update_model(
+            session,
+            model,
+            request,
+            actor=principal.subject or "admin",
+            provider_ready=provider_ready,
+        )
     except service.RegistryError as exc:
         raise HTTPException(exc.status_code, exc.detail) from exc
     await session.commit()
@@ -406,6 +420,8 @@ async def load_model(
 ) -> dict[str, object]:
     """Load a model on a node. Exercised by tests and the console; user traffic is feature 003."""
     model = await _get(session, model_id)
+    if (model.source or "studio") != "studio":
+        raise HTTPException(status.HTTP_409_CONFLICT, "external provider model has no Studio engine")
     if model.state is not ModelState.READY:
         raise HTTPException(
             status.HTTP_409_CONFLICT,

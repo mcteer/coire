@@ -86,6 +86,8 @@ async def from_openai_stream(
     source: AsyncIterator[bytes], *, model: uuid.UUID
 ) -> AsyncIterator[bytes]:
     message_id = f"msg_{uuid.uuid4().hex}"
+    output_tokens = 0
+    input_tokens = 0
     yield _event(
         "message_start",
         {
@@ -112,6 +114,10 @@ async def from_openai_stream(
                 continue
             try:
                 chunk = json.loads(line[6:])
+                reported = chunk.get("usage")
+                if isinstance(reported, dict):
+                    input_tokens = int(reported.get("prompt_tokens", input_tokens))
+                    output_tokens = int(reported.get("completion_tokens", output_tokens))
                 text = chunk["choices"][0]["delta"].get("content")
             except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                 continue
@@ -130,7 +136,7 @@ async def from_openai_stream(
         {
             "type": "message_delta",
             "delta": {"stop_reason": "end_turn", "stop_sequence": None},
-            "usage": {"output_tokens": 0},
+            "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
         },
     )
     yield _event("message_stop", {"type": "message_stop"})

@@ -427,6 +427,8 @@ async def _node_rows(session: AsyncSession, *names: str) -> tuple[NodeRow, ...]:
 
 async def retry_model(session: AsyncSession, model: ModelRow, *, actor: str) -> DownloadJobRow:
     """Re-run a failed acquisition from the earliest stage that still needs doing."""
+    if (model.source or "studio") != "studio":
+        raise RegistryError(409, "external provider models have no Studio acquisition")
     if model.state is not ModelState.FAILED:
         raise RegistryError(409, f"{model.slug} is {model.state.value}, not failed")
 
@@ -581,17 +583,30 @@ def to_listing(
 
 
 async def update_model(
-    session: AsyncSession, model: ModelRow, request: ModelUpdateRequest, *, actor: str
+    session: AsyncSession,
+    model: ModelRow,
+    request: ModelUpdateRequest,
+    *,
+    actor: str,
+    provider_ready: bool = False,
 ) -> ModelRow:
     """Apply a curation change (spec US5)."""
     if model.state is ModelState.RETIRED:
         raise RegistryError(409, "a retired model cannot be edited")
 
     fields = request.model_fields_set
+    if (model.source or "studio") != "studio" and fields.intersection(
+        {"placement_policy", "idle_ttl_seconds", "chat_template", "capability_profile"}
+    ):
+        raise RegistryError(409, "external provider model has no Studio placement or template")
     changes: dict[str, Any] = {}
 
     if "visibility" in fields and request.visibility is not None:
-        if request.visibility is Visibility.PUBLISHED and (model.source or "studio") != "studio":
+        if (
+            request.visibility is Visibility.PUBLISHED
+            and (model.source or "studio") != "studio"
+            and not provider_ready
+        ):
             raise RegistryError(409, "external provider routing is not enabled")
         if request.visibility is Visibility.PUBLISHED and model.state is not ModelState.READY:
             raise RegistryError(

@@ -49,6 +49,8 @@ export function ModelPicker({
                     : model.source === "openai"
                       ? "OpenAI"
                       : "Anthropic"}
+                  {model.source !== "studio" && " · Text only"}
+                  {model.source === "studio" && model.accepts_images && " · Images"}
                 </small>
                 {model.description && <span>{model.description}</span>}
                 <small>

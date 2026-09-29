@@ -38,6 +38,13 @@ from coire_api.gateway.execution import (
     load_with_ceiling,
     track_stream,
 )
+from coire_api.gateway.provider_budget import reserve_provider_budget
+from coire_api.gateway.providers import (
+    credential_present,
+    provider_stream,
+    target_for,
+    validate_provider_request,
+)
 from coire_api.gateway.proxy import StreamTiming, stream
 from coire_api.gateway.resolution import ResolvedModel, resolve_model
 from coire_api.gateway.usage import UsageTracker
@@ -54,6 +61,7 @@ from coire_core.models.chat import (
 )
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
 from coire_core.models.instance import InstanceState
+from coire_core.models.registry import ModelSource
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -304,7 +312,9 @@ async def native_stream(
             await _ensure_current_access(principal, admission.turn.model_id)
             last_access_check = monotonic()
             resolved = await _resolve(admission, principal)
-            if resolved.engine_url is None or resolved.model_path is None:
+            if resolved.source is ModelSource.STUDIO and (
+                resolved.engine_url is None or resolved.model_path is None
+            ):
                 loading_failed = True
                 loading = await persist_native_event(
                     "status",
@@ -351,7 +361,9 @@ async def native_stream(
                     stop_signal.set()
                     raise ChatStopRequested()
                 resolved = await _resolve(admission, principal)
-            if resolved.engine_url is None or resolved.model_path is None:
+            if resolved.source is ModelSource.STUDIO and (
+                resolved.engine_url is None or resolved.model_path is None
+            ):
                 raise RuntimeError("model did not become ready")
             loading_failed = False
             usage.bind_resolution(resolved)
@@ -359,21 +371,35 @@ async def native_stream(
                 "status", admission, state="running", settings=settings
             )
             yield encode_event(running)
-            payload = canonical_text_payload(
-                admission.history, resolved.model_path, output_tokens=admission.output_tokens
-            )
+            timing = StreamTiming()
+            if resolved.source is ModelSource.STUDIO:
+                assert resolved.model_path is not None and resolved.engine_url is not None
+                payload = canonical_text_payload(
+                    admission.history, resolved.model_path, output_tokens=admission.output_tokens
+                )
+                source = stream(resolved.engine_url, payload, settings, timing)
+            else:
+                target = target_for(resolved)
+                if not settings.provider_chat_enabled or not credential_present(
+                    target.source, settings
+                ):
+                    raise RuntimeError("provider credential unavailable")
+                output_tokens = min(admission.output_tokens, target.max_output_tokens)
+                validate_provider_request(target, admission.history, output_tokens)
+                async with session_scope() as budget_session:
+                    await reserve_provider_budget(
+                        budget_session,
+                        resolved,
+                        admission.history,
+                        output_tokens,
+                        usage.request_id,
+                    )
+                source = provider_stream(target, admission.history, output_tokens, settings)
             done = False
             failed_frame = False
             reported_usage = False
             parser = ReasoningParser(admission.reasoning_mode)
-            timing = StreamTiming()
-            tracked = track_stream(
-                stream(resolved.engine_url, payload, settings, timing),
-                usage,
-                request,
-                timing,
-                stop_signal,
-            )
+            tracked = track_stream(source, usage, request, timing, stop_signal)
             try:
                 while True:
                     try:

@@ -17,6 +17,11 @@ differs, `coire-up --recover-db-role` writes a private `pg_dump` under the proje
 changes only that database role, then repeats the network check. `--build` explicitly builds
 source images; normal startup uses existing images without building. `coire-down` removes
 project credentials after the stack stops and preserves volumes unless `--purge` is confirmed.
+
+Optional `coire-openai-api-key` and `coire-anthropic-api-key` Keychain items are mounted only
+into coire-api; absent items stage empty files. `COIRE_PROVIDER_CHAT_ENABLED` defaults false.
+See [the frontier Chat runbook](../../docs/runbooks/frontier-chat.md) for bounded acceptance,
+publication and rollback.
 The integration override creates a shared control network and an
 internal Studio-only data network; core is deliberately absent from the latter.
 

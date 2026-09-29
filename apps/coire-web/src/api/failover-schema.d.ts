@@ -95,6 +95,8 @@ export interface components {
              * @enum {string}
              */
             coire_load_state: "loaded" | "loading" | "cold";
+            /** @default studio */
+            coire_source: components["schemas"]["ModelSource"];
             /** Coire Tags */
             coire_tags?: string[];
             /** Created */
@@ -133,6 +135,11 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /**
+         * ModelSource
+         * @enum {string}
+         */
+        ModelSource: "studio" | "openai" | "anthropic";
         /** ValidationError */
         ValidationError: {
             /** Context */

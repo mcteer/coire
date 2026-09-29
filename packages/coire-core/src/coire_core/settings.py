@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     this with edge identity and API keys."""
 
     bootstrap_admin_email: SecretStr = SecretStr("")
+    openai_api_key: SecretStr = SecretStr("")
+    anthropic_api_key: SecretStr = SecretStr("")
     """Configured first local administrator identity. It is sourced from Keychain like other
     bootstrap material and never grants access without a separately verified Access assertion."""
     cloudflare_access_issuer: str = ""
@@ -144,6 +146,7 @@ class Settings(BaseSettings):
     gateway_retry_after_s: int = Field(default=30, ge=1)
     gateway_engine_request_timeout_s: float = Field(default=900.0, gt=0.0)
     gateway_inline_visual_enabled: bool = False
+    provider_chat_enabled: bool = False
 
     # --- private native chat and CPU file worker -----------------------
     chat_enabled: bool = False

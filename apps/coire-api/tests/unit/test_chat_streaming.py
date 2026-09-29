@@ -29,7 +29,7 @@ from coire_core.models.chat import (
 from coire_core.models.gateway import ChatMessage as GatewayMessage
 from coire_core.models.gateway import UsageOutcome
 from coire_core.models.instance import InstanceState
-from coire_core.models.registry import ModelState, Reasoning, Visibility
+from coire_core.models.registry import ModelSource, ModelState, Reasoning, Visibility
 from coire_core.settings import Settings
 
 NOW = datetime.now(UTC)
@@ -276,6 +276,137 @@ async def test_text_stream_persists_before_each_native_event(
     assert actual_usage[0].prompt_tokens == 8  # type: ignore[union-attr]
     assert actual_usage[0].completion_tokens == 3  # type: ignore[union-attr]
     assert chunks[-1].startswith(b"event: turn.terminal")
+
+
+async def test_native_provider_turn_uses_remote_stream_without_studio_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from pydantic import SecretStr
+
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    kinds: list[str] = []
+    reserved: list[uuid.UUID] = []
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "_stop_requested", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        streaming,
+        "_resolve",
+        AsyncMock(
+            return_value=ResolvedModel(
+                admission.turn.model_id,
+                "openai--example",
+                4096,
+                None,
+                None,
+                None,
+                None,
+                source=ModelSource.OPENAI,
+                provider_model_id="gpt-example",
+                max_output_tokens=64,
+                daily_token_budget=1000,
+            )
+        ),
+    )
+
+    async def reserve(
+        _session: object, _resolved: object, _history: object, _output: int, request_id: uuid.UUID
+    ) -> int:
+        reserved.append(request_id)
+        return 100
+
+    async def remote(*_args: object) -> AsyncIterator[bytes]:
+        yield b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'
+        yield b'data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":2}}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        kinds.append(kind)
+        return _saved_event(admission, kind, len(kinds) + 1, **kwargs)
+
+    monkeypatch.setattr(streaming, "reserve_provider_budget", reserve)
+    monkeypatch.setattr(streaming, "provider_stream", remote)
+    monkeypatch.setattr(
+        streaming, "load_with_ceiling", AsyncMock(side_effect=AssertionError("Studio load"))
+    )
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent",
+        provider_chat_enabled=True,
+        openai_api_key=SecretStr("provider-test-secret"),
+    )
+    chunks = [chunk async for chunk in native_stream(admission, principal, request, settings)]  # type: ignore[arg-type]
+    assert kinds == ["status", "delta", "terminal"]
+    assert len(reserved) == 1
+    assert b"Hello" in b"".join(chunks)
+
+
+async def test_native_provider_stop_closes_paid_http_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from pydantic import SecretStr
+
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    closed = asyncio.Event()
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "_stop_requested", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        streaming,
+        "_resolve",
+        AsyncMock(
+            return_value=ResolvedModel(
+                admission.turn.model_id,
+                "anthropic--example",
+                4096,
+                None,
+                None,
+                None,
+                None,
+                source=ModelSource.ANTHROPIC,
+                provider_model_id="claude-example",
+                max_output_tokens=64,
+                daily_token_budget=1000,
+            )
+        ),
+    )
+
+    async def reserve(*_args: object) -> int:
+        return 100
+
+    async def remote(*_args: object) -> AsyncIterator[bytes]:
+        try:
+            await asyncio.Event().wait()
+            yield b""
+        finally:
+            closed.set()
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        return _saved_event(admission, kind, 2, **kwargs)
+
+    monkeypatch.setattr(streaming, "reserve_provider_budget", reserve)
+    monkeypatch.setattr(streaming, "provider_stream", remote)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent",
+        provider_chat_enabled=True,
+        anthropic_api_key=SecretStr("provider-test-secret"),
+    )
+    chunks = [chunk async for chunk in native_stream(admission, principal, request, settings)]  # type: ignore[arg-type]
+    assert closed.is_set()
+    assert b'"state":"stopped"' in chunks[-1]
 
 
 @pytest.mark.parametrize(

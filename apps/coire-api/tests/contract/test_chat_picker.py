@@ -15,7 +15,7 @@ from coire_api.auth import Principal, PrincipalKind, require_principal
 from coire_api.db import EngineProcessRow, ModelRow, get_session
 from coire_core.models.engine import EngineState
 from coire_core.models.registry import ModelState, Visibility
-from coire_core.settings import Settings
+from coire_core.settings import Settings, get_settings
 
 TOKEN = "chat-picker-contract"
 NOW = datetime.now(UTC)
@@ -90,11 +90,14 @@ def _app(principal: Principal, session: _Session) -> FastAPI:
         _secrets_dir="/nonexistent",
         chat_browser_origin="http://localhost",
         chat_enabled=True,
+        provider_chat_enabled=True,
+        openai_api_key=SecretStr("test-provider-key"),
         identity_legacy_admin_enabled=True,
         admin_token=SecretStr(TOKEN),
     )  # type: ignore[call-arg]
     app = create_app(settings)
     app.dependency_overrides[require_principal] = lambda: principal
+    app.dependency_overrides[get_settings] = lambda: settings
 
     async def fake_session():  # type: ignore[no-untyped-def]
         yield session
@@ -163,6 +166,18 @@ async def test_code_picker_filters_profile_and_verified_apply_variant() -> None:
     assert {row["id"] for row in research.json()["data"]} == {str(read_code.id), str(write_code.id)}
     apply = await _request(app, "GET", "/api/v1/chat/models?mode=code&action=apply")
     assert {row["id"] for row in apply.json()["data"]} == {str(write_code.id)}
+
+
+async def test_provider_is_hidden_when_flag_is_disabled() -> None:
+    principal = Principal(
+        kind=PrincipalKind.USER, user_id=uuid.uuid4(), entitlements=frozenset({"team-a"})
+    )
+    remote = _model(source="openai")
+    app = _app(principal, _Session([remote]))
+    app.state.settings.provider_chat_enabled = False
+    response = await _request(app, "GET", "/api/v1/chat/models")
+    assert response.status_code == 200
+    assert response.json() == {"data": []}
 
 
 async def test_create_derives_owner_and_refuses_cross_origin_or_ineligible_model() -> None:

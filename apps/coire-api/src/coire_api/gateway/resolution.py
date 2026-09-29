@@ -24,7 +24,7 @@ from coire_api.gateway.telemetry import tracer
 from coire_api.registry.service import published_ready_entitled
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
-from coire_core.models.registry import EngineBackend, ModelState, VisualCapability
+from coire_core.models.registry import EngineBackend, ModelSource, ModelState, VisualCapability
 from coire_core.models.sharding import ShardGroupState
 
 
@@ -43,9 +43,15 @@ class ResolvedModel:
     engine_url: str | None
     backend: EngineBackend = EngineBackend.MLX_LM
     visual_capability: VisualCapability | None = None
+    source: ModelSource = ModelSource.STUDIO
+    provider_model_id: str | None = None
+    max_output_tokens: int | None = None
+    daily_token_budget: int | None = None
 
 
 def _visible(model: ModelRow, principal: Principal) -> bool:
+    if (model.source or "studio") != "studio":
+        return published_ready_entitled(model, principal.entitlements)
     if principal.is_admin:
         return model.state is not ModelState.RETIRED
     return published_ready_entitled(model, principal.entitlements)
@@ -76,6 +82,21 @@ async def resolve_model(
             else None
         )
         span.set_attribute("coire.model.id", str(model.id))
+
+    if (model.source or "studio") != "studio":
+        return ResolvedModel(
+            model_id=model.id,
+            slug=model.slug,
+            context_window=model.context_window,
+            model_path=None,
+            engine_id=None,
+            node=None,
+            engine_url=None,
+            source=ModelSource(model.source),
+            provider_model_id=model.provider_model_id,
+            max_output_tokens=model.max_output_tokens,
+            daily_token_budget=model.daily_token_budget,
+        )
 
     result = await session.execute(
         select(EngineProcessRow, NodeRow, VariantCopyRow, ModelInstanceRow)

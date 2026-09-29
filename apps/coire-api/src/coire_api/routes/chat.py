@@ -254,13 +254,16 @@ async def preview_chat_file(
 
 @router.get("/models", response_model=ChatPickerResponse)
 async def list_chat_models(
-    query: Annotated[ChatPickerQuery, Query()], principal: CurrentChatUser, session: SessionDep
+    query: Annotated[ChatPickerQuery, Query()],
+    principal: CurrentChatUser,
+    session: SessionDep,
+    settings: SettingsDep,
 ) -> ChatPickerResponse:
     with tracer.start_as_current_span("coire.api.chat.picker") as span:
         span.set_attribute("chat.mode", query.mode)
         span.set_attribute("chat.action", query.action)
         try:
-            response = await picker(session, principal, query)
+            response = await picker(session, principal, query, settings)
         except Exception as exc:
             requests_total.add(1, {"operation": "picker", "outcome": "failed"})
             logger.error(

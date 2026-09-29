@@ -17,9 +17,11 @@ from coire_api.gateway.telemetry import (
     inflight_counter,
     request_counter,
     request_duration_ms,
+    token_counter,
 )
 from coire_api.identity.limits import settle_usage
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
+from coire_core.models.registry import ModelSource
 
 
 @dataclass(slots=True)
@@ -31,6 +33,7 @@ class UsageTracker:
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     model_id: uuid.UUID | None = None
     engine_id: uuid.UUID | None = None
+    provider_source: ModelSource = ModelSource.STUDIO
     prompt_tokens: int = 0
     completion_tokens: int = 0
     reserved_tokens: int = 0
@@ -44,6 +47,7 @@ class UsageTracker:
         """Attach the registry-selected model and engine to once-only accounting."""
         self.model_id = resolved.model_id
         self.engine_id = resolved.engine_id
+        self.provider_source = resolved.source
 
     async def finish(self, outcome: UsageOutcome, *, failure_code: str | None = None) -> None:
         async with self._lock:
@@ -52,6 +56,7 @@ class UsageTracker:
             self._finished = True
         attributes = {
             "protocol": self.protocol.value,
+            "source": self.provider_source.value,
             "outcome": outcome.value,
             "failure_code": failure_code or "none",
         }
@@ -61,6 +66,11 @@ class UsageTracker:
         inflight_counter.add(-1, {"protocol": self.protocol.value})
         if outcome is UsageOutcome.FAILED:
             failure_counter.add(1, attributes)
+        if outcome is UsageOutcome.SUCCEEDED:
+            token_counter.add(
+                max(self.prompt_tokens, 0) + max(self.completion_tokens, 0),
+                {"source": self.provider_source.value, "protocol": self.protocol.value},
+            )
         await persist_usage(
             request_id=self.request_id,
             principal=self.principal,
@@ -74,6 +84,7 @@ class UsageTracker:
             outcome=outcome,
             failure_code=failure_code,
             reserved_tokens=self.reserved_tokens,
+            provider_source=self.provider_source,
         )
 
 
@@ -91,6 +102,7 @@ async def persist_usage(
     outcome: UsageOutcome,
     failure_code: str | None = None,
     reserved_tokens: int = 0,
+    provider_source: ModelSource = ModelSource.STUDIO,
 ) -> None:
     """Insert once even when the request task is being cancelled."""
 
@@ -135,6 +147,14 @@ async def persist_usage(
                     principal.run_id,
                     max(prompt_tokens, 0) + max(completion_tokens, 0),
                     reserved_tokens=reserved_tokens,
+                )
+            if outcome is UsageOutcome.SUCCEEDED and provider_source is not ModelSource.STUDIO:
+                from coire_api.gateway.provider_budget import settle_provider_budget
+
+                await settle_provider_budget(
+                    session,
+                    request_id,
+                    actual_tokens=max(prompt_tokens, 0) + max(completion_tokens, 0),
                 )
 
     task = asyncio.create_task(_write())

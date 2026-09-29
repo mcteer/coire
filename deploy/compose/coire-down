@@ -48,7 +48,7 @@ if [[ -d "$OWNED_ROOT" && ! -L "$OWNED_ROOT" ]]; then
     [[ -d "$generation" && ! -L "$generation" ]] || continue
     for name in postgres_password key_signing_secret node_tokens admin_token \
       bootstrap_admin_email ops_service_token file_worker_service_token \
-      failover_peer_key failover_relay_token; do
+      failover_peer_key failover_relay_token openai_api_key anthropic_api_key; do
       [[ -f "$generation/$name" && ! -L "$generation/$name" ]] && rm -f -- "$generation/$name"
     done
     rmdir "$generation" 2>/dev/null || true

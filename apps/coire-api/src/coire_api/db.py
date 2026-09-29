@@ -9,12 +9,13 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -1270,6 +1271,26 @@ class UsageRecordRow(Base):
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ProviderBudgetReservationRow(Base):
+    """Conservative daily provider spend hold; unsettled requests retain their hold."""
+
+    __tablename__ = "provider_budget_reservations"
+    __table_args__ = (
+        Index("ix_provider_budget_model_day", "model_id", "day"),
+        CheckConstraint("reserved_tokens > 0", name="ck_provider_budget_positive"),
+        CheckConstraint(
+            "actual_tokens IS NULL OR actual_tokens >= 0", name="ck_provider_budget_actual"
+        ),
+    )
+
+    request_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="CASCADE"))
+    day: Mapped[date] = mapped_column(Date)
+    reserved_tokens: Mapped[int] = mapped_column(Integer)
+    actual_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 # --------------------------------------------------------------------------- feature 014

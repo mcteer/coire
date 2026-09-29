@@ -20,7 +20,7 @@ from coire_api.gateway.resolution import ModelNotFoundError, ResolvedModel
 from coire_api.gateway.usage import UsageTracker
 from coire_api.routes.v1 import _tracked_stream
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
-from coire_core.models.registry import EngineBackend, VisualCapability
+from coire_core.models.registry import EngineBackend, ModelSource, VisualCapability
 from coire_core.settings import Settings, get_settings
 
 ADMIN_TOKEN = "gateway-contract-admin"
@@ -121,6 +121,157 @@ async def test_openai_nonstream_replaces_model_with_resolved_path(
     assert str(model_id) not in str(seen)
     assert response.json()["model"] == str(model_id)
     assert "/opt/coire/models" not in response.text
+
+
+@pytest.mark.parametrize("route", ["/v1/chat/completions", "/v1/messages"])
+async def test_provider_text_routes_use_registry_target_and_report_usage(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    model_id = uuid.uuid4()
+    captured: dict[str, object] = {}
+    app.state.settings.openai_api_key = SecretStr("provider-test-secret")
+    app.state.settings.provider_chat_enabled = True
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id,
+            "openai--example",
+            4096,
+            None,
+            None,
+            None,
+            None,
+            source=ModelSource.OPENAI,
+            provider_model_id="gpt-example",
+            max_output_tokens=64,
+            daily_token_budget=1000,
+        )
+
+    async def reserve(
+        _session: object, _resolved: object, _messages: object, output: int, _request_id: object
+    ) -> int:
+        captured["output"] = output
+        return output + 100
+
+    async def provider(
+        target: object, messages: object, output: int, _settings: object
+    ) -> AsyncIterator[bytes]:
+        captured["target"] = target
+        captured["messages"] = messages
+        assert output == captured["output"]
+        yield b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'
+        yield b'data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":2}}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.v1.reserve_provider_budget", reserve)
+    monkeypatch.setattr("coire_api.routes.v1.provider_stream", provider)
+    body: dict[str, object] = {
+        "model": str(model_id),
+        "messages": [{"role": "user", "content": "Hi"}],
+    }
+    if route.endswith("/messages"):
+        body["max_tokens"] = 32
+    response = await request(app, "POST", route, json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["model"] == str(model_id)
+    assert captured["target"].provider_model_id == "gpt-example"  # type: ignore[attr-defined]
+    assert response.json()["usage"] == (
+        {"input_tokens": 9, "output_tokens": 2}
+        if route.endswith("/messages")
+        else {"prompt_tokens": 9, "completion_tokens": 2, "total_tokens": 11}
+    )
+
+
+async def test_provider_rejects_tools_before_paid_call(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_id = uuid.uuid4()
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id,
+            "openai--example",
+            4096,
+            None,
+            None,
+            None,
+            None,
+            source=ModelSource.OPENAI,
+            provider_model_id="gpt-example",
+            max_output_tokens=64,
+            daily_token_budget=1000,
+        )
+
+    async def reserve(*_: object) -> None:
+        pytest.fail("unsupported tools must not reserve provider budget")
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.v1.reserve_provider_budget", reserve)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={"model": str(model_id), "messages": [{"role": "user", "content": "Hi"}], "tools": []},
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize("route", ["/v1/chat/completions", "/v1/messages"])
+async def test_provider_sse_keeps_public_model_and_reported_tokens(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    model_id = uuid.uuid4()
+    app.state.settings.provider_chat_enabled = True
+    app.state.settings.anthropic_api_key = SecretStr("test-provider-key")
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id,
+            "anthropic--example",
+            4096,
+            None,
+            None,
+            None,
+            None,
+            source=ModelSource.ANTHROPIC,
+            provider_model_id="claude-example",
+            max_output_tokens=64,
+            daily_token_budget=1000,
+        )
+
+    async def reserve(*_: object) -> int:
+        return 100
+
+    async def provider(*_: object) -> AsyncIterator[bytes]:
+        yield (
+            f'data: {{"model":"{model_id}","choices":[{{"delta":{{"content":"Hello"}}}}]}}\n\n'
+        ).encode()
+        yield b'data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":2}}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.v1.reserve_provider_budget", reserve)
+    monkeypatch.setattr("coire_api.routes.v1.provider_stream", provider)
+    response = await request(
+        app,
+        "POST",
+        route,
+        json={
+            "model": str(model_id),
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 32,
+            "stream": True,
+        },
+    )
+    assert response.status_code == 200
+    assert "Hello" in response.text
+    assert "claude-example" not in response.text
+    assert str(model_id) in response.text
+    if route.endswith("/messages"):
+        assert '"output_tokens":2' in response.text
+    else:
+        assert '"completion_tokens":2' in response.text
 
 
 async def test_inline_image_is_refused_before_engine_or_spend(

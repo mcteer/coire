@@ -119,9 +119,9 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 ## Phase 9 — Provider-agnostic Chat routing (2026-09-29 clarification)
 
 - [X] T076 [US1] Add strict external-provider/model registration, picker/source and usage contracts in coire-core; add a reversible registry migration and admin audit tests (FR-040).
-- [ ] T077 [US1] Implement administrator-controlled OpenAI and Anthropic provider adapters with Keychain-sourced secrets, bounded usage/spend, cancellation, telemetry, dashboard and alert (FR-033–034, FR-040).
-- [ ] T078 [US1] Route native Chat and compatible `/v1` generation by registry target while preserving Studio lifecycle, entitlements, history and Code-mode harness placement (FR-012, FR-022, FR-040).
-- [ ] T079 [US1] Show source/provider and compatible capabilities in the picker; test switching, attribution, safe unsupported input and Stop (FR-015, FR-037, FR-040).
+- [X] T077 [US1] Implement administrator-controlled OpenAI and Anthropic provider adapters with Keychain-sourced secrets, bounded usage/spend, cancellation, telemetry, dashboard and alert (FR-033–034, FR-040).
+- [X] T078 [US1] Route native Chat and compatible `/v1` generation by registry target while preserving Studio lifecycle, entitlements, history and Code-mode harness placement (FR-012, FR-022, FR-040).
+- [X] T079 [US1] Show source/provider and compatible capabilities in the picker; test switching, attribution, safe unsupported input and Stop (FR-015, FR-037, FR-040).
 - [ ] T080 [US1] Run bounded external-provider acceptance with operator credentials and document rollback, cost and privacy controls (SC-015).
 
 ## Dependencies and execution order

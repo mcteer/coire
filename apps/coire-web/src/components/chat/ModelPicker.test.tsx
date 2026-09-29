@@ -52,6 +52,21 @@ test("labels the configured provider and its remote readiness", () => {
       onSelect={() => {}}
     />,
   );
-  expect(screen.getByText("Anthropic")).toBeInTheDocument();
+  expect(screen.getByText("Anthropic · Text only")).toBeInTheDocument();
   expect(screen.getByText("Remote · ready")).toBeInTheDocument();
+});
+
+test("switches from a Studio model to an attributed provider", () => {
+  const onSelect = vi.fn();
+  const remote = {
+    ...model,
+    id: "00000000-0000-0000-0000-000000000002",
+    display_name: "Remote model",
+    source: "openai" as const,
+  };
+  render(<ModelPicker models={[model, remote]} selectedId={model.id} onSelect={onSelect} />);
+  expect(screen.getByText("Studio")).toBeInTheDocument();
+  expect(screen.getByText("OpenAI · Text only")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Remote model/ }));
+  expect(onSelect).toHaveBeenCalledWith(remote.id);
 });

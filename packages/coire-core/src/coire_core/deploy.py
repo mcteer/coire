@@ -25,6 +25,8 @@ OPTIONAL_SECRET_FILES = (
     "file_worker_service_token",
     "failover_peer_key",
     "failover_relay_token",
+    "openai_api_key",
+    "anthropic_api_key",
 )
 KEYCHAIN_ITEMS = {
     "postgres_password": "coire-postgres-password",
@@ -35,6 +37,8 @@ KEYCHAIN_ITEMS = {
     "ops_service_token": "coire-ops-service-token",
     "file_worker_service_token": "coire-file-worker-service-token",
     "failover_peer_key": "coire-failover-peer-key",
+    "openai_api_key": "coire-openai-api-key",
+    "anthropic_api_key": "coire-anthropic-api-key",
 }
 
 

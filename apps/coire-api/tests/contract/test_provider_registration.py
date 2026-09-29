@@ -103,3 +103,13 @@ async def test_provider_registration_writes_audit_and_starts_private(
             ModelUpdateRequest(visibility=Visibility.PUBLISHED),
             actor="operator",
         )
+    monkeypatch.setattr(service, "write_audit", audit)
+    await service.update_model(
+        cast(AsyncSession, session),
+        model,
+        ModelUpdateRequest(visibility=Visibility.PUBLISHED),
+        actor="operator",
+        provider_ready=True,
+    )
+    assert model.visibility is Visibility.PUBLISHED
+    assert audits[-1]["action"] == "model.publish"

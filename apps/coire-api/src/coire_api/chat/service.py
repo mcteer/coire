@@ -75,7 +75,10 @@ def _warmup(engines: Sequence[EngineProcessRow]) -> float | None:
 
 
 async def picker(
-    session: AsyncSession, principal: Principal, query: ChatPickerQuery | None = None
+    session: AsyncSession,
+    principal: Principal,
+    query: ChatPickerQuery | None = None,
+    settings: Settings | None = None,
 ) -> ChatPickerResponse:
     """Read published, ready, entitled models without any acquisition side effect."""
     rows = (
@@ -84,6 +87,18 @@ async def picker(
         .all()
     )
     visible = [model for model in rows if chat_model_eligible(model, principal)]
+    if settings is not None:
+        from coire_api.gateway.providers import credential_present
+
+        visible = [
+            model
+            for model in visible
+            if (model.source or "studio") == "studio"
+            or (
+                settings.provider_chat_enabled
+                and credential_present(ModelSource(model.source), settings)
+            )
+        ]
     query = query or ChatPickerQuery()
     if query.mode == "code":
         task_class = TaskClass.WRITE if query.action == "apply" else TaskClass.READ

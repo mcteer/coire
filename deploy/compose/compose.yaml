@@ -78,6 +78,7 @@ services:
       DIAGNOSTICS_ENABLED: ${COIRE_DIAGNOSTICS_ENABLED:-false}
       CHAT_ENABLED: ${COIRE_CHAT_ENABLED:-false}
       GATEWAY_INLINE_VISUAL_ENABLED: ${COIRE_GATEWAY_INLINE_VISUAL_ENABLED:-false}
+      PROVIDER_CHAT_ENABLED: ${COIRE_PROVIDER_CHAT_ENABLED:-false}
       CHAT_BROWSER_ORIGIN: ${COIRE_CHAT_PUBLIC_ORIGIN:-}
       CHAT_OUTPUT_TOKENS: ${COIRE_CHAT_OUTPUT_TOKENS:-1024}
       CHAT_EVENT_RETENTION_HOURS: ${COIRE_CHAT_EVENT_RETENTION_HOURS:-24}
@@ -98,7 +99,7 @@ services:
       - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
       - coire-chat-originals:/opt/coire/chat/originals
       - coire-chat-derived:/opt/coire/chat/derived:ro
-    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key]
+    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key, openai_api_key, anthropic_api_key]
     depends_on:
       postgres: {condition: service_healthy}
       coire-migrate: {condition: service_completed_successfully}
@@ -553,3 +554,7 @@ secrets:
     file: ${COIRE_SECRETS_DIR}/failover_relay_token
   failover_peer_key:
     file: ${COIRE_SECRETS_DIR}/failover_peer_key
+  openai_api_key:
+    file: ${COIRE_SECRETS_DIR}/openai_api_key
+  anthropic_api_key:
+    file: ${COIRE_SECRETS_DIR}/anthropic_api_key

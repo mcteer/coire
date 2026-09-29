@@ -11,6 +11,8 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from coire_core.models.registry import ModelSource
+
 
 class OpenAITextPart(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -58,6 +60,7 @@ class GatewayModel(BaseModel):
     created: int
     owned_by: Literal["coire"] = "coire"
     coire_load_state: Literal["loaded", "loading", "cold"]
+    coire_source: ModelSource = ModelSource.STUDIO
     coire_tags: list[str] = Field(default_factory=list)
     coire_description: str | None = None
     coire_context_window: int | None = Field(default=None, ge=1)
