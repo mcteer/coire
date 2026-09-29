@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Context limit remedy in browser Chat (2026-09-29)
+
+- A typed `chat_context_exceeded` admission response now shows explicit options to remove selected files or pages, choose a larger-context model, or start a new conversation. The unsent draft remains intact. Existing collapsed reasoning, inert Markdown, per-message model attribution, attachment mode/page labels and image-capability picker were verified with the new remedy; parent T064 is complete. Web tests: 91 passed; lint and TypeScript production build passed.
+
 ## Native visual Chat on Studios (2026-09-29)
 
 - Native Chat now rebuilds visual message parts from owner/conversation-scoped, ready, manifest-bound PNG previews. The API reads generated asset IDs only through digest/size/dimension verification, then checks image count, encoded bytes, pixels and context against the verified VLM capability before engine I/O. Previous visual turns are rebuilt from saved attachment selections for follow-up and retry; image bytes are not saved in `chat_messages.prompt_content`. Text models refuse visual choices before creating a turn. The browser allows visual Send only for an eligible image-capable model and enforces its image/page count, while retaining a clear removal remedy for incompatible choices. Native visual admission, historical preservation and owner/digest tests pass; 90 web tests, lint and TypeScript production build passed.

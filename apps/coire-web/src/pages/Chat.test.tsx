@@ -570,6 +570,34 @@ test("preserves the draft when admission refuses the send", async () => {
   expect(loadChatDrafts(conversation.owner_id).get(conversationId)?.text).toBe("Keep me");
 });
 
+test("context refusal preserves the draft and offers concrete remedies", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [], next_cursor: null }))
+    .mockResolvedValueOnce(json(conversation, 201))
+    .mockResolvedValueOnce(
+      json(
+        {
+          title: "Context limit exceeded",
+          detail: "attachments exceed the maximum request size",
+          coire_code: "chat_context_exceeded",
+        },
+        422,
+      ),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  await screen.findByText("Friendly model");
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Keep this long prompt" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(await screen.findByText(/choose a model with a larger context below/i)).toBeInTheDocument();
+  expect(screen.getByText(/start a new conversation/i)).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Keep this long prompt");
+});
+
 test("reuses request identity after an uncertain network failure", async () => {
   const accepted = {
     type: "turn.accepted",

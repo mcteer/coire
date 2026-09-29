@@ -84,6 +84,19 @@ function ChatSession({ ownerId }: { ownerId: string }) {
               {chat.error}
             </p>
           )}
+          {chat.contextExceeded && (
+            <div className="chat-selection-remedy" role="status">
+              <p>
+                This turn exceeds the model’s context limit. Remove selected files or pages, choose
+                a model with a larger context below, or start a new conversation. Your draft is saved.
+              </p>
+              {chat.selections.some((item) => item.mode === "visual") && (
+                <button className="button" type="button" onClick={chat.removeVisualSelections}>
+                  Remove visual selections
+                </button>
+              )}
+            </div>
+          )}
           {chat.loading ? (
             <p>Loading available models…</p>
           ) : (

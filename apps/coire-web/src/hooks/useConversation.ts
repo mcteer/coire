@@ -103,6 +103,7 @@ export function useConversation(ownerId: string) {
   const [draft, setDraft] = useState(() => drafts.current.get("new")?.text ?? "");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [contextExceeded, setContextExceeded] = useState(false);
   const [reauthRequired, setReauthRequired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
@@ -117,6 +118,12 @@ export function useConversation(ownerId: string) {
   const stream = useChatTurnStream();
 
   const reportError = (cause: unknown) => {
+    const problem = cause instanceof ApiError ? cause.problem : null;
+    const code =
+      problem && typeof problem === "object" && "coire_code" in problem
+        ? problem.coire_code
+        : null;
+    setContextExceeded(code === "chat_context_exceeded");
     if (cause instanceof ApiError && cause.status === 401) {
       setReauthRequired(true);
       setError("Your session expired. Sign in again to continue this conversation.");
@@ -398,6 +405,7 @@ export function useConversation(ownerId: string) {
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    setContextExceeded(false);
     const selectedModel = models.find((item) => item.id === selectedId);
     setStatus(
       selectedModel?.source === "studio" && selectedModel.load_state === "cold"
@@ -494,6 +502,7 @@ export function useConversation(ownerId: string) {
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    setContextExceeded(false);
     const content = mode === "retry" ? input.text : "Continue the previous response.";
     const key = [current.id, current.revision, selectedId, previous.id, mode].join("\0");
     const body: ChatTurnCreate =
@@ -1014,6 +1023,7 @@ export function useConversation(ownerId: string) {
     setDraft: changeDraft,
     status,
     error: error ?? stream.error,
+    contextExceeded,
     reauthRequired,
     loading,
     available,
