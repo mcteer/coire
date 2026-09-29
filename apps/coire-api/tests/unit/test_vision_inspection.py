@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
@@ -12,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import ADMIN
 from coire_api.nodes_client import NodeClient
-from coire_api.registry.inspection import classify_inspection
+from coire_api.registry.inspection import classify_inspection, visual_recipe_rejection
 from coire_api.registry.placement import NodeView
 from coire_core.models.acquisition import (
     AcquisitionRequest,
@@ -20,7 +21,7 @@ from coire_core.models.acquisition import (
     Precision,
     VariantRecipe,
 )
-from coire_core.models.jobs import RepoFile, RepoInspection
+from coire_core.models.jobs import Quantization, RepoFile, RepoInspection
 from coire_core.models.node import Reachability
 from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
@@ -88,7 +89,20 @@ def test_other_visual_architecture_is_not_misclassified_as_text() -> None:
     assert result.rejection_code == "unsupported_visual_architecture"
 
 
-async def test_admin_submission_audits_visual_refusal_until_smoke_is_wired(
+def test_preconverted_visual_recipe_must_match_inspected_quantization() -> None:
+    source = _inspect().model_copy(update={"quantization": Quantization(bits=4, group_size=64)})
+    assert (
+        visual_recipe_rejection(source, VariantRecipe(name="upstream", precision=Precision.BIT4))
+        is None
+    )
+    assert visual_recipe_rejection(source, VariantRecipe(name="mismatch", precision=Precision.BIT6))
+    assert visual_recipe_rejection(
+        source,
+        VariantRecipe(name="mismatch", precision=Precision.BIT4, bits=4, group_size=128),
+    )
+
+
+async def test_admin_submission_audits_unverifiable_visual_recipe_before_transfer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from coire_api.routes import admin_acquisitions
@@ -124,7 +138,60 @@ async def test_admin_submission_audits_visual_refusal_until_smoke_is_wired(
         )
     assert raised.value.status_code == 422
     detail = cast(dict[str, object], raised.value.detail)
-    assert detail["code"] == "vision_validation_unavailable"
+    assert detail["code"] == "unsupported_visual_recipe"
     assert detail["bytes_transferred"] == 0
     reject.assert_awaited_once()
     submit.assert_not_awaited()
+
+
+async def test_supported_preconverted_visual_source_enters_admin_workflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.routes import admin_acquisitions
+
+    nodes = [
+        NodeView("coire-edge-a", Reachability.HEALTHY, memory_budget_bytes=10_000),
+        NodeView("coire-edge-b", Reachability.HEALTHY, memory_budget_bytes=10_000),
+    ]
+    rows = [SimpleNamespace(name=node.name, id=uuid.uuid4()) for node in nodes]
+
+    class _EmptyResult:
+        def scalar_one_or_none(self) -> None:
+            return None
+
+    class _NodeResult:
+        def scalars(self) -> SimpleNamespace:
+            return SimpleNamespace(all=lambda: rows)
+
+    session = SimpleNamespace(
+        execute=AsyncMock(side_effect=[_EmptyResult(), _NodeResult()]),
+        commit=AsyncMock(),
+    )
+    expected = object()
+    submit = AsyncMock(return_value=(None, None, object(), True))
+    reject = AsyncMock()
+    monkeypatch.setattr("coire_api.registry.service.node_views", AsyncMock(return_value=nodes))
+    monkeypatch.setattr("coire_api.registry.acquisition.submit", submit)
+    monkeypatch.setattr("coire_api.registry.acquisition.reject", reject)
+    monkeypatch.setattr(
+        "coire_api.registry.acquisition.projection", AsyncMock(return_value=expected)
+    )
+    source = _inspect().model_copy(update={"quantization": Quantization(bits=4, group_size=64)})
+    client = SimpleNamespace(inspect=AsyncMock(return_value=source))
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(reconciler=None)))
+    body = AcquisitionRequest(
+        repo_id="org/visual", variant=VariantRecipe(name="upstream", precision=Precision.BIT4)
+    )
+    result = await admin_acquisitions.submit_acquisition(
+        body,
+        cast(Request, request),
+        Response(),
+        ADMIN,
+        cast(AsyncSession, session),
+        Settings(),
+        cast(NodeClient, client),
+    )
+    assert result is expected
+    assert submit.await_args.kwargs["inspection"]["backend"] == "mlx_vlm"
+    assert submit.await_args.kwargs["weight_bytes"] == 100
+    reject.assert_not_awaited()

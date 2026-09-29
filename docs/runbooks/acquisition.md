@@ -30,10 +30,13 @@ reservations; partial conversion directories are removed and partial Hub pulls r
   tokenizer and safetensors inventory; no weights were transferred.
 - `vision_requires_preconverted_mlx` or `unsupported_visual_architecture`: use a supported,
   already-converted MLX-VLM repository; visual conversion is not available.
-- `vision_validation_unavailable`: metadata inspection passed, but visual generation validation
-  and publication are still disabled. The audited refusal transfers zero weight bytes. Keep Chat
-  off and retry only after the visual validation rollout is verified locally; rollback is to keep
-  visual acquisition disabled, with no model data to clean up from this request.
+- `unsupported_visual_recipe`: a preconverted visual source has no matching inspected precision
+  or the requested recipe would convert it. The audited refusal transfers zero weight bytes.
+  Submit the source's measured precision and group size. A supported visual source enters the
+  admin acquisition workflow; it remains unpublished until the local one-image smoke passes
+  and the replica checksum matches. If either check fails, inspect the acquisition job and
+  cancel or retry through the admin API. To roll back, stop new visual submissions and keep
+  failed variants unpublished while retaining their job evidence.
 - `disk_full`: free model-store capacity; partial conversion output is removed.
 - validation failure: compare smoke, perplexity, and template outcomes; files stay unpublished.
   For a visual node job, inspect `result.backend=mlx_vlm`, `smoke_failure`, and the local

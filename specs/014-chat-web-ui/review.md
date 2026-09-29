@@ -1,5 +1,10 @@
 # Feature 014 implementation review
 
+## Admin visual acquisition publication gate (014bt, 2026-09-29)
+
+- Supported preconverted Idefics3 sources now enter the audited admin acquisition workflow when their inspected quantization matches the requested recipe. Mismatches fail before transfer. The scheduler carries the inspected backend to node validation and requires a passing result with measured verified visual capability; final publication rechecks that result and matching origin/replica manifests before storing backend and visual limits in the model and variant registry. Parent T054/T055 remain open pending a real tiny-model local acquisition and end-to-end acceptance.
+- Full Python suite: 1,106 passed, 118 conditional integration skips. The focused admin/scheduler tests passed, as did Ruff, strict mypy on 241 source files, OpenAPI freshness, and all 84 web tests plus lint/build. Local OrbStack arm64 API and scheduler images built, passed image policy and Trivy CRITICAL scans with zero findings; Syft SBOMs are at `/tmp/coire-api-014bt.spdx.json` and `/tmp/coire-scheduler-014bt.spdx.json`. No real engine or Studio was contacted. The visual candidate's official config reports Idefics3 and 4-bit group-size-64 quantization.
+
 ## Local vision validation gate (014bs, 2026-09-29)
 
 - The node validation request now carries a strict core `backend` selection. A visual job rechecks the local checksum manifest and complete, unlinked processor and weights, then loads only its local store path with the pinned bare MLX-VLM loader, remote code disabled and Hub lookups offline. It generates a runtime 16×16 pixel image and requires nondegenerate output. Pass results include measured visual limits; text perplexity is `not_comparable`. Failures are typed and cannot mark the variant validated. The existing text job remains the default. The admin visual acquisition refusal remains active; parent T054/T055 are still open until scheduler publication and local tiny-model acceptance pass.

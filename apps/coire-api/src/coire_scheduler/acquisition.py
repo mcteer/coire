@@ -36,7 +36,7 @@ from coire_core.models.acquisition import (
 )
 from coire_core.models.jobs import JobStatus
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
-from coire_core.models.registry import CopyRole, ModelState
+from coire_core.models.registry import CopyRole, EngineBackend, ModelState
 from coire_core.settings import get_settings
 
 JOB_NAMESPACE = uuid.UUID("5a0d0bf0-0989-4a76-8f2d-2f9a2b66aafe")
@@ -69,6 +69,18 @@ PHYSICAL_STAGES = (
     AcquisitionStage.VALIDATE,
     AcquisitionStage.REPLICATE,
 )
+
+
+def require_validated_backend(result: dict[str, Any], expected: EngineBackend) -> ValidationResult:
+    """Keep a text or incomplete visual result from publishing under another backend."""
+    validation = ValidationResult.model_validate(result)
+    if validation.backend is not expected or not validation.validated:
+        raise RuntimeError("node validation did not verify the inspected backend")
+    if expected is EngineBackend.MLX_VLM and (
+        validation.visual_input is None or not validation.visual_input.verified
+    ):
+        raise RuntimeError("visual validation has no measured verified capability")
+    return validation
 
 
 def node_job_id(workflow_id: uuid.UUID, stage: AcquisitionStage, attempt: int = 1) -> uuid.UUID:
@@ -428,8 +440,11 @@ async def _run_command_stage(
         )
         return
     if stage is AcquisitionStage.VALIDATE:
-        reference_id, reference = await _reference_perplexity(
-            context["model_id"], context["variant_id"]
+        backend = EngineBackend(context["inspection"].get("backend", EngineBackend.MLX_LM))
+        reference_id, reference = (
+            (None, None)
+            if backend is EngineBackend.MLX_VLM
+            else await _reference_perplexity(context["model_id"], context["variant_id"])
         )
         status = JobStatus.model_validate(
             await _submit_command(
@@ -440,6 +455,7 @@ async def _run_command_stage(
                 attempt=context["attempt"],
                 payload={
                     "slug": context["variant_slug"],
+                    "backend": backend.value,
                     "tolerance": settings.acquisition_perplexity_tolerance,
                     "validator_version": settings.acquisition_validation_fixture_version,
                     "chat_template_present": bool(
@@ -451,8 +467,8 @@ async def _run_command_stage(
             )
         )
         result = dict(status.result or {})
-        validation = ValidationResult.model_validate(result)
-        validation_total.add(1, {"outcome": "pass" if validation.validated else "fail"})
+        validation = require_validated_backend(result, backend)
+        validation_total.add(1, {"outcome": "pass", "backend": backend.value})
         async with session_scope() as session:
             validation_row = (
                 await session.execute(
@@ -567,6 +583,19 @@ async def _record_ready(context: dict[str, Any], origin: JobStatus, replica: Job
         workflow = await session.get(AcquisitionWorkflowRow, context["workflow_id"])
         if variant is None or model is None or workflow is None or origin.manifest is None:
             raise RuntimeError("cannot publish incomplete acquisition state")
+        backend = EngineBackend(context["inspection"].get("backend", EngineBackend.MLX_LM))
+        validation_row = (
+            await session.execute(
+                select(ValidationResultRow).where(
+                    ValidationResultRow.workflow_id == context["workflow_id"]
+                )
+            )
+        ).scalar_one_or_none()
+        if validation_row is None or not validation_row.validated or not variant.validated:
+            raise RuntimeError("cannot publish a variant without passing validation")
+        validation = require_validated_backend(validation_row.result, backend)
+        if origin.manifest_sha256 is None or origin.manifest_sha256 != replica.manifest_sha256:
+            raise RuntimeError("cannot publish mismatched variant copies")
         for node_id, role, status in (
             (context["origin_id"], CopyRole.ORIGIN, origin),
             (context["replica_id"], CopyRole.REPLICA, replica),
@@ -593,11 +622,21 @@ async def _record_ready(context: dict[str, Any], origin: JobStatus, replica: Job
             copy.verified_at = now
             copy.role = role
         variant.byte_size = origin.manifest.total_bytes
+        variant.backend = backend.value
+        variant.visual_capability = (
+            validation.visual_input.model_dump(mode="json") if validation.visual_input else None
+        )
         variant.estimate_delta_bytes = origin.manifest.total_bytes - variant.memory_estimate_bytes
         if variant.memory_estimate_bytes:
             estimate_delta_ratio.set(variant.estimate_delta_bytes / variant.memory_estimate_bytes)
         variant.state = VariantState.READY
         model.state = ModelState.READY
+        model.backend = backend.value
+        model.visual_capability = variant.visual_capability
+        model.capability_profile = {
+            **(model.capability_profile or {}),
+            **({"visual_input": variant.visual_capability} if variant.visual_capability else {}),
+        }
         model.precision = variant.precision
         model.total_bytes = origin.manifest.total_bytes
         model.manifest_sha256 = origin.manifest_sha256

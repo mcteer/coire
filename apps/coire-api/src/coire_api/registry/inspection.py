@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from coire_api.registry.placement import NodeView
-from coire_core.models.acquisition import FitDecision, InspectionResult, Precision
+from coire_core.models.acquisition import FitDecision, InspectionResult, Precision, VariantRecipe
 from coire_core.models.jobs import RepoInspection
 from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
@@ -52,6 +52,31 @@ def architecture_supported(architecture: str | None) -> bool:
     return any(
         family == item or family.startswith(item) for item in SUPPORTED_ARCHITECTURE_FAMILIES
     )
+
+
+def visual_recipe_rejection(repo: RepoInspection, recipe: VariantRecipe) -> str | None:
+    """An already-converted visual source cannot silently change precision on pull."""
+    if recipe.precision is Precision.MIXED or recipe.mode is not None:
+        return "visual conversion recipes are unsupported"
+    quantization = repo.quantization
+    if quantization is not None and quantization.bits in (4, 6, 8):
+        expected = {4: Precision.BIT4, 6: Precision.BIT6, 8: Precision.BIT8}[quantization.bits]
+        if recipe.precision is not expected:
+            return "requested visual precision differs from the preconverted source"
+        if recipe.bits is not None and recipe.bits != quantization.bits:
+            return "requested visual bits differ from the preconverted source"
+        if (
+            recipe.group_size is not None
+            and quantization.group_size is not None
+            and recipe.group_size != quantization.group_size
+        ):
+            return "requested visual group size differs from the preconverted source"
+        return None
+    if repo.torch_dtype in ("float16", "bfloat16"):
+        expected = Precision.FP16 if repo.torch_dtype == "float16" else Precision.BF16
+        if recipe.precision is expected:
+            return None
+    return "visual source precision cannot be verified from metadata"
 
 
 def estimate_weight_bytes(source_bytes: int, precision: Precision) -> int:

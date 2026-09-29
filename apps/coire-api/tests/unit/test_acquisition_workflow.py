@@ -12,8 +12,9 @@ from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_api.registry.acquisition_executor import AcquisitionCommandExecutor
 from coire_core.models.acquisition import AcquisitionStage
 from coire_core.models.jobs import JobKind, JobStage, JobStatus
+from coire_core.models.registry import EngineBackend, VisualCapability
 from coire_core.settings import Settings
-from coire_scheduler.acquisition import node_job_id
+from coire_scheduler.acquisition import node_job_id, require_validated_backend
 from coire_scheduler.main import acquisition_dispatch_id
 
 
@@ -32,6 +33,30 @@ def test_acquisition_retry_gets_new_durable_workflow_id() -> None:
     assert acquisition_dispatch_id(workflow, 2) != str(workflow)
     assert acquisition_dispatch_id(workflow, 2) == acquisition_dispatch_id(workflow, 2)
     assert acquisition_dispatch_id(workflow, 3) != acquisition_dispatch_id(workflow, 2)
+
+
+def test_visual_publication_requires_matching_backend_and_measured_capability() -> None:
+    result = {
+        "validator_version": "v1",
+        "backend": EngineBackend.MLX_VLM.value,
+        "smoke": "pass",
+        "perplexity_outcome": "not_comparable",
+        "template": "not_applicable",
+        "tolerance": 0.1,
+        "validated": True,
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    with pytest.raises(RuntimeError):
+        require_validated_backend(result, EngineBackend.MLX_VLM)
+    visual = VisualCapability(
+        verified=True, max_images=1, max_image_pixels=256, max_encoded_bytes=80
+    )
+    measured = {**result, "visual_input": visual.model_dump(mode="json")}
+    assert require_validated_backend(measured, EngineBackend.MLX_VLM).visual_input == visual
+    with pytest.raises(RuntimeError):
+        require_validated_backend(measured, EngineBackend.MLX_LM)
+    with pytest.raises(RuntimeError):
+        require_validated_backend({**measured, "validated": False}, EngineBackend.MLX_VLM)
 
 
 @pytest.mark.asyncio

@@ -14,7 +14,11 @@ from coire_api.db import AcquisitionWorkflowRow, ModelRow, ModelVariantRow, Node
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.registry import acquisition, service
-from coire_api.registry.inspection import classify_inspection, estimate_weight_bytes
+from coire_api.registry.inspection import (
+    classify_inspection,
+    estimate_weight_bytes,
+    visual_recipe_rejection,
+)
 from coire_api.registry.placement import NoCandidate, choose_origin, replica_for
 from coire_core.models.acquisition import AcquisitionRequest, AcquisitionWorkflow, VariantState
 from coire_core.models.registry import EngineBackend
@@ -174,26 +178,30 @@ async def submit_acquisition(
         )
 
     if decision.backend is EngineBackend.MLX_VLM:
-        # Inspection is metadata-only. Until the node's visual generation smoke and
-        # scheduler publication gate are wired, never route a VLM through text validation.
-        await acquisition.reject(
-            session,
-            actor=actor,
-            repo_id=body.repo_id,
-            code="vision_validation_unavailable",
-            detail="visual acquisition requires the measured validation path",
-        )
-        await session.commit()
-        raise HTTPException(
-            422,
-            {
-                "code": "vision_validation_unavailable",
-                "detail": "visual acquisition requires the measured validation path",
-                "bytes_transferred": 0,
-            },
-        )
+        rejection = visual_recipe_rejection(metadata, body.variant)
+        if rejection is not None:
+            await acquisition.reject(
+                session,
+                actor=actor,
+                repo_id=body.repo_id,
+                code="unsupported_visual_recipe",
+                detail=rejection,
+            )
+            await session.commit()
+            raise HTTPException(
+                422,
+                {
+                    "code": "unsupported_visual_recipe",
+                    "detail": rejection,
+                    "bytes_transferred": 0,
+                },
+            )
 
-    estimated = estimate_weight_bytes(metadata.weight_bytes, body.variant.precision)
+    estimated = (
+        metadata.weight_bytes
+        if decision.backend is EngineBackend.MLX_VLM
+        else estimate_weight_bytes(metadata.weight_bytes, body.variant.precision)
+    )
     node_rows = {
         row.name: row
         for row in (
