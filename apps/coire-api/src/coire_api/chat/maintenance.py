@@ -9,13 +9,15 @@ from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import and_, or_, select, update
+from sqlalchemy import and_, delete, or_, select, update
 
 from coire_api.chat.telemetry import requests_total, tracer
 from coire_api.db import (
+    ChatAttachmentRow,
     ChatConversationRow,
     ChatEventRow,
     ChatMessageRow,
+    ChatQuotaReservationRow,
     ChatTurnRow,
     session_scope,
 )
@@ -27,6 +29,7 @@ PROCESS_ID = uuid.uuid4().hex
 LEASE_SECONDS = 30
 SWEEP_SECONDS = 5
 ACTIVE_STATES = ("accepted", "queued", "loading", "running", "stop_requested")
+TEXT_PURGE_DELAY = timedelta(minutes=5)
 
 
 async def renew_turn_lease(turn_id: uuid.UUID) -> bool:
@@ -153,6 +156,84 @@ async def sweep_stale_turns(settings: Settings) -> int:
     return recovered
 
 
+async def purge_deleted_text() -> int:
+    """Erase expired text-only content; keep the owner tombstone for idempotent DELETE."""
+    cutoff = datetime.now(UTC) - TEXT_PURGE_DELAY
+    async with session_scope() as session:
+        candidates = (
+            (
+                await session.execute(
+                    select(ChatConversationRow.id)
+                    .where(
+                        ChatConversationRow.deleted_at <= cutoff,
+                        ChatConversationRow.purged_at.is_(None),
+                    )
+                    .order_by(ChatConversationRow.deleted_at, ChatConversationRow.id)
+                    .limit(100)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    purged = 0
+    for conversation_id in candidates:
+        with tracer.start_as_current_span("coire.api.chat.purge"):
+            async with session_scope() as session:
+                conversation = await session.scalar(
+                    select(ChatConversationRow)
+                    .where(ChatConversationRow.id == conversation_id)
+                    .with_for_update()
+                )
+                if (
+                    conversation is None
+                    or conversation.deleted_at is None
+                    or conversation.deleted_at > datetime.now(UTC) - TEXT_PURGE_DELAY
+                    or conversation.purged_at is not None
+                ):
+                    continue
+                attached = await session.scalar(
+                    select(ChatAttachmentRow.id)
+                    .where(ChatAttachmentRow.conversation_id == conversation_id)
+                    .limit(1)
+                )
+                if attached is not None:
+                    # Original/derived blob deletion is owned by the later file-purge path.
+                    continue
+                active = await session.scalar(
+                    select(ChatTurnRow.id)
+                    .where(
+                        ChatTurnRow.conversation_id == conversation_id,
+                        ChatTurnRow.state.in_(ACTIVE_STATES),
+                    )
+                    .limit(1)
+                )
+                if active is not None:
+                    continue
+                conversation.active_turn_id = None
+                await session.flush()
+                await session.execute(
+                    delete(ChatEventRow).where(ChatEventRow.conversation_id == conversation_id)
+                )
+                await session.execute(
+                    delete(ChatTurnRow).where(ChatTurnRow.conversation_id == conversation_id)
+                )
+                await session.execute(
+                    delete(ChatMessageRow).where(ChatMessageRow.conversation_id == conversation_id)
+                )
+                await session.execute(
+                    delete(ChatQuotaReservationRow).where(
+                        ChatQuotaReservationRow.conversation_id == conversation_id
+                    )
+                )
+                conversation.title = "Deleted conversation"
+                conversation.selected_model_id = None
+                conversation.purged_at = datetime.now(UTC)
+            purged += 1
+            requests_total.add(1, {"operation": "purge", "outcome": "succeeded"})
+            logger.info("chat text content purged conversation_id=%s", conversation_id)
+    return purged
+
+
 class ChatMaintenance:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -172,7 +253,8 @@ class ChatMaintenance:
         while True:
             try:
                 await sweep_stale_turns(self._settings)
+                await purge_deleted_text()
             except Exception as exc:
-                requests_total.add(1, {"operation": "reconcile", "outcome": "failed"})
-                logger.error("chat recovery pass failed error_type=%s", type(exc).__name__)
+                requests_total.add(1, {"operation": "maintenance", "outcome": "failed"})
+                logger.error("chat maintenance pass failed error_type=%s", type(exc).__name__)
             await asyncio.sleep(SWEEP_SECONDS)

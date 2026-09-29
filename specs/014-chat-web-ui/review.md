@@ -152,3 +152,9 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Added owner/revision DELETE with idempotent tombstone, active plain-chat Stop request and a content-free deletion event. Already connected observers receive the event and close; all new owner reads are denied. The browser requires explicit confirmation and removes selected state/draft after acceptance.
 - Focused service/route/observer/browser tests cover owner/foreign/stale/Origin/idempotency and confirmation. Physical original/derived/content purge and alternate artifact-route guards remain in parent T030/T066; native Chat stays default-off.
+
+## Deleted text purge gate (014x)
+
+- Added reversible `0016_chat_purge_marker` and a bounded five-minute text-only purge pass. It removes saved messages/turns/events/quota rows, scrubs title/model selection and retains a content-free owner tombstone. Conversations with attachments or active turns remain unpurged for safe later cleanup.
+- Unit tests cover safe, attached and active cases. A disposable local PostgreSQL 17 instance upgraded through 0016, held a populated deleted text conversation, and successfully purged its actual content rows while retaining a marked scrubbed tombstone. Downgrade to 0015 and re-upgrade succeeded. Parent T030/T066 remain open for attachment/blob/artifact purge and the deadline alert; Chat stays default-off.
+- The existing populated 0015 migration integration test passed against the same disposable PostgreSQL instance, which was then removed. Full Python tests passed 885 with 117 conditional skips; 56 web tests, strict mypy (224 files), Ruff and OpenAPI freshness passed. Global `alembic check` still reports pre-existing metadata drift in unrelated tables; its diagnostics reported no chat-table difference at 0016.

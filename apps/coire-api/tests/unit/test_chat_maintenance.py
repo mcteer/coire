@@ -110,3 +110,61 @@ async def test_renewed_lease_is_not_reconciled(monkeypatch: pytest.MonkeyPatch) 
     assert await maintenance.sweep_stale_turns(Settings(_secrets_dir="/nonexistent")) == 0  # type: ignore[call-arg]
     assert session.turn.state == "running"
     assert session.events == []
+
+
+@pytest.mark.parametrize("blocker", [None, "attachment", "active"])
+async def test_text_purge_scrubs_only_safe_tombstones(
+    monkeypatch: pytest.MonkeyPatch, blocker: str | None
+) -> None:
+    now = datetime.now(UTC)
+    conversation = ChatConversationRow(
+        id=uuid.uuid4(),
+        owner_user_id=uuid.uuid4(),
+        title="Sensitive title",
+        mode="chat",
+        selected_model_id=uuid.uuid4(),
+        revision=3,
+        event_cursor=4,
+        deleted_at=now - timedelta(minutes=10),
+        created_at=now,
+        updated_at=now,
+    )
+    conversation.active_turn_id = uuid.uuid4()
+    commands: list[str] = []
+
+    class PurgeSession:
+        async def execute(self, statement: object) -> SimpleNamespace:
+            commands.append(str(statement))
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [conversation.id]))
+
+        async def scalar(self, statement: object) -> object:
+            sql = str(statement)
+            if "FROM chat_conversations" in sql:
+                return conversation
+            if "FROM chat_attachments" in sql and blocker == "attachment":
+                return uuid.uuid4()
+            if "FROM chat_turns" in sql and blocker == "active":
+                return uuid.uuid4()
+            return None
+
+        async def flush(self) -> None:
+            return None
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[PurgeSession]:
+        yield PurgeSession()
+
+    monkeypatch.setattr(maintenance, "session_scope", sessions)
+    count = await maintenance.purge_deleted_text()
+    if blocker is None:
+        assert count == 1
+        assert conversation.title == "Deleted conversation"
+        assert conversation.selected_model_id is None
+        assert conversation.active_turn_id is None
+        assert conversation.purged_at is not None
+        assert sum(command.startswith("DELETE FROM chat_") for command in commands) == 4
+        assert await maintenance.purge_deleted_text() == 0
+    else:
+        assert count == 0
+        assert conversation.purged_at is None
+        assert not any(command.startswith("DELETE FROM chat_") for command in commands)

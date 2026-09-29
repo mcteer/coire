@@ -95,8 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         from coire_api.chat.maintenance import ChatMaintenance
 
         chat_maintenance = ChatMaintenance(settings)
-        if settings.chat_enabled:
-            await chat_maintenance.start()
+        await chat_maintenance.start()
         app.state.chat_maintenance = chat_maintenance
         from coire_api.failover.poller import build_poller
         from coire_api.failover.publication import CoreSnapshotService, configured_membership

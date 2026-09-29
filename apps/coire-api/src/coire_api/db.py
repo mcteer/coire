@@ -1274,6 +1274,7 @@ class ChatConversationRow(Base):
     __tablename__ = "chat_conversations"
     __table_args__ = (
         Index("ix_chat_conversations_owner_updated", "owner_user_id", "updated_at", "id"),
+        Index("ix_chat_conversations_purge", "deleted_at", "purged_at"),
         CheckConstraint("revision >= 1", name="ck_chat_conversation_revision"),
         UniqueConstraint("id", "owner_user_id", name="uq_chat_conversation_id_owner"),
     )
@@ -1294,6 +1295,7 @@ class ChatConversationRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ChatMessageRow(Base):

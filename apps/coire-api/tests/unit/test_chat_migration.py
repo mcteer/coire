@@ -73,6 +73,15 @@ def test_chat_migration_is_one_revision_with_guarded_reverse() -> None:
     assert "chat content must be deleted before downgrade" in source
 
 
+def test_purge_marker_migration_is_additive_and_reversible() -> None:
+    table = Base.metadata.tables["chat_conversations"]
+    assert "purged_at" in table.c
+    assert any(index.name == "ix_chat_conversations_purge" for index in table.indexes)
+    source = Path("apps/coire-api/alembic/versions/0016_chat_purge_marker.py").read_text()
+    assert 'down_revision: str | None = "0015_chat_conversations"' in source
+    assert "def upgrade()" in source and "def downgrade()" in source
+
+
 def test_populated_chat_blocks_downgrade_before_any_drop() -> None:
     namespace = runpy.run_path("apps/coire-api/alembic/versions/0015_chat_conversations.py")
     downgrade = namespace["downgrade"]
