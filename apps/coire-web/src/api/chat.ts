@@ -8,6 +8,8 @@ export type ChatConversationCreate = components["schemas"]["ChatConversationCrea
 export type ChatTurnCreate = components["schemas"]["ChatTurnCreate"];
 export type ChatTurnDetail = components["schemas"]["ChatTurnDetail"];
 export type ChatEvent = components["schemas"]["ChatEvent"];
+export type ChatMessage = components["schemas"]["ChatMessage-Output"];
+export type ChatPickerEntry = components["schemas"]["ChatPickerEntry"];
 
 export function listChatModels(): Promise<ChatPickerResponse> {
   return api<ChatPickerResponse>("/api/v1/chat/models");

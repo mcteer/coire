@@ -32,12 +32,12 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 **Independent test:** An ordinary user streams a conversation and switches models with no admin access or internal identifiers.
 
 - [X] T015 [P] [US1] Add picker/create/send contracts for published/ready/entitled filtering, metadata and failure/draft preservation in apps/coire-api/tests/contract/test_chat_picker.py and test_chat_turns.py (FR-001–003, FR-007–008, FR-010, FR-022, FR-033).
-- [ ] T016 [P] [US1] Add ordinary/admin shell routing, empty picker, model selection and stream UI tests in apps/coire-web/src/pages/Chat.test.tsx and components/chat/ModelPicker.test.tsx.
+- [X] T016 [P] [US1] Add ordinary/admin shell routing, empty picker, model selection and stream UI tests in apps/coire-web/src/pages/Chat.test.tsx and components/chat/ModelPicker.test.tsx.
 - [X] T017 [US1] Implement locked admission, idempotent request identity, initial messages/model snapshots, variant selection and response/output bounds in apps/coire-api/src/coire_api/chat/turns.py (FR-001, FR-008, FR-010, FR-023).
 - [X] T018 [US1] Implement native picker/create/send/status routes and persist-before-emit streaming in apps/coire-api/src/coire_api/routes/chat.py, chat/streaming.py and app.py; include actual usage and safe failures (FR-001–003, FR-007, FR-033).
 - [X] T019 [US1] Export native event/request/response schemas through apps/coire-api/src/coire_api/routes/chat.py, regenerate apps/coire-api/openapi.json and apps/coire-web/src/api/schema.d.ts, and add generated-type client functions in apps/coire-web/src/api/chat.ts.
 - [ ] T020 [US1] Extract apps/coire-web/src/components/AppShell.tsx; implement Chat routing and initial composer/picker/transcript in App.tsx, pages/Chat.tsx, components/chat/Composer.tsx, ModelPicker.tsx, MessageList.tsx and Message.tsx using styles/chat.css and safe Markdown policy (FR-001–003, FR-007–008, FR-010, FR-029–030).
-- [ ] T021 [US1] Wire sending/model switches/error-preserving drafts through apps/coire-web/src/hooks/useConversation.ts and pages/Chat.tsx, with generated types and shared stream hook (FR-001, FR-008, FR-018, FR-033).
+- [X] T021 [US1] Wire sending/model switches/error-preserving drafts through apps/coire-web/src/hooks/useConversation.ts and pages/Chat.tsx, with generated types and shared stream hook (FR-001, FR-008, FR-018, FR-033).
 - [ ] T022 [US1] Add local tiny-text streaming/model-attribution integration scenarios in tests/integration/test_chat_ui.py; preserve existing /v1, admin and failover regression coverage (SC-001–002, SC-004).
 
 ## Phase 4 — US2: Understand cold-model waits (P1)

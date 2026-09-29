@@ -22,12 +22,9 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 6. `014f` shared gateway stream execution and compatible regression protection.
 7. `014g` native Chat picker, private conversation creation and initial telemetry.
 8. `014h` persistent text turns and remaining shared inference admission.
-9. `014i` chat SPA, event transport and cold-model experience.
-   Browser event transport is a separate first slice; SPA and cold-model experience follow.
-10. `014j` history, recovery, cancellation and coding actions.
-11. `014k` private file processing worker, storage, quotas and previews.
-12. `014l` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
-13. `014m` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
+9. `014i` browser event transport.
+10. `014j` first-use Chat UI; cold-model experience remains a separate follow-up.
+11. Later children: history, recovery, cancellation, coding actions, private file processing, bare Studio VLM, reasoning, final telemetry and end-to-end acceptance.
 
 ## Runtime dependency gate (014b)
 
@@ -78,3 +75,9 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 - Exported the native SSE envelope as a `text/event-stream` OpenAPI response and regenerated browser types. Typed picker/create/status/send functions reside in the web API module. The send function validates event identity, order and terminal completion, and never retries its POST.
 - The incremental parser handles fragmented UTF-8, CRLF, multiline data, comments and bounded frames. Admin snapshots use the same parser and retain their reconnect cursor behavior. Native generation stays connected in hidden tabs and aborts on unmount.
 - New transport and hook tests passed with 27 web tests total; web typecheck/build and lint passed. The Chat send route contract checks its OpenAPI SSE schema; all eight text-turn contracts, Ruff and OpenAPI freshness passed. Parent T019 is complete. GET observers, SPA, history and cold-model display remain open.
+
+## First-use Chat UI gate (014j)
+
+- Extracted a shared Chat/Admin shell. Ordinary users land on Chat; the Admin link is visible only to admins and server authorization remains authoritative. The picker renders only the API's eligible entries with task grouping, metadata and an honest unknown warm-up estimate.
+- A new conversation is created on the first send. Accepted events add input and assistant messages with the model's saved display-name snapshot; deltas grow the answer. Subsequent sends can switch models. Admission errors retain the unsent draft. An uncertain network failure reuses the same request identity on retry. The UI refuses overlapping sends while a conversation is being created.
+- Markdown renders without raw HTML or automatic images and filters executable URLs. Web tests cover routing, empty picker, selection, streamed answer, model switch, draft preservation, retry identity and hostile Markdown. The web suite passed 35 tests; build/typecheck and lint passed. Parent T016 and T021 are complete. T020 stays open for full responsive/a11y/code-copy acceptance.

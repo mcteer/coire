@@ -1,0 +1,120 @@
+.chat-page {
+  display: grid;
+  gap: var(--s-5);
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.chat-topline,
+.chat-composer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+.chat-topline h1 {
+  margin: 0;
+}
+.chat-topline p {
+  margin: var(--s-2) 0 0;
+}
+.chat-picker {
+  display: grid;
+  gap: var(--s-4);
+}
+.chat-picker h3 {
+  margin: 0 0 var(--s-2);
+  text-transform: capitalize;
+}
+.chat-model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--s-3);
+}
+.chat-model {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+}
+.chat-model.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.chat-model span {
+  color: var(--ink-2);
+}
+.chat-model small {
+  color: var(--ink-3);
+}
+.chat-model .chat-load {
+  color: var(--accent-ink);
+  font-weight: 700;
+}
+.chat-intro {
+  padding: var(--s-8);
+  text-align: center;
+  color: var(--ink-3);
+}
+.chat-messages {
+  display: grid;
+  gap: var(--s-4);
+  min-height: 160px;
+}
+.chat-message {
+  padding: var(--s-4);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+}
+.chat-message.user {
+  margin-left: min(12%, 120px);
+  background: var(--accent-soft);
+}
+.chat-message.assistant {
+  margin-right: min(12%, 120px);
+}
+.chat-message-label {
+  font-size: var(--text-sm);
+  font-weight: 800;
+  color: var(--ink-2);
+}
+.chat-message-body {
+  overflow-wrap: anywhere;
+  line-height: var(--lh-body);
+}
+.chat-message-body pre {
+  overflow: auto;
+  padding: var(--s-3);
+  background: var(--surface-2);
+}
+.chat-message-body a {
+  color: var(--accent-ink);
+}
+.chat-composer {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+}
+.chat-composer label {
+  font-weight: 700;
+}
+.chat-composer textarea {
+  width: 100%;
+  resize: vertical;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.chat-composer-bottom [role="status"] {
+  color: var(--ink-2);
+}
+@media (max-width: 700px) {
+  .chat-topline {
+    align-items: flex-start;
+  }
+  .chat-message.user,
+  .chat-message.assistant {
+    margin: 0;
+  }
+}
