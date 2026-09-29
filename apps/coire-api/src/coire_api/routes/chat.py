@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from coire_api.auth import CurrentChatUser
 from coire_api.chat.service import (
     create_conversation,
+    delete_conversation,
     get_conversation_detail,
     list_conversations,
     picker,
@@ -28,6 +29,8 @@ from coire_core.models.chat import (
     ChatConversationDetail,
     ChatConversationPage,
     ChatConversationUpdate,
+    ChatDeleteRequest,
+    ChatDeletionResult,
     ChatEvent,
     ChatMessagePageQuery,
     ChatPageQuery,
@@ -176,6 +179,37 @@ async def patch_chat_conversation(
             raise ChatModelUnavailable("chat service temporarily unavailable") from None
         requests_total.add(1, {"operation": "update", "outcome": "succeeded"})
         return updated
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    response_model=ChatDeletionResult,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def delete_chat_conversation(
+    conversation_id: uuid.UUID,
+    body: ChatDeleteRequest,
+    principal: CurrentChatUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> ChatDeletionResult:
+    with tracer.start_as_current_span("coire.api.chat.delete"):
+        try:
+            result = await delete_conversation(session, principal, conversation_id, body, settings)
+        except CoireError:
+            requests_total.add(1, {"operation": "delete", "outcome": "refused"})
+            raise
+        except Exception as exc:
+            requests_total.add(1, {"operation": "delete", "outcome": "failed"})
+            logger.error(
+                "chat deletion failed user_id=%s conversation_id=%s error_type=%s",
+                principal.user_id,
+                conversation_id,
+                type(exc).__name__,
+            )
+            raise ChatModelUnavailable("chat service temporarily unavailable") from None
+        requests_total.add(1, {"operation": "delete", "outcome": "accepted"})
+        return result
 
 
 @router.get(

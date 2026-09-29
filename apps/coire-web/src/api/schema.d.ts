@@ -898,7 +898,8 @@ export interface paths {
         get: operations["get_chat_conversation_api_v1_chat_conversations__conversation_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Chat Conversation */
+        delete: operations["delete_chat_conversation_api_v1_chat_conversations__conversation_id__delete"];
         options?: never;
         head?: never;
         /** Patch Chat Conversation */
@@ -2397,6 +2398,24 @@ export interface components {
              * @enum {string}
              */
             type: "conversation.updated";
+        };
+        /** ChatDeleteRequest */
+        ChatDeleteRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+        };
+        /** ChatDeletionResult */
+        ChatDeletionResult: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Purge Deadline At
+             * Format: date-time
+             */
+            purge_deadline_at: string;
         };
         /** ChatEvent */
         ChatEvent: {
@@ -6883,6 +6902,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatConversationDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_chat_conversation_api_v1_chat_conversations__conversation_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatDeletionResult"];
                 };
             };
             /** @description Validation Error */

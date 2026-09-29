@@ -80,3 +80,25 @@ test("renames with the saved revision and keeps the edit on refusal", async () =
   fireEvent.click(screen.getByRole("button", { name: "Save title" }));
   await waitFor(() => expect(screen.queryByRole("textbox", { name: "Conversation title" })).toBeNull());
 });
+
+test("requires explicit confirmation before deleting the saved revision", async () => {
+  const remove = vi.fn().mockResolvedValue(true);
+  render(
+    <ConversationHistory
+      conversations={[conversation]}
+      selectedId={conversation.id}
+      active={false}
+      loading={false}
+      hasMore={false}
+      onOpen={() => {}}
+      onMore={() => {}}
+      onDelete={remove}
+    />,
+  );
+  const button = screen.getByRole("button", { name: "Delete conversation" });
+  fireEvent.click(button);
+  expect(remove).not.toHaveBeenCalled();
+  expect(button).toHaveTextContent("Confirm delete Saved notes?");
+  fireEvent.click(button);
+  await waitFor(() => expect(remove).toHaveBeenCalledWith(conversation.id, 2));
+});

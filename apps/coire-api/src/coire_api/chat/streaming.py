@@ -584,6 +584,8 @@ async def observe_conversation(
 
     while True:
         snapshot = False
+        deleted = False
+        deleted_event: ChatEventRow | None = None
         rows: list[ChatEventRow] = []
         async with session_scope() as session:
             if principal.user_id is None:
@@ -597,13 +599,20 @@ async def observe_conversation(
                 if not await key_is_active(session, principal):
                     return
             conversation = await session.get(ChatConversationRow, conversation_id)
-            if (
-                conversation is None
-                or conversation.deleted_at is not None
-                or conversation.owner_user_id != principal.user_id
-            ):
+            if conversation is None or conversation.owner_user_id != principal.user_id:
                 return
-            if cursor is None:
+            deleted = conversation.deleted_at is not None
+            if deleted:
+                deleted_event = await session.scalar(
+                    select(ChatEventRow)
+                    .where(
+                        ChatEventRow.conversation_id == conversation_id,
+                        ChatEventRow.type == "conversation.deleted",
+                    )
+                    .order_by(ChatEventRow.cursor.desc())
+                    .limit(1)
+                )
+            elif cursor is None:
                 snapshot = conversation.event_cursor > 0
             else:
                 rows = list(
@@ -628,6 +637,19 @@ async def observe_conversation(
                 detail = await get_conversation_detail(
                     session, principal, conversation_id, ChatMessagePageQuery()
                 )
+        if deleted:
+            if deleted_event is not None and (cursor is None or deleted_event.cursor > cursor):
+                event = ChatEvent.model_validate(
+                    {
+                        "conversation_id": deleted_event.conversation_id,
+                        "cursor": deleted_event.cursor,
+                        "turn_id": deleted_event.turn_id,
+                        "created_at": deleted_event.created_at,
+                        "payload": deleted_event.payload,
+                    }
+                )
+                yield encode_event(event)
+            return
         if snapshot:
             event = ChatEvent(
                 conversation_id=conversation_id,

@@ -27,10 +27,13 @@ from coire_core.errors import ChatConflict, ChatNotFound
 from coire_core.models.chat import (
     ChatConversation,
     ChatConversationCreate,
+    ChatConversationDeleted,
     ChatConversationDetail,
     ChatConversationPage,
     ChatConversationUpdate,
     ChatConversationUpdated,
+    ChatDeleteRequest,
+    ChatDeletionResult,
     ChatEvent,
     ChatMessagePageQuery,
     ChatPageQuery,
@@ -307,6 +310,68 @@ async def update_conversation(
     )
     await session.commit()
     return project_conversation(row)
+
+
+async def delete_conversation(
+    session: AsyncSession,
+    principal: Principal,
+    conversation_id: uuid.UUID,
+    body: ChatDeleteRequest,
+    settings: Settings,
+) -> ChatDeletionResult:
+    """Tombstone immediately; later maintenance purges all associated content."""
+    row = await session.scalar(
+        select(ChatConversationRow)
+        .where(
+            ChatConversationRow.id == conversation_id,
+            ChatConversationRow.owner_user_id == principal.user_id,
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise ChatNotFound()
+    if row.deleted_at is not None:
+        return ChatDeletionResult(
+            id=row.id,
+            purge_deadline_at=row.deleted_at + timedelta(hours=settings.chat_purge_deadline_hours),
+        )
+    if row.revision != body.expected_revision:
+        raise ChatConflict("conversation changed; reload before deleting")
+    if row.active_turn_id is not None:
+        turn = await session.get(ChatTurnRow, row.active_turn_id)
+        if turn is not None and turn.state not in {"completed", "failed", "stopped", "interrupted"}:
+            if turn.action != "chat":
+                raise ChatConflict("code run deletion requires the coding kill path")
+            turn.state = "stop_requested"
+            turn.stop_reason = "conversation_deleted"
+            turn.updated_at = datetime.now(UTC)
+    now = datetime.now(UTC)
+    row.deleted_at = now
+    row.updated_at = now
+    row.revision += 1
+    row.event_cursor += 1
+    event = ChatEvent(
+        conversation_id=row.id,
+        cursor=row.event_cursor,
+        created_at=now,
+        payload=ChatConversationDeleted(conversation_id=row.id, revision=row.revision),
+    )
+    session.add(
+        ChatEventRow(
+            id=uuid.uuid4(),
+            conversation_id=row.id,
+            cursor=event.cursor,
+            type=event.payload.type,
+            payload=event.payload.model_dump(mode="json"),
+            created_at=now,
+            expires_at=now + timedelta(hours=settings.chat_event_retention_hours),
+        )
+    )
+    await session.commit()
+    return ChatDeletionResult(
+        id=row.id,
+        purge_deadline_at=now + timedelta(hours=settings.chat_purge_deadline_hours),
+    )
 
 
 async def create_conversation(

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ChatConversation } from "../../api/chat";
+import { ConfirmAction } from "../ConfirmAction";
 
 export function ConversationHistory({
   conversations,
@@ -10,6 +11,7 @@ export function ConversationHistory({
   onOpen,
   onMore,
   onRename,
+  onDelete,
 }: {
   conversations: ChatConversation[];
   selectedId: string | null;
@@ -19,6 +21,7 @@ export function ConversationHistory({
   onOpen: (id: string) => void;
   onMore: () => void;
   onRename?: (id: string, title: string, revision: number) => Promise<boolean>;
+  onDelete?: (id: string, revision: number) => Promise<boolean>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
@@ -93,6 +96,16 @@ export function ConversationHistory({
                     Rename
                   </button>
                 )
+              )}
+              {onDelete && (
+                <ConfirmAction
+                  target={conversation.title}
+                  label="Delete"
+                  ariaLabel="Delete conversation"
+                  onConfirm={async () => {
+                    await onDelete(conversation.id, conversation.revision);
+                  }}
+                />
               )}
             </div>
           ))}

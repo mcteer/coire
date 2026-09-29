@@ -4,10 +4,12 @@ export function ConfirmAction({
   target,
   label,
   onConfirm,
+  ariaLabel,
 }: {
   target: string;
   label: string;
   onConfirm: () => Promise<void>;
+  ariaLabel?: string;
 }) {
   const [armed, setArmed] = useState(false);
   useEffect(() => {
@@ -19,7 +21,7 @@ export function ConfirmAction({
     <button
       className="button danger"
       type="button"
-      aria-label={`${label} ${target}`}
+      aria-label={ariaLabel ?? `${label} ${target}`}
       onClick={() => {
         if (!armed) return setArmed(true);
         setArmed(false);

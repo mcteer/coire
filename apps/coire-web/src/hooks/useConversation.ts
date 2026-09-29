@@ -3,6 +3,7 @@ import { ApiError } from "../api/client";
 import { loadChatDrafts, saveChatDrafts } from "../api/chatDrafts";
 import {
   createChatConversation,
+  deleteChatConversation,
   getChatConversation,
   listChatModels,
   listChatConversations,
@@ -381,6 +382,17 @@ export function useConversation(ownerId: string) {
 
   const refreshObserved = (event: ChatEvent) => {
     if (event.conversation_id !== conversation?.id) return;
+    if (event.payload.type === "conversation.deleted") {
+      selection.current += 1;
+      setHistory((rows) => rows.filter((row) => row.id !== event.conversation_id));
+      forget(event.conversation_id);
+      setConversation(null);
+      setMessages([]);
+      setOlderPosition(null);
+      setDraft(drafts.current.get("new")?.text ?? "");
+      setStatus("Conversation deleted.");
+      return;
+    }
     if (event.payload.type === "snapshot") {
       const detail = event.payload.detail;
       setConversation(detail.conversation);
@@ -485,6 +497,39 @@ export function useConversation(ownerId: string) {
     }
   };
 
+  const remove = async (id: string, expectedRevision: number): Promise<boolean> => {
+    try {
+      await deleteChatConversation(id, { expected_revision: expectedRevision });
+      setHistory((rows) => rows.filter((row) => row.id !== id));
+      forget(id);
+      if (conversation?.id === id) {
+        selection.current += 1;
+        stream.abort();
+        eventCursor.current = 0;
+        pending.current = null;
+        setConversation(null);
+        setMessages([]);
+        setOlderPosition(null);
+        setDraft(drafts.current.get("new")?.text ?? "");
+        setStatus(null);
+      }
+      setError(null);
+      return true;
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) {
+        try {
+          const page = await listChatConversations();
+          setHistory(page.data ?? []);
+          setHistoryCursor(page.next_cursor ?? null);
+        } catch {
+          // Preserve the deletion conflict for the user.
+        }
+      }
+      setError(String(cause));
+      return false;
+    }
+  };
+
   return {
     models,
     selectedId,
@@ -505,6 +550,7 @@ export function useConversation(ownerId: string) {
     stopPending,
     stop,
     rename,
+    remove,
     send,
     newConversation,
     openConversation,

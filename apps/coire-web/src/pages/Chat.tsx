@@ -46,6 +46,7 @@ function ChatSession({ ownerId }: { ownerId: string }) {
           onOpen={(id) => void chat.openConversation(id)}
           onMore={() => void chat.moreConversations()}
           onRename={chat.rename}
+          onDelete={chat.remove}
         />
         <div className="chat-thread">
           {chat.error && (

@@ -147,3 +147,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Added locked owner/revision PATCH for title and eligible selected-model edits, with active-turn model conflict and persisted `conversation.updated` events. The browser history drawer exposes a keyboard-accessible rename form, retains rejected text and reloads revisions after conflict.
 - Service, route and browser tests cover owner/foreign/stale/Origin and accepted/refused rename. Parent T027/T028/T031 remain open for deletion, purge, retry and broader version reconciliation.
+
+## Immediate tombstone gate (014w)
+
+- Added owner/revision DELETE with idempotent tombstone, active plain-chat Stop request and a content-free deletion event. Already connected observers receive the event and close; all new owner reads are denied. The browser requires explicit confirmation and removes selected state/draft after acceptance.
+- Focused service/route/observer/browser tests cover owner/foreign/stale/Origin/idempotency and confirmation. Physical original/derived/content purge and alternate artifact-route guards remain in parent T030/T066; native Chat stays default-off.

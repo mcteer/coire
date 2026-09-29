@@ -8,6 +8,8 @@ export type ChatConversationPage = components["schemas"]["ChatConversationPage"]
 export type ChatConversationDetail = components["schemas"]["ChatConversationDetail"];
 export type ChatConversationCreate = components["schemas"]["ChatConversationCreate"];
 export type ChatConversationUpdate = components["schemas"]["ChatConversationUpdate"];
+export type ChatDeleteRequest = components["schemas"]["ChatDeleteRequest"];
+export type ChatDeletionResult = components["schemas"]["ChatDeletionResult"];
 export type ChatTurnCreate = components["schemas"]["ChatTurnCreate"];
 export type ChatTurnDetail = components["schemas"]["ChatTurnDetail"];
 export type ChatTurn = components["schemas"]["ChatTurn"];
@@ -32,6 +34,16 @@ export function updateChatConversation(
 ): Promise<ChatConversation> {
   return api<ChatConversation>(`/api/v1/chat/conversations/${encodeURIComponent(conversationId)}`, {
     method: "PATCH",
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteChatConversation(
+  conversationId: string,
+  body: ChatDeleteRequest,
+): Promise<ChatDeletionResult> {
+  return api<ChatDeletionResult>(`/api/v1/chat/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
     body: JSON.stringify(body),
   });
 }

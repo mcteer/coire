@@ -2382,6 +2382,42 @@
         "title": "ChatConversationUpdated",
         "type": "object"
       },
+      "ChatDeleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "ChatDeleteRequest",
+        "type": "object"
+      },
+      "ChatDeletionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "purge_deadline_at": {
+            "format": "date-time",
+            "title": "Purge Deadline At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "purge_deadline_at"
+        ],
+        "title": "ChatDeletionResult",
+        "type": "object"
+      },
       "ChatEvent": {
         "additionalProperties": false,
         "properties": {
@@ -12477,6 +12513,78 @@
       }
     },
     "/api/v1/chat/conversations/{conversation_id}": {
+      "delete": {
+        "operationId": "delete_chat_conversation_api_v1_chat_conversations__conversation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatDeletionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Chat Conversation",
+        "tags": [
+          "chat"
+        ]
+      },
       "get": {
         "operationId": "get_chat_conversation_api_v1_chat_conversations__conversation_id__get",
         "parameters": [
