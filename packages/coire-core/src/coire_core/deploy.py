@@ -20,7 +20,12 @@ REQUIRED_SECRET_FILES = (
     "admin_token",
     "bootstrap_admin_email",
 )
-OPTIONAL_SECRET_FILES = ("ops_service_token", "failover_peer_key", "failover_relay_token")
+OPTIONAL_SECRET_FILES = (
+    "ops_service_token",
+    "file_worker_service_token",
+    "failover_peer_key",
+    "failover_relay_token",
+)
 KEYCHAIN_ITEMS = {
     "postgres_password": "coire-postgres-password",
     "key_signing_secret": "coire-key-signing-secret",
@@ -28,6 +33,7 @@ KEYCHAIN_ITEMS = {
     "admin_token": "coire-admin-token",
     "bootstrap_admin_email": "coire-bootstrap-admin-email",
     "ops_service_token": "coire-ops-service-token",
+    "file_worker_service_token": "coire-file-worker-service-token",
     "failover_peer_key": "coire-failover-peer-key",
 }
 
@@ -165,6 +171,11 @@ def read_secret_inputs(*, from_env: bool) -> dict[str, str]:
         and not values["ops_service_token"]
     ):
         raise ReleaseInputError("ops profile requires coire-ops-service-token")
+    if (
+        "chat-files" in os.environ.get("COMPOSE_PROFILES", "").split(",")
+        and not values["file_worker_service_token"]
+    ):
+        raise ReleaseInputError("chat-files profile requires coire-file-worker-service-token")
     if os.environ.get("COIRE_FAILOVER_MEMBER_NAME") == "coire-core":
         for key in (
             "COIRE_FAILOVER_CORE_PUBLIC_KEY",

@@ -46,6 +46,7 @@ def test_generation_is_complete_private_and_distinct(tmp_path: Path) -> None:
     assert first != second
     assert {p.name for p in first.iterdir()} == set(REQUIRED_SECRET_FILES) | {
         "ops_service_token",
+        "file_worker_service_token",
         "failover_peer_key",
         "failover_relay_token",
     }
@@ -64,6 +65,20 @@ def test_ops_credential_is_required_only_when_ops_profile_is_enabled(
     assert read_secret_inputs(from_env=True)["ops_service_token"] == ""
     monkeypatch.setenv("COMPOSE_PROFILES", "diagnostics,ops")
     with pytest.raises(ReleaseInputError, match="ops profile requires"):
+        read_secret_inputs(from_env=True)
+
+
+def test_file_worker_credential_is_required_only_for_its_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in REQUIRED_SECRET_FILES:
+        monkeypatch.setenv("COIRE_SECRET_" + name.upper(), "test-value")
+    monkeypatch.delenv("COIRE_SECRET_FILE_WORKER_SERVICE_TOKEN", raising=False)
+    monkeypatch.delenv("COIRE_FAILOVER_MEMBER_NAME", raising=False)
+    monkeypatch.setenv("COMPOSE_PROFILES", "")
+    assert read_secret_inputs(from_env=True)["file_worker_service_token"] == ""
+    monkeypatch.setenv("COMPOSE_PROFILES", "chat-files")
+    with pytest.raises(ReleaseInputError, match="chat-files profile requires"):
         read_secret_inputs(from_env=True)
 
 

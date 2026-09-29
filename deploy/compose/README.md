@@ -32,6 +32,17 @@ trace retention use `COIRE_LOG_RETENTION` and `COIRE_TRACE_RETENTION` (48 hours 
 `COIRE_STATE_ROOT` and `COIRE_SECRETS_BASE` change the per-project state location for isolated
 test deployments. `COMPOSE_PROJECT_NAME` must be a single validated project component.
 
+`COMPOSE_PROFILES=chat-files` starts the private CPU file worker. It requires the
+`coire-file-worker-service-token` Keychain item created by `scripts/coire-secrets-init.sh`;
+the generated `file_worker_service_token` secret is mounted only in the scheduler and worker.
+Only those services join the internal `coire-file-processing` network. The worker has no
+published port, database mount, model weights, or harness. It reads `coire-chat-originals`
+read-only and writes `coire-chat-derived`; both are private named volumes. The image seeds
+non-root ownership for its writable volume. `COIRE_FILE_WORKER_TIMEOUT_SECONDS` defaults to
+30 and is capped at 30 seconds; one conversion runs per worker process under 512 MiB/1 CPU.
+The profile remains opt-in while upload, durable dispatch, blob cleanup and visual serving
+are unfinished. `COIRE_CHAT_ENABLED` remains `false` during this stage.
+
 Runtime configuration is supplied through `COIRE_` environment variables and Keychain-sourced
 compose secrets. Gateway tuning variables and operational procedures are documented in
 [`docs/runbooks/gateway.md`](../../docs/runbooks/gateway.md). Do not put credentials in this file,

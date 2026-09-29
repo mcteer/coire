@@ -8,7 +8,7 @@
 #
 # Creates: coire-postgres-password, coire-key-signing-secret, coire-node-tokens,
 #          coire-admin-token (rollback-only), coire-bootstrap-admin-email, and the isolated
-#          coire-ops service credential.
+#          coire-ops and private file-worker service credentials.
 # Does NOT create the Hugging Face token: that lives only in each Studio's System keychain.
 #
 # The generated values are written straight into the login Keychain and never echoed, except
@@ -63,6 +63,7 @@ create coire-postgres-password "$(openssl rand -base64 32)"
 create coire-key-signing-secret "$(openssl rand -base64 48)"
 create coire-admin-token "$(openssl rand -base64 32)"
 create coire-ops-service-token "coire_ops_$(openssl rand -hex 32)"
+create coire-file-worker-service-token "coire_file_worker_$(openssl rand -hex 32)"
 create coire-node-tokens "$(python3 -c '
 import json, secrets
 print(json.dumps({n: secrets.token_urlsafe(32) for n in ("coire-edge-a", "coire-edge-b")}))

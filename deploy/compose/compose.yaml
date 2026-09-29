@@ -195,7 +195,7 @@ services:
       context: ../..
       dockerfile: apps/coire-api/docker/scheduler.Dockerfile
     # The only service on coire-docker, and it reaches the socket solely through the proxy.
-    networks: [coire-edge, coire-db, coire-internal, coire-docker, coire-telemetry]
+    networks: [coire-edge, coire-db, coire-internal, coire-docker, coire-telemetry, coire-file-processing]
     environment:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
@@ -207,8 +207,9 @@ services:
       RUN_GATEWAY_URL: ${RUN_GATEWAY_URL:-http://coire-core.lab:8180/v1}
       MCP_SOURCE_HOSTS: ${COIRE_MCP_SOURCE_HOSTS:-github.com}
       MCP_ARTIFACT_RETENTION_HOURS: ${COIRE_MCP_ARTIFACT_RETENTION_HOURS:-168}
+      FILE_WORKER_URL: http://coire-file-worker:8010
     volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
-    secrets: [postgres_password, node_tokens]
+    secrets: [postgres_password, node_tokens, file_worker_service_token]
     depends_on:
       postgres: {condition: service_healthy}
     <<: *hardening
@@ -218,6 +219,32 @@ services:
     cpus: "2.0"
     healthcheck:
       test: ["CMD", "/healthcheck", "http://127.0.0.1:8002/ready"]
+      <<: *python-health
+
+  # Opt-in until native Chat file admission, publication and purge are release-ready.
+  coire-file-worker:
+    profiles: ["chat-files"]
+    image: ${COIRE_REGISTRY:-}coire-file-worker:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-file-worker/Dockerfile
+    networks: [coire-file-processing, coire-telemetry]
+    environment:
+      FILE_WORKER_INPUT_ROOT: /opt/coire/chat/originals
+      FILE_WORKER_OUTPUT_ROOT: /opt/coire/chat/derived
+      FILE_WORKER_PROCESS_TIMEOUT_S: ${COIRE_FILE_WORKER_TIMEOUT_SECONDS:-30}
+      OTLP_ENDPOINT: http://otel-collector:4317
+    volumes:
+      - coire-chat-originals:/opt/coire/chat/originals:ro
+      - coire-chat-derived:/opt/coire/chat/derived
+    secrets: [file_worker_service_token]
+    <<: *hardening
+    user: "65532:65532"
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python3", "-m", "coire_file_worker", "--healthcheck"]
       <<: *python-health
 
   coire-migrate:
@@ -474,6 +501,8 @@ networks:
     internal: true
   coire-node-ingress:
     internal: false
+  coire-file-processing:
+    internal: true
 
 volumes:
   coire-pgdata:
@@ -482,6 +511,8 @@ volumes:
   coire-loki:
   coire-tempo:
   coire-grafana:
+  coire-chat-originals:
+  coire-chat-derived:
 
 secrets:
   # File-sourced from a 0700 directory outside the repository, written by coire-up from the
@@ -512,6 +543,8 @@ secrets:
     file: ${COIRE_SECRETS_DIR}/bootstrap_admin_email
   ops_service_token:
     file: ${COIRE_SECRETS_DIR}/ops_service_token
+  file_worker_service_token:
+    file: ${COIRE_SECRETS_DIR}/file_worker_service_token
   failover_relay_token:
     file: ${COIRE_SECRETS_DIR}/failover_relay_token
   failover_peer_key:

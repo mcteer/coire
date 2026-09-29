@@ -51,6 +51,7 @@ EXPECTED_NETWORKS = {
     "coire-docker",
     "coire-telemetry",
     "coire-node-ingress",
+    "coire-file-processing",
 }
 
 
@@ -80,12 +81,31 @@ def config() -> dict[str, Any]:
     return json.loads(proc.stdout)
 
 
+@pytest.fixture(scope="module")
+def file_worker_config() -> dict[str, Any]:
+    env = {
+        **os.environ,
+        "COIRE_SECRETS_DIR": "/tmp/coire-secrets-test",
+        "COMPOSE_PROFILES": "chat-files",
+    }
+    proc = subprocess.run(
+        ["docker", "compose", "-f", str(COMPOSE), "config", "--format", "json"],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=COMPOSE.parent,
+    )
+    if proc.returncode != 0:
+        pytest.fail(f"chat-files compose config failed:\n{proc.stderr}")
+    return json.loads(proc.stdout)
+
+
 def nets(config: dict[str, Any], service: str) -> set[str]:
     return set((config["services"][service].get("networks") or {}).keys())
 
 
 class TestNetworkSegmentation:
-    def test_exactly_six_networks(self, config: dict[str, Any]) -> None:
+    def test_exact_networks(self, config: dict[str, Any]) -> None:
         assert set(config["networks"]) == EXPECTED_NETWORKS
 
     def test_only_host_ingress_networks_are_external(self, config: dict[str, Any]) -> None:
@@ -120,6 +140,12 @@ class TestNetworkSegmentation:
 
     def test_postgres_is_only_on_the_db_network(self, config: dict[str, Any]) -> None:
         assert nets(config, "postgres") == {"coire-db"}
+
+    def test_file_processing_is_scheduler_only_by_default(self, config: dict[str, Any]) -> None:
+        attached = {
+            name for name in config["services"] if "coire-file-processing" in nets(config, name)
+        }
+        assert attached == {"coire-scheduler"}
 
 
 class TestPublishedPorts:
@@ -204,6 +230,30 @@ class TestImagesAndSecrets:
         assert "ops_service_token" in {
             item["source"] for item in config["services"]["coire-api"]["secrets"]
         }
+
+    def test_worker_profile_is_private_and_scoped(self, file_worker_config: dict[str, Any]) -> None:
+        services = file_worker_config["services"]
+        worker = services["coire-file-worker"]
+        assert nets(file_worker_config, "coire-file-worker") == {
+            "coire-file-processing",
+            "coire-telemetry",
+        }
+        assert not worker.get("ports")
+        assert worker["read_only"] is True
+        assert worker["cap_drop"] == ["ALL"]
+        assert worker["user"] == "65532:65532"
+        assert int(worker["mem_limit"]) == 512 * 1024 * 1024
+        assert worker["cpus"] == 1
+        assert {item["source"] for item in worker["secrets"]} == {"file_worker_service_token"}
+        assert "file_worker_service_token" in {
+            item["source"] for item in services["coire-scheduler"]["secrets"]
+        }
+        assert {
+            name for name in services if "coire-file-processing" in nets(file_worker_config, name)
+        } == {"coire-scheduler", "coire-file-worker"}
+        mounts = {item["target"]: item for item in worker["volumes"]}
+        assert mounts["/opt/coire/chat/originals"]["read_only"] is True
+        assert mounts["/opt/coire/chat/derived"].get("read_only", False) is False
 
     def test_studio_failover_stays_off_the_core_project(self, config: dict[str, Any]) -> None:
         """The frontend is a profiled Studio service. Core's default project does not run it."""
