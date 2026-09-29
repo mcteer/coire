@@ -13,6 +13,7 @@ import subprocess
 import time
 import uuid
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from typing import Any, cast
 
@@ -231,6 +232,58 @@ def test_private_image_processing_and_download() -> None:
                     assert client.get(f"{file_url}/content").status_code == 404
                     if preview_id is not None:
                         assert client.get(f"{file_url}/previews/{preview_id}").status_code == 404
+
+
+def test_concurrent_file_uploads_preserve_revision_and_private_storage() -> None:
+    url, model_id, service = _configuration()
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    headers = {"Authorization": f"Bearer {key}"}
+    with _RateLimitedClient(base_url=url, timeout=30, headers=headers) as client:
+        created = client.post(
+            "/api/v1/chat/conversations",
+            json={"mode": "chat", "model_id": model_id},
+            headers={"Origin": origin},
+        )
+        assert created.status_code == 201
+        conversation_id = created.json()["id"]
+        revision = created.json()["revision"]
+        path = f"/api/v1/chat/conversations/{conversation_id}/files"
+
+        def upload(index: int) -> httpx.Response:
+            with _RateLimitedClient(base_url=url, timeout=30, headers=headers) as parallel:
+                return parallel.post(
+                    path,
+                    data={"filename": f"race-{index}.txt", "expected_revision": str(revision)},
+                    files={
+                        "file": (f"race-{index}.txt", f"private {index}".encode(), "text/plain")
+                    },
+                    headers={"Origin": origin},
+                )
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                responses = list(pool.map(upload, (1, 2)))
+            assert sorted(response.status_code for response in responses) == [202, 409]
+            accepted = next(
+                response.json() for response in responses if response.status_code == 202
+            )
+            detail = client.get(f"/api/v1/chat/conversations/{conversation_id}")
+            assert detail.status_code == 200
+            assert detail.json()["conversation"]["revision"] == revision + 1
+            assert [row["id"] for row in detail.json()["attachments"]] == [accepted["id"]]
+        finally:
+            detail = client.get(f"/api/v1/chat/conversations/{conversation_id}")
+            if detail.status_code == 200:
+                deleted = client.request(
+                    "DELETE",
+                    f"/api/v1/chat/conversations/{conversation_id}",
+                    json={"expected_revision": detail.json()["conversation"]["revision"]},
+                    headers={"Origin": origin},
+                )
+                assert deleted.status_code == 202
 
 
 def test_managed_vlm_compatible_image_usage() -> None:
