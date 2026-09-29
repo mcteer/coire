@@ -45,6 +45,7 @@ def test_text_payload_adapters_keep_registry_path_private_and_preserve_content()
     assert compatible["max_tokens"] == canonical["max_tokens"] == 32
     assert compatible["stream"] is False
     assert canonical["stream"] is True
+    assert canonical["stream_options"] == {"include_usage": True}
     assert "coire_wait_for_model" not in compatible
 
 

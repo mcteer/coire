@@ -1,0 +1,120 @@
+"""Opt-in native Chat smoke against an admin-acquired tiny Studio model.
+
+The operator prepares a published, ready model and enables Chat through the normal
+control-plane path. This test never acquires weights or starts an engine directly.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import time
+import uuid
+from collections.abc import Iterator
+
+import httpx
+import pytest
+
+pytestmark = pytest.mark.integration
+
+
+def _configuration() -> tuple[str, str, str]:
+    url = os.environ.get("COIRE_TEST_CHAT_URL")
+    model_id = os.environ.get("COIRE_TEST_MODEL")
+    service = os.environ.get("COIRE_TEST_CHAT_KEYCHAIN_SERVICE")
+    if not (url and model_id and service):
+        pytest.skip("configure live Chat URL, acquired model ID and Keychain service")
+    return url, model_id, service
+
+
+def _events(response: httpx.Response) -> Iterator[dict[str, object]]:
+    for line in response.iter_lines():
+        if line.startswith("data: "):
+            yield json.loads(line[6:])
+
+
+def test_tiny_text_stream_usage_and_healthy_stop() -> None:
+    url, model_id, service = _configuration()
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    assert key
+    with httpx.Client(
+        base_url=url, timeout=90, headers={"Authorization": f"Bearer {key}"}
+    ) as client:
+        picker = client.get("/api/v1/chat/models")
+        assert picker.status_code == 200
+        assert model_id in {row["id"] for row in picker.json()["data"]}
+        for stop_after_delta in (False, True):
+            created = client.post(
+                "/api/v1/chat/conversations",
+                json={"mode": "chat", "model_id": model_id},
+                headers={"Origin": origin},
+            )
+            assert created.status_code == 201
+            conversation_id = created.json()["id"]
+            request_id = str(uuid.uuid4())
+            first_status_at: float | None = None
+            start = time.monotonic()
+            accepted: dict[str, object] | None = None
+            terminal: dict[str, object] | None = None
+            deltas = 0
+            try:
+                with client.stream(
+                    "POST",
+                    f"/api/v1/chat/conversations/{conversation_id}/turns",
+                    json={
+                        "client_request_id": request_id,
+                        "expected_revision": created.json()["revision"],
+                        "model_id": model_id,
+                        "content": "Reply briefly with the word ready.",
+                    },
+                    headers={"Origin": origin},
+                ) as response:
+                    assert response.status_code == 200
+                    for event in _events(response):
+                        payload = event["payload"]
+                        assert isinstance(payload, dict)
+                        if payload["type"] == "turn.accepted":
+                            accepted = payload["turn"]
+                            assert isinstance(accepted, dict)
+                            assert accepted["model_id"] == model_id
+                        elif payload["type"] == "turn.status" and first_status_at is None:
+                            first_status_at = time.monotonic() - start
+                        elif payload["type"] == "message.delta":
+                            deltas += 1
+                            if stop_after_delta and deltas == 1:
+                                assert accepted is not None
+                                stopped = client.post(
+                                    f"/api/v1/chat/conversations/{conversation_id}/turns/"
+                                    f"{accepted['id']}/stop",
+                                    json={"reason": "user_stop"},
+                                    headers={"Origin": origin},
+                                )
+                                assert stopped.status_code == 200
+                        elif payload["type"] == "turn.terminal":
+                            terminal = payload
+                            break
+                assert accepted is not None and terminal is not None
+                assert first_status_at is not None and first_status_at <= 1.0
+                assert deltas > 0, (terminal["state"], terminal.get("safe_error"))
+                if stop_after_delta:
+                    assert terminal["state"] == "stopped"
+                else:
+                    assert terminal["state"] == "completed"
+                    usage = terminal["usage"]
+                    assert isinstance(usage, dict)
+                    assert usage["prompt_tokens"] > 0
+                    assert usage["completion_tokens"] > 0
+            finally:
+                detail = client.get(f"/api/v1/chat/conversations/{conversation_id}")
+                if detail.status_code == 200:
+                    deleted = client.request(
+                        "DELETE",
+                        f"/api/v1/chat/conversations/{conversation_id}",
+                        json={"expected_revision": detail.json()["conversation"]["revision"]},
+                        headers={"Origin": origin},
+                    )
+                    assert deleted.status_code == 202

@@ -48,6 +48,7 @@ def canonical_text_payload(
         "model": model_path,
         "messages": [message.model_dump(mode="json", exclude_none=True) for message in messages],
         "stream": True,
+        "stream_options": {"include_usage": True},
         "max_tokens": output_tokens,
     }
 

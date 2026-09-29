@@ -1,6 +1,20 @@
 from coire_core.models.gateway import EngineChatRequest
 
 
+def test_engine_contract_preserves_usage_request() -> None:
+    request = EngineChatRequest.model_validate(
+        {
+            "model": "/registry/verified",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+    )
+    assert request.model_dump(mode="json", exclude_none=True)["stream_options"] == {
+        "include_usage": True
+    }
+
+
 def test_engine_contract_accepts_assistant_tool_call_without_content() -> None:
     request = EngineChatRequest.model_validate(
         {

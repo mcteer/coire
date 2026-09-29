@@ -365,6 +365,12 @@ paths:
                 model: { type: string, minLength: 1, description: Registry-resolved local path. }
                 messages: { type: array, minItems: 1, items: { type: object } }
                 stream: { type: boolean, default: false }
+                stream_options:
+                  type: [object, "null"]
+                  additionalProperties: false
+                  required: [include_usage]
+                  properties:
+                    include_usage: { type: boolean }
                 max_tokens: { type: [integer, "null"], minimum: 1 }
                 temperature: { type: [number, "null"], minimum: 0 }
                 top_p: { type: [number, "null"], minimum: 0, maximum: 1 }

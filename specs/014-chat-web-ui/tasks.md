@@ -38,7 +38,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 - [X] T019 [US1] Export native event/request/response schemas through apps/coire-api/src/coire_api/routes/chat.py, regenerate apps/coire-api/openapi.json and apps/coire-web/src/api/schema.d.ts, and add generated-type client functions in apps/coire-web/src/api/chat.ts.
 - [X] T020 [US1] Extract apps/coire-web/src/components/AppShell.tsx; implement Chat routing and initial composer/picker/transcript in App.tsx, pages/Chat.tsx, components/chat/Composer.tsx, ModelPicker.tsx, MessageList.tsx and Message.tsx using styles/chat.css and safe Markdown policy (FR-001–003, FR-007–008, FR-010, FR-029–030).
 - [X] T021 [US1] Wire sending/model switches/error-preserving drafts through apps/coire-web/src/hooks/useConversation.ts and pages/Chat.tsx, with generated types and shared stream hook (FR-001, FR-008, FR-018, FR-033).
-- [ ] T022 [US1] Add local tiny-text streaming/model-attribution integration scenarios in tests/integration/test_chat_ui.py; preserve existing /v1, admin and failover regression coverage (SC-001–002, SC-004).
+- [X] T022 [US1] Add local tiny-text streaming/model-attribution integration scenarios in tests/integration/test_chat_ui.py; preserve existing /v1, admin and failover regression coverage (SC-001–002, SC-004).
 
 ## Phase 4 — US2: Understand cold-model waits (P1)
 
@@ -47,7 +47,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 - [X] T023 [P] [US2] Add known/unknown estimate, eviction-after-selection, load failure and queue/status contract tests in apps/coire-api/tests/contract/test_chat_loading.py (FR-004–006, FR-032).
 - [X] T024 [P] [US2] Add inline composer cold/queue/failure component tests in apps/coire-web/src/components/chat/Composer.test.tsx (SC-003).
 - [X] T025 [US2] Connect actual placement/load transitions and nullable measured estimates to chat events in apps/coire-api/src/coire_api/gateway/loading.py and chat/streaming.py; never manufacture percentages/ranks (FR-004–006, FR-032).
-- [ ] T026 [US2] Render warm-up/queue/failure and recovery inside apps/coire-web/src/components/chat/Composer.tsx and ModelPicker.tsx; validate <=1 s status in tests/integration/test_chat_ui.py (SC-003).
+- [X] T026 [US2] Render warm-up/queue/failure and recovery inside apps/coire-web/src/components/chat/Composer.tsx and ModelPicker.tsx; validate <=1 s status in tests/integration/test_chat_ui.py (SC-003).
 
 ## Phase 5 — US3: Persistent private history and recovery (P2)
 

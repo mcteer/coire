@@ -28,6 +28,7 @@ from coire_api.db import (
     ModelCopyRow,
     ModelRow,
     ModelStateTransitionRow,
+    ModelVariantRow,
     NodeRow,
 )
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
@@ -613,6 +614,26 @@ async def update_model(
                 409,
                 f"{model.slug} is {model.state.value}; only a ready model can be published",
             )
+        if (
+            request.visibility is Visibility.PUBLISHED
+            and (model.source or "studio") == "studio"
+        ):
+            any_variant = await session.scalar(
+                select(ModelVariantRow.id).where(ModelVariantRow.model_id == model.id).limit(1)
+            )
+            if any_variant is not None:
+                routable = await session.scalar(
+                    select(ModelVariantRow.id)
+                    .where(
+                        ModelVariantRow.model_id == model.id,
+                        ModelVariantRow.is_default.is_(True),
+                        ModelVariantRow.published.is_(True),
+                        ModelVariantRow.validated.is_(True),
+                    )
+                    .limit(1)
+                )
+                if routable is None:
+                    raise RegistryError(409, "publish a validated default variant first")
         if request.visibility is not model.visibility:
             changes["visibility"] = request.visibility.value
             model.visibility = request.visibility

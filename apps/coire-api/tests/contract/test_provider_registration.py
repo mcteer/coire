@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -15,6 +16,7 @@ from coire_api.registry import service
 from coire_api.routes import admin_models
 from coire_core.models.registry import (
     ModelSource,
+    ModelState,
     ModelUpdateRequest,
     ProviderModelAddRequest,
     Visibility,
@@ -33,6 +35,30 @@ def _request(**changes: object) -> ProviderModelAddRequest:
     }
     values.update(changes)
     return ProviderModelAddRequest.model_validate(values)
+
+
+async def test_acquired_studio_model_cannot_publish_without_default_variant() -> None:
+    class Session:
+        async def scalar(self, query: object) -> uuid.UUID | None:
+            if "is_default" in str(query):
+                return None
+            return uuid.uuid4()
+
+    model = ModelRow(
+        id=uuid.uuid4(),
+        slug="tiny@4bit",
+        source="studio",
+        state=ModelState.READY,
+        visibility=Visibility.ADMIN_ONLY,
+    )
+    with pytest.raises(service.RegistryError, match="validated default variant"):
+        await service.update_model(
+            cast(AsyncSession, Session()),
+            model,
+            ModelUpdateRequest(visibility=Visibility.PUBLISHED),
+            actor="operator",
+        )
+    assert model.visibility is Visibility.ADMIN_ONLY
 
 
 def test_provider_registration_is_strict_and_admin_guarded() -> None:

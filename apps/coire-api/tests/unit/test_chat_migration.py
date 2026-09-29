@@ -284,6 +284,99 @@ def test_populated_chat_blocks_downgrade_before_any_drop() -> None:
 
 
 @pytest.mark.integration
+def test_stopped_usage_outcome_round_trip_on_disposable_postgres(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stopped usage row blocks reversal; empty enum reversal preserves prior values."""
+    admin_dsn = os.environ.get("COIRE_TEST_POSTGRES_DSN")
+    if not admin_dsn:
+        pytest.skip("set COIRE_TEST_POSTGRES_DSN for disposable local PostgreSQL")
+    parsed = urlparse(admin_dsn)
+    if parsed.scheme not in {"postgresql", "postgres"} or parsed.hostname not in {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }:
+        pytest.fail("migration test requires an explicit local PostgreSQL server")
+    database = "coire_usage_migration_" + uuid.uuid4().hex[:12]
+    test_dsn = urlunparse(parsed._replace(path="/" + database))
+    record_id = uuid.uuid4()
+
+    async def setup() -> None:
+        connection = await asyncpg.connect(admin_dsn)
+        try:
+            await connection.execute(f"CREATE DATABASE {database}")
+        finally:
+            await connection.close()
+
+    async def cleanup() -> None:
+        connection = await asyncpg.connect(admin_dsn)
+        try:
+            await connection.execute(
+                "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                "WHERE datname = $1 AND pid <> pg_backend_pid()",
+                database,
+            )
+            await connection.execute(f"DROP DATABASE IF EXISTS {database}")
+        finally:
+            await connection.close()
+
+    async def insert_stopped() -> None:
+        connection = await asyncpg.connect(test_dsn)
+        try:
+            await connection.execute(
+                "INSERT INTO usage_records "
+                "(id, request_id, principal_kind, requested_model_id, protocol, "
+                "prompt_tokens, completion_tokens, duration_ms, outcome, started_at, finished_at) "
+                "VALUES ($1, $2, 'admin', 'tiny', 'openai', 1, 1, 1, 'stopped', now(), now())",
+                record_id,
+                uuid.uuid4(),
+            )
+        finally:
+            await connection.close()
+
+    async def remove_and_check_reverse() -> None:
+        connection = await asyncpg.connect(test_dsn)
+        try:
+            await connection.execute("DELETE FROM usage_records WHERE id = $1", record_id)
+        finally:
+            await connection.close()
+
+    async def check_labels(expected_stopped: bool) -> None:
+        connection = await asyncpg.connect(test_dsn)
+        try:
+            labels = await connection.fetch(
+                "SELECT enumlabel FROM pg_enum WHERE enumtypid = 'usage_outcome'::regtype"
+            )
+            assert ("stopped" in {row["enumlabel"] for row in labels}) is expected_stopped
+        finally:
+            await connection.close()
+
+    monkeypatch.setenv("POSTGRES_HOST", parsed.hostname or "localhost")
+    monkeypatch.setenv("POSTGRES_PORT", str(parsed.port or 5432))
+    monkeypatch.setenv("POSTGRES_USER", unquote(parsed.username or ""))
+    monkeypatch.setenv("POSTGRES_PASSWORD", unquote(parsed.password or ""))
+    monkeypatch.setenv("POSTGRES_DB", database)
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    asyncio.run(setup())
+    try:
+        command.upgrade(config, "0021_provider_model_targets")
+        asyncio.run(check_labels(False))
+        command.upgrade(config, "0022_stopped_usage_outcome")
+        asyncio.run(check_labels(True))
+        asyncio.run(insert_stopped())
+        with pytest.raises(RuntimeError, match="export or remove stopped usage records"):
+            command.downgrade(config, "0021_provider_model_targets")
+        asyncio.run(remove_and_check_reverse())
+        command.downgrade(config, "0021_provider_model_targets")
+        asyncio.run(check_labels(False))
+        command.upgrade(config, "0022_stopped_usage_outcome")
+        asyncio.run(check_labels(True))
+    finally:
+        asyncio.run(cleanup())
+
+
+@pytest.mark.integration
 def test_populated_upgrade_downgrade_on_disposable_postgres(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

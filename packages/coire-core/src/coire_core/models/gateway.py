@@ -165,6 +165,12 @@ class AnthropicMessagesRequest(BaseModel):
     coire_affinity_node: str | None = Field(default=None, pattern=r"^coire-[a-z0-9-]+$")
 
 
+class EngineStreamOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    include_usage: bool
+
+
 class EngineChatRequest(BaseModel):
     """Registry-resolved payload carried from the gateway to a node-owned engine."""
 
@@ -173,6 +179,7 @@ class EngineChatRequest(BaseModel):
     model: str = Field(min_length=1, max_length=4096)
     messages: list[ChatMessage] = Field(min_length=1)
     stream: bool = False
+    stream_options: EngineStreamOptions | None = None
     max_tokens: int | None = Field(default=None, ge=1)
     temperature: float | None = Field(default=None, ge=0)
     top_p: float | None = Field(default=None, ge=0, le=1)
