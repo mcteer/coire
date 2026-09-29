@@ -7,6 +7,7 @@ import re
 from coire_api.registry.placement import NodeView
 from coire_core.models.acquisition import FitDecision, InspectionResult, Precision
 from coire_core.models.jobs import RepoInspection
+from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
 
 # These are architecture families supported by the pinned mlx-lm release. Matching is
@@ -25,6 +26,16 @@ SUPPORTED_ARCHITECTURE_FAMILIES = frozenset(
         "qwen3",
         "qwen3moe",
         "qwen35",
+    }
+)
+SUPPORTED_VISUAL_ARCHITECTURE_FAMILIES = frozenset({"idefics3"})
+VISUAL_PROCESSOR_FILES = frozenset(
+    {
+        "config.json",
+        "processor_config.json",
+        "preprocessor_config.json",
+        "tokenizer_config.json",
+        "tokenizer.json",
     }
 )
 
@@ -63,6 +74,16 @@ def classify_inspection(
 ) -> InspectionResult:
     """Turn node metadata into an actionable pre-transfer decision."""
     source_format = "gguf" if repo.has_gguf_only else "mlx" if repo.is_mlx_format else "safetensors"
+    family = _family(repo.architecture)
+    visual = family in SUPPORTED_VISUAL_ARCHITECTURE_FAMILIES
+    visual_architecture = bool(
+        repo.architecture
+        and (
+            repo.architecture.endswith("ForConditionalGeneration")
+            or repo.architecture.endswith("ForVision2Seq")
+        )
+    )
+    backend = EngineBackend.MLX_VLM if visual else EngineBackend.MLX_LM
     metadata_bytes = max(0, repo.total_bytes - repo.weight_bytes)
     candidates = list(Precision)
     fit: list[FitDecision] = []
@@ -90,9 +111,24 @@ def classify_inspection(
         rejection_code = "gguf_only"
         rejection_detail = "GGUF is not an MLX source format"
         guidance = "use the original safetensors repository or a pre-quantized MLX repository"
+    elif visual_architecture and not visual:
+        rejection_code = "unsupported_visual_architecture"
+        rejection_detail = "the pinned visual engine does not support this architecture"
+    elif visual and not repo.is_mlx_format:
+        rejection_code = "vision_requires_preconverted_mlx"
+        rejection_detail = "visual acquisition requires an already-converted MLX repository"
+    elif visual and not VISUAL_PROCESSOR_FILES.issubset({item.path for item in repo.files}):
+        rejection_code = "incomplete_visual_processor"
+        rejection_detail = "visual repository is missing local processor or tokenizer files"
+    elif visual and not any(item.path.endswith(".safetensors") for item in repo.files):
+        rejection_code = "missing_visual_weights"
+        rejection_detail = "visual repository has no safetensors weights"
     elif not architecture_supported(repo.architecture):
-        rejection_code = "unsupported_architecture"
-        rejection_detail = f"mlx-lm does not support architecture {repo.architecture or 'unknown'}"
+        if not visual:
+            rejection_code = "unsupported_architecture"
+            rejection_detail = (
+                f"no pinned bare engine supports architecture {repo.architecture or 'unknown'}"
+            )
     elif not any(decision.fits for decision in fit):
         rejection_code = "no_fit_memory"
         rejection_detail = "no candidate precision fits a supported node memory budget"
@@ -102,6 +138,7 @@ def classify_inspection(
         revision=repo.revision,
         architecture=repo.architecture,
         source_format=source_format,
+        backend=backend,
         gated=repo.gated,
         chat_template_present=repo.chat_template_present,
         metadata_bytes=metadata_bytes,

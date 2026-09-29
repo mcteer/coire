@@ -142,6 +142,7 @@ class InspectionResult(BaseModel):
     revision: str
     architecture: str | None = None
     source_format: str
+    backend: EngineBackend = EngineBackend.MLX_LM
     gated: bool = False
     chat_template_present: bool = False
     metadata_bytes: int = Field(ge=0)

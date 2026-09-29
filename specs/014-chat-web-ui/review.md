@@ -1,5 +1,10 @@
 # Feature 014 implementation review
 
+## Preconverted vision inspection gate (014br, 2026-09-29)
+
+- Metadata inspection recognizes only the pinned bare VLM Idefics3 family when already converted to MLX and accompanied by local config, processor, preprocessor, tokenizer and safetensors files. Raw/incomplete sources and other visual architectures receive safe typed refusals. A complete visual source still receives an audited `vision_validation_unavailable` 422 with zero bytes transferred until node visual smoke and scheduler publication are wired. This prevents the text validator from falsely marking a VLM ready. Parent T054/T055 remain open; no tiny vision model was acquired.
+- Full Python suite: 1,098 passed, 118 conditional integration skips. All 84 web tests, lint and build, Ruff, format, strict mypy on 240 source files plus the new test module, and OpenAPI freshness passed. The local arm64 API image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-api-014br.spdx.json`. No Studio or engine was contacted. Chat remains default-off.
+
 ## Parent history acceptance audit (2026-09-29)
 
 - T028 is complete in the existing service, turn and observer paths: owner-filtered stable history paging, versioned edits, a read-locked snapshot cursor, persisted event replay, latest assistant attempt in later prompts, and explicit retry/continuation with unchanged input rules. The corresponding contract and unit cases passed in the full 1,091-test Python run. T027 remains open for the dedicated cross-operation race coverage in its test task.

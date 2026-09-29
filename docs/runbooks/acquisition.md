@@ -26,6 +26,14 @@ reservations; partial conversion directories are removed and partial Hub pulls r
 - `gguf_only`: use the original safetensors repository or a pre-quantized MLX repository.
 - `unsupported_architecture`: the pinned `mlx-lm` cannot load it; do not enable remote code.
 - `no_fit_memory`: use a smaller/pre-quantized model; a merely busy node queues instead.
+- `incomplete_visual_processor` or `missing_visual_weights`: inspect the repository's processor,
+  tokenizer and safetensors inventory; no weights were transferred.
+- `vision_requires_preconverted_mlx` or `unsupported_visual_architecture`: use a supported,
+  already-converted MLX-VLM repository; visual conversion is not available.
+- `vision_validation_unavailable`: metadata inspection passed, but visual generation validation
+  and publication are still disabled. The audited refusal transfers zero weight bytes. Keep Chat
+  off and retry only after the visual validation rollout is verified locally; rollback is to keep
+  visual acquisition disabled, with no model data to clean up from this request.
 - `disk_full`: free model-store capacity; partial conversion output is removed.
 - validation failure: compare smoke, perplexity, and template outcomes; files stay unpublished.
 

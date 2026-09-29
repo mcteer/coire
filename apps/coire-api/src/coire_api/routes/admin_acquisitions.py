@@ -17,6 +17,7 @@ from coire_api.registry import acquisition, service
 from coire_api.registry.inspection import classify_inspection, estimate_weight_bytes
 from coire_api.registry.placement import NoCandidate, choose_origin, replica_for
 from coire_core.models.acquisition import AcquisitionRequest, AcquisitionWorkflow, VariantState
+from coire_core.models.registry import EngineBackend
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin: acquisitions"])
 
@@ -168,6 +169,26 @@ async def submit_acquisition(
                 "detail": detail,
                 "guidance": decision.source_repo_guidance,
                 "fit": [item.model_dump(mode="json") for item in decision.fit],
+                "bytes_transferred": 0,
+            },
+        )
+
+    if decision.backend is EngineBackend.MLX_VLM:
+        # Inspection is metadata-only. Until the node's visual generation smoke and
+        # scheduler publication gate are wired, never route a VLM through text validation.
+        await acquisition.reject(
+            session,
+            actor=actor,
+            repo_id=body.repo_id,
+            code="vision_validation_unavailable",
+            detail="visual acquisition requires the measured validation path",
+        )
+        await session.commit()
+        raise HTTPException(
+            422,
+            {
+                "code": "vision_validation_unavailable",
+                "detail": "visual acquisition requires the measured validation path",
                 "bytes_transferred": 0,
             },
         )
