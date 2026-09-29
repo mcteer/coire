@@ -80,6 +80,7 @@ class ProblemDetails(BaseModel):
     status: int
     detail: str | None = None
     instance: str | None = None
+    coire_code: str | None = None
 
 
 class ChatMessage(BaseModel):

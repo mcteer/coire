@@ -5539,6 +5539,17 @@
         "additionalProperties": true,
         "description": "RFC 9457 problem detail used by the compatible gateway.",
         "properties": {
+          "coire_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Code"
+          },
           "detail": {
             "anyOf": [
               {

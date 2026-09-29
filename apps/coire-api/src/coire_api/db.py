@@ -14,15 +14,18 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY, INET, JSONB
@@ -227,6 +230,8 @@ class ModelRow(Base):
     context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chat_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     capability_profile: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    backend: Mapped[str] = mapped_column(String(16), default="mlx_lm", server_default="mlx_lm")
+    visual_capability: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -324,6 +329,8 @@ class ModelVariantRow(Base):
     state: Mapped[VariantState] = mapped_column(_enum(VariantState, "variant_state"), index=True)
     validated: Mapped[bool] = mapped_column(Boolean, default=False)
     harness_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    backend: Mapped[str] = mapped_column(String(16), default="mlx_lm", server_default="mlx_lm")
+    visual_capability: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     harness_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -1258,3 +1265,221 @@ class UsageRecordRow(Base):
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+# --------------------------------------------------------------------------- feature 014
+
+
+class ChatConversationRow(Base):
+    __tablename__ = "chat_conversations"
+    __table_args__ = (
+        Index("ix_chat_conversations_owner_updated", "owner_user_id", "updated_at", "id"),
+        CheckConstraint("revision >= 1", name="ck_chat_conversation_revision"),
+        UniqueConstraint("id", "owner_user_id", name="uq_chat_conversation_id_owner"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    title: Mapped[str] = mapped_column(String(120))
+    mode: Mapped[str] = mapped_column(String(8), default="chat")
+    selected_model_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("models.id", ondelete="SET NULL"), nullable=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    active_turn_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("chat_turns.id", name="fk_chat_conversation_active_turn", use_alter=True),
+        nullable=True,
+    )
+    event_cursor: Mapped[int] = mapped_column(BigInteger, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ChatMessageRow(Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "position", name="uq_chat_message_position"),
+        CheckConstraint("position >= 1", name="ck_chat_message_position"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chat_conversations.id", ondelete="CASCADE"), index=True
+    )
+    position: Mapped[int] = mapped_column(Integer)
+    role: Mapped[str] = mapped_column(String(16))
+    text: Mapped[str] = mapped_column(Text, default="")
+    reasoning: Mapped[str] = mapped_column(Text, default="")
+    model_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("models.id", ondelete="SET NULL"), nullable=True
+    )
+    model_display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    attachment_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    usage: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChatTurnRow(Base):
+    __tablename__ = "chat_turns"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "client_request_id", name="uq_chat_turn_request"),
+        Index(
+            "uq_chat_turn_active",
+            "conversation_id",
+            unique=True,
+            postgresql_where=text(
+                "state IN ('accepted', 'queued', 'loading', 'running', 'stop_requested')"
+            ),
+        ),
+        CheckConstraint("accepted_revision >= 1", name="ck_chat_turn_revision"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chat_conversations.id", ondelete="CASCADE"), index=True
+    )
+    client_request_id: Mapped[uuid.UUID] = mapped_column()
+    request_hash: Mapped[str] = mapped_column(String(64))
+    accepted_revision: Mapped[int] = mapped_column(Integer)
+    input_message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_messages.id"))
+    assistant_message_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chat_messages.id"))
+    model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="RESTRICT"))
+    model_display_name: Mapped[str] = mapped_column(String(120))
+    action: Mapped[str] = mapped_column(String(16), default="chat")
+    state: Mapped[str] = mapped_column(String(24), default="accepted")
+    event_cursor: Mapped[int] = mapped_column(BigInteger, default=0)
+    retry_of: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("chat_turns.id"), nullable=True)
+    coding_call_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("mcp_calls.id", ondelete="SET NULL"), nullable=True
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    owner_process: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stop_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    usage: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ChatEventRow(Base):
+    __tablename__ = "chat_events"
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "cursor", name="uq_chat_event_cursor"),
+        Index("ix_chat_event_expires", "expires_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("chat_conversations.id", ondelete="CASCADE"), index=True
+    )
+    turn_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("chat_turns.id", ondelete="CASCADE"), nullable=True
+    )
+    cursor: Mapped[int] = mapped_column(BigInteger)
+    type: Mapped[str] = mapped_column(String(40))
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ChatAttachmentRow(Base):
+    __tablename__ = "chat_attachments"
+    __table_args__ = (
+        Index("ix_chat_attachment_owner_conversation", "owner_user_id", "conversation_id"),
+        CheckConstraint(
+            "original_bytes > 0 AND original_bytes <= 10485760", name="ck_chat_original_bytes"
+        ),
+        CheckConstraint(
+            "derived_bytes >= 0 AND derived_bytes <= 33554432", name="ck_chat_derived_bytes"
+        ),
+        ForeignKeyConstraint(
+            ["conversation_id", "owner_user_id"],
+            ["chat_conversations.id", "chat_conversations.owner_user_id"],
+            ondelete="CASCADE",
+            name="fk_chat_attachment_owner_conversation",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    conversation_id: Mapped[uuid.UUID] = mapped_column()
+    filename: Mapped[str] = mapped_column(String(255))
+    detected_type: Mapped[str] = mapped_column(String(100))
+    original_bytes: Mapped[int] = mapped_column(BigInteger)
+    original_sha256: Mapped[str] = mapped_column(String(64))
+    original_key: Mapped[str] = mapped_column(String(128))
+    derived_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    state: Mapped[str] = mapped_column(String(16))
+    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    extraction_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    asset_manifest: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    safe_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ChatFileProcessingRow(Base):
+    __tablename__ = "chat_file_processing"
+    __table_args__ = (
+        Index("ix_chat_file_job_expiry", "expires_at"),
+        CheckConstraint("id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'", name="ck_chat_file_job_ulid"),
+    )
+
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    attachment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("chat_attachments.id", ondelete="CASCADE"), nullable=True
+    )
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    principal_kind: Mapped[str] = mapped_column(String(16))
+    principal_subject: Mapped[str] = mapped_column(String(128))
+    request_id: Mapped[uuid.UUID] = mapped_column(unique=True)
+    operation: Mapped[str] = mapped_column(String(16))
+    source_key: Mapped[str] = mapped_column(String(128))
+    source_sha256: Mapped[str] = mapped_column(String(64))
+    selected_pages: Mapped[list[int]] = mapped_column(JSONB, default=list)
+    output_manifest: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    state: Mapped[str] = mapped_column(String(16))
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    safe_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ChatQuotaReservationRow(Base):
+    __tablename__ = "chat_quota_reservations"
+    __table_args__ = (
+        Index("ix_chat_quota_owner_state", "owner_user_id", "state"),
+        CheckConstraint("reserved_bytes > 0", name="ck_chat_reserved_bytes"),
+        ForeignKeyConstraint(
+            ["conversation_id", "owner_user_id"],
+            ["chat_conversations.id", "chat_conversations.owner_user_id"],
+            ondelete="CASCADE",
+            name="fk_chat_quota_owner_conversation",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    conversation_id: Mapped[uuid.UUID] = mapped_column()
+    attachment_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("chat_attachments.id", ondelete="CASCADE"), nullable=True
+    )
+    job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("chat_file_processing.id", ondelete="CASCADE"), nullable=True
+    )
+    reserved_bytes: Mapped[int] = mapped_column(BigInteger)
+    state: Mapped[str] = mapped_column(String(16))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

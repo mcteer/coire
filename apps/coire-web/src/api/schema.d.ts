@@ -3548,6 +3548,8 @@ export interface components {
          * @description RFC 9457 problem detail used by the compatible gateway.
          */
         ProblemDetails: {
+            /** Coire Code */
+            coire_code?: string | null;
             /** Detail */
             detail?: string | null;
             /** Instance */

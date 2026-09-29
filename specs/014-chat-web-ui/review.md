@@ -17,12 +17,13 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 1. `014a` shared chat and multimodal contracts with additive backward-compatible fields.
 2. `014b` exact runtime dependency pins and architecture boundaries.
 3. `014c` additive compatible multimodal, backend and run-activity contracts.
-4. `014d` persistent text chat API, model eligibility and shared inference execution.
-5. `014e` chat SPA, event transport and cold-model experience.
-6. `014f` history, recovery, cancellation and coding actions.
-7. `014g` private file processing worker, storage, quotas and previews.
-8. `014h` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
-9. `014i` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
+4. `014d` private chat persistence, typed failures and bounded settings.
+5. `014e` persistent text chat API, model eligibility and shared inference execution.
+6. `014f` chat SPA, event transport and cold-model experience.
+7. `014g` history, recovery, cancellation and coding actions.
+8. `014h` private file processing worker, storage, quotas and previews.
+9. `014i` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
+10. `014j` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
 
 ## Runtime dependency gate (014b)
 
@@ -34,6 +35,12 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 
 - The node's published `specs/001-model-registry-node-agent/contracts/node-api.yaml` gained additive backend/vision fields so its strict EngineStatus response validator remains current. The failover page renders only text, consistent with its text-only tier.
 - Core and gateway contract tests passed in the combined run; the node suite initially exposed two stale-contract failures, then all 19 node engine contract tests passed after updating the node YAML. Strict mypy passed for 215 source files and Ruff passed. OpenAPI and TypeScript API types were regenerated; OpenAPI freshness and web build/test/lint passed. Runtime VLM behavior and visual processing remain gated by later children.
-- `coire-core/errors.py` referenced by the 014 plan and AGENTS.md does not exist at this base revision; existing API routes predominantly use FastAPI `HTTPException`. Parent T007 stays open for a typed failure strategy and settings rather than claiming it complete from schema changes alone.
+- `coire-core/errors.py` referenced by the 014 plan and AGENTS.md did not exist at the base revision; existing API routes predominantly use FastAPI `HTTPException`. The typed chat failure and settings portion of parent T007 was completed in 014d. Route mapping remains a later API task.
+
+## Persistence gate (014d)
+
+- Added a single `0015_chat_conversations` migration after `0014_mcp_calls`, with seven private chat tables, model/variant `mlx_lm` server defaults, nullable visual measurements, owner constraints, ULID processing IDs and one-active-turn partial uniqueness. The preexisting text model survived upgrade/downgrade/re-upgrade with `backend=mlx_lm` and no visual capability.
+- Ran upgrade and downgrade on disposable PostgreSQL 17 in the local `orbstack` Docker context. Populated chat blocked downgrade before any table drop; after deleting its rows, downgrade succeeded. SQL checks confirmed two active turns conflict, cross-owner attachment insertion fails, and invalid processing job IDs fail. Alembic metadata comparison found zero chat/backend differences. The disposable container was stopped and removed.
+- Full pytest completed with 817 passed, 116 preexisting conditional skips and 256 warnings; strict mypy passed for 218 source files; Ruff and web typecheck/build and OpenAPI freshness passed. The automated migration test covers metadata and the downgrade guard. Parent T008 remains open until an automated populated upgrade/downgrade test is added and run.
 
 The 014 tasks remain the full acceptance ledger. A child passing its local tests does not complete 014 or check later acceptance tasks. The `ChatFileProcessingRow` job ID was corrected to a ULID in `data-model.md` to follow the repository job-ID convention.
