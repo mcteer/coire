@@ -59,9 +59,14 @@ export function useConversation(ownerId: string) {
   const refreshDirty = useRef(false);
   const stream = useChatTurnStream();
 
-  const remember = (key: string, text: string, modelId: string | null) => {
+  const remember = (
+    key: string,
+    text: string,
+    modelId: string | null,
+    files: ChatAttachmentSelection[] = selections,
+  ) => {
     drafts.current.delete(key);
-    drafts.current.set(key, { text, modelId });
+    drafts.current.set(key, { text, modelId, ...(key !== "new" && files.length ? { files } : {}) });
     while (drafts.current.size > 20) {
       const oldest = drafts.current.keys().next().value;
       if (!oldest) break;
@@ -379,10 +384,9 @@ export function useConversation(ownerId: string) {
   };
 
   const selectFile = (value: ChatAttachmentSelection | null, fileId: string) => {
-    setSelections((rows) => [
-      ...rows.filter((row) => row.file_id !== fileId),
-      ...(value ? [value] : []),
-    ]);
+    const next = [...selections.filter((row) => row.file_id !== fileId), ...(value ? [value] : [])];
+    setSelections(next);
+    remember(conversation?.id ?? "new", draft, selectedId, next);
   };
 
   const openConversation = async (id: string) => {
@@ -400,16 +404,30 @@ export function useConversation(ownerId: string) {
       setConversation(detail.conversation);
       setMessages(detail.messages ?? []);
       setAttachments(detail.attachments ?? []);
-      setSelections([]);
       setOlderPosition(detail.next_message_position ?? null);
       const saved = drafts.current.get(id);
+      const restored = (saved?.files ?? []).filter((item) => {
+        const file = (detail.attachments ?? []).find((row) => row.id === item.file_id);
+        const pageCount = file?.page_count;
+        return (
+          file &&
+          file.state !== "deleting" &&
+          (!item.pages?.length ||
+            (pageCount !== null &&
+              pageCount !== undefined &&
+              item.pages.every((page) => page <= pageCount)))
+        );
+      });
+      setSelections(restored);
       setDraft(saved?.text ?? "");
       const preferred = saved?.modelId ?? detail.conversation.selected_model_id;
       setSelectedId(models.some((model) => model.id === preferred) ? (preferred ?? null) : null);
       setStatus(
-        detail.conversation.active_turn_id
-          ? "A response is still running. Refresh this conversation to see saved progress."
-          : null,
+        restored.length !== (saved?.files?.length ?? 0)
+          ? "Some saved file choices are no longer available. Check the selection before sending."
+          : detail.conversation.active_turn_id
+            ? "A response is still running. Refresh this conversation to see saved progress."
+            : null,
       );
     } catch (cause) {
       if (selection.current === generation) setError(String(cause));

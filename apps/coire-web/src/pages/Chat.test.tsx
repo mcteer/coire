@@ -800,6 +800,63 @@ test("restores same-tab text and an eligible model after reload", async () => {
   expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Recovered draft");
 });
 
+test("restores saved file and PDF page choices only after owner-scoped detail confirms them", async () => {
+  const fileId = "00000000-0000-0000-0000-000000000088";
+  const savedConversation = { ...conversation, title: "Saved pages" };
+  loadChatDrafts(conversation.owner_id);
+  saveChatDrafts(
+    conversation.owner_id,
+    new Map([
+      [
+        conversationId,
+        {
+          text: "Read pages",
+          modelId,
+          files: [{ file_id: fileId, mode: "visual" as const, pages: [2, 4] }],
+        },
+      ],
+    ]),
+  );
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [savedConversation], next_cursor: null }))
+    .mockResolvedValueOnce(
+      json({
+        conversation: savedConversation,
+        messages: [],
+        event_cursor: 0,
+        attachments: [
+          {
+            id: fileId,
+            owner_id: conversation.owner_id,
+            conversation_id: conversationId,
+            filename: "pages.pdf",
+            detected_type: "application/pdf",
+            original_bytes: 100,
+            original_sha256: "a".repeat(64),
+            derived_bytes: 200,
+            state: "ready",
+            page_count: 4,
+            created_at: conversation.created_at,
+            updated_at: conversation.updated_at,
+          },
+        ],
+      }),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Saved pages/ }));
+  expect(await screen.findByRole("checkbox", { name: "pages.pdf" })).toBeChecked();
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Read pages");
+  expect(screen.getByRole("combobox", { name: "Content mode for pages.pdf" })).toHaveValue(
+    "visual",
+  );
+  expect(screen.getByLabelText("2")).toBeChecked();
+  expect(screen.getByLabelText("4")).toBeChecked();
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+});
+
 test("changing verified identity in one tab clears the former owner's draft", async () => {
   loadChatDrafts(conversation.owner_id);
   saveChatDrafts(

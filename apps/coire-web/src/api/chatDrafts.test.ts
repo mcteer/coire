@@ -4,6 +4,8 @@ import { loadChatDrafts, saveChatDrafts } from "./chatDrafts";
 const ownerA = "00000000-0000-0000-0000-000000000001";
 const ownerB = "00000000-0000-0000-0000-000000000002";
 const modelId = "00000000-0000-0000-0000-000000000003";
+const conversationId = "00000000-0000-0000-0000-000000000004";
+const fileId = "00000000-0000-0000-0000-000000000005";
 
 beforeEach(() => sessionStorage.clear());
 
@@ -35,6 +37,58 @@ test("ignores oversized UTF-8 text and invalid stored IDs", () => {
   sessionStorage.setItem(
     "coire.chat.drafts." + ownerA,
     JSON.stringify([["new", { text: "okay", modelId: "not-a-model" }]]),
+  );
+  expect(loadChatDrafts(ownerA).size).toBe(0);
+});
+
+test("stores only bounded file IDs and page choices for the same owner", () => {
+  loadChatDrafts(ownerA);
+  saveChatDrafts(
+    ownerA,
+    new Map([
+      [
+        conversationId,
+        {
+          text: "Read this",
+          modelId,
+          files: [{ file_id: fileId, mode: "visual" as const, pages: [1, 3] }],
+          token: "must never persist",
+        },
+      ],
+    ]),
+  );
+  expect(loadChatDrafts(ownerA).get(conversationId)?.files).toEqual([
+    { file_id: fileId, mode: "visual", pages: [1, 3] },
+  ]);
+  expect(sessionStorage.getItem("coire.chat.drafts." + ownerA)).not.toContain("must never persist");
+  expect(loadChatDrafts(ownerB).size).toBe(0);
+});
+
+test("rejects forged, duplicate and out-of-range saved file choices", () => {
+  loadChatDrafts(ownerA);
+  sessionStorage.setItem(
+    "coire.chat.drafts." + ownerA,
+    JSON.stringify([
+      [
+        conversationId,
+        { text: "bad", modelId, files: [{ file_id: fileId, mode: "text", pages: [1] }] },
+      ],
+      [
+        conversationId,
+        { text: "bad", modelId, files: [{ file_id: fileId, mode: "visual", pages: [51] }] },
+      ],
+      [
+        conversationId,
+        {
+          text: "bad",
+          modelId,
+          files: [
+            { file_id: fileId, mode: "visual", pages: [1] },
+            { file_id: fileId, mode: "visual", pages: [2] },
+          ],
+        },
+      ],
+    ]),
   );
   expect(loadChatDrafts(ownerA).size).toBe(0);
 });

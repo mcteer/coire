@@ -61,7 +61,7 @@ export function AttachmentList({
                   <input
                     type="checkbox"
                     checked={Boolean(selected)}
-                    disabled={!canSelect || busy}
+                    disabled={!canSelect || busy || (!selected && selections.length >= 10)}
                     onChange={(event) =>
                       onSelect(
                         event.target.checked ? { file_id: attachment.id, mode } : null,
