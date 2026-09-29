@@ -21,9 +21,10 @@ from coire_api.db import (
     VariantCopyRow,
 )
 from coire_api.gateway.telemetry import tracer
+from coire_api.registry.service import published_ready_entitled
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
-from coire_core.models.registry import ModelState, Visibility
+from coire_core.models.registry import ModelState
 from coire_core.models.sharding import ShardGroupState
 
 
@@ -45,9 +46,7 @@ class ResolvedModel:
 def _visible(model: ModelRow, principal: Principal) -> bool:
     if principal.is_admin:
         return model.state is not ModelState.RETIRED
-    if model.state is not ModelState.READY or model.visibility is not Visibility.PUBLISHED:
-        return False
-    return not model.entitlement or set(model.entitlement).issubset(principal.scopes)
+    return published_ready_entitled(model, principal.entitlements)
 
 
 async def resolve_model(

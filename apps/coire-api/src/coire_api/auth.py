@@ -22,7 +22,9 @@ from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from opentelemetry import metrics, trace
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from coire_api.db import ChatConversationRow
 from coire_core.models.auth import ActorType, UserRole
 
 logger = logging.getLogger(__name__)
@@ -352,6 +354,49 @@ async def require_authenticated(principal: CurrentPrincipal) -> Principal:
 
 
 CurrentAuthenticated = Annotated[Principal, Depends(require_authenticated)]
+
+
+async def require_chat_principal(request: Request, principal: CurrentAuthenticated) -> Principal:
+    """Bind Chat to a real user and require browser writes from its exact configured origin."""
+
+    if principal.user_id is None or principal.kind not in {
+        PrincipalKind.USER,
+        PrincipalKind.ADMIN,
+        PrincipalKind.API_KEY,
+    }:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "user-bound chat credential required")
+    if principal.kind is PrincipalKind.API_KEY:
+        if "chat" not in principal.scopes:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "chat scope required")
+        return principal
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        settings = request.app.state.settings
+        expected = settings.chat_browser_origin
+        if not expected or request.headers.get("origin") != expected:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "same-origin chat request required")
+    return principal
+
+
+CurrentChatUser = Annotated[Principal, Depends(require_chat_principal)]
+
+
+async def require_owned_chat(
+    session: AsyncSession, conversation_id: uuid.UUID, principal: Principal
+) -> ChatConversationRow:
+    """Return only live content owned by this user, even when the user is an admin."""
+
+    from coire_core.errors import ChatNotFound
+
+    row = await session.get(ChatConversationRow, conversation_id)
+    if (
+        row is None
+        or row.id != conversation_id
+        or row.deleted_at is not None
+        or row.owner_user_id != principal.user_id
+    ):
+        raise ChatNotFound()
+    return row
+
 
 CurrentOpsService = Annotated[Principal, Depends(require_ops_scope("ops:session"))]
 

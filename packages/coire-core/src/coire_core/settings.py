@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from functools import lru_cache
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
@@ -156,6 +156,30 @@ class Settings(BaseSettings):
     chat_normalized_max_side: int = Field(default=2048, ge=1, le=2048)
     chat_event_retention_hours: int = Field(default=24, ge=1, le=24)
     chat_purge_deadline_hours: int = Field(default=24, ge=1, le=24)
+    chat_browser_origin: str = ""
+
+    @field_validator("chat_browser_origin")
+    @classmethod
+    def chat_origin_is_exact(cls, value: str) -> str:
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or parsed.netloc != value.split("://", 1)[-1]
+            or (parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1"})
+        ):
+            raise ValueError(
+                "chat browser origin must be an exact HTTPS origin or local HTTP origin"
+            )
+        return value
+
     chat_original_root: str = "/opt/coire/chat/originals"
     chat_derived_root: str = "/opt/coire/chat/derived"
     file_worker_input_root: str = "/opt/coire/chat/originals"

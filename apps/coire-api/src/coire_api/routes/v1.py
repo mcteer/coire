@@ -380,7 +380,7 @@ async def list_models(principal: CurrentAuthenticated, session: SessionDep) -> G
     visible = [
         model
         for model in rows
-        if visible_to(is_admin=principal.is_admin, model=model)
+        if visible_to(is_admin=principal.is_admin, model=model, entitlements=principal.entitlements)
         and (principal.kind is not PrincipalKind.RUN or model.id in principal.permitted_model_ids)
     ]
     engines: Sequence[EngineProcessRow] = []

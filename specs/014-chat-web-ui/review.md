@@ -18,12 +18,13 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 2. `014b` exact runtime dependency pins and architecture boundaries.
 3. `014c` additive compatible multimodal, backend and run-activity contracts.
 4. `014d` private chat persistence, typed failures and bounded settings.
-5. `014e` persistent text chat API, model eligibility and shared inference execution.
-6. `014f` chat SPA, event transport and cold-model experience.
-7. `014g` history, recovery, cancellation and coding actions.
-8. `014h` private file processing worker, storage, quotas and previews.
-9. `014i` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
-10. `014j` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
+5. `014e` verified chat authorization and shared model eligibility.
+6. `014f` persistent text chat API and shared inference execution.
+7. `014g` chat SPA, event transport and cold-model experience.
+8. `014h` history, recovery, cancellation and coding actions.
+9. `014i` private file processing worker, storage, quotas and previews.
+10. `014j` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
+11. `014k` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
 
 ## Runtime dependency gate (014b)
 
@@ -44,3 +45,9 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 - Full pytest completed with 817 passed, 116 preexisting conditional skips and 256 warnings; strict mypy passed for 218 source files; Ruff and web typecheck/build and OpenAPI freshness passed. The automated migration test covers metadata and the downgrade guard. Parent T008 remains open until an automated populated upgrade/downgrade test is added and run.
 
 The 014 tasks remain the full acceptance ledger. A child passing its local tests does not complete 014 or check later acceptance tasks. The `ChatFileProcessingRow` job ID was corrected to a ULID in `data-model.md` to follow the repository job-ID convention.
+
+## Authorization and eligibility gate (014e)
+
+- Native Chat requires a verified user-bound Access principal or user-owned API key with `chat` scope. Browser writes require an exact configured Origin; the empty default refuses them. Owner lookup returns the same 404 for missing, foreign and deleted rows, including admin callers.
+- Existing nonadmin registry listings and compatible gateway resolution now use identity entitlements rather than API scopes. Native Chat has a stricter published/ready/entitled predicate even for admins; existing admin discovery behavior outside Chat is retained.
+- The new guard and eligibility tests passed; the API/core suite passed 544 tests. The full suite passed 830 tests with 116 pre-existing conditional skips; Ruff and strict mypy passed (216 source files), as did OpenAPI freshness, web build and 19 web tests. Parent T009 remains open until actual list/send route contracts exist; T010 is complete.

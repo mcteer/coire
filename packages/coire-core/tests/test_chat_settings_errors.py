@@ -18,6 +18,22 @@ def test_chat_limits_and_worker_secret_defaults() -> None:
         Settings(_secrets_dir="/nonexistent", chat_pdf_max_pages=100)  # type: ignore[call-arg]
 
 
+def test_chat_browser_origin_is_exact() -> None:
+    for valid in ("https://chat.example.test", "http://localhost:8080"):
+        assert (
+            Settings(_secrets_dir="/nonexistent", chat_browser_origin=valid).chat_browser_origin
+            == valid
+        )  # type: ignore[call-arg]
+    for invalid in (
+        "http://chat.example.test",
+        "https://chat.example.test/",
+        "https://chat.example.test/path",
+        "https://user@chat.example.test",
+    ):
+        with pytest.raises(ValidationError):
+            Settings(_secrets_dir="/nonexistent", chat_browser_origin=invalid)  # type: ignore[call-arg]
+
+
 def test_chat_errors_expose_safe_problem_details() -> None:
     assert ChatNotFound().to_problem().status == 404
     assert ChatConflict("active turn").to_problem().status == 409

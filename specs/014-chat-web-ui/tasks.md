@@ -3,7 +3,7 @@
 **Branch**: `feat/014-chat-web-ui`
 **Inputs**: [spec](spec.md), [plan](plan.md), [research](research.md), [data model](data-model.md), [contracts](contracts/chat-api.md), [acceptance](quickstart.md)
 
-All tasks are unexecuted. Tests precede the corresponding implementation per Constitution VII; schema changes precede services/web per III. `[P]` indicates independent files once the phase prerequisites are complete, not permission to bypass dependencies. Do not run implementation as part of this planning handoff.
+Tests precede the corresponding implementation per Constitution VII; schema changes precede services/web per III. `[P]` indicates independent files once the phase prerequisites are complete, not permission to bypass dependencies.
 
 ## Phase 1 — Setup
 
@@ -15,13 +15,13 @@ All tasks are unexecuted. Tests precede the corresponding implementation per Con
 
 **Goal:** Typed data, persistence, authorization and shared transport before any story.
 
-- [ ] T004 [P] Add canonical/native schema tests for strict content parts, ownership metadata, selections, turn/events, worker payloads and bounds in packages/coire-core/tests/test_chat_models.py and packages/coire-core/tests/test_file_models.py.
-- [ ] T005 Implement canonical Conversation, chat projections, attachment/processing contracts and discriminated events in packages/coire-core/src/coire_core/models/conversation.py, packages/coire-core/src/coire_core/models/chat.py and packages/coire-core/src/coire_core/models/files.py.
+- [X] T004 [P] Add canonical/native schema tests for strict content parts, ownership metadata, selections, turn/events, worker payloads and bounds in packages/coire-core/tests/test_chat_models.py and packages/coire-core/tests/test_file_models.py.
+- [X] T005 Implement canonical Conversation, chat projections, attachment/processing contracts and discriminated events in packages/coire-core/src/coire_core/models/conversation.py, packages/coire-core/src/coire_core/models/chat.py and packages/coire-core/src/coire_core/models/files.py.
 - [X] T006 [P] Add compatible text/null/multimodal, backend defaults, visual capability and node/harness/activity schema tests in packages/coire-core/tests/test_multimodal_models.py.
 - [X] T007 Extend packages/coire-core/src/coire_core/models/gateway.py, registry.py, engine.py, acquisition.py, harness.py and runs.py with backend/modality/content/activity contracts; add typed failures/settings in packages/coire-core/src/coire_core/errors.py and settings.py without changing existing text semantics.
 - [ ] T008 Add rows, FKs, unique request/active-turn constraints, processing jobs, quota reservations and text-backend defaults in apps/coire-api/src/coire_api/db.py and one reversible apps/coire-api/alembic/versions/0015_chat_conversations.py; add populated upgrade/downgrade tests in apps/coire-api/tests/unit/test_chat_migration.py.
 - [ ] T009 Add owner/credential/same-origin and entitlement list/send regression tests in apps/coire-api/tests/contract/test_chat_auth.py and apps/coire-api/tests/unit/test_model_eligibility.py (FR-011, FR-022, FR-033).
-- [ ] T010 Implement chat-owner authorization and shared entitlement eligibility in apps/coire-api/src/coire_api/auth.py, registry/service.py and gateway/resolution.py; preserve deliberate admin behavior outside Chat and uniform foreign/deleted 404s.
+- [X] T010 Implement chat-owner authorization and shared entitlement eligibility in apps/coire-api/src/coire_api/auth.py, registry/service.py and gateway/resolution.py; preserve deliberate admin behavior outside Chat and uniform foreign/deleted 404s.
 - [ ] T011 [P] Add extraction regression tests for existing gateway load/wait/lease/usage/abort behavior in apps/coire-api/tests/unit/test_gateway_execution.py.
 - [ ] T012 Extract shared inference execution and canonical text adapter into apps/coire-api/src/coire_api/gateway/execution.py, updating routes/v1.py and gateway/usage.py without loopback HTTP or transaction-held engine I/O.
 - [ ] T013 [P] Add fragmented UTF-8/CRLF/multiline/comment/cursor/auth/terminal/abort and existing-admin regression tests in apps/coire-web/src/api/eventStream.test.ts and hooks/useEventStream.test.tsx.

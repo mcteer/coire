@@ -21,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.audit import write_audit
+from coire_api.auth import Principal
 from coire_api.db import (
     DownloadJobRow,
     EngineProcessRow,
@@ -43,6 +44,7 @@ from coire_core.models.engine import LIVE_ENGINE_STATES, EngineState
 from coire_core.models.jobs import DownloadStage, RepoInspection
 from coire_core.models.registry import (
     CapabilityProfile,
+    EngineBackend,
     LoadState,
     ModelAddRequest,
     ModelListing,
@@ -516,20 +518,33 @@ def load_state_for(engines: list[EngineProcessRow]) -> tuple[LoadState, list[str
     return LoadState.COLD, []
 
 
-def visible_to(*, is_admin: bool, model: ModelRow) -> bool:
-    """Whether a caller may see a model at all.
+def published_ready_entitled(model: ModelRow, entitlements: frozenset[str]) -> bool:
+    """Shared non-admin and native Chat eligibility predicate."""
 
-    An admin sees everything. Anyone else sees only published, ready models — and, until
-    feature 007 supplies real subjects, only those with an empty entitlement list, because
-    there is nobody yet who could be on one.
-    """
-    if is_admin:
-        return True
     return (
         model.visibility is Visibility.PUBLISHED
         and model.state is ModelState.READY
-        and not model.entitlement
+        and set(model.entitlement or []).issubset(entitlements)
     )
+
+
+def chat_model_eligible(model: ModelRow, principal: Principal) -> bool:
+    """Native Chat never bypasses publication, readiness or entitlement for admins."""
+
+    return published_ready_entitled(model, principal.entitlements)
+
+
+def visible_to(
+    *, is_admin: bool, model: ModelRow, entitlements: frozenset[str] = frozenset()
+) -> bool:
+    """Whether a caller may see a model at all.
+
+    An admin sees everything. Anyone else sees only published, ready models for which the
+    verified identity holds every required entitlement.
+    """
+    if is_admin:
+        return True
+    return published_ready_entitled(model, entitlements)
 
 
 def to_listing(
@@ -556,6 +571,7 @@ def to_listing(
         loaded_on=[node_names.get(uuid.UUID(n), n) for n in node_ids],
         estimated_warmup_seconds=warmup,
         capability_profile=CapabilityProfile.model_validate(profile),
+        backend=EngineBackend(model.backend or EngineBackend.MLX_LM),
     )
 
 
