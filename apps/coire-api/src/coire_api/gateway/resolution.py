@@ -24,7 +24,7 @@ from coire_api.gateway.telemetry import tracer
 from coire_api.registry.service import published_ready_entitled
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
-from coire_core.models.registry import ModelState
+from coire_core.models.registry import EngineBackend, ModelState, VisualCapability
 from coire_core.models.sharding import ShardGroupState
 
 
@@ -41,6 +41,8 @@ class ResolvedModel:
     engine_id: uuid.UUID | None
     node: str | None
     engine_url: str | None
+    backend: EngineBackend = EngineBackend.MLX_LM
+    visual_capability: VisualCapability | None = None
 
 
 def _visible(model: ModelRow, principal: Principal) -> bool:
@@ -67,6 +69,12 @@ async def resolve_model(
         if model is None or not _visible(model, principal):
             span.set_attribute("coire.gateway.resolution", "refused")
             raise ModelNotFoundError
+        backend = EngineBackend(model.backend)
+        visual_capability = (
+            VisualCapability.model_validate(model.visual_capability)
+            if model.visual_capability is not None
+            else None
+        )
         span.set_attribute("coire.model.id", str(model.id))
 
     result = await session.execute(
@@ -151,6 +159,8 @@ async def resolve_model(
             None,
             node.name,
             f"http://{node.name}.lab:9400/node/shard-groups/{group.id}/proxy",
+            backend,
+            visual_capability,
         )
     if target is None:
         # Feature 001 rows have no ModelVariant and therefore cannot be represented by an
@@ -175,7 +185,17 @@ async def resolve_model(
             )
         ).one_or_none()
         if legacy is None:
-            return ResolvedModel(model.id, model.slug, model.context_window, None, None, None, None)
+            return ResolvedModel(
+                model.id,
+                model.slug,
+                model.context_window,
+                None,
+                None,
+                None,
+                None,
+                backend,
+                visual_capability,
+            )
         engine, node, copy = legacy
         return ResolvedModel(
             model.id,
@@ -185,6 +205,8 @@ async def resolve_model(
             engine.id,
             node.name,
             f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
+            backend,
+            visual_capability,
         )
     engine, node, copy, _instance = target
     return ResolvedModel(
@@ -195,6 +217,8 @@ async def resolve_model(
         engine.id,
         node.name,
         f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
+        backend,
+        visual_capability,
     )
 
 

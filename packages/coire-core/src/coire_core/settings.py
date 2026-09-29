@@ -143,6 +143,7 @@ class Settings(BaseSettings):
     gateway_max_inflight_per_engine: int = Field(default=1, ge=1)
     gateway_retry_after_s: int = Field(default=30, ge=1)
     gateway_engine_request_timeout_s: float = Field(default=900.0, gt=0.0)
+    gateway_inline_visual_enabled: bool = False
 
     # --- private native chat and CPU file worker -----------------------
     chat_enabled: bool = False

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import uuid
 from collections.abc import AsyncIterator
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from PIL import Image
 from pydantic import SecretStr
 
 from coire_api.app import create_app
@@ -17,6 +20,7 @@ from coire_api.gateway.resolution import ModelNotFoundError, ResolvedModel
 from coire_api.gateway.usage import UsageTracker
 from coire_api.routes.v1 import _tracked_stream
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
+from coire_core.models.registry import EngineBackend, VisualCapability
 from coire_core.settings import Settings, get_settings
 
 ADMIN_TOKEN = "gateway-contract-admin"
@@ -155,6 +159,72 @@ async def test_inline_image_is_refused_before_engine_or_spend(
     )
     assert response.status_code == 400
     assert "inline image processing is not available" in response.text
+
+
+async def test_verified_visual_request_reaches_registry_selected_engine(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_id = uuid.uuid4()
+    image = io.BytesIO()
+    Image.new("RGB", (16, 16), (255, 0, 0)).save(image, format="PNG")
+    encoded = base64.b64encode(image.getvalue()).decode()
+    seen: dict[str, object] = {}
+    app.dependency_overrides[get_settings]().gateway_inline_visual_enabled = True
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id,
+            "vision",
+            4096,
+            "/opt/coire/models/vision",
+            uuid.uuid4(),
+            "coire-edge-b",
+            "http://engine",
+            EngineBackend.MLX_VLM,
+            VisualCapability(
+                verified=True,
+                max_images=1,
+                max_image_pixels=256,
+                max_encoded_bytes=len(image.getvalue()),
+            ),
+        )
+
+    async def complete(_: str, payload: dict[str, object], __: Settings) -> dict[str, object]:
+        seen.update(payload)
+        return {
+            "id": "chatcmpl_v",
+            "object": "chat.completion",
+            "model": seen["model"],
+            "choices": [],
+            "usage": {"prompt_tokens": 280, "completion_tokens": 2},
+        }
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.v1.complete", complete)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": str(model_id),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Name the color."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{encoded}"},
+                        },
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert seen["model"] == "/opt/coire/models/vision"
+    assert encoded in str(seen["messages"])
+    assert response.json()["model"] == str(model_id)
 
 
 async def test_anthropic_image_block_is_refused_before_model_resolution(

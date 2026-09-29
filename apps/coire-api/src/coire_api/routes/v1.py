@@ -65,7 +65,7 @@ from coire_core.models.gateway import (
     GatewayProtocol,
     UsageOutcome,
 )
-from coire_core.models.registry import LoadState
+from coire_core.models.registry import EngineBackend, LoadState
 from coire_core.settings import Settings
 
 router = APIRouter(prefix="/v1", tags=["compatible"], dependencies=[Depends(require_scope("chat"))])
@@ -275,8 +275,22 @@ async def chat_completions(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
     usage.bind_resolution(resolved)
     try:
+        if (
+            any(
+                isinstance(message.content, list)
+                and any(part.type == "image_url" for part in message.content)
+                for message in body.messages
+            )
+            and not settings.gateway_inline_visual_enabled
+        ):
+            raise VisualContextUnavailable("inline image processing is not available yet")
         usage.prompt_tokens = enforce_context(
-            body.messages, limit=resolved.context_window, output_tokens=body.max_tokens or 0
+            body.messages,
+            limit=resolved.context_window,
+            output_tokens=body.max_tokens or 0,
+            visual=(
+                resolved.visual_capability if resolved.backend is EngineBackend.MLX_VLM else None
+            ),
         )
     except VisualContextUnavailable as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="visual_processing_unavailable")

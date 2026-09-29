@@ -1,5 +1,11 @@
 # Feature 014 implementation review
 
+## Gated inline visual preflight (014bx, 2026-09-29)
+
+- Registry resolution now carries the selected model's backend and measured visual capability. With the new `GATEWAY_INLINE_VISUAL_ENABLED` flag, the compatible `/v1` route checks a PNG data URI against measured image count, byte and pixel limits before engine I/O and conservatively reserves visual context. The flag defaults `false`; text models and unsupported images still fail closed. Parent T057 remains open for file-worker normalization, digest-scoped asset reuse, native Chat images and complete context handling.
+- Full Python suite: 1,112 passed, 119 conditional integration skips. Focused context and compatible route contracts: 20 passed. Ruff, strict mypy on 241 source files, OpenAPI freshness, the prior 84 web tests/lint/build and clean diff passed. The changed arm64 API image passed seven image policy rules and Trivy CRITICAL scan with zero findings; Syft wrote `/tmp/coire-api-014bx.spdx.json`.
+- In pre-prod, the flag was temporarily enabled through `coire-up --build`; a managed Studio VLM instance reached ready and a valid 90-byte/16×16 red PNG sent through core `/v1/chat/completions` returned HTTP 200, answer `Red.`, and 1,145 prompt plus 3 completion tokens. The instance drained to stopped through the API. `coire-up --no-build` restored the default flag; the live API reports it as `false` and rejects the same image with HTTP 400. No engine or model ran on core.
+
 ## Native Studio acquisition acceptance (2026-09-29)
 
 - An audited temporary admin API key was issued through the existing identity service, stored only in the login Keychain, and accepted by the pre-prod API. The key has admin scope, a 60-request/minute limit and a 100,000-token monthly budget. Revoke key `3ae0bcb9-09cd-4a04-84f0-62422836dc92` and delete Keychain service `coire-admin-api-key` after the remaining live acceptance work. No credential was printed or added to Git.

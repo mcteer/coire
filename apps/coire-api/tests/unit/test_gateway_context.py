@@ -1,4 +1,8 @@
+import base64
+import io
+
 import pytest
+from PIL import Image
 
 from coire_api.gateway.context import (
     ContextLengthError,
@@ -7,6 +11,7 @@ from coire_api.gateway.context import (
     enforce_context,
 )
 from coire_core.models.gateway import AnthropicMessagesRequest, ChatMessage
+from coire_core.models.registry import VisualCapability
 
 
 def test_context_error_names_estimate_and_limit() -> None:
@@ -44,6 +49,41 @@ def test_inline_image_has_no_unmeasured_text_token_estimate() -> None:
     )
     with pytest.raises(VisualContextUnavailable):
         enforce_context([message], limit=None, output_tokens=4)
+
+
+def test_verified_inline_png_counts_visual_tokens_and_enforces_measured_limits() -> None:
+    output = io.BytesIO()
+    Image.new("RGB", (16, 16), (255, 0, 0)).save(output, format="PNG")
+    image = base64.b64encode(output.getvalue()).decode()
+    message = ChatMessage.model_validate(
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Name the color."},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image}"}},
+            ],
+        }
+    )
+    visual = VisualCapability(
+        verified=True, max_images=1, max_image_pixels=256, max_encoded_bytes=len(output.getvalue())
+    )
+    assert enforce_context([message], limit=1000, output_tokens=32, visual=visual) >= 256
+    with pytest.raises(VisualContextUnavailable, match="too many images"):
+        enforce_context([message, message], limit=None, output_tokens=32, visual=visual)
+    with pytest.raises(VisualContextUnavailable, match="byte limit"):
+        enforce_context(
+            [message],
+            limit=None,
+            output_tokens=32,
+            visual=visual.model_copy(update={"max_encoded_bytes": len(output.getvalue()) - 1}),
+        )
+    with pytest.raises(VisualContextUnavailable, match="pixel limit"):
+        enforce_context(
+            [message],
+            limit=None,
+            output_tokens=32,
+            visual=visual.model_copy(update={"max_image_pixels": 255}),
+        )
 
 
 def test_anthropic_context_limit_includes_system_blocks_and_output() -> None:
