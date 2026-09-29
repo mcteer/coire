@@ -1,5 +1,10 @@
 # Feature 014 implementation review
 
+## Local vision validation gate (014bs, 2026-09-29)
+
+- The node validation request now carries a strict core `backend` selection. A visual job rechecks the local checksum manifest and complete, unlinked processor and weights, then loads only its local store path with the pinned bare MLX-VLM loader, remote code disabled and Hub lookups offline. It generates a runtime 16×16 pixel image and requires nondegenerate output. Pass results include measured visual limits; text perplexity is `not_comparable`. Failures are typed and cannot mark the variant validated. The existing text job remains the default. The admin visual acquisition refusal remains active; parent T054/T055 are still open until scheduler publication and local tiny-model acceptance pass.
+- Full Python suite: 1,103 passed, 118 conditional integration skips. Focused node tests: 27 passed. Web: 84 tests, lint and build passed. Ruff, strict mypy on 242 source/test files, OpenAPI freshness, and generated TS types passed. Local-only node wheel staging built 68 locked macOS arm64 wheels without contacting a Studio. The local OrbStack arm64 API image `coire-api:014bs` built, passed seven image policy rules and a Trivy CRITICAL scan with zero findings; Syft wrote `/tmp/coire-api-014bs.spdx.json`. No real engine or Studio was contacted.
+
 ## Preconverted vision inspection gate (014br, 2026-09-29)
 
 - Metadata inspection recognizes only the pinned bare VLM Idefics3 family when already converted to MLX and accompanied by local config, processor, preprocessor, tokenizer and safetensors files. Raw/incomplete sources and other visual architectures receive safe typed refusals. A complete visual source still receives an audited `vision_validation_unavailable` 422 with zero bytes transferred until node visual smoke and scheduler publication are wired. This prevents the text validator from falsely marking a VLM ready. Parent T054/T055 remain open; no tiny vision model was acquired.

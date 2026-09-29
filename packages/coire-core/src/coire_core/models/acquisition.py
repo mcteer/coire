@@ -159,6 +159,8 @@ class ValidationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     validator_version: str
+    backend: EngineBackend = EngineBackend.MLX_LM
+    visual_input: VisualCapability | None = None
     smoke: ValidationOutcome
     smoke_failure: str | None = None
     perplexity: float | None = Field(default=None, ge=0.0)
@@ -170,6 +172,21 @@ class ValidationResult(BaseModel):
     template_failure: str | None = None
     validated: bool
     created_at: datetime
+
+
+class NodeValidateRequest(BaseModel):
+    """Authenticated node command; the backend comes from the registry inspection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: uuid.UUID
+    slug: str
+    backend: EngineBackend = EngineBackend.MLX_LM
+    tolerance: float = Field(default=0.1, ge=0.0, le=1.0)
+    validator_version: str = "v1"
+    chat_template_present: bool = False
+    reference_perplexity: float | None = Field(default=None, ge=0.0)
+    reference_variant_id: uuid.UUID | None = None
 
 
 class StageResult(BaseModel):

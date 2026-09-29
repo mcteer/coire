@@ -8326,6 +8326,10 @@
       "ValidationResult": {
         "additionalProperties": false,
         "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/EngineBackend",
+            "default": "mlx_lm"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -8410,6 +8414,16 @@
           "validator_version": {
             "title": "Validator Version",
             "type": "string"
+          },
+          "visual_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualCapability"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

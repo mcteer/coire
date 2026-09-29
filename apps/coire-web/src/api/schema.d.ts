@@ -4872,6 +4872,8 @@ export interface components {
         ValidationOutcome: "pass" | "fail" | "not_comparable" | "not_applicable";
         /** ValidationResult */
         ValidationResult: {
+            /** @default mlx_lm */
+            backend: components["schemas"]["EngineBackend"];
             /**
              * Created At
              * Format: date-time
@@ -4896,6 +4898,7 @@ export interface components {
             validated: boolean;
             /** Validator Version */
             validator_version: string;
+            visual_input?: components["schemas"]["VisualCapability"] | null;
         };
         /** VariantPublication */
         VariantPublication: {

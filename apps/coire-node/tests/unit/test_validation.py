@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from coire_core.models.acquisition import ValidationOutcome
+from coire_core.models.acquisition import NodeValidateRequest, ValidationOutcome, ValidationResult
 from coire_node.validation import (
     compare_perplexity,
     output_is_nondegenerate,
@@ -12,6 +16,8 @@ from coire_node.validation import (
     smoke_argv,
     validate_tool_call_shape,
 )
+from coire_node.visual_validation import inspect_local_variant, run_visual_smoke
+from coire_node.worker import EXIT_FAILED, EXIT_OK, run_validate
 
 
 def test_smoke_argv_is_local_deterministic_and_cannot_trust_remote_code(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -43,3 +49,103 @@ def test_tool_call_shape_rejects_malformed_and_accepts_canonical() -> None:
         '{"tool_calls":[{"function":{"name":"coire_validation_echo","arguments":{"value":"ok"}}}]}'
     )
     assert validate_tool_call_shape(rendered) is ValidationOutcome.PASS
+
+
+def _visual_files(path: Path) -> None:
+    path.mkdir()
+    (path / "config.json").write_text(
+        json.dumps({"architectures": ["Idefics3ForConditionalGeneration"]})
+    )
+    for name in ("processor_config.json", "preprocessor_config.json", "tokenizer_config.json"):
+        (path / name).write_text("{}")
+    (path / "tokenizer.json").write_text("{}")
+    (path / "model.safetensors").write_bytes(b"weights")
+
+
+def test_visual_inventory_requires_local_complete_processor_and_weights(tmp_path: Path) -> None:
+    model = tmp_path / "model"
+    _visual_files(model)
+    assert inspect_local_variant(model) is None
+    (model / "processor_config.json").unlink()
+    assert (
+        inspect_local_variant(model) == "local visual processor or tokenizer files are incomplete"
+    )
+    (model / "processor_config.json").symlink_to(tmp_path / "elsewhere")
+    assert inspect_local_variant(model) == "local visual variant contains a symbolic link"
+
+
+def test_visual_smoke_uses_only_local_loader_and_fails_closed(tmp_path: Path) -> None:
+    model = tmp_path / "model"
+    _visual_files(model)
+    with (
+        patch("mlx_vlm.load", return_value=(object(), object())) as load,
+        patch(
+            "mlx_vlm.generate", return_value=SimpleNamespace(text="The square is red.")
+        ) as generate,
+    ):
+        outcome, failure, capability = run_visual_smoke(model)
+    assert outcome is ValidationOutcome.PASS
+    assert failure is None
+    assert capability is not None and capability.verified
+    load.assert_called_once_with(str(model), trust_remote_code=False, strict=True)
+    assert generate.call_args.kwargs["image"].endswith("fixture.png")
+
+    with patch("mlx_vlm.load", side_effect=RuntimeError("sensitive path")):
+        outcome, failure, capability = run_visual_smoke(model)
+    assert outcome is ValidationOutcome.FAIL
+    assert failure == "visual generation failed: RuntimeError"
+    assert capability is None
+
+
+def test_node_validate_contract_rejects_unknown_backend_and_fields() -> None:
+    import uuid
+
+    from pydantic import ValidationError
+
+    command = {"job_id": str(uuid.uuid4()), "slug": "tiny-vision"}
+    assert NodeValidateRequest.model_validate(command).backend.value == "mlx_lm"
+    assert (
+        NodeValidateRequest.model_validate({**command, "backend": "mlx_vlm"}).backend.value
+        == "mlx_vlm"
+    )
+    with pytest.raises(ValidationError):
+        NodeValidateRequest.model_validate({**command, "backend": "other"})
+    with pytest.raises(ValidationError):
+        NodeValidateRequest.model_validate({**command, "trust_remote_code": True})
+
+
+@pytest.mark.parametrize("passes", [True, False])
+def test_visual_worker_records_result_without_text_validation(passes: bool, tmp_path: Path) -> None:
+    from coire_core.models.registry import VisualCapability
+
+    job = MagicMock()
+    job.params = {"backend": "mlx_vlm", "validator_version": "v1"}
+    job.status.slug = "tiny-vision"
+    store = MagicMock()
+    store.read_manifest.return_value = object()
+    store.verify_against.return_value = []
+    store.path_for.return_value = tmp_path
+    visual = VisualCapability(
+        verified=True,
+        max_images=1,
+        max_image_pixels=256,
+        max_encoded_bytes=80,
+    )
+    outcome = ValidationOutcome.PASS if passes else ValidationOutcome.FAIL
+    with (
+        patch("coire_node.worker._store", return_value=store),
+        patch(
+            "coire_node.visual_validation.run_visual_smoke",
+            return_value=(outcome, None, visual if passes else None),
+        ),
+        patch("coire_node.validation.measure_perplexity") as perplexity_measure,
+    ):
+        exit_code = run_validate(job)
+    perplexity_measure.assert_not_called()
+    result = job.finish.call_args.kwargs["result"] if passes else job.status.result
+    parsed = ValidationResult.model_validate(result)
+    assert parsed.backend.value == "mlx_vlm"
+    assert parsed.validated is passes
+    assert parsed.perplexity_outcome is ValidationOutcome.NOT_COMPARABLE
+    assert parsed.visual_input is not None if passes else parsed.visual_input is None
+    assert exit_code == (EXIT_OK if passes else EXIT_FAILED)

@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from opentelemetry import metrics, trace
 from pydantic import BaseModel, ConfigDict, Field
 
-from coire_core.models.acquisition import Reservation, ReservationRequest
+from coire_core.models.acquisition import NodeValidateRequest, Reservation, ReservationRequest
 from coire_core.models.jobs import ChecksumManifest, JobKind, JobStatus
 from coire_node.deps import JobsDep, ReservationsDep
 from coire_node.jobs import InsufficientSpace, JobConflict, JobSupervisor
@@ -105,18 +105,6 @@ class ConvertRequest(BaseModel):
     expected_total_bytes: int | None = None
 
 
-class ValidateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    job_id: uuid.UUID
-    slug: str
-    tolerance: float = Field(default=0.1, ge=0.0, le=1.0)
-    validator_version: str = "v1"
-    chat_template_present: bool = False
-    reference_perplexity: float | None = Field(default=None, ge=0.0)
-    reference_variant_id: uuid.UUID | None = None
-
-
 class CleanupRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -129,6 +117,9 @@ def _start(jobs: JobSupervisor, response: Response, **kw: Any) -> JobStatus:
     with tracer.start_as_current_span(f"coire.node.acquisition.{kind.value}") as span:
         span.set_attribute("coire.job_id", str(kw["job_id"]))
         span.set_attribute("coire.model_slug", str(kw["slug"]))
+        backend = kw.get("params", {}).get("backend")
+        if backend is not None:
+            span.set_attribute("coire.backend", str(backend))
         try:
             created, job_status = jobs.start(**kw)
         except JobConflict as exc:
@@ -137,7 +128,10 @@ def _start(jobs: JobSupervisor, response: Response, **kw: Any) -> JobStatus:
             raise HTTPException(status.HTTP_507_INSUFFICIENT_STORAGE, str(exc)) from exc
         outcome = "created" if created else "attached"
         span.set_attribute("coire.outcome", outcome)
-        job_starts.add(1, {"kind": kind.value, "outcome": outcome})
+        attributes = {"kind": kind.value, "outcome": outcome}
+        if backend is not None:
+            attributes["backend"] = str(backend)
+        job_starts.add(1, attributes)
         expected = kw.get("expected_total_bytes")
         if isinstance(expected, int):
             job_expected_bytes.record(expected, {"kind": kind.value})
@@ -218,7 +212,9 @@ async def start_convert(
 
 
 @router.post("/validate", response_model=JobStatus)
-async def start_validate(request: ValidateRequest, response: Response, jobs: JobsDep) -> JobStatus:
+async def start_validate(
+    request: NodeValidateRequest, response: Response, jobs: JobsDep
+) -> JobStatus:
     return _start(
         jobs,
         response,
@@ -228,6 +224,7 @@ async def start_validate(request: ValidateRequest, response: Response, jobs: Job
         params={
             "tolerance": request.tolerance,
             "validator_version": request.validator_version,
+            "backend": request.backend.value,
             "chat_template_present": request.chat_template_present,
             "reference_perplexity": request.reference_perplexity,
             "reference_variant_id": (

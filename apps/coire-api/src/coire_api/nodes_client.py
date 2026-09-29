@@ -412,6 +412,7 @@ class NodeClient:
         chat_template_present: bool,
         reference_perplexity: float | None = None,
         reference_variant_id: uuid.UUID | None = None,
+        backend: EngineBackend = EngineBackend.MLX_LM,
     ) -> JobStatus:
         _, body = await self._call(
             "POST",
@@ -420,6 +421,7 @@ class NodeClient:
             json={
                 "job_id": str(job_id),
                 "slug": slug,
+                "backend": backend.value,
                 "tolerance": tolerance,
                 "validator_version": validator_version,
                 "chat_template_present": chat_template_present,

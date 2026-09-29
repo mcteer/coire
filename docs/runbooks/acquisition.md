@@ -36,6 +36,12 @@ reservations; partial conversion directories are removed and partial Hub pulls r
   visual acquisition disabled, with no model data to clean up from this request.
 - `disk_full`: free model-store capacity; partial conversion output is removed.
 - validation failure: compare smoke, perplexity, and template outcomes; files stay unpublished.
+  For a visual node job, inspect `result.backend=mlx_vlm`, `smoke_failure`, and the local
+  checksum manifest. The node refuses incomplete or linked processor files, missing weights,
+  unsupported visual architecture, and degenerate one-image output. Visual perplexity is
+  `not_comparable`; a pass includes measured `visual_input`. A failure leaves the variant
+  unpublished. Stop the job through the existing acquisition cancel path and keep the admin
+  visual acquisition refusal enabled until scheduler publication is validated end to end.
 
 Use the **Coire Acquisition Jobs** dashboard for stage duration, reservations, validation, and
 estimate drift. Alerts cover stuck stages, exhausted conversion retries, and >10% size drift.
