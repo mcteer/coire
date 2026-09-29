@@ -96,6 +96,7 @@ services:
     volumes:
       - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
       - coire-chat-originals:/opt/coire/chat/originals
+      - coire-chat-derived:/opt/coire/chat/derived:ro
     secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key]
     depends_on:
       postgres: {condition: service_healthy}

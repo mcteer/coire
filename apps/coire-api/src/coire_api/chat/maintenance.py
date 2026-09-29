@@ -11,6 +11,7 @@ from typing import Literal
 
 from sqlalchemy import and_, delete, func, or_, select, update
 
+from coire_api.chat.processing import publish_processed_files
 from coire_api.chat.telemetry import purge_oldest_seconds, requests_total, tracer
 from coire_api.db import (
     ChatAttachmentRow,
@@ -288,6 +289,7 @@ class ChatMaintenance:
         while True:
             try:
                 await sweep_stale_turns(self._settings)
+                await publish_processed_files(self._settings)
                 await purge_deleted_text()
                 await compact_expired_events()
                 await record_oldest_pending_purge()
