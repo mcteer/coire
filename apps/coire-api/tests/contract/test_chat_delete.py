@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -13,7 +14,7 @@ from pydantic import SecretStr
 from coire_api.app import create_app
 from coire_api.auth import Principal, PrincipalKind, require_owned_chat, require_principal
 from coire_api.chat.service import delete_conversation
-from coire_api.db import ChatConversationRow, ChatEventRow, ChatTurnRow, get_session
+from coire_api.db import ChatConversationRow, ChatEventRow, ChatTurnRow, McpArtifactRow, get_session
 from coire_core.errors import ChatConflict, ChatNotFound
 from coire_core.models.chat import ChatDeleteRequest
 from coire_core.settings import Settings
@@ -51,6 +52,7 @@ class DeleteSession:
         self.conversation.active_turn_id = self.turn.id
         self.allowed = allowed
         self.events: list[ChatEventRow] = []
+        self.artifacts: list[McpArtifactRow] = []
         self.commits = 0
 
     async def scalar(self, _statement: object) -> ChatConversationRow | None:
@@ -58,6 +60,10 @@ class DeleteSession:
 
     async def get(self, _model: object, identifier: uuid.UUID) -> ChatTurnRow | None:
         return self.turn if identifier == self.turn.id else None
+
+    async def execute(self, statement: object) -> object:
+        assert "chat_turns.coding_call_id" in str(statement)
+        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: self.artifacts))
 
     def add(self, row: ChatEventRow) -> None:
         self.events.append(row)
@@ -121,6 +127,35 @@ async def test_foreign_and_stale_delete_are_refused() -> None:
             ChatDeleteRequest(expected_revision=1),
             settings,
         )  # type: ignore[arg-type]
+
+
+async def test_delete_expires_completed_chat_coding_artifact_before_commit() -> None:
+    session = DeleteSession()
+    session.conversation.active_turn_id = None
+    session.turn.action = "research"
+    session.turn.state = "completed"
+    call_id = uuid.uuid4()
+    session.turn.coding_call_id = call_id
+    artifact = McpArtifactRow(
+        id=uuid.uuid4(),
+        owner_user_id=session.owner,
+        run_id=uuid.uuid4(),
+        call_id=call_id,
+        storage_ref="edge-a",
+        sha256="a" * 64,
+        size_bytes=512,
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    session.artifacts.append(artifact)
+    await delete_conversation(
+        session,
+        Principal(kind=PrincipalKind.USER, user_id=session.owner),
+        session.conversation.id,
+        ChatDeleteRequest(expected_revision=2),
+        Settings(_secrets_dir="/nonexistent"),
+    )  # type: ignore[arg-type,call-arg]
+    assert artifact.expires_at <= session.conversation.deleted_at
+    assert session.commits == 1
 
 
 async def test_delete_route_requires_browser_origin() -> None:

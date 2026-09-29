@@ -21,6 +21,7 @@ from coire_api.db import (
     ChatMessageRow,
     ChatTurnRow,
     EngineProcessRow,
+    McpArtifactRow,
     ModelRow,
 )
 from coire_api.registry.service import chat_model_eligible, load_state_for
@@ -364,6 +365,19 @@ async def delete_conversation(
             turn.stop_reason = "conversation_deleted"
             turn.updated_at = datetime.now(UTC)
     now = datetime.now(UTC)
+    artifacts = (
+        (
+            await session.execute(
+                select(McpArtifactRow)
+                .join(ChatTurnRow, ChatTurnRow.coding_call_id == McpArtifactRow.call_id)
+                .where(ChatTurnRow.conversation_id == row.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for artifact in artifacts:
+        artifact.expires_at = now
     row.deleted_at = now
     row.updated_at = now
     row.revision += 1

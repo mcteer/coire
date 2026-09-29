@@ -18,9 +18,15 @@ from coire_core.settings import Settings
 class Session:
     def __init__(self, row: McpArtifactRow) -> None:
         self.row = row
+        self.chat_deleted = False
 
     async def get(self, _type: object, artifact_id: uuid.UUID) -> McpArtifactRow | None:
         return self.row if self.row.id == artifact_id else None
+
+    async def scalar(self, statement: object) -> uuid.UUID | None:
+        assert "chat_conversations.deleted_at IS NOT NULL" in str(statement)
+        assert "chat_turns.coding_call_id" in str(statement)
+        return uuid.uuid4() if self.chat_deleted else None
 
 
 async def test_artifact_owner_and_expiry_gate() -> None:
@@ -49,6 +55,25 @@ async def test_artifact_owner_and_expiry_gate() -> None:
     with pytest.raises(HTTPException) as expired:
         await _owned_artifact(row.id, principal, session)  # type: ignore[arg-type]
     assert expired.value.status_code == 404
+
+
+async def test_chat_tombstone_blocks_the_existing_mcp_artifact_url() -> None:
+    owner = uuid.uuid4()
+    row = McpArtifactRow(
+        id=uuid.uuid4(),
+        owner_user_id=owner,
+        run_id=uuid.uuid4(),
+        call_id=uuid.uuid4(),
+        storage_ref="edge-a",
+        sha256="a" * 64,
+        size_bytes=512,
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    session = Session(row)
+    session.chat_deleted = True
+    with pytest.raises(HTTPException) as deleted:
+        await _owned_artifact(row.id, Principal(kind=PrincipalKind.USER, user_id=owner), session)  # type: ignore[arg-type]
+    assert deleted.value.status_code == 404
 
 
 def test_artifact_routes_are_authenticated_in_openapi() -> None:

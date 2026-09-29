@@ -341,3 +341,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - The shared authenticated Chat/admin shell now offers **Sign out**, which clears the verified owner's same-tab Chat drafts before navigating to Cloudflare Access's documented same-origin logout path. Session expiry still preserves drafts for reauthentication, while identity changes clear the prior owner's store. Shell and storage tests cover the explicit action. The existing shell, routing, picker, composer, transcript and safe Markdown tests were audited and passed, completing parent T020 and T032. Browser device/keyboard acceptance remains T073.
 - All 79 web tests, lint, TypeScript production build and changed-file Prettier passed. The local arm64 web image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-web-014bg.spdx.json` (local evidence). Native Chat remains default-off.
+
+## Chat artifact tombstone guard (014bh)
+
+- Owner deletion now expires any branch artifact linked through a Chat coding turn before committing the tombstone. The preexisting MCP metadata and download lookup refuses a tombstoned Chat conversation as well, including before its artifact expiry update is observed. Ordinary MCP artifacts retain their owner and expiry checks. Parent T042 remains open for the Chat-owned artifact route and the coding adapter.
+- Focused contracts passed 7 tests. Full Python suite: 1002 passed, 117 conditional skipped. Strict mypy on 160 API/core source files, changed-file Ruff/format and OpenAPI freshness passed. The local arm64 API image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-api-014bh.spdx.json` (local evidence). Chat remains default-off.
