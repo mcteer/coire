@@ -1,5 +1,5 @@
 import { beforeEach, expect, test } from "vitest";
-import { loadChatDrafts, saveChatDrafts } from "./chatDrafts";
+import { clearChatDrafts, loadChatDrafts, saveChatDrafts } from "./chatDrafts";
 
 const ownerA = "00000000-0000-0000-0000-000000000001";
 const ownerB = "00000000-0000-0000-0000-000000000002";
@@ -22,6 +22,15 @@ test("identity change removes the previous owner's draft store", () => {
   saveChatDrafts(ownerA, new Map([["new", { text: "Private A", modelId: null }]]));
   expect(loadChatDrafts(ownerB).size).toBe(0);
   expect(sessionStorage.getItem("coire.chat.drafts." + ownerA)).toBeNull();
+});
+
+test("explicit logout removes only the current owner's same-tab drafts", () => {
+  loadChatDrafts(ownerA);
+  saveChatDrafts(ownerA, new Map([["new", { text: "Private A", modelId: null }]]));
+  clearChatDrafts(ownerA);
+  expect(sessionStorage.getItem("coire.chat.drafts." + ownerA)).toBeNull();
+  expect(sessionStorage.getItem("coire.chat.draft-owner")).toBeNull();
+  expect(loadChatDrafts(ownerA).size).toBe(0);
 });
 
 test("ignores oversized UTF-8 text and invalid stored IDs", () => {

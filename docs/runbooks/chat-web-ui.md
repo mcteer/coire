@@ -52,7 +52,13 @@ Ready text/code files and extracted PDF Unicode can now be selected for a text C
 
 Same-tab Chat drafts now retain file IDs, modes and explicit PDF page numbers beside text/model choices, with a ten-file bound. Reopening a conversation revalidates these IDs and page counts against its owner-scoped detail before restoring them; missing choices produce a visible status. The session store serializes only those fields, never bytes, URLs or credentials. Identity change removes the former owner's draft store; accepted sends and conversation deletion remove the affected draft. These choices are browser-local and do not travel to another device or tab.
 
-When the edge session expires, a Chat API or observer 401 shows **Sign in again** and stops observer reconnects. The link reloads the same origin through Cloudflare Access; the same-tab draft remains in sessionStorage until the returned `/me` identity is checked. A different owner clears the prior owner's store. Initial `/me` refusal gives the same sign-in action. Do not clear drafts merely because a session expires; broader explicit logout acceptance is still pending.
+When the edge session expires, a Chat API or observer 401 shows **Sign in again** and stops observer reconnects. The link reloads the same origin through Cloudflare Access; the same-tab draft remains in sessionStorage until the returned `/me` identity is checked. A different owner clears the prior owner's store. Initial `/me` refusal gives the same sign-in action. Do not clear drafts merely because a session expires.
+
+An authenticated user can choose **Sign out** from either shell. The browser removes that verified
+owner's same-tab Chat drafts before navigating to Cloudflare Access's same-origin
+`/cdn-cgi/access/logout` endpoint. This explicit action differs from session expiry, which retains
+the draft for reauthentication. Cloudflare documents the application-domain logout route in its
+[session management guide](https://developers.cloudflare.com/cloudflare-one/access-controls/access-settings/session-management/).
 
 An owner can explicitly **Retry response** after the latest plain-Chat response failed, stopped or was interrupted. The previous partial assistant text remains in history. The retry keeps the original input and file choices, creates a new assistant attempt linked by `retry_of`, and checks model/file/context admission again; a stale or modified retry is refused. Later turns give the model only the latest answer attempt for that input, while owner history retains both attempts. A lost acknowledgement may repeat the same request ID to follow its saved events; it never starts another engine request.
 

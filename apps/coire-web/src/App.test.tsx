@@ -1,6 +1,7 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "./App";
+import { loadChatDrafts, saveChatDrafts } from "./api/chatDrafts";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -42,6 +43,34 @@ test("opens Chat for a non-admin without an admin navigation link", async () => 
   expect(await screen.findByText(/No chat models are available/)).toBeInTheDocument();
   expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
   expect(screen.queryByRole("navigation", { name: "Admin sections" })).not.toBeInTheDocument();
+});
+
+test("signs out through same-origin Access after clearing the verified owner's draft", async () => {
+  loadChatDrafts(user.id);
+  saveChatDrafts(user.id, new Map([["new", { text: "Private draft", modelId: null }]]));
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ ...user, role: "user" }),
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [], next_cursor: null }),
+      }),
+  );
+  render(<App />);
+  const link = await screen.findByRole("link", { name: "Sign out" });
+  expect(link).toHaveAttribute("href", "/cdn-cgi/access/logout");
+  link.addEventListener("click", (event) => event.preventDefault());
+  fireEvent.click(link);
+  expect(sessionStorage.getItem("coire.chat.drafts." + user.id)).toBeNull();
+  expect(sessionStorage.getItem("coire.chat.draft-owner")).toBeNull();
 });
 
 test("refuses an ordinary user who requests an admin route", async () => {

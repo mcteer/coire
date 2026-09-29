@@ -17,6 +17,7 @@ export function AppShell({
   tab,
   setTab,
   snapshot,
+  onSignOut,
   children,
 }: {
   view: "chat" | "admin";
@@ -24,6 +25,7 @@ export function AppShell({
   tab?: AdminTab;
   setTab?: (tab: AdminTab) => void;
   snapshot?: ConsoleSnapshot | null;
+  onSignOut?: () => void;
   children: ReactNode;
 }) {
   const health = snapshot?.cluster.nodes.some((node) => node.reachability !== "healthy")
@@ -39,17 +41,24 @@ export function AppShell({
             / {view === "chat" ? "Chat" : "Admin / " + tabs.find(([id]) => id === tab)?.[1]}
           </span>
         </div>
-        {view === "admin" && (
-          <div className="chips">
-            <span className="chip">
-              <i className={"dot " + health} />
-              {health}
-            </span>
-            <span className="chip mono">
-              {snapshot ? new Date(snapshot.observed_at).toLocaleTimeString() : "connecting"}
-            </span>
-          </div>
-        )}
+        <div className="chips">
+          {view === "admin" && (
+            <>
+              <span className="chip">
+                <i className={"dot " + health} />
+                {health}
+              </span>
+              <span className="chip mono">
+                {snapshot ? new Date(snapshot.observed_at).toLocaleTimeString() : "connecting"}
+              </span>
+            </>
+          )}
+          {onSignOut && (
+            <a className="chip" href="/cdn-cgi/access/logout" onClick={onSignOut}>
+              Sign out
+            </a>
+          )}
+        </div>
       </header>
       {view === "admin" && tab && setTab && (
         <nav className="tabs glass" aria-label="Admin sections">

@@ -105,3 +105,13 @@ export function saveChatDrafts(ownerId: string, drafts: Map<string, ChatDraft>):
     // In-memory drafts still work when storage is unavailable.
   }
 }
+
+export function clearChatDrafts(ownerId: string): void {
+  if (!idPattern.test(ownerId)) return;
+  try {
+    sessionStorage.removeItem(prefix + ownerId);
+    if (sessionStorage.getItem(ownerKey) === ownerId) sessionStorage.removeItem(ownerKey);
+  } catch {
+    // Logout still navigates when browser storage is unavailable.
+  }
+}

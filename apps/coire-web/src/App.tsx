@@ -16,6 +16,7 @@ import { useEventStream } from "./hooks/useEventStream";
 import { ConfirmAction } from "./components/ConfirmAction";
 import { AppShell, type AdminTab } from "./components/AppShell";
 import { Chat } from "./pages/Chat";
+import { clearChatDrafts } from "./api/chatDrafts";
 import "./styles/app.css";
 const gb = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GB`;
 export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
@@ -1067,6 +1068,9 @@ export function App() {
     history.pushState(null, "", `#admin/${next}`);
     setHash(location.hash);
   };
+  const signOut = () => {
+    if (me) clearChatDrafts(me.id);
+  };
   if (authError)
     return (
       <main className="app">
@@ -1095,12 +1099,19 @@ export function App() {
     );
   if (!admin)
     return (
-      <AppShell view="chat" canAdmin={me.role === "admin"}>
+      <AppShell view="chat" canAdmin={me.role === "admin"} onSignOut={signOut}>
         <Chat ownerId={me.id} />
       </AppShell>
     );
   return (
-    <AppShell view="admin" canAdmin tab={tab} setTab={setTab} snapshot={stream.data}>
+    <AppShell
+      view="admin"
+      canAdmin
+      tab={tab}
+      setTab={setTab}
+      snapshot={stream.data}
+      onSignOut={signOut}
+    >
       {stream.error && !stream.data ? (
         <p className="error banner">Live state unavailable: {stream.error}</p>
       ) : null}
