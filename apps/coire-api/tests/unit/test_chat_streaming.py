@@ -27,7 +27,7 @@ from coire_core.models.chat import (
 )
 from coire_core.models.gateway import ChatMessage as GatewayMessage
 from coire_core.models.gateway import UsageOutcome
-from coire_core.models.registry import ModelState, Visibility
+from coire_core.models.registry import ModelState, Reasoning, Visibility
 from coire_core.settings import Settings
 
 NOW = datetime.now(UTC)
@@ -151,6 +151,53 @@ async def test_text_stream_persists_before_each_native_event(
     assert sequence == ["persist:status", "persist:delta", "persist:terminal"]
     assert actual_usage[0].prompt_tokens == 8  # type: ignore[union-attr]
     assert actual_usage[0].completion_tokens == 3  # type: ignore[union-attr]
+    assert chunks[-1].startswith(b"event: turn.terminal")
+
+
+async def test_reasoning_stream_saves_split_thinking_in_separate_channel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    admission = Admission(
+        admission.turn,
+        admission.event,
+        admission.history,
+        admission.prompt_tokens,
+        False,
+        admission.output_tokens,
+        Reasoning.THINKING,
+    )
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    deltas: list[tuple[object, object]] = []
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "resolve_model", AsyncMock(return_value=_resolved(admission)))
+
+    async def upstream(
+        _url: str, _payload: dict[str, object], _settings: Settings, _timing: object
+    ) -> AsyncIterator[bytes]:
+        yield b'data: {"choices":[{"delta":{"content":"<thi"}}]}\n\n'
+        yield b'data: {"choices":[{"delta":{"content":"nk>private</think>Answer"}}]}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        if kind == "delta":
+            deltas.append((kwargs.get("channel"), kwargs.get("text")))
+        return _saved_event(admission, kind, len(deltas) + 1, **kwargs)
+
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    chunks = [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+    assert deltas == [("reasoning", "private"), ("answer", "Answer")]
     assert chunks[-1].startswith(b"event: turn.terminal")
 
 

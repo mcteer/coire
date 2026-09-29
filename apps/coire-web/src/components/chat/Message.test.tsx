@@ -29,6 +29,16 @@ test("shows snapshot attribution and keeps HTML, executable links and images ine
   );
 });
 
+test("keeps saved reasoning separate and collapsed from the answer", () => {
+  const view = render(
+    <Message message={{ ...message, text: "Public answer", reasoning: "Private steps" }} />,
+  );
+  expect(screen.getByText("Public answer")).toBeInTheDocument();
+  expect(screen.getByText("Private steps")).toBeInTheDocument();
+  expect(view.container.querySelector("details")).not.toHaveAttribute("open");
+  expect(screen.getByText("Public answer").closest(".chat-reasoning")).toBeNull();
+});
+
 test("shows the file and chosen content mode on a saved user message", () => {
   const fileId = "00000000-0000-0000-0000-000000000009";
   render(

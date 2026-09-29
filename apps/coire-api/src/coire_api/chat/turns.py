@@ -37,6 +37,7 @@ from coire_core.models.chat import (
 )
 from coire_core.models.files import ChatAttachmentSelection
 from coire_core.models.gateway import ChatMessage as GatewayMessage
+from coire_core.models.registry import Reasoning
 from coire_core.settings import Settings
 
 
@@ -48,6 +49,7 @@ class Admission:
     prompt_tokens: int
     replay: bool
     output_tokens: int = 1024
+    reasoning_mode: Reasoning = Reasoning.NONE
 
 
 def request_hash(body: ChatTurnCreate) -> str:
@@ -413,4 +415,11 @@ async def admit_turn(
     conversation.event_cursor += 1
     conversation.updated_at = now
     await session.commit()
-    return Admission(turn, event, history, prompt_tokens, False, output_tokens)
+    declared_reasoning = (model.capability_profile or {}).get("reasoning")
+    reasoning_mode = (
+        Reasoning(declared_reasoning)
+        if isinstance(declared_reasoning, str)
+        and declared_reasoning in {Reasoning.THINKING, Reasoning.HYBRID}
+        else Reasoning.NONE
+    )
+    return Admission(turn, event, history, prompt_tokens, False, output_tokens, reasoning_mode)

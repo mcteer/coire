@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 from coire_api.auth import Principal
 from coire_api.chat.maintenance import maintain_turn_lease
+from coire_api.chat.reasoning import ReasoningParser
 from coire_api.chat.telemetry import requests_total, tracer
 from coire_api.chat.turns import Admission
 from coire_api.db import (
@@ -68,6 +69,7 @@ async def persist_native_event(
     *,
     state: str | None = None,
     text: str | None = None,
+    channel: Literal["answer", "reasoning"] = "answer",
     usage: ChatUsage | None = None,
     safe_error: str | None = None,
     estimate_seconds: float | None = None,
@@ -102,11 +104,15 @@ async def persist_native_event(
             payload = ChatTurnStatus(state=state, estimate_seconds=estimate_seconds)  # type: ignore[arg-type]
         elif kind == "delta":
             assert text
-            if len(answer.text) + len(text) > 512 * 1024:
+            current = answer.text if channel == "answer" else answer.reasoning
+            if len(current) + len(text) > 512 * 1024:
                 raise ChatConflict("assistant output limit exceeded")
-            answer.text += text
+            if channel == "answer":
+                answer.text += text
+            else:
+                answer.reasoning += text
             payload = ChatMessageDelta(
-                message_id=answer.id, channel="answer", text=text, offset=len(answer.text)
+                message_id=answer.id, channel=channel, text=text, offset=len(current) + len(text)
             )
         else:
             assert state in {"completed", "failed", "interrupted", "stopped"}
@@ -327,6 +333,7 @@ async def native_stream(
             done = False
             failed_frame = False
             reported_usage = False
+            parser = ReasoningParser(admission.reasoning_mode)
             timing = StreamTiming()
             tracked = track_stream(
                 stream(resolved.engine_url, payload, settings, timing),
@@ -380,16 +387,35 @@ async def native_stream(
                             continue
                         delta = choices[0].get("delta", {}) if isinstance(choices[0], dict) else {}
                         content = delta.get("content") if isinstance(delta, dict) else None
-                        if not isinstance(content, str) or not content:
-                            continue
-                        for start in range(0, len(content), 64 * 1024):
-                            saved = await persist_native_event(
-                                "delta",
-                                admission,
-                                text=content[start : start + 64 * 1024],
-                                settings=settings,
-                            )
-                            yield encode_event(saved)
+                        reasoning = (
+                            delta.get("reasoning_content") if isinstance(delta, dict) else None
+                        )
+                        parts: list[tuple[Literal["answer", "reasoning"], str]] = []
+                        if admission.reasoning_mode.value != "none" and isinstance(reasoning, str):
+                            parts.extend(parser.feed(content) if isinstance(content, str) else [])
+                            parts.append(("reasoning", reasoning))
+                        elif isinstance(content, str):
+                            parts.extend(parser.feed(content))
+                        for channel, part in parts:
+                            for start in range(0, len(part), 64 * 1024):
+                                saved = await persist_native_event(
+                                    "delta",
+                                    admission,
+                                    text=part[start : start + 64 * 1024],
+                                    channel=channel,
+                                    settings=settings,
+                                )
+                                yield encode_event(saved)
+                for channel, part in parser.finish():
+                    for start in range(0, len(part), 64 * 1024):
+                        saved = await persist_native_event(
+                            "delta",
+                            admission,
+                            text=part[start : start + 64 * 1024],
+                            channel=channel,
+                            settings=settings,
+                        )
+                        yield encode_event(saved)
             finally:
                 close = getattr(tracked, "aclose", None)
                 if close is not None:

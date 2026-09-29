@@ -1,5 +1,6 @@
 import Markdown from "react-markdown";
 import type { ChatAttachment, ChatMessage } from "../../api/chat";
+import { ReasoningBlock } from "./ReasoningBlock";
 
 const safeUrl = (url: string) => {
   if (/^(https?:|mailto:)/i.test(url) || url.startsWith("/") || url.startsWith("#")) return url;
@@ -18,6 +19,7 @@ export function Message({
       <div className="chat-message-label">
         {message.role === "user" ? "You" : message.model_display_name || "Assistant"}
       </div>
+      {message.role === "assistant" && <ReasoningBlock text={message.reasoning} />}
       <div className="chat-message-body">
         <Markdown
           urlTransform={safeUrl}

@@ -152,6 +152,22 @@
 .chat-message-body a {
   color: var(--accent-ink);
 }
+.chat-reasoning {
+  margin: var(--s-3) 0;
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+.chat-reasoning summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.chat-reasoning-content {
+  margin-top: var(--s-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .chat-message-files {
   margin: var(--s-3) 0 0;
   padding-left: var(--s-5);
