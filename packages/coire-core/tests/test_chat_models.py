@@ -15,15 +15,17 @@ from coire_core.models.chat import (
     ChatRunActivityStatus,
     ChatTurnCreate,
     ChatTurnDetail,
+    ChatTurnResult,
     ChatTurnStatus,
 )
 from coire_core.models.conversation import Conversation, ConversationMessage, TextPart
-from coire_core.models.runs import RunActivity
+from coire_core.models.runs import RunActivity, RunActivityTool
 
 
 def test_canonical_conversation_is_ordered_and_strict() -> None:
     message = ConversationMessage(id=uuid4(), role="user", parts=[TextPart(text="hello")])
     conversation = Conversation(id=uuid4(), messages=[message])
+    assert isinstance(conversation.messages[0].parts[0], TextPart)
     assert conversation.messages[0].parts[0].text == "hello"
     with pytest.raises(ValidationError):
         TextPart.model_validate({"type": "text", "text": "hello", "path": "/tmp/private"})
@@ -59,7 +61,7 @@ def test_chat_activity_event_is_strict_and_content_free() -> None:
             activity=RunActivity(
                 run_id=run_id,
                 sequence=1,
-                tool_name="read_file",
+                tool_name=RunActivityTool.READ_FILE,
                 state="started",
                 created_at=datetime.now(UTC),
             )
@@ -73,6 +75,7 @@ def test_chat_activity_event_is_strict_and_content_free() -> None:
         ChatEvent.model_validate_json(status.model_dump_json()).payload.type
         == "run.activity_status"
     )
+    assert isinstance(event.payload, ChatRunActivity)
     with pytest.raises(ValidationError):
         ChatEvent.model_validate(
             {
@@ -86,6 +89,24 @@ def test_chat_activity_event_is_strict_and_content_free() -> None:
                 },
             }
         )
+
+
+def test_chat_coding_result_matches_tool() -> None:
+    from coire_core.models.mcp import McpToolName, ResearchResult
+
+    result = ResearchResult.model_validate(
+        {
+            "result_id": str(uuid4()),
+            "run_id": str(uuid4()),
+            "source_revision": "a" * 40,
+            "answer": "Found code",
+            "citations": [{"path": "main.py", "line": 1}],
+        }
+    )
+    payload = ChatTurnResult(tool=McpToolName.RESEARCH, result=result)
+    assert payload.type == "turn.result"
+    with pytest.raises(ValidationError):
+        ChatTurnResult(tool=McpToolName.APPLY, result=result)
 
 
 def test_turn_create_rejects_unbounded_or_ambiguous_selection() -> None:

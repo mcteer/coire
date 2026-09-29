@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -13,15 +12,15 @@ from sqlalchemy import select
 from coire_api import mcp_calls, runs
 from coire_api.audit import write_principal_audit
 from coire_api.auth import Principal, bound_principal
+from coire_api.coding_calls import request_coding_kill
 from coire_api.db import (
     AgentRunRow,
     McpCallRow,
     ModelRow,
     ModelVariantRow,
-    RunCommandRow,
     session_scope,
 )
-from coire_api.run_tokens import revoke_run_token
+from coire_core.errors import ChatNotFound
 from coire_core.models.harness import PROFILE_MODEL_TAGS, ProfileName, TaskClass
 from coire_core.models.mcp import (
     ApplyInput,
@@ -39,9 +38,7 @@ from coire_core.models.runs import (
     TERMINAL_RUN_STATES,
     AgentRunCreate,
     AgentRunState,
-    RunCommandState,
     RunLimits,
-    RunOperation,
 )
 from coire_core.settings import get_settings
 from coire_mcp.telemetry import call_duration, calls_total, tracer
@@ -88,40 +85,12 @@ async def _choose_model(
 
 async def _kill_owned_run(run_id: uuid.UUID, principal: Principal, reason: str) -> None:
     async with session_scope() as session:
-        row = await session.get(AgentRunRow, run_id, with_for_update=True)
-        if (
-            row is None
-            or row.requester_user_id != principal.user_id
-            or row.state in TERMINAL_RUN_STATES
-        ):
+        try:
+            await request_coding_kill(
+                session, principal, run_id, reason=reason, audit_action="mcp_run.kill"
+            )
+        except ChatNotFound:
             return
-        await revoke_run_token(session, run_id)
-        if row.state is not AgentRunState.KILL_REQUESTED:
-            await runs.transition(session, row, AgentRunState.KILL_REQUESTED, reason)
-        if row.node_id is not None:
-            command_id = runs.run_command_id(run_id, RunOperation.KILL)
-            if await session.get(RunCommandRow, command_id) is None:
-                session.add(
-                    RunCommandRow(
-                        id=command_id,
-                        run_id=run_id,
-                        node_id=row.node_id,
-                        operation=RunOperation.KILL,
-                        attempt=1,
-                        state=RunCommandState.PENDING,
-                        detail={},
-                    )
-                )
-        row.killed_by = principal.user_id
-        row.killed_at = datetime.now(UTC)
-        await write_principal_audit(
-            session,
-            principal=principal,
-            action="mcp_run.kill",
-            target_type="agent_run",
-            target_id=str(run_id),
-            detail={"reason": reason},
-        )
 
 
 async def _execute(

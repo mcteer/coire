@@ -169,7 +169,7 @@ async def test_kill_workflow_keeps_request_pending_when_node_kill_fails(
 
 
 async def test_final_activity_drain_precedes_run_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
-    from coire_api.chat import activity
+    from coire_api.chat import activity, coding
 
     run_id, node_id = uuid.uuid4(), uuid.uuid4()
     run = AgentRunRow(id=run_id, node_id=node_id, state=AgentRunState.SUCCEEDED)
@@ -193,8 +193,13 @@ async def test_final_activity_drain_precedes_run_cleanup(monkeypatch: pytest.Mon
         sequence.append("remove")
         return {"removed": True}
 
+    async def reconcile(*_args: object) -> bool:
+        sequence.append("reconcile")
+        return False
+
     monkeypatch.setattr(scheduler_runs, "session_scope", scope)
     monkeypatch.setattr(scheduler_runs, "_submit", submit)
     monkeypatch.setattr(activity, "collect_run_activity", drain)
+    monkeypatch.setattr(coding, "reconcile_chat_coding_result", reconcile)
     await scheduler_runs.finalize_run.__wrapped__.__wrapped__(str(run_id), True)  # type: ignore[attr-defined]
-    assert sequence == ["drain", "remove"]
+    assert sequence == ["drain", "reconcile", "remove"]

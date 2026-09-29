@@ -78,19 +78,15 @@ async def create_call(
         raise McpCallConflict("tool input and source do not match call")
     if not task or len(task) > 100_000:
         raise McpCallConflict("MCP task must contain 1 to 100000 characters")
-    row = McpCallRow(
-        tool=tool,
+    from coire_api.coding_calls import CodingRequest, create_coding_call
+
+    return await create_coding_call(
+        session,
         owner_user_id=owner_id,
         credential_id=principal.api_key_id,
-        source=source.model_dump(mode="json"),
-        input=input.model_dump(mode="json"),
-        task=task,
+        request=CodingRequest(tool, input, task),
         model_id=model_id,
-        state=McpCallState.ACCEPTED,
     )
-    session.add(row)
-    await session.flush()
-    return row
 
 
 async def get_owned_call(

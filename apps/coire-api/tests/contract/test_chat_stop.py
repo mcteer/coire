@@ -12,9 +12,10 @@ from pydantic import SecretStr
 from coire_api.app import create_app
 from coire_api.auth import Principal, PrincipalKind, require_principal
 from coire_api.chat.turns import request_turn_stop
-from coire_api.db import ChatConversationRow, ChatEventRow, ChatTurnRow, get_session
+from coire_api.db import ChatConversationRow, ChatEventRow, ChatTurnRow, McpCallRow, get_session
 from coire_core.errors import ChatNotFound
 from coire_core.models.chat import ChatStopRequest
+from coire_core.models.mcp import McpCallState
 from coire_core.settings import Settings
 
 NOW = datetime.now(UTC)
@@ -107,6 +108,61 @@ async def test_owner_stop_persists_one_status_and_repeats_idempotently() -> None
     )  # type: ignore[arg-type]
     assert finished.state == "stopped"
     assert session.commits == 1
+
+
+async def test_queued_coding_stop_revokes_and_finishes_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.chat import turns
+
+    session = StopSession()
+    session.conversation.mode = "code"
+    session.conversation.active_turn_id = session.turn.id
+    session.turn.action = "research"
+    session.turn.run_id = uuid.uuid4()
+    session.turn.coding_call_id = uuid.uuid4()
+    call = McpCallRow(id=session.turn.coding_call_id, state=McpCallState.QUEUED)
+    original_get = session.get
+
+    async def get(model: object, identifier: uuid.UUID, **_kwargs: object) -> object:
+        if model is McpCallRow:
+            return call
+        return await original_get(model, identifier)
+
+    monkeypatch.setattr(session, "get", get)
+    killed: list[uuid.UUID] = []
+
+    async def kill(_session: object, _principal: object, run_id: uuid.UUID, **_: object) -> bool:
+        killed.append(run_id)
+        return True
+
+    async def fail_call(*_args: object, **_kwargs: object) -> None:
+        call.state = McpCallState.CANCELLED
+
+    monkeypatch.setattr("coire_api.coding_calls.request_coding_kill", kill)
+    monkeypatch.setattr("coire_api.mcp_calls.fail_call", fail_call)
+    principal = Principal(kind=PrincipalKind.USER, user_id=session.owner)
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    first = await turns.request_turn_stop(
+        session,
+        principal,
+        session.conversation.id,
+        session.turn.id,
+        ChatStopRequest(reason="user_stop"),
+        settings,
+    )  # type: ignore[arg-type]
+    second = await turns.request_turn_stop(
+        session,
+        principal,
+        session.conversation.id,
+        session.turn.id,
+        ChatStopRequest(reason="user_stop"),
+        settings,
+    )  # type: ignore[arg-type]
+    assert first.state == second.state == "stopped"
+    assert killed == [session.turn.run_id]
+    assert session.conversation.active_turn_id is None
+    assert [row.type for row in session.events] == ["turn.terminal"]
 
 
 async def test_foreign_missing_and_cross_parent_stop_are_uniform_404() -> None:

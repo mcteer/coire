@@ -9,6 +9,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from coire_core.models.files import ChatAttachment, ChatAttachmentSelection
+from coire_core.models.mcp import ApplyResult, McpToolName, PlanResult, ResearchResult
 from coire_core.models.registry import LoadState, Tag
 from coire_core.models.runs import RunActivity
 
@@ -131,7 +132,9 @@ class ChatTurnCreate(BaseModel):
     retry_of: uuid.UUID | None = None
     recovery_mode: Literal["retry", "continue"] | None = None
     workspace_id: uuid.UUID | None = None
-    source_revision: str | None = Field(default=None, max_length=128)
+    source_revision: str | None = Field(
+        default=None, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._/-]*$"
+    )
     plan_id: uuid.UUID | None = None
     research_id: uuid.UUID | None = None
 
@@ -193,6 +196,7 @@ class ChatTurnDetail(BaseModel):
     turn: ChatTurn
     input_message: ChatMessage
     assistant_message: ChatMessage
+    coding_result: ResearchResult | PlanResult | ApplyResult | None = None
     event_cursor: int = Field(ge=0)
 
 
@@ -274,6 +278,27 @@ class ChatRunActivityStatus(BaseModel):
     last_sequence: int = Field(ge=0, le=10_000)
 
 
+class ChatTurnResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["turn.result"] = "turn.result"
+    tool: McpToolName
+    result: ResearchResult | PlanResult | ApplyResult
+
+    @model_validator(mode="after")
+    def result_matches_tool(self) -> ChatTurnResult:
+        expected = (
+            McpToolName.RESEARCH
+            if isinstance(self.result, ResearchResult)
+            else McpToolName.PLAN
+            if isinstance(self.result, PlanResult)
+            else McpToolName.APPLY
+        )
+        if self.tool is not expected:
+            raise ValueError("coding result type does not match tool")
+        return self
+
+
 class ChatConversationDeleted(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -292,6 +317,7 @@ ChatEventPayload = Annotated[
     | ChatAttachmentChanged
     | ChatRunActivity
     | ChatRunActivityStatus
+    | ChatTurnResult
     | ChatConversationDeleted,
     Field(discriminator="type"),
 ]

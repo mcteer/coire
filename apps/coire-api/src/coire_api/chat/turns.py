@@ -19,6 +19,7 @@ from coire_api.db import (
     ChatEventRow,
     ChatMessageRow,
     ChatTurnRow,
+    McpCallRow,
     ModelRow,
 )
 from coire_api.gateway.context import ContextLengthError, enforce_context
@@ -33,10 +34,12 @@ from coire_core.models.chat import (
     ChatTurnCreate,
     ChatTurnDetail,
     ChatTurnStatus,
+    ChatTurnTerminal,
     ChatUsage,
 )
 from coire_core.models.files import ChatAttachmentSelection
 from coire_core.models.gateway import ChatMessage as GatewayMessage
+from coire_core.models.mcp import ApplyResult, McpCallState, McpToolName, PlanResult, ResearchResult
 from coire_core.models.registry import Reasoning
 from coire_core.settings import Settings
 
@@ -122,10 +125,32 @@ async def read_turn_detail(
     answer_row = await session.get(ChatMessageRow, row.assistant_message_id)
     if input_row is None or answer_row is None:
         raise ChatNotFound()
+    coding_result: ResearchResult | PlanResult | ApplyResult | None = None
+    if row.coding_call_id is not None:
+        call = await session.get(McpCallRow, row.coding_call_id)
+        if (
+            call is not None
+            and call.owner_user_id == principal.user_id
+            and call.run_id == row.run_id
+            and call.tool.value == row.action
+            and call.state is McpCallState.SUCCEEDED
+            and call.result is not None
+        ):
+            try:
+                coding_result = (
+                    ResearchResult.model_validate(call.result)
+                    if call.tool is McpToolName.RESEARCH
+                    else PlanResult.model_validate(call.result)
+                    if call.tool is McpToolName.PLAN
+                    else ApplyResult.model_validate(call.result)
+                )
+            except ValueError:
+                coding_result = None
     return ChatTurnDetail(
         turn=project_turn(row),
         input_message=project_message(input_row),
         assistant_message=project_message(answer_row),
+        coding_result=coding_result,
         event_cursor=conversation.event_cursor,
     )
 
@@ -153,22 +178,55 @@ async def request_turn_stop(
     turn = await session.get(ChatTurnRow, turn_id)
     if turn is None or turn.conversation_id != conversation_id:
         raise ChatNotFound()
-    if turn.action != "chat":
-        raise ChatConflict("code turn Stop requires the coding run path")
     if turn.state in {"completed", "failed", "stopped", "interrupted", "stop_requested"}:
         return project_turn(turn)
+    stopped_before_placement = False
+    if turn.action != "chat":
+        if turn.run_id is None or turn.coding_call_id is None:
+            raise ChatConflict("coding run is not assigned")
+        from coire_api.coding_calls import request_coding_kill
+
+        stopped_before_placement = await request_coding_kill(
+            session,
+            principal,
+            turn.run_id,
+            reason=body.reason,
+            audit_action="chat_run.kill",
+            expected_call_id=turn.coding_call_id,
+        )
     now = datetime.now(UTC)
-    turn.state = "stop_requested"
+    turn.state = "stopped" if stopped_before_placement else "stop_requested"
     turn.stop_reason = body.reason
     turn.updated_at = now
     conversation.event_cursor += 1
     conversation.updated_at = now
+    if stopped_before_placement and conversation.active_turn_id == turn.id:
+        conversation.active_turn_id = None
+    if stopped_before_placement and turn.coding_call_id is not None:
+        from coire_api import mcp_calls
+        from coire_api.db import McpCallRow
+        from coire_core.models.mcp import McpCallState
+
+        call = await session.get(McpCallRow, turn.coding_call_id, with_for_update=True)
+        if call is not None and call.state not in {
+            McpCallState.SUCCEEDED,
+            McpCallState.FAILED,
+            McpCallState.TIMED_OUT,
+            McpCallState.CANCELLED,
+        }:
+            await mcp_calls.fail_call(
+                session, row=call, state=McpCallState.CANCELLED, code="user_stop"
+            )
     event = ChatEvent(
         conversation_id=conversation_id,
         cursor=conversation.event_cursor,
         turn_id=turn_id,
         created_at=now,
-        payload=ChatTurnStatus(state="stop_requested"),
+        payload=(
+            ChatTurnTerminal(state="stopped", answer_length=0, reasoning_length=0)
+            if stopped_before_placement
+            else ChatTurnStatus(state="stop_requested")
+        ),
     )
     session.add(
         ChatEventRow(

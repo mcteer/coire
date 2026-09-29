@@ -189,6 +189,13 @@ async def place_run(run_id_text: str) -> None:
     run_id = uuid.UUID(run_id_text)
     await _advance(run_id, AgentRunState.PLACING, "Studio placement started")
     while True:
+        async with session_scope() as session:
+            pending = await session.get(AgentRunRow, run_id)
+            if pending is None or pending.state in {
+                AgentRunState.KILL_REQUESTED,
+                AgentRunState.KILLED,
+            }:
+                return
         node_id = await choose_studio(run_id)
         if node_id is not None:
             async with session_scope() as session:
@@ -368,6 +375,9 @@ async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> N
             )
             transitions_total.add(1, {"state": state.value})
             last_transition.set(time.time(), {"state": state.value})
+    from coire_api.chat.coding import reconcile_chat_coding_result
+
+    await reconcile_chat_coding_result(run_id, get_settings())
     try:
         await _submit(run_id, RunOperation.REMOVE)
     except Exception:
@@ -378,6 +388,13 @@ async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> N
 async def run_workflow(run_id_text: str) -> None:
     try:
         await place_run(run_id_text)
+        async with session_scope() as session:
+            placed = await session.get(AgentRunRow, uuid.UUID(run_id_text))
+            if placed is None or placed.state in {
+                AgentRunState.KILL_REQUESTED,
+                AgentRunState.KILLED,
+            }:
+                return
         detail = await execute_run(run_id_text)
     except Exception as exc:
         await finalize_run(run_id_text, False, str(exc) or type(exc).__name__.lower())
@@ -422,3 +439,6 @@ async def run_kill_workflow(run_id_text: str) -> None:
                 target_id=run_id_text,
                 detail={"node_id": str(run.node_id)},
             )
+    from coire_api.chat.coding import reconcile_chat_coding_result
+
+    await reconcile_chat_coding_result(run_id, get_settings())

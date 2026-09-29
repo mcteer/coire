@@ -25,6 +25,7 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import ValidationError
 
 from coire_api.auth import CurrentChatUser, require_owned_chat
+from coire_api.chat.coding import admit_coding_turn, coding_turn_stream
 from coire_api.chat.files import (
     admit_original,
     owned_attachment,
@@ -466,7 +467,11 @@ async def send_chat_turn(
 ) -> StreamingResponse:
     with tracer.start_as_current_span("coire.api.chat.send"):
         try:
-            admission = await admit_turn(session, conversation_id, principal, body, settings)
+            admission = (
+                await admit_turn(session, conversation_id, principal, body, settings)
+                if body.action == "chat"
+                else await admit_coding_turn(session, conversation_id, principal, body, settings)
+            )
         except CoireError:
             requests_total.add(1, {"operation": "send", "outcome": "refused"})
             raise
@@ -489,6 +494,8 @@ async def send_chat_turn(
         source = (
             replay_saved_events(admission, principal, request, settings)
             if admission.replay
+            else coding_turn_stream(admission, principal, request, settings)
+            if body.action != "chat"
             else native_stream(admission, principal, request, settings)
         )
         return StreamingResponse(

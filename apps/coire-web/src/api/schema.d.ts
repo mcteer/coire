@@ -2015,6 +2015,32 @@ export interface components {
             /** Scopes */
             scopes?: components["schemas"]["AuthScope"][] | null;
         };
+        /** ApplyResult */
+        ApplyResult: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Artifact Url */
+            artifact_url?: string | null;
+            /** Base Revision */
+            base_revision: string;
+            /** Branch */
+            branch: string;
+            /** Diff Excerpt */
+            diff_excerpt: string;
+            /** Diff Truncated */
+            diff_truncated: boolean;
+            /** Head Revision */
+            head_revision: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            tests: components["schemas"]["TestSummary"];
+        };
         /** AskRequest */
         AskRequest: {
             /** Question */
@@ -2545,7 +2571,7 @@ export interface components {
             /** Cursor */
             cursor: number;
             /** Payload */
-            payload: components["schemas"]["ChatSnapshot"] | components["schemas"]["ChatConversationUpdated"] | components["schemas"]["ChatTurnAccepted"] | components["schemas"]["ChatTurnStatus"] | components["schemas"]["ChatMessageDelta"] | components["schemas"]["ChatTurnTerminal"] | components["schemas"]["ChatAttachmentChanged"] | components["schemas"]["ChatRunActivity"] | components["schemas"]["ChatRunActivityStatus"] | components["schemas"]["ChatConversationDeleted"];
+            payload: components["schemas"]["ChatSnapshot"] | components["schemas"]["ChatConversationUpdated"] | components["schemas"]["ChatTurnAccepted"] | components["schemas"]["ChatTurnStatus"] | components["schemas"]["ChatMessageDelta"] | components["schemas"]["ChatTurnTerminal"] | components["schemas"]["ChatAttachmentChanged"] | components["schemas"]["ChatRunActivity"] | components["schemas"]["ChatRunActivityStatus"] | components["schemas"]["ChatTurnResult"] | components["schemas"]["ChatConversationDeleted"];
             /** Turn Id */
             turn_id?: string | null;
         };
@@ -2871,10 +2897,23 @@ export interface components {
         /** ChatTurnDetail */
         ChatTurnDetail: {
             assistant_message: components["schemas"]["ChatMessage-Output"];
+            /** Coding Result */
+            coding_result?: components["schemas"]["ResearchResult"] | components["schemas"]["PlanResult"] | components["schemas"]["ApplyResult"] | null;
             /** Event Cursor */
             event_cursor: number;
             input_message: components["schemas"]["ChatMessage-Output"];
             turn: components["schemas"]["ChatTurn"];
+        };
+        /** ChatTurnResult */
+        ChatTurnResult: {
+            /** Result */
+            result: components["schemas"]["ResearchResult"] | components["schemas"]["PlanResult"] | components["schemas"]["ApplyResult"];
+            tool: components["schemas"]["McpToolName"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "turn.result";
         };
         /** ChatTurnStatus */
         ChatTurnStatus: {
@@ -3219,6 +3258,15 @@ export interface components {
              * Format: uuid
              */
             snapshot_id: string;
+        };
+        /** FileCitation */
+        FileCitation: {
+            /** Excerpt */
+            excerpt?: string | null;
+            /** Line */
+            line: number;
+            /** Path */
+            path: string;
         };
         /** GatewayModel */
         GatewayModel: {
@@ -4341,6 +4389,32 @@ export interface components {
          * @enum {string}
          */
         PlacementState: "requested" | "waiting_for_drain" | "evicting" | "reserving" | "loading" | "ready" | "refused" | "failed";
+        /** PlanResult */
+        PlanResult: {
+            /** Goal */
+            goal: string;
+            /**
+             * Result Id
+             * Format: uuid
+             */
+            result_id: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Source Revision */
+            source_revision: string;
+            /** Steps */
+            steps: components["schemas"]["PlanStep"][];
+        };
+        /** PlanStep */
+        PlanStep: {
+            /** Acceptance Criteria */
+            acceptance_criteria: string[];
+            /** Description */
+            description: string;
+        };
         /**
          * Precision
          * @enum {string}
@@ -4443,6 +4517,25 @@ export interface components {
              * Format: uri
              */
             repository_url: string;
+        };
+        /** ResearchResult */
+        ResearchResult: {
+            /** Answer */
+            answer: string;
+            /** Citations */
+            citations: components["schemas"]["FileCitation"][];
+            /**
+             * Result Id
+             * Format: uuid
+             */
+            result_id: string;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Source Revision */
+            source_revision: string;
         };
         /**
          * ReservationHolder
@@ -4668,6 +4761,37 @@ export interface components {
          * @enum {string}
          */
         TaskClass: "read" | "write";
+        /**
+         * TestStatus
+         * @enum {string}
+         */
+        TestStatus: "passed" | "failed" | "not_found" | "unsupported";
+        /** TestSummary */
+        TestSummary: {
+            /** Command */
+            command?: string[];
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Output Excerpt
+             * @default
+             */
+            output_excerpt: string;
+            /**
+             * Passed
+             * @default 0
+             */
+            passed: number;
+            /**
+             * Skipped
+             * @default 0
+             */
+            skipped: number;
+            status: components["schemas"]["TestStatus"];
+        };
         /**
          * ThermalState
          * @enum {string}

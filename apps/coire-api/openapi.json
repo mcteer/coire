@@ -1179,6 +1179,76 @@
         "title": "ApiKeyUpdate",
         "type": "object"
       },
+      "ApplyResult": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_url": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Url"
+          },
+          "base_revision": {
+            "maxLength": 40,
+            "minLength": 40,
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Base Revision",
+            "type": "string"
+          },
+          "branch": {
+            "pattern": "^coire/[a-z0-9][a-z0-9-]{0,100}$",
+            "title": "Branch",
+            "type": "string"
+          },
+          "diff_excerpt": {
+            "maxLength": 1048576,
+            "title": "Diff Excerpt",
+            "type": "string"
+          },
+          "diff_truncated": {
+            "title": "Diff Truncated",
+            "type": "boolean"
+          },
+          "head_revision": {
+            "maxLength": 40,
+            "minLength": 40,
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Head Revision",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "tests": {
+            "$ref": "#/components/schemas/TestSummary"
+          }
+        },
+        "required": [
+          "run_id",
+          "branch",
+          "base_revision",
+          "head_revision",
+          "diff_excerpt",
+          "diff_truncated",
+          "tests",
+          "artifact_id"
+        ],
+        "title": "ApplyResult",
+        "type": "object"
+      },
       "AskRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2481,6 +2551,7 @@
                 "run.activity_status": "#/components/schemas/ChatRunActivityStatus",
                 "snapshot": "#/components/schemas/ChatSnapshot",
                 "turn.accepted": "#/components/schemas/ChatTurnAccepted",
+                "turn.result": "#/components/schemas/ChatTurnResult",
                 "turn.status": "#/components/schemas/ChatTurnStatus",
                 "turn.terminal": "#/components/schemas/ChatTurnTerminal"
               },
@@ -2513,6 +2584,9 @@
               },
               {
                 "$ref": "#/components/schemas/ChatRunActivityStatus"
+              },
+              {
+                "$ref": "#/components/schemas/ChatTurnResult"
               },
               {
                 "$ref": "#/components/schemas/ChatConversationDeleted"
@@ -3309,6 +3383,7 @@
             "anyOf": [
               {
                 "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
                 "type": "string"
               },
               {
@@ -3345,6 +3420,23 @@
           "assistant_message": {
             "$ref": "#/components/schemas/ChatMessage-Output"
           },
+          "coding_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchResult"
+              },
+              {
+                "$ref": "#/components/schemas/PlanResult"
+              },
+              {
+                "$ref": "#/components/schemas/ApplyResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coding Result"
+          },
           "event_cursor": {
             "minimum": 0.0,
             "title": "Event Cursor",
@@ -3364,6 +3456,40 @@
           "event_cursor"
         ],
         "title": "ChatTurnDetail",
+        "type": "object"
+      },
+      "ChatTurnResult": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchResult"
+              },
+              {
+                "$ref": "#/components/schemas/PlanResult"
+              },
+              {
+                "$ref": "#/components/schemas/ApplyResult"
+              }
+            ],
+            "title": "Result"
+          },
+          "tool": {
+            "$ref": "#/components/schemas/McpToolName"
+          },
+          "type": {
+            "const": "turn.result",
+            "default": "turn.result",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "result"
+        ],
+        "title": "ChatTurnResult",
         "type": "object"
       },
       "ChatTurnStatus": {
@@ -4252,6 +4378,40 @@
           "signature"
         ],
         "title": "FailoverSnapshot",
+        "type": "object"
+      },
+      "FileCitation": {
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "line": {
+            "minimum": 1.0,
+            "title": "Line",
+            "type": "integer"
+          },
+          "path": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "line"
+        ],
+        "title": "FileCitation",
         "type": "object"
       },
       "GatewayModel": {
@@ -7050,6 +7210,78 @@
         "title": "PlacementState",
         "type": "string"
       },
+      "PlanResult": {
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Goal",
+            "type": "string"
+          },
+          "result_id": {
+            "format": "uuid",
+            "title": "Result Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "source_revision": {
+            "maxLength": 40,
+            "minLength": 40,
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Source Revision",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlanStep"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "result_id",
+          "run_id",
+          "source_revision",
+          "goal",
+          "steps"
+        ],
+        "title": "PlanResult",
+        "type": "object"
+      },
+      "PlanStep": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Acceptance Criteria",
+            "type": "array"
+          },
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "acceptance_criteria"
+        ],
+        "title": "PlanStep",
+        "type": "object"
+      },
       "Precision": {
         "enum": [
           "bf16",
@@ -7245,6 +7477,52 @@
           "created_at"
         ],
         "title": "RegisteredWorkspace",
+        "type": "object"
+      },
+      "ResearchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "maxLength": 200000,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/FileCitation"
+            },
+            "maxItems": 128,
+            "minItems": 1,
+            "title": "Citations",
+            "type": "array"
+          },
+          "result_id": {
+            "format": "uuid",
+            "title": "Result Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "source_revision": {
+            "maxLength": 40,
+            "minLength": 40,
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Source Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_id",
+          "run_id",
+          "source_revision",
+          "answer",
+          "citations"
+        ],
+        "title": "ResearchResult",
         "type": "object"
       },
       "ReservationHolder": {
@@ -7778,6 +8056,61 @@
         ],
         "title": "TaskClass",
         "type": "string"
+      },
+      "TestStatus": {
+        "enum": [
+          "passed",
+          "failed",
+          "not_found",
+          "unsupported"
+        ],
+        "title": "TestStatus",
+        "type": "string"
+      },
+      "TestSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Command",
+            "type": "array"
+          },
+          "failed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "output_excerpt": {
+            "default": "",
+            "maxLength": 16384,
+            "title": "Output Excerpt",
+            "type": "string"
+          },
+          "passed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Passed",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TestStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "TestSummary",
+        "type": "object"
       },
       "ThermalState": {
         "enum": [
