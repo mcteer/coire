@@ -5,6 +5,10 @@
 - The deleted-file purge now holds the conversation lock and checks for an active plain-Chat turn before erasing the original and releasing reservation rows. A focused test keeps a deleted attachment present through active inference, then verifies the next purge erases it after the turn becomes terminal. All five file-purge tests, changed-file mypy, Ruff and formatting passed. Parent T066 remains open for temporary inline images, future control inputs and end-to-end purge timing.
 - Web verification on the same branch passed 91 tests, ESLint, TypeScript and production Vite build. T072 remains open until final gates after the remaining feature work.
 
+## Terminal metric coverage (2026-09-29)
+
+- Lease recovery now records its persisted interrupted/stopped Chat outcome and stop duration once, and an immediate coding Stop before placement records its stopped outcome and duration after commit. The normal stream and coding reconciliation paths already record their terminal outcomes. Focused recovery/Stop/file-purge tests passed 18; source mypy, Ruff and formatting passed. This closes the remaining terminal-state gap in T068's fixed-label series.
+
 ## Chat, coding, node and VLM trace correlation (2026-09-29)
 
 - Completed the named `coire.api.chat.admit`, `coire.scheduler.chat.activity`, `coire.node.run.activity`, `coire.agent.coding.tool` and `coire.node.vision.load` spans. Existing stream, stop, upload, purge and file-worker spans remain in place. The new coding tool span carries only run ID, tool call ID and a fixed tool name; node activity and VLM load spans carry only stable operational IDs and fixed backend. Automatic exception recording is disabled on these spans so prompt, path and exception text cannot enter span events. Local exporter tests verify span names, correlation IDs and absence of exception content. Existing fixed-label worker, vision, active-turn, purge, upload-refusal and stop metrics are joined by once-only coding terminal counts and coding stop duration; the two 014 alert and dashboard artifacts use those series. Parent T068 is complete.

@@ -86,6 +86,18 @@ async def test_expired_turn_recovery_preserves_partial_and_is_idempotent(
         yield session
 
     monkeypatch.setattr(maintenance, "session_scope", sessions)
+    terminal_metrics: list[dict[str, str]] = []
+    stop_metrics: list[float] = []
+    monkeypatch.setattr(
+        maintenance,
+        "turns_total",
+        SimpleNamespace(add=lambda _value, labels: terminal_metrics.append(labels)),
+    )
+    monkeypatch.setattr(
+        maintenance,
+        "stop_seconds",
+        SimpleNamespace(record=lambda duration, _labels: stop_metrics.append(duration)),
+    )
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     assert await maintenance.sweep_stale_turns(settings) == 1
     assert await maintenance.sweep_stale_turns(settings) == 0
@@ -97,6 +109,8 @@ async def test_expired_turn_recovery_preserves_partial_and_is_idempotent(
     assert payload["answer_length"] == len("Partial answer")
     assert payload["state"] == session.turn.state
     assert "Partial answer" not in str(payload)
+    assert terminal_metrics == [{"mode": "chat", "outcome": session.turn.state}]
+    assert len(stop_metrics) == int(stop)
 
 
 async def test_renewed_lease_is_not_reconciled(monkeypatch: pytest.MonkeyPatch) -> None:

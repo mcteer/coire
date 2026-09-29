@@ -15,7 +15,14 @@ from typing import Literal
 from sqlalchemy import and_, delete, func, or_, select, update
 
 from coire_api.chat.processing import publish_processed_files
-from coire_api.chat.telemetry import active_turns, purge_oldest_seconds, requests_total, tracer
+from coire_api.chat.telemetry import (
+    active_turns,
+    purge_oldest_seconds,
+    requests_total,
+    stop_seconds,
+    tracer,
+    turns_total,
+)
 from coire_api.db import (
     ChatAttachmentRow,
     ChatConversationRow,
@@ -118,6 +125,11 @@ async def sweep_stale_turns(settings: Settings) -> int:
                     "stopped" if turn.state == "stop_requested" else "interrupted"
                 )
                 terminal_at = datetime.now(UTC)
+                stop_duration = (
+                    max(0.0, (terminal_at - turn.updated_at).total_seconds())
+                    if state == "stopped"
+                    else None
+                )
                 turn.state = state
                 turn.failure_code = "chat_lease_expired"
                 turn.finished_at = terminal_at
@@ -159,6 +171,9 @@ async def sweep_stale_turns(settings: Settings) -> int:
                 )
             recovered += 1
             requests_total.add(1, {"operation": "reconcile", "outcome": state})
+            turns_total.add(1, {"mode": "chat", "outcome": state})
+            if stop_duration is not None:
+                stop_seconds.record(stop_duration, {"mode": "chat"})
             logger.info("chat stale turn recovered turn_id=%s state=%s", turn_id, state)
     return recovered
 

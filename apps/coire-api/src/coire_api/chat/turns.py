@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from time import monotonic
 from typing import Literal, cast
 
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal
 from coire_api.chat.maintenance import LEASE_SECONDS, PROCESS_ID
+from coire_api.chat.telemetry import stop_seconds, turns_total
 from coire_api.chat.text_context import compose_text_prompt
 from coire_api.chat.visual_context import visual_message
 from coire_api.db import (
@@ -183,6 +185,7 @@ async def request_turn_stop(
         raise ChatNotFound()
     if turn.state in {"completed", "failed", "stopped", "interrupted", "stop_requested"}:
         return project_turn(turn)
+    stop_started = monotonic()
     stopped_before_placement = False
     if turn.action != "chat":
         if turn.run_id is None or turn.coding_call_id is None:
@@ -244,6 +247,9 @@ async def request_turn_stop(
         )
     )
     await session.commit()
+    if stopped_before_placement:
+        turns_total.add(1, {"mode": "coding", "outcome": "stopped"})
+        stop_seconds.record(monotonic() - stop_started, {"mode": "coding"})
     return project_turn(turn)
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -141,6 +142,18 @@ async def test_queued_coding_stop_revokes_and_finishes_once(
 
     monkeypatch.setattr("coire_api.coding_calls.request_coding_kill", kill)
     monkeypatch.setattr("coire_api.mcp_calls.fail_call", fail_call)
+    terminal_metrics: list[dict[str, str]] = []
+    stop_metrics: list[float] = []
+    monkeypatch.setattr(
+        turns,
+        "turns_total",
+        SimpleNamespace(add=lambda _value, labels: terminal_metrics.append(labels)),
+    )
+    monkeypatch.setattr(
+        turns,
+        "stop_seconds",
+        SimpleNamespace(record=lambda duration, _labels: stop_metrics.append(duration)),
+    )
     principal = Principal(kind=PrincipalKind.USER, user_id=session.owner)
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     first = await turns.request_turn_stop(
@@ -163,6 +176,8 @@ async def test_queued_coding_stop_revokes_and_finishes_once(
     assert killed == [session.turn.run_id]
     assert session.conversation.active_turn_id is None
     assert [row.type for row in session.events] == ["turn.terminal"]
+    assert terminal_metrics == [{"mode": "coding", "outcome": "stopped"}]
+    assert len(stop_metrics) == 1 and stop_metrics[0] >= 0
 
 
 async def test_foreign_missing_and_cross_parent_stop_are_uniform_404() -> None:
