@@ -30,6 +30,7 @@ from coire_api.chat.files import (
     owned_attachment,
     project_attachment,
     read_original,
+    render_pdf_pages,
     retry_inspection,
     stage_original,
 )
@@ -156,17 +157,17 @@ async def process_chat_file(
     session: SessionDep,
     settings: SettingsDep,
 ) -> ChatAttachment:
-    with tracer.start_as_current_span("coire.api.chat.file_retry") as span:
+    operation = "file_render" if body.operation == "render" else "file_retry"
+    with tracer.start_as_current_span(f"coire.api.chat.{operation}") as span:
         span.set_attribute("file_id", str(file_id))
         try:
-            result = await retry_inspection(
-                session, principal, conversation_id, file_id, body, settings
-            )
+            action = render_pdf_pages if body.operation == "render" else retry_inspection
+            result = await action(session, principal, conversation_id, file_id, body, settings)
         except CoireError:
-            requests_total.add(1, {"operation": "file_retry", "outcome": "refused"})
+            requests_total.add(1, {"operation": operation, "outcome": "refused"})
             raise
         except Exception as exc:
-            requests_total.add(1, {"operation": "file_retry", "outcome": "failed"})
+            requests_total.add(1, {"operation": operation, "outcome": "failed"})
             logger.error(
                 "chat file retry failed user_id=%s file_id=%s error_type=%s",
                 principal.user_id,
@@ -174,7 +175,7 @@ async def process_chat_file(
                 type(exc).__name__,
             )
             raise ChatModelUnavailable("chat file service temporarily unavailable") from None
-        requests_total.add(1, {"operation": "file_retry", "outcome": "accepted"})
+        requests_total.add(1, {"operation": operation, "outcome": "accepted"})
         return result
 
 

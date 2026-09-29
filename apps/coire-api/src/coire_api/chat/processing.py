@@ -205,6 +205,22 @@ async def publish_processed_job(job_id: str, settings: Settings) -> str:
                 ):
                     raise InvalidAsset("request identity mismatch")
                 validate_result(request, result)
+                text_result: FileProcessResult | None = None
+                if request.operation == "render":
+                    prior_manifest = attachment.asset_manifest or {}
+                    text_result = FileProcessResult.model_validate(
+                        prior_manifest.get("text_result") or prior_manifest["result"]
+                    )
+                    if (
+                        attachment.detected_type != "application/pdf"
+                        or attachment.page_count != result.page_count
+                        or text_result.detected_type != "application/pdf"
+                        or text_result.input_id != attachment.id
+                        or text_result.source_sha256 != attachment.original_sha256
+                        or text_result.extracted_text is None
+                        or text_result.assets
+                    ):
+                        raise InvalidAsset("PDF extraction identity mismatch")
                 derived_bytes = sum(asset.bytes for asset in result.assets)
                 if derived_bytes > settings.chat_derived_job_max_bytes:
                     raise InvalidAsset("derived quota mismatch")
@@ -233,11 +249,18 @@ async def publish_processed_job(job_id: str, settings: Settings) -> str:
                 attachment.detected_type = result.detected_type or "application/octet-stream"
                 attachment.page_count = result.page_count
                 attachment.extraction_status = (
-                    "complete" if result.extracted_text is not None else "none"
+                    "complete"
+                    if result.extracted_text is not None or text_result is not None
+                    else "none"
                 )
                 attachment.asset_manifest = {
                     "job_id": job.id,
                     "result": result.model_dump(mode="json"),
+                    **(
+                        {"text_result": text_result.model_dump(mode="json")}
+                        if text_result is not None
+                        else {}
+                    ),
                 }
                 attachment.state = "ready"
                 attachment.safe_error = None

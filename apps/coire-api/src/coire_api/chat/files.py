@@ -452,6 +452,205 @@ async def retry_inspection(
     return response
 
 
+async def render_pdf_pages(
+    session: AsyncSession,
+    principal: Principal,
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    body: ChatFileProcessRequest,
+    settings: Settings,
+) -> ChatAttachment:
+    """Queue only the owner's explicit page selection under the file quota lock."""
+
+    assert principal.user_id is not None
+    if body.operation != "render":
+        raise ChatConflict("render requires selected PDF pages")
+    owner = await session.scalar(
+        select(UserRow).where(UserRow.id == principal.user_id).with_for_update()
+    )
+    if owner is None:
+        raise ChatNotFound()
+    conversation = await session.scalar(
+        select(ChatConversationRow)
+        .where(ChatConversationRow.id == conversation_id)
+        .with_for_update()
+    )
+    if (
+        conversation is None
+        or conversation.owner_user_id != principal.user_id
+        or conversation.deleted_at is not None
+    ):
+        raise ChatNotFound()
+    attachment = await session.scalar(
+        select(ChatAttachmentRow).where(ChatAttachmentRow.id == file_id).with_for_update()
+    )
+    if (
+        attachment is None
+        or attachment.owner_user_id != principal.user_id
+        or attachment.conversation_id != conversation_id
+        or attachment.deleted_at is not None
+    ):
+        raise ChatNotFound()
+    existing = await session.scalar(
+        select(ChatFileProcessingRow).where(ChatFileProcessingRow.request_id == body.request_id)
+    )
+    if existing is not None:
+        binding = (existing.output_manifest or {}).get("client_request")
+        if (
+            existing.attachment_id != attachment.id
+            or existing.owner_user_id != principal.user_id
+            or existing.operation != "render"
+            or existing.selected_pages != body.selected_pages
+            or not isinstance(binding, dict)
+            or binding.get("expected_revision") != body.expected_revision
+            or binding.get("selected_pages") != body.selected_pages
+        ):
+            raise ChatConflict("request ID already used for a different file action")
+        return project_attachment(attachment)
+    if conversation.revision != body.expected_revision:
+        raise ChatConflict("conversation changed; refresh before selecting pages")
+    if (
+        attachment.detected_type != "application/pdf"
+        or attachment.page_count is None
+        or any(page > attachment.page_count for page in body.selected_pages)
+    ):
+        raise ChatConflict("selected pages exceed this PDF")
+    latest = await session.scalar(
+        select(ChatFileProcessingRow)
+        .where(
+            ChatFileProcessingRow.attachment_id == attachment.id,
+            ChatFileProcessingRow.operation == "render",
+        )
+        .order_by(ChatFileProcessingRow.attempt.desc(), ChatFileProcessingRow.created_at.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if latest is None:
+        if attachment.state != "ready" or attachment.asset_manifest is None:
+            raise ChatConflict("PDF is not ready for page rendering")
+        try:
+            inspection = FileProcessResult.model_validate(attachment.asset_manifest["result"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ChatConflict("PDF extraction metadata unavailable") from exc
+        if (
+            inspection.detected_type != "application/pdf"
+            or inspection.input_id != attachment.id
+            or inspection.source_sha256 != attachment.original_sha256
+            or inspection.extracted_text is None
+            or inspection.assets
+        ):
+            raise ChatConflict("PDF extraction metadata unavailable")
+        attempt = 1
+    else:
+        if (
+            latest.state != "failed"
+            or latest.attempt != 1
+            or latest.selected_pages != body.selected_pages
+            or attachment.state != "failed"
+            or not latest.output_manifest
+            or latest.output_manifest.get("output_purged") is not True
+        ):
+            raise ChatConflict("PDF page rendering is not eligible for another attempt")
+        attempt = 2
+    if attachment.original_key != str(attachment.id) or (
+        latest is not None
+        and (
+            latest.source_key != str(attachment.id)
+            or latest.source_sha256 != attachment.original_sha256
+        )
+    ):
+        raise ChatConflict("file source changed")
+    reservation = await session.scalar(
+        select(ChatQuotaReservationRow)
+        .where(
+            ChatQuotaReservationRow.attachment_id == attachment.id,
+            ChatQuotaReservationRow.state == "active",
+        )
+        .with_for_update()
+    )
+    if reservation is None:
+        raise ChatConflict("file reservation unavailable")
+    desired = attachment.original_bytes + settings.chat_derived_job_max_bytes
+    if latest is None:
+        if reservation.reserved_bytes < attachment.original_bytes:
+            raise ChatConflict("file reservation unavailable")
+        delta = max(0, desired - reservation.reserved_bytes)
+        owner_used = await session.scalar(
+            select(func.coalesce(func.sum(ChatQuotaReservationRow.reserved_bytes), 0)).where(
+                ChatQuotaReservationRow.owner_user_id == principal.user_id,
+                ChatQuotaReservationRow.state == "active",
+            )
+        )
+        conversation_used = await session.scalar(
+            select(func.coalesce(func.sum(ChatQuotaReservationRow.reserved_bytes), 0)).where(
+                ChatQuotaReservationRow.conversation_id == conversation_id,
+                ChatQuotaReservationRow.state == "active",
+            )
+        )
+        if (
+            int(owner_used or 0) + delta > settings.chat_owner_quota_bytes
+            or int(conversation_used or 0) + delta > settings.chat_conversation_quota_bytes
+        ):
+            raise ChatQuotaExceeded("PDF page rendering exceeds chat file quota")
+        reservation.reserved_bytes = max(reservation.reserved_bytes, desired)
+    elif reservation.job_id != latest.id or reservation.reserved_bytes < desired:
+        raise ChatConflict("file reservation unavailable")
+    now = datetime.now(UTC)
+    job = ChatFileProcessingRow(
+        id=new_job_id(),
+        attachment_id=attachment.id,
+        owner_user_id=principal.user_id,
+        principal_kind="user",
+        principal_subject=str(principal.user_id),
+        request_id=body.request_id,
+        operation="render",
+        source_key=str(attachment.id),
+        source_sha256=attachment.original_sha256,
+        selected_pages=body.selected_pages,
+        output_manifest={
+            "client_request": {
+                "expected_revision": body.expected_revision,
+                "selected_pages": body.selected_pages,
+            }
+        },
+        state="queued",
+        attempt=attempt,
+        deadline_at=now + timedelta(seconds=settings.file_worker_process_timeout_s),
+        expires_at=now + timedelta(hours=settings.chat_purge_deadline_hours),
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(job)
+    await session.flush()
+    reservation.job_id = job.id
+    attachment.state = "processing"
+    attachment.safe_error = None
+    attachment.updated_at = now
+    conversation.revision += 1
+    conversation.event_cursor += 1
+    conversation.updated_at = now
+    response = project_attachment(attachment)
+    event = ChatEvent(
+        conversation_id=conversation_id,
+        cursor=conversation.event_cursor,
+        created_at=now,
+        payload=ChatAttachmentChanged(attachment=response),
+    )
+    session.add(
+        ChatEventRow(
+            id=uuid.uuid4(),
+            conversation_id=conversation_id,
+            cursor=event.cursor,
+            type=event.payload.type,
+            payload=event.payload.model_dump(mode="json"),
+            created_at=now,
+            expires_at=now + timedelta(hours=settings.chat_event_retention_hours),
+        )
+    )
+    await session.commit()
+    return response
+
+
 def read_original(attachment: ChatAttachmentRow, root: Path) -> bytes:
     """Read only its generated key and verify the immutable upload manifest."""
 

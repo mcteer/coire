@@ -240,3 +240,73 @@ async def test_owner_identity_mismatch_fails_before_ready(
     assert await processing.publish_processed_job(JOB_ID, _settings(tmp_path)) == "failed"
     assert fake.attachment.state == "failed"
     assert fake.reservation.reserved_bytes == 5 + 32 * 1024 * 1024
+
+
+async def test_selected_pdf_page_publication_retains_extracted_text(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    fake = FakeSession(image=False, root=tmp_path)
+    fake.attachment.detected_type = "application/pdf"
+    fake.attachment.page_count = 2
+    fake.attachment.extraction_status = "complete"
+    prior = FileProcessResult(
+        job_id="01K00000000000000000000001",
+        input_id=fake.attachment.id,
+        source_sha256=fake.attachment.original_sha256,
+        detected_type="application/pdf",
+        page_count=2,
+        extracted_text="[Page 1]\nHello\n[Page 2]\n",
+        assets=[],
+    )
+    fake.attachment.asset_manifest = {
+        "job_id": prior.job_id,
+        "result": prior.model_dump(mode="json"),
+    }
+    output = io.BytesIO()
+    Image.new("RGB", (4, 5), (1, 2, 3)).save(output, format="PNG")
+    data = output.getvalue()
+    asset_id = uuid.uuid4()
+    folder = tmp_path / JOB_ID
+    folder.mkdir()
+    (folder / f"{asset_id}.png").write_bytes(data)
+    request = FileProcessRequest(
+        job_id=JOB_ID,
+        input_id=fake.attachment.id,
+        source_sha256=fake.attachment.original_sha256,
+        operation="render",
+        selected_pages=[2],
+        output_ids=[asset_id],
+        deadline_at=datetime.now(UTC) + timedelta(seconds=20),
+    )
+    result = FileProcessResult(
+        job_id=JOB_ID,
+        input_id=fake.attachment.id,
+        source_sha256=fake.attachment.original_sha256,
+        detected_type="application/pdf",
+        page_count=2,
+        assets=[
+            FileProcessAsset(
+                id=asset_id,
+                sha256=hashlib.sha256(data).hexdigest(),
+                bytes=len(data),
+                media_type="image/png",
+                width=4,
+                height=5,
+                page=2,
+            )
+        ],
+    )
+    fake.job.operation = "render"
+    fake.job.selected_pages = [2]
+    fake.job.output_manifest = {
+        "request": request.model_dump(mode="json"),
+        "result": result.model_dump(mode="json"),
+    }
+    _wire(monkeypatch, fake)
+    assert await processing.publish_processed_job(JOB_ID, _settings(tmp_path)) == "ready"
+    assert fake.attachment.state == "ready"
+    assert fake.attachment.extraction_status == "complete"
+    assert fake.attachment.page_count == 2
+    assert fake.attachment.asset_manifest is not None
+    assert fake.attachment.asset_manifest["text_result"] == prior.model_dump(mode="json")
+    assert fake.reservation.reserved_bytes == 5 + len(data)

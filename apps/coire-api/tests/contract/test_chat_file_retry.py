@@ -22,6 +22,7 @@ from coire_api.db import (
     ChatQuotaReservationRow,
     get_session,
 )
+from coire_core.models.files import FileProcessResult
 from coire_core.settings import Settings, get_settings
 
 
@@ -87,6 +88,8 @@ class RetrySession:
             created_at=now,
         )
         self.next_job: ChatFileProcessingRow | None = None
+        self.render_job: ChatFileProcessingRow | None = None
+        self.used = self.reservation.reserved_bytes
         self.events: list[ChatEventRow] = []
         self.commits = 0
 
@@ -102,20 +105,33 @@ class RetrySession:
             rendered = str(
                 cast(ClauseElement, statement).compile(compile_kwargs={"literal_binds": True})
             )
-            return (
-                self.next_job
-                if self.next_job is not None and self.next_job.request_id.hex in rendered
-                else None
+            return next(
+                (
+                    job
+                    for job in (self.next_job, self.render_job)
+                    if job is not None and job.request_id.hex in rendered
+                ),
+                None,
             )
         if "FROM chat_file_processing" in sql:
+            rendered = str(
+                cast(ClauseElement, statement).compile(compile_kwargs={"literal_binds": True})
+            )
+            if "'render'" in rendered:
+                return self.render_job
             return self.next_job or self.old
         if "FROM chat_quota_reservations" in sql:
+            if "sum(" in sql.lower():
+                return self.used
             return self.reservation
         raise AssertionError(sql)
 
     def add(self, row: object) -> None:
         if isinstance(row, ChatFileProcessingRow):
-            self.next_job = row
+            if row.operation == "render":
+                self.render_job = row
+            else:
+                self.next_job = row
         elif isinstance(row, ChatEventRow):
             self.events.append(row)
 
@@ -239,3 +255,100 @@ async def test_retry_route_refuses_unsupported_action(operation: str, pages: lis
         )
     assert response.status_code in {409, 422}
     assert session.next_job is None
+
+
+async def test_pdf_page_render_is_explicit_quota_bound_and_retry_limited() -> None:
+    session = RetrySession()
+    session.old.state = "ready"
+    session.attachment.state = "ready"
+    session.attachment.detected_type = "application/pdf"
+    session.attachment.page_count = 2
+    session.attachment.extraction_status = "complete"
+    inspection = FileProcessResult(
+        job_id=session.old.id,
+        input_id=session.attachment.id,
+        source_sha256=session.attachment.original_sha256,
+        detected_type="application/pdf",
+        page_count=2,
+        extracted_text="[Page 1]\nHello\n[Page 2]\n",
+        assets=[],
+    )
+    session.attachment.asset_manifest = {
+        "job_id": session.old.id,
+        "result": inspection.model_dump(mode="json"),
+    }
+    session.reservation.reserved_bytes = session.attachment.original_bytes
+    session.used = session.reservation.reserved_bytes
+    settings = _settings()
+    app = create_app(settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[require_principal] = lambda: Principal(
+        kind=PrincipalKind.USER, user_id=session.owner_id
+    )
+
+    async def fake_session() -> AsyncIterator[RetrySession]:
+        yield session
+
+    app.dependency_overrides[get_session] = fake_session
+    path = f"/api/v1/chat/conversations/{session.conversation.id}/files/{session.attachment.id}/process"
+    request_id = uuid.uuid4()
+    body = {
+        "request_id": str(request_id),
+        "expected_revision": 3,
+        "operation": "render",
+        "selected_pages": [2],
+    }
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://localhost",
+        headers={"Authorization": "Bearer file-retry-test", "Origin": "http://localhost"},
+    ) as client:
+        too_high = await client.post(path, json={**body, "selected_pages": [3]})
+        assert too_high.status_code == 409
+        assert session.commits == 0
+        limited = Settings(  # type: ignore[call-arg]
+            _secrets_dir="/nonexistent",
+            chat_enabled=True,
+            chat_browser_origin="http://localhost",
+            identity_legacy_admin_enabled=True,
+            admin_token=SecretStr("file-retry-test"),
+            chat_conversation_quota_bytes=32 * 1024 * 1024,
+        )
+        app.dependency_overrides[get_settings] = lambda: limited
+        refused = await client.post(path, json=body)
+        assert refused.status_code == 413
+        app.dependency_overrides[get_settings] = lambda: settings
+        accepted = await client.post(path, json=body)
+        assert accepted.status_code == 202, accepted.text
+        first_render = session.render_job
+        assert first_render is not None
+        assert first_render.operation == "render"
+        assert first_render.selected_pages == [2]
+        assert first_render.attempt == 1
+        assert session.reservation.reserved_bytes == 20 + 32 * 1024 * 1024
+        assert session.reservation.job_id == first_render.id
+        assert (await client.post(path, json=body)).status_code == 202
+        assert session.commits == 1
+        first_render.state = "failed"
+        first_render.output_manifest = {
+            "output_purged": True,
+            "client_request": {"expected_revision": 3, "selected_pages": [2]},
+        }
+        session.attachment.state = "failed"
+        session.attachment.safe_error = "worker_status_missing"
+        changed = await client.post(
+            path,
+            json={
+                **body,
+                "request_id": str(uuid.uuid4()),
+                "expected_revision": 4,
+                "selected_pages": [1],
+            },
+        )
+        assert changed.status_code == 409
+        second = await client.post(
+            path, json={**body, "request_id": str(uuid.uuid4()), "expected_revision": 4}
+        )
+        assert second.status_code == 202
+        assert session.render_job is not None
+        assert session.render_job.attempt == 2
