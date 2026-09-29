@@ -7,3 +7,9 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: Native Chat API request failed
+      - alert: CoireChatPurgeOverdue
+        expr: max(coire_chat_purge_oldest_seconds) > 86400
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Deleted Chat content is past its 24-hour purge deadline

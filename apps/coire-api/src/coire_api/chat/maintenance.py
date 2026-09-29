@@ -9,9 +9,9 @@ from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
-from sqlalchemy import and_, delete, or_, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 
-from coire_api.chat.telemetry import requests_total, tracer
+from coire_api.chat.telemetry import purge_oldest_seconds, requests_total, tracer
 from coire_api.db import (
     ChatAttachmentRow,
     ChatConversationRow,
@@ -234,6 +234,41 @@ async def purge_deleted_text() -> int:
     return purged
 
 
+async def compact_expired_events() -> int:
+    """Delete one bounded page of expired SSE events; history snapshots remain intact."""
+    async with session_scope() as session:
+        identifiers = (
+            (
+                await session.execute(
+                    select(ChatEventRow.id)
+                    .where(ChatEventRow.expires_at <= datetime.now(UTC))
+                    .order_by(ChatEventRow.expires_at, ChatEventRow.id)
+                    .limit(1000)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if identifiers:
+            await session.execute(delete(ChatEventRow).where(ChatEventRow.id.in_(identifiers)))
+    if identifiers:
+        requests_total.add(len(identifiers), {"operation": "event_compact", "outcome": "deleted"})
+    return len(identifiers)
+
+
+async def record_oldest_pending_purge() -> float:
+    async with session_scope() as session:
+        oldest = await session.scalar(
+            select(func.min(ChatConversationRow.deleted_at)).where(
+                ChatConversationRow.deleted_at.is_not(None),
+                ChatConversationRow.purged_at.is_(None),
+            )
+        )
+    age = max((datetime.now(UTC) - oldest).total_seconds(), 0.0) if oldest is not None else 0.0
+    purge_oldest_seconds.set(age)
+    return age
+
+
 class ChatMaintenance:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -254,6 +289,8 @@ class ChatMaintenance:
             try:
                 await sweep_stale_turns(self._settings)
                 await purge_deleted_text()
+                await compact_expired_events()
+                await record_oldest_pending_purge()
             except Exception as exc:
                 requests_total.add(1, {"operation": "maintenance", "outcome": "failed"})
                 logger.error("chat maintenance pass failed error_type=%s", type(exc).__name__)

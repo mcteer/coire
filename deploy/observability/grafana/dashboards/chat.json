@@ -17,6 +17,22 @@
       ],
       "title": "Native Chat requests",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "id": 2,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "max(coire_chat_purge_oldest_seconds)",
+          "legendFormat": "oldest pending purge",
+          "refId": "A"
+        }
+      ],
+      "title": "Deleted content awaiting purge",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

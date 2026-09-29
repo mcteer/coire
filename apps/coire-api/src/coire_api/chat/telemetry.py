@@ -10,3 +10,8 @@ requests_total = metrics.get_meter("coire.api.chat").create_counter(
     unit="1",
     description="Native Chat API requests by operation and outcome",
 )
+purge_oldest_seconds = metrics.get_meter("coire.api.chat").create_gauge(
+    "coire_chat_purge_oldest_seconds",
+    unit="s",
+    description="Age of the oldest deleted conversation awaiting verified content purge",
+)

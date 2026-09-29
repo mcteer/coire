@@ -168,3 +168,47 @@ async def test_text_purge_scrubs_only_safe_tombstones(
         assert count == 0
         assert conversation.purged_at is None
         assert not any(command.startswith("DELETE FROM chat_") for command in commands)
+
+
+async def test_expired_event_compaction_is_bounded_and_history_independent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events = [uuid.uuid4(), uuid.uuid4()]
+    statements: list[str] = []
+
+    class Session:
+        async def execute(self, statement: object) -> SimpleNamespace:
+            statements.append(str(statement))
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: events))
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(maintenance, "session_scope", sessions)
+    assert await maintenance.compact_expired_events() == 2
+    assert "LIMIT" in statements[0] and "chat_events.expires_at" in statements[0]
+    assert statements[1].startswith("DELETE FROM chat_events")
+    assert not any("chat_messages" in statement for statement in statements)
+
+
+async def test_oldest_pending_purge_metric_tracks_overdue_age(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: list[float] = []
+
+    class Session:
+        async def scalar(self, _statement: object) -> datetime:
+            return datetime.now(UTC) - timedelta(hours=25)
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(maintenance, "session_scope", sessions)
+    monkeypatch.setattr(
+        maintenance, "purge_oldest_seconds", SimpleNamespace(set=recorded.append)
+    )
+    age = await maintenance.record_oldest_pending_purge()
+    assert age > 24 * 3600
+    assert recorded == [age]
