@@ -18,7 +18,7 @@ from sqlalchemy import select
 from coire_api.auth import Principal
 from coire_api.chat.maintenance import maintain_turn_lease
 from coire_api.chat.reasoning import ReasoningParser
-from coire_api.chat.telemetry import requests_total, tracer
+from coire_api.chat.telemetry import parser_failures_total, requests_total, tracer
 from coire_api.chat.turns import Admission
 from coire_api.db import (
     ChatConversationRow,
@@ -461,6 +461,9 @@ async def native_stream(
                 if close is not None:
                     await close()
             if not done or failed_frame:
+                parser_failures_total.add(
+                    1, {"reason": "malformed_frame" if failed_frame else "missing_done"}
+                )
                 disconnected = await request.is_disconnected()
                 state = "interrupted" if disconnected else "failed"
                 await usage.finish(

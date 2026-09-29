@@ -499,7 +499,10 @@ class EngineManager:
                         engine.last_health_at = datetime.now(UTC)
                         self._sample(engine)
                         self._persist()
-                    _load_seconds.record(engine.load_seconds, {"slug": engine.slug or ""})
+                    _load_seconds.record(
+                        engine.load_seconds,
+                        {"slug": engine.slug or "", "backend": engine.backend.value},
+                    )
                     logger.info(
                         "engine %s ready after %.1fs (resident %s bytes vs estimate %s)",
                         engine.engine_id,
@@ -583,7 +586,10 @@ class EngineManager:
             return
         engine.resident_bytes = resident_bytes(engine.pid)
         if engine.resident_bytes is not None:
-            _engine_resident.set(engine.resident_bytes, {"slug": engine.slug or ""})
+            _engine_resident.set(
+                engine.resident_bytes,
+                {"slug": engine.slug or "", "backend": engine.backend.value},
+            )
         if engine._psutil is None:
             with contextlib.suppress(psutil.Error):
                 engine._psutil = psutil.Process(engine.pid)

@@ -278,6 +278,52 @@ async def test_text_stream_persists_before_each_native_event(
     assert chunks[-1].startswith(b"event: turn.terminal")
 
 
+@pytest.mark.parametrize(
+    ("engine_frames", "reason"),
+    [
+        ([b"data: {broken}\n\n", b"data: [DONE]\n\n"], "malformed_frame"),
+        ([b'data: {"choices":[]}\n\n'], "missing_done"),
+    ],
+)
+async def test_bad_native_engine_stream_counts_one_bounded_parser_failure(
+    monkeypatch: pytest.MonkeyPatch, engine_frames: list[bytes], reason: str
+) -> None:
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    recorded: list[tuple[int, dict[str, str]]] = []
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "_resolve", AsyncMock(return_value=_resolved(admission)))
+    monkeypatch.setattr(streaming, "_stop_requested", AsyncMock(return_value=False))
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+    monkeypatch.setattr(
+        streaming,
+        "parser_failures_total",
+        SimpleNamespace(add=lambda value, attrs: recorded.append((value, attrs))),
+    )
+
+    async def upstream(*_args: object) -> AsyncIterator[bytes]:
+        for frame in engine_frames:
+            yield frame
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        return _saved_event(admission, kind, 2, **kwargs)
+
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    chunks = [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+    assert recorded == [(1, {"reason": reason})]
+    assert b'"state":"failed"' in chunks[-1]
+
+
 async def test_reasoning_stream_saves_split_thinking_in_separate_channel(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

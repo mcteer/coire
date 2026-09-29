@@ -13,3 +13,15 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: Deleted Chat content is past its 24-hour purge deadline
+      - alert: CoireChatParserFailures
+        expr: sum(increase(coire_chat_parser_failures_total[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Native Chat received malformed or incomplete engine stream frames
+      - alert: CoireChatFileProcessingFailures
+        expr: sum(increase(coire_file_processing_total{outcome=~"refused|internal_failure"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Private Chat file processing failed
