@@ -321,3 +321,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Inspection of the pinned `mlx-vlm==0.7.3` wheel showed its bare chat request requires `model`. The node readiness probe now supplies only the owned verified local store path for a VLM, allowing one-token generation to establish readiness. The text probe shape remains unchanged. A mocked lifecycle contract verifies health-to-generation-to-ready without Metal or weights. Parent T052/T053 stay open for remaining node validation, budget, cancellation and tiny-model cases.
 - Full Python suite: 994 passed, 117 conditional skipped. Strict mypy on 50 node/test source files, changed-file Ruff and format, OpenAPI freshness and native node wheel build passed. No Studio or real engine was contacted. Chat remains default-off.
+
+## Chat loading contract gate (014bd)
+
+- Authenticated picker contracts now prove a selected model remains listed after its ready engine is evicted, the last measured warm-up remains visible, an unmeasured starting engine has a null estimate, and no rank/percent/ETA fields are invented. Existing native stream tests prove observed queue/loading transitions, safe load failure and Stop during cold load. Parent T023 is complete; T026 still needs browser timing and interaction acceptance.
+- Focused loading suite: 12 passed, 11 unrelated cases deselected. Changed test file passed strict mypy, Ruff and format. This test-only slice changes no production image. Chat remains default-off.
