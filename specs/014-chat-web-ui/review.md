@@ -3,6 +3,7 @@
 ## Visual URL preflight (2026-09-29)
 
 - The shared OpenAI-compatible image URL schema now maps malformed base64 into a bounded validation error, and the visual context layer refuses it again if an internal caller bypasses model validation. Contract tests show remote HTTP, file URL and malformed inline image requests return 422 before registry resolution or engine I/O; 32 focused `/v1` and context tests passed, as did Ruff and source mypy. T051 remains open for native Chat visual context and full modality contracts.
+- After this schema change, the full Python suite passed 1,136 tests with 119 conditional skips and 435 warnings in 74.40 seconds. Ruff passed, strict mypy passed on 165 API/core source files, and `uv run python -m coire_api.openapi --check` confirmed the API document is fresh. The older `uv run coire-api export-openapi --check` invocation in AGENTS.md has no installed entry point; the module command is the repository's actual freshness gate.
 
 ## History contract audit (2026-09-29)
 
