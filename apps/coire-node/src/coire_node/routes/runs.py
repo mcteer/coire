@@ -11,6 +11,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from opentelemetry import metrics, trace
 
 from coire_core.models.runs import (
+    RUN_ACTIVITY_MAX_RECORDS,
+    RunActivityPage,
     RunCollectedResult,
     RunContainerCreate,
     RunContainerObservation,
@@ -108,6 +110,19 @@ async def collect_run(run_id: uuid.UUID, request: Request) -> RunCollectedResult
     with _instrument("collect", run_id):
         try:
             return await _manager(request).collect(run_id)
+        except (RunRuntimeError, DockerAPIError) as exc:
+            raise _translate(exc) from exc
+
+
+@router.get("/{run_id}/activity", response_model=RunActivityPage)
+async def run_activity(
+    run_id: uuid.UUID,
+    request: Request,
+    after_sequence: int = Query(default=0, ge=0, le=RUN_ACTIVITY_MAX_RECORDS),
+) -> RunActivityPage:
+    with _instrument("activity", run_id):
+        try:
+            return await _manager(request).activity(run_id, after_sequence=after_sequence)
         except (RunRuntimeError, DockerAPIError) as exc:
             raise _translate(exc) from exc
 

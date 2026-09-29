@@ -56,6 +56,20 @@ class RunCommandState(StrEnum):
     FAILED = "failed"
 
 
+RUN_ACTIVITY_MAX_BYTES = 1_048_576
+RUN_ACTIVITY_MAX_RECORDS = 10_000
+RUN_ACTIVITY_TOOL_NAMES = frozenset(
+    {
+        "read_file",
+        "model_generation",
+        "apply_patch",
+        "run_tests",
+        "branch_bundle",
+        "activity_spool",
+    }
+)
+
+
 class RunActivity(BaseModel):
     """Bounded content-free tool lifecycle receipt from one user run."""
 

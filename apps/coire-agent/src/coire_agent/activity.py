@@ -12,21 +12,14 @@ from pathlib import Path
 from time import monotonic
 from typing import Literal
 
-from coire_core.models.runs import RunActivity
-
-MAX_ACTIVITY_BYTES = 1_048_576
-MAX_ACTIVITY_RECORDS = 10_000
-_MARKER_RESERVE = 512
-_TOOLS = frozenset(
-    {
-        "read_file",
-        "model_generation",
-        "apply_patch",
-        "run_tests",
-        "branch_bundle",
-        "activity_spool",
-    }
+from coire_core.models.runs import (
+    RUN_ACTIVITY_MAX_BYTES,
+    RUN_ACTIVITY_MAX_RECORDS,
+    RUN_ACTIVITY_TOOL_NAMES,
+    RunActivity,
 )
+
+_MARKER_RESERVE = 512
 
 
 class ActivitySpool:
@@ -35,10 +28,10 @@ class ActivitySpool:
         path: Path,
         run_id: uuid.UUID,
         *,
-        max_bytes: int = MAX_ACTIVITY_BYTES,
-        max_records: int = MAX_ACTIVITY_RECORDS,
+        max_bytes: int = RUN_ACTIVITY_MAX_BYTES,
+        max_records: int = RUN_ACTIVITY_MAX_RECORDS,
     ) -> None:
-        if max_bytes < 2048 or not 2 <= max_records <= MAX_ACTIVITY_RECORDS:
+        if max_bytes < 2048 or not 2 <= max_records <= RUN_ACTIVITY_MAX_RECORDS:
             raise ValueError("activity spool limits are invalid")
         self.path = path
         self.run_id = run_id
@@ -91,7 +84,7 @@ class ActivitySpool:
         duration_ms: int | None = None,
         safe_error: str | None = None,
     ) -> None:
-        if tool_name not in _TOOLS or tool_name == "activity_spool":
+        if tool_name not in RUN_ACTIVITY_TOOL_NAMES or tool_name == "activity_spool":
             raise ValueError("activity tool name is not allowed")
         if safe_error not in {None, "operation_failed"}:
             raise ValueError("activity error code is not allowed")

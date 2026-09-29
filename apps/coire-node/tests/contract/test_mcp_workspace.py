@@ -162,6 +162,8 @@ async def test_preparation_is_idempotent_and_cleanup_removes_only_this_run(tmp_p
     assert (tmp_path / first.workspace_ref / ".coire" / "request.json").is_file()
     assert (tmp_path / first.workspace_ref / "README.md").read_text() == "sample\n"
     assert (tmp_path / first.output_ref).is_dir()
+    activity = tmp_path / first.output_ref / f"activity-{run_id}.jsonl"
+    activity.write_text('{"safe":"receipt"}\n')
     assert await manager.prepare(command) == first
     changed = command.model_copy(update={"timeout_seconds": command.timeout_seconds + 1})
     with pytest.raises(WorkspaceError, match="another workspace request"):
@@ -169,6 +171,7 @@ async def test_preparation_is_idempotent_and_cleanup_removes_only_this_run(tmp_p
     await manager.cleanup(WorkspaceCleanupRequest(run_id=run_id))
     assert not (tmp_path / first.workspace_ref).exists()
     assert not (tmp_path / first.output_ref).exists()
+    assert not activity.exists()
 
 
 async def test_silent_git_process_is_killed_at_prepare_timeout(

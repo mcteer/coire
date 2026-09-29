@@ -16,6 +16,11 @@ from urllib.parse import urlparse
 
 from coire_core.models.harness import TaskClass
 from coire_core.models.runs import (
+    RUN_ACTIVITY_MAX_BYTES,
+    RUN_ACTIVITY_MAX_RECORDS,
+    RUN_ACTIVITY_TOOL_NAMES,
+    RunActivity,
+    RunActivityPage,
     RunCollectedResult,
     RunContainerCreate,
     RunContainerObservation,
@@ -32,6 +37,7 @@ MANAGED_LABEL = "com.coire.managed"
 NODE_LABEL = "com.coire.node"
 RESULT_PATH = "/workspace/.coire/result.json"
 SEPARATE_RESULT_PATH = "/coire-output/result.json"
+ACTIVITY_PATH_PREFIX = "/coire-output/activity-"
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 
 
@@ -366,6 +372,71 @@ class RunManager:
         except (tarfile.TarError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
             raise RunRuntimeError("run_result_unreadable", str(exc)) from exc
         return RunCollectedResult(run_id=run_id, result=result)
+
+    async def activity(self, run_id: uuid.UUID, *, after_sequence: int = 0) -> RunActivityPage:
+        """Read one assigned run's bounded, content-free output spool."""
+        if not 0 <= after_sequence <= RUN_ACTIVITY_MAX_RECORDS:
+            raise RunRuntimeError("run_activity_invalid", "activity cursor is invalid")
+        name = self.container_name(run_id)
+        observed = await self.docker.inspect_container(name)
+        if observed is None:
+            raise RunRuntimeError("run_container_missing", "run container disappeared")
+        labels = (observed.get("Config") or {}).get("Labels") or {}
+        if (
+            labels.get(RUN_LABEL) != str(run_id)
+            or labels.get(MANAGED_LABEL) != "true"
+            or labels.get(NODE_LABEL) != self.settings.node_name
+        ):
+            raise RunRuntimeError("run_container_missing", "run container is not assigned here")
+        if labels.get("com.coire.result-path") != SEPARATE_RESULT_PATH:
+            return RunActivityPage(run_id=run_id, available=False)
+        filename = f"activity-{run_id}.jsonl"
+        archive = await self.docker.archive(name, ACTIVITY_PATH_PREFIX + f"{run_id}.jsonl")
+        if archive is None:
+            return RunActivityPage(run_id=run_id, available=False)
+        if len(archive) > RUN_ACTIVITY_MAX_BYTES + 1_048_576:
+            raise RunRuntimeError("run_activity_unreadable", "activity archive exceeds limit")
+        try:
+            with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+                members = bundle.getmembers()
+                if len(members) != 1 or not members[0].isfile():
+                    raise ValueError("activity archive must contain one regular file")
+                if Path(members[0].name).name != filename:
+                    raise ValueError("activity archive name does not match run")
+                extracted = bundle.extractfile(members[0])
+                if extracted is None:
+                    raise ValueError("activity file is unreadable")
+                payload = extracted.read(RUN_ACTIVITY_MAX_BYTES + 1)
+                if len(payload) > RUN_ACTIVITY_MAX_BYTES:
+                    raise ValueError("activity file exceeds limit")
+            records = [RunActivity.model_validate_json(line) for line in payload.splitlines()]
+            if len(records) > RUN_ACTIVITY_MAX_RECORDS:
+                raise ValueError("activity record count exceeds limit")
+            for index, record in enumerate(records, start=1):
+                if (
+                    record.run_id != run_id
+                    or record.sequence != index
+                    or record.tool_name not in RUN_ACTIVITY_TOOL_NAMES
+                ):
+                    raise ValueError("activity record identity or sequence is invalid")
+            markers = [record for record in records if record.tool_name == "activity_spool"]
+            if markers and (
+                len(markers) != 1
+                or records[-1] is not markers[0]
+                or markers[0].state != "failed"
+                or markers[0].safe_error != "limit_reached"
+            ):
+                raise ValueError("activity overflow marker is invalid")
+        except (tarfile.TarError, ValueError, OSError) as exc:
+            raise RunRuntimeError("run_activity_unreadable", "activity spool is invalid") from exc
+        remaining = [record for record in records if record.sequence > after_sequence]
+        page = remaining[:100]
+        return RunActivityPage(
+            run_id=run_id,
+            data=page,
+            next_sequence=page[-1].sequence if len(remaining) > 100 else None,
+            truncated=bool(markers),
+        )
 
     async def remove(self, run_id: uuid.UUID, *, kill: bool = False) -> None:
         name = self.container_name(run_id)
