@@ -31,7 +31,7 @@ MESH_SUBNET = IPv4Network("192.168.100.0/24")
 class WorkspaceVisualInput(BaseModel):
     """API-verified PNG bytes staged under a generated asset ID on one Studio."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     asset_id: uuid.UUID
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
@@ -61,7 +61,7 @@ class WorkspaceVisualInput(BaseModel):
 class WorkspacePrepareRequest(BaseModel):
     """Scheduler-authored, bounded Studio workspace preparation command."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     run_id: uuid.UUID
     source: WorkspaceSource

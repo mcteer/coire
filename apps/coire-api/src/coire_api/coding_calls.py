@@ -33,6 +33,7 @@ from coire_core.models.mcp import (
     ResearchResult,
     WorkspaceSource,
 )
+from coire_core.models.node import WorkspaceVisualInput
 from coire_core.models.runs import (
     TERMINAL_RUN_STATES,
     AgentRunState,
@@ -46,6 +47,7 @@ class CodingRequest:
     tool: McpToolName
     input: ResearchInput | PlanInput | ApplyInput
     task: str
+    visual_inputs: tuple[WorkspaceVisualInput, ...] = ()
 
 
 async def create_coding_call(
@@ -66,7 +68,18 @@ async def create_coding_call(
         owner_user_id=owner_user_id,
         credential_id=credential_id,
         source=request.input.source.model_dump(mode="json"),
-        input=request.input.model_dump(mode="json"),
+        input={
+            **request.input.model_dump(mode="json"),
+            **(
+                {
+                    "coire_visual_inputs": [
+                        item.model_dump(mode="json") for item in request.visual_inputs
+                    ]
+                }
+                if request.visual_inputs
+                else {}
+            ),
+        },
         task=request.task,
         model_id=model_id,
         state=McpCallState.ACCEPTED,
@@ -145,8 +158,8 @@ async def prepare_chat_coding_request(
     )
     if workspace is None:
         raise ChatNotFound()
-    if body.attachments:
-        raise ChatConflict("coding attachments require visual input support")
+    if any(selection.mode != "visual" for selection in body.attachments):
+        raise ChatConflict("coding attachments must use visual mode")
     if body.action == "research":
         if body.plan_id is not None or body.research_id is not None:
             raise ChatConflict("research cannot reference a prior coding result")

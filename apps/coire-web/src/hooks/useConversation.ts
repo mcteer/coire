@@ -56,7 +56,9 @@ export function useConversation(ownerId: string) {
   const visualSelections = selections.filter((item) => item.mode === "visual");
   const visualUnits = visualSelections.reduce((count, item) => count + (item.pages?.length || 1), 0);
   const selectionIssue =
-    visualSelections.length > 0 && (mode === "code" || !selectedModel?.accepts_images)
+    mode === "code" && selections.some((item) => item.mode !== "visual")
+      ? "Coding actions use visual files. Change this selection to visual or remove it."
+      : visualSelections.length > 0 && !selectedModel?.accepts_images
       ? "Choose a verified image-capable model, or remove visual selections."
       : visualSelections.length > 0 && visualUnits > (selectedModel?.max_images ?? 0)
         ? "The selected model accepts fewer images or pages. Remove some visual selections."
@@ -450,7 +452,7 @@ export function useConversation(ownerId: string) {
               model_id: selectedId,
               content: input,
               action: mode === "chat" ? "chat" : action,
-              attachments: mode === "chat" ? selections : [],
+              attachments: selections,
               ...(mode === "code"
                 ? {
                     workspace_id: workspaceId,

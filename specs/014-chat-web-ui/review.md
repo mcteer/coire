@@ -1,5 +1,11 @@
 # Feature 014 implementation review
 
+## Owner-bound visual coding inputs (2026-09-29)
+
+- Code-mode Chat now accepts visual selections only with a verified VLM. Admission reads ready previews for the same owner and conversation through the existing worker manifest and byte verifier, applies measured image count/byte/pixel limits, and stores a bounded immutable copy in the private coding call. The run executor sends typed image references plus digest-bound bytes to the assigned Studio node. The node writes fixed UUID PNG files under a separate read-only control mount; the harness preserves them on retry and emits visual parts through the shared gateway. Successful, failed, timed-out and cancelled call terminals remove the copied bytes from the database; node workspace cleanup removes its staged files. The browser exposes ready file selections in code mode, refuses text selections, and sends visual choices only with an image-capable model.
+- Parent T058 and T059 are complete through API owner/digest/limit tests, node command/staging/read-only mount tests, harness retry and unverified-write tests, and a code-mode browser send test. The node tests live in `test_mcp_workspace.py`, the existing shared workspace contract module, rather than a separate `test_visual_workspace.py`. Live visual coding against a tiny Studio model and end-to-end deletion timing remain T044/T065/T066/T075.
+- The final full Python suite passed 1,168 tests with 129 conditional skips after the added limit/privacy assertions. Strict mypy passed on 233 core/API/node/agent source files, repository Ruff/format and OpenAPI freshness passed, and focused agent/API/node visual tests passed 11. The web suite passed 92 tests, ESLint, TypeScript and Vite build. No live model was started for this slice.
+
 ## Coding control input mount (2026-09-29)
 
 - The Studio node now preserves the generated `.coire/request.json` as non-writable during workspace permission setup. MCP run containers mount that control directory separately read-only, including Apply runs that need a writable repository. Missing or symlinked control input refuses container creation. Eleven focused node tests passed. This closes the read-only control-input portion of T058; visual asset staging, gateway propagation and T059 remain open.

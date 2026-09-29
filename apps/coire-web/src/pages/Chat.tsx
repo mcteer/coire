@@ -170,7 +170,7 @@ function ChatSession({ ownerId }: { ownerId: string }) {
               disabled={chat.active || Boolean(chat.conversation?.active_turn_id)}
             />
           )}
-          {chat.mode === "chat" && (
+          {(chat.mode === "chat" || chat.mode === "code") && (
             <AttachmentList
               conversationId={chat.conversation?.id ?? null}
               attachments={chat.attachments}

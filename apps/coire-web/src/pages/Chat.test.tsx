@@ -56,7 +56,7 @@ test("code mode submits a repository research run with an explicit source", asyn
   const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
     if (url === "/api/v1/chat/models") return Promise.resolve(json({ data: [model] }));
     if (url.startsWith("/api/v1/chat/models?")) return Promise.resolve(json({ data: [model] }));
-    if (url === "/api/v1/chat/conversations" && options?.method === "GET")
+    if (url.startsWith("/api/v1/chat/conversations?"))
       return Promise.resolve(json({ data: [], next_cursor: null }));
     if (url === "/api/v1/workspaces")
       return Promise.resolve(
@@ -138,6 +138,73 @@ test("code mode submits a repository research run with an explicit source", asyn
     source_revision: "main",
     content: "Find entry points",
   });
+});
+
+test("code mode sends a ready visual selection with an image-capable model", async () => {
+  const workspaceId = "00000000-0000-0000-0000-000000000020";
+  const fileId = "00000000-0000-0000-0000-000000000088";
+  const codingConversation = { ...conversation, mode: "code", title: "Image research" };
+  const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+    if (url.startsWith("/api/v1/chat/models"))
+      return Promise.resolve(json({ data: [{ ...model, accepts_images: true, max_images: 1 }] }));
+    if (url === "/api/v1/workspaces")
+      return Promise.resolve(
+        json([{ id: workspaceId, repository_url: "https://github.com/org/repo.git" }]),
+      );
+    if (url.startsWith("/api/v1/chat/conversations?"))
+      return Promise.resolve(json({ data: [codingConversation], next_cursor: null }));
+    if (url.startsWith(`/api/v1/chat/conversations/${conversationId}?`))
+      return Promise.resolve(
+        json({
+          conversation: codingConversation,
+          messages: [],
+          turns: [],
+          event_cursor: 0,
+          attachments: [
+            {
+              id: fileId,
+              owner_id: conversation.owner_id,
+              conversation_id: conversationId,
+              filename: "red.png",
+              detected_type: "image/png",
+              original_bytes: 80,
+              original_sha256: "a".repeat(64),
+              derived_bytes: 80,
+              state: "ready",
+              created_at: conversation.created_at,
+              updated_at: conversation.updated_at,
+            },
+          ],
+        }),
+      );
+    if (url.endsWith("/turns") && options?.method === "POST")
+      return Promise.resolve(stream(""));
+    if (url.endsWith("/events")) return Promise.resolve(stream(""));
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Image research/ }));
+  await screen.findByRole("combobox", { name: "Registered repository" });
+  fireEvent.click(screen.getByRole("checkbox", { name: "red.png" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), {
+    target: { value: "Inspect the screenshot" },
+  });
+  expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, options]) => String(url).endsWith("/turns") && options?.method === "POST",
+      ),
+    ).toBe(true),
+  );
+  const sent = fetchMock.mock.calls.find(
+    ([url, options]) => String(url).endsWith("/turns") && options?.method === "POST",
+  );
+  expect(JSON.parse(String(sent?.[1]?.body)).attachments).toEqual([
+    { file_id: fileId, mode: "visual" },
+  ]);
 });
 
 test("Apply requires a chosen plan and inherits its source revision", async () => {

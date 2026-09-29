@@ -25,9 +25,10 @@ from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.polling import PollBackoff, wait_or_stop
 from coire_api.run_tokens import rotate_run_token
 from coire_api.workspaces import resolve_source
+from coire_core.models.conversation import ImagePart
 from coire_core.models.harness import HarnessRunRequest, ProfileName, TaskClass
 from coire_core.models.mcp import WorkspaceSource
-from coire_core.models.node import WorkspacePrepareRequest
+from coire_core.models.node import WorkspacePrepareRequest, WorkspaceVisualInput
 from coire_core.models.registry import CapabilityProfile
 from coire_core.models.runs import (
     AgentRunState,
@@ -44,6 +45,13 @@ tracer = trace.get_tracer("coire.api.runs")
 meter = metrics.get_meter("coire.api.runs")
 commands_total = meter.create_counter("coire_run_commands_total", unit="1")
 kill_latency = meter.create_histogram("coire_run_kill_queue_latency_seconds", unit="s")
+
+
+def _coding_visual_inputs(call: McpCallRow) -> list[WorkspaceVisualInput]:
+    raw = call.input.get("coire_visual_inputs", []) if isinstance(call.input, dict) else []
+    if not isinstance(raw, list):
+        raise RuntimeError("MCP visual control inputs are invalid")
+    return [WorkspaceVisualInput.model_validate(value) for value in raw]
 
 
 class RunCommandExecutor:
@@ -283,6 +291,7 @@ class RunCommandExecutor:
                                 or model is None
                             ):
                                 raise RuntimeError("MCP run preparation identity is invalid")
+                            visual_inputs = _coding_visual_inputs(mcp_call)
                             prepare = WorkspacePrepareRequest(
                                 run_id=run_id,
                                 source=await resolve_source(
@@ -299,11 +308,21 @@ class RunCommandExecutor:
                                     coding_mode=mcp_call.tool,
                                     coding_call_id=mcp_call.id,
                                     task=mcp_call.task,
+                                    visual_inputs=[
+                                        ImagePart(
+                                            asset_id=image.asset_id,
+                                            media_type="image/png",
+                                            width=image.width,
+                                            height=image.height,
+                                        )
+                                        for image in visual_inputs
+                                    ],
                                     capability_profile=CapabilityProfile.model_validate(
                                         model.capability_profile or {}
                                     ),
                                     context_window=model.context_window or 4096,
                                 ),
+                                visual_inputs=visual_inputs,
                             )
                         prepared = await client.prepare_workspace(node_name, prepare)
                         if prepared.run_id != run_id:

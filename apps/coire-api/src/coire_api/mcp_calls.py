@@ -134,6 +134,8 @@ async def store_result(
     if row.tool is not result_tool:
         raise McpCallConflict("result type does not match tool")
     row.result = result.model_dump(mode="json")
+    if isinstance(row.input, dict) and "coire_visual_inputs" in row.input:
+        row.input = {key: value for key, value in row.input.items() if key != "coire_visual_inputs"}
     row.state = McpCallState.SUCCEEDED
     row.finished_at = datetime.now(UTC)
     await session.flush()
@@ -147,6 +149,8 @@ async def fail_call(
     if row.state is McpCallState.SUCCEEDED:
         raise McpCallConflict("successful call cannot fail")
     row.state = state
+    if isinstance(row.input, dict) and "coire_visual_inputs" in row.input:
+        row.input = {key: value for key, value in row.input.items() if key != "coire_visual_inputs"}
     row.failure_code = code[:64]
     row.finished_at = datetime.now(UTC)
     await session.flush()

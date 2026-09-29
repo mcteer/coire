@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
 import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import suppress
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Literal
 
 from fastapi import Request
@@ -18,11 +22,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api import mcp_calls, runs
 from coire_api.audit import write_principal_audit
 from coire_api.auth import Principal
+from coire_api.chat.processing import InvalidAsset, read_private_preview
 from coire_api.chat.telemetry import stop_seconds, turns_total
 from coire_api.chat.turns import Admission, project_turn, request_hash
+from coire_api.chat.visual_context import _selected_assets
 from coire_api.coding_calls import create_coding_call, prepare_chat_coding_request
 from coire_api.db import (
     AgentRunRow,
+    ChatAttachmentRow,
     ChatConversationRow,
     ChatEventRow,
     ChatMessageRow,
@@ -48,6 +55,8 @@ from coire_core.models.mcp import (
     PlanResult,
     ResearchResult,
 )
+from coire_core.models.node import WorkspaceVisualInput
+from coire_core.models.registry import EngineBackend, VisualCapability
 from coire_core.models.runs import AgentRunCreate, AgentRunState, RunLimits
 from coire_core.settings import Settings
 
@@ -56,6 +65,64 @@ tracer = trace.get_tracer("coire.api.chat.coding")
 coding_actions_total = metrics.get_meter("coire.api.chat.coding").create_counter(
     "coire_chat_coding_actions_total", unit="1"
 )
+
+
+async def _coding_visual_inputs(
+    session: AsyncSession,
+    principal: Principal,
+    conversation_id: uuid.UUID,
+    body: ChatTurnCreate,
+    model: ModelRow,
+    settings: Settings,
+) -> tuple[WorkspaceVisualInput, ...]:
+    if not body.attachments:
+        return ()
+    if model.backend is not EngineBackend.MLX_VLM or model.visual_capability is None:
+        raise ChatConflict("selected coding model cannot accept visual files")
+    visual = VisualCapability.model_validate(model.visual_capability)
+    if not visual.verified:
+        raise ChatConflict("selected coding model has no verified visual input")
+    assert principal.user_id is not None
+    supplied: list[WorkspaceVisualInput] = []
+    total_bytes = 0
+    for selection in body.attachments:
+        attachment = await session.get(ChatAttachmentRow, selection.file_id)
+        if (
+            attachment is None
+            or attachment.owner_user_id != principal.user_id
+            or attachment.conversation_id != conversation_id
+            or attachment.deleted_at is not None
+        ):
+            raise ChatNotFound()
+        if attachment.state != "ready":
+            raise ChatConflict("file is not ready; wait for processing")
+        for asset in _selected_assets(attachment, selection):
+            if len(supplied) >= visual.max_images:
+                raise ChatConflict("too many images for the selected coding model")
+            if (
+                asset.bytes > visual.max_encoded_bytes
+                or asset.width * asset.height > visual.max_image_pixels
+            ):
+                raise ChatConflict("image exceeds the coding model's measured visual limits")
+            try:
+                data = await asyncio.to_thread(
+                    read_private_preview, attachment, asset.id, Path(settings.chat_derived_root)
+                )
+            except InvalidAsset as exc:
+                raise ChatConflict("file preview unavailable") from exc
+            total_bytes += len(data)
+            if total_bytes > 32 * 1024 * 1024:
+                raise ChatConflict("coding visual inputs exceed the run byte limit")
+            supplied.append(
+                WorkspaceVisualInput(
+                    asset_id=asset.id,
+                    sha256=hashlib.sha256(data).hexdigest(),
+                    width=asset.width,
+                    height=asset.height,
+                    data_base64=base64.b64encode(data).decode("ascii"),
+                )
+            )
+    return tuple(supplied)
 
 
 async def coding_turn_stream(
@@ -137,6 +204,12 @@ async def admit_coding_turn(
     if model is None or not chat_model_eligible(model, principal):
         raise ChatNotFound()
     coding = await prepare_chat_coding_request(session, principal, body)
+    coding = replace(
+        coding,
+        visual_inputs=await _coding_visual_inputs(
+            session, principal, conversation_id, body, model, settings
+        ),
+    )
     assert principal.user_id is not None
     call = await create_coding_call(
         session,
@@ -183,8 +256,8 @@ async def admit_coding_turn(
                 reasoning="",
                 model_id=model.id,
                 model_display_name=model.display_name,
-                attachment_ids=[],
-                attachment_selections=[],
+                attachment_ids=[str(item.file_id) for item in body.attachments],
+                attachment_selections=[item.model_dump(mode="json") for item in body.attachments],
                 created_at=now,
             ),
             ChatMessageRow(

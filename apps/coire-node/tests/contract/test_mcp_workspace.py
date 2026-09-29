@@ -211,8 +211,9 @@ async def test_visual_control_input_is_verified_and_staged_read_only(tmp_path: P
     assert staged.stat().st_mode & 0o222 == 0
     assert await manager.prepare(command) == prepared
     payload["visual_inputs"][0]["sha256"] = "0" * 64
-    with pytest.raises(ValueError, match="manifest"):
+    with pytest.raises(ValueError, match="manifest") as invalid:
         WorkspacePrepareRequest.model_validate(payload)
+    assert payload["visual_inputs"][0]["data_base64"] not in str(invalid.value)
     payload["visual_inputs"] = []
     with pytest.raises(ValueError, match="do not match"):
         WorkspacePrepareRequest.model_validate(payload)
