@@ -32,7 +32,7 @@ from coire_api.db import (
     UserRow,
     session_scope,
 )
-from coire_api.gateway.execution import track_stream
+from coire_api.gateway.execution import cancel_pending_load, track_stream
 from coire_api.gateway.loading import load_model
 from coire_api.gateway.proxy import StreamTiming, stream
 from coire_api.gateway.resolution import ResolvedModel, resolve_model
@@ -318,31 +318,35 @@ async def native_stream(
                     )
                 )
                 last_keepalive = monotonic()
-                while not task.done():
-                    try:
-                        await asyncio.wait_for(
-                            asyncio.shield(task),
-                            timeout=min(settings.gateway_keepalive_interval_s, 0.5),
-                        )
-                    except TimeoutError:
-                        if await _stop_requested(admission.turn.id):
-                            stop_signal.set()
-                            task.cancel()
-                            with suppress(asyncio.CancelledError):
-                                await task
-                            raise ChatStopRequested() from None
-                        await _ensure_current_access(principal, admission.turn.model_id)
-                        last_access_check = monotonic()
-                        observed = await _observed_load_state(admission.turn.model_id)
-                        if observed is not None and observed != last_load_state:
-                            last_load_state = observed
-                            changed = await persist_native_event(
-                                "status", admission, state=observed, settings=settings
+                async with cancel_pending_load(task):
+                    while not task.done():
+                        try:
+                            await asyncio.wait_for(
+                                asyncio.shield(task),
+                                timeout=min(settings.gateway_keepalive_interval_s, 0.5),
                             )
-                            yield encode_event(changed)
-                        if monotonic() - last_keepalive >= settings.gateway_keepalive_interval_s:
-                            last_keepalive = monotonic()
-                            yield b": coire model loading\n\n"
+                        except TimeoutError:
+                            if await _stop_requested(admission.turn.id):
+                                stop_signal.set()
+                                task.cancel()
+                                with suppress(asyncio.CancelledError):
+                                    await task
+                                raise ChatStopRequested() from None
+                            await _ensure_current_access(principal, admission.turn.model_id)
+                            last_access_check = monotonic()
+                            observed = await _observed_load_state(admission.turn.model_id)
+                            if observed is not None and observed != last_load_state:
+                                last_load_state = observed
+                                changed = await persist_native_event(
+                                    "status", admission, state=observed, settings=settings
+                                )
+                                yield encode_event(changed)
+                            if (
+                                monotonic() - last_keepalive
+                                >= settings.gateway_keepalive_interval_s
+                            ):
+                                last_keepalive = monotonic()
+                                yield b": coire model loading\n\n"
                 await task
                 if await _stop_requested(admission.turn.id):
                     stop_signal.set()

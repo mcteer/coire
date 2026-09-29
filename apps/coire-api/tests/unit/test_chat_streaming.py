@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
@@ -111,6 +112,49 @@ async def test_cold_turn_reports_observed_queue_before_running(
         )
     ]  # type: ignore[arg-type,call-arg]
     assert statuses == ["loading", "queued", "running"]
+
+
+async def test_closing_native_cold_stream_cancels_pending_load(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    cancelled = asyncio.Event()
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "_stop_requested", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        streaming, "_resolve", AsyncMock(return_value=_resolved(admission, cold=True))
+    )
+    monkeypatch.setattr(streaming, "_measured_warmup_seconds", AsyncMock(return_value=None))
+    monkeypatch.setattr(streaming, "_observed_load_state", AsyncMock(return_value=None))
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+
+    async def load(_model_id: uuid.UUID, _settings: Settings) -> None:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        return _saved_event(admission, kind, 2, **kwargs)
+
+    monkeypatch.setattr(streaming, "load_model", load)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent", gateway_keepalive_interval_s=0.01
+    )
+    source = native_stream(admission, principal, request, settings)  # type: ignore[arg-type]
+    assert b"turn.accepted" in await anext(source)
+    assert b"turn.status" in await anext(source)
+    assert await anext(source) == b": coire model loading\n\n"
+    await cast(AsyncGenerator[bytes], source).aclose()
+    assert cancelled.is_set()
 
 
 def _admission() -> Admission:

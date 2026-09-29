@@ -346,3 +346,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Owner deletion now expires any branch artifact linked through a Chat coding turn before committing the tombstone. The preexisting MCP metadata and download lookup refuses a tombstoned Chat conversation as well, including before its artifact expiry update is observed. Ordinary MCP artifacts retain their owner and expiry checks. Parent T042 remains open for the Chat-owned artifact route and the coding adapter.
 - Focused contracts passed 7 tests. Full Python suite: 1002 passed, 117 conditional skipped. Strict mypy on 160 API/core source files, changed-file Ruff/format and OpenAPI freshness passed. The local arm64 API image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-api-014bh.spdx.json` (local evidence). Chat remains default-off.
+
+## Cold stream load-task cleanup (014bi)
+
+- The shared gateway execution context cancels and drains a pending load when an OpenAI, Anthropic or native Chat cold stream closes during keepalive. A completed load continues through its existing proxy and usage path. Parent T012 remains open for canonical text adapter and full admission extraction.
+- Full Python suite: 1004 passed, 117 conditional skipped; the subsequently added native-close test and 46 focused stream regressions also passed. Strict mypy on 161 API/core and focused execution test source files, changed-file Ruff/format and OpenAPI freshness passed. The local arm64 API image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-api-014bi.spdx.json` (local evidence). Chat remains default-off.

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from time import perf_counter
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -193,3 +194,28 @@ async def test_disconnect_closes_upstream_before_return(monkeypatch: pytest.Monk
     request = SimpleNamespace(is_disconnected=AsyncMock(return_value=True))
     assert [chunk async for chunk in track_stream(source(), usage, request)] == []  # type: ignore[arg-type]
     assert closed
+
+
+@pytest.mark.parametrize("protocol", ["openai", "anthropic"])
+async def test_cold_stream_close_cancels_pending_load(
+    monkeypatch: pytest.MonkeyPatch, protocol: str
+) -> None:
+    from coire_api.routes import v1
+
+    cancelled = asyncio.Event()
+
+    async def never_ready(*_args: object, **_kwargs: object) -> None:
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.set()
+
+    monkeypatch.setattr(v1, "_load_and_resolve", never_ready)
+    body = SimpleNamespace(model=uuid.uuid4(), coire_affinity_node=None)
+    settings = SimpleNamespace(gateway_keepalive_interval_s=0.01)
+    usage = UsageTracker(ANONYMOUS, str(body.model), GatewayProtocol.OPENAI)
+    cold = v1._openai_cold_stream if protocol == "openai" else v1._anthropic_cold_stream
+    source = cold(body, ANONYMOUS, object(), settings, usage, object(), StreamTiming())  # type: ignore[arg-type]
+    assert await anext(source) == b": coire model loading\n\n"
+    await cast(AsyncGenerator[bytes], source).aclose()
+    assert cancelled.is_set()

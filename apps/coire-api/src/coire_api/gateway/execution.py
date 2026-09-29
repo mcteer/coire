@@ -11,7 +11,7 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from time import monotonic, perf_counter
 
 from fastapi import Request
@@ -25,6 +25,17 @@ from coire_api.gateway.usage import UsageTracker
 from coire_core.models.gateway import UsageOutcome
 
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def cancel_pending_load(task: asyncio.Task[object]) -> AsyncIterator[None]:
+    """Do not leave a cold-load workflow running after its client stream closes."""
+    try:
+        yield
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 async def finish_detached(usage: UsageTracker, outcome: UsageOutcome, *, failure_code: str) -> None:

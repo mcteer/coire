@@ -28,6 +28,9 @@ from coire_api.gateway.context import (
     enforce_context,
 )
 from coire_api.gateway.execution import (
+    cancel_pending_load,
+)
+from coire_api.gateway.execution import (
     rewrite_openai_model as _rewrite_openai_model,
 )
 from coire_api.gateway.execution import (
@@ -150,14 +153,15 @@ async def _openai_cold_stream(
     task = asyncio.create_task(
         _load_and_resolve(body.model, principal, session, settings, body.coire_affinity_node)
     )
-    while not task.done():
-        try:
-            resolved = await asyncio.wait_for(
-                asyncio.shield(task), timeout=settings.gateway_keepalive_interval_s
-            )
-            break
-        except TimeoutError:
-            yield b": coire model loading\n\n"
+    async with cancel_pending_load(task):
+        while not task.done():
+            try:
+                resolved = await asyncio.wait_for(
+                    asyncio.shield(task), timeout=settings.gateway_keepalive_interval_s
+                )
+                break
+            except TimeoutError:
+                yield b": coire model loading\n\n"
     try:
         resolved = await task
         if resolved.engine_url is None or resolved.model_path is None:
@@ -196,14 +200,15 @@ async def _anthropic_cold_stream(
     task = asyncio.create_task(
         _load_and_resolve(body.model, principal, session, settings, body.coire_affinity_node)
     )
-    while not task.done():
-        try:
-            resolved = await asyncio.wait_for(
-                asyncio.shield(task), timeout=settings.gateway_keepalive_interval_s
-            )
-            break
-        except TimeoutError:
-            yield b": coire model loading\n\n"
+    async with cancel_pending_load(task):
+        while not task.done():
+            try:
+                resolved = await asyncio.wait_for(
+                    asyncio.shield(task), timeout=settings.gateway_keepalive_interval_s
+                )
+                break
+            except TimeoutError:
+                yield b": coire model loading\n\n"
     try:
         resolved = await task
         if resolved.engine_url is None or resolved.model_path is None:
