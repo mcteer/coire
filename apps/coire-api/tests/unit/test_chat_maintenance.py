@@ -210,3 +210,26 @@ async def test_oldest_pending_purge_metric_tracks_overdue_age(
     age = await maintenance.record_oldest_pending_purge()
     assert age > 24 * 3600
     assert recorded == [age]
+
+
+async def test_active_turn_metric_samples_committed_plain_chat_states(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    statements: list[str] = []
+    recorded: list[int] = []
+
+    class Session:
+        async def scalar(self, statement: object) -> int:
+            statements.append(str(statement))
+            return 3
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(maintenance, "session_scope", sessions)
+    monkeypatch.setattr(maintenance, "active_turns", SimpleNamespace(set=recorded.append))
+    assert await maintenance.record_active_turns() == 3
+    assert recorded == [3]
+    assert "chat_turns.action" in statements[0]
+    assert "chat_turns.state IN" in statements[0]

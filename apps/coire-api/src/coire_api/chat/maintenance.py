@@ -15,7 +15,7 @@ from typing import Literal
 from sqlalchemy import and_, delete, func, or_, select, update
 
 from coire_api.chat.processing import publish_processed_files
-from coire_api.chat.telemetry import purge_oldest_seconds, requests_total, tracer
+from coire_api.chat.telemetry import active_turns, purge_oldest_seconds, requests_total, tracer
 from coire_api.db import (
     ChatAttachmentRow,
     ChatConversationRow,
@@ -480,6 +480,20 @@ async def record_oldest_pending_purge() -> float:
     return age
 
 
+async def record_active_turns() -> int:
+    """Sample committed active turns, including ones owned by another API process."""
+
+    async with session_scope() as session:
+        count = await session.scalar(
+            select(func.count(ChatTurnRow.id)).where(
+                ChatTurnRow.action == "chat", ChatTurnRow.state.in_(ACTIVE_STATES)
+            )
+        )
+    total = int(count or 0)
+    active_turns.set(total)
+    return total
+
+
 class ChatMaintenance:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -512,6 +526,7 @@ class ChatMaintenance:
                     )
                 await compact_expired_events()
                 await record_oldest_pending_purge()
+                await record_active_turns()
             except Exception as exc:
                 requests_total.add(1, {"operation": "maintenance", "outcome": "failed"})
                 logger.error("chat maintenance pass failed error_type=%s", type(exc).__name__)

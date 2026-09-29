@@ -1,8 +1,12 @@
 # Feature 014 implementation review
 
+## Persisted active-turn gauge (2026-09-29)
+
+- API maintenance now samples the committed count of plain Chat turns in accepted/queued/loading/running/stop-requested states every five seconds. The gauge survives API restart and includes turns owned by another API process; the dashboard uses `max` across processes. Nine focused maintenance tests passed; source mypy, Ruff/format, dashboard JSON and diff checks passed. A standalone mypy invocation on the pre-existing test module still reports its old unreachable assertion at line 164; repository strict source mypy does not include tests. Parent T068 remains open for coding, node and agent correlation coverage.
+
 ## Native Chat terminal and refusal telemetry (2026-09-29)
 
-- Persisted native Chat terminals now increment `coire_chat_turns_total{mode="chat",outcome}` exactly after the database event commits; a durable Stop request records its acknowledgement time in `coire_chat_stop_seconds`. Owner upload refusals increment `coire_chat_upload_rejections_total{reason}` with only the fixed domain error code. The Chat dashboard plots all three; `CoireChatStopSlow` alerts on a sustained p95 above five seconds. A route contract asserts the upload metric has no owner, file or conversation label. Full Python suite: 1,144 passed, 126 conditional skipped; strict mypy, Ruff/format, OpenAPI freshness and `git diff --check` passed. The dashboard JSON/YAML parsed and the pinned local Prometheus image's `promtool` accepted all five rules. Parent T068 stays open for the specified active-turn gauge and coding/node/agent correlation metrics.
+- Persisted native Chat terminals now increment `coire_chat_turns_total{mode="chat",outcome}` exactly after the database event commits; a durable Stop request records its acknowledgement time in `coire_chat_stop_seconds`. Owner upload refusals increment `coire_chat_upload_rejections_total{reason}` with only the fixed domain error code. The Chat dashboard plots all three; `CoireChatStopSlow` alerts on a sustained p95 above five seconds. A route contract asserts the upload metric has no owner, file or conversation label. Full Python suite: 1,144 passed, 126 conditional skipped; strict mypy, Ruff/format, OpenAPI freshness and `git diff --check` passed. The dashboard JSON/YAML parsed and the pinned local Prometheus image's `promtool` accepted all five rules. Parent T068 stays open for the remaining coding/node/agent correlation metrics.
 
 ## Context limit remedy in browser Chat (2026-09-29)
 

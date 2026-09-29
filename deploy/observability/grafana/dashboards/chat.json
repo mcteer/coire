@@ -129,6 +129,22 @@
       ],
       "title": "Private upload refusals",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 64},
+      "id": 9,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "max(coire_chat_active_turns)",
+          "legendFormat": "active native Chat turns",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Chat turns from persisted state",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

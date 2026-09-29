@@ -15,6 +15,11 @@ turns_total = metrics.get_meter("coire.api.chat").create_counter(
     unit="1",
     description="Persisted native Chat terminal outcomes by fixed mode",
 )
+active_turns = metrics.get_meter("coire.api.chat").create_gauge(
+    "coire_chat_active_turns",
+    unit="1",
+    description="Persisted active native Chat turns observed by API maintenance",
+)
 stop_seconds = metrics.get_meter("coire.api.chat").create_histogram(
     "coire_chat_stop_seconds",
     unit="s",
