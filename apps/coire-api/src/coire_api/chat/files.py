@@ -28,7 +28,12 @@ from coire_api.db import (
 )
 from coire_core.errors import ChatConflict, ChatNotFound, ChatQuotaExceeded
 from coire_core.models.chat import ChatAttachmentChanged, ChatEvent
-from coire_core.models.files import ChatAttachment, ChatUploadMetadata
+from coire_core.models.files import (
+    ChatAttachment,
+    ChatPreviewAsset,
+    ChatUploadMetadata,
+    FileProcessResult,
+)
 from coire_core.settings import Settings
 
 ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -104,6 +109,28 @@ async def stage_original(file: UploadFile, root: Path, max_bytes: int) -> Staged
 
 
 def project_attachment(row: ChatAttachmentRow) -> ChatAttachment:
+    previews: list[ChatPreviewAsset] = []
+    if row.state == "ready" and row.asset_manifest is not None:
+        try:
+            result = FileProcessResult.model_validate(row.asset_manifest["result"])
+            if (
+                row.asset_manifest["job_id"] != result.job_id
+                or result.input_id != row.id
+                or any(asset.media_type != "image/png" for asset in result.assets)
+            ):
+                raise ValueError("preview identity mismatch")
+            previews = [
+                ChatPreviewAsset(
+                    id=asset.id,
+                    media_type="image/png",
+                    width=asset.width,
+                    height=asset.height,
+                    page=asset.page,
+                )
+                for asset in result.assets
+            ]
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ChatConflict("file preview unavailable") from exc
     return ChatAttachment(
         id=row.id,
         owner_id=row.owner_user_id,
@@ -115,6 +142,7 @@ def project_attachment(row: ChatAttachmentRow) -> ChatAttachment:
         derived_bytes=row.derived_bytes,
         state=cast(Literal["uploading", "processing", "ready", "failed", "deleting"], row.state),
         page_count=row.page_count,
+        previews=previews,
         safe_error=row.safe_error,
         created_at=row.created_at,
         updated_at=row.updated_at,

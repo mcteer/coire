@@ -27,7 +27,12 @@ from coire_api.db import (
     session_scope,
 )
 from coire_core.models.chat import ChatAttachmentChanged, ChatEvent
-from coire_core.models.files import FileProcessAsset, FileProcessRequest, FileProcessResult
+from coire_core.models.files import (
+    FileProcessAsset,
+    FileProcessRequest,
+    FileProcessResult,
+    is_ulid,
+)
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -43,7 +48,7 @@ class InvalidAsset(ValueError):
     """Stored output is missing or differs from its immutable worker manifest."""
 
 
-def verify_asset(root: Path, job_id: str, asset: FileProcessAsset) -> None:
+def verify_asset(root: Path, job_id: str, asset: FileProcessAsset) -> bytes:
     """Read through no-follow generated IDs and compare bounded bytes and PNG dimensions."""
 
     if asset.media_type != "image/png":
@@ -75,6 +80,30 @@ def verify_asset(root: Path, job_id: str, asset: FileProcessAsset) -> None:
         or int.from_bytes(data[20:24], "big") != asset.height
     ):
         raise InvalidAsset("asset dimensions mismatch")
+    return data
+
+
+def read_private_preview(attachment: ChatAttachmentRow, asset_id: uuid.UUID, root: Path) -> bytes:
+    """Resolve only an owned ready attachment's committed generated PNG asset."""
+
+    if attachment.state != "ready" or attachment.deleted_at is not None:
+        raise InvalidAsset("preview unavailable")
+    manifest = attachment.asset_manifest or {}
+    try:
+        job_id = manifest["job_id"]
+        if not isinstance(job_id, str) or not is_ulid(job_id):
+            raise InvalidAsset("preview identity mismatch")
+        result = FileProcessResult.model_validate(manifest["result"])
+        if (
+            result.job_id != job_id
+            or result.input_id != attachment.id
+            or result.source_sha256 != attachment.original_sha256
+        ):
+            raise InvalidAsset("preview identity mismatch")
+        asset = next(asset for asset in result.assets if asset.id == asset_id)
+    except (KeyError, StopIteration, TypeError, ValueError) as exc:
+        raise InvalidAsset("preview unavailable") from exc
+    return verify_asset(root, job_id, asset)
 
 
 def _append_event(

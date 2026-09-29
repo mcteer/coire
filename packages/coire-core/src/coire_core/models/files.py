@@ -82,6 +82,16 @@ class ChatAttachmentSelection(BaseModel):
         return self
 
 
+class ChatPreviewAsset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    media_type: Literal["image/png"] = "image/png"
+    width: int = Field(ge=1, le=2048)
+    height: int = Field(ge=1, le=2048)
+    page: int | None = Field(default=None, ge=1, le=50)
+
+
 class ChatAttachment(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -95,6 +105,7 @@ class ChatAttachment(BaseModel):
     derived_bytes: int = Field(default=0, ge=0, le=32 * 1024 * 1024)
     state: Literal["uploading", "processing", "ready", "failed", "deleting"]
     page_count: int | None = Field(default=None, ge=1, le=50)
+    previews: list[ChatPreviewAsset] = Field(default_factory=list, max_length=10)
     safe_error: str | None = Field(default=None, max_length=500)
     created_at: datetime
     updated_at: datetime

@@ -974,6 +974,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/conversations/{conversation_id}/files/{file_id}/previews/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Preview Chat File */
+        get: operations["preview_chat_file_api_v1_chat_conversations__conversation_id__files__file_id__previews__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/conversations/{conversation_id}/turns": {
         parameters: {
             query?: never;
@@ -2272,6 +2289,8 @@ export interface components {
             owner_id: string;
             /** Page Count */
             page_count?: number | null;
+            /** Previews */
+            previews?: components["schemas"]["ChatPreviewAsset"][];
             /** Safe Error */
             safe_error?: string | null;
             /**
@@ -2615,6 +2634,26 @@ export interface components {
         ChatPickerResponse: {
             /** Data */
             data?: components["schemas"]["ChatPickerEntry"][];
+        };
+        /** ChatPreviewAsset */
+        ChatPreviewAsset: {
+            /** Height */
+            height: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Media Type
+             * @default image/png
+             * @constant
+             */
+            media_type: "image/png";
+            /** Page */
+            page?: number | null;
+            /** Width */
+            width: number;
         };
         /** ChatSnapshot */
         ChatSnapshot: {
@@ -7175,6 +7214,41 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_chat_file_api_v1_chat_conversations__conversation_id__files__file_id__previews__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+                file_id: string;
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
                 };
             };
             /** @description Validation Error */

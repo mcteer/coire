@@ -1858,6 +1858,14 @@
             ],
             "title": "Page Count"
           },
+          "previews": {
+            "items": {
+              "$ref": "#/components/schemas/ChatPreviewAsset"
+            },
+            "maxItems": 10,
+            "title": "Previews",
+            "type": "array"
+          },
           "safe_error": {
             "anyOf": [
               {
@@ -2847,6 +2855,54 @@
           }
         },
         "title": "ChatPickerResponse",
+        "type": "object"
+      },
+      "ChatPreviewAsset": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "maximum": 2048.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "media_type": {
+            "const": "image/png",
+            "default": "image/png",
+            "title": "Media Type",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "width": {
+            "maximum": 2048.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "width",
+          "height"
+        ],
+        "title": "ChatPreviewAsset",
         "type": "object"
       },
       "ChatSnapshot": {
@@ -13074,6 +13130,91 @@
           }
         ],
         "summary": "Download Chat File",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/files/{file_id}/previews/{asset_id}": {
+      "get": {
+        "operationId": "preview_chat_file_api_v1_chat_conversations__conversation_id__files__file_id__previews__asset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Chat File",
         "tags": [
           "chat"
         ]

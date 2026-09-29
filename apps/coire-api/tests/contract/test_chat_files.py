@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import uuid
 from collections.abc import AsyncIterator
@@ -13,6 +14,7 @@ from typing import cast
 import httpx
 import pytest
 from fastapi import UploadFile
+from PIL import Image
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +30,12 @@ from coire_api.db import (
     get_session,
 )
 from coire_core.errors import ChatConflict, ChatQuotaExceeded
-from coire_core.models.files import ChatUploadMetadata, is_ulid
+from coire_core.models.files import (
+    ChatUploadMetadata,
+    FileProcessAsset,
+    FileProcessResult,
+    is_ulid,
+)
 from coire_core.settings import Settings, get_settings
 
 
@@ -99,6 +106,7 @@ def _settings(root: Path) -> Settings:
         chat_enabled=True,
         chat_browser_origin="http://localhost",
         chat_original_root=str(root),
+        chat_derived_root=str(root),
         identity_legacy_admin_enabled=True,
         admin_token=SecretStr("file-test"),
     )
@@ -257,3 +265,92 @@ async def test_routes_reauthorize_upload_and_download(tmp_path: Path) -> None:
         assert (await client.get(f"{path}/{file_id}/content")).status_code == 404
         session.conversation.deleted_at = datetime.now(UTC)
         assert (await client.get(f"{path}/{file_id}")).status_code == 404
+
+
+async def test_owner_preview_is_verified_and_parent_bound(tmp_path: Path) -> None:
+    session = FileSession()
+    settings = _settings(tmp_path)
+    file_id = uuid.uuid4()
+    asset_id = uuid.uuid4()
+    job_id = "01K00000000000000000000000"
+    output = io.BytesIO()
+    Image.new("RGB", (3, 2), (1, 2, 3)).save(output, format="PNG")
+    data = output.getvalue()
+    folder = tmp_path / job_id
+    folder.mkdir()
+    path = folder / f"{asset_id}.png"
+    path.write_bytes(data)
+    result = FileProcessResult(
+        job_id=job_id,
+        input_id=file_id,
+        source_sha256="a" * 64,
+        detected_type="image/png",
+        assets=[
+            FileProcessAsset(
+                id=asset_id,
+                sha256=hashlib.sha256(data).hexdigest(),
+                bytes=len(data),
+                media_type="image/png",
+                width=3,
+                height=2,
+            )
+        ],
+    )
+    now = datetime.now(UTC)
+    attachment = ChatAttachmentRow(
+        id=file_id,
+        owner_user_id=session.owner,
+        conversation_id=session.conversation.id,
+        filename="photo.png",
+        detected_type="image/png",
+        original_bytes=5,
+        original_sha256="a" * 64,
+        original_key=str(file_id),
+        derived_bytes=len(data),
+        state="ready",
+        asset_manifest={"job_id": job_id, "result": result.model_dump(mode="json")},
+        created_at=now,
+        updated_at=now,
+    )
+    session.rows.append(attachment)
+    app = create_app(settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+    current_user = session.owner
+    app.dependency_overrides[require_principal] = lambda: Principal(
+        kind=PrincipalKind.USER, user_id=current_user
+    )
+
+    async def fake_session() -> AsyncIterator[FileSession]:
+        yield session
+
+    app.dependency_overrides[get_session] = fake_session
+    path_prefix = f"/api/v1/chat/conversations/{session.conversation.id}/files/{file_id}"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://localhost",
+        headers={"Authorization": "Bearer file-test"},
+    ) as client:
+        metadata = await client.get(path_prefix)
+        assert metadata.status_code == 200
+        assert metadata.json()["previews"][0]["id"] == str(asset_id)
+        preview = await client.get(f"{path_prefix}/previews/{asset_id}")
+        assert preview.status_code == 200
+        assert preview.content == data
+        assert preview.headers["content-type"] == "image/png"
+        assert preview.headers["content-disposition"] == "inline"
+        assert preview.headers["x-content-type-options"] == "nosniff"
+        assert preview.headers["cache-control"] == "no-store"
+        assert preview.headers["content-security-policy"] == "sandbox"
+        assert preview.headers["cross-origin-resource-policy"] == "same-origin"
+        assert (await client.get(f"{path_prefix}/previews/{uuid.uuid4()}")).status_code == 409
+        foreign_parent = await client.get(
+            f"/api/v1/chat/conversations/{uuid.uuid4()}/files/{file_id}/previews/{asset_id}"
+        )
+        assert foreign_parent.status_code == 404
+        current_user = uuid.uuid4()
+        assert (await client.get(f"{path_prefix}/previews/{asset_id}")).status_code == 404
+        current_user = session.owner
+        path.write_bytes(data[:-1] + b"x")
+        assert (await client.get(f"{path_prefix}/previews/{asset_id}")).status_code == 409
+        attachment.deleted_at = datetime.now(UTC)
+        assert (await client.get(f"{path_prefix}/previews/{asset_id}")).status_code == 404

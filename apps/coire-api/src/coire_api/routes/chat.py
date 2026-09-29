@@ -32,6 +32,7 @@ from coire_api.chat.files import (
     read_original,
     stage_original,
 )
+from coire_api.chat.processing import InvalidAsset, read_private_preview
 from coire_api.chat.service import (
     create_conversation,
     delete_conversation,
@@ -172,6 +173,43 @@ async def download_chat_file(
             "Cross-Origin-Resource-Policy": "same-origin",
         },
     )
+
+
+@router.get(
+    "/conversations/{conversation_id}/files/{file_id}/previews/{asset_id}",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {"schema": {"type": "string", "format": "binary"}}}}},
+)
+async def preview_chat_file(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    principal: CurrentChatUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> Response:
+    with tracer.start_as_current_span("coire.api.chat.preview") as span:
+        span.set_attribute("file_id", str(file_id))
+        attachment = await owned_attachment(session, principal, conversation_id, file_id)
+        try:
+            data = await asyncio.to_thread(
+                read_private_preview, attachment, asset_id, Path(settings.chat_derived_root)
+            )
+        except InvalidAsset:
+            requests_total.add(1, {"operation": "preview", "outcome": "refused"})
+            raise ChatConflict("file preview unavailable") from None
+        requests_total.add(1, {"operation": "preview", "outcome": "served"})
+        return Response(
+            content=data,
+            media_type="image/png",
+            headers={
+                "Content-Disposition": "inline",
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "no-store",
+                "Content-Security-Policy": "sandbox",
+                "Cross-Origin-Resource-Policy": "same-origin",
+            },
+        )
 
 
 @router.get("/models", response_model=ChatPickerResponse)
