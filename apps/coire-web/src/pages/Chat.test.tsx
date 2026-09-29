@@ -776,6 +776,62 @@ test.each([
   expect(screen.getByRole("status")).toHaveTextContent(/choose another model/);
 });
 
+test("shows cold wait immediately while conversation creation is pending", async () => {
+  let finishCreate: ((value: Response) => void) | undefined;
+  const pendingCreate = new Promise<Response>((resolve) => {
+    finishCreate = resolve;
+  });
+  const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+    if (url === "/api/v1/chat/models")
+      return Promise.resolve(
+        json({ data: [{ ...model, source: "studio", load_state: "cold", estimated_warmup_seconds: 18.2 }] }),
+      );
+    if (url === "/api/v1/chat/conversations" && options?.method === "GET")
+      return Promise.resolve(json({ data: [], next_cursor: null }));
+    if (url === "/api/v1/chat/conversations" && options?.method === "POST") return pendingCreate;
+    if (url.endsWith("/turns") && options?.method === "POST")
+      return Promise.resolve(
+        stream(
+          event(1, {
+            type: "turn.accepted",
+            turn: {
+              id: turnId,
+              conversation_id: conversationId,
+              client_request_id: crypto.randomUUID(),
+              accepted_revision: 1,
+              input_message_id: inputId,
+              assistant_message_id: answerId,
+              model_id: modelId,
+              model_display_name: "Friendly model",
+              state: "accepted",
+              action: "chat",
+              created_at: conversation.created_at,
+              updated_at: conversation.updated_at,
+            },
+          }) +
+            event(2, {
+              type: "turn.terminal",
+              state: "completed",
+              answer_length: 0,
+              reasoning_length: 0,
+            }),
+        ),
+      );
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  await screen.findByRole("button", { name: /Friendly model/ });
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Hello" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(screen.getByRole("status")).toHaveTextContent("about 19 s");
+  expect(fetchMock).toHaveBeenCalledWith("/api/v1/chat/conversations", expect.anything());
+  await act(async () => finishCreate?.(json(conversation, 201)));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeDisabled());
+});
+
 test("reopens saved partial output with model attribution and older messages", async () => {
   const saved = { ...conversation, title: "Saved notes", active_turn_id: turnId };
   const savedAnswer = {
@@ -1241,6 +1297,10 @@ test("restores saved file and PDF page choices only after owner-scoped detail co
   expect(screen.getByLabelText("2")).toBeChecked();
   expect(screen.getByLabelText("4")).toBeChecked();
   expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  expect(screen.getByText(/Visual Chat is not available yet/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Remove visual selections" }));
+  expect(screen.getByRole("checkbox", { name: "pages.pdf" })).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
 test("changing verified identity in one tab clears the former owner's draft", async () => {

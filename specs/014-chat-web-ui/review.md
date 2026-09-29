@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Browser wait and visual-selection clarity (2026-09-29)
+
+- A cold Studio selection now shows its known or unknown warm-up estimate immediately on Send, before the create request completes; a delayed-create browser test covers that timing. A visual file/page selection remains blocked while native visual Chat is unavailable, with an explicit removal action that preserves the text draft. Hostile Markdown, code copy, collapsed reasoning, saved attachment mode and model-switch attribution tests complete parent T063. T026 and T064 remain open for live cold-model timing and full visual/context support. The web suite passed 88 tests, with lint and production build green.
+
 ## Architecture and operator documentation (2026-09-29)
 
 - Parent T070 is complete. The architecture now distinguishes two-copy acquired Studio models from admin-registered external text targets and describes their shared registry UUID picker and separate execution paths. ADR-0008 records the actual locked Studio visual backend and bounded native smoke. The Chat runbook and Compose README give concrete turn/parser/purge inspection, Stop, lean/diagnostic alerts, locked-node install and audited visual rollback steps. No runtime behavior changed in this documentation slice.

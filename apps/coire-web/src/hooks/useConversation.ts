@@ -52,16 +52,22 @@ export function useConversation(ownerId: string) {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [selections, setSelections] = useState<ChatAttachmentSelection[]>([]);
   const [fileBusy, setFileBusy] = useState(false);
-  const canSendSelections =
-    mode === "code" ||
-    selections.every((item) => {
-      const attachment = attachments.find((row) => row.id === item.file_id);
-      return (
-        item.mode === "text" &&
-        attachment?.state === "ready" &&
-        !attachment.detected_type.startsWith("image/")
-      );
-    });
+  const selectionIssue =
+    mode === "code"
+      ? null
+      : selections.some((item) => item.mode === "visual")
+        ? "Visual Chat is not available yet. Remove the image or page selection to send text."
+        : selections.some((item) => {
+              const attachment = attachments.find((row) => row.id === item.file_id);
+              return !attachment || attachment.state !== "ready";
+            })
+          ? "Wait for the selected file to finish processing, or remove it."
+          : selections.some((item) =>
+                attachments.find((row) => row.id === item.file_id)?.detected_type.startsWith("image/"),
+              )
+            ? "This image cannot be sent as text. Remove it to continue."
+            : null;
+  const canSendSelections = selectionIssue === null;
   const latestTurn = turns.at(-1);
   const planTurns = turns.filter(
     (turn) => turn.action === "plan" && turn.state === "completed" && turn.coding_call_id,
@@ -385,6 +391,18 @@ export function useConversation(ownerId: string) {
     busyRef.current = true;
     setBusy(true);
     setError(null);
+    const selectedModel = models.find((item) => item.id === selectedId);
+    setStatus(
+      selectedModel?.source === "studio" && selectedModel.load_state === "cold"
+        ? selectedModel.estimated_warmup_seconds == null
+          ? "Warming up the model · estimate unavailable"
+          : "Warming up the model · about " +
+            Math.ceil(selectedModel.estimated_warmup_seconds) +
+            " s"
+        : mode === "code"
+          ? "Preparing coding run…"
+          : "Preparing response…",
+    );
     let current = conversation;
     try {
       if (!current) {
@@ -592,6 +610,12 @@ export function useConversation(ownerId: string) {
 
   const selectFile = (value: ChatAttachmentSelection | null, fileId: string) => {
     const next = [...selections.filter((row) => row.file_id !== fileId), ...(value ? [value] : [])];
+    setSelections(next);
+    remember(conversation?.id ?? "new", draft, selectedId, next);
+  };
+
+  const removeVisualSelections = () => {
+    const next = selections.filter((item) => item.mode !== "visual");
     setSelections(next);
     remember(conversation?.id ?? "new", draft, selectedId, next);
   };
@@ -969,6 +993,8 @@ export function useConversation(ownerId: string) {
     attachments,
     selections,
     canSendSelections,
+    selectionIssue,
+    removeVisualSelections,
     fileBusy,
     uploadFile,
     processFile,

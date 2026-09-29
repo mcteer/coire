@@ -90,3 +90,35 @@ test("shows the file and chosen content mode on a saved user message", () => {
     "notes.txt · Extracted text",
   );
 });
+
+test("keeps attachment and model attribution when a later answer uses another model", () => {
+  const fileId = "00000000-0000-0000-0000-000000000009";
+  render(
+    <>
+      <Message
+        message={{
+          ...message,
+          id: "00000000-0000-0000-0000-000000000011",
+          role: "user",
+          text: "Read this scan",
+          attachment_ids: [fileId],
+          attachment_selections: [{ file_id: fileId, mode: "visual", pages: [2, 4] }],
+        }}
+      />
+      <Message message={{ ...message, id: "00000000-0000-0000-0000-000000000012", text: "First" }} />
+      <Message
+        message={{
+          ...message,
+          id: "00000000-0000-0000-0000-000000000013",
+          text: "Second",
+          model_display_name: "New model name",
+        }}
+      />
+    </>,
+  );
+  expect(screen.getByRole("list", { name: "Attached files" })).toHaveTextContent(
+    "File unavailable · Page images 2, 4",
+  );
+  expect(screen.getByText("First").closest("article")).toHaveTextContent("Older model name");
+  expect(screen.getByText("Second").closest("article")).toHaveTextContent("New model name");
+});

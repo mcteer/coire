@@ -176,9 +176,14 @@ function ChatSession({ ownerId }: { ownerId: string }) {
             />
           )}
           {chat.selections.length > 0 && !chat.canSendSelections && (
-            <p className="muted" role="status">
-              This selection needs image-capable Chat or a file that has finished processing.
-            </p>
+            <div className="chat-selection-remedy" role="status">
+              <p className="muted">{chat.selectionIssue}</p>
+              {chat.selections.some((item) => item.mode === "visual") && (
+                <button className="button" type="button" onClick={chat.removeVisualSelections}>
+                  Remove visual selections
+                </button>
+              )}
+            </div>
           )}
           <Composer
             value={chat.draft}
