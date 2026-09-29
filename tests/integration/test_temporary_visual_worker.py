@@ -103,3 +103,120 @@ asyncio.run(main())
     )
     assert result.returncode == 0, result.stderr
     assert "temporary image processed, reused, and erased" in result.stdout
+
+
+def test_worker_outage_expires_temporary_visual_and_recovers_purge() -> None:
+    source = io.BytesIO()
+    Image.new("RGB", (16, 16), (32, 80, 240)).save(source, format="PNG")
+    encoded = base64.b64encode(source.getvalue()).decode("ascii")
+    worker = ["docker", "compose", "-p", "coire-it"]
+    subprocess.run(
+        [*worker, "stop", "coire-file-worker"],
+        cwd=COMPOSE_DIR,
+        check=True,
+        capture_output=True,
+    )
+    try:
+        unavailable = """
+import asyncio
+import base64
+import hashlib
+import sys
+import uuid
+from datetime import UTC, datetime
+from coire_api.auth import Principal, PrincipalKind
+from coire_api.db import ChatFileProcessingRow, init_engine, session_scope
+from coire_api.gateway.temporary import TemporaryVisualUnavailable, _submit, _wait_for_asset
+from coire_core.models.registry import VisualCapability
+from coire_core.settings import get_settings
+
+async def main():
+    settings = get_settings()
+    init_engine(settings)
+    data = base64.b64decode(sys.argv[1])
+    owner = Principal(kind=PrincipalKind.API_KEY, api_key_id=uuid.uuid4())
+    job_id = await _submit(data, hashlib.sha256(data).hexdigest(), owner, settings)
+    try:
+        await _wait_for_asset(job_id, settings, VisualCapability(
+            verified=True, max_images=1, max_image_pixels=256, max_encoded_bytes=100000
+        ))
+    except TemporaryVisualUnavailable:
+        pass
+    else:
+        raise AssertionError("unavailable worker returned a visual asset")
+    async with session_scope() as session:
+        job = await session.get(ChatFileProcessingRow, job_id)
+    assert job is not None and job.expires_at <= datetime.now(UTC)
+    print(job_id, job.source_key)
+
+asyncio.run(main())
+"""
+        failed = subprocess.run(
+            [
+                *worker,
+                "exec",
+                "-T",
+                "coire-api",
+                "/app/.venv/bin/python3",
+                "-c",
+                unavailable,
+                encoded,
+            ],
+            cwd=COMPOSE_DIR,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert failed.returncode == 0, failed.stderr
+        job_id, source_key = failed.stdout.strip().split()
+    finally:
+        subprocess.run(
+            [*worker, "start", "coire-file-worker"],
+            cwd=COMPOSE_DIR,
+            check=True,
+            capture_output=True,
+        )
+
+    cleanup = """
+import asyncio
+import sys
+from pathlib import Path
+from coire_api.db import ChatFileProcessingRow, init_engine, session_scope
+from coire_core.settings import get_settings
+
+async def main():
+    settings = get_settings()
+    init_engine(settings)
+    job_id, source_key = sys.argv[1:]
+    original = Path(settings.chat_original_root) / source_key
+    derived = Path(settings.chat_derived_root) / job_id
+    for _ in range(120):
+        await asyncio.sleep(0.5)
+        async with session_scope() as session:
+            row = await session.get(ChatFileProcessingRow, job_id)
+        if row is None and not original.exists() and not derived.exists():
+            print("worker outage left no temporary bytes")
+            return
+    raise AssertionError("worker recovery did not erase the failed temporary image")
+
+asyncio.run(main())
+"""
+    erased = subprocess.run(
+        [
+            *worker,
+            "exec",
+            "-T",
+            "coire-api",
+            "/app/.venv/bin/python3",
+            "-c",
+            cleanup,
+            job_id,
+            source_key,
+        ],
+        cwd=COMPOSE_DIR,
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    assert erased.returncode == 0, erased.stderr
+    assert "worker outage left no temporary bytes" in erased.stdout
