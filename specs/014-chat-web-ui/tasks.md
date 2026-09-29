@@ -103,7 +103,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 - [ ] T064 [US5] Implement collapsed reasoning, context/visual compatibility remedies and safe attachment attribution in apps/coire-web/src/components/chat/ReasoningBlock.tsx, Message.tsx, ModelPicker.tsx and Composer.tsx (FR-015–017, FR-027, FR-029, FR-037–039).
 - [ ] T065 [US5] Add local tiny-VLM image/selected scanned-page streaming/Stop, offline lifecycle and CPU-worker isolation cases in tests/integration/test_chat_ui.py, using runtime-generated fixtures and COIRE_TEST_VISION_MODEL (SC-012, SC-014).
 - [ ] T066 [US5] Extend apps/coire-api/src/coire_api/chat/maintenance.py and tests/unit/test_chat_cleanup.py to purge originals/derivatives/temporary inline images/processing leftovers/control inputs and release quota, including deletion during rendering/inference (FR-025–026, FR-035–039).
-- [ ] T067 [US5] Align upload-only nginx bounds in apps/coire-web/nginx/nginx.conf and all file-worker/backend environment/resource settings in packages/coire-core/src/coire_core/settings.py and deploy/compose/README.md, with compose/settings contract coverage (FR-026, FR-036–038).
+- [X] T067 [US5] Align upload-only nginx bounds in apps/coire-web/nginx/nginx.conf and all file-worker/backend environment/resource settings in packages/coire-core/src/coire_core/settings.py and deploy/compose/README.md, with compose/settings contract coverage (FR-026, FR-036–038).
 
 ## Phase 8 — Operational proof and release gates
 

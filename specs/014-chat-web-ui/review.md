@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## File deployment bounds (2026-09-29)
+
+- Parent T067 is complete. Compose now passes bounded API upload, quota, PDF, image and purge settings explicitly, and gives the scheduler and CPU worker the same processing deadline. The private worker remains single-conversion with 512 MiB, one CPU and 64 processes; nginx grants the 11 MiB multipart envelope only to the Chat upload path. The Compose README records the operator settings and fixed worker caps. Rendered Compose and settings contracts passed (40 tests, one unrelated conditional skip), as did Ruff and `docker compose config --quiet`.
+
 ## Browser wait and visual-selection clarity (2026-09-29)
 
 - A cold Studio selection now shows its known or unknown warm-up estimate immediately on Send, before the create request completes; a delayed-create browser test covers that timing. A visual file/page selection remains blocked while native visual Chat is unavailable, with an explicit removal action that preserves the text draft. Hostile Markdown, code copy, collapsed reasoning, saved attachment mode and model-switch attribution tests complete parent T063. T026 and T064 remain open for live cold-model timing and full visual/context support. The web suite passed 88 tests, with lint and production build green.

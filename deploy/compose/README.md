@@ -52,6 +52,18 @@ the worker sees that same volume read-only. Original admission limits individual
 10 MiB and reserves worst-case derived bytes against 50 MiB/conversation and 500 MiB/owner.
 Nginx permits an 11 MiB multipart envelope only on the native Chat upload route. Queued jobs
 remain pending until the scheduler dispatcher and result publication path are connected.
+The API accepts bounded `COIRE_CHAT_UPLOAD_MAX_BYTES` (10 MiB),
+`COIRE_CHAT_CONVERSATION_QUOTA_BYTES` (50 MiB), `COIRE_CHAT_OWNER_QUOTA_BYTES`
+(500 MiB), `COIRE_CHAT_DERIVED_JOB_MAX_BYTES` (32 MiB),
+`COIRE_CHAT_EXTRACTED_TEXT_MAX_BYTES` (1 MiB), `COIRE_CHAT_PDF_MAX_PAGES` (50),
+`COIRE_CHAT_UPLOAD_MAX_PIXELS` (20 million), `COIRE_CHAT_NORMALIZED_MAX_PIXELS`
+(4 million), and `COIRE_CHAT_NORMALIZED_MAX_SIDE` (2048). These settings can lower
+the API admission limits; the CPU worker retains the same fixed upper bounds.
+`COIRE_CHAT_PURGE_DEADLINE_HOURS` and `COIRE_CHAT_EVENT_RETENTION_HOURS` are capped
+at 24 hours. The worker and scheduler share `COIRE_FILE_WORKER_TIMEOUT_SECONDS`
+(1–30 seconds); the worker stays at one active conversion, 512 MiB, one CPU and
+64 processes. Larger uploads remain blocked by nginx even if an API setting is
+misconfigured.
 
 Runtime configuration is supplied through `COIRE_` environment variables and Keychain-sourced
 compose secrets. Gateway tuning variables and operational procedures are documented in

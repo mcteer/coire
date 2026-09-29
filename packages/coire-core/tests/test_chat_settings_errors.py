@@ -16,6 +16,18 @@ def test_chat_limits_and_worker_secret_defaults() -> None:
         Settings(_secrets_dir="/nonexistent", chat_upload_max_bytes=0)  # type: ignore[call-arg]
     with pytest.raises(ValidationError):
         Settings(_secrets_dir="/nonexistent", chat_pdf_max_pages=100)  # type: ignore[call-arg]
+    assert settings.chat_derived_job_max_bytes == 32 * 1024 * 1024
+    assert settings.chat_normalized_max_pixels == 4_000_000
+    assert settings.file_worker_process_timeout_s == 30
+    for field, value in (
+        ("chat_derived_job_max_bytes", 32 * 1024 * 1024 + 1),
+        ("chat_normalized_max_pixels", 4_000_001),
+        ("chat_purge_deadline_hours", 25),
+        ("file_worker_process_timeout_s", 31),
+        ("file_worker_max_active", 2),
+    ):
+        with pytest.raises(ValidationError):
+            Settings(_secrets_dir="/nonexistent", **{field: value})  # type: ignore[call-arg]
 
 
 def test_chat_browser_origin_is_exact() -> None:

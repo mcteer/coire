@@ -261,6 +261,28 @@ class TestImagesAndSecrets:
         )
         assert api_mounts["/opt/coire/chat/originals"].get("read_only", False) is False
 
+    def test_chat_file_limits_match_the_private_worker(
+        self, file_worker_config: dict[str, Any]
+    ) -> None:
+        services = file_worker_config["services"]
+        api = services["coire-api"]["environment"]
+        worker = services["coire-file-worker"]
+        scheduler = services["coire-scheduler"]["environment"]
+        assert int(api["CHAT_UPLOAD_MAX_BYTES"]) == 10 * 1024 * 1024
+        assert int(api["CHAT_DERIVED_JOB_MAX_BYTES"]) == 32 * 1024 * 1024
+        assert int(api["CHAT_PDF_MAX_PAGES"]) == 50
+        assert int(api["CHAT_NORMALIZED_MAX_PIXELS"]) == 4_000_000
+        assert int(api["CHAT_PURGE_DEADLINE_HOURS"]) == 24
+        assert int(worker["environment"]["FILE_WORKER_MAX_ACTIVE"]) == 1
+        assert int(worker["environment"]["FILE_WORKER_PROCESS_TIMEOUT_S"]) == int(
+            scheduler["FILE_WORKER_PROCESS_TIMEOUT_S"]
+        )
+        assert worker["pids_limit"] == 64
+        nginx = (REPO / "apps/coire-web/nginx/nginx.conf").read_text()
+        upload = nginx.split("location ~ ^/api/v1/chat/conversations/", 1)[1].split("}", 1)[0]
+        assert "client_max_body_size 11m;" in upload
+        assert nginx.count("client_max_body_size") == 1
+
     def test_studio_failover_stays_off_the_core_project(self, config: dict[str, Any]) -> None:
         """The frontend is a profiled Studio service. Core's default project does not run it."""
         assert "coire-failover" not in config["services"]
