@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## File UI audit (2026-09-29)
+
+- Parent T050 is complete: typed same-origin multipart upload, bounded file controls, visible processing/retry, explicit text versus PDF page-image choices, private previews, original download, and same-conversation selection reuse are implemented and covered by client/component/Chat tests. The UI never embeds the original PDF or places an access token in a preview URL; its visual selections remain blocked until native visual Chat is supported. The 89-test web suite, lint and build passed in the browser lifecycle gate. T049/T064/T065 remain open for backend visual delivery and acceptance.
+
 ## Visual URL preflight (2026-09-29)
 
 - The shared OpenAI-compatible image URL schema now maps malformed base64 into a bounded validation error, and the visual context layer refuses it again if an internal caller bypasses model validation. Contract tests show remote HTTP, file URL and malformed inline image requests return 422 before registry resolution or engine I/O; 32 focused `/v1` and context tests passed, as did Ruff and source mypy. T051 remains open for native Chat visual context and full modality contracts.
