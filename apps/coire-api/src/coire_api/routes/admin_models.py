@@ -38,6 +38,7 @@ from coire_core.models.audit import AuditAction
 from coire_core.models.engine import EngineProcess, EngineState
 from coire_core.models.jobs import DownloadJob
 from coire_core.models.registry import (
+    EngineBackend,
     LoadRefusalReason,
     LoadRefused,
     Model,
@@ -141,6 +142,7 @@ def _engine(row: EngineProcessRow, nodes: dict[uuid.UUID, str]) -> dict[str, obj
         id=row.id,
         model_id=row.model_id,
         node=nodes.get(row.node_id, str(row.node_id)),
+        backend=EngineBackend(row.backend),
         port=row.port,
         pid=row.pid,
         state=row.state,
@@ -391,6 +393,7 @@ async def load_model(
         port=0,
         state=EngineState.STARTING,
         estimate_bytes=model.memory_estimate_bytes,
+        backend=model.backend,
     )
     session.add(row)
 
@@ -400,7 +403,8 @@ async def load_model(
             engine_id=engine_id,
             slug=model.slug,
             estimate_bytes=model.memory_estimate_bytes,
-            chat_template=model.chat_template,
+            chat_template=(model.chat_template if model.backend == EngineBackend.MLX_LM else None),
+            backend=EngineBackend(model.backend),
         )
     except NodeError as exc:
         await session.delete(row)
@@ -431,6 +435,7 @@ async def load_model(
     row.pid = engine_status.pid
     row.process_create_time = engine_status.process_create_time
     row.state = engine_status.state
+    row.backend = engine_status.backend.value
     row.chat_template_sha256 = engine_status.chat_template_sha256
     from coire_api.audit import write_principal_audit
 

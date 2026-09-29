@@ -1003,6 +1003,7 @@ class EngineProcessRow(Base):
     __tablename__ = "engine_processes"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    backend: Mapped[str] = mapped_column(String(16), default="mlx_lm", server_default="mlx_lm")
     instance_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("model_instances.id", ondelete="SET NULL"), nullable=True, index=True
     )

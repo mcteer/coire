@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_core.models.engine import ReconcileRequest
 from coire_core.models.harness import ProfileName
 from coire_core.models.jobs import ChecksumManifest
+from coire_core.models.registry import EngineBackend
 from coire_core.models.runs import RunContainerCreate, RunLimits
 from coire_core.net import ControlClient
 from coire_core.settings import Settings
@@ -204,6 +206,34 @@ class TestVerbs:
         )
         await client.aclose()
         assert existing is True
+
+    async def test_vision_start_sends_registry_backend_and_bounded_options(self) -> None:
+        body = {
+            "engine_id": str(JOB_ID),
+            "slug": "verified-vision",
+            "backend": "mlx_vlm",
+            "port": 9500,
+            "state": "starting",
+            "estimate_bytes": 4096,
+            "started_at": NOW,
+        }
+        client, seen = _client(lambda _request: _json(body, 202))
+        created, status = await client.start_engine(
+            "coire-edge-a",
+            engine_id=JOB_ID,
+            slug="verified-vision",
+            estimate_bytes=4096,
+            backend=EngineBackend.MLX_VLM,
+            vision_cache_size=2,
+            max_num_seqs=1,
+        )
+        await client.aclose()
+        assert not created and status.backend is EngineBackend.MLX_VLM
+        sent = json.loads(seen[0].read())
+        assert sent["backend"] == "mlx_vlm"
+        assert sent["vision_cache_size"] == 2
+        assert sent["max_num_seqs"] == 1
+        assert sent["chat_template"] is None
 
     async def test_start_import_sends_the_manifest_and_grant(self) -> None:
         manifest = ChecksumManifest(

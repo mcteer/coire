@@ -47,6 +47,7 @@ from coire_core.models.engine import (
     ReconcileRequest,
     ReconcileResult,
 )
+from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
 from coire_node.footprint import cpu_percent, resident_bytes
 from coire_node.store import Store, write_atomic_json
@@ -69,6 +70,7 @@ original's start is not a thing that happens."""
 STOP_GRACE_S = 10.0
 EXIT_OUTPUT_BYTES = 4096
 DEFAULT_ENGINE_COMMAND = (sys.executable, "-m", "mlx_lm.server")
+VISION_ENGINE_COMMAND = (sys.executable, "-m", "mlx_vlm.server")
 
 
 class BudgetExceeded(RuntimeError):
@@ -81,6 +83,10 @@ class BudgetExceeded(RuntimeError):
 
 
 class CopyMissing(RuntimeError):
+    pass
+
+
+class BackendMismatch(RuntimeError):
     pass
 
 
@@ -128,8 +134,40 @@ def build_engine_env(base: dict[str, str]) -> dict[str, str]:
     """
     env = dict(base)
     env["HF_HUB_OFFLINE"] = "1"
+    env["TRANSFORMERS_OFFLINE"] = "1"
     env.pop("HF_TOKEN", None)
+    env.pop("MLX_TRUST_REMOTE_CODE", None)
     return env
+
+
+def build_vision_argv(
+    *,
+    model_path: str,
+    host: str,
+    port: int,
+    vision_cache_size: int = 1,
+    max_num_seqs: int = 1,
+    max_kv_size: int | None = None,
+) -> list[str]:
+    """Fixed bare mlx-vlm argv for a registry-resolved local copy."""
+    argv = [
+        *VISION_ENGINE_COMMAND,
+        "--model",
+        model_path,
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--vision-cache-size",
+        str(vision_cache_size),
+        "--max-num-seqs",
+        str(max_num_seqs),
+        "--log-level",
+        "INFO",
+    ]
+    if max_kv_size is not None:
+        argv += ["--max-kv-size", str(max_kv_size)]
+    return argv
 
 
 def engine_command(settings: Settings) -> list[str]:
@@ -159,6 +197,7 @@ class _Engine:
         state: EngineState = EngineState.STARTING,
         started_at: datetime | None = None,
         chat_template_sha256: str | None = None,
+        backend: EngineBackend = EngineBackend.MLX_LM,
     ) -> None:
         self.engine_id = engine_id
         self.slug = slug
@@ -174,6 +213,7 @@ class _Engine:
         self.cpu_percent: float | None = None
         self.load_seconds: float | None = None
         self.chat_template_sha256 = chat_template_sha256
+        self.backend = backend
         self.last_health_at: datetime | None = None
         self.started_at = started_at or datetime.now(UTC)
         self.stopped_at: datetime | None = None
@@ -184,6 +224,7 @@ class _Engine:
         return EngineStatus(
             engine_id=self.engine_id,
             slug=self.slug,
+            backend=self.backend,
             port=self.port,
             pid=self.pid,
             process_create_time=self.create_time,
@@ -214,6 +255,7 @@ class _Engine:
             "pid": self.pid,
             "create_time": self.create_time,
             "estimate_bytes": self.estimate_bytes,
+            "backend": self.backend.value,
             "started_at": self.started_at.isoformat(),
             "chat_template_sha256": self.chat_template_sha256,
         }
@@ -278,6 +320,10 @@ class EngineManager:
         slug: str,
         estimate_bytes: int,
         chat_template: str | None = None,
+        backend: EngineBackend = EngineBackend.MLX_LM,
+        vision_cache_size: int | None = None,
+        max_num_seqs: int | None = None,
+        max_kv_size: int | None = None,
     ) -> tuple[bool, EngineStatus]:
         """Start an engine, or return the one already serving this model.
 
@@ -286,6 +332,8 @@ class EngineManager:
         with self._lock:
             existing = self._serving(slug)
             if existing is not None:
+                if existing.backend is not backend:
+                    raise BackendMismatch("model is already served by another backend")
                 logger.info("%s is already served by engine %s", slug, existing.engine_id)
                 return True, existing.status()
 
@@ -310,12 +358,24 @@ class EngineManager:
                 template_path = str(self._store.write_template(slug, chat_template))
                 template_digest = hashlib.sha256(chat_template.encode()).hexdigest()
 
-            argv = build_engine_argv(
-                command=engine_command(self._settings),
-                model_path=str(self._store.path_for(slug)),
-                host=self._address,
-                port=port,
-                chat_template_path=template_path,
+            model_path = str(self._store.path_for(slug))
+            argv = (
+                build_vision_argv(
+                    model_path=model_path,
+                    host=self._address,
+                    port=port,
+                    vision_cache_size=vision_cache_size or 1,
+                    max_num_seqs=max_num_seqs or 1,
+                    max_kv_size=max_kv_size,
+                )
+                if backend is EngineBackend.MLX_VLM
+                else build_engine_argv(
+                    command=engine_command(self._settings),
+                    model_path=model_path,
+                    host=self._address,
+                    port=port,
+                    chat_template_path=template_path,
+                )
             )
             env = build_engine_env(dict(os.environ))
 
@@ -336,6 +396,7 @@ class EngineManager:
                 estimate_bytes=estimate_bytes,
                 pid=proc.pid,
                 chat_template_sha256=template_digest,
+                backend=backend,
             )
             engine.proc = proc
             with contextlib.suppress(psutil.Error):
@@ -620,6 +681,7 @@ class EngineManager:
                 state=EngineState.READY,
                 started_at=datetime.fromisoformat(record["started_at"]),
                 chat_template_sha256=record.get("chat_template_sha256"),
+                backend=EngineBackend(record.get("backend", "mlx_lm")),
             )
             engine.state_reason = "re-adopted after an agent restart"
             self._sample(engine)
@@ -643,7 +705,9 @@ class EngineManager:
                 continue
             if proc.info["pid"] in known:
                 continue
-            if "mlx_lm.server" not in cmdline and "fake_engine" not in cmdline:
+            if not any(
+                marker in cmdline for marker in ("mlx_lm.server", "mlx_vlm.server", "fake_engine")
+            ):
                 continue
             if marker not in cmdline:
                 continue
@@ -660,6 +724,9 @@ class EngineManager:
                 pid=proc.info["pid"],
                 create_time=proc.info.get("create_time"),
                 state=EngineState.ORPHAN,
+                backend=(
+                    EngineBackend.MLX_VLM if "mlx_vlm.server" in cmdline else EngineBackend.MLX_LM
+                ),
             )
             engine.state_reason = "running but not owned by this agent"
             self._sample(engine)

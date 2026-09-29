@@ -493,6 +493,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                         port=0,
                         state=EngineState.STARTING,
                         estimate_bytes=decision.required_bytes,
+                        backend=model.backend,
                     )
                     session.add(engine)
                     await session.flush()
@@ -509,7 +510,10 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                             payload={
                                 "slug": variant.slug,
                                 "estimate_bytes": decision.required_bytes,
-                                "chat_template": model.chat_template,
+                                "chat_template": (
+                                    model.chat_template if model.backend == "mlx_lm" else None
+                                ),
+                                "backend": model.backend,
                             },
                         )
                     )

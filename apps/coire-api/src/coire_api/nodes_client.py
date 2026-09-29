@@ -33,6 +33,7 @@ from coire_core.models.node import (
     WorkspacePrepareRequest,
     WorkspacePrepareResult,
 )
+from coire_core.models.registry import EngineBackend
 from coire_core.models.runs import (
     RunCollectedResult,
     RunContainerCreate,
@@ -458,6 +459,10 @@ class NodeClient:
         slug: str,
         estimate_bytes: int,
         chat_template: str | None = None,
+        backend: EngineBackend = EngineBackend.MLX_LM,
+        vision_cache_size: int | None = None,
+        max_num_seqs: int | None = None,
+        max_kv_size: int | None = None,
     ) -> tuple[bool, EngineStatus]:
         """Returns `(already_running, status)`.
 
@@ -474,6 +479,10 @@ class NodeClient:
                 "slug": slug,
                 "estimate_bytes": estimate_bytes,
                 "chat_template": chat_template,
+                "backend": backend.value,
+                "vision_cache_size": vision_cache_size,
+                "max_num_seqs": max_num_seqs,
+                "max_kv_size": max_kv_size,
             },
             expect=(200, 202),
         )

@@ -99,6 +99,16 @@ def test_recovery_mode_migration_is_additive_and_reversible() -> None:
     assert "def upgrade()" in source and "def downgrade()" in source
 
 
+def test_engine_backend_migration_backfills_text_and_is_reversible() -> None:
+    column = Base.metadata.tables["engine_processes"].c.backend
+    assert column.server_default is not None
+    assert "mlx_lm" in str(column.server_default.arg)
+    source = Path("apps/coire-api/alembic/versions/0019_engine_backend.py").read_text()
+    assert 'down_revision: str | None = "0018_chat_recovery_mode"' in source
+    assert 'server_default="mlx_lm"' in source
+    assert "def upgrade()" in source and "def downgrade()" in source
+
+
 def test_populated_chat_blocks_downgrade_before_any_drop() -> None:
     namespace = runpy.run_path("apps/coire-api/alembic/versions/0015_chat_conversations.py")
     downgrade = namespace["downgrade"]

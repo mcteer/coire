@@ -24,6 +24,7 @@ from coire_api.nodes_client import NodeClient, NodeError
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import Reachability
+from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
 
 
@@ -162,6 +163,7 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
                 port=0,
                 state=EngineState.STARTING,
                 estimate_bytes=model.memory_estimate_bytes,
+                backend=model.backend,
             )
             if existing is None:
                 session.add(row)
@@ -177,7 +179,10 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
                         engine_id=row.id,
                         slug=model.slug,
                         estimate_bytes=model.memory_estimate_bytes,
-                        chat_template=model.chat_template,
+                        chat_template=(
+                            model.chat_template if model.backend == EngineBackend.MLX_LM else None
+                        ),
+                        backend=EngineBackend(model.backend),
                     )
                     deadline = time.monotonic() + settings.gateway_wait_ceiling_s
                     while engine.state is EngineState.STARTING and time.monotonic() < deadline:
@@ -194,6 +199,7 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             row.pid = engine.pid
             row.process_create_time = engine.process_create_time
             row.state = engine.state
+            row.backend = engine.backend.value
             row.state_reason = engine.state_reason
             row.load_seconds = engine.load_seconds
 
