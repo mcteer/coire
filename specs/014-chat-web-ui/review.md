@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Architecture and operator documentation (2026-09-29)
+
+- Parent T070 is complete. The architecture now distinguishes two-copy acquired Studio models from admin-registered external text targets and describes their shared registry UUID picker and separate execution paths. ADR-0008 records the actual locked Studio visual backend and bounded native smoke. The Chat runbook and Compose README give concrete turn/parser/purge inspection, Stop, lean/diagnostic alerts, locked-node install and audited visual rollback steps. No runtime behavior changed in this documentation slice.
+
 ## Frontier provider routing (014bw, 2026-09-29)
 
 - Registry UUIDs now select either a Studio model or an audited, administrator-curated OpenAI/Anthropic text target. The provider adapters use fixed official HTTPS hosts, Keychain-sourced API-only Compose secrets, a default-off `COIRE_PROVIDER_CHAT_ENABLED` flag, plain-text-only preflight, strict output bounds and reported token usage. A per-model UTC daily token reservation serializes concurrent paid requests and retains its full hold on cancellation or missing usage. Admin publication requires the enabled flag and a mounted key; Code mode remains Studio-only. Native Chat keeps its persisted history/events and owner Stop closes provider HTTP; compatible `/v1/chat/completions` and `/v1/messages` keep public registry UUIDs and report provider usage. The picker labels Studio, OpenAI and Anthropic and identifies provider text-only capability. Parent T076–T079 and child J001–J004 are complete. T080/J005 remain open: no external provider credential was available for a paid acceptance call, so the flag remains off and no provider model was published.

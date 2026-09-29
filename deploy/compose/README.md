@@ -59,6 +59,8 @@ compose secrets. Gateway tuning variables and operational procedures are documen
 `.env`, an image, or a compose environment block.
 
 Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 is incomplete).
+See [native Chat operations](../../docs/runbooks/chat-web-ui.md) for turn inspection,
+Stop, parser alerts, private-file purge, diagnostics and visual rollback.
 The experimental inline PNG `/v1` visual route is separately gated by
 `COIRE_GATEWAY_INLINE_VISUAL_ENABLED` (default `false`). Keep it disabled until temporary
 normalization, asset verification and the visual gateway acceptance in feature 014 are complete.
