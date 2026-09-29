@@ -1,5 +1,10 @@
 # Feature 014 implementation review
 
+## Parent history acceptance audit (2026-09-29)
+
+- T028 is complete in the existing service, turn and observer paths: owner-filtered stable history paging, versioned edits, a read-locked snapshot cursor, persisted event replay, latest assistant attempt in later prompts, and explicit retry/continuation with unchanged input rules. The corresponding contract and unit cases passed in the full 1,091-test Python run. T027 remains open for the dedicated cross-operation race coverage in its test task.
+- T031 is complete in the existing browser path: new/open/rename/delete history actions, 409 refresh reconciliation, per-turn model attribution, older-message paging and a responsive drawer. The 84-test web run includes history, mutation, draft separation and model snapshot cases. Browser interaction acceptance remains T073; multi-tab and tab-close acceptance remains T034/T035.
+
 ## Shared text execution slice (014bq, 2026-09-29)
 
 - The compatible OpenAI route and native Chat now serialize text messages through shared bare-engine payload adapters, and compatible cold loading resolves the registry model through the gateway execution module. Both paths use the same bounded load operation and once-only usage binding. Compatible routes release read transactions before cold loading and before warm/cold engine I/O, and recheck run credentials after loading. Native Chat resolves in short-lived sessions while retaining owner checks, durable status events and Stop behavior. No loopback HTTP was introduced. Protocol-specific admission remains in the routes and Chat turn service. Parent T012 is complete.
