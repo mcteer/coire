@@ -384,10 +384,14 @@ async def test_verified_visual_request_reaches_registry_selected_engine(
     assert response.json()["model"] == str(model_id)
 
 
+@pytest.mark.parametrize("quota_exhausted", [False, True])
 async def test_visual_worker_failure_refuses_before_engine_io(
-    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch, quota_exhausted: bool
 ) -> None:
-    from coire_api.gateway.temporary import TemporaryVisualUnavailable
+    from coire_api.gateway.temporary import (
+        TemporaryVisualQuotaExceeded,
+        TemporaryVisualUnavailable,
+    )
 
     model_id = uuid.uuid4()
     image = io.BytesIO()
@@ -413,6 +417,8 @@ async def test_visual_worker_failure_refuses_before_engine_io(
         )
 
     async def unavailable(*_args: object) -> None:
+        if quota_exhausted:
+            raise TemporaryVisualQuotaExceeded("temporary image quota exceeded")
         raise TemporaryVisualUnavailable("image processing unavailable")
 
     async def complete(*_args: object) -> None:
@@ -443,8 +449,10 @@ async def test_visual_worker_failure_refuses_before_engine_io(
             ],
         },
     )
-    assert response.status_code == 503
-    assert "image processing unavailable" in response.text
+    assert response.status_code == (429 if quota_exhausted else 503)
+    assert (
+        "temporary image quota exceeded" if quota_exhausted else "image processing unavailable"
+    ) in response.text
 
 
 async def test_anthropic_image_block_is_refused_before_model_resolution(

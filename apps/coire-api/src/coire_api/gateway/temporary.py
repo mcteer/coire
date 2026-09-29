@@ -12,7 +12,7 @@ from io import BytesIO
 from pathlib import Path
 
 from fastapi import UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from coire_api.auth import Principal
 from coire_api.chat.file_manifest import validate_result
@@ -29,10 +29,15 @@ from coire_core.settings import Settings
 logger = logging.getLogger(__name__)
 TEMPORARY_SCHEMA_VERSION = 1
 TEMPORARY_TTL = timedelta(hours=1)
+MAX_TEMPORARY_JOBS_PER_PRINCIPAL = 8
 
 
 class TemporaryVisualUnavailable(RuntimeError):
     """An isolated worker could not return a verified normalized image in time."""
+
+
+class TemporaryVisualQuotaExceeded(RuntimeError):
+    """A principal has exhausted the bounded temporary image workspace."""
 
 
 def _principal_subject(principal: Principal) -> str:
@@ -118,6 +123,24 @@ async def _submit(data: bytes, digest: str, principal: Principal, settings: Sett
         if original.sha256 != digest:
             raise TemporaryVisualUnavailable("image staging changed during admission")
         async with session_scope() as session:
+            await session.execute(
+                select(
+                    func.pg_advisory_xact_lock(
+                        func.hashtext(f"temporary-visual:{principal.kind.value}:{subject}")
+                    )
+                )
+            )
+            active = await session.scalar(
+                select(func.count(ChatFileProcessingRow.id)).where(
+                    ChatFileProcessingRow.attachment_id.is_(None),
+                    ChatFileProcessingRow.principal_kind == principal.kind.value,
+                    ChatFileProcessingRow.principal_subject == subject,
+                    ChatFileProcessingRow.expires_at > now,
+                    ChatFileProcessingRow.state != "purged",
+                )
+            )
+            if int(active or 0) >= MAX_TEMPORARY_JOBS_PER_PRINCIPAL:
+                raise TemporaryVisualQuotaExceeded("temporary image quota exceeded")
             session.add(
                 ChatFileProcessingRow(
                     id=job_id,
@@ -138,6 +161,10 @@ async def _submit(data: bytes, digest: str, principal: Principal, settings: Sett
                     updated_at=now,
                 )
             )
+    except TemporaryVisualQuotaExceeded:
+        original.target.unlink(missing_ok=True)
+        original.discard()
+        raise
     except Exception as exc:
         original.target.unlink(missing_ok=True)
         original.discard()

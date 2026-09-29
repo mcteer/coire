@@ -1,5 +1,11 @@
 # Feature 014 implementation review
 
+## Bounded temporary visual admission (2026-09-29)
+
+- PostgreSQL transaction advisory locking now serializes temporary image admission per principal. At most eight unexpired jobs can hold that principal's generated originals and derived workspace; a ninth is refused with HTTP 429 before engine I/O and its staged original is removed. A quota refusal is recorded as a fixed gateway outcome. Focused unit and `/v1` contracts cover staging cleanup and the 429 boundary.
+- Parent T057 is complete: the compatible visual gateway normalizes and validates only verified-model images, native Chat reconstructs owned published PNG/page assets with measured context preflight, unsupported Anthropic blocks are refused, and failover excludes VLMs. T049 stays open for wider file fault acceptance; T065 for tiny-VLM native Chat streaming/Stop; T066 for control-input cleanup.
+- The full Python suite passed 1,162 tests with 129 conditional skips; strict API source mypy, repository Ruff/format and OpenAPI freshness passed. The one additional skip is the new disposable integration case without `COIRE_INTEGRATION=1` and `chat-files`; it passed unskipped in the separate run recorded below.
+
 ## Disposable temporary visual processing (2026-09-29)
 
 - The default-off compatible `/v1` visual path now stages inline PNG/JPEG/WebP data under a generated original ID, dispatches an attachment-free job through DBOS to the private CPU file worker, verifies the immutable worker result and PNG bytes before use, and reuses ready output only for the same principal and source digest. Timeout, worker failure and cancellation expire the job. The scheduler purges expired worker output first; API maintenance then erases the generated original and row. Text and external-provider visual refusals are unchanged.

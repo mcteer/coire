@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import io
@@ -211,6 +212,12 @@ async def test_submit_stages_generated_original_for_durable_worker_job(
     jobs: list[ChatFileProcessingRow] = []
 
     class Session:
+        async def execute(self, _statement: object) -> None:
+            return None
+
+        async def scalar(self, _statement: object) -> int:
+            return 0
+
         def add(self, job: ChatFileProcessingRow) -> None:
             jobs.append(job)
 
@@ -226,6 +233,36 @@ async def test_submit_stages_generated_original_for_durable_worker_job(
     assert jobs[0].principal_subject == str(principal.user_id)
     assert jobs[0].state == "queued"
     assert (tmp_path / jobs[0].source_key).read_bytes() == image
+
+
+async def test_temporary_quota_refuses_ninth_job_and_removes_staged_original(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    class Session:
+        async def execute(self, _statement: object) -> None:
+            return None
+
+        async def scalar(self, _statement: object) -> int:
+            return temporary.MAX_TEMPORARY_JOBS_PER_PRINCIPAL
+
+        def add(self, _job: ChatFileProcessingRow) -> None:
+            pytest.fail("quota refusal must precede job insert")
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(temporary, "session_scope", sessions)
+    image = _image()
+    settings = Settings(chat_original_root=str(tmp_path), _secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    with pytest.raises(temporary.TemporaryVisualQuotaExceeded):
+        await temporary._submit(
+            image,
+            hashlib.sha256(image).hexdigest(),
+            Principal(kind=PrincipalKind.API_KEY, api_key_id=uuid.uuid4()),
+            settings,
+        )
+    assert await asyncio.to_thread(lambda: list(tmp_path.iterdir())) == []
 
 
 async def test_temporary_failure_expires_job_for_ordered_cleanup(

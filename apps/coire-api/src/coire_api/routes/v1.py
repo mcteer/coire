@@ -63,7 +63,11 @@ from coire_api.gateway.resolution import (
     resolve_model,
     retry_after_seconds,
 )
-from coire_api.gateway.temporary import TemporaryVisualUnavailable, normalize_inline_images
+from coire_api.gateway.temporary import (
+    TemporaryVisualQuotaExceeded,
+    TemporaryVisualUnavailable,
+    normalize_inline_images,
+)
 from coire_api.gateway.usage import UsageTracker
 from coire_api.registry.service import load_state_for, published_ready_entitled, visible_to
 from coire_core.models.gateway import (
@@ -407,6 +411,9 @@ async def chat_completions(
     except TemporaryVisualUnavailable as exc:
         await usage.finish(UsageOutcome.FAILED, failure_code="visual_worker_unavailable")
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+    except TemporaryVisualQuotaExceeded as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="visual_temporary_quota")
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
     try:
         body.max_tokens = _enforce_run_request_scope(
             principal,
