@@ -163,3 +163,9 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - API maintenance now deletes expired SSE event rows in bounded 1000-row passes while leaving message history intact. It sets a content-free oldest-pending-purge age gauge; the Chat dashboard and `CoireChatPurgeOverdue` alert expose missed 24-hour cleanup deadlines, including attachments waiting on blob deletion.
 - Unit tests cover bounded compaction and overdue age. Dashboard JSON/alert YAML parse checks passed. Parent T030/T066 remain open for staging, blob and coding-artifact cleanup; the release gate stays off.
+
+## Bounded CPU file processor gate (014z)
+
+- Added generated-key original reads with no-follow, 10 MiB and SHA-256 verification; bounded UTF-8, PDFium per-page Unicode extraction/selected scanned-page rasterization, and Pillow still-image orientation/normalization. Derived PNGs use temporary files and no-overwrite atomic publication under generated job/asset keys; result manifests use `coire-core` contracts. The parser performs deadline checks around operations. A future service process watchdog must enforce the hard native-call deadline.
+- Nine runtime-generated fixture tests initially passed for text, malformed content, PNG metadata stripping and bounds, animation, scanned PDF rendering, digest, symlink and output collision. Two further expiry/collision tests were added; the full repository suite passed 898 tests with 117 conditional skips and 309 warnings. Strict mypy passed on 226 source files; Ruff check and format check passed. Two preexisting test-format deviations were corrected as part of the global format gate.
+- Parent T046/T047 remain open for the authenticated serving worker, hard native-call deadline, encrypted PDF/crash recovery proof and integration; T048/T049/T066 and the final file/vision acceptance remain open. Native Chat stays default-off.

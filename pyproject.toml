@@ -81,7 +81,7 @@ namespace_packages = true
 exclude = ["/conftest\\.py$"]
 
 [[tool.mypy.overrides]]
-module = ["psutil.*", "jsonschema.*", "mlx.*", "mlx_lm.*"]
+module = ["psutil.*", "jsonschema.*", "mlx.*", "mlx_lm.*", "pypdfium2.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest
@@ -94,6 +94,7 @@ testpaths = [
     "apps/coire-api/tests",
     "apps/coire-node/tests",
     "apps/coire-failover/tests",
+    "apps/coire-file-worker/tests",
     "tests",
 ]
 markers = [

@@ -93,6 +93,7 @@ async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyP
         yield b"data: [DONE]\n\n"
 
     usage = UsageTracker(ANONYMOUS, str(uuid.uuid4()), GatewayProtocol.OPENAI)
+
     async def persist(**_kwargs: object) -> None:
         return None
 

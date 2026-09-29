@@ -206,9 +206,7 @@ async def test_oldest_pending_purge_metric_tracks_overdue_age(
         yield Session()
 
     monkeypatch.setattr(maintenance, "session_scope", sessions)
-    monkeypatch.setattr(
-        maintenance, "purge_oldest_seconds", SimpleNamespace(set=recorded.append)
-    )
+    monkeypatch.setattr(maintenance, "purge_oldest_seconds", SimpleNamespace(set=recorded.append))
     age = await maintenance.record_oldest_pending_purge()
     assert age > 24 * 3600
     assert recorded == [age]
