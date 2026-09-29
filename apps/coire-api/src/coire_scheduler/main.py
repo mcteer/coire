@@ -43,7 +43,7 @@ from coire_core.models.runs import AgentRunState, RunCommandState, RunOperation
 from coire_core.settings import get_settings
 from coire_scheduler.acquisition import acquisition_workflow
 from coire_scheduler.dbos_runtime import DBOSRuntime
-from coire_scheduler.files import file_processing_workflow
+from coire_scheduler.files import file_processing_workflow, purge_deleted_file_outputs
 from coire_scheduler.instances import instance_drain_workflow, instance_launch_workflow
 from coire_scheduler.mcp_cleanup import sweep_mcp_workspaces
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
@@ -251,6 +251,16 @@ async def dispatch_mcp_cleanup(stop: asyncio.Event) -> None:
         await wait_or_stop(stop, 300.0)
 
 
+async def dispatch_file_purge(stop: asyncio.Event) -> None:
+    settings = get_settings()
+    while not stop.is_set():
+        try:
+            await purge_deleted_file_outputs(settings)
+        except Exception as exc:
+            logger.error("file purge pass failed error_type=%s", type(exc).__name__)
+        await wait_or_stop(stop, 5.0)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_telemetry(SERVICE_NAME, settings.service_version, settings.otlp_endpoint)
@@ -276,6 +286,9 @@ def create_app() -> FastAPI:
             )
             background.append(
                 asyncio.create_task(dispatch_mcp_cleanup(stop), name="mcp-cleanup-dispatcher")
+            )
+            background.append(
+                asyncio.create_task(dispatch_file_purge(stop), name="file-purge-dispatcher")
             )
             app.state.dbos = runtime
             yield

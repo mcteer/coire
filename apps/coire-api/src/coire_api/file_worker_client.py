@@ -12,6 +12,7 @@ from coire_core.models.files import (
     FileProcessCancel,
     FileProcessRequest,
     FileProcessStatus,
+    FilePurgeResult,
     is_ulid,
 )
 from coire_core.settings import Settings
@@ -95,3 +96,31 @@ class FileWorkerClient:
         if status.job_id != job_id:
             raise FileWorkerError("worker job identity mismatch")
         return status
+
+    async def purge(self, job_id: str) -> FilePurgeResult:
+        if not is_ulid(job_id):
+            raise ValueError("invalid worker job ID")
+        if self.client is None:
+            raise FileWorkerError("worker unavailable")
+        token = self.settings.file_worker_service_token.get_secret_value()
+        if not token:
+            raise FileWorkerError("worker unavailable")
+        try:
+            response = await self.client.request(
+                "DELETE",
+                f"/v1/jobs/{job_id}/output",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        except httpx.HTTPError:
+            raise FileWorkerError("worker unavailable") from None
+        if response.status_code == 409:
+            raise FileWorkerBusy("worker output active")
+        if response.status_code != 200:
+            raise FileWorkerError("worker purge unavailable")
+        try:
+            result = FilePurgeResult.model_validate(response.json())
+        except (ValueError, ValidationError):
+            raise FileWorkerError("invalid worker purge response") from None
+        if result.job_id != job_id:
+            raise FileWorkerError("worker job identity mismatch")
+        return result

@@ -92,12 +92,14 @@ from coire_core.models.failover import (
 from coire_core.models.files import (
     ChatAttachment,
     ChatAttachmentSelection,
+    ChatPreviewAsset,
     FileProcessAsset,
     FileProcessCancel,
     FileProcessJob,
     FileProcessRequest,
     FileProcessResult,
     FileProcessStatus,
+    FilePurgeResult,
     FileWorkerHealth,
 )
 from coire_core.models.gateway import (
@@ -288,6 +290,7 @@ __all__ = [
     "ChatPickerEntry",
     "ChatPickerQuery",
     "ChatPickerResponse",
+    "ChatPreviewAsset",
     "ChatSnapshot",
     "ChatStopRequest",
     "ChatTurn",
@@ -331,6 +334,7 @@ __all__ = [
     "FileProcessRequest",
     "FileProcessResult",
     "FileProcessStatus",
+    "FilePurgeResult",
     "FileWorkerHealth",
     "FitDecision",
     "GatewayModel",

@@ -11,6 +11,7 @@ from typing import Literal, cast
 
 from dbos import DBOS
 from opentelemetry import metrics, trace
+from sqlalchemy import select
 
 from coire_api.chat.file_manifest import validate_result
 from coire_api.db import (
@@ -33,8 +34,11 @@ tracer = trace.get_tracer("coire.scheduler.files")
 processing_total = metrics.get_meter("coire.scheduler.files").create_counter(
     "coire_file_dispatch_total", unit="1", description="Durable private file dispatch outcomes"
 )
-TERMINAL = {"processed", "ready", "failed", "cancelled"}
+TERMINAL = {"processed", "ready", "failed", "cancelled", "purging", "purged"}
 POLL_SECONDS = 0.5
+purge_total = metrics.get_meter("coire.scheduler.files").create_counter(
+    "coire_file_output_purge_total", unit="1", description="Private derived output purge outcomes"
+)
 
 
 async def _tombstoned(job: ChatFileProcessingRow) -> bool:
@@ -257,6 +261,70 @@ async def drive_file_job(job_id: str, settings: Settings | None = None) -> None:
             finally:
                 processing_total.add(1, {"outcome": outcome})
                 logger.info("file dispatch finished job_id=%s outcome=%s", job_id, outcome)
+
+
+async def purge_deleted_file_outputs(settings: Settings) -> int:
+    """Repeat idempotent worker erasure until every deleted parent's job is marked purged."""
+
+    cutoff = datetime.now(UTC) - timedelta(seconds=2)
+    async with session_scope() as session:
+        job_ids = list(
+            (
+                await session.execute(
+                    select(ChatFileProcessingRow.id)
+                    .join(
+                        ChatAttachmentRow,
+                        ChatAttachmentRow.id == ChatFileProcessingRow.attachment_id,
+                    )
+                    .join(
+                        ChatConversationRow,
+                        ChatConversationRow.id == ChatAttachmentRow.conversation_id,
+                    )
+                    .where(
+                        ChatConversationRow.deleted_at.is_not(None),
+                        ChatFileProcessingRow.state != "purged",
+                        ChatFileProcessingRow.deadline_at <= cutoff,
+                    )
+                    .order_by(ChatFileProcessingRow.created_at, ChatFileProcessingRow.id)
+                    .limit(10)
+                )
+            ).scalars()
+        )
+    purged = 0
+    for job_id in job_ids:
+        with tracer.start_as_current_span("coire.scheduler.files.purge") as span:
+            span.set_attribute("job_id", job_id)
+            async with session_scope() as session:
+                job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
+                if job is None or job.state == "purged" or job.deadline_at > cutoff:
+                    continue
+                attachment = await session.get(ChatAttachmentRow, job.attachment_id)
+                conversation = (
+                    await session.get(ChatConversationRow, attachment.conversation_id)
+                    if attachment is not None
+                    else None
+                )
+                if conversation is None or conversation.deleted_at is None:
+                    continue
+                job.state = "purging"
+                job.updated_at = datetime.now(UTC)
+            try:
+                async with FileWorkerClient(settings) as client:
+                    await client.purge(job_id)
+            except FileWorkerError:
+                purge_total.add(1, {"outcome": "retry"})
+                logger.info("file output purge deferred job_id=%s", job_id)
+                continue
+            async with session_scope() as session:
+                job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
+                if job is not None and job.state == "purging":
+                    job.state = "purged"
+                    job.output_manifest = None
+                    job.updated_at = datetime.now(UTC)
+                    purged += 1
+            purge_total.add(1, {"outcome": "purged"})
+            logger.info("file output purged job_id=%s", job_id)
+    return purged
 
 
 @DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)

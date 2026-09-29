@@ -19,6 +19,7 @@ from coire_core.models.files import (
     FileProcessRequest,
     FileProcessResult,
     FileProcessStatus,
+    FilePurgeResult,
     FileWorkerHealth,
     is_ulid,
 )
@@ -158,6 +159,25 @@ class Worker:
                 job.status = self._status(job.request, "cancelled")
             return job.status
 
+    async def purge(self, job_id: str) -> FilePurgeResult:
+        if not is_ulid(job_id):
+            raise HTTPException(status_code=404, detail="job not found")
+        async with self.lock:
+            if self.active_job == job_id:
+                raise HTTPException(status_code=409, detail="job is active")
+            target = Path(self.settings.file_worker_output_root) / job_id
+            if target.is_symlink():
+                raise HTTPException(status_code=409, detail="invalid output directory")
+            try:
+                await asyncio.to_thread(shutil.rmtree, target)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                raise HTTPException(status_code=503, detail="output purge unavailable") from None
+            self.jobs.pop(job_id, None)
+            logger.info("file output purged job_id=%s", job_id)
+            return FilePurgeResult(job_id=job_id)
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     worker = Worker(settings or Settings())
@@ -197,6 +217,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if job_id != request.job_id:
             raise HTTPException(status_code=409, detail="job ID conflict")
         return await worker.cancel(request)
+
+    @app.delete(
+        "/v1/jobs/{job_id}/output",
+        response_model=FilePurgeResult,
+        dependencies=[Depends(authenticated)],
+    )
+    async def purge_output(job_id: str) -> FilePurgeResult:
+        return await worker.purge(job_id)
 
     return app
 

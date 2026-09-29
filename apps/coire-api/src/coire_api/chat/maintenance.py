@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import stat
 import uuid
 from contextlib import suppress
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Literal
 
 from sqlalchemy import and_, delete, func, or_, select, update
@@ -17,6 +20,7 @@ from coire_api.db import (
     ChatAttachmentRow,
     ChatConversationRow,
     ChatEventRow,
+    ChatFileProcessingRow,
     ChatMessageRow,
     ChatQuotaReservationRow,
     ChatTurnRow,
@@ -31,6 +35,7 @@ LEASE_SECONDS = 30
 SWEEP_SECONDS = 5
 ACTIVE_STATES = ("accepted", "queued", "loading", "running", "stop_requested")
 TEXT_PURGE_DELAY = timedelta(minutes=5)
+STAGING_PURGE_DELAY = timedelta(hours=1)
 
 
 async def renew_turn_lease(turn_id: uuid.UUID) -> bool:
@@ -235,6 +240,125 @@ async def purge_deleted_text() -> int:
     return purged
 
 
+async def purge_deleted_files(settings: Settings) -> int:
+    """Erase generated originals and file rows only after worker outputs are purged."""
+
+    cutoff = datetime.now(UTC) - TEXT_PURGE_DELAY
+    async with session_scope() as session:
+        attachment_ids = list(
+            (
+                await session.execute(
+                    select(ChatAttachmentRow.id)
+                    .join(
+                        ChatConversationRow,
+                        ChatConversationRow.id == ChatAttachmentRow.conversation_id,
+                    )
+                    .where(
+                        ChatConversationRow.deleted_at <= cutoff,
+                        ~select(ChatFileProcessingRow.id)
+                        .where(
+                            ChatFileProcessingRow.attachment_id == ChatAttachmentRow.id,
+                            ChatFileProcessingRow.state != "purged",
+                        )
+                        .exists(),
+                    )
+                    .order_by(ChatAttachmentRow.created_at, ChatAttachmentRow.id)
+                    .limit(100)
+                )
+            ).scalars()
+        )
+    purged = 0
+    for attachment_id in attachment_ids:
+        with tracer.start_as_current_span("coire.api.chat.file_purge") as span:
+            span.set_attribute("file_id", str(attachment_id))
+            async with session_scope() as session:
+                snapshot = await session.get(ChatAttachmentRow, attachment_id)
+                if snapshot is None:
+                    continue
+                conversation = await session.get(
+                    ChatConversationRow, snapshot.conversation_id, with_for_update=True
+                )
+                attachment = await session.get(
+                    ChatAttachmentRow, attachment_id, with_for_update=True
+                )
+                if (
+                    conversation is None
+                    or conversation.deleted_at is None
+                    or conversation.deleted_at > datetime.now(UTC) - TEXT_PURGE_DELAY
+                    or attachment is None
+                ):
+                    continue
+                jobs = list(
+                    (
+                        await session.execute(
+                            select(ChatFileProcessingRow).where(
+                                ChatFileProcessingRow.attachment_id == attachment_id
+                            )
+                        )
+                    ).scalars()
+                )
+                if any(job.state != "purged" for job in jobs):
+                    continue
+                if attachment.original_key != str(attachment.id):
+                    logger.error("file original key mismatch file_id=%s", attachment.id)
+                    continue
+                try:
+                    (Path(settings.chat_original_root) / attachment.original_key).unlink(
+                        missing_ok=True
+                    )
+                except OSError as exc:
+                    requests_total.add(1, {"operation": "file_purge", "outcome": "retry"})
+                    logger.error(
+                        "file original purge failed file_id=%s error_type=%s",
+                        attachment.id,
+                        type(exc).__name__,
+                    )
+                    continue
+                await session.execute(
+                    delete(ChatQuotaReservationRow).where(
+                        ChatQuotaReservationRow.attachment_id == attachment_id
+                    )
+                )
+                await session.execute(
+                    delete(ChatFileProcessingRow).where(
+                        ChatFileProcessingRow.attachment_id == attachment_id
+                    )
+                )
+                await session.delete(attachment)
+            purged += 1
+            requests_total.add(1, {"operation": "file_purge", "outcome": "succeeded"})
+            logger.info("chat attachment purged file_id=%s", attachment_id)
+    return purged
+
+
+def purge_stale_uploads(root: Path, *, limit: int = 100) -> int:
+    """Remove only aged generated temporary originals left by interrupted uploads."""
+
+    cutoff = (datetime.now(UTC) - STAGING_PURGE_DELAY).timestamp()
+    removed = 0
+    try:
+        entries = os.scandir(root)
+    except FileNotFoundError:
+        return 0
+    with entries:
+        for entry in entries:
+            if removed >= limit:
+                break
+            parts = entry.name.split(".")
+            if len(parts) != 4 or parts[0] or parts[3] != "uploading":
+                continue
+            try:
+                uuid.UUID(parts[1])
+                uuid.UUID(parts[2])
+                info = entry.stat(follow_symlinks=False)
+                if stat.S_ISREG(info.st_mode) and info.st_mtime <= cutoff:
+                    Path(entry.path).unlink()
+                    removed += 1
+            except (ValueError, OSError):
+                continue
+    return removed
+
+
 async def compact_expired_events() -> int:
     """Delete one bounded page of expired SSE events; history snapshots remain intact."""
     async with session_scope() as session:
@@ -290,7 +414,15 @@ class ChatMaintenance:
             try:
                 await sweep_stale_turns(self._settings)
                 await publish_processed_files(self._settings)
+                await purge_deleted_files(self._settings)
                 await purge_deleted_text()
+                stale_uploads = await asyncio.to_thread(
+                    purge_stale_uploads, Path(self._settings.chat_original_root)
+                )
+                if stale_uploads:
+                    requests_total.add(
+                        stale_uploads, {"operation": "staging_purge", "outcome": "succeeded"}
+                    )
                 await compact_expired_events()
                 await record_oldest_pending_purge()
             except Exception as exc:

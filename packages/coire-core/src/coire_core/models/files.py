@@ -211,7 +211,9 @@ class FileProcessJob(BaseModel):
     operation: Literal["inspect", "render"]
     source_sha256: str = Field(pattern=SHA256_PATTERN)
     selected_pages: list[int] = Field(default_factory=list, max_length=10)
-    state: Literal["queued", "running", "processed", "ready", "failed", "cancelled"]
+    state: Literal[
+        "queued", "running", "processed", "ready", "failed", "cancelled", "purging", "purged"
+    ]
     attempt: int = Field(ge=1, le=2)
     deadline_at: datetime
     expires_at: datetime
@@ -222,6 +224,13 @@ class FileProcessCancel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     job_id: str = Field(pattern=ULID_PATTERN)
+
+
+class FilePurgeResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str = Field(pattern=ULID_PATTERN)
+    state: Literal["purged"] = "purged"
 
 
 class FileWorkerHealth(BaseModel):

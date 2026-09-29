@@ -15,7 +15,7 @@ from coire_api.file_worker_client import (
     FileWorkerError,
     FileWorkerMissing,
 )
-from coire_core.models.files import FileProcessRequest, FileProcessStatus
+from coire_core.models.files import FileProcessRequest, FileProcessStatus, FilePurgeResult
 from coire_core.settings import Settings
 
 JOB_ID = "01K00000000000000000000000"
@@ -124,3 +124,33 @@ async def test_missing_token_cannot_call_worker() -> None:
         with pytest.raises(FileWorkerError, match="worker unavailable"):
             await client.status(JOB_ID)
     assert not called
+
+
+async def test_typed_purge_rejects_active_and_mismatched_worker_status() -> None:
+    responses = [
+        httpx.Response(409, text="private details"),
+        httpx.Response(200, json=FilePurgeResult(job_id=JOB_ID).model_dump()),
+        httpx.Response(
+            200,
+            json=FilePurgeResult(job_id="01K00000000000000000000001").model_dump(),
+        ),
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "DELETE"
+        assert request.url.path == f"/v1/jobs/{JOB_ID}/output"
+        assert request.headers["Authorization"] == "Bearer private-worker-token"
+        return responses.pop(0)
+
+    async with (
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(handler), base_url="http://worker"
+        ) as transport,
+        FileWorkerClient(_settings(), client=transport) as client,
+    ):
+        with pytest.raises(FileWorkerBusy) as caught:
+            await client.purge(JOB_ID)
+        assert "private details" not in str(caught.value)
+        assert (await client.purge(JOB_ID)).state == "purged"
+        with pytest.raises(FileWorkerError):
+            await client.purge(JOB_ID)

@@ -71,6 +71,7 @@ async def test_all_routes_require_dedicated_token(tmp_path: Path) -> None:
             ("POST", "/v1/process", request.model_dump(mode="json")),
             ("GET", f"/v1/jobs/{JOB_ID}", None),
             ("POST", f"/v1/jobs/{JOB_ID}/cancel", {"job_id": JOB_ID}),
+            ("DELETE", f"/v1/jobs/{JOB_ID}/output", None),
         ):
             response = await client.request(method, path, json=body)
             assert response.status_code == 401
@@ -155,6 +156,7 @@ async def test_one_active_job_and_cancel_discards_output(
         assert (
             await client.post("/v1/process", json=second.model_dump(mode="json"))
         ).status_code == 429
+        assert (await client.delete(f"/v1/jobs/{JOB_ID}/output")).status_code == 409
         cancelled = await client.post(f"/v1/jobs/{JOB_ID}/cancel", json={"job_id": JOB_ID})
         assert cancelled.status_code == 200
         assert cancelled.json()["state"] == "cancelled"
@@ -166,6 +168,25 @@ async def test_one_active_job_and_cancel_discards_output(
         assert app.state.worker.active_job is None
         assert (await client.get(f"/v1/jobs/{JOB_ID}")).json()["result"] is None
         assert not (Path(settings.file_worker_output_root) / JOB_ID).exists()
+
+
+async def test_output_purge_survives_worker_restart_and_is_idempotent(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    folder = Path(settings.file_worker_output_root) / JOB_ID
+    folder.mkdir(parents=True)
+    (folder / f"{uuid.uuid4()}.png").write_bytes(b"private output")
+    app = create_app(settings)  # Fresh worker has no in-memory job status.
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://worker",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as client:
+        assert (await client.delete("/v1/jobs/not-a-ulid/output")).status_code == 404
+        first = await client.delete(f"/v1/jobs/{JOB_ID}/output")
+        assert first.status_code == 200
+        assert first.json() == {"job_id": JOB_ID, "state": "purged"}
+        assert not folder.exists()
+        assert (await client.delete(f"/v1/jobs/{JOB_ID}/output")).status_code == 200
 
 
 @pytest.mark.asyncio
