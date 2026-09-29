@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { openEventStream } from "../api/eventStream";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { sendChatTurn, type ChatEvent, type ChatTurnCreate } from "../api/chat";
+import { openEventStream, readEventStream } from "../api/eventStream";
 
 type State<T> = { data: T | null; connected: boolean; error: string | null };
 
@@ -27,29 +28,12 @@ export function useEventStream<T>(url: string, initial: T | null = null): State<
         const response = await openEventStream(url, lastId.current, active.signal);
         if (!response.ok || !response.body) throw new Error(`stream refused (${response.status})`);
         setState((value) => ({ ...value, connected: true, error: null }));
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        try {
-          while (!active.signal.aborted) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const blocks = buffer.split("\n\n");
-            buffer = blocks.pop() ?? "";
-            for (const block of blocks) {
-              const id = block.match(/^id: (.+)$/m)?.[1];
-              const payload = block.match(/^data: (.+)$/m)?.[1];
-              if (!payload) continue;
-              const event = JSON.parse(payload) as { snapshot: T };
-              if (id) lastId.current = id;
-              failures = 0;
-              setState({ data: event.snapshot, connected: true, error: null });
-            }
-          }
-        } finally {
-          await reader.cancel().catch(() => undefined);
-        }
+        await readEventStream(response, active.signal, (frame) => {
+          const event = JSON.parse(frame.data) as { snapshot: T };
+          if (frame.id) lastId.current = frame.id;
+          failures = 0;
+          setState({ data: event.snapshot, connected: true, error: null });
+        });
         if (!active.signal.aborted) throw new Error("stream ended");
       } catch (error) {
         if (!active.signal.aborted && !disposed) {
@@ -89,4 +73,40 @@ export function useEventStream<T>(url: string, initial: T | null = null): State<
   }, [url]);
 
   return state;
+}
+
+/** A native generation is owned by one explicit send, including in hidden tabs. */
+export function useChatTurnStream() {
+  const controller = useRef<AbortController | null>(null);
+  const [active, setActive] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => () => controller.current?.abort(), []);
+
+  const send = useCallback(
+    async (
+      conversationId: string,
+      body: ChatTurnCreate,
+      onEvent: (event: ChatEvent) => void,
+    ): Promise<void> => {
+      if (controller.current) throw new Error("chat turn already active");
+      const current = new AbortController();
+      controller.current = current;
+      setActive(true);
+      setError(null);
+      try {
+        await sendChatTurn(conversationId, body, current.signal, onEvent);
+      } catch (cause) {
+        if (!current.signal.aborted) setError(String(cause));
+        throw cause;
+      } finally {
+        if (controller.current === current) controller.current = null;
+        setActive(false);
+      }
+    },
+    [],
+  );
+
+  const abort = useCallback(() => controller.current?.abort(), []);
+  return { active, error, send, abort };
 }

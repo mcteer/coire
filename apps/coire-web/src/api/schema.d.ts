@@ -2121,6 +2121,67 @@ export interface components {
             /** Tool Calling */
             tool_calling: number;
         };
+        /** ChatAttachment */
+        ChatAttachment: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Derived Bytes
+             * @default 0
+             */
+            derived_bytes: number;
+            /** Detected Type */
+            detected_type: string;
+            /** Filename */
+            filename: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Original Bytes */
+            original_bytes: number;
+            /** Original Sha256 */
+            original_sha256: string;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Page Count */
+            page_count?: number | null;
+            /** Safe Error */
+            safe_error?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "uploading" | "processing" | "ready" | "failed" | "deleting";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ChatAttachmentChanged */
+        ChatAttachmentChanged: {
+            attachment?: components["schemas"]["ChatAttachment"] | null;
+            /** Removed Id */
+            removed_id?: string | null;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "attachment.changed";
+        };
         /** ChatAttachmentSelection */
         ChatAttachmentSelection: {
             /**
@@ -2226,6 +2287,65 @@ export interface components {
             /** Title */
             title?: string | null;
         };
+        /** ChatConversationDeleted */
+        ChatConversationDeleted: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "conversation.deleted";
+        };
+        /** ChatConversationDetail */
+        ChatConversationDetail: {
+            /** Attachments */
+            attachments?: components["schemas"]["ChatAttachment"][];
+            conversation: components["schemas"]["ChatConversation"];
+            /** Event Cursor */
+            event_cursor: number;
+            /** Messages */
+            messages?: components["schemas"]["ChatMessage-Output"][];
+            /** Next Message Position */
+            next_message_position?: number | null;
+            /** Turns */
+            turns?: components["schemas"]["ChatTurn"][];
+        };
+        /** ChatConversationUpdated */
+        ChatConversationUpdated: {
+            conversation: components["schemas"]["ChatConversation"];
+            /** Reason */
+            reason: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "conversation.updated";
+        };
+        /** ChatEvent */
+        ChatEvent: {
+            /**
+             * Conversation Id
+             * Format: uuid
+             */
+            conversation_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Cursor */
+            cursor: number;
+            /** Payload */
+            payload: components["schemas"]["ChatSnapshot"] | components["schemas"]["ChatConversationUpdated"] | components["schemas"]["ChatTurnAccepted"] | components["schemas"]["ChatTurnStatus"] | components["schemas"]["ChatMessageDelta"] | components["schemas"]["ChatTurnTerminal"] | components["schemas"]["ChatAttachmentChanged"] | components["schemas"]["ChatConversationDeleted"];
+            /** Turn Id */
+            turn_id?: string | null;
+        };
         /** ChatMessage */
         "ChatMessage-Input": {
             /** Content */
@@ -2283,6 +2403,28 @@ export interface components {
              */
             text: string;
         };
+        /** ChatMessageDelta */
+        ChatMessageDelta: {
+            /**
+             * Channel
+             * @enum {string}
+             */
+            channel: "answer" | "reasoning";
+            /**
+             * Message Id
+             * Format: uuid
+             */
+            message_id: string;
+            /** Offset */
+            offset: number;
+            /** Text */
+            text: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "message.delta";
+        };
         /** ChatPickerEntry */
         ChatPickerEntry: {
             /**
@@ -2323,6 +2465,20 @@ export interface components {
         ChatPickerResponse: {
             /** Data */
             data?: components["schemas"]["ChatPickerEntry"][];
+        };
+        /** ChatSnapshot */
+        ChatSnapshot: {
+            detail: components["schemas"]["ChatConversationDetail"];
+            /**
+             * Replacement
+             * @default false
+             */
+            replacement: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "snapshot";
         };
         /** ChatTurn */
         ChatTurn: {
@@ -2383,6 +2539,15 @@ export interface components {
             updated_at: string;
             usage?: components["schemas"]["ChatUsage"] | null;
         };
+        /** ChatTurnAccepted */
+        ChatTurnAccepted: {
+            turn: components["schemas"]["ChatTurn"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "turn.accepted";
+        };
         /** ChatTurnCreate */
         ChatTurnCreate: {
             /**
@@ -2425,6 +2590,45 @@ export interface components {
             event_cursor: number;
             input_message: components["schemas"]["ChatMessage-Output"];
             turn: components["schemas"]["ChatTurn"];
+        };
+        /** ChatTurnStatus */
+        ChatTurnStatus: {
+            /** Estimate Seconds */
+            estimate_seconds?: number | null;
+            /** Explanation */
+            explanation?: string | null;
+            /** Queue Position */
+            queue_position?: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "accepted" | "queued" | "loading" | "running" | "stop_requested";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "turn.status";
+        };
+        /** ChatTurnTerminal */
+        ChatTurnTerminal: {
+            /** Answer Length */
+            answer_length: number;
+            /** Reasoning Length */
+            reasoning_length: number;
+            /** Safe Error */
+            safe_error?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "completed" | "failed" | "stopped" | "interrupted";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "turn.terminal";
+            usage?: components["schemas"]["ChatUsage"] | null;
         };
         /** ChatUsage */
         ChatUsage: {
@@ -6566,7 +6770,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "text/event-stream": components["schemas"]["ChatEvent"];
                 };
             };
             /** @description Validation Error */

@@ -19,6 +19,7 @@ from coire_core.errors import ChatModelUnavailable, CoireError
 from coire_core.models.chat import (
     ChatConversation,
     ChatConversationCreate,
+    ChatEvent,
     ChatPickerQuery,
     ChatPickerResponse,
     ChatTurnCreate,
@@ -87,7 +88,16 @@ async def create_chat_conversation(
         return response
 
 
-@router.post("/conversations/{conversation_id}/turns")
+@router.post(
+    "/conversations/{conversation_id}/turns",
+    response_model=ChatEvent,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "content": {"text/event-stream": {"schema": {"$ref": "#/components/schemas/ChatEvent"}}}
+        }
+    },
+)
 async def send_chat_turn(
     conversation_id: uuid.UUID,
     body: ChatTurnCreate,

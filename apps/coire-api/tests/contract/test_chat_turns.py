@@ -355,6 +355,11 @@ async def test_send_and_status_routes_use_native_sse_and_owner_guard(
     monkeypatch.setattr(chat_routes, "native_stream", fake_stream)
     monkeypatch.setattr(chat_routes, "read_turn_detail", fake_status)
     path = f"/api/v1/chat/conversations/{session.conversation.id}/turns"
+    schema = app.openapi()
+    stream_schema = schema["paths"]["/api/v1/chat/conversations/{conversation_id}/turns"]["post"][
+        "responses"
+    ]["200"]["content"]["text/event-stream"]["schema"]
+    assert stream_schema["$ref"] == "#/components/schemas/ChatEvent"
     headers = {"Authorization": "Bearer chat-turn-contract"}
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://localhost"

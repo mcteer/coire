@@ -1766,6 +1766,151 @@
         "title": "CategoryScores",
         "type": "object"
       },
+      "ChatAttachment": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "derived_bytes": {
+            "default": 0,
+            "maximum": 33554432.0,
+            "minimum": 0.0,
+            "title": "Derived Bytes",
+            "type": "integer"
+          },
+          "detected_type": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Detected Type",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "original_bytes": {
+            "maximum": 10485760.0,
+            "minimum": 1.0,
+            "title": "Original Bytes",
+            "type": "integer"
+          },
+          "original_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Original Sha256",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "state": {
+            "enum": [
+              "uploading",
+              "processing",
+              "ready",
+              "failed",
+              "deleting"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "owner_id",
+          "conversation_id",
+          "filename",
+          "detected_type",
+          "original_bytes",
+          "original_sha256",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatAttachment",
+        "type": "object"
+      },
+      "ChatAttachmentChanged": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatAttachment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "removed_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed Id"
+          },
+          "type": {
+            "const": "attachment.changed",
+            "default": "attachment.changed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "ChatAttachmentChanged",
+        "type": "object"
+      },
       "ChatAttachmentSelection": {
         "additionalProperties": false,
         "properties": {
@@ -2048,6 +2193,195 @@
         "title": "ChatConversationCreate",
         "type": "object"
       },
+      "ChatConversationDeleted": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "type": {
+            "const": "conversation.deleted",
+            "default": "conversation.deleted",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "revision"
+        ],
+        "title": "ChatConversationDeleted",
+        "type": "object"
+      },
+      "ChatConversationDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ChatAttachment"
+            },
+            "maxItems": 100,
+            "title": "Attachments",
+            "type": "array"
+          },
+          "conversation": {
+            "$ref": "#/components/schemas/ChatConversation"
+          },
+          "event_cursor": {
+            "minimum": 0.0,
+            "title": "Event Cursor",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage-Output"
+            },
+            "maxItems": 100,
+            "title": "Messages",
+            "type": "array"
+          },
+          "next_message_position": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Message Position"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTurn"
+            },
+            "maxItems": 100,
+            "title": "Turns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversation",
+          "event_cursor"
+        ],
+        "title": "ChatConversationDetail",
+        "type": "object"
+      },
+      "ChatConversationUpdated": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/ChatConversation"
+          },
+          "reason": {
+            "maxLength": 100,
+            "title": "Reason",
+            "type": "string"
+          },
+          "type": {
+            "const": "conversation.updated",
+            "default": "conversation.updated",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation",
+          "reason"
+        ],
+        "title": "ChatConversationUpdated",
+        "type": "object"
+      },
+      "ChatEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cursor": {
+            "minimum": 1.0,
+            "title": "Cursor",
+            "type": "integer"
+          },
+          "payload": {
+            "discriminator": {
+              "mapping": {
+                "attachment.changed": "#/components/schemas/ChatAttachmentChanged",
+                "conversation.deleted": "#/components/schemas/ChatConversationDeleted",
+                "conversation.updated": "#/components/schemas/ChatConversationUpdated",
+                "message.delta": "#/components/schemas/ChatMessageDelta",
+                "snapshot": "#/components/schemas/ChatSnapshot",
+                "turn.accepted": "#/components/schemas/ChatTurnAccepted",
+                "turn.status": "#/components/schemas/ChatTurnStatus",
+                "turn.terminal": "#/components/schemas/ChatTurnTerminal"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ChatSnapshot"
+              },
+              {
+                "$ref": "#/components/schemas/ChatConversationUpdated"
+              },
+              {
+                "$ref": "#/components/schemas/ChatTurnAccepted"
+              },
+              {
+                "$ref": "#/components/schemas/ChatTurnStatus"
+              },
+              {
+                "$ref": "#/components/schemas/ChatMessageDelta"
+              },
+              {
+                "$ref": "#/components/schemas/ChatTurnTerminal"
+              },
+              {
+                "$ref": "#/components/schemas/ChatAttachmentChanged"
+              },
+              {
+                "$ref": "#/components/schemas/ChatConversationDeleted"
+              }
+            ],
+            "title": "Payload"
+          },
+          "turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "cursor",
+          "created_at",
+          "payload"
+        ],
+        "title": "ChatEvent",
+        "type": "object"
+      },
       "ChatMessage-Input": {
         "additionalProperties": true,
         "properties": {
@@ -2208,6 +2542,50 @@
         "title": "ChatMessage",
         "type": "object"
       },
+      "ChatMessageDelta": {
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "enum": [
+              "answer",
+              "reasoning"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "offset": {
+            "maximum": 524288.0,
+            "minimum": 1.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "text": {
+            "maxLength": 65536,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "type": {
+            "const": "message.delta",
+            "default": "message.delta",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "channel",
+          "text",
+          "offset"
+        ],
+        "title": "ChatMessageDelta",
+        "type": "object"
+      },
       "ChatPickerEntry": {
         "additionalProperties": false,
         "properties": {
@@ -2327,6 +2705,30 @@
         "title": "ChatPickerResponse",
         "type": "object"
       },
+      "ChatSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ChatConversationDetail"
+          },
+          "replacement": {
+            "default": false,
+            "title": "Replacement",
+            "type": "boolean"
+          },
+          "type": {
+            "const": "snapshot",
+            "default": "snapshot",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ChatSnapshot",
+        "type": "object"
+      },
       "ChatTurn": {
         "additionalProperties": false,
         "properties": {
@@ -2430,6 +2832,25 @@
           "updated_at"
         ],
         "title": "ChatTurn",
+        "type": "object"
+      },
+      "ChatTurnAccepted": {
+        "additionalProperties": false,
+        "properties": {
+          "turn": {
+            "$ref": "#/components/schemas/ChatTurn"
+          },
+          "type": {
+            "const": "turn.accepted",
+            "default": "turn.accepted",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn"
+        ],
+        "title": "ChatTurnAccepted",
         "type": "object"
       },
       "ChatTurnCreate": {
@@ -2570,6 +2991,131 @@
           "event_cursor"
         ],
         "title": "ChatTurnDetail",
+        "type": "object"
+      },
+      "ChatTurnStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "estimate_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Seconds"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "queue_position": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Position"
+          },
+          "state": {
+            "enum": [
+              "accepted",
+              "queued",
+              "loading",
+              "running",
+              "stop_requested"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "type": {
+            "const": "turn.status",
+            "default": "turn.status",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ChatTurnStatus",
+        "type": "object"
+      },
+      "ChatTurnTerminal": {
+        "additionalProperties": false,
+        "properties": {
+          "answer_length": {
+            "maximum": 524288.0,
+            "minimum": 0.0,
+            "title": "Answer Length",
+            "type": "integer"
+          },
+          "reasoning_length": {
+            "maximum": 524288.0,
+            "minimum": 0.0,
+            "title": "Reasoning Length",
+            "type": "integer"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "state": {
+            "enum": [
+              "completed",
+              "failed",
+              "stopped",
+              "interrupted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "type": {
+            "const": "turn.terminal",
+            "default": "turn.terminal",
+            "title": "Type",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "answer_length",
+          "reasoning_length"
+        ],
+        "title": "ChatTurnTerminal",
         "type": "object"
       },
       "ChatUsage": {
@@ -11791,8 +12337,10 @@
         "responses": {
           "200": {
             "content": {
-              "application/json": {
-                "schema": {}
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatEvent"
+                }
               }
             },
             "description": "Successful Response"
