@@ -183,6 +183,7 @@ async def test_failed_output_cleanup_preserves_visible_failure_and_retries(
     rows = FileRows()
     rows.job.state = "failed"
     rows.job.safe_error = "worker_status_missing"
+    rows.job.output_manifest = {"client_request": {"expected_revision": 3}}
     calls: list[str] = []
 
     @asynccontextmanager
@@ -208,7 +209,10 @@ async def test_failed_output_cleanup_preserves_visible_failure_and_retries(
     assert rows.job.state == "failed"
     assert rows.job.safe_error == "worker_status_missing"
     assert await scheduler_files.purge_failed_file_outputs(_settings(tmp_path)) == 1
-    assert rows.job.output_manifest == {"output_purged": True}
+    assert rows.job.output_manifest == {
+        "output_purged": True,
+        "client_request": {"expected_revision": 3},
+    }
     assert rows.job.state == "failed"
     assert rows.job.attempt == 1
     assert await scheduler_files.purge_failed_file_outputs(_settings(tmp_path)) == 0

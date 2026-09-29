@@ -30,6 +30,7 @@ from coire_core.errors import ChatConflict, ChatNotFound, ChatQuotaExceeded
 from coire_core.models.chat import ChatAttachmentChanged, ChatEvent
 from coire_core.models.files import (
     ChatAttachment,
+    ChatFileProcessRequest,
     ChatPreviewAsset,
     ChatUploadMetadata,
     FileProcessResult,
@@ -302,6 +303,153 @@ async def admit_original(
         finally:
             await asyncio.shield(session.rollback())
         raise
+
+
+async def retry_inspection(
+    session: AsyncSession,
+    principal: Principal,
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    body: ChatFileProcessRequest,
+    settings: Settings,
+) -> ChatAttachment:
+    """Queue at most one explicit second inspect after verified failed-output cleanup."""
+
+    assert principal.user_id is not None
+    if body.operation != "inspect":
+        raise ChatConflict("page rendering is not available yet")
+    owner = await session.scalar(
+        select(UserRow).where(UserRow.id == principal.user_id).with_for_update()
+    )
+    if owner is None:
+        raise ChatNotFound()
+    conversation = await session.scalar(
+        select(ChatConversationRow)
+        .where(ChatConversationRow.id == conversation_id)
+        .with_for_update()
+    )
+    if (
+        conversation is None
+        or conversation.owner_user_id != principal.user_id
+        or conversation.deleted_at is not None
+    ):
+        raise ChatNotFound()
+    attachment = await session.scalar(
+        select(ChatAttachmentRow).where(ChatAttachmentRow.id == file_id).with_for_update()
+    )
+    if (
+        attachment is None
+        or attachment.owner_user_id != principal.user_id
+        or attachment.conversation_id != conversation_id
+        or attachment.deleted_at is not None
+    ):
+        raise ChatNotFound()
+    existing = await session.scalar(
+        select(ChatFileProcessingRow).where(ChatFileProcessingRow.request_id == body.request_id)
+    )
+    if existing is not None:
+        client_request = (existing.output_manifest or {}).get("client_request")
+        if (
+            existing.attachment_id != attachment.id
+            or existing.owner_user_id != principal.user_id
+            or existing.operation != "inspect"
+            or existing.selected_pages
+            or not isinstance(client_request, dict)
+            or client_request.get("expected_revision") != body.expected_revision
+        ):
+            raise ChatConflict("request ID already used for a different file action")
+        return project_attachment(attachment)
+    if conversation.revision != body.expected_revision:
+        raise ChatConflict("conversation changed; refresh before retrying")
+    latest = await session.scalar(
+        select(ChatFileProcessingRow)
+        .where(
+            ChatFileProcessingRow.attachment_id == attachment.id,
+            ChatFileProcessingRow.operation == "inspect",
+        )
+        .order_by(ChatFileProcessingRow.attempt.desc(), ChatFileProcessingRow.created_at.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    if (
+        latest is None
+        or latest.state != "failed"
+        or latest.attempt != 1
+        or attachment.state != "failed"
+    ):
+        raise ChatConflict("file is not eligible for another attempt")
+    if not latest.output_manifest or latest.output_manifest.get("output_purged") is not True:
+        raise ChatConflict("file cleanup is still pending")
+    if (
+        attachment.original_key != str(attachment.id)
+        or latest.source_key != str(attachment.id)
+        or latest.source_sha256 != attachment.original_sha256
+    ):
+        raise ChatConflict("file source changed")
+    reservation = await session.scalar(
+        select(ChatQuotaReservationRow)
+        .where(
+            ChatQuotaReservationRow.attachment_id == attachment.id,
+            ChatQuotaReservationRow.job_id == latest.id,
+            ChatQuotaReservationRow.state == "active",
+        )
+        .with_for_update()
+    )
+    if (
+        reservation is None
+        or reservation.reserved_bytes
+        < attachment.original_bytes + settings.chat_derived_job_max_bytes
+    ):
+        raise ChatConflict("file reservation unavailable")
+    now = datetime.now(UTC)
+    next_job = ChatFileProcessingRow(
+        id=new_job_id(),
+        attachment_id=attachment.id,
+        owner_user_id=principal.user_id,
+        principal_kind="user",
+        principal_subject=str(principal.user_id),
+        request_id=body.request_id,
+        operation="inspect",
+        source_key=str(attachment.id),
+        source_sha256=attachment.original_sha256,
+        selected_pages=[],
+        output_manifest={"client_request": {"expected_revision": body.expected_revision}},
+        state="queued",
+        attempt=2,
+        deadline_at=now + timedelta(seconds=settings.file_worker_process_timeout_s),
+        expires_at=now + timedelta(hours=settings.chat_purge_deadline_hours),
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(next_job)
+    await session.flush()
+    reservation.job_id = next_job.id
+    attachment.state = "processing"
+    attachment.safe_error = None
+    attachment.updated_at = now
+    conversation.revision += 1
+    conversation.event_cursor += 1
+    conversation.updated_at = now
+    response = project_attachment(attachment)
+    event = ChatEvent(
+        conversation_id=conversation_id,
+        cursor=conversation.event_cursor,
+        created_at=now,
+        payload=ChatAttachmentChanged(attachment=response),
+    )
+    session.add(
+        ChatEventRow(
+            id=uuid.uuid4(),
+            conversation_id=conversation_id,
+            cursor=event.cursor,
+            type=event.payload.type,
+            payload=event.payload.model_dump(mode="json"),
+            created_at=now,
+            expires_at=now + timedelta(hours=settings.chat_event_retention_hours),
+        )
+    )
+    await session.commit()
+    return response
 
 
 def read_original(attachment: ChatAttachmentRow, root: Path) -> bytes:

@@ -138,7 +138,11 @@ async def _prepare(job_id: str, settings: Settings) -> tuple[FileProcessRequest,
             attachment.safe_error = job.safe_error
             return None
         job.deadline_at = deadline
-        job.output_manifest = {"request": request.model_dump(mode="json")}
+        client_request = (job.output_manifest or {}).get("client_request")
+        job.output_manifest = {
+            "request": request.model_dump(mode="json"),
+            **({"client_request": client_request} if isinstance(client_request, dict) else {}),
+        }
         job.state = "running"
         job.updated_at = datetime.now(UTC)
         return request, True
@@ -176,9 +180,11 @@ async def _finish(
         job.state = state
         job.updated_at = datetime.now(UTC)
         if state == "processed" and result is not None:
+            client_request = (job.output_manifest or {}).get("client_request")
             job.output_manifest = {
                 "request": request.model_dump(mode="json"),
                 "result": result.model_dump(mode="json"),
+                **({"client_request": client_request} if isinstance(client_request, dict) else {}),
             }
             job.safe_error = None
         else:
@@ -366,7 +372,15 @@ async def purge_failed_file_outputs(settings: Settings) -> int:
             async with session_scope() as session:
                 job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
                 if job is not None and job.state == "failed":
-                    job.output_manifest = {"output_purged": True}
+                    client_request = (job.output_manifest or {}).get("client_request")
+                    job.output_manifest = {
+                        "output_purged": True,
+                        **(
+                            {"client_request": client_request}
+                            if isinstance(client_request, dict)
+                            else {}
+                        ),
+                    }
                     job.updated_at = datetime.now(UTC)
                     cleared += 1
             failed_cleanup_total.add(1, {"outcome": "purged"})

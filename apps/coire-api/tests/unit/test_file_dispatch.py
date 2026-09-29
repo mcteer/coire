@@ -10,6 +10,7 @@ from typing import Any, cast
 
 import pytest
 
+from coire_api.chat.file_manifest import validate_result
 from coire_api.db import ChatAttachmentRow, ChatConversationRow, ChatFileProcessingRow
 from coire_api.file_worker_client import FileWorkerBusy, FileWorkerError, FileWorkerMissing
 from coire_core.models.files import (
@@ -193,6 +194,17 @@ async def test_running_recovery_queries_status_only(monkeypatch: pytest.MonkeyPa
     assert session.job.state == "processed"
 
 
+async def test_retry_revision_binding_survives_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    session = FakeSession()
+    session.job.output_manifest = {"client_request": {"expected_revision": 3}}
+    client = FakeClient(session)
+    _wire(monkeypatch, session, client)
+    await files.drive_file_job(JOB_ID, _settings())
+    assert session.job.state == "processed"
+    assert session.job.output_manifest is not None
+    assert session.job.output_manifest["client_request"] == {"expected_revision": 3}
+
+
 @pytest.mark.parametrize(
     "busy,missing,mismatch,expected",
     [
@@ -299,13 +311,13 @@ def test_visual_manifest_requires_reserved_id_and_page() -> None:
         assets=[asset],
     )
     with pytest.raises(ValueError, match="render manifest mismatch"):
-        files.validate_result(request, result)
+        validate_result(request, result)
     valid = result.model_copy(
         update={"assets": [asset.model_copy(update={"id": request.output_ids[0]})]}
     )
-    files.validate_result(request, valid)
+    validate_result(request, valid)
     with pytest.raises(ValueError, match="render manifest mismatch"):
-        files.validate_result(
+        validate_result(
             request,
             valid.model_copy(
                 update={"assets": [valid.assets[0].model_copy(update={"media_type": "image/jpeg"})]}

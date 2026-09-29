@@ -30,6 +30,7 @@ from coire_api.chat.files import (
     owned_attachment,
     project_attachment,
     read_original,
+    retry_inspection,
     stage_original,
 )
 from coire_api.chat.processing import InvalidAsset, read_private_preview
@@ -64,7 +65,7 @@ from coire_core.models.chat import (
     ChatTurnCreate,
     ChatTurnDetail,
 )
-from coire_core.models.files import ChatAttachment, ChatUploadMetadata
+from coire_core.models.files import ChatAttachment, ChatFileProcessRequest, ChatUploadMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,41 @@ async def get_chat_file(
     session: SessionDep,
 ) -> ChatAttachment:
     return project_attachment(await owned_attachment(session, principal, conversation_id, file_id))
+
+
+@router.post(
+    "/conversations/{conversation_id}/files/{file_id}/process",
+    response_model=ChatAttachment,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def process_chat_file(
+    conversation_id: uuid.UUID,
+    file_id: uuid.UUID,
+    body: ChatFileProcessRequest,
+    principal: CurrentChatUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> ChatAttachment:
+    with tracer.start_as_current_span("coire.api.chat.file_retry") as span:
+        span.set_attribute("file_id", str(file_id))
+        try:
+            result = await retry_inspection(
+                session, principal, conversation_id, file_id, body, settings
+            )
+        except CoireError:
+            requests_total.add(1, {"operation": "file_retry", "outcome": "refused"})
+            raise
+        except Exception as exc:
+            requests_total.add(1, {"operation": "file_retry", "outcome": "failed"})
+            logger.error(
+                "chat file retry failed user_id=%s file_id=%s error_type=%s",
+                principal.user_id,
+                file_id,
+                type(exc).__name__,
+            )
+            raise ChatModelUnavailable("chat file service temporarily unavailable") from None
+        requests_total.add(1, {"operation": "file_retry", "outcome": "accepted"})
+        return result
 
 
 @router.get(

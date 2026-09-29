@@ -991,6 +991,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/conversations/{conversation_id}/files/{file_id}/process": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Process Chat File */
+        post: operations["process_chat_file_api_v1_chat_conversations__conversation_id__files__file_id__process_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/conversations/{conversation_id}/turns": {
         parameters: {
             query?: never;
@@ -2514,6 +2531,23 @@ export interface components {
             payload: components["schemas"]["ChatSnapshot"] | components["schemas"]["ChatConversationUpdated"] | components["schemas"]["ChatTurnAccepted"] | components["schemas"]["ChatTurnStatus"] | components["schemas"]["ChatMessageDelta"] | components["schemas"]["ChatTurnTerminal"] | components["schemas"]["ChatAttachmentChanged"] | components["schemas"]["ChatConversationDeleted"];
             /** Turn Id */
             turn_id?: string | null;
+        };
+        /** ChatFileProcessRequest */
+        ChatFileProcessRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "inspect" | "render";
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
+            /** Selected Pages */
+            selected_pages?: number[];
         };
         /** ChatMessage */
         "ChatMessage-Input": {
@@ -7249,6 +7283,44 @@ export interface operations {
                 };
                 content: {
                     "image/png": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    process_chat_file_api_v1_chat_conversations__conversation_id__files__file_id__process_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+                file_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatFileProcessRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatAttachment"];
                 };
             };
             /** @description Validation Error */
