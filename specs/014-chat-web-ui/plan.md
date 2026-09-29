@@ -14,13 +14,13 @@ Add ordinary-user chat to the Glass SPA with private history, truthful readiness
 
 **Storage**: PostgreSQL 17; `coire-chat-files` original volume (API write/worker read-only) and `coire-chat-derived` output volume (worker/API write under generated job keys); identity-scoped same-tab draft storage. Existing coding artifact store. One reversible migration after `0014_mcp_calls`, including processing jobs and registry backend/capability fields.
 
-**Testing**: pytest contract/unit/local integration including parser isolation and visual lifecycle; Vitest/Testing Library; manual Safari/Chromium acceptance. Tiny text and vision fixtures each <=1 GB on one local development Mac; no CI or agent-issued engine/Docker commands against real Studios. Document operator cluster checks for new backend deployment without running them during planning.
+**Testing**: pytest contract/unit/local integration including parser isolation and visual lifecycle; Vitest/Testing Library; manual Safari/Chromium acceptance. Tiny text and vision fixtures each <=1 GB. On `coire-core.lab`, no weights or Metal work may run; real native checks use the Studios through the admin acquisition and node paths as directed by the operator, without direct Docker or unmanaged engine commands. External-provider acceptance uses a bounded paid-call budget and never writes credentials to the repo.
 
 **Target Platform**: Core API/web plus new one-process CPU file-worker container; Studio node/agent and bare text/vision engines. Desktop 1024–1920 px with 1024/1440 acceptance. Failover stays stateless and text-only; exclude unsupported vision residents from failover snapshots until separately supported.
 
 **Performance Goals**: Warm status <=1 s; observer reconciliation <=2 s; healthy Stop <=5 s; interaction p95 <=100 ms for 200 messages + 50,000-character response. Maintain gateway overhead <=20 ms p95 excluding model time. Browser reference: Apple Silicon development Mac without throttling; record machine/browser versions.
 
-**Constraints**: Owner-scoped content, one active turn/conversation, no automatic POST replay, no core model/tokenizer/harness, no acquisition via chat, generated web types, bounded files, OpenAI compatibility.
+**Constraints**: Owner-scoped content, one active turn/conversation, no automatic POST replay, no core model/tokenizer/harness, no acquisition via chat, generated web types, bounded files, OpenAI compatibility, registry-selected external providers and Keychain-sourced credentials.
 
 **Scale/Scope**: Three nodes; history pages default50/max100; 10 MiB originals, 50 MiB/conversation and 500 MiB/owner including derivatives; ten files/visual units per turn; PDF <=50 pages, upload <=20 MP, normalized <=2048 px/side and <=4 MP; extraction <=1 MiB and derivatives <=32 MiB/job. 64 KiB input/512 KiB response; events24h, history until deletion. No retrieval/shared editing/persistent coding workspace/full settings/image generation/feedback; visual serving is single-node and preconverted MLX models initially.
 
@@ -31,11 +31,11 @@ Add ordinary-user chat to the Glass SPA with private history, truthful readiness
 | Principle | Compliance |
 | --- | --- |
 | I — Bare engines | Direct `mlx_lm.server` and `mlx_vlm.server`, with explicit backend argv and node lifecycle. VLM is a bare engine, not an inference wrapper. Record the roster addition in an ADR. |
-| II — Core/worker boundary | All learned text/vision inference and user harnesses stay on Studios. Core file-worker performs CPU parsing/rasterization only; no model, tokenizer, Metal or user harness. |
+| II — Core/worker boundary | Local learned text/vision inference and user harnesses stay on Studios. Core API may proxy approved external HTTPS providers; core file-worker performs CPU parsing/rasterization only, with no model, tokenizer, Metal or user harness. |
 | II-a — Containers | File-worker gets its own distroless non-root one-process image, read-only rootfs, caps dropped, healthcheck, 512 MiB/1 CPU and scheduler-only processing network. Existing roles retain policy; no API parser subprocess. |
 | III — Contracts first | Strict canonical/native/activity models precede services; generated OpenAPI/TS; compatible `/v1` and MCP. |
 | IV — Zero trust | User-bound chat scope, ownership even for admins, exact same-origin mutations, current entitlements/budgets, short-lived run tokens and owner kill; audits exclude content. |
-| V — Models as data | Published/ready/entitled registry picker and send; verified variant required for Apply; no acquisition path. |
+| V — Models as data | Published/ready/entitled registry picker and send, including provider target data; verified local variant required for Apply; no acquisition or arbitrary endpoint path in Chat. |
 | VI — Observable | Spans, metrics, content-free logs, panel and baseline alerts; diagnostic history follows lean/diagnostic profile. |
 | VII — Spec/test gated | Contract/unit/web/tiny-model/browser acceptance, migration and compatibility checks, image policy/scan/SBOM gates. |
 

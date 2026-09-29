@@ -23,6 +23,10 @@ This is the platform's face for people who are not going to use an SDK. It is a 
 - Q: Which file types should chat support in feature 014? → A: Text, code, PDFs, and images. PDF extraction and image-capable chat are included in this feature.
 - Q: Should PDF support also read scanned pages? → A: Read both text and scanned PDFs; selected page images are processed by an eligible image-capable model.
 
+### Session 2026-09-29
+
+- Q: Where may the core-hosted chat interface obtain models? → A: It routes to entitled models on the Studios and to administrator-configured external providers, including frontier models. Core hosts no model weights or user harness. Provider availability, capability, identity and usage are explicit registry data; no user prompt or model string chooses a remote endpoint.
+
 ### Session 2026-08-29
 
 - Q: What does the picker show, and what does it hide? → A: Only published, `ready` models the user is entitled to, grouped by task tag, each with a display name, a one-line description, tags, context size, size class, and live load state. Cold models show an estimated warm-up time. Everything about placement, variants, nodes, and internal identifiers stays out of the user's view.
@@ -186,6 +190,7 @@ A user uploads a file and uses it in conversation, and sees a reasoning model's 
 - **FR-037**: Images MUST have private previews and safe orientation/normalization, with original downloads preserved. Visual input requires a published, ready, entitled model whose measured capability supports it. The picker MUST identify compatible models; no compatible model yields an actionable unavailable state, never auto-acquisition or dropped images.
 - **FR-038**: Visual requests MUST enforce each selected model's image count, dimensions and context limits before inference. Default safety bounds are 20 megapixels per decoded upload and ten visual units per turn (images plus selected PDF pages); exceeding a bound requires an explicit smaller selection or a clear refusal.
 - **FR-039**: PDF input MUST support extracted text and selected page images so scanned pages and visual material can be read by an eligible image-capable model. The chosen mode and included pages MUST be visible. A text-only model MUST NOT accept a scan as an empty successful document; no separate automatic OCR service is required.
+- **FR-040**: The core-hosted Chat interface MUST offer entitled, published, ready models from Studios and administrator-configured frontier providers through one picker and conversation flow. Core MUST NOT load weights or run a user harness. Provider identity, endpoint, remote model ID, capability and spending bounds are registry-controlled; callers cannot select an arbitrary external endpoint or model name. Provider credentials MUST be Keychain-sourced secrets. Streaming, Stop, history, usage, attribution and authorization MUST apply across sources.
 
 ### Key Entities
 
@@ -193,7 +198,8 @@ A user uploads a file and uses it in conversation, and sees a reasoning model's 
 - **Message**: A user input or assistant response. Role, content, model name snapshot for assistant messages, reasoning, attachments, token usage, timestamp, turn and completion state.
 - **Turn**: One accepted generation attempt. Request identity, conversation version, input/response message references, plain-chat or coding action, lifecycle, failure/stop reason, event position, and optional retry reference or coding run/result references.
 - **Attachment**: An uploaded file. Owner, conversation, filename, type, size, storage reference, processing state/error, page/image dimensions where applicable, extracted text and derived preview references, uploaded-at. Per-message references record selected pages and text/visual mode.
-- **Picker Entry**: A user-facing model summary. Display name, description, tags, context size, size class, load state, warm-up estimate, task group.
+- **Picker Entry**: A user-facing model summary. Display name, description, tags, context size, size class, load state, warm-up estimate, task group, and source/provider label.
+- **External Provider Model**: An administrator-registered remote model identifier and fixed provider adapter with scoped credential slot, declared capabilities and spending bounds; publication and entitlement remain in the shared registry.
 
 ## Success Criteria *(mandatory)*
 
@@ -213,6 +219,7 @@ A user uploads a file and uses it in conversation, and sees a reasoning model's 
 - **SC-012**: Upload size/type/quota failures and context overflow are rejected before generation with no silent content loss; hostile rendering fixtures execute no script or remote image request.
 - **SC-013**: A stopped plain-chat turn ceases upstream generation within five seconds on a healthy worker, preserves its partial output, and cannot be restarted by transport reconnection.
 - **SC-014**: PDF/image fixtures preserve the explicitly selected content, refuse incompatible models and invalid/over-limit files, and complete a real local visual question without loading a model on core.
+- **SC-015**: A user can switch between an entitled Studio model and an entitled registered frontier model in one conversation. Each streams with correct attribution and usage; Stop cancels the active upstream request. Unknown remote IDs, missing credentials, excessive spend and unsupported visual input are refused before contacting a provider.
 
 ## Assumptions
 
