@@ -73,6 +73,10 @@
   max-height: calc(100vh - 220px);
   overflow: auto;
 }
+.chat-history-panel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .chat-history-panel h2 {
   margin: 0 0 var(--s-4);
   font-size: var(--text-lg);

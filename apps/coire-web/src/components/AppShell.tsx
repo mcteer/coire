@@ -32,7 +32,7 @@ export function AppShell({
     ? "degraded"
     : "healthy";
   return (
-    <div className="app">
+    <div className={view === "chat" ? "app app-chat" : "app"}>
       <header className="header">
         <div className="brand">
           <span className="logo">C</span>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatConversation } from "../../api/chat";
 import { ConfirmAction } from "../ConfirmAction";
 
@@ -26,9 +26,15 @@ export function ConversationHistory({
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (expanded) panelRef.current?.focus();
+  }, [expanded]);
   return (
     <div className="chat-history">
       <button
+        ref={toggleRef}
         className="button chat-history-toggle"
         type="button"
         aria-controls="chat-history-list"
@@ -38,9 +44,18 @@ export function ConversationHistory({
         Conversations
       </button>
       <aside
+        ref={panelRef}
         id="chat-history-list"
         className={"chat-history-panel glass " + (expanded ? "open" : "")}
         aria-label="Conversation history"
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (expanded && event.key === "Escape") {
+            event.stopPropagation();
+            setExpanded(false);
+            toggleRef.current?.focus();
+          }
+        }}
       >
         <h2>Conversations</h2>
         {loading && <p>Loading history…</p>}

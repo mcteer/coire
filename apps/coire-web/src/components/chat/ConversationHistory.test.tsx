@@ -32,6 +32,12 @@ test("opens an accessible history drawer and selects an owner conversation", () 
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(toggle);
   expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const panel = screen.getByRole("complementary", { name: "Conversation history" });
+  expect(panel).toHaveFocus();
+  fireEvent.keyDown(panel, { key: "Escape" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(toggle).toHaveFocus();
+  fireEvent.click(toggle);
   fireEvent.click(screen.getByRole("button", { name: /Saved notes/ }));
   expect(open).toHaveBeenCalledWith(conversation.id);
   expect(toggle).toHaveAttribute("aria-expanded", "false");

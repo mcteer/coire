@@ -139,6 +139,15 @@ textarea:focus-visible {
   border-radius: var(--r-xl);
   font-size: var(--text-xs);
 }
+.app-chat .dock {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  transform: none;
+  width: max-content;
+  margin: var(--s-6) auto 0;
+}
 .grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -296,6 +305,9 @@ td {
     min-width: 0;
     width: auto;
     padding-inline: 2px;
+  }
+  .app-chat .dock {
+    width: 100%;
   }
 }
 @media (prefers-reduced-motion: reduce) {
