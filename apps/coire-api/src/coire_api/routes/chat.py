@@ -46,7 +46,9 @@ from coire_api.chat.service import (
 from coire_api.chat.streaming import native_stream, observe_conversation, replay_saved_events
 from coire_api.chat.telemetry import requests_total, tracer
 from coire_api.chat.turns import admit_turn, read_turn_detail, request_turn_stop
+from coire_api.coding_calls import owned_chat_artifact_id
 from coire_api.deps import SessionDep, SettingsDep
+from coire_api.routes.mcp_artifacts import download_artifact
 from coire_core.errors import ChatConflict, ChatModelUnavailable, CoireError
 from coire_core.models.chat import (
     ChatConversation,
@@ -520,6 +522,22 @@ async def get_chat_turn(
             raise ChatModelUnavailable("chat service temporarily unavailable") from None
         requests_total.add(1, {"operation": "turn_status", "outcome": "succeeded"})
         return detail
+
+
+@router.get("/conversations/{conversation_id}/turns/{turn_id}/artifact")
+async def download_chat_artifact(
+    conversation_id: uuid.UUID,
+    turn_id: uuid.UUID,
+    principal: CurrentChatUser,
+    session: SessionDep,
+    request: Request,
+) -> StreamingResponse:
+    with tracer.start_as_current_span("coire.api.chat.artifact.download") as span:
+        span.set_attribute("user_id", str(principal.user_id))
+        span.set_attribute("conversation_id", str(conversation_id))
+        span.set_attribute("turn_id", str(turn_id))
+        artifact_id = await owned_chat_artifact_id(session, principal, conversation_id, turn_id)
+        return await download_artifact(artifact_id, principal, session, request)
 
 
 @router.post("/conversations/{conversation_id}/turns/{turn_id}/stop", response_model=ChatTurn)

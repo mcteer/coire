@@ -73,7 +73,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 - [X] T039 [US4] Emit bounded typed started/completed/failed tool records from apps/coire-agent/src/coire_agent/activity.py and coding.py, without raw arguments/content.
 - [X] T040 [US4] Implement authenticated run-spool read/validation in apps/coire-node/src/coire_node/runs.py and routes/runs.py; only assigned run output, bounded records and explicit overflow/unavailable state.
 - [ ] T041 [US4] Collect/deduplicate/drain activity and reconcile durable results in apps/coire-api/src/coire_api/nodes_client.py, run_executor.py and coire_scheduler/runs.py, persisting chat events before cleanup (FR-013, FR-035).
-- [ ] T042 [US4] Add chat-owned artifact download and tombstone guards in apps/coire-api/src/coire_api/routes/chat.py and coding_calls.py, reusing digest/expiry checks; tests include alternate existing artifact routes (FR-011, FR-025, FR-028).
+- [X] T042 [US4] Add chat-owned artifact download and tombstone guards in apps/coire-api/src/coire_api/routes/chat.py and coding_calls.py, reusing digest/expiry checks; tests include alternate existing artifact routes (FR-011, FR-025, FR-028).
 - [ ] T043 [US4] Add action/source/revision controls and live tools/result/diff/test/expiry UI in apps/coire-web/src/components/chat/RunActivity.tsx, Composer.tsx and pages/Chat.tsx, with colocated tests; explicit Apply plan and fresh-workspace notice (FR-012–013, FR-028).
 - [ ] T044 [US4] Extend tests/integration/test_chat_ui.py for sandboxed coding, matching plan, refusal of unverified Apply, token revocation/<=5 s kill, API restart resume and verified artifact import (SC-006, FR-028, FR-035).
 
