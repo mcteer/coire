@@ -354,8 +354,7 @@ async def native_stream(
             if resolved.engine_url is None or resolved.model_path is None:
                 raise RuntimeError("model did not become ready")
             loading_failed = False
-            usage.model_id = resolved.model_id
-            usage.engine_id = resolved.engine_id
+            usage.bind_resolution(resolved)
             running = await persist_native_event(
                 "status", admission, state="running", settings=settings
             )

@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from coire_api.auth import Principal
 from coire_api.db import UsageRecordRow, session_scope
+from coire_api.gateway.resolution import ResolvedModel
 from coire_api.gateway.telemetry import (
     failure_counter,
     inflight_counter,
@@ -38,6 +39,11 @@ class UsageTracker:
 
     def __post_init__(self) -> None:
         inflight_counter.add(1, {"protocol": self.protocol.value})
+
+    def bind_resolution(self, resolved: ResolvedModel) -> None:
+        """Attach the registry-selected model and engine to once-only accounting."""
+        self.model_id = resolved.model_id
+        self.engine_id = resolved.engine_id
 
     async def finish(self, outcome: UsageOutcome, *, failure_code: str | None = None) -> None:
         async with self._lock:

@@ -2,8 +2,8 @@
 
 ## Shared text execution slice (014bq, 2026-09-29)
 
-- The compatible OpenAI route and native Chat now serialize text messages through shared bare-engine payload adapters, and compatible cold loading resolves the registry model through the gateway execution module. Both paths use the same bounded load operation; the compatible route releases its initial read transaction before waiting for engine load and rechecks run credentials before resolution. Native Chat retains owner checks, durable status events and Stop behavior. No loopback HTTP was introduced.
-- Full Python suite: 1,090 passed, 118 conditional integration skips. Focused gateway/native loading cases: 39 passed. Web: 84 tests, lint and production build passed. Ruff, format, strict mypy for 240 source files and OpenAPI freshness passed. Parent T012 remains open for full common admission and usage-path extraction; this slice does not claim its completion. Chat remains default-off.
+- The compatible OpenAI route and native Chat now serialize text messages through shared bare-engine payload adapters, and compatible cold loading resolves the registry model through the gateway execution module. Both paths use the same bounded load operation and once-only usage binding. Compatible routes release read transactions before cold loading and before warm/cold engine I/O, and recheck run credentials after loading. Native Chat resolves in short-lived sessions while retaining owner checks, durable status events and Stop behavior. No loopback HTTP was introduced. Protocol-specific admission remains in the routes and Chat turn service. Parent T012 is complete.
+- Full Python suite: 1,091 passed, 118 conditional integration skips. Focused gateway/native loading cases: 52 passed. Web: 84 tests, lint and production build passed. Ruff, format, strict mypy for 240 source files and OpenAPI freshness passed. Chat remains default-off.
 
 ## Code controls slice (014bp, 2026-09-29)
 

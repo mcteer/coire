@@ -48,6 +48,18 @@ def test_text_payload_adapters_keep_registry_path_private_and_preserve_content()
     assert "coire_wait_for_model" not in compatible
 
 
+def test_shared_usage_binds_only_registry_resolved_identity() -> None:
+    model_id = uuid.uuid4()
+    engine_id = uuid.uuid4()
+    usage = UsageTracker(ANONYMOUS, "caller-model", GatewayProtocol.OPENAI)
+    usage.bind_resolution(
+        ResolvedModel(model_id, "registry", None, "/owned/model", engine_id, None, None)
+    )
+    assert usage.model_id == model_id
+    assert usage.engine_id == engine_id
+    assert usage.requested_model_id == "caller-model"
+
+
 async def test_cold_load_releases_transaction_before_engine_io(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

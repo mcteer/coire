@@ -149,9 +149,9 @@ async def _openai_cold_stream(
         resolved = await task
         if resolved.engine_url is None or resolved.model_path is None:
             raise ModelLoadError("engine did not become ready")
-        usage.model_id = resolved.model_id
-        usage.engine_id = resolved.engine_id
+        usage.bind_resolution(resolved)
         payload = compatible_text_payload(body, resolved.model_path)
+        await session.rollback()
         rewritten = _rewrite_openai_model(
             stream(resolved.engine_url, payload, settings, timing),
             body.model,
@@ -191,9 +191,9 @@ async def _anthropic_cold_stream(
         resolved = await task
         if resolved.engine_url is None or resolved.model_path is None:
             raise ModelLoadError("engine did not become ready")
-        usage.model_id = resolved.model_id
-        usage.engine_id = resolved.engine_id
+        usage.bind_resolution(resolved)
         payload = to_openai_payload(body, model_path=resolved.model_path)
+        await session.rollback()
         tracked = _tracked_stream(
             stream(resolved.engine_url, payload, settings, timing), usage, request, timing
         )
@@ -273,8 +273,7 @@ async def chat_completions(
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
-    usage.model_id = resolved.model_id
-    usage.engine_id = resolved.engine_id
+    usage.bind_resolution(resolved)
     try:
         usage.prompt_tokens = enforce_context(
             body.messages, limit=resolved.context_window, output_tokens=body.max_tokens or 0
@@ -336,6 +335,7 @@ async def chat_completions(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "model load did not become ready"
             )
     payload = compatible_text_payload(body, resolved.model_path)
+    await session.rollback()
     try:
         if body.stream:
             rewritten = _rewrite_openai_model(
@@ -385,8 +385,7 @@ async def anthropic_messages(
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
-    usage.model_id = resolved.model_id
-    usage.engine_id = resolved.engine_id
+    usage.bind_resolution(resolved)
     try:
         usage.prompt_tokens = enforce_anthropic_context(body, limit=resolved.context_window)
     except ContextLengthError as exc:
@@ -445,6 +444,7 @@ async def anthropic_messages(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "model load did not become ready"
             )
     payload = to_openai_payload(body, model_path=resolved.model_path)
+    await session.rollback()
     try:
         if body.stream:
             source = _tracked_stream(

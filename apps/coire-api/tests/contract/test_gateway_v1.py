@@ -77,7 +77,7 @@ async def test_every_compatible_route_requires_authentication(app: FastAPI) -> N
 
 
 async def test_openai_nonstream_replaces_model_with_resolved_path(
-    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+    app: FastAPI, gateway_fake_session: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     model_id = uuid.uuid4()
     seen: dict[str, object] = {}
@@ -94,6 +94,7 @@ async def test_openai_nonstream_replaces_model_with_resolved_path(
         )
 
     async def complete(_: str, payload: dict[str, object], __: Settings) -> dict[str, object]:
+        assert vars(gateway_fake_session)["rolled_back"] is True
         seen.update(payload)
         return {
             "id": "chatcmpl_1",
