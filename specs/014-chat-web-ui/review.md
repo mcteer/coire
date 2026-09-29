@@ -4,12 +4,14 @@
 
 - The compatible OpenAI route and native Chat now serialize text messages through shared bare-engine payload adapters, and compatible cold loading resolves the registry model through the gateway execution module. Both paths use the same bounded load operation and once-only usage binding. Compatible routes release read transactions before cold loading and before warm/cold engine I/O, and recheck run credentials after loading. Native Chat resolves in short-lived sessions while retaining owner checks, durable status events and Stop behavior. No loopback HTTP was introduced. Protocol-specific admission remains in the routes and Chat turn service. Parent T012 is complete.
 - Full Python suite: 1,091 passed, 118 conditional integration skips. Focused gateway/native loading cases: 52 passed. Web: 84 tests, lint and production build passed. Ruff, format, strict mypy for 240 source files and OpenAPI freshness passed. Chat remains default-off.
+- The changed local arm64 API image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-api-014bq.spdx.json`. This was local OrbStack only, with no Studio contact.
 
 ## Code controls slice (014bp, 2026-09-29)
 
 - Added action-aware coding model picker, strict Chat turn coding-call identity, browser Research/Plan/Apply controls, owner workspace registration and exact-origin protection for browser workspace mutations. Plan/Apply inherit recorded source revisions; Apply requires an explicit selected plan. Code result UI displays bounded tool activity, tests, diff and owner artifact expiry before download.
 - Focused core/API contracts: 18 passed. Repaired-environment full Python suite: 1,088 passed and 118 conditional integration skips. Final web suite: 84 passed; TypeScript production build and lint passed. Strict mypy passed for 240 source files; Ruff, format and OpenAPI freshness passed. The 118 skips remain conditional local integration scenarios, not 014 acceptance evidence.
 - Parent T043 and child J005 are complete. Browser acceptance and the parent local tiny-model integration tasks remain open. Chat remains default-off.
+- The changed local arm64 web image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-web-014bp.spdx.json`. This was local OrbStack only, with no Studio contact.
 
 ## Baseline (2026-09-28)
 
