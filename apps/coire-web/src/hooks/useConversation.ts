@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
   createChatConversation,
+  getChatConversation,
   listChatModels,
+  listChatConversations,
   type ChatConversation,
   type ChatEvent,
   type ChatMessage,
@@ -15,6 +17,10 @@ export function useConversation() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [history, setHistory] = useState<ChatConversation[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [olderPosition, setOlderPosition] = useState<number | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [draft, setDraft] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +28,8 @@ export function useConversation() {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const pending = useRef<{ key: string; body: ChatTurnCreate } | null>(null);
+  const selection = useRef(0);
+  const drafts = useRef(new Map<string, string>());
   const stream = useChatTurnStream();
 
   useEffect(() => {
@@ -44,6 +52,25 @@ export function useConversation() {
     };
   }, []);
 
+  useEffect(() => {
+    let live = true;
+    void listChatConversations()
+      .then((page) => {
+        if (!live) return;
+        setHistory(page.data ?? []);
+        setHistoryCursor(page.next_cursor ?? null);
+      })
+      .catch((cause) => {
+        if (live) setError(String(cause));
+      })
+      .finally(() => {
+        if (live) setHistoryLoading(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, []);
+
   const onEvent = (event: ChatEvent, input: string) => {
     const payload = event.payload;
     if (payload.type === "turn.accepted") {
@@ -54,12 +81,13 @@ export function useConversation() {
             revision: payload.turn.accepted_revision + 1,
             selected_model_id: payload.turn.model_id,
             active_turn_id: payload.turn.id,
+            updated_at: event.created_at,
           },
       );
       const created = payload.turn.created_at;
       setMessages((current) => {
         if (current.some((message) => message.id === payload.turn.input_message_id)) return current;
-        const position = current.length + 1;
+        const position = (current.at(-1)?.position ?? 0) + 1;
         return [
           ...current,
           {
@@ -89,7 +117,23 @@ export function useConversation() {
         ];
       });
       setDraft("");
+      drafts.current.delete(event.conversation_id);
       pending.current = null;
+      setHistory((current) => {
+        const item = current.find((row) => row.id === event.conversation_id);
+        return item
+          ? [
+              {
+                ...item,
+                revision: payload.turn.accepted_revision + 1,
+                active_turn_id: payload.turn.id,
+                selected_model_id: payload.turn.model_id,
+                updated_at: event.created_at,
+              },
+              ...current.filter((row) => row.id !== item.id),
+            ]
+          : current;
+      });
       setStatus("Preparing response…");
     } else if (payload.type === "turn.status") {
       setStatus(
@@ -116,7 +160,21 @@ export function useConversation() {
         ),
       );
     } else if (payload.type === "turn.terminal") {
-      setConversation((current) => current && { ...current, active_turn_id: null });
+      setConversation(
+        (current) =>
+          current && {
+            ...current,
+            active_turn_id: null,
+            updated_at: event.created_at,
+          },
+      );
+      setHistory((current) =>
+        current.map((item) =>
+          item.id === event.conversation_id
+            ? { ...item, active_turn_id: null, updated_at: event.created_at }
+            : item,
+        ),
+      );
       setStatus(
         payload.state === "completed"
           ? null
@@ -127,7 +185,8 @@ export function useConversation() {
 
   const send = async () => {
     const input = draft.trim();
-    if (!input || !selectedId || busyRef.current || stream.active) return;
+    if (!input || !selectedId || busyRef.current || stream.active || conversation?.active_turn_id)
+      return;
     busyRef.current = true;
     setBusy(true);
     setError(null);
@@ -136,6 +195,9 @@ export function useConversation() {
       if (!current) {
         current = await createChatConversation({ mode: "chat", model_id: selectedId });
         setConversation(current);
+        setHistory((rows) => [current!, ...rows.filter((row) => row.id !== current!.id)]);
+        drafts.current.set(current.id, input);
+        drafts.current.delete("new");
       }
       const key = [current.id, current.revision, selectedId, input].join("\0");
       const body: ChatTurnCreate =
@@ -159,12 +221,87 @@ export function useConversation() {
     }
   };
 
+  const changeDraft = (value: string) => {
+    setDraft(value);
+    drafts.current.set(conversation?.id ?? "new", value);
+  };
+
+  const openConversation = async (id: string) => {
+    if (busyRef.current || stream.active) return;
+    drafts.current.set(conversation?.id ?? "new", draft);
+    const generation = ++selection.current;
+    setHistoryLoading(true);
+    setError(null);
+    try {
+      const detail = await getChatConversation(id);
+      if (selection.current !== generation) return;
+      setConversation(detail.conversation);
+      setMessages(detail.messages ?? []);
+      setOlderPosition(detail.next_message_position ?? null);
+      setDraft(drafts.current.get(id) ?? "");
+      setSelectedId(
+        models.some((model) => model.id === detail.conversation.selected_model_id)
+          ? (detail.conversation.selected_model_id ?? null)
+          : null,
+      );
+      setStatus(
+        detail.conversation.active_turn_id
+          ? "A response is still running. Refresh this conversation to see saved progress."
+          : null,
+      );
+    } catch (cause) {
+      if (selection.current === generation) setError(String(cause));
+    } finally {
+      if (selection.current === generation) setHistoryLoading(false);
+    }
+  };
+
+  const moreConversations = async () => {
+    if (!historyCursor || historyLoading) return;
+    setHistoryLoading(true);
+    try {
+      const page = await listChatConversations(historyCursor);
+      setHistory((current) => [
+        ...current,
+        ...(page.data ?? []).filter((item) => !current.some((known) => known.id === item.id)),
+      ]);
+      setHistoryCursor(page.next_cursor ?? null);
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const moreMessages = async () => {
+    if (!conversation || !olderPosition || historyLoading) return;
+    const id = conversation.id;
+    const generation = selection.current;
+    setHistoryLoading(true);
+    try {
+      const detail = await getChatConversation(id, olderPosition);
+      if (selection.current !== generation) return;
+      setMessages((current) => [
+        ...(detail.messages ?? []).filter((item) => !current.some((known) => known.id === item.id)),
+        ...current,
+      ]);
+      setOlderPosition(detail.next_message_position ?? null);
+    } catch (cause) {
+      if (selection.current === generation) setError(String(cause));
+    } finally {
+      if (selection.current === generation) setHistoryLoading(false);
+    }
+  };
+
   const newConversation = () => {
     if (busyRef.current || stream.active) return;
+    drafts.current.set(conversation?.id ?? "new", draft);
+    selection.current += 1;
     pending.current = null;
     setConversation(null);
     setMessages([]);
-    setDraft("");
+    setDraft(drafts.current.get("new") ?? "");
+    setOlderPosition(null);
     setStatus(null);
     setError(null);
   };
@@ -175,13 +312,20 @@ export function useConversation() {
     setSelectedId,
     conversation,
     messages,
+    history,
+    historyCursor,
+    olderPosition,
+    historyLoading,
     draft,
-    setDraft,
+    setDraft: changeDraft,
     status,
     error: error ?? stream.error,
     loading,
     active: busy || stream.active,
     send,
     newConversation,
+    openConversation,
+    moreConversations,
+    moreMessages,
   };
 }

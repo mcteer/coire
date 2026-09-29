@@ -1,4 +1,5 @@
 import { Composer } from "../components/chat/Composer";
+import { ConversationHistory } from "../components/chat/ConversationHistory";
 import { MessageList } from "../components/chat/MessageList";
 import { ModelPicker } from "../components/chat/ModelPicker";
 import { useConversation } from "../hooks/useConversation";
@@ -22,29 +23,52 @@ export function Chat() {
           New conversation
         </button>
       </div>
-      {chat.error && (
-        <p className="error" role="alert">
-          {chat.error}
-        </p>
-      )}
-      {chat.loading ? (
-        <p>Loading available models…</p>
-      ) : (
-        <ModelPicker
-          models={chat.models}
-          selectedId={chat.selectedId}
-          onSelect={chat.setSelectedId}
-          disabled={chat.active}
+      <div className="chat-layout">
+        <ConversationHistory
+          conversations={chat.history}
+          selectedId={chat.conversation?.id ?? null}
+          active={chat.active}
+          loading={chat.historyLoading}
+          hasMore={Boolean(chat.historyCursor)}
+          onOpen={(id) => void chat.openConversation(id)}
+          onMore={() => void chat.moreConversations()}
         />
-      )}
-      <MessageList messages={chat.messages} />
-      <Composer
-        value={chat.draft}
-        onChange={chat.setDraft}
-        onSend={() => void chat.send()}
-        disabled={!chat.selectedId || chat.active}
-        status={chat.status}
-      />
+        <div className="chat-thread">
+          {chat.error && (
+            <p className="error" role="alert">
+              {chat.error}
+            </p>
+          )}
+          {chat.loading ? (
+            <p>Loading available models…</p>
+          ) : (
+            <ModelPicker
+              models={chat.models}
+              selectedId={chat.selectedId}
+              onSelect={chat.setSelectedId}
+              disabled={chat.active}
+            />
+          )}
+          {chat.olderPosition && (
+            <button
+              className="button"
+              type="button"
+              onClick={() => void chat.moreMessages()}
+              disabled={chat.historyLoading}
+            >
+              Load older messages
+            </button>
+          )}
+          <MessageList messages={chat.messages} />
+          <Composer
+            value={chat.draft}
+            onChange={chat.setDraft}
+            onSend={() => void chat.send()}
+            disabled={!chat.selectedId || chat.active || Boolean(chat.conversation?.active_turn_id)}
+            status={chat.status}
+          />
+        </div>
+      </div>
     </main>
   );
 }

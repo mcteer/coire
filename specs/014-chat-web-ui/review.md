@@ -27,7 +27,8 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 11. `014k` populated PostgreSQL migration proof and Alembic cleanup.
 12. `014l` measured cold wait and failure remedy.
 13. `014m` private history list/detail reads.
-14. Later children: queue status, history mutation/navigation, recovery, cancellation, coding actions, private file processing, bare Studio VLM, reasoning, final telemetry and end-to-end acceptance.
+14. `014n` browser history navigation and draft separation.
+15. Later children: queue status, history mutation, recovery, cancellation, coding actions, private file processing, bare Studio VLM, reasoning, final telemetry and end-to-end acceptance.
 
 ## Runtime dependency gate (014b)
 
@@ -99,3 +100,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Added owner-scoped, tombstone-filtered newest-first conversation pages with bounded opaque timestamp/ID cursors. Detail uses a shared PostgreSQL conversation lock while reading a bounded message/related-turn page, saved partial answer/model names and event cursor. Browser API functions use generated page/detail types. Storage keys and model paths stay out of responses.
 - Four focused route/service contracts passed for pagination, lock/owner predicates, partial output, safe 404s and JSON shape. The full Python suite passed 862 tests with 117 skips; strict mypy, Ruff, OpenAPI freshness, 39 web tests, build/typecheck and lint passed. Parent T027–T028 remain open for mutation, deletion, replay, Stop and recovery. Attachment summaries are supplied by the later file child.
+
+## Browser history navigation gate (014n)
+
+- Chat now lists saved conversations, opens owner-scoped message pages after reload, loads older list/message pages, and shows saved partial output with the original model-name snapshot. Narrow screens use an accessible history drawer. Selection generations discard stale async responses; separate in-memory drafts survive navigation between a saved conversation and a new one. A recorded active turn disables Send and is never automatically restarted.
+- Browser tests cover drawer controls, reload/open, older pages, model attribution, stale selection response and draft separation. All 44 web tests, typecheck/build and lint passed. Parent T031–T034 remain open for delete, cross-tab reconciliation, session-scoped draft restoration and Stop/retry.

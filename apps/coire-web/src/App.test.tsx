@@ -29,7 +29,10 @@ test("opens Chat for a non-admin without an admin navigation link", async () => 
         status: 200,
         json: async () => ({ ...user, role: "user" }),
       })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) }),
+      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
+      .mockResolvedValueOnce({
+        ok: true, status: 200, json: async () => ({ data: [], next_cursor: null }),
+      }),
   );
   render(<App />);
   await waitFor(() => expect(screen.getByRole("heading", { name: "Chat" })).toBeInTheDocument());

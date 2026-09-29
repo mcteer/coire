@@ -67,6 +67,7 @@ test("shows accepted input, streamed answer and model snapshot", async () => {
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [], next_cursor: null }))
     .mockResolvedValueOnce(json(conversation, 201))
     .mockResolvedValueOnce(
       stream(
@@ -94,13 +95,14 @@ test("shows accepted input, streamed answer and model snapshot", async () => {
   await waitFor(() => expect(screen.getByText("Hello!")).toBeInTheDocument());
   expect(screen.getByText("Hi")).toBeInTheDocument();
   expect(screen.getAllByText("Friendly model").length).toBeGreaterThan(1);
-  expect(fetchMock).toHaveBeenCalledTimes(3);
+  expect(fetchMock).toHaveBeenCalledTimes(4);
 });
 
 test("preserves the draft when admission refuses the send", async () => {
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [], next_cursor: null }))
     .mockResolvedValueOnce(json(conversation, 201))
     .mockResolvedValueOnce(json({ title: "Conflict", detail: "Conversation changed" }, 409));
   vi.stubGlobal("fetch", fetchMock);
@@ -135,6 +137,7 @@ test("reuses request identity after an uncertain network failure", async () => {
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [], next_cursor: null }))
     .mockResolvedValueOnce(json(conversation, 201))
     .mockRejectedValueOnce(new TypeError("network lost"))
     .mockResolvedValueOnce(
@@ -158,14 +161,14 @@ test("reuses request identity after an uncertain network failure", async () => {
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("network lost"));
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(screen.getByText("Retry me")).toBeInTheDocument());
-  const first = JSON.parse(fetchMock.mock.calls[2]?.[1]?.body as string) as {
+  const first = JSON.parse(fetchMock.mock.calls[3]?.[1]?.body as string) as {
     client_request_id: string;
   };
-  const second = JSON.parse(fetchMock.mock.calls[3]?.[1]?.body as string) as {
+  const second = JSON.parse(fetchMock.mock.calls[4]?.[1]?.body as string) as {
     client_request_id: string;
   };
   expect(first.client_request_id).toBe(second.client_request_id);
-  expect(fetchMock).toHaveBeenCalledTimes(4);
+  expect(fetchMock).toHaveBeenCalledTimes(5);
 });
 
 test("switches models within one conversation and keeps each answer attribution", async () => {
@@ -193,6 +196,7 @@ test("switches models within one conversation and keeps each answer attribution"
   const fetchMock = vi
     .fn()
     .mockResolvedValueOnce(json({ data: [model, second] }))
+    .mockResolvedValueOnce(json({ data: [], next_cursor: null }))
     .mockResolvedValueOnce(json(conversation, 201))
     .mockResolvedValueOnce(
       stream(
@@ -246,7 +250,7 @@ test("switches models within one conversation and keeps each answer attribution"
   await screen.findByText("Second answer");
   expect(screen.getByText("First answer").closest("article")).toHaveTextContent("Friendly model");
   expect(screen.getByText("Second answer").closest("article")).toHaveTextContent("Second model");
-  expect(fetchMock).toHaveBeenCalledTimes(4);
+  expect(fetchMock).toHaveBeenCalledTimes(5);
 });
 
 test.each([
@@ -292,6 +296,7 @@ test.each([
       .mockResolvedValueOnce(
         json({ data: [{ ...model, load_state: "cold", estimated_warmup_seconds: estimate }] }),
       )
+      .mockResolvedValueOnce(json({ data: [], next_cursor: null }))
       .mockResolvedValueOnce(json(conversation, 201))
       .mockResolvedValueOnce(response),
   );
@@ -315,4 +320,149 @@ test.each([
     controller.close();
   });
   expect(screen.getByRole("status")).toHaveTextContent(/choose another model/);
+});
+
+test("reopens saved partial output with model attribution and older messages", async () => {
+  const saved = { ...conversation, title: "Saved notes", active_turn_id: turnId };
+  const savedAnswer = {
+    id: answerId,
+    conversation_id: conversationId,
+    position: 4,
+    role: "assistant",
+    text: "Saved partial",
+    reasoning: "",
+    model_id: modelId,
+    model_display_name: "Earlier model",
+    attachment_ids: [],
+    created_at: "2026-09-28T00:00:00Z",
+  };
+  const older = { ...savedAnswer, id: inputId, position: 2, text: "Older answer" };
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url === "/api/v1/chat/models") return Promise.resolve(json({ data: [model] }));
+    if (url.startsWith("/api/v1/chat/conversations?")) {
+      return Promise.resolve(json({ data: [saved], next_cursor: null }));
+    }
+    if (url.includes("before_position=4")) {
+      return Promise.resolve(
+        json({
+          conversation: saved,
+          messages: [older],
+          turns: [],
+          attachments: [],
+          event_cursor: 6,
+          next_message_position: null,
+        }),
+      );
+    }
+    return Promise.resolve(
+      json({
+        conversation: saved,
+        messages: [savedAnswer],
+        turns: [],
+        attachments: [],
+        event_cursor: 6,
+        next_message_position: 4,
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat />);
+  fireEvent.click(await screen.findByRole("button", { name: /Saved notes/ }));
+  expect(await screen.findByText("Saved partial")).toBeInTheDocument();
+  expect(screen.getByText("Saved partial").closest("article")).toHaveTextContent("Earlier model");
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Load older messages" }));
+  expect(await screen.findByText("Older answer")).toBeInTheDocument();
+});
+
+test("late history response cannot replace a newer selected conversation", async () => {
+  const first = { ...conversation, title: "First saved" };
+  const second = {
+    ...conversation,
+    id: "00000000-0000-0000-0000-000000000099",
+    title: "Second saved",
+  };
+  let resolveFirst!: (response: Response) => void;
+  const firstResponse = new Promise<Response>((resolve) => {
+    resolveFirst = resolve;
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/v1/chat/models") return Promise.resolve(json({ data: [model] }));
+      if (url.startsWith("/api/v1/chat/conversations?")) {
+        return Promise.resolve(json({ data: [first, second], next_cursor: null }));
+      }
+      if (url.includes(first.id)) return firstResponse;
+      return Promise.resolve(
+        json({
+          conversation: second,
+          messages: [
+            {
+              id: answerId,
+              conversation_id: second.id,
+              position: 1,
+              role: "assistant",
+              text: "Second content",
+              reasoning: "",
+              model_id: modelId,
+              model_display_name: "Friendly model",
+              attachment_ids: [],
+              created_at: "2026-09-28T00:00:00Z",
+            },
+          ],
+          turns: [],
+          attachments: [],
+          event_cursor: 2,
+        }),
+      );
+    }),
+  );
+  render(<Chat />);
+  fireEvent.click(await screen.findByRole("button", { name: /First saved/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Second saved/ }));
+  expect(await screen.findByText("Second content")).toBeInTheDocument();
+  await act(async () => {
+    resolveFirst(
+      json({ conversation: first, messages: [], turns: [], attachments: [], event_cursor: 1 }),
+    );
+  });
+  expect(screen.getByText("Second content")).toBeInTheDocument();
+});
+
+test("keeps separate unsent drafts while navigating saved and new conversations", async () => {
+  const saved = { ...conversation, title: "Draft notes" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string) => {
+      if (url === "/api/v1/chat/models") return Promise.resolve(json({ data: [model] }));
+      if (url.startsWith("/api/v1/chat/conversations?")) {
+        return Promise.resolve(json({ data: [saved], next_cursor: null }));
+      }
+      return Promise.resolve(
+        json({
+          conversation: saved,
+          messages: [],
+          turns: [],
+          attachments: [],
+          event_cursor: 0,
+        }),
+      );
+    }),
+  );
+  render(<Chat />);
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "New draft" },
+  });
+  fireEvent.click(await screen.findByRole("button", { name: /Draft notes/ }));
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue(""));
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Saved draft" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("New draft");
+  fireEvent.click(screen.getByRole("button", { name: /Draft notes/ }));
+  await waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Saved draft"),
+  );
 });
