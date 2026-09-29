@@ -39,6 +39,12 @@ def _events(response: httpx.Response) -> Iterator[dict[str, object]]:
             yield json.loads(line[6:])
 
 
+def _event_payload(event: dict[str, object]) -> dict[str, object]:
+    payload = event["payload"]
+    assert isinstance(payload, dict)
+    return cast(dict[str, object], payload)
+
+
 class _RateLimitedClient(httpx.Client):
     """Honor the temporary key's minute window during multi-case live acceptance."""
 
@@ -168,6 +174,89 @@ def test_tiny_text_stream_usage_and_healthy_stop() -> None:
                             ).status_code
                             == 404
                         )
+
+
+def test_completed_turn_observer_replays_without_regeneration() -> None:
+    """A second tab can resume saved deltas with a cursor after the writer exits."""
+    url, model_id, service = _configuration()
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    with _RateLimitedClient(
+        base_url=url, timeout=90, headers={"Authorization": f"Bearer {key}"}
+    ) as client:
+        created = client.post(
+            "/api/v1/chat/conversations",
+            json={"mode": "chat", "model_id": model_id},
+            headers={"Origin": origin},
+        )
+        assert created.status_code == 201
+        conversation_id = created.json()["id"]
+        path = f"/api/v1/chat/conversations/{conversation_id}"
+        try:
+            with client.stream(
+                "POST",
+                f"{path}/turns",
+                json={
+                    "client_request_id": str(uuid.uuid4()),
+                    "expected_revision": created.json()["revision"],
+                    "model_id": model_id,
+                    "content": "Reply briefly with the word ready.",
+                },
+                headers={"Origin": origin},
+            ) as response:
+                assert response.status_code == 200
+                writer_events = list(_events(response))
+            writer_terminal = next(
+                event for event in writer_events if _event_payload(event)["type"] == "turn.terminal"
+            )
+            assert _event_payload(writer_terminal)["state"] == "completed"
+            assert any(_event_payload(event)["type"] == "message.delta" for event in writer_events)
+            writer_cursor = writer_terminal["cursor"]
+            assert isinstance(writer_cursor, int)
+            with client.stream(
+                "GET", f"{path}/events", headers={"Last-Event-ID": f"{conversation_id}:0"}
+            ) as observer:
+                assert observer.status_code == 200
+                replayed: list[dict[str, object]] = []
+                for event in _events(observer):
+                    replayed.append(event)
+                    if _event_payload(event)["type"] == "turn.terminal":
+                        break
+            assert replayed[-1]["cursor"] == writer_cursor
+            assert any(_event_payload(event)["type"] == "message.delta" for event in replayed)
+            first_cursor = replayed[0]["cursor"]
+            assert isinstance(first_cursor, int)
+            with client.stream(
+                "GET",
+                f"{path}/events",
+                headers={"Last-Event-ID": f"{conversation_id}:{first_cursor}"},
+            ) as resumed:
+                assert resumed.status_code == 200
+                resumed_events: list[dict[str, object]] = []
+                for event in _events(resumed):
+                    resumed_events.append(event)
+                    if _event_payload(event)["type"] == "turn.terminal":
+                        break
+            assert resumed_events
+            assert all(isinstance(event["cursor"], int) for event in resumed_events)
+            assert all(cast(int, event["cursor"]) > first_cursor for event in resumed_events)
+            assert resumed_events[-1]["cursor"] == writer_cursor
+            detail = client.get(path)
+            assert detail.status_code == 200
+            assert len(detail.json()["turns"]) == 1
+        finally:
+            detail = client.get(path)
+            if detail.status_code == 200:
+                deleted = client.request(
+                    "DELETE",
+                    path,
+                    json={"expected_revision": detail.json()["conversation"]["revision"]},
+                    headers={"Origin": origin},
+                )
+                assert deleted.status_code == 202
+                assert client.get(f"{path}/events").status_code == 404
 
 
 def test_private_image_processing_and_download() -> None:
