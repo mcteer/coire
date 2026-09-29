@@ -16,6 +16,7 @@ import uuid
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
+from pathlib import Path
 from typing import Any, cast
 
 import httpx
@@ -326,6 +327,117 @@ def test_two_tab_send_has_one_owner_and_repeated_id_replays() -> None:
                     json={"expected_revision": detail.json()["conversation"]["revision"]},
                 )
                 assert deleted.status_code == 202
+
+
+def test_inflight_turn_recovers_after_managed_api_restart() -> None:
+    """A lost controlling process leaves one durable partial turn and observer replay."""
+    if os.environ.get("COIRE_TEST_CHAT_RESTART_COMPOSE") != "1":
+        pytest.skip("enable the managed pre-prod API restart acceptance explicitly")
+    url, model_id, service = _configuration()
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    manifest = Path.home() / ".coire/projects/coire/current/compose.json"
+    assert manifest.is_file()
+    headers = {"Authorization": f"Bearer {key}", "Origin": origin}
+    with _RateLimitedClient(base_url=url, timeout=90, headers=headers) as client:
+        created = client.post(
+            "/api/v1/chat/conversations",
+            json={"mode": "chat", "model_id": model_id},
+        )
+        assert created.status_code == 201, created.text
+        conversation_id = created.json()["id"]
+        path = f"/api/v1/chat/conversations/{conversation_id}"
+        accepted: dict[str, object] | None = None
+        delta_seen = False
+        try:
+            try:
+                with client.stream(
+                    "POST",
+                    f"{path}/turns",
+                    json={
+                        "client_request_id": str(uuid.uuid4()),
+                        "expected_revision": created.json()["revision"],
+                        "model_id": model_id,
+                        "content": "Write five hundred numbered lines, one number per line.",
+                    },
+                ) as response:
+                    assert response.status_code == 200
+                    for event in _events(response):
+                        payload = _event_payload(event)
+                        if payload["type"] == "turn.accepted":
+                            accepted = cast(dict[str, object], payload["turn"])
+                        elif payload["type"] == "message.delta":
+                            delta_seen = True
+                            subprocess.run(
+                                ["docker", "kill", "--signal=KILL", "coire-coire-api-1"],
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                            subprocess.run(
+                                [
+                                    "docker",
+                                    "compose",
+                                    "-p",
+                                    "coire",
+                                    "-f",
+                                    str(manifest),
+                                    "up",
+                                    "-d",
+                                    "--no-deps",
+                                    "coire-api",
+                                ],
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                                timeout=45,
+                            )
+                            break
+            except httpx.TransportError:
+                assert delta_seen
+            assert accepted is not None and delta_seen
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                try:
+                    detail = client.get(path)
+                except httpx.TransportError:
+                    time.sleep(1)
+                    continue
+                if detail.status_code == 200 and detail.json()["turns"]:
+                    turn = detail.json()["turns"][0]
+                    if turn["state"] in {"interrupted", "stopped", "failed", "completed"}:
+                        break
+                time.sleep(1)
+            else:
+                pytest.fail("the restarted API did not reconcile the in-flight turn")
+            assert turn["id"] == accepted["id"]
+            assert turn["state"] == "interrupted"
+            assert len(detail.json()["turns"]) == 1
+            with client.stream(
+                "GET", f"{path}/events", headers={"Last-Event-ID": f"{conversation_id}:0"}
+            ) as observer:
+                assert observer.status_code == 200
+                terminal = next(
+                    event
+                    for event in _events(observer)
+                    if _event_payload(event)["type"] == "turn.terminal"
+                )
+            assert _event_payload(terminal)["state"] == "interrupted"
+        finally:
+            try:
+                detail = client.get(path)
+                if detail.status_code == 200:
+                    deleted = client.request(
+                        "DELETE",
+                        path,
+                        json={"expected_revision": detail.json()["conversation"]["revision"]},
+                    )
+                    assert deleted.status_code == 202
+            except httpx.TransportError:
+                pass
 
 
 def test_private_image_processing_and_download() -> None:

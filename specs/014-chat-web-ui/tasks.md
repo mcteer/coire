@@ -61,7 +61,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 - [X] T032 [P] [US3] Add expired-session/draft/identity-change and logout tests in apps/coire-web/src/hooks/useConversation.test.tsx (FR-020, FR-031).
 - [X] T033 [US3] Implement owner-scoped same-tab draft restoration and cleanup in apps/coire-web/src/hooks/useConversation.ts and api/chat.ts; preserve text/model/file selections but no tokens or bytes (FR-020, FR-031).
 - [X] T034 [US3] Test and wire hidden-tab preservation, navigation/tab-close cancellation, explicit retry/continue and observer reconciliation in apps/coire-web/src/pages/Chat.test.tsx, pages/Chat.tsx and hooks/useEventStream.ts (FR-018–019, FR-023–024).
-- [ ] T035 [US3] Add two-tab/repeated-send, disconnect/restart, deleted access/purge and healthy-stop integration cases in tests/integration/test_chat_ui.py (SC-004–005, SC-008–009, SC-011, SC-013).
+- [X] T035 [US3] Add two-tab/repeated-send, disconnect/restart, deleted access/purge and healthy-stop integration cases in tests/integration/test_chat_ui.py (SC-004–005, SC-008–009, SC-011, SC-013).
 
 ## Phase 6 — US4: Safe code mode (P2)
 
@@ -112,7 +112,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 - [X] T070 [P] Write docs/runbooks/chat-web-ui.md and update deploy/compose/README.md, docs/ARCHITECTURE.md and docs/adr/0008-multimodal-chat-processing.md with inspection/kill/parser failure/purge/diagnostics/locked-node install and audited visual-backend rollback procedures.
 - [X] T071 Regenerate and freshness-check apps/coire-api/openapi.json and apps/coire-web/src/api/schema.d.ts after all routes, event components and visual schemas; verify every new/changed API surface has contract coverage (Constitution III/VII).
 - [X] T072 Run Ruff, strict mypy, unit/contract/worker suites, web tests/lint/typecheck and existing /v1/MCP/admin/failover regressions; record actual results and explain unrelated conditional skips in specs/014-chat-web-ui/review.md.
-- [ ] T073 Run quickstart.md browser acceptance on Safari/Chromium at 1024/1440 widths: keyboard/focus/reduced-motion/drawers/auth drafts, unfamiliar-user chat, 200-message/50k-character p95 interaction measurement and visual file flows; save evidence references in specs/014-chat-web-ui/review.md (SC-001, SC-010).
+- [X] T073 Run quickstart.md browser acceptance on Safari/Chromium at 1024/1440 widths: keyboard/focus/reduced-motion/drawers/auth drafts, unfamiliar-user chat, 200-message/50k-character p95 interaction measurement and visual file flows; save evidence references in specs/014-chat-web-ui/review.md (SC-001, SC-010). User accepted headless Playwright Chromium and WebKit in place of Safari.
 - [X] T074 Verify migration reversal, compose policy, changed production image builds/scans/SBOMs/native notices, locked node package and broken-env rollback against disposable/local targets; record in specs/014-chat-web-ui/review.md. Real Studio model tests use the authorized admin/node paths; no direct Studio Docker or unmanaged engine commands.
 - [ ] T075 Run all local tiny-text/tiny-vision integration scenarios, healthy cancellation/usage/memory/overhead measurements, parser crash recovery and baseline alerts; record model bytes, unskipped 014 results and any operator-only cluster evidence in specs/014-chat-web-ui/review.md before completing acceptance.
 
