@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ApiError } from "../api/client";
 import {
   createChatConversation,
   getChatConversation,
@@ -25,6 +26,7 @@ export function useConversation() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [available, setAvailable] = useState(true);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const pending = useRef<{ key: string; body: ChatTurnCreate } | null>(null);
@@ -42,7 +44,10 @@ export function useConversation() {
         setSelectedId((current) => current ?? available[0]?.id ?? null);
       })
       .catch((cause) => {
-        if (live) setError(String(cause));
+        if (live) {
+          if (cause instanceof ApiError && cause.status === 404) setAvailable(false);
+          else setError(String(cause));
+        }
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -61,7 +66,10 @@ export function useConversation() {
         setHistoryCursor(page.next_cursor ?? null);
       })
       .catch((cause) => {
-        if (live) setError(String(cause));
+        if (live) {
+          if (cause instanceof ApiError && cause.status === 404) setAvailable(false);
+          else setError(String(cause));
+        }
       })
       .finally(() => {
         if (live) setHistoryLoading(false);
@@ -321,6 +329,7 @@ export function useConversation() {
     status,
     error: error ?? stream.error,
     loading,
+    available,
     active: busy || stream.active,
     send,
     newConversation,

@@ -7,6 +7,15 @@ import "../styles/chat.css";
 
 export function Chat() {
   const chat = useConversation();
+  if (!chat.available)
+    return (
+      <main className="chat-page">
+        <section className="panel glass">
+          <h1>Chat is unavailable</h1>
+          <p>This deployment has not enabled Chat yet. Please try again later.</p>
+        </section>
+      </main>
+    );
   return (
     <main className="chat-page">
       <div className="chat-topline">

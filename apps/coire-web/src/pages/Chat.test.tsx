@@ -466,3 +466,13 @@ test("keeps separate unsent drafts while navigating saved and new conversations"
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Saved draft"),
   );
 });
+
+test("shows a clear unavailable state while the server release flag is off", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation(() => Promise.resolve(json({ title: "Not Found" }, 404))),
+  );
+  render(<Chat />);
+  expect(await screen.findByRole("heading", { name: "Chat is unavailable" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+});
