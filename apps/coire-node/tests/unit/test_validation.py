@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -13,6 +14,7 @@ from coire_node.validation import (
     compare_perplexity,
     output_is_nondegenerate,
     perplexity,
+    run_template_check,
     smoke_argv,
     validate_tool_call_shape,
 )
@@ -49,6 +51,26 @@ def test_tool_call_shape_rejects_malformed_and_accepts_canonical() -> None:
         '{"tool_calls":[{"function":{"name":"coire_validation_echo","arguments":{"value":"ok"}}}]}'
     )
     assert validate_tool_call_shape(rendered) is ValidationOutcome.PASS
+
+
+def test_simple_chat_template_is_valid_without_tool_capability(tmp_path: Path) -> None:
+    (tmp_path / "tokenizer_config.json").write_text(
+        json.dumps({"chat_template": "{{ message['content'] }}"})
+    )
+
+    class PlainTokenizer:
+        def apply_chat_template(
+            self, conversation: object, *, tools: object, tokenize: bool
+        ) -> str:
+            assert tools is None
+            assert not tokenize
+            assert isinstance(conversation, list)
+            return str(conversation[0]["content"])
+
+    tokenizer_utils = ModuleType("mlx_lm.tokenizer_utils")
+    tokenizer_utils.load = lambda path: PlainTokenizer()  # type: ignore[attr-defined]
+    with patch.dict(sys.modules, {"mlx_lm.tokenizer_utils": tokenizer_utils}):
+        assert run_template_check(tmp_path) == (ValidationOutcome.NOT_APPLICABLE, None)
 
 
 def _visual_files(path: Path) -> None:
