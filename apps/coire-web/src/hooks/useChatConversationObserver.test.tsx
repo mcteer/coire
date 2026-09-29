@@ -19,12 +19,14 @@ test("observes saved events with a scoped GET cursor and no generation POST", as
       reasoning_length: 0,
     },
   };
-  const fetchMock = vi.fn().mockResolvedValue(
-    new Response(
-      `event: turn.terminal\nid: ${conversationId}:4\ndata: ${JSON.stringify(event)}\n\n`,
-      { headers: { "content-type": "text/event-stream" } },
-    ),
-  );
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(
+        `event: turn.terminal\nid: ${conversationId}:4\ndata: ${JSON.stringify(event)}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    );
   vi.stubGlobal("fetch", fetchMock);
   const received = vi.fn();
   function Probe() {
@@ -39,5 +41,21 @@ test("observes saved events with a scoped GET cursor and no generation POST", as
   expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({
     "Last-Event-ID": `${conversationId}:3`,
   });
+  view.unmount();
+});
+
+test("reports expired observer authentication once without replaying generation", async () => {
+  const conversationId = "00000000-0000-0000-0000-000000000001";
+  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 401 }));
+  vi.stubGlobal("fetch", fetchMock);
+  const terminal = vi.fn();
+  function Probe() {
+    const cursor = useRef(3);
+    useChatConversationObserver(conversationId, true, cursor, vi.fn(), terminal);
+    return null;
+  }
+  const view = render(<Probe />);
+  await waitFor(() => expect(terminal).toHaveBeenCalledWith(401), { timeout: 1500 });
+  expect(fetchMock).toHaveBeenCalledTimes(1);
   view.unmount();
 });

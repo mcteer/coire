@@ -47,6 +47,7 @@ export function useConversation(ownerId: string) {
   const [draft, setDraft] = useState(() => drafts.current.get("new")?.text ?? "");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reauthRequired, setReauthRequired] = useState(false);
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -58,6 +59,15 @@ export function useConversation(ownerId: string) {
   const refreshTimer = useRef<number | null>(null);
   const refreshDirty = useRef(false);
   const stream = useChatTurnStream();
+
+  const reportError = (cause: unknown) => {
+    if (cause instanceof ApiError && cause.status === 401) {
+      setReauthRequired(true);
+      setError("Your session expired. Sign in again to continue this conversation.");
+    } else {
+      setError(String(cause));
+    }
+  };
 
   const remember = (
     key: string,
@@ -99,7 +109,7 @@ export function useConversation(ownerId: string) {
       .catch((cause) => {
         if (live) {
           if (cause instanceof ApiError && cause.status === 404) setAvailable(false);
-          else setError(String(cause));
+          else reportError(cause);
         }
       })
       .finally(() => {
@@ -121,7 +131,7 @@ export function useConversation(ownerId: string) {
       .catch((cause) => {
         if (live) {
           if (cause instanceof ApiError && cause.status === 404) setAvailable(false);
-          else setError(String(cause));
+          else reportError(cause);
         }
       })
       .finally(() => {
@@ -300,7 +310,7 @@ export function useConversation(ownerId: string) {
       });
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === "AbortError")) {
-        setError(String(cause));
+        reportError(cause);
         setStatus("Send failed. Check the message and try again.");
       }
     } finally {
@@ -349,7 +359,7 @@ export function useConversation(ownerId: string) {
       await refreshFiles(current.id, generation);
     } catch (cause) {
       if (selection.current === generation) {
-        setError(String(cause));
+        reportError(cause);
         if (current) await refreshFiles(current.id, generation).catch(() => {});
       }
     } finally {
@@ -375,7 +385,7 @@ export function useConversation(ownerId: string) {
       await refreshFiles(current.id, generation);
     } catch (cause) {
       if (selection.current === generation) {
-        setError(String(cause));
+        reportError(cause);
         await refreshFiles(current.id, generation).catch(() => {});
       }
     } finally {
@@ -430,7 +440,7 @@ export function useConversation(ownerId: string) {
             : null,
       );
     } catch (cause) {
-      if (selection.current === generation) setError(String(cause));
+      if (selection.current === generation) reportError(cause);
     } finally {
       if (selection.current === generation) setHistoryLoading(false);
     }
@@ -447,7 +457,7 @@ export function useConversation(ownerId: string) {
       ]);
       setHistoryCursor(page.next_cursor ?? null);
     } catch (cause) {
-      setError(String(cause));
+      reportError(cause);
     } finally {
       setHistoryLoading(false);
     }
@@ -467,7 +477,7 @@ export function useConversation(ownerId: string) {
       ]);
       setOlderPosition(detail.next_message_position ?? null);
     } catch (cause) {
-      if (selection.current === generation) setError(String(cause));
+      if (selection.current === generation) reportError(cause);
     } finally {
       if (selection.current === generation) setHistoryLoading(false);
     }
@@ -501,7 +511,7 @@ export function useConversation(ownerId: string) {
       stream.abort();
       return true;
     } catch (cause) {
-      setError(String(cause));
+      reportError(cause);
       return false;
     }
   };
@@ -552,7 +562,7 @@ export function useConversation(ownerId: string) {
             setStatus(detail.conversation.active_turn_id ? "A response is still running." : null);
           })
           .catch((cause) => {
-            if (selection.current === generation) setError(String(cause));
+            if (selection.current === generation) reportError(cause);
           })
           .finally(() => {
             refreshTimer.current = null;
@@ -571,6 +581,9 @@ export function useConversation(ownerId: string) {
     !stream.active,
     eventCursor,
     refreshObserved,
+    (status) => {
+      if (status === 401) reportError(new ApiError(401, "Session expired"));
+    },
   );
 
   useEffect(() => {
@@ -586,7 +599,7 @@ export function useConversation(ownerId: string) {
             setAttachments((rows) => rows.map((row) => (row.id === updated.id ? updated : row)));
           })
           .catch((cause) => {
-            if (selection.current === generation) setError(String(cause));
+            if (selection.current === generation) reportError(cause);
           });
       }
     }, 2000);
@@ -621,7 +634,7 @@ export function useConversation(ownerId: string) {
         }
       }
     } catch (cause) {
-      setError(String(cause));
+      reportError(cause);
     } finally {
       setStopPending(false);
     }
@@ -647,7 +660,7 @@ export function useConversation(ownerId: string) {
           // Preserve the original edit conflict for the user.
         }
       }
-      setError(String(cause));
+      reportError(cause);
       return false;
     }
   };
@@ -682,7 +695,7 @@ export function useConversation(ownerId: string) {
           // Preserve the deletion conflict for the user.
         }
       }
-      setError(String(cause));
+      reportError(cause);
       return false;
     }
   };
@@ -708,6 +721,7 @@ export function useConversation(ownerId: string) {
     setDraft: changeDraft,
     status,
     error: error ?? stream.error,
+    reauthRequired,
     loading,
     available,
     active: busy || stream.active,

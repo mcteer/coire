@@ -64,3 +64,17 @@ test("surfaces an authentication failure", async () => {
   render(<App />);
   await waitFor(() => expect(screen.getByText(/boom/)).toBeInTheDocument());
 });
+
+test("offers same-origin reauthentication when the edge session expires", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ title: "Unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/problem+json" },
+      }),
+    ),
+  );
+  render(<App />);
+  expect(await screen.findByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/");
+});

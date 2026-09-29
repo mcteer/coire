@@ -21,6 +21,18 @@ function ChatSession({ ownerId }: { ownerId: string }) {
         </section>
       </main>
     );
+  if (chat.reauthRequired)
+    return (
+      <main className="chat-page">
+        <section className="panel glass" role="alert">
+          <h1>Sign in again</h1>
+          <p>Your session expired. Your draft is saved in this tab for the same account.</p>
+          <a className="button" href="/">
+            Sign in again
+          </a>
+        </section>
+      </main>
+    );
   return (
     <main className="chat-page">
       <div className="chat-topline">

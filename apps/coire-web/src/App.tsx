@@ -9,6 +9,7 @@ import {
   type ConsoleSnapshot,
   type ModelVariant,
   type User,
+  ApiError,
 } from "./api/client";
 import { AskCoire } from "./pages/admin/AskCoire";
 import { useEventStream } from "./hooks/useEventStream";
@@ -1034,6 +1035,7 @@ function AuditPage() {
 export function App() {
   const [me, setMe] = useState<User | null>(null),
     [authError, setAuthError] = useState(""),
+    [authExpired, setAuthExpired] = useState(false),
     [hash, setHash] = useState(() => location.hash);
   const admin = hash.startsWith("#admin");
   const requested = hash.replace("#admin/", "");
@@ -1045,7 +1047,12 @@ export function App() {
   useEffect(() => {
     void api<User>("/api/v1/me")
       .then(setMe)
-      .catch((e) => setAuthError(String(e)));
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 401) {
+          setAuthExpired(true);
+          setAuthError("Your session expired. Sign in again to continue.");
+        } else setAuthError(String(e));
+      });
   }, []);
   useEffect(() => {
     const changed = () => setHash(location.hash);
@@ -1064,6 +1071,11 @@ export function App() {
     return (
       <main className="app">
         <p className="error">{authError}</p>
+        {authExpired && (
+          <a className="button" href="/">
+            Sign in again
+          </a>
+        )}
       </main>
     );
   if (!me)

@@ -769,6 +769,25 @@ test("shows a clear unavailable state while the server release flag is off", asy
   expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
 });
 
+test("expired send prompts sign-in and keeps the unsent same-tab draft", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [], next_cursor: null }))
+    .mockResolvedValueOnce(json(conversation, 201))
+    .mockResolvedValueOnce(json({ title: "Unauthorized" }, 401));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  await screen.findByText("Friendly model");
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Keep this draft" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(await screen.findByRole("heading", { name: "Sign in again" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/");
+  expect(loadChatDrafts(conversation.owner_id).get(conversationId)?.text).toBe("Keep this draft");
+});
+
 test("restores same-tab text and an eligible model after reload", async () => {
   const second = {
     ...model,

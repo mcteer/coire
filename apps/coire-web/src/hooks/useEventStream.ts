@@ -117,11 +117,14 @@ export function useChatConversationObserver(
   enabled: boolean,
   cursor: MutableRefObject<number>,
   onEvent: (event: ChatEvent) => void,
+  onTerminalStatus?: (status: number) => void,
 ) {
   const callback = useRef(onEvent);
+  const terminalStatus = useRef(onTerminalStatus);
   useEffect(() => {
     callback.current = onEvent;
-  }, [onEvent]);
+    terminalStatus.current = onTerminalStatus;
+  }, [onEvent, onTerminalStatus]);
 
   useEffect(() => {
     if (!conversationId || !enabled) return;
@@ -138,6 +141,7 @@ export function useChatConversationObserver(
         const response = await openChatEvents(conversationId, cursor.current, active.signal);
         if ([401, 403, 404].includes(response.status)) {
           permanent = true;
+          terminalStatus.current?.(response.status);
           return;
         }
         if (response.status === 409) cursor.current = 0;

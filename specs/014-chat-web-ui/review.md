@@ -263,3 +263,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - The CPU worker classifies PDFium's typed password error as `pdf_password_required`, distinct from corrupt-PDF refusal; Chat renders a clear password-protected explanation. Small upstream PDFium fixtures with the redistribution license prove page-attributed Unicode extraction and encrypted refusal. A subprocess test proves a stuck native call exits the worker with status 124; existing scan, malformed, page bound, image bomb, metadata stripping and atomic output tests still pass. Parent T047 is complete.
 - Full Python suite passed 959 with 117 conditional skips. Changed worker source passed strict mypy and Ruff; 65 web tests, lint and build passed. The local arm64 worker image built, passed all image policy rules including native PDFium/Pillow import, and Trivy CRITICAL scan exited 0 with no findings. Syft wrote an SPDX JSON SBOM to `/tmp/coire-file-worker-014aq.spdx.json` (local evidence). Native Chat remains default-off pending the remaining file, visual, coding and final acceptance gates.
+
+## Chat reauthentication gate (014ar)
+
+- Chat now classifies 401 responses from owner operations and its GET observer, displays a same-origin sign-in action and keeps the current same-tab draft. The observer stops after a 401 without replaying the original POST. Initial `/me` 401 shows the same action. Returning owner verification continues to determine whether drafts restore or the prior owner's store clears.
+- Browser tests cover initial identity, failed send with retained draft, and one-shot observer expiry. All 68 web tests, lint and build passed. Parent T032 stays open for explicit logout and broader expiry/navigation acceptance; Chat remains default-off.
