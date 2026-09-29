@@ -122,3 +122,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - An active plain-chat conversation now shows Stop, including after history load. The generated-type API call requests owner Stop and leaves the original SSE stream connected for its persisted terminal; partial output remains visible. A terminal response that wins the race refreshes saved conversation detail. Stop errors remain visible and retryable.
 - A live-stream browser test covers the Stop POST, progress and saved partial output after the stopped terminal. Web test/build/lint gates passed. Parent T034 remains open for navigation and tab-close cancellation, observer reconciliation and explicit retry/continue.
+
+## Plain Chat lease recovery gate (014r)
+
+- Accepted text turns now receive a process-owned 30-second lease, renewed every five seconds by the live stream. Enabled API processes sweep stale turns on startup and bounded intervals. A locked pass commits one `interrupted` or `stopped` terminal, retains saved partial text and frees the conversation's active-turn slot without restarting generation.
+- Unit tests cover expired running/stopping turns, repeated sweeps and fresh leases. The existing dashboard/alert show recovery outcomes and failed passes; the runbook describes inspection and rollback. Parent T029 remains open for real database/race acceptance and cross-tab recovery.

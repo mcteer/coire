@@ -16,6 +16,7 @@ from fastapi import Request
 from sqlalchemy import select
 
 from coire_api.auth import Principal
+from coire_api.chat.maintenance import maintain_turn_lease
 from coire_api.chat.telemetry import requests_total, tracer
 from coire_api.chat.turns import Admission
 from coire_api.db import (
@@ -109,6 +110,8 @@ async def persist_native_event(
             assert state in {"completed", "failed", "interrupted", "stopped"}
             turn.state = state
             turn.finished_at = now
+            turn.owner_process = None
+            turn.lease_expires_at = None
             turn.usage = usage.model_dump(mode="json") if usage is not None else None
             answer.usage = turn.usage
             conversation.active_turn_id = None
@@ -254,6 +257,7 @@ async def native_stream(
     loading_failed = False
     stop_signal = asyncio.Event()
     last_stop_check = monotonic()
+    heartbeat = asyncio.create_task(maintain_turn_lease(admission.turn.id))
     try:
         yield encode_event(admission.event)
         try:
@@ -472,6 +476,9 @@ async def native_stream(
             terminal_saved = True
             yield encode_event(terminal)
     finally:
+        heartbeat.cancel()
+        with suppress(asyncio.CancelledError):
+            await heartbeat
         try:
             if not terminal_saved and not persistence_failed:
                 await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")

@@ -92,6 +92,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await reconciler.start()
         app.state.reconciler = reconciler
         prober.set_reconciler(reconciler)
+        from coire_api.chat.maintenance import ChatMaintenance
+
+        chat_maintenance = ChatMaintenance(settings)
+        if settings.chat_enabled:
+            await chat_maintenance.start()
+        app.state.chat_maintenance = chat_maintenance
         from coire_api.failover.poller import build_poller
         from coire_api.failover.publication import CoreSnapshotService, configured_membership
 
@@ -118,6 +124,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await failover_poller.stop()
             if snapshot_service is not None:
                 await snapshot_service.stop()
+            await chat_maintenance.stop()
             await reconciler.stop()
             await prober.stop()
             await link_probe_coordinator.stop()

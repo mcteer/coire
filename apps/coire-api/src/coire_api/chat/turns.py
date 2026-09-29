@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal
+from coire_api.chat.maintenance import LEASE_SECONDS, PROCESS_ID
 from coire_api.db import (
     ChatConversationRow,
     ChatEventRow,
@@ -288,6 +289,8 @@ async def admit_turn(
         model_display_name=model.display_name,
         action="chat",
         state="accepted",
+        owner_process=PROCESS_ID,
+        lease_expires_at=now + timedelta(seconds=LEASE_SECONDS),
         event_cursor=conversation.event_cursor + 1,
         created_at=now,
         updated_at=now,
