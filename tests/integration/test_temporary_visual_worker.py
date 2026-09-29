@@ -105,13 +105,13 @@ asyncio.run(main())
     assert "temporary image processed, reused, and erased" in result.stdout
 
 
-def test_worker_outage_expires_temporary_visual_and_recovers_purge() -> None:
+def test_worker_crash_expires_temporary_visual_and_recovers_purge() -> None:
     source = io.BytesIO()
     Image.new("RGB", (16, 16), (32, 80, 240)).save(source, format="PNG")
     encoded = base64.b64encode(source.getvalue()).decode("ascii")
     worker = ["docker", "compose", "-p", "coire-it"]
     subprocess.run(
-        [*worker, "stop", "coire-file-worker"],
+        [*worker, "kill", "-s", "SIGKILL", "coire-file-worker"],
         cwd=COMPOSE_DIR,
         check=True,
         capture_output=True,
