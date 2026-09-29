@@ -331,3 +331,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Audited the existing shared SSE parser, same-origin native POST and cursor-bearing GET observer. Existing tests cover fragmented UTF-8, CRLF, comments, multiline frames, terminal/refused POSTs, one-shot send, auth failure, hidden generation and admin reconnect. Added an expired-cursor observer test: a 409 resets to the conversation's zero cursor, then a saved replacement snapshot is accepted through GET only. Parent T013/T014 are complete; browser end-to-end acceptance remains open.
 - All 77 web tests, lint and TypeScript production build passed. This test-only slice changes no production image. Chat remains default-off.
+
+## Safe public gateway stream rewrite (014bf)
+
+- The compatible OpenAI SSE boundary now buffers a bounded complete event across fragmented transport chunks and CRLF/multiline data before rewriting `model`. It refuses malformed/incomplete/oversized frames and any output field containing the resolved node-local model path. Rewriting now runs inside usage tracking, so a bad engine frame records failed usage and closes upstream. Existing loader, proxy lease, route, stream accounting and cancellation regressions plus new fragmented/path tests cover parent T011; T012 remains open for full shared execution extraction.
+- Full Python suite: 1000 passed, 117 conditional skipped. Strict mypy on 160 API/core source files, changed-file Ruff/format and OpenAPI freshness passed. The local arm64 API image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-api-014bf.spdx.json` (local evidence). Chat remains default-off.

@@ -186,25 +186,61 @@ async def track_stream(
 
 
 async def rewrite_openai_model(
-    source: AsyncIterator[bytes], model: uuid.UUID
+    source: AsyncIterator[bytes], model: uuid.UUID, *, private_model_path: str | None = None
 ) -> AsyncIterator[bytes]:
-    """Keep the registry UUID at the public boundary; never expose the node's model path."""
+    """Rewrite complete SSE frames so split chunks cannot expose a node-local path."""
     public_model = str(model)
-    async for chunk in source:
-        if not chunk.startswith(b"data: "):
-            yield chunk
-            continue
-        raw = chunk[6:].strip()
-        if raw == b"[DONE]":
-            yield chunk
-            continue
-        try:
-            event = json.loads(raw)
-        except (TypeError, ValueError):
-            yield chunk
-            continue
-        if not isinstance(event, dict) or "model" not in event:
-            yield chunk
-            continue
-        event["model"] = public_model
-        yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n".encode()
+    private_path = private_model_path.encode() if private_model_path else None
+    buffer = b""
+    trailing_cr = b""
+    try:
+        async for chunk in source:
+            data = trailing_cr + chunk
+            trailing_cr = b""
+            if data.endswith(b"\r"):
+                trailing_cr = b"\r"
+                data = data[:-1]
+            buffer += data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            while b"\n\n" in buffer:
+                frame, buffer = buffer.split(b"\n\n", 1)
+                if len(frame) > 2 * 1024 * 1024:
+                    raise EngineProxyError("engine event exceeds limit")
+                lines = frame.split(b"\n")
+                data_lines = [
+                    line[5:].removeprefix(b" ") for line in lines if line.startswith(b"data:")
+                ]
+                if not data_lines or b"\n".join(data_lines) == b"[DONE]":
+                    rendered = frame + b"\n\n"
+                    if private_path and private_path in rendered:
+                        raise EngineProxyError("engine event contains private model path")
+                    yield rendered
+                    continue
+                try:
+                    event = json.loads(b"\n".join(data_lines))
+                except (TypeError, ValueError) as exc:
+                    raise EngineProxyError("invalid engine event") from exc
+                if not isinstance(event, dict) or "model" not in event:
+                    rendered = frame + b"\n\n"
+                    if private_path and private_path in rendered:
+                        raise EngineProxyError("engine event contains private model path")
+                    yield rendered
+                    continue
+                event["model"] = public_model
+                metadata = [line for line in lines if not line.startswith(b"data:")]
+                prefix = b"\n".join(metadata)
+                if prefix:
+                    prefix += b"\n"
+                rendered = (
+                    prefix + b"data: " + json.dumps(event, separators=(",", ":")).encode() + b"\n\n"
+                )
+                if private_path and private_path in rendered:
+                    raise EngineProxyError("engine event contains private model path")
+                yield rendered
+            if len(buffer) > 2 * 1024 * 1024:
+                raise EngineProxyError("engine event exceeds limit")
+        if buffer or trailing_cr:
+            raise EngineProxyError("incomplete engine event")
+    finally:
+        close = getattr(source, "aclose", None)
+        if close is not None:
+            await close()

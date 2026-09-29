@@ -53,6 +53,73 @@ async def test_rewriter_hides_engine_path_and_preserves_non_data_frames() -> Non
     assert chunks[-1] == b"data: [DONE]\n\n"
 
 
+async def test_rewriter_hides_path_across_fragmented_multiline_sse_frames() -> None:
+    model_id = uuid.uuid4()
+    raw = (
+        b": keepalive\r\n\r\n"
+        b"id: 7\r\nevent: completion\r\n"
+        b'data: {"model":\r\n'
+        b'data: "/private/model","choices":[]}\r\n\r\n'
+        b"data: [DONE]\r\n\r\n"
+    )
+
+    async def source() -> AsyncIterator[bytes]:
+        for index in range(0, len(raw), 5):
+            yield raw[index : index + 5]
+
+    output = b"".join([chunk async for chunk in rewrite_openai_model(source(), model_id)])
+    assert b"/private/" not in output
+    assert str(model_id).encode() in output
+    assert b"id: 7\nevent: completion\n" in output
+    assert b": keepalive\n\n" in output
+    assert output.endswith(b"data: [DONE]\n\n")
+
+
+async def test_rewriter_refuses_malformed_engine_frame_without_leaking_path() -> None:
+    from coire_api.gateway.proxy import EngineProxyError
+
+    async def source() -> AsyncIterator[bytes]:
+        yield b'data: {"model":"/private/model"\n\n'
+
+    with pytest.raises(EngineProxyError, match="invalid engine event"):
+        _ = [chunk async for chunk in rewrite_openai_model(source(), uuid.uuid4())]
+
+
+async def test_malformed_engine_frame_records_failed_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    saved: list[dict[str, object]] = []
+
+    async def persist(**kwargs: object) -> None:
+        saved.append(kwargs)
+
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist)
+
+    async def source() -> AsyncIterator[bytes]:
+        yield b'data: {"model":"/private/model"\n\n'
+
+    usage = UsageTracker(ANONYMOUS, str(uuid.uuid4()), GatewayProtocol.OPENAI)
+    output = b"".join(
+        [chunk async for chunk in track_stream(rewrite_openai_model(source(), uuid.uuid4()), usage)]
+    )
+    assert b"/private/model" not in output
+    assert len(saved) == 1
+    assert saved[0]["outcome"] is UsageOutcome.FAILED
+
+
+async def test_rewriter_refuses_private_path_in_engine_error() -> None:
+    from coire_api.gateway.proxy import EngineProxyError
+
+    async def source() -> AsyncIterator[bytes]:
+        yield b'data: {"error":{"message":"/private/model failed"}}\n\n'
+
+    with pytest.raises(EngineProxyError, match="private model path"):
+        _ = [
+            chunk
+            async for chunk in rewrite_openai_model(
+                source(), uuid.uuid4(), private_model_path="/private/model"
+            )
+        ]
+
+
 async def test_cancelled_stream_finishes_usage_once(monkeypatch: pytest.MonkeyPatch) -> None:
     saved: list[dict[str, object]] = []
 

@@ -170,10 +170,13 @@ async def _openai_cold_stream(
             exclude_none=True,
         )
         payload["model"] = resolved.model_path
-        tracked = _tracked_stream(
-            stream(resolved.engine_url, payload, settings, timing), usage, request, timing
+        rewritten = _rewrite_openai_model(
+            stream(resolved.engine_url, payload, settings, timing),
+            body.model,
+            private_model_path=resolved.model_path,
         )
-        async for chunk in _rewrite_openai_model(tracked, body.model):
+        tracked = _tracked_stream(rewritten, usage, request, timing)
+        async for chunk in tracked:
             yield chunk
     except (ModelLoadError, TimeoutError) as exc:
         await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
@@ -357,13 +360,13 @@ async def chat_completions(
     payload["model"] = resolved.model_path
     try:
         if body.stream:
-            tracked = _tracked_stream(
-                stream(resolved.engine_url, payload, settings, timing), usage, request, timing
+            rewritten = _rewrite_openai_model(
+                stream(resolved.engine_url, payload, settings, timing),
+                body.model,
+                private_model_path=resolved.model_path,
             )
-            return _streaming_response(
-                _rewrite_openai_model(tracked, body.model),
-                usage,
-            )
+            tracked = _tracked_stream(rewritten, usage, request, timing)
+            return _streaming_response(tracked, usage)
         result = await complete(resolved.engine_url, payload, settings)
         reported = result.get("usage")
         if isinstance(reported, dict):

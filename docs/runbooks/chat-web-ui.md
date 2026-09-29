@@ -77,3 +77,9 @@ If a visual instance remains starting, inspect node process state and the genera
 stop the owned engine through node control before retrying. Tiny-model acceptance is still open.
 
 Until temporary image normalization and measured VLM visual budgeting are connected, the compatible `/v1/chat/completions` route returns 400 for inline image parts before spending tokens or contacting an engine. HTTP/file image URLs are rejected by the core wire schema. The `/v1/messages` adapter returns 400 for image or other unsupported Anthropic blocks instead of silently omitting them. Text parts remain available and count their full text in context preflight. Keep visual admission disabled until the remaining visual gateway and tiny-model gates pass.
+
+The compatible OpenAI SSE boundary buffers a complete bounded engine event before replacing its
+node-local `model` with the registry UUID. A malformed event or a private path in any other
+published field closes the stream and records failed gateway usage. If a client sees an incomplete
+stream without `[DONE]`, inspect the gateway's `engine_stream_failed` outcome and correlated
+engine instance; do not forward raw engine output to users.
