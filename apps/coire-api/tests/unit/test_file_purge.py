@@ -94,6 +94,15 @@ class FileRows:
             )
         elif sql.startswith("SELECT") and "chat_file_processing" in sql and "JOIN" in sql:
             values = [self.job.id] if self.job.state != "purged" else []
+        elif (
+            sql.startswith("SELECT chat_file_processing.id") and "FROM chat_file_processing" in sql
+        ):
+            values = (
+                [self.job.id]
+                if self.job.state == "failed"
+                and (self.job.output_manifest or {}).get("output_purged") is not True
+                else []
+            )
         elif sql.startswith("SELECT") and "chat_file_processing" in sql:
             values = [self.job]
         elif sql.startswith("SELECT"):
@@ -166,6 +175,44 @@ async def test_api_waits_for_derived_marker_then_erases_original_and_rows(
     assert rows.deleted
     assert sum(command.startswith("DELETE FROM chat_") for command in rows.commands) == 2
     assert await maintenance.purge_deleted_files(_settings(tmp_path)) == 0
+
+
+async def test_failed_output_cleanup_preserves_visible_failure_and_retries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    rows = FileRows()
+    rows.job.state = "failed"
+    rows.job.safe_error = "worker_status_missing"
+    calls: list[str] = []
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[FileRows]:
+        yield rows
+
+    class Client:
+        async def __aenter__(self) -> Client:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            pass
+
+        async def purge(self, job_id: str) -> FilePurgeResult:
+            calls.append(job_id)
+            if len(calls) == 1:
+                raise FileWorkerBusy("active")
+            return FilePurgeResult(job_id=job_id)
+
+    monkeypatch.setattr(scheduler_files, "session_scope", sessions)
+    monkeypatch.setattr(scheduler_files, "FileWorkerClient", lambda _settings: Client())
+    assert await scheduler_files.purge_failed_file_outputs(_settings(tmp_path)) == 0
+    assert rows.job.state == "failed"
+    assert rows.job.safe_error == "worker_status_missing"
+    assert await scheduler_files.purge_failed_file_outputs(_settings(tmp_path)) == 1
+    assert rows.job.output_manifest == {"output_purged": True}
+    assert rows.job.state == "failed"
+    assert rows.job.attempt == 1
+    assert await scheduler_files.purge_failed_file_outputs(_settings(tmp_path)) == 0
+    assert calls == [JOB_ID, JOB_ID]
 
 
 def test_stale_staging_sweep_is_generated_and_age_bounded(tmp_path: Path) -> None:

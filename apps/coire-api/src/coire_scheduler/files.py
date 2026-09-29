@@ -11,7 +11,7 @@ from typing import Literal, cast
 
 from dbos import DBOS
 from opentelemetry import metrics, trace
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from coire_api.chat.file_manifest import validate_result
 from coire_api.db import (
@@ -38,6 +38,11 @@ TERMINAL = {"processed", "ready", "failed", "cancelled", "purging", "purged"}
 POLL_SECONDS = 0.5
 purge_total = metrics.get_meter("coire.scheduler.files").create_counter(
     "coire_file_output_purge_total", unit="1", description="Private derived output purge outcomes"
+)
+failed_cleanup_total = metrics.get_meter("coire.scheduler.files").create_counter(
+    "coire_failed_file_output_cleanup_total",
+    unit="1",
+    description="Failed conversion output cleanup outcomes",
 )
 
 
@@ -325,6 +330,48 @@ async def purge_deleted_file_outputs(settings: Settings) -> int:
             purge_total.add(1, {"outcome": "purged"})
             logger.info("file output purged job_id=%s", job_id)
     return purged
+
+
+async def purge_failed_file_outputs(settings: Settings) -> int:
+    """Clear crash remnants before a failed job becomes eligible for explicit retry."""
+
+    async with session_scope() as session:
+        job_ids = list(
+            (
+                await session.execute(
+                    select(ChatFileProcessingRow.id)
+                    .where(
+                        ChatFileProcessingRow.state == "failed",
+                        func.coalesce(
+                            ChatFileProcessingRow.output_manifest["output_purged"].as_boolean(),
+                            False,
+                        ).is_(False),
+                    )
+                    .order_by(ChatFileProcessingRow.updated_at, ChatFileProcessingRow.id)
+                    .limit(3)
+                )
+            ).scalars()
+        )
+    cleared = 0
+    for job_id in job_ids:
+        with tracer.start_as_current_span("coire.scheduler.files.failed_cleanup") as span:
+            span.set_attribute("job_id", job_id)
+            try:
+                async with FileWorkerClient(settings) as client:
+                    await client.purge(job_id)
+            except FileWorkerError:
+                failed_cleanup_total.add(1, {"outcome": "retry"})
+                logger.info("failed file output cleanup deferred job_id=%s", job_id)
+                continue
+            async with session_scope() as session:
+                job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
+                if job is not None and job.state == "failed":
+                    job.output_manifest = {"output_purged": True}
+                    job.updated_at = datetime.now(UTC)
+                    cleared += 1
+            failed_cleanup_total.add(1, {"outcome": "purged"})
+            logger.info("failed file output cleaned job_id=%s", job_id)
+    return cleared
 
 
 @DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
