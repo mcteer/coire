@@ -13,6 +13,7 @@ from coire_core.models.chat import (
     ChatMessageDelta,
     ChatRunActivity,
     ChatRunActivityStatus,
+    ChatTurn,
     ChatTurnCreate,
     ChatTurnDetail,
     ChatTurnResult,
@@ -48,6 +49,28 @@ def test_native_chat_owner_is_server_supplied_and_revision_bounded() -> None:
         ChatConversationCreate.model_validate({"owner_id": str(owner_id)})
     with pytest.raises(ValidationError):
         ChatConversation.model_validate({**conversation.model_dump(), "revision": 0})
+
+
+def test_code_turn_exposes_only_its_bound_call_identity() -> None:
+    call_id = uuid4()
+    turn = ChatTurn(
+        id=uuid4(),
+        conversation_id=uuid4(),
+        client_request_id=uuid4(),
+        accepted_revision=1,
+        input_message_id=uuid4(),
+        assistant_message_id=uuid4(),
+        model_id=uuid4(),
+        model_display_name="Coding model",
+        state="completed",
+        action="plan",
+        coding_call_id=call_id,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    assert ChatTurn.model_validate_json(turn.model_dump_json()).coding_call_id == call_id
+    with pytest.raises(ValidationError):
+        ChatTurn.model_validate({**turn.model_dump(), "run_token": "secret"})
 
 
 def test_chat_activity_event_is_strict_and_content_free() -> None:

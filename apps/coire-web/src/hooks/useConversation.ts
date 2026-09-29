@@ -6,9 +6,12 @@ import {
   deleteChatConversation,
   getChatConversation,
   getChatFile,
+  getChatTurn,
   listChatModels,
+  listRegisteredWorkspaces,
   listChatConversations,
   processChatFile,
+  registerWorkspace,
   stopChatTurn,
   updateChatConversation,
   uploadChatFile,
@@ -20,6 +23,10 @@ import {
   type ChatPickerEntry,
   type ChatTurnCreate,
   type ChatTurn,
+  type ChatRunActivity,
+  type ChatRunActivityStatus,
+  type ChatTurnResult,
+  type RegisteredWorkspace,
 } from "../api/chat";
 import { useChatConversationObserver, useChatTurnStream } from "./useEventStream";
 
@@ -29,22 +36,44 @@ export function useConversation(ownerId: string) {
   const [models, setModels] = useState<ChatPickerEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
+  const [draftMode, setDraftMode] = useState<"chat" | "code">("chat");
+  const mode = conversation?.mode ?? draftMode;
+  const [action, setAction] = useState<"research" | "plan" | "apply">("research");
+  const [workspaces, setWorkspaces] = useState<RegisteredWorkspace[]>([]);
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null);
+  const [sourceRevision, setSourceRevision] = useState("HEAD");
+  const [researchId, setResearchId] = useState<string | null>(null);
+  const [planId, setPlanId] = useState<string | null>(null);
+  const [activities, setActivities] = useState<Record<string, ChatRunActivity["activity"][]>>({});
+  const [activityStatus, setActivityStatus] = useState<Record<string, ChatRunActivityStatus>>({});
+  const [codingResults, setCodingResults] = useState<Record<string, ChatTurnResult>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [selections, setSelections] = useState<ChatAttachmentSelection[]>([]);
   const [fileBusy, setFileBusy] = useState(false);
-  const canSendSelections = selections.every((item) => {
-    const attachment = attachments.find((row) => row.id === item.file_id);
-    return (
-      item.mode === "text" &&
-      attachment?.state === "ready" &&
-      !attachment.detected_type.startsWith("image/")
-    );
-  });
+  const canSendSelections =
+    mode === "code" ||
+    selections.every((item) => {
+      const attachment = attachments.find((row) => row.id === item.file_id);
+      return (
+        item.mode === "text" &&
+        attachment?.state === "ready" &&
+        !attachment.detected_type.startsWith("image/")
+      );
+    });
   const latestTurn = turns.at(-1);
+  const planTurns = turns.filter(
+    (turn) => turn.action === "plan" && turn.state === "completed" && turn.coding_call_id,
+  );
+  const researchTurns = turns.filter(
+    (turn) => turn.action === "research" && turn.state === "completed" && turn.coding_call_id,
+  );
+  const codeReady =
+    mode !== "code" || (Boolean(workspaceId) && (action !== "apply" || Boolean(planId)));
   const retryableTurn =
     latestTurn &&
+    latestTurn.action === "chat" &&
     ["failed", "stopped", "interrupted"].includes(latestTurn.state) &&
     messages.at(-1)?.id === latestTurn.assistant_message_id &&
     !conversation?.active_turn_id
@@ -106,7 +135,7 @@ export function useConversation(ownerId: string) {
 
   useEffect(() => {
     let live = true;
-    void listChatModels()
+    void listChatModels(mode, mode === "code" ? action : "chat")
       .then((response) => {
         if (!live) return;
         const available = response.data ?? [];
@@ -114,7 +143,7 @@ export function useConversation(ownerId: string) {
         setSelectedId((current) => {
           const saved = drafts.current.get("new")?.modelId;
           return (
-            current ??
+            (current && available.some((model) => model.id === current) ? current : null) ??
             (available.some((model) => model.id === saved) ? saved : available[0]?.id) ??
             null
           );
@@ -132,7 +161,35 @@ export function useConversation(ownerId: string) {
     return () => {
       live = false;
     };
-  }, []);
+  }, [mode, action]);
+
+  useEffect(() => {
+    if (mode !== "code") return;
+    let live = true;
+    void listRegisteredWorkspaces()
+      .then((rows) => {
+        if (!live) return;
+        setWorkspaces(rows);
+        setWorkspaceId((current) =>
+          rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? null),
+        );
+      })
+      .catch((cause) => {
+        if (live) reportError(cause);
+      });
+    return () => {
+      live = false;
+    };
+  }, [mode]);
+
+  useEffect(() => {
+    setPlanId((current) =>
+      planTurns.some((turn) => turn.coding_call_id === current) ? current : null,
+    );
+    setResearchId((current) =>
+      researchTurns.some((turn) => turn.coding_call_id === current) ? current : null,
+    );
+  }, [turns]);
 
   useEffect(() => {
     let live = true;
@@ -237,7 +294,7 @@ export function useConversation(ownerId: string) {
             ]
           : current;
       });
-      setStatus("Preparing response…");
+      setStatus(payload.turn.action === "chat" ? "Preparing response…" : "Preparing coding run…");
     } else if (payload.type === "turn.status") {
       setStatus(
         payload.state === "loading"
@@ -264,6 +321,25 @@ export function useConversation(ownerId: string) {
             : message,
         ),
       );
+    } else if (payload.type === "run.activity" && event.turn_id) {
+      setActivities((current) => {
+        const saved = current[event.turn_id!] ?? [];
+        if (
+          saved.some(
+            (row) =>
+              row.run_id === payload.activity.run_id && row.sequence === payload.activity.sequence,
+          )
+        )
+          return current;
+        return { ...current, [event.turn_id!]: [...saved, payload.activity] };
+      });
+      setStatus(
+        `Coding · ${payload.activity.tool_name.replaceAll("_", " ")} · ${payload.activity.state}`,
+      );
+    } else if (payload.type === "run.activity_status" && event.turn_id) {
+      setActivityStatus((current) => ({ ...current, [event.turn_id!]: payload }));
+    } else if (payload.type === "turn.result" && event.turn_id) {
+      setCodingResults((current) => ({ ...current, [event.turn_id!]: payload }));
     } else if (payload.type === "turn.terminal") {
       setTurns((current) =>
         current.map((turn) =>
@@ -299,6 +375,7 @@ export function useConversation(ownerId: string) {
       !input ||
       !selectedId ||
       !canSendSelections ||
+      !codeReady ||
       fileBusy ||
       busyRef.current ||
       stream.active ||
@@ -311,7 +388,7 @@ export function useConversation(ownerId: string) {
     let current = conversation;
     try {
       if (!current) {
-        current = await createChatConversation({ mode: "chat", model_id: selectedId });
+        current = await createChatConversation({ mode, model_id: selectedId });
         eventCursor.current = 0;
         setConversation(current);
         setHistory((rows) => [current!, ...rows.filter((row) => row.id !== current!.id)]);
@@ -324,6 +401,12 @@ export function useConversation(ownerId: string) {
         selectedId,
         input,
         JSON.stringify(selections),
+        mode,
+        action,
+        workspaceId ?? "",
+        sourceRevision,
+        researchId ?? "",
+        planId ?? "",
       ].join("\0");
       const body: ChatTurnCreate =
         pending.current?.key === key
@@ -333,14 +416,30 @@ export function useConversation(ownerId: string) {
               expected_revision: current.revision,
               model_id: selectedId,
               content: input,
-              action: "chat",
-              attachments: selections,
+              action: mode === "chat" ? "chat" : action,
+              attachments: mode === "chat" ? selections : [],
+              ...(mode === "code"
+                ? {
+                    workspace_id: workspaceId,
+                    ...(action === "apply" || (action === "plan" && researchId)
+                      ? {}
+                      : { source_revision: sourceRevision.trim() || "HEAD" }),
+                    ...(action === "plan" && researchId ? { research_id: researchId } : {}),
+                    ...(action === "apply" && planId ? { plan_id: planId } : {}),
+                  }
+                : {}),
             };
       pending.current = { key, body };
       const generation = selection.current;
       await stream.send(current.id, body, (event) => {
         if (selection.current === generation) onEvent(event, input);
       });
+      if (mode === "code" && selection.current === generation) {
+        const detail = await getChatConversation(current.id);
+        setConversation(detail.conversation);
+        setMessages(detail.messages ?? []);
+        setTurns(detail.turns ?? []);
+      }
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === "AbortError")) {
         reportError(cause);
@@ -413,6 +512,19 @@ export function useConversation(ownerId: string) {
     if (!models.some((model) => model.id === id)) return;
     setSelectedId(id);
     remember(conversation?.id ?? "new", draft, id);
+  };
+
+  const addWorkspace = async (repositoryUrl: string): Promise<boolean> => {
+    try {
+      const saved = await registerWorkspace(repositoryUrl.trim());
+      setWorkspaces((current) => [saved, ...current]);
+      setWorkspaceId(saved.id);
+      setError(null);
+      return true;
+    } catch (cause) {
+      reportError(cause);
+      return false;
+    }
   };
 
   const refreshFiles = async (id: string, generation: number) => {
@@ -497,8 +609,27 @@ export function useConversation(ownerId: string) {
       if (selection.current !== generation) return;
       eventCursor.current = detail.event_cursor;
       setConversation(detail.conversation);
+      setDraftMode(detail.conversation.mode);
       setMessages(detail.messages ?? []);
       setTurns(detail.turns ?? []);
+      setActivities({});
+      setActivityStatus({});
+      setCodingResults({});
+      const latestCode = [...(detail.turns ?? [])].reverse().find((turn) => turn.action !== "chat");
+      if (latestCode) {
+        void getChatTurn(id, latestCode.id)
+          .then((saved) => {
+            if (selection.current !== generation || !saved.coding_result) return;
+            setCodingResults({
+              [latestCode.id]: {
+                type: "turn.result",
+                tool: latestCode.action as "research" | "plan" | "apply",
+                result: saved.coding_result,
+              },
+            });
+          })
+          .catch(() => {});
+      }
       setAttachments(detail.attachments ?? []);
       setOlderPosition(detail.next_message_position ?? null);
       const saved = drafts.current.get(id);
@@ -577,8 +708,12 @@ export function useConversation(ownerId: string) {
     eventCursor.current = 0;
     pending.current = null;
     setConversation(null);
+    setDraftMode("chat");
     setMessages([]);
     setTurns([]);
+    setActivities({});
+    setActivityStatus({});
+    setCodingResults({});
     setAttachments([]);
     setSelections([]);
     const saved = drafts.current.get("new");
@@ -610,8 +745,12 @@ export function useConversation(ownerId: string) {
       setHistory((rows) => rows.filter((row) => row.id !== event.conversation_id));
       forget(event.conversation_id);
       setConversation(null);
+      setDraftMode("chat");
       setMessages([]);
       setTurns([]);
+      setActivities({});
+      setActivityStatus({});
+      setCodingResults({});
       setAttachments([]);
       setSelections([]);
       setOlderPosition(null);
@@ -767,8 +906,12 @@ export function useConversation(ownerId: string) {
         eventCursor.current = 0;
         pending.current = null;
         setConversation(null);
+        setDraftMode("chat");
         setMessages([]);
         setTurns([]);
+        setActivities({});
+        setActivityStatus({});
+        setCodingResults({});
         setAttachments([]);
         setSelections([]);
         setOlderPosition(null);
@@ -794,6 +937,27 @@ export function useConversation(ownerId: string) {
 
   return {
     models,
+    mode,
+    setMode: setDraftMode,
+    action,
+    setAction,
+    workspaces,
+    workspaceId,
+    setWorkspaceId,
+    sourceRevision,
+    setSourceRevision,
+    researchId,
+    setResearchId,
+    planId,
+    setPlanId,
+    planTurns,
+    researchTurns,
+    codeReady,
+    addWorkspace,
+    activities,
+    activityStatus,
+    codingResults,
+    turns,
     selectedId,
     setSelectedId: chooseModel,
     conversation,

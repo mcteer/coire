@@ -3161,6 +3161,18 @@
             "title": "Client Request Id",
             "type": "string"
           },
+          "coding_call_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coding Call Id"
+          },
           "conversation_id": {
             "format": "uuid",
             "title": "Conversation Id",

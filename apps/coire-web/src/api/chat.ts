@@ -19,6 +19,11 @@ export type ChatPickerEntry = components["schemas"]["ChatPickerEntry"];
 export type ChatAttachment = components["schemas"]["ChatAttachment"];
 export type ChatAttachmentSelection = components["schemas"]["ChatAttachmentSelection"];
 export type ChatFileProcessRequest = components["schemas"]["ChatFileProcessRequest"];
+export type RegisteredWorkspace = components["schemas"]["RegisteredWorkspace"];
+export type ChatRunActivity = components["schemas"]["ChatRunActivity"];
+export type ChatRunActivityStatus = components["schemas"]["ChatRunActivityStatus"];
+export type ChatTurnResult = components["schemas"]["ChatTurnResult"];
+export type BranchArtifact = components["schemas"]["BranchArtifact"];
 
 function filePath(conversationId: string, fileId: string): string {
   return `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/files/${encodeURIComponent(fileId)}`;
@@ -68,8 +73,31 @@ export function chatFilePreviewUrl(
   return `${filePath(conversationId, fileId)}/previews/${encodeURIComponent(assetId)}`;
 }
 
-export function listChatModels(): Promise<ChatPickerResponse> {
-  return api<ChatPickerResponse>("/api/v1/chat/models");
+export function listChatModels(
+  mode: "chat" | "code" = "chat",
+  action: "chat" | "research" | "plan" | "apply" = "chat",
+): Promise<ChatPickerResponse> {
+  if (mode === "chat") return api<ChatPickerResponse>("/api/v1/chat/models");
+  return api<ChatPickerResponse>(`/api/v1/chat/models?${new URLSearchParams({ mode, action })}`);
+}
+
+export function listRegisteredWorkspaces(): Promise<RegisteredWorkspace[]> {
+  return api<RegisteredWorkspace[]>("/api/v1/workspaces");
+}
+
+export function registerWorkspace(repositoryUrl: string): Promise<RegisteredWorkspace> {
+  return api<RegisteredWorkspace>("/api/v1/workspaces", {
+    method: "POST",
+    body: JSON.stringify({ repository_url: repositoryUrl }),
+  });
+}
+
+export function chatArtifactUrl(conversationId: string, turnId: string): string {
+  return `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/turns/${encodeURIComponent(turnId)}/artifact`;
+}
+
+export function getBranchArtifactMetadata(artifactId: string): Promise<BranchArtifact> {
+  return api<BranchArtifact>(`/api/v1/mcp/artifacts/${encodeURIComponent(artifactId)}/metadata`);
 }
 
 export function createChatConversation(body: ChatConversationCreate): Promise<ChatConversation> {
@@ -192,7 +220,7 @@ export async function sendChatTurn(
       typeof event.payload.type !== "string" ||
       frame.id !== `${conversationId}:${event.cursor}` ||
       frame.event !== event.payload.type ||
-      (cursor !== null && event.cursor !== cursor + 1) ||
+      (cursor !== null && event.cursor <= cursor) ||
       terminal
     ) {
       throw new Error("invalid chat event");

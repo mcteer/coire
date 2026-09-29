@@ -23,8 +23,10 @@ from coire_api.db import (
     EngineProcessRow,
     McpArtifactRow,
     ModelRow,
+    ModelVariantRow,
 )
 from coire_api.registry.service import chat_model_eligible, load_state_for
+from coire_api.runs import variant_gate
 from coire_core.errors import ChatConflict, ChatNotFound
 from coire_core.models.chat import (
     ChatConversation,
@@ -40,8 +42,10 @@ from coire_core.models.chat import (
     ChatMessagePageQuery,
     ChatPageQuery,
     ChatPickerEntry,
+    ChatPickerQuery,
     ChatPickerResponse,
 )
+from coire_core.models.harness import PROFILE_MODEL_TAGS, ProfileName, TaskClass
 from coire_core.models.registry import CapabilityProfile, EngineBackend, Tag, VisualCapability
 from coire_core.settings import Settings
 
@@ -63,7 +67,9 @@ def _warmup(engines: Sequence[EngineProcessRow]) -> float | None:
     return max(measured, key=lambda engine: engine.started_at).load_seconds
 
 
-async def picker(session: AsyncSession, principal: Principal) -> ChatPickerResponse:
+async def picker(
+    session: AsyncSession, principal: Principal, query: ChatPickerQuery | None = None
+) -> ChatPickerResponse:
     """Read published, ready, entitled models without any acquisition side effect."""
     rows = (
         (await session.execute(select(ModelRow).order_by(ModelRow.display_name, ModelRow.id)))
@@ -71,6 +77,26 @@ async def picker(session: AsyncSession, principal: Principal) -> ChatPickerRespo
         .all()
     )
     visible = [model for model in rows if chat_model_eligible(model, principal)]
+    query = query or ChatPickerQuery()
+    if query.mode == "code":
+        task_class = TaskClass.WRITE if query.action == "apply" else TaskClass.READ
+        visible = [
+            model
+            for model in visible
+            if set(model.tags or []).intersection(PROFILE_MODEL_TAGS[ProfileName.CODING])
+        ]
+        if visible:
+            eligible_ids = set(
+                (
+                    await session.scalars(
+                        select(ModelVariantRow.model_id).where(
+                            ModelVariantRow.model_id.in_([model.id for model in visible]),
+                            *variant_gate(task_class),
+                        )
+                    )
+                ).all()
+            )
+            visible = [model for model in visible if model.id in eligible_ids]
     if not visible:
         return ChatPickerResponse()
     engines = (

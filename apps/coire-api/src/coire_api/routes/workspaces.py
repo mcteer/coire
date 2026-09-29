@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 
 from coire_api.audit import write_principal_audit
-from coire_api.auth import CurrentAuthenticated
+from coire_api.auth import CurrentAuthenticated, PrincipalKind
 from coire_api.db import RegisteredWorkspaceRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.workspaces import (
@@ -27,13 +27,23 @@ def _owner(principal: CurrentAuthenticated) -> uuid.UUID:
     return principal.user_id
 
 
+def _browser_write_origin(request: Request, principal: CurrentAuthenticated) -> None:
+    if principal.kind is PrincipalKind.API_KEY:
+        return
+    expected = request.app.state.settings.chat_browser_origin
+    if not expected or request.headers.get("origin") != expected:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "same-origin workspace request required")
+
+
 @router.post("", response_model=RegisteredWorkspace, status_code=status.HTTP_201_CREATED)
 async def create_registered_workspace(
     body: WorkspaceRegistrationCreate,
+    request: Request,
     principal: CurrentAuthenticated,
     session: SessionDep,
     settings: SettingsDep,
 ) -> RegisteredWorkspace:
+    _browser_write_origin(request, principal)
     owner = _owner(principal)
     try:
         row = await register_workspace(
@@ -70,8 +80,12 @@ async def list_registered_workspaces(
 
 @router.delete("/{workspace_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_registered_workspace(
-    workspace_id: uuid.UUID, principal: CurrentAuthenticated, session: SessionDep
+    workspace_id: uuid.UUID,
+    request: Request,
+    principal: CurrentAuthenticated,
+    session: SessionDep,
 ) -> None:
+    _browser_write_origin(request, principal)
     owner = _owner(principal)
     row = await session.scalar(
         select(RegisteredWorkspaceRow).where(

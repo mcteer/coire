@@ -50,6 +50,170 @@ function stream(value: string): Response {
   return new Response(value, { headers: { "content-type": "text/event-stream" } });
 }
 
+test("code mode submits a repository research run with an explicit source", async () => {
+  const workspaceId = "00000000-0000-0000-0000-000000000020";
+  const codingConversation = { ...conversation, mode: "code" };
+  const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+    if (url === "/api/v1/chat/models") return Promise.resolve(json({ data: [model] }));
+    if (url.startsWith("/api/v1/chat/models?")) return Promise.resolve(json({ data: [model] }));
+    if (url === "/api/v1/chat/conversations" && options?.method === "GET")
+      return Promise.resolve(json({ data: [], next_cursor: null }));
+    if (url === "/api/v1/workspaces")
+      return Promise.resolve(
+        json([{ id: workspaceId, repository_url: "https://github.com/org/repo.git" }]),
+      );
+    if (url === "/api/v1/chat/conversations" && options?.method === "POST")
+      return Promise.resolve(json(codingConversation, 201));
+    if (url.endsWith("/turns") && options?.method === "POST")
+      return Promise.resolve(
+        stream(
+          event(1, {
+            type: "turn.accepted",
+            turn: {
+              id: turnId,
+              conversation_id: conversationId,
+              client_request_id: crypto.randomUUID(),
+              accepted_revision: 1,
+              input_message_id: inputId,
+              assistant_message_id: answerId,
+              model_id: modelId,
+              model_display_name: "Friendly model",
+              state: "accepted",
+              action: "research",
+              created_at: conversation.created_at,
+              updated_at: conversation.updated_at,
+            },
+          }) +
+            event(2, {
+              type: "turn.terminal",
+              state: "completed",
+              answer_length: 0,
+              reasoning_length: 0,
+            }),
+        ),
+      );
+    if (url.startsWith(`/api/v1/chat/conversations/${conversationId}?`))
+      return Promise.resolve(
+        json({
+          conversation: { ...codingConversation, revision: 2 },
+          messages: [],
+          turns: [],
+          attachments: [],
+          event_cursor: 2,
+        }),
+      );
+    if (url.endsWith("/events")) return Promise.resolve(stream(""));
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  fireEvent.click(screen.getByRole("button", { name: "Code" }));
+  await screen.findByRole("combobox", { name: "Registered repository" });
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "Registered repository" })).toHaveValue(
+      workspaceId,
+    ),
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Source revision" }), {
+    target: { value: "main" },
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), {
+    target: { value: "Find entry points" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, options]) => String(url).endsWith("/turns") && options?.method === "POST",
+      ),
+    ).toBe(true),
+  );
+  const turnCall = fetchMock.mock.calls.find(
+    ([url, options]) => String(url).endsWith("/turns") && options?.method === "POST",
+  );
+  const body = JSON.parse(String(turnCall?.[1]?.body));
+  expect(body).toMatchObject({
+    action: "research",
+    workspace_id: workspaceId,
+    source_revision: "main",
+    content: "Find entry points",
+  });
+});
+
+test("Apply requires a chosen plan and inherits its source revision", async () => {
+  const workspaceId = "00000000-0000-0000-0000-000000000020";
+  const callId = "00000000-0000-0000-0000-000000000021";
+  const saved = { ...conversation, mode: "code", revision: 2, title: "Code work" };
+  const planTurn = {
+    id: "00000000-0000-0000-0000-000000000022",
+    action: "plan",
+    state: "completed",
+    coding_call_id: callId,
+    created_at: conversation.created_at,
+  };
+  const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+    if (url.startsWith("/api/v1/chat/models")) return Promise.resolve(json({ data: [model] }));
+    if (url === "/api/v1/workspaces")
+      return Promise.resolve(
+        json([{ id: workspaceId, repository_url: "https://github.com/org/repo.git" }]),
+      );
+    if (url.startsWith(`/api/v1/chat/conversations/${conversationId}/turns/${planTurn.id}`))
+      return Promise.resolve(json({ turn: planTurn, coding_result: null }));
+    if (url.endsWith("/turns") && options?.method === "POST")
+      return Promise.resolve(
+        stream(
+          event(3, {
+            type: "turn.terminal",
+            state: "completed",
+            answer_length: 0,
+            reasoning_length: 0,
+          }),
+        ),
+      );
+    if (url.startsWith(`/api/v1/chat/conversations/${conversationId}?`))
+      return Promise.resolve(
+        json({
+          conversation: saved,
+          turns: [planTurn],
+          messages: [],
+          attachments: [],
+          event_cursor: 2,
+        }),
+      );
+    if (url.startsWith("/api/v1/chat/conversations?") || url === "/api/v1/chat/conversations")
+      return Promise.resolve(json({ data: [saved], next_cursor: null }));
+    if (url.endsWith("/events")) return Promise.resolve(stream(""));
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Code work/ }));
+  fireEvent.click(await screen.findByRole("button", { name: "Apply" }));
+  await screen.findByRole("combobox", { name: "Plan to apply" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Task" }), {
+    target: { value: "Make the change" },
+  });
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  fireEvent.change(screen.getByRole("combobox", { name: "Plan to apply" }), {
+    target: { value: callId },
+  });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, options]) => String(url).endsWith("/turns") && options?.method === "POST",
+      ),
+    ).toBe(true),
+  );
+  const sent = fetchMock.mock.calls.find(
+    ([url, options]) => String(url).endsWith("/turns") && options?.method === "POST",
+  );
+  const body = JSON.parse(String(sent?.[1]?.body));
+  expect(body).toMatchObject({ action: "apply", plan_id: callId, workspace_id: workspaceId });
+  expect(body).not.toHaveProperty("source_revision");
+});
+
 test("shows accepted input, streamed answer and model snapshot", async () => {
   const accepted = {
     type: "turn.accepted",

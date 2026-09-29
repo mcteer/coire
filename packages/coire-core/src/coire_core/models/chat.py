@@ -172,6 +172,7 @@ class ChatTurn(BaseModel):
         "interrupted",
     ]
     action: Literal["chat", "research", "plan", "apply"] = "chat"
+    coding_call_id: uuid.UUID | None = None
     retry_of: uuid.UUID | None = None
     recovery_mode: Literal["retry", "continue"] | None = None
     usage: ChatUsage | None = None

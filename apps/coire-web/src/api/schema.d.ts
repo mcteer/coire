@@ -2805,6 +2805,8 @@ export interface components {
              * Format: uuid
              */
             client_request_id: string;
+            /** Coding Call Id */
+            coding_call_id?: string | null;
             /**
              * Conversation Id
              * Format: uuid

@@ -14,6 +14,55 @@
   gap: var(--s-5);
   min-width: 0;
 }
+.chat-mode-switch,
+.chat-code-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding: var(--s-3);
+}
+.chat-mode-switch [aria-pressed="true"],
+.chat-code-actions [aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.chat-code-controls,
+.chat-run-activity {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  min-width: 0;
+}
+.chat-code-controls label {
+  font-weight: 700;
+}
+.chat-code-controls input,
+.chat-code-controls select {
+  width: 100%;
+  min-width: 0;
+  padding: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.chat-code-register {
+  display: grid;
+  gap: var(--s-2);
+}
+.chat-run-activity h2,
+.chat-run-activity h3 {
+  margin: 0;
+}
+.chat-run-activity pre {
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-run-steps {
+  max-height: 16rem;
+  overflow: auto;
+  margin: 0;
+}
 .chat-history-toggle {
   display: none;
 }

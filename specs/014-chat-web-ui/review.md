@@ -1,5 +1,11 @@
 # Feature 014 implementation review
 
+## Code controls slice (014bp, 2026-09-29)
+
+- Added action-aware coding model picker, strict Chat turn coding-call identity, browser Research/Plan/Apply controls, owner workspace registration and exact-origin protection for browser workspace mutations. Plan/Apply inherit recorded source revisions; Apply requires an explicit selected plan. Code result UI displays bounded tool activity, tests, diff and owner artifact expiry before download.
+- Focused core/API contracts: 18 passed. Repaired-environment full Python suite: 1,088 passed and 118 conditional integration skips. Final web suite: 84 passed; TypeScript production build and lint passed. Strict mypy passed for 240 source files; Ruff, format and OpenAPI freshness passed. The 118 skips remain conditional local integration scenarios, not 014 acceptance evidence.
+- Parent T043 and child J005 are complete. Browser acceptance and the parent local tiny-model integration tasks remain open. Chat remains default-off.
+
 ## Baseline (2026-09-28)
 
 - Base revision: `55ca455a5403d00fb8b0736a4ec1bd9393b3adbb` on `feat/014-chat-web-ui`.

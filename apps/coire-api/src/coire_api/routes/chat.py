@@ -260,7 +260,7 @@ async def list_chat_models(
         span.set_attribute("chat.mode", query.mode)
         span.set_attribute("chat.action", query.action)
         try:
-            response = await picker(session, principal)
+            response = await picker(session, principal, query)
         except Exception as exc:
             requests_total.add(1, {"operation": "picker", "outcome": "failed"})
             logger.error(

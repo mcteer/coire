@@ -6,12 +6,14 @@ export function Composer({
   onSend,
   disabled,
   status,
+  mode = "chat",
 }: {
   value: string;
   onChange: (value: string) => void;
   onSend: () => void;
   disabled: boolean;
   status: string | null;
+  mode?: "chat" | "code";
 }) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -19,12 +21,12 @@ export function Composer({
   };
   return (
     <form className="chat-composer glass" onSubmit={submit}>
-      <label htmlFor="chat-input">Message</label>
+      <label htmlFor="chat-input">{mode === "code" ? "Task" : "Message"}</label>
       <textarea
         id="chat-input"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        placeholder="Ask a question"
+        placeholder={mode === "code" ? "Describe the repository task" : "Ask a question"}
         rows={4}
         maxLength={64 * 1024}
         onKeyDown={(event) => {

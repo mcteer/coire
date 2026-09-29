@@ -104,6 +104,7 @@ def project_turn(row: ChatTurnRow) -> ChatTurn:
             row.state,
         ),
         action=cast(Literal["chat", "research", "plan", "apply"], row.action),
+        coding_call_id=row.coding_call_id,
         retry_of=row.retry_of,
         recovery_mode=cast(Literal["retry", "continue"] | None, row.recovery_mode),
         usage=usage,

@@ -63,6 +63,23 @@ test("sends once, accepts fragmented terminal event and same-origin credentials"
   });
 });
 
+test("accepts scoped turn events when an unrelated conversation event uses a cursor", async () => {
+  const status = `event: turn.status\nid: ${conversationId}:3\ndata: ${JSON.stringify({
+    conversation_id: conversationId,
+    cursor: 3,
+    turn_id: body.client_request_id,
+    created_at: "2026-09-28T00:00:00Z",
+    payload: { type: "turn.status", state: "running" },
+  })}\n\n`;
+  const fetchMock = vi.fn().mockResolvedValue(streamResponse([status + terminal(5)]));
+  vi.stubGlobal("fetch", fetchMock);
+  const cursors: number[] = [];
+  await sendChatTurn(conversationId, body, new AbortController().signal, (event) =>
+    cursors.push(event.cursor),
+  );
+  expect(cursors).toEqual([3, 5]);
+});
+
 test("rejects mismatched event identity without replaying POST", async () => {
   const fetchMock = vi.fn().mockResolvedValue(streamResponse([terminal(1, "wrong")]));
   vi.stubGlobal("fetch", fetchMock);

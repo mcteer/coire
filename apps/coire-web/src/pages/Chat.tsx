@@ -3,6 +3,8 @@ import { AttachmentList } from "../components/chat/AttachmentList";
 import { ConversationHistory } from "../components/chat/ConversationHistory";
 import { MessageList } from "../components/chat/MessageList";
 import { ModelPicker } from "../components/chat/ModelPicker";
+import { CodeControls } from "../components/chat/CodeControls";
+import { RunActivity } from "../components/chat/RunActivity";
 import { useConversation } from "../hooks/useConversation";
 import "../styles/chat.css";
 
@@ -12,6 +14,7 @@ export function Chat({ ownerId }: { ownerId: string }) {
 
 function ChatSession({ ownerId }: { ownerId: string }) {
   const chat = useConversation(ownerId);
+  const latestCodeTurn = chat.turns.filter((turn) => turn.action !== "chat").at(-1);
   if (!chat.available)
     return (
       <main className="chat-page">
@@ -38,7 +41,7 @@ function ChatSession({ ownerId }: { ownerId: string }) {
       <div className="chat-topline">
         <div>
           <h1>Chat</h1>
-          <p className="muted">Choose a model and ask what is on your mind.</p>
+          <p className="muted">Choose a model and send a message or repository task.</p>
         </div>
         <button
           className="button"
@@ -62,6 +65,20 @@ function ChatSession({ ownerId }: { ownerId: string }) {
           onDelete={chat.remove}
         />
         <div className="chat-thread">
+          <div className="chat-mode-switch glass" role="group" aria-label="Conversation mode">
+            {(["chat", "code"] as const).map((value) => (
+              <button
+                key={value}
+                className="button"
+                type="button"
+                aria-pressed={chat.mode === value}
+                disabled={Boolean(chat.conversation) || chat.active}
+                onClick={() => chat.setMode(value)}
+              >
+                {value === "chat" ? "Chat" : "Code"}
+              </button>
+            ))}
+          </div>
           {chat.error && (
             <p className="error" role="alert">
               {chat.error}
@@ -88,6 +105,16 @@ function ChatSession({ ownerId }: { ownerId: string }) {
             </button>
           )}
           <MessageList messages={chat.messages} attachments={chat.attachments} />
+          {chat.mode === "code" && latestCodeTurn && (
+            <RunActivity
+              key={latestCodeTurn.id}
+              conversationId={chat.conversation?.id ?? ""}
+              turnId={latestCodeTurn.id}
+              activity={chat.activities[latestCodeTurn.id] ?? []}
+              status={chat.activityStatus[latestCodeTurn.id]}
+              result={chat.codingResults[latestCodeTurn.id]}
+            />
+          )}
           {chat.retryableTurn && (
             <div className="chat-retry glass">
               <p>The last response ended early. Its partial text remains above.</p>
@@ -111,22 +138,43 @@ function ChatSession({ ownerId }: { ownerId: string }) {
               )}
             </div>
           )}
-          <AttachmentList
-            conversationId={chat.conversation?.id ?? null}
-            attachments={chat.attachments}
-            selections={chat.selections}
-            busy={
-              !chat.selectedId ||
-              chat.active ||
-              chat.fileBusy ||
-              Boolean(chat.conversation?.active_turn_id)
-            }
-            onUpload={(file) => void chat.uploadFile(file)}
-            onProcess={(fileId, operation, pages) =>
-              void chat.processFile(fileId, operation, pages)
-            }
-            onSelect={chat.selectFile}
-          />
+          {chat.mode === "code" && (
+            <CodeControls
+              action={chat.action}
+              onAction={chat.setAction}
+              workspaces={chat.workspaces}
+              workspaceId={chat.workspaceId}
+              onWorkspace={chat.setWorkspaceId}
+              sourceRevision={chat.sourceRevision}
+              onRevision={chat.setSourceRevision}
+              researchTurns={chat.researchTurns}
+              researchId={chat.researchId}
+              onResearch={chat.setResearchId}
+              planTurns={chat.planTurns}
+              planId={chat.planId}
+              onPlan={chat.setPlanId}
+              onRegister={chat.addWorkspace}
+              disabled={chat.active || Boolean(chat.conversation?.active_turn_id)}
+            />
+          )}
+          {chat.mode === "chat" && (
+            <AttachmentList
+              conversationId={chat.conversation?.id ?? null}
+              attachments={chat.attachments}
+              selections={chat.selections}
+              busy={
+                !chat.selectedId ||
+                chat.active ||
+                chat.fileBusy ||
+                Boolean(chat.conversation?.active_turn_id)
+              }
+              onUpload={(file) => void chat.uploadFile(file)}
+              onProcess={(fileId, operation, pages) =>
+                void chat.processFile(fileId, operation, pages)
+              }
+              onSelect={chat.selectFile}
+            />
+          )}
           {chat.selections.length > 0 && !chat.canSendSelections && (
             <p className="muted" role="status">
               This selection needs image-capable Chat or a file that has finished processing.
@@ -141,9 +189,11 @@ function ChatSession({ ownerId }: { ownerId: string }) {
               chat.active ||
               chat.fileBusy ||
               !chat.canSendSelections ||
+              !chat.codeReady ||
               Boolean(chat.conversation?.active_turn_id)
             }
             status={chat.status}
+            mode={chat.mode}
           />
           {chat.conversation?.active_turn_id && (
             <button
@@ -152,7 +202,7 @@ function ChatSession({ ownerId }: { ownerId: string }) {
               onClick={() => void chat.stop()}
               disabled={chat.stopPending}
             >
-              {chat.stopPending ? "Stopping…" : "Stop response"}
+              {chat.stopPending ? "Stopping…" : chat.mode === "code" ? "Stop run" : "Stop response"}
             </button>
           )}
         </div>

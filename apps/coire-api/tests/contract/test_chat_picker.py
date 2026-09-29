@@ -61,6 +61,16 @@ class _Session:
     async def get(self, model: object, identifier: uuid.UUID) -> ModelRow | None:
         return next((row for row in self.models if row.id == identifier), None)
 
+    async def scalars(self, statement: object) -> object:
+        eligible = [row.id for row in self.models if "coding" in row.tags]
+        if "harness_verified" in str(statement):
+            eligible = [
+                row.id
+                for row in self.models
+                if "coding" in row.tags and row.capability_profile.get("verified")
+            ]
+        return SimpleNamespace(all=lambda: eligible)
+
     def add(self, row: object) -> None:
         self.created.append(row)
 
@@ -136,6 +146,20 @@ async def test_picker_is_entitled_ready_published_and_safe_for_admin() -> None:
     }
 
 
+async def test_code_picker_filters_profile_and_verified_apply_variant() -> None:
+    principal = Principal(
+        kind=PrincipalKind.USER, user_id=uuid.uuid4(), entitlements=frozenset({"team-a"})
+    )
+    general = _model(tags=["general"])
+    read_code = _model(tags=["coding"], capability_profile={"verified": False})
+    write_code = _model(tags=["coding"], capability_profile={"verified": True})
+    app = _app(principal, _Session([general, read_code, write_code]))
+    research = await _request(app, "GET", "/api/v1/chat/models?mode=code&action=research")
+    assert {row["id"] for row in research.json()["data"]} == {str(read_code.id), str(write_code.id)}
+    apply = await _request(app, "GET", "/api/v1/chat/models?mode=code&action=apply")
+    assert {row["id"] for row in apply.json()["data"]} == {str(write_code.id)}
+
+
 async def test_create_derives_owner_and_refuses_cross_origin_or_ineligible_model() -> None:
     user_id = uuid.uuid4()
     principal = Principal(
@@ -185,6 +209,8 @@ async def test_empty_picker_never_creates_model_or_job() -> None:
 
 async def test_visual_capability_requires_measured_verification() -> None:
     unverified = _model(
+        tags=["coding"],
+        capability_profile={"verified": True},
         backend="mlx_vlm",
         visual_capability={
             "verified": False,
@@ -194,6 +220,8 @@ async def test_visual_capability_requires_measured_verification() -> None:
         },
     )
     verified = _model(
+        tags=["coding"],
+        capability_profile={"verified": True},
         backend="mlx_vlm",
         visual_capability={
             "verified": True,
