@@ -53,7 +53,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 
 **Independent test:** Reload preserves attribution/partial output; concurrent tabs cannot overwrite; deletion immediately denies access and purges content.
 
-- [ ] T027 [US3] Add history/update/delete/replay/stop contracts and idempotency/version/race tests in apps/coire-api/tests/contract/test_chat_history.py and tests/unit/test_chat_state.py (FR-009, FR-011, FR-018–019, FR-023–025, FR-035).
+- [X] T027 [US3] Add history/update/delete/replay/stop contracts and idempotency/version/race tests in apps/coire-api/tests/contract/test_chat_history.py and tests/unit/test_chat_state.py (FR-009, FR-011, FR-018–019, FR-023–025, FR-035).
 - [X] T028 [US3] Implement paginated history/edit/replay, atomic snapshot cursors, latest-attempt prompt selection and explicit retry/continue in apps/coire-api/src/coire_api/chat/service.py, chat/streaming.py and routes/chat.py (FR-009–011, FR-018, FR-023).
 - [X] T029 [US3] Implement idempotent owner stop, original-stream disconnect, terminal/usage races and expired plain-chat lease reconciliation in apps/coire-api/src/coire_api/chat/streaming.py and chat/maintenance.py; observers cannot cancel (FR-019, FR-024, FR-035).
 - [X] T030 [US3] Implement tombstones, content-purge scheduling and event/staging retention in apps/coire-api/src/coire_api/chat/maintenance.py and app.py, with alternate coding artifact deletion guards in mcp_calls.py (FR-025).

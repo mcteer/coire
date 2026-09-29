@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## History contract audit (2026-09-29)
+
+- Parent T027 is complete through split, focused contract files rather than the older proposed `test_chat_history.py`/`test_chat_state.py` names. History pagination/detail, revisioned edit and concurrent-admission conflict, idempotent send/delete/Stop, replay cursor replacement and owner scoping are covered; 34 relevant tests passed. T035 remains open for two-tab and process-restart integration against a running control plane.
+
 ## Browser stream lifecycle (2026-09-29)
 
 - Parent T034 is complete. The native POST remains connected in hidden tabs; in-app navigation requests owner Stop, and `pagehide` now aborts the original stream on tab close or external navigation. Explicit Retry/Continue and a separate GET observer reconcile saved activity without a second generation POST. The page-unload regression test covers one abort and no replacement send. Web tests passed 89, lint and production build passed.
