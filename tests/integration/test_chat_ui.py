@@ -12,9 +12,12 @@ import subprocess
 import time
 import uuid
 from collections.abc import Iterator
+from io import BytesIO
+from typing import cast
 
 import httpx
 import pytest
+from PIL import Image
 
 pytestmark = pytest.mark.integration
 
@@ -56,6 +59,12 @@ def test_tiny_text_stream_usage_and_healthy_stop() -> None:
             assert created.status_code == 201
             conversation_id = created.json()["id"]
             request_id = str(uuid.uuid4())
+            turn_body = {
+                "client_request_id": request_id,
+                "expected_revision": created.json()["revision"],
+                "model_id": model_id,
+                "content": "Reply briefly with the word ready.",
+            }
             first_status_at: float | None = None
             start = time.monotonic()
             accepted: dict[str, object] | None = None
@@ -65,12 +74,7 @@ def test_tiny_text_stream_usage_and_healthy_stop() -> None:
                 with client.stream(
                     "POST",
                     f"/api/v1/chat/conversations/{conversation_id}/turns",
-                    json={
-                        "client_request_id": request_id,
-                        "expected_revision": created.json()["revision"],
-                        "model_id": model_id,
-                        "content": "Reply briefly with the word ready.",
-                    },
+                    json=turn_body,
                     headers={"Origin": origin},
                 ) as response:
                     assert response.status_code == 200
@@ -87,6 +91,12 @@ def test_tiny_text_stream_usage_and_healthy_stop() -> None:
                             deltas += 1
                             if stop_after_delta and deltas == 1:
                                 assert accepted is not None
+                                conflicting = client.post(
+                                    f"/api/v1/chat/conversations/{conversation_id}/turns",
+                                    json={**turn_body, "client_request_id": str(uuid.uuid4())},
+                                    headers={"Origin": origin},
+                                )
+                                assert conflicting.status_code == 409
                                 stopped = client.post(
                                     f"/api/v1/chat/conversations/{conversation_id}/turns/"
                                     f"{accepted['id']}/stop",
@@ -108,6 +118,18 @@ def test_tiny_text_stream_usage_and_healthy_stop() -> None:
                     assert isinstance(usage, dict)
                     assert usage["prompt_tokens"] > 0
                     assert usage["completion_tokens"] > 0
+                with client.stream(
+                    "POST",
+                    f"/api/v1/chat/conversations/{conversation_id}/turns",
+                    json=turn_body,
+                    headers={"Origin": origin},
+                ) as replay:
+                    assert replay.status_code == 200
+                    saved = [cast(dict[str, object], event["payload"]) for event in _events(replay)]
+                replayed_turn = saved[0]["turn"]
+                assert isinstance(replayed_turn, dict)
+                assert replayed_turn["id"] == accepted["id"]
+                assert saved[-1]["state"] == terminal["state"]
             finally:
                 detail = client.get(f"/api/v1/chat/conversations/{conversation_id}")
                 if detail.status_code == 200:
@@ -118,3 +140,79 @@ def test_tiny_text_stream_usage_and_healthy_stop() -> None:
                         headers={"Origin": origin},
                     )
                     assert deleted.status_code == 202
+                    assert (
+                        client.get(f"/api/v1/chat/conversations/{conversation_id}").status_code
+                        == 404
+                    )
+                    if accepted is not None:
+                        assert (
+                            client.get(
+                                f"/api/v1/chat/conversations/{conversation_id}/turns/"
+                                f"{accepted['id']}"
+                            ).status_code
+                            == 404
+                        )
+
+
+def test_private_image_processing_and_download() -> None:
+    url, model_id, service = _configuration()
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    fixture = BytesIO()
+    Image.new("RGB", (16, 16), color=(255, 0, 0)).save(fixture, format="PNG")
+    original = fixture.getvalue()
+    with httpx.Client(
+        base_url=url, timeout=30, headers={"Authorization": f"Bearer {key}"}
+    ) as client:
+        created = client.post(
+            "/api/v1/chat/conversations",
+            json={"mode": "chat", "model_id": model_id},
+            headers={"Origin": origin},
+        )
+        assert created.status_code == 201
+        conversation_id = created.json()["id"]
+        file_id: str | None = None
+        preview_id: str | None = None
+        try:
+            uploaded = client.post(
+                f"/api/v1/chat/conversations/{conversation_id}/files",
+                data={"filename": "tiny.png", "expected_revision": str(created.json()["revision"])},
+                files={"file": ("tiny.png", original, "image/png")},
+                headers={"Origin": origin},
+            )
+            assert uploaded.status_code == 202
+            file_id = uploaded.json()["id"]
+            file_url = f"/api/v1/chat/conversations/{conversation_id}/files/{file_id}"
+            assert client.get(f"{file_url}/content").content == original
+            deadline = time.monotonic() + 45
+            while time.monotonic() < deadline:
+                file_response = client.get(file_url)
+                assert file_response.status_code == 200
+                attachment = file_response.json()
+                if attachment["state"] in {"ready", "failed"}:
+                    break
+                time.sleep(0.5)
+            assert attachment["state"] == "ready", attachment.get("safe_error")
+            assert attachment["detected_type"] == "image/png"
+            assert len(attachment["previews"]) == 1
+            preview_id = attachment["previews"][0]["id"]
+            preview = client.get(f"{file_url}/previews/{preview_id}")
+            assert preview.status_code == 200
+            assert preview.content.startswith(b"\x89PNG\r\n\x1a\n")
+        finally:
+            detail = client.get(f"/api/v1/chat/conversations/{conversation_id}")
+            if detail.status_code == 200:
+                deleted = client.request(
+                    "DELETE",
+                    f"/api/v1/chat/conversations/{conversation_id}",
+                    json={"expected_revision": detail.json()["conversation"]["revision"]},
+                    headers={"Origin": origin},
+                )
+                assert deleted.status_code == 202
+                if file_id is not None:
+                    file_url = f"/api/v1/chat/conversations/{conversation_id}/files/{file_id}"
+                    assert client.get(f"{file_url}/content").status_code == 404
+                    if preview_id is not None:
+                        assert client.get(f"{file_url}/previews/{preview_id}").status_code == 404

@@ -1,5 +1,10 @@
 # Feature 014 implementation review
 
+## Live history and private file smoke (2026-09-29)
+
+- The opt-in Studio tiny-text integration now sends a conflicting second turn while the first is active; the API returns 409, and repeating the original request ID replays the same accepted turn and terminal. Owner deletion immediately makes conversation and turn reads return 404. One previously completed private conversation was read and its last delta plus terminal replayed through `Last-Event-ID` after several core API restarts, without another generation. T035 remains open for an automated disconnect/restart and timed purge/observer case.
+- The optional `chat-files` core profile initially refused startup because its isolated worker credential was absent. Running the existing `coire-secrets-init.sh` created only that missing login-Keychain item; the profile then built and all core services, including the CPU worker, became healthy. A runtime-generated 16×16 PNG uploaded through owner Chat returned 202, processed to `ready` in 2.52 seconds, and supported private original download and normalized PNG preview; after deletion both URLs returned 404. The integration test deletes its conversation. T045/T049/T065 remain open for quota races, temporary jobs, PDF/visual inference and fault recovery. The worker profile and credential are temporary pre-prod test state to restore after the remaining file checks.
+
 ## Native tiny-text Chat acceptance (2026-09-29)
 
 - Pre-prod core was updated with `COIRE_CHAT_ENABLED=true` and the exact localhost browser Origin through `coire-up --build`; all core services are healthy. Through the audited admin API, the acquired SmolLM model `44359c95-8f49-4d8a-85d3-a034af6c138b` was temporarily published, then its validated variant `2ed16f92-2cbe-4c15-a5fe-cc5f5b279bbb` was made published/default. The first native turn exposed that publishing the model row alone made the picker advertise a model with no routable default variant. The registry now refuses that admin publication order with 409; the variant publication path publishes the model automatically. This was a pre-prod curation change, not a Chat-triggered acquisition.
