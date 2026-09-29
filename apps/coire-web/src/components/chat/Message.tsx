@@ -1,9 +1,15 @@
 import Markdown from "react-markdown";
 import type { ChatAttachment, ChatMessage } from "../../api/chat";
+import { CodeBlock } from "./CodeBlock";
 import { ReasoningBlock } from "./ReasoningBlock";
 
 const safeUrl = (url: string) => {
-  if (/^(https?:|mailto:)/i.test(url) || url.startsWith("/") || url.startsWith("#")) return url;
+  if (
+    /^(https?:|mailto:)/i.test(url) ||
+    (url.startsWith("/") && !url.startsWith("//")) ||
+    url.startsWith("#")
+  )
+    return url;
   return "";
 };
 
@@ -25,6 +31,7 @@ export function Message({
           urlTransform={safeUrl}
           components={{
             img: () => null,
+            pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
             a: ({ href, children }) =>
               href ? (
                 <a href={href} target="_blank" rel="noopener noreferrer">

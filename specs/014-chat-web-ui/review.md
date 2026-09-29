@@ -283,3 +283,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - The admitted model's capability profile selects a bounded incremental parser. Split `<think>` markers and unfinished reasoning remain outside the answer channel; an eligible engine's `reasoning_content` is assigned to reasoning. Each channel delta is persisted before SSE emission. Browser messages show saved/streamed reasoning in a closed native disclosure with inert text; the public answer remains separate. Parent T062 is complete; T061/T063/T064 retain broader cancellation, hostile Markdown and model-switch acceptance.
 - Parser and streamed-channel tests passed. Full Python suite: 969 passed, 117 conditional skipped; 72 web tests, lint/build, strict mypy on 159 API/core source files, changed-file Ruff and OpenAPI freshness passed. Local arm64 API image passed policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-api-014au.spdx.json` (local evidence). Chat remains default-off.
+
+## Safe Markdown and code copy gate (014av)
+
+- Fenced code now has a plain-text **Copy code** control with a visible failure state. Protocol-relative links join executable links as inert text; raw HTML and remote images remain inert. Browser tests cover the rendered DOM, successful clipboard text and refusal. Parent T063/T064 remain open for attachment-model compatibility and broader visual remedies.
+- All 74 web tests, lint and build passed. The local arm64 web image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-web-014av.spdx.json` (local evidence). Chat remains default-off.

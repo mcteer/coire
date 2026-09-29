@@ -149,6 +149,13 @@
   padding: var(--s-3);
   background: var(--surface-2);
 }
+.chat-code-block {
+  min-width: 0;
+}
+.chat-code-block > button {
+  float: right;
+  margin: var(--s-2);
+}
 .chat-message-body a {
   color: var(--accent-ink);
 }

@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { expect, test, vi } from "vitest";
 import type { ChatMessage } from "../../api/chat";
 import { Message } from "./Message";
 
@@ -37,6 +37,25 @@ test("keeps saved reasoning separate and collapsed from the answer", () => {
   expect(screen.getByText("Private steps")).toBeInTheDocument();
   expect(view.container.querySelector("details")).not.toHaveAttribute("open");
   expect(screen.getByText("Public answer").closest(".chat-reasoning")).toBeNull();
+});
+
+test("copies fenced code while keeping hostile links and remote images inert", async () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const view = render(
+    <Message
+      message={{
+        ...message,
+        text: "```ts\nconst answer = 42;\n```\n\n[relative](//example.test/tracker) ![remote](https://example.test/pixel.png) [safe](/docs)",
+      }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith("const answer = 42;"));
+  expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
+  expect(screen.getByText("relative").closest("a")).toBeNull();
+  expect(view.container.querySelector("img")).toBeNull();
+  expect(screen.getByRole("link", { name: "safe" })).toHaveAttribute("href", "/docs");
 });
 
 test("shows the file and chosen content mode on a saved user message", () => {
