@@ -14,6 +14,7 @@ from coire_api.app import create_app
 from coire_api.auth import Principal, PrincipalKind, require_principal
 from coire_api.chat.turns import admit_turn, project_message, project_turn, read_turn_detail
 from coire_api.db import (
+    ChatAttachmentRow,
     ChatConversationRow,
     ChatEventRow,
     ChatMessageRow,
@@ -23,6 +24,7 @@ from coire_api.db import (
 )
 from coire_core.errors import ChatConflict, ChatContextExceeded, ChatNotFound
 from coire_core.models.chat import ChatTurnCreate, ChatTurnDetail
+from coire_core.models.files import ChatAttachmentSelection, FileProcessAsset, FileProcessResult
 from coire_core.models.registry import ModelState, Visibility
 from coire_core.settings import Settings
 
@@ -57,6 +59,7 @@ class Session:
         self.messages: list[ChatMessageRow] = []
         self.turns: list[ChatTurnRow] = []
         self.events: list[ChatEventRow] = []
+        self.attachments: dict[uuid.UUID, ChatAttachmentRow] = {}
         self.sql: list[str] = []
         self.commits = 0
 
@@ -74,6 +77,8 @@ class Session:
         return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: list(self.messages)))
 
     async def get(self, model: object, identifier: uuid.UUID) -> ModelRow | None:
+        if model is ChatAttachmentRow:
+            return self.attachments.get(identifier)  # type: ignore[return-value]
         return self.model if self.model.id == identifier else None
 
     def add(self, row: object) -> None:
@@ -141,6 +146,139 @@ async def test_send_persists_input_assistant_turn_and_event_before_stream() -> N
     assert session.conversation.event_cursor == 1
     assert session.conversation.revision == 2
     assert session.conversation.active_turn_id == session.turns[0].id
+
+
+async def test_text_file_selection_is_owner_scoped_and_saved_for_history() -> None:
+    session, principal, body = _case()
+    file_id = uuid.uuid4()
+    result = FileProcessResult(
+        job_id="0" * 26,
+        input_id=file_id,
+        source_sha256="a" * 64,
+        detected_type="text/plain",
+        extracted_text="file evidence",
+        assets=[],
+    )
+    session.attachments[file_id] = ChatAttachmentRow(
+        id=file_id,
+        owner_user_id=principal.user_id,
+        conversation_id=session.conversation.id,
+        filename="notes.txt",
+        detected_type="text/plain",
+        original_bytes=13,
+        original_sha256="a" * 64,
+        original_key=str(file_id),
+        derived_bytes=0,
+        state="ready",
+        asset_manifest={"job_id": result.job_id, "result": result.model_dump(mode="json")},
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    body.attachments = [ChatAttachmentSelection(file_id=file_id, mode="text")]
+    admission = await admit_turn(
+        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
+    )  # type: ignore[arg-type,call-arg]
+    assert "file evidence" in str(admission.history[-1].content)
+    saved = session.messages[0]
+    assert saved.text == "Hello"
+    assert saved.prompt_content == admission.history[-1].content
+    assert project_message(saved).attachment_selections == body.attachments
+
+
+async def test_text_selection_refuses_foreign_file_and_empty_scan() -> None:
+    session, principal, body = _case()
+    file_id = uuid.uuid4()
+    body.attachments = [ChatAttachmentSelection(file_id=file_id, mode="text")]
+    with pytest.raises(ChatNotFound):
+        await admit_turn(
+            session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
+        )  # type: ignore[arg-type,call-arg]
+    result = FileProcessResult(
+        job_id="0" * 26,
+        input_id=file_id,
+        source_sha256="a" * 64,
+        detected_type="application/pdf",
+        page_count=1,
+        extracted_text="[Page 1]\n\n",
+        assets=[],
+    )
+    session.attachments[file_id] = ChatAttachmentRow(
+        id=file_id,
+        owner_user_id=principal.user_id,
+        conversation_id=session.conversation.id,
+        filename="scan.pdf",
+        detected_type="application/pdf",
+        original_bytes=13,
+        original_sha256="a" * 64,
+        original_key=str(file_id),
+        derived_bytes=0,
+        state="ready",
+        page_count=1,
+        asset_manifest={"job_id": result.job_id, "result": result.model_dump(mode="json")},
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    with pytest.raises(ChatConflict, match="no extracted text"):
+        await admit_turn(
+            session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
+        )  # type: ignore[arg-type,call-arg]
+
+
+async def test_rendered_pdf_keeps_verified_text_context() -> None:
+    session, principal, body = _case()
+    file_id = uuid.uuid4()
+    prior = FileProcessResult(
+        job_id="0" * 26,
+        input_id=file_id,
+        source_sha256="a" * 64,
+        detected_type="application/pdf",
+        page_count=1,
+        extracted_text="[Page 1]\nReadable words\n",
+        assets=[],
+    )
+    rendered = FileProcessResult(
+        job_id="1" * 26,
+        input_id=file_id,
+        source_sha256="a" * 64,
+        detected_type="application/pdf",
+        page_count=1,
+        assets=[
+            FileProcessAsset(
+                id=uuid.uuid4(),
+                sha256="b" * 64,
+                bytes=100,
+                media_type="image/png",
+                width=10,
+                height=10,
+                page=1,
+            )
+        ],
+    )
+    session.attachments[file_id] = ChatAttachmentRow(
+        id=file_id,
+        owner_user_id=principal.user_id,
+        conversation_id=session.conversation.id,
+        filename="document.pdf",
+        detected_type="application/pdf",
+        original_bytes=200,
+        original_sha256="a" * 64,
+        original_key=str(file_id),
+        derived_bytes=100,
+        state="ready",
+        page_count=1,
+        asset_manifest={
+            "job_id": rendered.job_id,
+            "result": rendered.model_dump(mode="json"),
+            "text_result": prior.model_dump(mode="json"),
+        },
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    body.attachments = [ChatAttachmentSelection(file_id=file_id, mode="text")]
+    admission = await admit_turn(
+        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
+    )  # type: ignore[arg-type,call-arg]
+    assert "Readable words" in str(admission.history[-1].content)
 
 
 async def test_replay_is_idempotent_but_changed_body_conflicts() -> None:

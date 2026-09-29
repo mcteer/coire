@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal
 from coire_api.chat.maintenance import LEASE_SECONDS, PROCESS_ID
+from coire_api.chat.text_context import compose_text_prompt
 from coire_api.db import (
     ChatConversationRow,
     ChatEventRow,
@@ -34,6 +35,7 @@ from coire_core.models.chat import (
     ChatTurnStatus,
     ChatUsage,
 )
+from coire_core.models.files import ChatAttachmentSelection
 from coire_core.models.gateway import ChatMessage as GatewayMessage
 from coire_core.settings import Settings
 
@@ -53,6 +55,9 @@ def request_hash(body: ChatTurnCreate) -> str:
 
 
 def project_message(row: ChatMessageRow) -> ChatMessage:
+    selections = [
+        ChatAttachmentSelection.model_validate(value) for value in row.attachment_selections or []
+    ]
     return ChatMessage(
         id=row.id,
         conversation_id=row.conversation_id,
@@ -63,6 +68,7 @@ def project_message(row: ChatMessageRow) -> ChatMessage:
         model_id=row.model_id,
         model_display_name=row.model_display_name,
         attachment_ids=[uuid.UUID(value) for value in row.attachment_ids or []],
+        attachment_selections=selections,
         created_at=row.created_at,
     )
 
@@ -212,7 +218,7 @@ async def admit_turn(
         raise ChatConflict("conversation changed; reload before sending")
     if conversation.active_turn_id is not None:
         raise ChatConflict("a turn is already active")
-    if body.action != "chat" or body.attachments or body.retry_of is not None:
+    if body.action != "chat" or body.retry_of is not None:
         raise ChatConflict("this conversation cannot accept that action yet")
     if body.workspace_id or body.source_revision or body.plan_id or body.research_id:
         raise ChatConflict("coding inputs require code mode")
@@ -233,11 +239,17 @@ async def admit_turn(
         .scalars()
         .all()
     )
+    prompt_content = await compose_text_prompt(
+        session, principal.user_id, conversation_id, body.content, body.attachments
+    )
     history = [
-        GatewayMessage(role=cast(Literal["user", "assistant"], message.role), content=message.text)
+        GatewayMessage(
+            role=cast(Literal["user", "assistant"], message.role),
+            content=message.prompt_content if message.prompt_content is not None else message.text,
+        )
         for message in saved
     ]
-    history.append(GatewayMessage(role="user", content=body.content))
+    history.append(GatewayMessage(role="user", content=prompt_content))
     output_tokens = (
         min(settings.chat_output_tokens, max(1, model.context_window // 4))
         if model.context_window is not None
@@ -259,10 +271,12 @@ async def admit_turn(
         position=next_position,
         role="user",
         text=body.content,
+        prompt_content=prompt_content,
         reasoning="",
         model_id=model.id,
         model_display_name=model.display_name,
-        attachment_ids=[],
+        attachment_ids=[str(item.file_id) for item in body.attachments],
+        attachment_selections=[item.model_dump(mode="json") for item in body.attachments],
         created_at=now,
     )
     assistant_row = ChatMessageRow(

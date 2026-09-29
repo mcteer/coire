@@ -28,3 +28,36 @@ test("shows snapshot attribution and keeps HTML, executable links and images ine
     "https://example.test/page",
   );
 });
+
+test("shows the file and chosen content mode on a saved user message", () => {
+  const fileId = "00000000-0000-0000-0000-000000000009";
+  render(
+    <Message
+      message={{
+        ...message,
+        role: "user",
+        text: "Summarize this",
+        attachment_ids: [fileId],
+        attachment_selections: [{ file_id: fileId, mode: "text", pages: [] }],
+      }}
+      attachments={[
+        {
+          id: fileId,
+          owner_id: "00000000-0000-0000-0000-000000000010",
+          conversation_id: message.conversation_id,
+          filename: "notes.txt",
+          detected_type: "text/plain",
+          original_bytes: 5,
+          original_sha256: "a".repeat(64),
+          derived_bytes: 0,
+          state: "ready",
+          created_at: message.created_at,
+          updated_at: message.created_at,
+        },
+      ]}
+    />,
+  );
+  expect(screen.getByRole("list", { name: "Attached files" })).toHaveTextContent(
+    "notes.txt · Extracted text",
+  );
+});

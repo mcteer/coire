@@ -2657,6 +2657,14 @@
             "title": "Attachment Ids",
             "type": "array"
           },
+          "attachment_selections": {
+            "items": {
+              "$ref": "#/components/schemas/ChatAttachmentSelection"
+            },
+            "maxItems": 10,
+            "title": "Attachment Selections",
+            "type": "array"
+          },
           "conversation_id": {
             "format": "uuid",
             "title": "Conversation Id",

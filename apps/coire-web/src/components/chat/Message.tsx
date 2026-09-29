@@ -1,12 +1,18 @@
 import Markdown from "react-markdown";
-import type { ChatMessage } from "../../api/chat";
+import type { ChatAttachment, ChatMessage } from "../../api/chat";
 
 const safeUrl = (url: string) => {
   if (/^(https?:|mailto:)/i.test(url) || url.startsWith("/") || url.startsWith("#")) return url;
   return "";
 };
 
-export function Message({ message }: { message: ChatMessage }) {
+export function Message({
+  message,
+  attachments = [],
+}: {
+  message: ChatMessage;
+  attachments?: ChatAttachment[];
+}) {
   return (
     <article className={"chat-message " + message.role}>
       <div className="chat-message-label">
@@ -30,6 +36,21 @@ export function Message({ message }: { message: ChatMessage }) {
           {message.text}
         </Markdown>
       </div>
+      {message.role === "user" && (message.attachment_selections ?? []).length > 0 && (
+        <ul className="chat-message-files" aria-label="Attached files">
+          {(message.attachment_selections ?? []).map((selection) => {
+            const file = attachments.find((item) => item.id === selection.file_id);
+            return (
+              <li key={selection.file_id}>
+                {file?.filename ?? "File unavailable"} ·{" "}
+                {selection.mode === "text"
+                  ? "Extracted text"
+                  : `Page images ${selection.pages?.join(", ") || "none"}`}
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </article>
   );
 }

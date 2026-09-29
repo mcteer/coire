@@ -1318,6 +1318,8 @@ class ChatMessageRow(Base):
     )
     model_display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     attachment_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    attachment_selections: Mapped[list[dict[str, object]]] = mapped_column(JSONB, default=list)
+    prompt_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     usage: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

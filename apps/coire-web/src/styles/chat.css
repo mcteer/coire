@@ -152,6 +152,12 @@
 .chat-message-body a {
   color: var(--accent-ink);
 }
+.chat-message-files {
+  margin: var(--s-3) 0 0;
+  padding-left: var(--s-5);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
 .chat-composer {
   display: grid;
   gap: var(--s-3);

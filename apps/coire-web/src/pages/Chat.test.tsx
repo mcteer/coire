@@ -103,7 +103,7 @@ test("shows accepted input, streamed answer and model snapshot", async () => {
   expect(loadChatDrafts(conversation.owner_id).get(conversationId)).toBeUndefined();
 });
 
-test("creates a conversation before uploading and keeps selected files out of text-only sends", async () => {
+test("creates a conversation before uploading and sends an explicit ready text selection", async () => {
   const fileId = "00000000-0000-0000-0000-000000000019";
   const attachment = {
     id: fileId,
@@ -131,6 +131,33 @@ test("creates a conversation before uploading and keeps selected files out of te
         attachments: [attachment],
         event_cursor: 1,
       }),
+    )
+    .mockResolvedValueOnce(
+      stream(
+        event(2, {
+          type: "turn.accepted",
+          turn: {
+            id: turnId,
+            conversation_id: conversationId,
+            client_request_id: crypto.randomUUID(),
+            accepted_revision: 2,
+            input_message_id: inputId,
+            assistant_message_id: answerId,
+            model_id: modelId,
+            model_display_name: "Friendly model",
+            state: "accepted",
+            action: "chat",
+            created_at: "2026-09-28T00:00:00Z",
+            updated_at: "2026-09-28T00:00:00Z",
+          },
+        }) +
+          event(3, {
+            type: "turn.terminal",
+            state: "completed",
+            answer_length: 0,
+            reasoning_length: 0,
+          }),
+      ),
     );
   vi.stubGlobal("fetch", fetchMock);
   render(<Chat ownerId={conversation.owner_id} />);
@@ -148,9 +175,12 @@ test("creates a conversation before uploading and keeps selected files out of te
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
     target: { value: "Read it" },
   });
-  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
-  expect(screen.getByText(/sending files is unavailable/)).toBeInTheDocument();
-  expect(fetchMock).toHaveBeenCalledTimes(5);
+  expect(screen.getByRole("button", { name: "Send" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+  const sent = JSON.parse(fetchMock.mock.calls[5]?.[1]?.body as string);
+  expect(sent.attachments).toEqual([{ file_id: fileId, mode: "text" }]);
+  expect(await screen.findByText("notes.txt · Extracted text")).toBeInTheDocument();
 });
 
 test("Stop requests server cancellation and keeps the saved partial answer", async () => {

@@ -75,7 +75,7 @@ function ChatSession({ ownerId }: { ownerId: string }) {
               Load older messages
             </button>
           )}
-          <MessageList messages={chat.messages} />
+          <MessageList messages={chat.messages} attachments={chat.attachments} />
           <AttachmentList
             conversationId={chat.conversation?.id ?? null}
             attachments={chat.attachments}
@@ -92,10 +92,9 @@ function ChatSession({ ownerId }: { ownerId: string }) {
             }
             onSelect={chat.selectFile}
           />
-          {chat.selections.length > 0 && (
+          {chat.selections.length > 0 && !chat.canSendSelections && (
             <p className="muted" role="status">
-              File selections are saved here, but sending files is unavailable until visual and text
-              context handling is enabled.
+              This selection needs image-capable Chat or a file that has finished processing.
             </p>
           )}
           <Composer
@@ -106,7 +105,7 @@ function ChatSession({ ownerId }: { ownerId: string }) {
               !chat.selectedId ||
               chat.active ||
               chat.fileBusy ||
-              chat.selections.length > 0 ||
+              !chat.canSendSelections ||
               Boolean(chat.conversation?.active_turn_id)
             }
             status={chat.status}

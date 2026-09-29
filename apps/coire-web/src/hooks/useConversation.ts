@@ -32,6 +32,14 @@ export function useConversation(ownerId: string) {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [selections, setSelections] = useState<ChatAttachmentSelection[]>([]);
   const [fileBusy, setFileBusy] = useState(false);
+  const canSendSelections = selections.every((item) => {
+    const attachment = attachments.find((row) => row.id === item.file_id);
+    return (
+      item.mode === "text" &&
+      attachment?.state === "ready" &&
+      !attachment.detected_type.startsWith("image/")
+    );
+  });
   const [history, setHistory] = useState<ChatConversation[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [olderPosition, setOlderPosition] = useState<number | null>(null);
@@ -134,6 +142,7 @@ export function useConversation(ownerId: string) {
           },
       );
       const created = payload.turn.created_at;
+      const selectedFiles = pending.current?.body.attachments ?? [];
       setMessages((current) => {
         if (current.some((message) => message.id === payload.turn.input_message_id)) return current;
         const position = (current.at(-1)?.position ?? 0) + 1;
@@ -149,7 +158,8 @@ export function useConversation(ownerId: string) {
             model_id: payload.turn.model_id,
             model_display_name: payload.turn.model_display_name,
             created_at: created,
-            attachment_ids: [],
+            attachment_ids: selectedFiles.map((item) => item.file_id),
+            attachment_selections: selectedFiles,
           },
           {
             id: payload.turn.assistant_message_id,
@@ -166,6 +176,7 @@ export function useConversation(ownerId: string) {
         ];
       });
       setDraft("");
+      setSelections([]);
       forget(event.conversation_id);
       pending.current = null;
       setHistory((current) => {
@@ -239,7 +250,8 @@ export function useConversation(ownerId: string) {
     if (
       !input ||
       !selectedId ||
-      selections.length ||
+      !canSendSelections ||
+      fileBusy ||
       busyRef.current ||
       stream.active ||
       conversation?.active_turn_id
@@ -258,7 +270,13 @@ export function useConversation(ownerId: string) {
         remember(current.id, input, selectedId);
         forget("new");
       }
-      const key = [current.id, current.revision, selectedId, input].join("\0");
+      const key = [
+        current.id,
+        current.revision,
+        selectedId,
+        input,
+        JSON.stringify(selections),
+      ].join("\0");
       const body: ChatTurnCreate =
         pending.current?.key === key
           ? pending.current.body
@@ -268,6 +286,7 @@ export function useConversation(ownerId: string) {
               model_id: selectedId,
               content: input,
               action: "chat",
+              attachments: selections,
             };
       pending.current = { key, body };
       const generation = selection.current;
@@ -658,6 +677,7 @@ export function useConversation(ownerId: string) {
     messages,
     attachments,
     selections,
+    canSendSelections,
     fileBusy,
     uploadFile,
     processFile,

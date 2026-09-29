@@ -105,6 +105,9 @@ class ChatMessage(BaseModel):
     model_id: uuid.UUID | None = None
     model_display_name: str | None = Field(default=None, max_length=120)
     attachment_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
+    attachment_selections: list[ChatAttachmentSelection] = Field(
+        default_factory=list, max_length=10
+    )
     created_at: datetime
 
 

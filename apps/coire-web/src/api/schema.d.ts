@@ -2569,6 +2569,8 @@ export interface components {
         "ChatMessage-Output": {
             /** Attachment Ids */
             attachment_ids?: string[];
+            /** Attachment Selections */
+            attachment_selections?: components["schemas"]["ChatAttachmentSelection"][];
             /**
              * Conversation Id
              * Format: uuid

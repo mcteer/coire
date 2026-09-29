@@ -82,6 +82,16 @@ def test_purge_marker_migration_is_additive_and_reversible() -> None:
     assert "def upgrade()" in source and "def downgrade()" in source
 
 
+def test_message_context_migration_preserves_old_rows_and_reverses() -> None:
+    table = Base.metadata.tables["chat_messages"]
+    assert "attachment_selections" in table.c
+    assert "prompt_content" in table.c
+    source = Path("apps/coire-api/alembic/versions/0017_chat_message_context.py").read_text()
+    assert 'down_revision: str | None = "0016_chat_purge_marker"' in source
+    assert "'[]'::jsonb" in source
+    assert "def upgrade()" in source and "def downgrade()" in source
+
+
 def test_populated_chat_blocks_downgrade_before_any_drop() -> None:
     namespace = runpy.run_path("apps/coire-api/alembic/versions/0015_chat_conversations.py")
     downgrade = namespace["downgrade"]
