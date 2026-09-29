@@ -160,6 +160,7 @@ async def test_preparation_is_idempotent_and_cleanup_removes_only_this_run(tmp_p
     command = WorkspacePrepareRequest.model_validate(_command(run_id))
     first = await manager.prepare(command)
     assert (tmp_path / first.workspace_ref / ".coire" / "request.json").is_file()
+    assert (tmp_path / first.workspace_ref / ".coire" / "request.json").stat().st_mode & 0o222 == 0
     assert (tmp_path / first.workspace_ref / "README.md").read_text() == "sample\n"
     assert (tmp_path / first.output_ref).is_dir()
     activity = tmp_path / first.output_ref / f"activity-{run_id}.jsonl"

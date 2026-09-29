@@ -105,6 +105,22 @@ class RunManager:
             )
         workspace = self.workspace(command.workspace_ref)
         binds = [f"{workspace}:/workspace:{'ro' if command.task_class is TaskClass.READ else 'rw'}"]
+        if command.workspace_ref.startswith("mcp-"):
+            control = workspace / ".coire"
+            try:
+                resolved_control = control.resolve(strict=True)
+            except OSError as exc:
+                raise RunRuntimeError(
+                    "run_workspace_invalid", "run control input is missing"
+                ) from exc
+            if (
+                control.is_symlink()
+                or resolved_control.parent != workspace
+                or not (control / "request.json").is_file()
+                or (control / "request.json").is_symlink()
+            ):
+                raise RunRuntimeError("run_workspace_invalid", "run control input is invalid")
+            binds.append(f"{resolved_control}:/workspace/.coire:ro")
         result_path = RESULT_PATH
         if command.output_ref is not None:
             if command.output_ref == command.workspace_ref:

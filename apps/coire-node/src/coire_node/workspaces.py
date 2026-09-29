@@ -186,9 +186,12 @@ class WorkspaceManager:
     @staticmethod
     def _allow_container_write(path: Path) -> None:
         for base, directories, files in os.walk(path, followlinks=False):
+            if Path(base) == path / ".coire":
+                directories[:] = []
+                continue
             for name in directories:
                 target = Path(base) / name
-                if not target.is_symlink():
+                if target != path / ".coire" and not target.is_symlink():
                     target.chmod(target.stat().st_mode | stat.S_IRWXO)
             for name in files:
                 target = Path(base) / name

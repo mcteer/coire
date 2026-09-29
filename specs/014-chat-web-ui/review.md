@@ -1,5 +1,10 @@
 # Feature 014 implementation review
 
+## Coding control input mount (2026-09-29)
+
+- The Studio node now preserves the generated `.coire/request.json` as non-writable during workspace permission setup. MCP run containers mount that control directory separately read-only, including Apply runs that need a writable repository. Missing or symlinked control input refuses container creation. Eleven focused node tests passed. This closes the read-only control-input portion of T058; visual asset staging, gateway propagation and T059 remain open.
+- The full Python suite passed 1,162 tests with 129 conditional skips after this node change. Strict node source mypy, repository Ruff/format, OpenAPI freshness and diff checks passed. No real Studio run was started for this mount change.
+
 ## Bounded temporary visual admission (2026-09-29)
 
 - PostgreSQL transaction advisory locking now serializes temporary image admission per principal. At most eight unexpired jobs can hold that principal's generated originals and derived workspace; a ninth is refused with HTTP 429 before engine I/O and its staged original is removed. A quota refusal is recorded as a fixed gateway outcome. Focused unit and `/v1` contracts cover staging cleanup and the 429 boundary.

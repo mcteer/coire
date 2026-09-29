@@ -137,7 +137,9 @@ def test_mcp_run_cannot_mount_another_runs_workspace(tmp_path: Path) -> None:
     first = uuid.uuid4()
     second = uuid.uuid4()
     for run_id in (first, second):
-        (root / f"mcp-{run_id.hex}").mkdir(parents=True)
+        control = root / f"mcp-{run_id.hex}" / ".coire"
+        control.mkdir(parents=True)
+        (control / "request.json").write_text("{}")
         (root / f"mcp-out-{run_id.hex}").mkdir()
     allowed = command(f"mcp-{first.hex}").model_copy(
         update={
@@ -153,7 +155,11 @@ def test_mcp_run_cannot_mount_another_runs_workspace(tmp_path: Path) -> None:
         ),
         NoopDocker(),  # type: ignore[arg-type]
     )
-    assert manager.create_payload(allowed, "network")["HostConfig"]["Binds"]
+    binds = manager.create_payload(allowed, "network")["HostConfig"]["Binds"]
+    assert f"{root / f'mcp-{first.hex}' / '.coire'}:/workspace/.coire:ro" in binds
+    (root / f"mcp-{first.hex}" / ".coire" / "request.json").unlink()
+    with pytest.raises(RunRuntimeError, match="control input"):
+        manager.create_payload(allowed, "network")
     with pytest.raises(RunRuntimeError, match="match the run ID"):
         manager.create_payload(
             allowed.model_copy(update={"workspace_ref": f"mcp-{second.hex}"}), "network"
