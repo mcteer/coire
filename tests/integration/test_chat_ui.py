@@ -10,6 +10,7 @@ import base64
 import json
 import os
 import subprocess
+import threading
 import time
 import uuid
 from collections.abc import Iterator
@@ -257,6 +258,74 @@ def test_completed_turn_observer_replays_without_regeneration() -> None:
                 )
                 assert deleted.status_code == 202
                 assert client.get(f"{path}/events").status_code == 404
+
+
+def test_two_tab_send_has_one_owner_and_repeated_id_replays() -> None:
+    """Two browser tabs racing one revision admit one turn and preserve its replay."""
+    url, model_id, service = _configuration()
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    headers = {"Authorization": f"Bearer {key}", "Origin": origin}
+    with _RateLimitedClient(base_url=url, timeout=90, headers=headers) as client:
+        created = client.post(
+            "/api/v1/chat/conversations",
+            json={"mode": "chat", "model_id": model_id},
+        )
+        assert created.status_code == 201
+        conversation_id = created.json()["id"]
+        path = f"/api/v1/chat/conversations/{conversation_id}"
+        gate = threading.Barrier(2)
+        bodies = [
+            {
+                "client_request_id": str(uuid.uuid4()),
+                "expected_revision": created.json()["revision"],
+                "model_id": model_id,
+                "content": f"Tab {index}: reply briefly with ready.",
+            }
+            for index in (1, 2)
+        ]
+
+        def send(body: dict[str, object]) -> httpx.Response:
+            with _RateLimitedClient(base_url=url, timeout=90, headers=headers) as tab:
+                gate.wait(timeout=10)
+                return tab.post(f"{path}/turns", json=body)
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                responses = list(pool.map(send, bodies))
+            assert sorted(response.status_code for response in responses) == [200, 409]
+            winner = next(
+                index for index, response in enumerate(responses) if response.status_code == 200
+            )
+            events = list(_events(responses[winner]))
+            accepted = next(
+                _event_payload(event)["turn"]
+                for event in events
+                if _event_payload(event)["type"] == "turn.accepted"
+            )
+            assert isinstance(accepted, dict)
+            assert _event_payload(events[-1])["type"] == "turn.terminal"
+            with client.stream("POST", f"{path}/turns", json=bodies[winner]) as replay:
+                assert replay.status_code == 200
+                saved = list(_events(replay))
+            replayed = _event_payload(saved[0])["turn"]
+            assert isinstance(replayed, dict)
+            assert replayed["id"] == accepted["id"]
+            assert _event_payload(saved[-1])["type"] == "turn.terminal"
+            detail = client.get(path)
+            assert detail.status_code == 200
+            assert [turn["id"] for turn in detail.json()["turns"]] == [accepted["id"]]
+        finally:
+            detail = client.get(path)
+            if detail.status_code == 200:
+                deleted = client.request(
+                    "DELETE",
+                    path,
+                    json={"expected_revision": detail.json()["conversation"]["revision"]},
+                )
+                assert deleted.status_code == 202
 
 
 def test_private_image_processing_and_download() -> None:

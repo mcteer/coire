@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Two-tab integration fixture (2026-09-29)
+
+- Added an opt-in two-client race on one conversation revision. It asserts that exactly one turn is accepted, the other receives 409, retrying the winner's request ID replays the same terminal and the conversation contains one turn. The branch-tip Python suite passed with 1,168 tests and 132 conditional integration skips; source mypy passed on 246 files, the changed test passed its strict standalone mypy check, and repository Ruff, format and OpenAPI freshness passed. This extends T035's live test coverage but does not close it: the case still needs an unskipped run, and automated API-restart and timed-purge acceptance remain outstanding. Provider credentials are deferred to T080 and do not gate local pre-prod work.
+
 ## Baseline alert rule proof (2026-09-29)
 
 - A local `promtool check rules` against the changed Chat alert file passed seven rules. The committed `tests/observability/chat.alert.test.yaml` uses synthetic one-minute samples to fire API, parser, vision, overdue-purge and slow-Stop alerts, plus the planned Chat-turn failure ratio (>10% after >=20 eligible turns) and internal file-job failure ratio (>25% after >=10 eligible jobs). `promtool test rules` passed in a no-network, read-only `coire-prometheus:ci` container with only a temporary `/tmp`; the quiet fixture confirmed ordinary file refusals do not fire the internal-worker alert. The earlier file rule had alerted on any user refusal, contrary to the plan. This closes a local rule-behavior gap, but T075 still needs live lean-profile alert and parser-crash/engine acceptance.
