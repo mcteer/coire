@@ -25,10 +25,12 @@ from coire_core.errors import ChatConflict, ChatContextExceeded, ChatNotFound
 from coire_core.models.chat import (
     ChatEvent,
     ChatMessage,
+    ChatStopRequest,
     ChatTurn,
     ChatTurnAccepted,
     ChatTurnCreate,
     ChatTurnDetail,
+    ChatTurnStatus,
     ChatUsage,
 )
 from coire_core.models.gateway import ChatMessage as GatewayMessage
@@ -77,7 +79,15 @@ def project_turn(row: ChatTurnRow) -> ChatTurn:
         model_display_name=row.model_display_name,
         state=cast(
             Literal[
-                "accepted", "loading", "running", "completed", "failed", "stopped", "interrupted"
+                "accepted",
+                "queued",
+                "loading",
+                "running",
+                "stop_requested",
+                "completed",
+                "failed",
+                "stopped",
+                "interrupted",
             ],
             row.state,
         ),
@@ -107,6 +117,62 @@ async def read_turn_detail(
         assistant_message=project_message(answer_row),
         event_cursor=conversation.event_cursor,
     )
+
+
+async def request_turn_stop(
+    session: AsyncSession,
+    principal: Principal,
+    conversation_id: uuid.UUID,
+    turn_id: uuid.UUID,
+    body: ChatStopRequest,
+    settings: Settings,
+) -> ChatTurn:
+    """Persist an owner Stop request; the controlling stream performs cancellation."""
+    conversation = await session.scalar(
+        select(ChatConversationRow)
+        .where(
+            ChatConversationRow.id == conversation_id,
+            ChatConversationRow.owner_user_id == principal.user_id,
+            ChatConversationRow.deleted_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if conversation is None:
+        raise ChatNotFound()
+    turn = await session.get(ChatTurnRow, turn_id)
+    if turn is None or turn.conversation_id != conversation_id:
+        raise ChatNotFound()
+    if turn.action != "chat":
+        raise ChatConflict("code turn Stop requires the coding run path")
+    if turn.state in {"completed", "failed", "stopped", "interrupted", "stop_requested"}:
+        return project_turn(turn)
+    now = datetime.now(UTC)
+    turn.state = "stop_requested"
+    turn.stop_reason = body.reason
+    turn.updated_at = now
+    conversation.event_cursor += 1
+    conversation.updated_at = now
+    event = ChatEvent(
+        conversation_id=conversation_id,
+        cursor=conversation.event_cursor,
+        turn_id=turn_id,
+        created_at=now,
+        payload=ChatTurnStatus(state="stop_requested"),
+    )
+    session.add(
+        ChatEventRow(
+            id=uuid.uuid4(),
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            cursor=event.cursor,
+            type=event.payload.type,
+            payload=event.payload.model_dump(mode="json"),
+            created_at=now,
+            expires_at=now + timedelta(hours=settings.chat_event_retention_hours),
+        )
+    )
+    await session.commit()
+    return project_turn(turn)
 
 
 async def admit_turn(

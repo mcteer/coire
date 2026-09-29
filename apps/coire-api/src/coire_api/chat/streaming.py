@@ -49,6 +49,10 @@ from coire_core.settings import Settings
 logger = logging.getLogger(__name__)
 
 
+class ChatStopRequested(Exception):
+    """The controlling generator saw a durable owner Stop request."""
+
+
 def encode_event(event: ChatEvent) -> bytes:
     return (
         f"event: {event.payload.type}\nid: {event.event_id}\ndata: {event.model_dump_json()}\n\n"
@@ -85,6 +89,8 @@ async def persist_native_event(
             raise ChatNotFound()
         if turn.state in {"completed", "failed", "stopped", "interrupted"}:
             raise ChatConflict("turn is already terminal")
+        if turn.state == "stop_requested" and (kind != "terminal" or state != "stopped"):
+            raise ChatStopRequested()
         now = datetime.now(UTC)
         payload: ChatTurnStatus | ChatMessageDelta | ChatTurnTerminal
         if kind == "status":
@@ -165,6 +171,37 @@ async def _measured_warmup_seconds(model_id: uuid.UUID) -> float | None:
         )
 
 
+async def _stop_requested(turn_id: uuid.UUID) -> bool:
+    async with session_scope() as session:
+        state = await session.scalar(select(ChatTurnRow.state).where(ChatTurnRow.id == turn_id))
+        return state == "stop_requested"
+
+
+async def _next_with_stop(
+    source: AsyncIterator[bytes], turn_id: uuid.UUID, signal: asyncio.Event
+) -> bytes:
+    async def read_next() -> bytes:
+        return await anext(source)
+
+    pending = asyncio.create_task(read_next())
+    try:
+        while True:
+            try:
+                return await asyncio.wait_for(asyncio.shield(pending), timeout=0.5)
+            except TimeoutError:
+                if await _stop_requested(turn_id):
+                    signal.set()
+                    pending.cancel()
+                    with suppress(asyncio.CancelledError, StopAsyncIteration):
+                        await pending
+                    raise ChatStopRequested() from None
+    finally:
+        if not pending.done():
+            pending.cancel()
+            with suppress(asyncio.CancelledError, StopAsyncIteration):
+                await pending
+
+
 async def _ensure_current_access(principal: Principal, model_id: uuid.UUID) -> None:
     """Recheck live user/key/entitlements without trusting the stream-start snapshot."""
     if principal.user_id is None:
@@ -215,6 +252,8 @@ async def native_stream(
     terminal_saved = False
     persistence_failed = False
     loading_failed = False
+    stop_signal = asyncio.Event()
+    last_stop_check = monotonic()
     try:
         yield encode_event(admission.event)
         try:
@@ -237,16 +276,29 @@ async def native_stream(
                         timeout=settings.gateway_wait_ceiling_s,
                     )
                 )
+                last_keepalive = monotonic()
                 while not task.done():
                     try:
                         await asyncio.wait_for(
-                            asyncio.shield(task), timeout=settings.gateway_keepalive_interval_s
+                            asyncio.shield(task),
+                            timeout=min(settings.gateway_keepalive_interval_s, 0.5),
                         )
                     except TimeoutError:
+                        if await _stop_requested(admission.turn.id):
+                            stop_signal.set()
+                            task.cancel()
+                            with suppress(asyncio.CancelledError):
+                                await task
+                            raise ChatStopRequested() from None
                         await _ensure_current_access(principal, admission.turn.model_id)
                         last_access_check = monotonic()
-                        yield b": coire model loading\n\n"
+                        if monotonic() - last_keepalive >= settings.gateway_keepalive_interval_s:
+                            last_keepalive = monotonic()
+                            yield b": coire model loading\n\n"
                 await task
+                if await _stop_requested(admission.turn.id):
+                    stop_signal.set()
+                    raise ChatStopRequested()
                 resolved = await _resolve(admission, principal)
             if resolved.engine_url is None or resolved.model_path is None:
                 raise RuntimeError("model did not become ready")
@@ -270,53 +322,72 @@ async def native_stream(
             failed_frame = False
             reported_usage = False
             timing = StreamTiming()
-            async for chunk in track_stream(
-                stream(resolved.engine_url, payload, settings, timing), usage, request, timing
-            ):
-                if monotonic() - last_access_check >= min(
-                    settings.credential_stream_recheck_s, 1.0
-                ):
-                    await _ensure_current_access(principal, admission.turn.model_id)
-                    last_access_check = monotonic()
-                for line in chunk.decode("utf-8", errors="replace").splitlines():
-                    if not line.startswith("data: "):
-                        continue
-                    data = line[6:].strip()
-                    if data == "[DONE]":
-                        done = True
-                        continue
+            tracked = track_stream(
+                stream(resolved.engine_url, payload, settings, timing),
+                usage,
+                request,
+                timing,
+                stop_signal,
+            )
+            try:
+                while True:
                     try:
-                        frame = json.loads(data)
-                    except ValueError:
-                        failed_frame = True
-                        continue
-                    if not isinstance(frame, dict):
-                        failed_frame = True
-                        continue
-                    if "error" in frame:
-                        failed_frame = True
-                        continue
-                    reported = frame.get("usage")
-                    reported_usage = reported_usage or (
-                        isinstance(reported, dict)
-                        and isinstance(reported.get("prompt_tokens"), int)
-                        and isinstance(reported.get("completion_tokens"), int)
-                    )
-                    choices = frame.get("choices") or []
-                    if not isinstance(choices, list) or not choices:
-                        continue
-                    delta = choices[0].get("delta", {}) if isinstance(choices[0], dict) else {}
-                    content = delta.get("content") if isinstance(delta, dict) else None
-                    if not isinstance(content, str) or not content:
-                        continue
-                    for start in range(0, len(content), 64 * 1024):
-                        saved = await persist_native_event(
-                            "delta",
-                            admission,
-                            text=content[start : start + 64 * 1024],
-                            settings=settings,
+                        chunk = await _next_with_stop(tracked, admission.turn.id, stop_signal)
+                    except StopAsyncIteration:
+                        break
+                    if monotonic() - last_stop_check >= 0.5:
+                        last_stop_check = monotonic()
+                        if await _stop_requested(admission.turn.id):
+                            stop_signal.set()
+                            raise ChatStopRequested()
+                    if monotonic() - last_access_check >= min(
+                        settings.credential_stream_recheck_s, 1.0
+                    ):
+                        await _ensure_current_access(principal, admission.turn.model_id)
+                        last_access_check = monotonic()
+                    for line in chunk.decode("utf-8", errors="replace").splitlines():
+                        if not line.startswith("data: "):
+                            continue
+                        data = line[6:].strip()
+                        if data == "[DONE]":
+                            done = True
+                            continue
+                        try:
+                            frame = json.loads(data)
+                        except ValueError:
+                            failed_frame = True
+                            continue
+                        if not isinstance(frame, dict):
+                            failed_frame = True
+                            continue
+                        if "error" in frame:
+                            failed_frame = True
+                            continue
+                        reported = frame.get("usage")
+                        reported_usage = reported_usage or (
+                            isinstance(reported, dict)
+                            and isinstance(reported.get("prompt_tokens"), int)
+                            and isinstance(reported.get("completion_tokens"), int)
                         )
-                        yield encode_event(saved)
+                        choices = frame.get("choices") or []
+                        if not isinstance(choices, list) or not choices:
+                            continue
+                        delta = choices[0].get("delta", {}) if isinstance(choices[0], dict) else {}
+                        content = delta.get("content") if isinstance(delta, dict) else None
+                        if not isinstance(content, str) or not content:
+                            continue
+                        for start in range(0, len(content), 64 * 1024):
+                            saved = await persist_native_event(
+                                "delta",
+                                admission,
+                                text=content[start : start + 64 * 1024],
+                                settings=settings,
+                            )
+                            yield encode_event(saved)
+            finally:
+                close = getattr(tracked, "aclose", None)
+                if close is not None:
+                    await close()
             if not done or failed_frame:
                 disconnected = await request.is_disconnected()
                 state = "interrupted" if disconnected else "failed"
@@ -352,6 +423,21 @@ async def native_stream(
             yield encode_event(terminal)
         except asyncio.CancelledError:
             raise
+        except ChatStopRequested:
+            stop_signal.set()
+            await usage.finish(UsageOutcome.STOPPED, failure_code="user_stop")
+            try:
+                terminal = await persist_native_event(
+                    "terminal",
+                    admission,
+                    state="stopped",
+                    safe_error="stopped by user",
+                    settings=settings,
+                )
+            except (ChatNotFound, ChatConflict):
+                return
+            terminal_saved = True
+            yield encode_event(terminal)
         except (ChatNotFound, ChatConflict):
             await usage.finish(UsageOutcome.DISCONNECTED, failure_code="chat_state_changed")
             return
@@ -394,8 +480,12 @@ async def native_stream(
                         await persist_native_event(
                             "terminal",
                             admission,
-                            state="interrupted",
-                            safe_error="connection interrupted",
+                            state="stopped" if stop_signal.is_set() else "interrupted",
+                            safe_error=(
+                                "stopped by user"
+                                if stop_signal.is_set()
+                                else "connection interrupted"
+                            ),
                             settings=settings,
                         )
                 except Exception as exc:

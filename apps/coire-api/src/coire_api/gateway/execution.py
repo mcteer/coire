@@ -86,6 +86,7 @@ async def track_stream(
     usage: UsageTracker,
     request: Request | None = None,
     timing: StreamTiming | None = None,
+    stop_signal: asyncio.Event | None = None,
 ) -> AsyncIterator[bytes]:
     """Forward bytes unchanged while accounting for complete, possibly fragmented SSE frames."""
     first_observed = False
@@ -165,7 +166,12 @@ async def track_stream(
                 data_lines.clear()
             yield chunk
     except asyncio.CancelledError:
-        await finish_detached(usage, UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
+        stopped = stop_signal is not None and stop_signal.is_set()
+        await finish_detached(
+            usage,
+            UsageOutcome.STOPPED if stopped else UsageOutcome.DISCONNECTED,
+            failure_code="user_stop" if stopped else "client_disconnected",
+        )
         raise
     except EngineProxyError:
         await usage.finish(UsageOutcome.FAILED, failure_code="engine_stream_failed")

@@ -151,7 +151,15 @@ class ChatTurn(BaseModel):
     model_id: uuid.UUID
     model_display_name: str = Field(min_length=1, max_length=120)
     state: Literal[
-        "accepted", "loading", "running", "completed", "failed", "stopped", "interrupted"
+        "accepted",
+        "queued",
+        "loading",
+        "running",
+        "stop_requested",
+        "completed",
+        "failed",
+        "stopped",
+        "interrupted",
     ]
     action: Literal["chat", "research", "plan", "apply"] = "chat"
     usage: ChatUsage | None = None

@@ -43,7 +43,7 @@ class LoadCoordinator:
                 task = asyncio.ensure_future(loader())
                 self._loads[model_id] = task
         try:
-            await task
+            await asyncio.shield(task)
         finally:
             async with self._lock:
                 if self._loads.get(model_id) is task and task.done():

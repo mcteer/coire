@@ -237,6 +237,118 @@ async def test_cold_load_failure_has_safe_actionable_terminal(
     assert b"private node failure" not in b"".join(chunks)
 
 
+async def test_owner_stop_closes_upstream_and_saves_partial_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "resolve_model", AsyncMock(return_value=_resolved(admission)))
+    saved_kinds: list[str] = []
+    terminal_states: list[str] = []
+    usage_outcomes: list[UsageOutcome] = []
+    upstream_closed = False
+
+    async def stop_requested(_turn_id: uuid.UUID) -> bool:
+        return "delta" in saved_kinds
+
+    async def upstream(*_args: object) -> AsyncIterator[bytes]:
+        nonlocal upstream_closed
+        try:
+            yield b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'
+            await asyncio.Event().wait()
+        finally:
+            upstream_closed = True
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        saved_kinds.append(kind)
+        if kind == "terminal":
+            terminal_states.append(str(kwargs.get("state")))
+        return _saved_event(admission, kind, len(saved_kinds) + 1, **kwargs)
+
+    async def persist_usage(**kwargs: object) -> None:
+        usage_outcomes.append(kwargs["outcome"])  # type: ignore[arg-type]
+
+    monkeypatch.setattr(streaming, "_stop_requested", stop_requested)
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist_usage)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+
+    async def consume() -> list[bytes]:
+        return [
+            chunk
+            async for chunk in native_stream(
+                admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            )
+        ]  # type: ignore[arg-type,call-arg]
+
+    chunks = await asyncio.wait_for(consume(), timeout=3)
+    assert saved_kinds == ["status", "delta", "terminal"]
+    assert terminal_states == ["stopped"]
+    assert upstream_closed
+    assert usage_outcomes == [UsageOutcome.STOPPED]
+    assert b"partial" in b"".join(chunks)
+
+
+async def test_owner_stop_during_cold_load_finishes_without_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(
+        streaming, "resolve_model", AsyncMock(return_value=_resolved(admission, cold=True))
+    )
+    monkeypatch.setattr(streaming, "_measured_warmup_seconds", AsyncMock(return_value=None))
+    monkeypatch.setattr(streaming, "_stop_requested", AsyncMock(return_value=True))
+    generated = AsyncMock()
+    monkeypatch.setattr(streaming, "stream", generated)
+    saved_states: list[object] = []
+    usage_outcomes: list[UsageOutcome] = []
+
+    async def load(*_args: object) -> None:
+        await asyncio.Event().wait()
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        saved_states.append(kwargs.get("state"))
+        return _saved_event(admission, kind, len(saved_states) + 1, **kwargs)
+
+    async def persist_usage(**kwargs: object) -> None:
+        usage_outcomes.append(kwargs["outcome"])  # type: ignore[arg-type]
+
+    monkeypatch.setattr(streaming, "load_model", load)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist_usage)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    chunks = await asyncio.wait_for(consume_native(admission, principal, request), timeout=3)
+    assert saved_states == ["loading", "stopped"]
+    assert usage_outcomes == [UsageOutcome.STOPPED]
+    generated.assert_not_called()
+    assert chunks[-1].startswith(b"event: turn.terminal")
+
+
+async def consume_native(
+    admission: Admission, principal: Principal, request: object
+) -> list[bytes]:
+    return [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+
+
 @pytest.mark.parametrize("failure", ["engine", "disconnect"])
 async def test_failure_or_disconnect_saves_safe_terminal(
     monkeypatch: pytest.MonkeyPatch, failure: str

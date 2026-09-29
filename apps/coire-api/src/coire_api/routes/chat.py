@@ -18,7 +18,7 @@ from coire_api.chat.service import (
 )
 from coire_api.chat.streaming import native_stream, replay_saved_events
 from coire_api.chat.telemetry import requests_total, tracer
-from coire_api.chat.turns import admit_turn, read_turn_detail
+from coire_api.chat.turns import admit_turn, read_turn_detail, request_turn_stop
 from coire_api.deps import SessionDep, SettingsDep
 from coire_core.errors import ChatModelUnavailable, CoireError
 from coire_core.models.chat import (
@@ -31,6 +31,8 @@ from coire_core.models.chat import (
     ChatPageQuery,
     ChatPickerQuery,
     ChatPickerResponse,
+    ChatStopRequest,
+    ChatTurn,
     ChatTurnCreate,
     ChatTurnDetail,
 )
@@ -223,3 +225,33 @@ async def get_chat_turn(
             raise ChatModelUnavailable("chat service temporarily unavailable") from None
         requests_total.add(1, {"operation": "turn_status", "outcome": "succeeded"})
         return detail
+
+
+@router.post("/conversations/{conversation_id}/turns/{turn_id}/stop", response_model=ChatTurn)
+async def stop_chat_turn(
+    conversation_id: uuid.UUID,
+    turn_id: uuid.UUID,
+    body: ChatStopRequest,
+    principal: CurrentChatUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> ChatTurn:
+    with tracer.start_as_current_span("coire.api.chat.stop"):
+        try:
+            turn = await request_turn_stop(
+                session, principal, conversation_id, turn_id, body, settings
+            )
+        except CoireError:
+            requests_total.add(1, {"operation": "stop", "outcome": "refused"})
+            raise
+        except Exception as exc:
+            requests_total.add(1, {"operation": "stop", "outcome": "failed"})
+            logger.error(
+                "chat stop failed user_id=%s turn_id=%s error_type=%s",
+                principal.user_id,
+                turn_id,
+                type(exc).__name__,
+            )
+            raise ChatModelUnavailable("chat service temporarily unavailable") from None
+        requests_total.add(1, {"operation": "stop", "outcome": "accepted"})
+        return turn

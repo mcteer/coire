@@ -938,6 +938,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/chat/conversations/{conversation_id}/turns/{turn_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Stop Chat Turn */
+        post: operations["stop_chat_turn_api_v1_chat_conversations__conversation_id__turns__turn_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/chat/models": {
         parameters: {
             query?: never;
@@ -2505,6 +2522,14 @@ export interface components {
              */
             type: "snapshot";
         };
+        /** ChatStopRequest */
+        ChatStopRequest: {
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "user_stop" | "navigation";
+        };
         /** ChatTurn */
         ChatTurn: {
             /** Accepted Revision */
@@ -2556,7 +2581,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "accepted" | "loading" | "running" | "completed" | "failed" | "stopped" | "interrupted";
+            state: "accepted" | "queued" | "loading" | "running" | "stop_requested" | "completed" | "failed" | "stopped" | "interrupted";
             /**
              * Updated At
              * Format: date-time
@@ -6900,6 +6925,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatTurnDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stop_chat_turn_api_v1_chat_conversations__conversation_id__turns__turn_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+                turn_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatStopRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatTurn"];
                 };
             };
             /** @description Validation Error */

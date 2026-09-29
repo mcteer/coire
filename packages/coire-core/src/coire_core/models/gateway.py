@@ -184,6 +184,7 @@ class UsageOutcome(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     DISCONNECTED = "disconnected"
+    STOPPED = "stopped"
     REFUSED = "refused"
 
 

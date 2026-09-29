@@ -41,3 +41,29 @@ async def test_failure_is_shared_and_next_request_can_retry() -> None:
     with pytest.raises(RuntimeError):
         await coordinator.run(model_id, loader)
     assert calls == 2
+
+
+@pytest.mark.asyncio
+async def test_cancelling_one_waiter_keeps_shared_model_load_running() -> None:
+    coordinator = LoadCoordinator()
+    model_id = uuid.uuid4()
+    started = asyncio.Event()
+    release = asyncio.Event()
+    calls = 0
+
+    async def loader() -> None:
+        nonlocal calls
+        calls += 1
+        started.set()
+        await release.wait()
+
+    first = asyncio.create_task(coordinator.run(model_id, loader))
+    await started.wait()
+    second = asyncio.create_task(coordinator.run(model_id, loader))
+    await asyncio.sleep(0)
+    first.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await first
+    release.set()
+    await second
+    assert calls == 1

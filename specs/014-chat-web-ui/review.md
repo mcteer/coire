@@ -112,3 +112,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - The verified user ID now keys a bounded sessionStorage draft map. Text and eligible model choice survive reload/re-authentication in the same tab; owner changes remove the previous owner's key. Accepted sends clear their draft and failed admissions retain it. Only text and model IDs are stored; no credentials, file bytes, response content or server paths.
 - Storage helper and page tests cover UTF-8 byte bounds, invalid IDs, restore, owner change and send outcomes. The web suite passed 50 tests with build/typecheck and lint green. Parent T032–T033 remain open for explicit logout handling and future file selections.
+
+## Owner Stop gate (014p)
+
+- Added an owner-scoped, idempotent Stop route with a persisted `stop_requested` event. The controlling API process polls the durable turn state while waiting for cold load or engine output, then closes its upstream stream, releases its slot/lease, saves a `stopped` terminal and preserves partial answer text. A shared cold load survives one stopped waiter. Duplicate observers have no cancellation authority.
+- Focused Stop, streaming and load-coordinator tests passed 17 cases. Strict mypy, Ruff, OpenAPI freshness and the 50 web tests/build/lint passed. Full Python suite was run for this child. Parent T029 remains open for expired-lease and crash reconciliation, and browser Stop wiring is a later child.
