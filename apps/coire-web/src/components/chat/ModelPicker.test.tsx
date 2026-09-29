@@ -5,6 +5,7 @@ import { ModelPicker } from "./ModelPicker";
 
 const model: ChatPickerEntry = {
   id: "00000000-0000-0000-0000-000000000001",
+  source: "studio",
   display_name: "Helpful model",
   description: "Answers everyday questions",
   tags: ["general"],
@@ -41,4 +42,16 @@ test("shows a measured warm-up estimate before selection", () => {
     />,
   );
   expect(screen.getByText(/about 33 s warm-up/)).toBeInTheDocument();
+});
+
+test("labels the configured provider and its remote readiness", () => {
+  render(
+    <ModelPicker
+      models={[{ ...model, source: "anthropic" }]}
+      selectedId={null}
+      onSelect={() => {}}
+    />,
+  );
+  expect(screen.getByText("Anthropic")).toBeInTheDocument();
+  expect(screen.getByText("Remote · ready")).toBeInTheDocument();
 });

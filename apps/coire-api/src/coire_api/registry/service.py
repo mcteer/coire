@@ -114,6 +114,8 @@ async def recompute_state(session: AsyncSession, model: ModelRow) -> ModelState:
     """
     if model.state in (ModelState.FAILED, ModelState.RETIRED):
         return model.state
+    if (model.source or "studio") != "studio":
+        return model.state
 
     copies = (
         (await session.execute(select(ModelCopyRow).where(ModelCopyRow.model_id == model.id)))
@@ -589,6 +591,8 @@ async def update_model(
     changes: dict[str, Any] = {}
 
     if "visibility" in fields and request.visibility is not None:
+        if request.visibility is Visibility.PUBLISHED and (model.source or "studio") != "studio":
+            raise RegistryError(409, "external provider routing is not enabled")
         if request.visibility is Visibility.PUBLISHED and model.state is not ModelState.READY:
             raise RegistryError(
                 409,

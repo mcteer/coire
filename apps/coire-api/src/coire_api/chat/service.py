@@ -46,7 +46,14 @@ from coire_core.models.chat import (
     ChatPickerResponse,
 )
 from coire_core.models.harness import PROFILE_MODEL_TAGS, ProfileName, TaskClass
-from coire_core.models.registry import CapabilityProfile, EngineBackend, Tag, VisualCapability
+from coire_core.models.registry import (
+    CapabilityProfile,
+    EngineBackend,
+    LoadState,
+    ModelSource,
+    Tag,
+    VisualCapability,
+)
 from coire_core.settings import Settings
 
 
@@ -83,7 +90,8 @@ async def picker(
         visible = [
             model
             for model in visible
-            if set(model.tags or []).intersection(PROFILE_MODEL_TAGS[ProfileName.CODING])
+            if (model.source or "studio") == ModelSource.STUDIO
+            and set(model.tags or []).intersection(PROFILE_MODEL_TAGS[ProfileName.CODING])
         ]
         if visible:
             eligible_ids = set(
@@ -116,6 +124,7 @@ async def picker(
             by_model.setdefault(engine.model_id, []).append(engine)
     entries: list[ChatPickerEntry] = []
     for model in visible:
+        source = ModelSource(model.source or "studio")
         profile = CapabilityProfile.model_validate(model.capability_profile or {})
         visual = (
             VisualCapability.model_validate(model.visual_capability)
@@ -129,13 +138,20 @@ async def picker(
         entries.append(
             ChatPickerEntry(
                 id=model.id,
+                source=source,
                 display_name=model.display_name,
                 description=model.description,
                 tags=[Tag(tag) for tag in model.tags or []],
                 context_window=model.context_window,
                 size_class=_size_class(model.memory_estimate_bytes),
-                load_state=load_state_for(model_engines)[0],
-                estimated_warmup_seconds=_warmup(model_engines),
+                load_state=(
+                    load_state_for(model_engines)[0]
+                    if source is ModelSource.STUDIO
+                    else LoadState.LOADED
+                ),
+                estimated_warmup_seconds=(
+                    _warmup(model_engines) if source is ModelSource.STUDIO else None
+                ),
                 verified=profile.verified,
                 accepts_images=accepts_images,
                 max_images=visual.max_images if accepts_images and visual is not None else None,

@@ -98,6 +98,34 @@ class EngineBackend(StrEnum):
     MLX_VLM = "mlx_vlm"
 
 
+class ModelSource(StrEnum):
+    STUDIO = "studio"
+    OPENAI = "openai"
+    ANTHROPIC = "anthropic"
+
+
+class ProviderModelAddRequest(BaseModel):
+    """Admin-curated remote text target; no caller-controlled endpoint or credential."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: ModelSource
+    provider_model_id: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._-]+$")
+    display_name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    context_window: int = Field(ge=256, le=2_000_000)
+    max_output_tokens: int = Field(ge=1, le=16_384)
+    daily_token_budget: int = Field(ge=1, le=10_000_000)
+    tags: list[Tag] = Field(default_factory=list, max_length=10)
+
+    @field_validator("source")
+    @classmethod
+    def _remote_only(cls, value: ModelSource) -> ModelSource:
+        if value is ModelSource.STUDIO:
+            raise ValueError("provider registration requires an external source")
+        return value
+
+
 class VisualCapability(BaseModel):
     """Measured visual limits, populated by validation rather than admin curation."""
 
@@ -248,6 +276,10 @@ class Model(BaseModel):
     chat_template: str | None = None
     capability_profile: CapabilityProfile = Field(default_factory=CapabilityProfile)
     backend: EngineBackend = EngineBackend.MLX_LM
+    source: ModelSource = ModelSource.STUDIO
+    provider_model_id: str | None = None
+    max_output_tokens: int | None = None
+    daily_token_budget: int | None = None
     manifest_sha256: str | None = None
     created_at: datetime
     updated_at: datetime

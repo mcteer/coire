@@ -231,6 +231,10 @@ class ModelRow(Base):
     chat_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     capability_profile: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
     backend: Mapped[str] = mapped_column(String(16), default="mlx_lm", server_default="mlx_lm")
+    source: Mapped[str] = mapped_column(String(16), default="studio", server_default="studio")
+    provider_model_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    daily_token_budget: Mapped[int | None] = mapped_column(Integer, nullable=True)
     visual_capability: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 

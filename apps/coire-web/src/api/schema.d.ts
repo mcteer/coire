@@ -763,6 +763,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/provider-models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Provider Model
+         * @description Register a fixed-provider target; publication is a separate audited edit.
+         */
+        post: operations["add_provider_model_api_v1_admin_provider_models_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/runs": {
         parameters: {
             query?: never;
@@ -2701,6 +2721,8 @@ export interface components {
              * @enum {string}
              */
             size_class: "small" | "medium" | "large" | "unknown";
+            /** @default studio */
+            source: components["schemas"]["ModelSource"];
             /** Tags */
             tags?: components["schemas"]["Tag"][];
             /**
@@ -3642,6 +3664,77 @@ export interface components {
          * @enum {string}
          */
         MemoryReservationState: "pending" | "held" | "releasing" | "released" | "failed";
+        /**
+         * Model
+         * @description The registry record.
+         */
+        Model: {
+            /** @default mlx_lm */
+            backend: components["schemas"]["EngineBackend"];
+            capability_profile?: components["schemas"]["CapabilityProfile"];
+            /** Chat Template */
+            chat_template?: string | null;
+            /** Context Window */
+            context_window?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Daily Token Budget */
+            daily_token_budget?: number | null;
+            /** Description */
+            description?: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Entitlement */
+            entitlement?: string[];
+            /** File Count */
+            file_count: number;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Idle Ttl Seconds */
+            idle_ttl_seconds?: number | null;
+            /** Manifest Sha256 */
+            manifest_sha256?: string | null;
+            /** Max Output Tokens */
+            max_output_tokens?: number | null;
+            /** Memory Estimate Bytes */
+            memory_estimate_bytes: number;
+            /** Placement Policy */
+            placement_policy: string;
+            /** Precision */
+            precision: string;
+            /** Provider Model Id */
+            provider_model_id?: string | null;
+            /** Ready At */
+            ready_at?: string | null;
+            /** Repo Id */
+            repo_id: string;
+            /** Slug */
+            slug: string;
+            /** @default studio */
+            source: components["schemas"]["ModelSource"];
+            state: components["schemas"]["ModelState"];
+            /** State Reason */
+            state_reason?: string | null;
+            /** Tags */
+            tags?: components["schemas"]["Tag"][];
+            /** Total Bytes */
+            total_bytes: number;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** @default admin_only */
+            visibility: components["schemas"]["Visibility"];
+            /** Weight Bytes */
+            weight_bytes: number;
+        };
         /** ModelAddRequest */
         ModelAddRequest: {
             /** Description */
@@ -3770,6 +3863,16 @@ export interface components {
              */
             target_type: "model";
         };
+        /**
+         * ModelSource
+         * @enum {string}
+         */
+        ModelSource: "studio" | "openai" | "anthropic";
+        /**
+         * ModelState
+         * @enum {string}
+         */
+        ModelState: "downloading" | "replicating" | "ready" | "failed" | "retired";
         /** ModelUnpinAction */
         ModelUnpinAction: {
             /**
@@ -4460,6 +4563,27 @@ export interface components {
          * @enum {string}
          */
         ProfileName: "coding" | "general" | "image" | "ops";
+        /**
+         * ProviderModelAddRequest
+         * @description Admin-curated remote text target; no caller-controlled endpoint or credential.
+         */
+        ProviderModelAddRequest: {
+            /** Context Window */
+            context_window: number;
+            /** Daily Token Budget */
+            daily_token_budget: number;
+            /** Description */
+            description?: string | null;
+            /** Display Name */
+            display_name: string;
+            /** Max Output Tokens */
+            max_output_tokens: number;
+            /** Provider Model Id */
+            provider_model_id: string;
+            source: components["schemas"]["ModelSource"];
+            /** Tags */
+            tags?: components["schemas"]["Tag"][];
+        };
         /**
          * QuantizationMode
          * @enum {string}
@@ -6805,6 +6929,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlacementDecision"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_provider_model_api_v1_admin_provider_models_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderModelAddRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Model"];
                 };
             };
             /** @description Validation Error */

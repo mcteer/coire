@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import (
@@ -27,8 +27,16 @@ from fastapi import (
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
-from coire_api.db import DownloadJobRow, EngineProcessRow, ModelCopyRow, ModelRow, NodeRow
+from coire_api.db import (
+    DownloadJobRow,
+    EngineProcessRow,
+    ModelCopyRow,
+    ModelRow,
+    ModelStateTransitionRow,
+    NodeRow,
+)
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.preconditions import require_current
@@ -46,6 +54,8 @@ from coire_core.models.registry import (
     ModelCopy,
     ModelState,
     ModelUpdateRequest,
+    ProviderModelAddRequest,
+    Visibility,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,6 +176,65 @@ async def _get(session: AsyncSession, model_id: uuid.UUID) -> ModelRow:
 
 
 # --------------------------------------------------------------------------- routes
+
+
+@router.post("/provider-models", response_model=Model, status_code=status.HTTP_201_CREATED)
+async def add_provider_model(
+    request: ProviderModelAddRequest,
+    principal: CurrentAdmin,
+    session: SessionDep,
+) -> ModelRow:
+    """Register a fixed-provider target; publication is a separate audited edit."""
+    slug = f"{request.source.value}--{request.provider_model_id}"
+    if await session.scalar(select(ModelRow.id).where(ModelRow.slug == slug)) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "provider model already registered")
+    now = datetime.now(UTC)
+    model = ModelRow(
+        id=uuid.uuid4(),
+        repo_id=f"provider/{request.source.value}/{request.provider_model_id}",
+        slug=slug,
+        display_name=request.display_name,
+        description=request.description,
+        state=ModelState.READY,
+        visibility=Visibility.ADMIN_ONLY,
+        entitlement=[],
+        tags=[tag.value for tag in request.tags],
+        placement_policy="single:auto",
+        precision="remote",
+        weight_bytes=0,
+        total_bytes=0,
+        file_count=0,
+        memory_estimate_bytes=0,
+        context_window=request.context_window,
+        capability_profile={"context_window": request.context_window},
+        source=request.source.value,
+        provider_model_id=request.provider_model_id,
+        max_output_tokens=request.max_output_tokens,
+        daily_token_budget=request.daily_token_budget,
+        created_at=now,
+        updated_at=now,
+        ready_at=now,
+    )
+    session.add(model)
+    await session.flush()
+    session.add(
+        ModelStateTransitionRow(
+            model_id=model.id,
+            from_state=None,
+            to_state=ModelState.READY,
+            reason="admin registered external provider target",
+        )
+    )
+    await write_principal_audit(
+        session,
+        principal=principal,
+        action=AuditAction.PROVIDER_MODEL_ADD,
+        target_type="model",
+        target_id=str(model.id),
+        detail={"source": request.source.value, "provider_model_id": request.provider_model_id},
+    )
+    await session.commit()
+    return model
 
 
 @router.post("/models", status_code=status.HTTP_202_ACCEPTED)

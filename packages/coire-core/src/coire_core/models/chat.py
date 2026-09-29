@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from coire_core.models.files import ChatAttachment, ChatAttachmentSelection
 from coire_core.models.mcp import ApplyResult, McpToolName, PlanResult, ResearchResult
-from coire_core.models.registry import LoadState, Tag
+from coire_core.models.registry import LoadState, ModelSource, Tag
 from coire_core.models.runs import RunActivity
 
 
@@ -25,6 +25,7 @@ class ChatPickerEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: uuid.UUID
+    source: ModelSource = ModelSource.STUDIO
     display_name: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
     tags: list[Tag] = Field(default_factory=list, max_length=10)

@@ -43,19 +43,28 @@ export function ModelPicker({
                 onClick={() => onSelect(model.id)}
               >
                 <strong>{model.display_name}</strong>
+                <small>
+                  {model.source === "studio"
+                    ? "Studio"
+                    : model.source === "openai"
+                      ? "OpenAI"
+                      : "Anthropic"}
+                </small>
                 {model.description && <span>{model.description}</span>}
                 <small>
                   {model.tags?.join(" · ") || "General"} · {contextLabel(model.context_window)} ·{" "}
                   {model.size_class}
                 </small>
                 <small className="chat-load">
-                  {model.load_state === "cold"
-                    ? model.estimated_warmup_seconds == null
-                      ? "Cold · warm-up estimate unavailable"
-                      : "Cold · about " + Math.ceil(model.estimated_warmup_seconds) + " s warm-up"
-                    : model.load_state === "loading"
-                      ? "Warming up"
-                      : "Ready to chat"}
+                  {model.source !== "studio"
+                    ? "Remote · ready"
+                    : model.load_state === "cold"
+                      ? model.estimated_warmup_seconds == null
+                        ? "Cold · warm-up estimate unavailable"
+                        : "Cold · about " + Math.ceil(model.estimated_warmup_seconds) + " s warm-up"
+                      : model.load_state === "loading"
+                        ? "Warming up"
+                        : "Ready to chat"}
                 </small>
               </button>
             ))}

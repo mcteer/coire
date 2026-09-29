@@ -153,7 +153,12 @@ async def test_code_picker_filters_profile_and_verified_apply_variant() -> None:
     general = _model(tags=["general"])
     read_code = _model(tags=["coding"], capability_profile={"verified": False})
     write_code = _model(tags=["coding"], capability_profile={"verified": True})
-    app = _app(principal, _Session([general, read_code, write_code]))
+    remote_code = _model(tags=["coding"], source="openai", capability_profile={"verified": True})
+    app = _app(principal, _Session([general, read_code, write_code, remote_code]))
+    chat = await _request(app, "GET", "/api/v1/chat/models?mode=chat")
+    remote_entry = next(row for row in chat.json()["data"] if row["id"] == str(remote_code.id))
+    assert remote_entry["source"] == "openai"
+    assert remote_entry["load_state"] == "loaded"
     research = await _request(app, "GET", "/api/v1/chat/models?mode=code&action=research")
     assert {row["id"] for row in research.json()["data"]} == {str(read_code.id), str(write_code.id)}
     apply = await _request(app, "GET", "/api/v1/chat/models?mode=code&action=apply")

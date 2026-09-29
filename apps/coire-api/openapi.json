@@ -2947,6 +2947,10 @@
             "title": "Size Class",
             "type": "string"
           },
+          "source": {
+            "$ref": "#/components/schemas/ModelSource",
+            "default": "studio"
+          },
           "tags": {
             "items": {
               "$ref": "#/components/schemas/Tag"
@@ -5304,6 +5308,224 @@
         "title": "MemoryReservationState",
         "type": "string"
       },
+      "Model": {
+        "additionalProperties": false,
+        "description": "The registry record.",
+        "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/EngineBackend",
+            "default": "mlx_lm"
+          },
+          "capability_profile": {
+            "$ref": "#/components/schemas/CapabilityProfile"
+          },
+          "chat_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Template"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "daily_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Token Budget"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "entitlement": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entitlement",
+            "type": "array"
+          },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "idle_ttl_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Ttl Seconds"
+          },
+          "manifest_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Sha256"
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Output Tokens"
+          },
+          "memory_estimate_bytes": {
+            "title": "Memory Estimate Bytes",
+            "type": "integer"
+          },
+          "placement_policy": {
+            "pattern": "^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$",
+            "title": "Placement Policy",
+            "type": "string"
+          },
+          "precision": {
+            "title": "Precision",
+            "type": "string"
+          },
+          "provider_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Model Id"
+          },
+          "ready_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready At"
+          },
+          "repo_id": {
+            "title": "Repo Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ModelSource",
+            "default": "studio"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ModelState"
+          },
+          "state_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Reason"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility",
+            "default": "admin_only"
+          },
+          "weight_bytes": {
+            "title": "Weight Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "repo_id",
+          "slug",
+          "display_name",
+          "state",
+          "placement_policy",
+          "precision",
+          "weight_bytes",
+          "total_bytes",
+          "file_count",
+          "memory_estimate_bytes",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Model",
+        "type": "object"
+      },
       "ModelAddRequest": {
         "additionalProperties": false,
         "properties": {
@@ -5633,6 +5855,26 @@
         ],
         "title": "ModelPinAction",
         "type": "object"
+      },
+      "ModelSource": {
+        "enum": [
+          "studio",
+          "openai",
+          "anthropic"
+        ],
+        "title": "ModelSource",
+        "type": "string"
+      },
+      "ModelState": {
+        "enum": [
+          "downloading",
+          "replicating",
+          "ready",
+          "failed",
+          "retired"
+        ],
+        "title": "ModelState",
+        "type": "string"
       },
       "ModelUnpinAction": {
         "additionalProperties": false,
@@ -7389,6 +7631,76 @@
         ],
         "title": "ProfileName",
         "type": "string"
+      },
+      "ProviderModelAddRequest": {
+        "additionalProperties": false,
+        "description": "Admin-curated remote text target; no caller-controlled endpoint or credential.",
+        "properties": {
+          "context_window": {
+            "maximum": 2000000.0,
+            "minimum": 256.0,
+            "title": "Context Window",
+            "type": "integer"
+          },
+          "daily_token_budget": {
+            "maximum": 10000000.0,
+            "minimum": 1.0,
+            "title": "Daily Token Budget",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "max_output_tokens": {
+            "maximum": 16384.0,
+            "minimum": 1.0,
+            "title": "Max Output Tokens",
+            "type": "integer"
+          },
+          "provider_model_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Provider Model Id",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ModelSource"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "maxItems": 10,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source",
+          "provider_model_id",
+          "display_name",
+          "context_window",
+          "max_output_tokens",
+          "daily_token_budget"
+        ],
+        "title": "ProviderModelAddRequest",
+        "type": "object"
       },
       "QuantizationMode": {
         "enum": [
@@ -12329,6 +12641,71 @@
         "summary": "Get Placement",
         "tags": [
           "admin: placement"
+        ]
+      }
+    },
+    "/api/v1/admin/provider-models": {
+      "post": {
+        "description": "Register a fixed-provider target; publication is a separate audited edit.",
+        "operationId": "add_provider_model_api_v1_admin_provider_models_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderModelAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Model"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Provider Model",
+        "tags": [
+          "admin: models"
         ]
       }
     },
