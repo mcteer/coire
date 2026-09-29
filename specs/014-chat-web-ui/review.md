@@ -127,3 +127,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Accepted text turns now receive a process-owned 30-second lease, renewed every five seconds by the live stream. Enabled API processes sweep stale turns on startup and bounded intervals. A locked pass commits one `interrupted` or `stopped` terminal, retains saved partial text and frees the conversation's active-turn slot without restarting generation.
 - Unit tests cover expired running/stopping turns, repeated sweeps and fresh leases. The existing dashboard/alert show recovery outcomes and failed passes; the runbook describes inspection and rollback. Parent T029 remains open for real database/race acceptance and cross-tab recovery.
+
+## Navigation Stop gate (014s)
+
+- Leaving a conversation with a locally owned stream now persists `navigation` Stop before aborting transport. Viewing tabs can navigate without stopping another tab's generator. Late events from an aborted stream cannot replace the newly selected conversation. Disconnect cleanup checks the durable Stop before finalizing terminal state and usage.
+- Browser and backend tests cover navigation Stop, draft separation and the disconnect race. Parent T034 remains open for observer reconciliation, explicit retry/continue and full tab-close acceptance.

@@ -248,10 +248,15 @@ export function useConversation(ownerId: string) {
               action: "chat",
             };
       pending.current = { key, body };
-      await stream.send(current.id, body, (event) => onEvent(event, input));
+      const generation = selection.current;
+      await stream.send(current.id, body, (event) => {
+        if (selection.current === generation) onEvent(event, input);
+      });
     } catch (cause) {
-      setError(String(cause));
-      setStatus("Send failed. Check the message and try again.");
+      if (!(cause instanceof DOMException && cause.name === "AbortError")) {
+        setError(String(cause));
+        setStatus("Send failed. Check the message and try again.");
+      }
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -270,7 +275,9 @@ export function useConversation(ownerId: string) {
   };
 
   const openConversation = async (id: string) => {
-    if (busyRef.current || stream.active) return;
+    if (conversation?.id === id) return;
+    if (busyRef.current && !conversation?.active_turn_id) return;
+    if (!(await stopOwnedStreamForNavigation())) return;
     remember(conversation?.id ?? "new", draft, selectedId);
     const generation = ++selection.current;
     setHistoryLoading(true);
@@ -334,8 +341,9 @@ export function useConversation(ownerId: string) {
     }
   };
 
-  const newConversation = () => {
-    if (busyRef.current || stream.active) return;
+  const newConversation = async () => {
+    if (busyRef.current && !conversation?.active_turn_id) return;
+    if (!(await stopOwnedStreamForNavigation())) return;
     remember(conversation?.id ?? "new", draft, selectedId);
     selection.current += 1;
     pending.current = null;
@@ -349,6 +357,18 @@ export function useConversation(ownerId: string) {
     setOlderPosition(null);
     setStatus(null);
     setError(null);
+  };
+
+  const stopOwnedStreamForNavigation = async (): Promise<boolean> => {
+    if (!stream.active || !conversation?.active_turn_id) return true;
+    try {
+      await stopChatTurn(conversation.id, conversation.active_turn_id, "navigation");
+      stream.abort();
+      return true;
+    } catch (cause) {
+      setError(String(cause));
+      return false;
+    }
   };
 
   const stop = async () => {

@@ -481,18 +481,18 @@ async def native_stream(
             await heartbeat
         try:
             if not terminal_saved and not persistence_failed:
-                await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
+                stopped = stop_signal.is_set() or await _stop_requested(admission.turn.id)
+                await usage.finish(
+                    UsageOutcome.STOPPED if stopped else UsageOutcome.DISCONNECTED,
+                    failure_code="user_stop" if stopped else "client_disconnected",
+                )
                 try:
                     with suppress(ChatNotFound, ChatConflict):
                         await persist_native_event(
                             "terminal",
                             admission,
-                            state="stopped" if stop_signal.is_set() else "interrupted",
-                            safe_error=(
-                                "stopped by user"
-                                if stop_signal.is_set()
-                                else "connection interrupted"
-                            ),
+                            state="stopped" if stopped else "interrupted",
+                            safe_error=("stopped by user" if stopped else "connection interrupted"),
                             settings=settings,
                         )
                 except Exception as exc:

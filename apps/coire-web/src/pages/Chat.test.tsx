@@ -184,6 +184,70 @@ test("Stop requests server cancellation and keeps the saved partial answer", asy
   expect(screen.getByRole("status")).toHaveTextContent("stopped by user");
 });
 
+test("leaving an owned stream requests navigation Stop before switching conversations", async () => {
+  const accepted = {
+    type: "turn.accepted",
+    turn: {
+      id: turnId,
+      conversation_id: conversationId,
+      client_request_id: crypto.randomUUID(),
+      accepted_revision: 1,
+      input_message_id: inputId,
+      assistant_message_id: answerId,
+      model_id: modelId,
+      model_display_name: "Friendly model",
+      state: "accepted",
+      action: "chat",
+      created_at: "2026-09-28T00:00:00Z",
+      updated_at: "2026-09-28T00:00:00Z",
+    },
+  };
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+    if (url === "/api/v1/chat/models") return Promise.resolve(json({ data: [model] }));
+    if (url.startsWith("/api/v1/chat/conversations?"))
+      return Promise.resolve(json({ data: [], next_cursor: null }));
+    if (url === "/api/v1/chat/conversations") return Promise.resolve(json(conversation, 201));
+    if (url.endsWith(`/turns/${turnId}/stop`))
+      return Promise.resolve(json({ ...accepted.turn, state: "stop_requested" }));
+    if (url.endsWith("/turns")) {
+      init?.signal?.addEventListener("abort", () => {
+        controller.error(new DOMException("aborted", "AbortError"));
+      });
+      return Promise.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(value) {
+              controller = value;
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+    }
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  await screen.findByText("Friendly model");
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Navigate away" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+  await act(async () => {
+    controller.enqueue(new TextEncoder().encode(event(1, accepted)));
+  });
+  expect(screen.getByRole("button", { name: "New conversation" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+  expect(JSON.parse(fetchMock.mock.calls[4]?.[1]?.body as string)).toEqual({
+    reason: "navigation",
+  });
+  await waitFor(() => expect(screen.queryByText("Navigate away")).toBeNull());
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
 test("preserves the draft when admission refuses the send", async () => {
   const fetchMock = vi
     .fn()
@@ -547,7 +611,9 @@ test("keeps separate unsent drafts while navigating saved and new conversations"
     target: { value: "Saved draft" },
   });
   fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
-  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("New draft");
+  await waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("New draft"),
+  );
   fireEvent.click(screen.getByRole("button", { name: /Draft notes/ }));
   await waitFor(() =>
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Saved draft"),

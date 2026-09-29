@@ -338,6 +338,52 @@ async def test_owner_stop_during_cold_load_finishes_without_generation(
     assert chunks[-1].startswith(b"event: turn.terminal")
 
 
+async def test_navigation_abort_after_durable_stop_saves_stopped_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "resolve_model", AsyncMock(return_value=_resolved(admission)))
+    stopped = False
+    terminal_states: list[str] = []
+    outcomes: list[UsageOutcome] = []
+
+    async def stop_requested(_turn_id: uuid.UUID) -> bool:
+        return stopped
+
+    async def upstream(*_args: object) -> AsyncIterator[bytes]:
+        yield b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'
+        await asyncio.Event().wait()
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        if kind == "terminal":
+            terminal_states.append(str(kwargs.get("state")))
+        return _saved_event(admission, kind, 2, **kwargs)
+
+    async def persist_usage(**kwargs: object) -> None:
+        outcomes.append(kwargs["outcome"])  # type: ignore[arg-type]
+
+    monkeypatch.setattr(streaming, "_stop_requested", stop_requested)
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist_usage)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    source = native_stream(admission, principal, request, Settings(_secrets_dir="/nonexistent"))  # type: ignore[arg-type,call-arg]
+    assert b"turn.accepted" in await anext(source)
+    assert b"turn.status" in await anext(source)
+    assert b"partial" in await anext(source)
+    stopped = True
+    await source.aclose()
+    assert terminal_states == ["stopped"]
+    assert outcomes == [UsageOutcome.STOPPED]
+
+
 async def consume_native(
     admission: Admission, principal: Principal, request: object
 ) -> list[bytes]:

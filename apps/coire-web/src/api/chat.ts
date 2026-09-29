@@ -52,10 +52,14 @@ export function getChatTurn(conversationId: string, turnId: string): Promise<Cha
   );
 }
 
-export function stopChatTurn(conversationId: string, turnId: string): Promise<ChatTurn> {
+export function stopChatTurn(
+  conversationId: string,
+  turnId: string,
+  reason: components["schemas"]["ChatStopRequest"]["reason"] = "user_stop",
+): Promise<ChatTurn> {
   return api<ChatTurn>(
     `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/turns/${encodeURIComponent(turnId)}/stop`,
-    { method: "POST", body: JSON.stringify({ reason: "user_stop" }) },
+    { method: "POST", body: JSON.stringify({ reason }) },
   );
 }
 

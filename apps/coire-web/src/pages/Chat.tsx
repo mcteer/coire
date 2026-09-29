@@ -30,8 +30,8 @@ function ChatSession({ ownerId }: { ownerId: string }) {
         <button
           className="button"
           type="button"
-          onClick={chat.newConversation}
-          disabled={chat.active}
+          onClick={() => void chat.newConversation()}
+          disabled={chat.active && !chat.conversation?.active_turn_id}
         >
           New conversation
         </button>
@@ -40,7 +40,7 @@ function ChatSession({ ownerId }: { ownerId: string }) {
         <ConversationHistory
           conversations={chat.history}
           selectedId={chat.conversation?.id ?? null}
-          active={chat.active}
+          active={chat.active && !chat.conversation?.active_turn_id}
           loading={chat.historyLoading}
           hasMore={Boolean(chat.historyCursor)}
           onOpen={(id) => void chat.openConversation(id)}
