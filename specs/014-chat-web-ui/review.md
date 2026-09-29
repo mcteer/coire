@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Shared VLM request outcome metric (2026-09-29)
+
+- The existing once-only gateway usage tracker now records `coire_vision_requests_total{outcome}` after a registry-resolved bare VLM request finishes, including native Chat and compatible `/v1` traffic. A unit test proves duplicate finish calls emit one fixed outcome label without model or content. The Chat dashboard and `CoireVisionRequestsFailed` alert consume it. Focused gateway/native-stream tests passed 29; changed source/test mypy and Ruff/format passed. Parent T068 remains open for the specified coding, node and agent path correlation.
+
 ## Persisted active-turn gauge (2026-09-29)
 
 - API maintenance now samples the committed count of plain Chat turns in accepted/queued/loading/running/stop-requested states every five seconds. The gauge survives API restart and includes turns owned by another API process; the dashboard uses `max` across processes. Nine focused maintenance tests passed; source mypy, Ruff/format, dashboard JSON and diff checks passed. A standalone mypy invocation on the pre-existing test module still reports its old unreachable assertion at line 164; repository strict source mypy does not include tests. Parent T068 remains open for coding, node and agent correlation coverage.

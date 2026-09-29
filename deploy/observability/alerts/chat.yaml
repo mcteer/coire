@@ -31,3 +31,9 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: Native Chat Stop acknowledgement exceeded five seconds
+      - alert: CoireVisionRequestsFailed
+        expr: sum(increase(coire_vision_requests_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A resolved bare VLM request failed

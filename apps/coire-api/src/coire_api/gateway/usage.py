@@ -18,10 +18,11 @@ from coire_api.gateway.telemetry import (
     request_counter,
     request_duration_ms,
     token_counter,
+    vision_requests_total,
 )
 from coire_api.identity.limits import settle_usage
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
-from coire_core.models.registry import ModelSource
+from coire_core.models.registry import EngineBackend, ModelSource
 
 
 @dataclass(slots=True)
@@ -34,6 +35,7 @@ class UsageTracker:
     model_id: uuid.UUID | None = None
     engine_id: uuid.UUID | None = None
     provider_source: ModelSource = ModelSource.STUDIO
+    backend: EngineBackend | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
     reserved_tokens: int = 0
@@ -48,6 +50,7 @@ class UsageTracker:
         self.model_id = resolved.model_id
         self.engine_id = resolved.engine_id
         self.provider_source = resolved.source
+        self.backend = resolved.backend
 
     async def finish(self, outcome: UsageOutcome, *, failure_code: str | None = None) -> None:
         async with self._lock:
@@ -64,6 +67,8 @@ class UsageTracker:
         request_counter.add(1, attributes)
         request_duration_ms.record(duration_ms, attributes)
         inflight_counter.add(-1, {"protocol": self.protocol.value})
+        if self.backend is EngineBackend.MLX_VLM:
+            vision_requests_total.add(1, {"outcome": outcome.value})
         if outcome is UsageOutcome.FAILED:
             failure_counter.add(1, attributes)
         if outcome is UsageOutcome.SUCCEEDED:
