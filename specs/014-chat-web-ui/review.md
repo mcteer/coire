@@ -142,3 +142,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - The shared SSE hook module now follows a selected conversation using scoped GET and bounded reconnects, pauses while the tab owns a POST stream, and stops on revoked/deleted access. Observer events refresh saved detail at a bounded cadence; cursor replacement snapshots update the selected view. Navigation generation checks discard stale reads.
 - Browser tests cover scoped GET without POST and another tab's answer appearing within two seconds. Parent T034 remains open for full two-tab integration and explicit retry/continue.
+
+## Versioned history edit gate (014v)
+
+- Added locked owner/revision PATCH for title and eligible selected-model edits, with active-turn model conflict and persisted `conversation.updated` events. The browser history drawer exposes a keyboard-accessible rename form, retains rejected text and reloads revisions after conflict.
+- Service, route and browser tests cover owner/foreign/stale/Origin and accepted/refused rename. Parent T027/T028/T031 remain open for deletion, purge, retry and broader version reconciliation.

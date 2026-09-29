@@ -901,7 +901,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** Patch Chat Conversation */
+        patch: operations["patch_chat_conversation_api_v1_chat_conversations__conversation_id__patch"];
         trace?: never;
     };
     "/api/v1/chat/conversations/{conversation_id}/events": {
@@ -2374,6 +2375,17 @@ export interface components {
             data?: components["schemas"]["ChatConversation"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /** ChatConversationUpdate */
+        ChatConversationUpdate: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Mode */
+            mode?: ("chat" | "code") | null;
+            /** Model Id */
+            model_id?: string | null;
+            /** Title */
+            title?: string | null;
         };
         /** ChatConversationUpdated */
         ChatConversationUpdated: {
@@ -6871,6 +6883,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatConversationDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    patch_chat_conversation_api_v1_chat_conversations__conversation_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatConversationUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversation"];
                 };
             };
             /** @description Validation Error */

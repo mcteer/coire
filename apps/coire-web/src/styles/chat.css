@@ -32,6 +32,22 @@
   display: grid;
   gap: var(--s-2);
 }
+.chat-history-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s-2);
+}
+.chat-history-item form {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+.chat-history-item form input {
+  min-width: 0;
+  flex: 1 1 10rem;
+}
 .chat-history-items button {
   display: grid;
   gap: var(--s-1);

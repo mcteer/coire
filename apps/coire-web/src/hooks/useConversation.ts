@@ -7,6 +7,7 @@ import {
   listChatModels,
   listChatConversations,
   stopChatTurn,
+  updateChatConversation,
   type ChatConversation,
   type ChatEvent,
   type ChatMessage,
@@ -459,6 +460,31 @@ export function useConversation(ownerId: string) {
     }
   };
 
+  const rename = async (id: string, title: string, expectedRevision: number): Promise<boolean> => {
+    try {
+      const updated = await updateChatConversation(id, {
+        expected_revision: expectedRevision,
+        title: title.trim(),
+      });
+      setHistory((rows) => rows.map((row) => (row.id === id ? updated : row)));
+      setConversation((current) => (current?.id === id ? updated : current));
+      setError(null);
+      return true;
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 409) {
+        try {
+          const page = await listChatConversations();
+          setHistory(page.data ?? []);
+          setHistoryCursor(page.next_cursor ?? null);
+        } catch {
+          // Preserve the original edit conflict for the user.
+        }
+      }
+      setError(String(cause));
+      return false;
+    }
+  };
+
   return {
     models,
     selectedId,
@@ -478,6 +504,7 @@ export function useConversation(ownerId: string) {
     active: busy || stream.active,
     stopPending,
     stop,
+    rename,
     send,
     newConversation,
     openConversation,

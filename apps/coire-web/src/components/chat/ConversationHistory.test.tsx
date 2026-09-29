@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import type { ChatConversation } from "../../api/chat";
 import { ConversationHistory } from "./ConversationHistory";
@@ -54,4 +54,29 @@ test("prevents history navigation during active generation", () => {
     "aria-current",
     "page",
   );
+});
+
+test("renames with the saved revision and keeps the edit on refusal", async () => {
+  const rename = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+  render(
+    <ConversationHistory
+      conversations={[conversation]}
+      selectedId={conversation.id}
+      active={false}
+      loading={false}
+      hasMore={false}
+      onOpen={() => {}}
+      onMore={() => {}}
+      onRename={rename}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Rename conversation" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Conversation title" }), {
+    target: { value: "Updated notes" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save title" }));
+  await waitFor(() => expect(rename).toHaveBeenCalledWith(conversation.id, "Updated notes", 2));
+  expect(screen.getByRole("textbox", { name: "Conversation title" })).toHaveValue("Updated notes");
+  fireEvent.click(screen.getByRole("button", { name: "Save title" }));
+  await waitFor(() => expect(screen.queryByRole("textbox", { name: "Conversation title" })).toBeNull());
 });

@@ -7,7 +7,7 @@ import binascii
 import json
 import uuid
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
 
 from sqlalchemy import and_, or_, select
@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.auth import Principal
 from coire_api.db import (
     ChatConversationRow,
+    ChatEventRow,
     ChatMessageRow,
     ChatTurnRow,
     EngineProcessRow,
@@ -28,12 +29,16 @@ from coire_core.models.chat import (
     ChatConversationCreate,
     ChatConversationDetail,
     ChatConversationPage,
+    ChatConversationUpdate,
+    ChatConversationUpdated,
+    ChatEvent,
     ChatMessagePageQuery,
     ChatPageQuery,
     ChatPickerEntry,
     ChatPickerResponse,
 )
 from coire_core.models.registry import CapabilityProfile, EngineBackend, Tag, VisualCapability
+from coire_core.settings import Settings
 
 
 def _size_class(memory_bytes: int) -> Literal["small", "medium", "large", "unknown"]:
@@ -240,6 +245,68 @@ async def get_conversation_detail(
         event_cursor=row.event_cursor,
         next_message_position=page[0].position if len(newest) > query.limit and page else None,
     )
+
+
+async def update_conversation(
+    session: AsyncSession,
+    principal: Principal,
+    conversation_id: uuid.UUID,
+    body: ChatConversationUpdate,
+    settings: Settings,
+) -> ChatConversation:
+    """Apply a versioned owner edit and commit its observer event atomically."""
+    row = await session.scalar(
+        select(ChatConversationRow)
+        .where(
+            ChatConversationRow.id == conversation_id,
+            ChatConversationRow.owner_user_id == principal.user_id,
+            ChatConversationRow.deleted_at.is_(None),
+        )
+        .with_for_update()
+    )
+    if row is None:
+        raise ChatNotFound()
+    if row.revision != body.expected_revision:
+        raise ChatConflict("conversation changed; reload before editing")
+    if body.mode is not None and body.mode != row.mode:
+        raise ChatConflict("code mode is not available yet")
+    changed = False
+    if body.model_id is not None and body.model_id != row.selected_model_id:
+        if row.active_turn_id is not None:
+            raise ChatConflict("cannot change model during an active turn")
+        model = await session.get(ModelRow, body.model_id)
+        if model is None or not chat_model_eligible(model, principal):
+            raise ChatNotFound()
+        row.selected_model_id = model.id
+        changed = True
+    if body.title is not None and body.title != row.title:
+        row.title = body.title
+        changed = True
+    if not changed:
+        return project_conversation(row)
+    now = datetime.now(UTC)
+    row.revision += 1
+    row.event_cursor += 1
+    row.updated_at = now
+    event = ChatEvent(
+        conversation_id=row.id,
+        cursor=row.event_cursor,
+        created_at=now,
+        payload=ChatConversationUpdated(conversation=project_conversation(row), reason="edit"),
+    )
+    session.add(
+        ChatEventRow(
+            id=uuid.uuid4(),
+            conversation_id=row.id,
+            cursor=event.cursor,
+            type=event.payload.type,
+            payload=event.payload.model_dump(mode="json"),
+            created_at=now,
+            expires_at=now + timedelta(hours=settings.chat_event_retention_hours),
+        )
+    )
+    await session.commit()
+    return project_conversation(row)
 
 
 async def create_conversation(

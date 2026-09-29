@@ -7,6 +7,7 @@ export type ChatConversation = components["schemas"]["ChatConversation"];
 export type ChatConversationPage = components["schemas"]["ChatConversationPage"];
 export type ChatConversationDetail = components["schemas"]["ChatConversationDetail"];
 export type ChatConversationCreate = components["schemas"]["ChatConversationCreate"];
+export type ChatConversationUpdate = components["schemas"]["ChatConversationUpdate"];
 export type ChatTurnCreate = components["schemas"]["ChatTurnCreate"];
 export type ChatTurnDetail = components["schemas"]["ChatTurnDetail"];
 export type ChatTurn = components["schemas"]["ChatTurn"];
@@ -21,6 +22,16 @@ export function listChatModels(): Promise<ChatPickerResponse> {
 export function createChatConversation(body: ChatConversationCreate): Promise<ChatConversation> {
   return api<ChatConversation>("/api/v1/chat/conversations", {
     method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function updateChatConversation(
+  conversationId: string,
+  body: ChatConversationUpdate,
+): Promise<ChatConversation> {
+  return api<ChatConversation>(`/api/v1/chat/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "PATCH",
     body: JSON.stringify(body),
   });
 }

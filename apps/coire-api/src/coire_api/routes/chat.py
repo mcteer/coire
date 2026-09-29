@@ -15,6 +15,7 @@ from coire_api.chat.service import (
     get_conversation_detail,
     list_conversations,
     picker,
+    update_conversation,
 )
 from coire_api.chat.streaming import native_stream, observe_conversation, replay_saved_events
 from coire_api.chat.telemetry import requests_total, tracer
@@ -26,6 +27,7 @@ from coire_core.models.chat import (
     ChatConversationCreate,
     ChatConversationDetail,
     ChatConversationPage,
+    ChatConversationUpdate,
     ChatEvent,
     ChatMessagePageQuery,
     ChatPageQuery,
@@ -147,6 +149,33 @@ async def get_chat_conversation(
             raise ChatModelUnavailable("chat service temporarily unavailable") from None
         requests_total.add(1, {"operation": "history_detail", "outcome": "succeeded"})
         return detail
+
+
+@router.patch("/conversations/{conversation_id}", response_model=ChatConversation)
+async def patch_chat_conversation(
+    conversation_id: uuid.UUID,
+    body: ChatConversationUpdate,
+    principal: CurrentChatUser,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> ChatConversation:
+    with tracer.start_as_current_span("coire.api.chat.update"):
+        try:
+            updated = await update_conversation(session, principal, conversation_id, body, settings)
+        except CoireError:
+            requests_total.add(1, {"operation": "update", "outcome": "refused"})
+            raise
+        except Exception as exc:
+            requests_total.add(1, {"operation": "update", "outcome": "failed"})
+            logger.error(
+                "chat update failed user_id=%s conversation_id=%s error_type=%s",
+                principal.user_id,
+                conversation_id,
+                type(exc).__name__,
+            )
+            raise ChatModelUnavailable("chat service temporarily unavailable") from None
+        requests_total.add(1, {"operation": "update", "outcome": "succeeded"})
+        return updated
 
 
 @router.get(
