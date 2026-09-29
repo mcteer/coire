@@ -1,4 +1,5 @@
 import { Composer } from "../components/chat/Composer";
+import { AttachmentList } from "../components/chat/AttachmentList";
 import { ConversationHistory } from "../components/chat/ConversationHistory";
 import { MessageList } from "../components/chat/MessageList";
 import { ModelPicker } from "../components/chat/ModelPicker";
@@ -75,11 +76,39 @@ function ChatSession({ ownerId }: { ownerId: string }) {
             </button>
           )}
           <MessageList messages={chat.messages} />
+          <AttachmentList
+            conversationId={chat.conversation?.id ?? null}
+            attachments={chat.attachments}
+            selections={chat.selections}
+            busy={
+              !chat.selectedId ||
+              chat.active ||
+              chat.fileBusy ||
+              Boolean(chat.conversation?.active_turn_id)
+            }
+            onUpload={(file) => void chat.uploadFile(file)}
+            onProcess={(fileId, operation, pages) =>
+              void chat.processFile(fileId, operation, pages)
+            }
+            onSelect={chat.selectFile}
+          />
+          {chat.selections.length > 0 && (
+            <p className="muted" role="status">
+              File selections are saved here, but sending files is unavailable until visual and text
+              context handling is enabled.
+            </p>
+          )}
           <Composer
             value={chat.draft}
             onChange={chat.setDraft}
             onSend={() => void chat.send()}
-            disabled={!chat.selectedId || chat.active || Boolean(chat.conversation?.active_turn_id)}
+            disabled={
+              !chat.selectedId ||
+              chat.active ||
+              chat.fileBusy ||
+              chat.selections.length > 0 ||
+              Boolean(chat.conversation?.active_turn_id)
+            }
             status={chat.status}
           />
           {chat.conversation?.active_turn_id && (

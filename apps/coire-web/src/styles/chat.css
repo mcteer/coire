@@ -170,6 +170,66 @@
 .chat-composer-bottom [role="status"] {
   color: var(--ink-2);
 }
+.chat-files {
+  padding: var(--s-4);
+  display: grid;
+  gap: var(--s-3);
+}
+.chat-files-heading,
+.chat-file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.chat-files-heading input[type="file"] {
+  max-width: 100%;
+}
+.chat-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--s-3);
+}
+.chat-file-list > li {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--s-3);
+  display: grid;
+  gap: var(--s-2);
+}
+.chat-file-row label,
+.chat-file-pages label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+.chat-file-pages fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.chat-file-pages fieldset label {
+  min-width: 2rem;
+}
+.chat-file-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+}
+.chat-file-previews figure {
+  margin: 0;
+}
+.chat-file-previews img {
+  display: block;
+  max-width: 180px;
+  max-height: 180px;
+  object-fit: contain;
+}
 @media (max-width: 1199px) {
   .chat-layout {
     grid-template-columns: 1fr;

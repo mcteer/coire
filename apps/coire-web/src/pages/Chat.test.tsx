@@ -103,6 +103,56 @@ test("shows accepted input, streamed answer and model snapshot", async () => {
   expect(loadChatDrafts(conversation.owner_id).get(conversationId)).toBeUndefined();
 });
 
+test("creates a conversation before uploading and keeps selected files out of text-only sends", async () => {
+  const fileId = "00000000-0000-0000-0000-000000000019";
+  const attachment = {
+    id: fileId,
+    owner_id: conversation.owner_id,
+    conversation_id: conversationId,
+    filename: "notes.txt",
+    detected_type: "text/plain",
+    original_bytes: 5,
+    original_sha256: "a".repeat(64),
+    derived_bytes: 0,
+    state: "ready",
+    created_at: "2026-09-28T00:00:00Z",
+    updated_at: "2026-09-28T00:00:00Z",
+  };
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [], next_cursor: null }))
+    .mockResolvedValueOnce(json(conversation, 201))
+    .mockResolvedValueOnce(json({ ...attachment, state: "processing" }, 202))
+    .mockResolvedValueOnce(
+      json({
+        conversation: { ...conversation, revision: 2 },
+        messages: [],
+        attachments: [attachment],
+        event_cursor: 1,
+      }),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  await screen.findByText("Friendly model");
+  fireEvent.change(screen.getByLabelText("Add file"), {
+    target: { files: [new File(["hello"], "notes.txt", { type: "text/plain" })] },
+  });
+  await waitFor(() => expect(screen.getByText("notes.txt")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByLabelText("notes.txt")).toBeEnabled());
+  expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/v1/chat/conversations");
+  expect(fetchMock.mock.calls[3]?.[0]).toBe(`/api/v1/chat/conversations/${conversationId}/files`);
+  const form = fetchMock.mock.calls[3]?.[1]?.body as FormData;
+  expect(form.get("expected_revision")).toBe("1");
+  fireEvent.click(screen.getByLabelText("notes.txt"));
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Read it" },
+  });
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  expect(screen.getByText(/sending files is unavailable/)).toBeInTheDocument();
+  expect(fetchMock).toHaveBeenCalledTimes(5);
+});
+
 test("Stop requests server cancellation and keeps the saved partial answer", async () => {
   const accepted = {
     type: "turn.accepted",
@@ -300,7 +350,11 @@ test("a selected viewing tab reconciles another tab's saved turn without a POST"
   render(<Chat ownerId={conversation.owner_id} />);
   fireEvent.click(await screen.findByRole("button", { name: /Shared view/ }));
   expect(await screen.findByText("Other tab answer", {}, { timeout: 2000 })).toBeInTheDocument();
-  expect(fetchMock.mock.calls.every(([url, options]) => !String(url).endsWith("/turns") || options?.method !== "POST")).toBe(true);
+  expect(
+    fetchMock.mock.calls.every(
+      ([url, options]) => !String(url).endsWith("/turns") || options?.method !== "POST",
+    ),
+  ).toBe(true);
 });
 
 test("preserves the draft when admission refuses the send", async () => {

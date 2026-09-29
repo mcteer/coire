@@ -16,6 +16,57 @@ export type ChatTurn = components["schemas"]["ChatTurn"];
 export type ChatEvent = components["schemas"]["ChatEvent"];
 export type ChatMessage = components["schemas"]["ChatMessage-Output"];
 export type ChatPickerEntry = components["schemas"]["ChatPickerEntry"];
+export type ChatAttachment = components["schemas"]["ChatAttachment"];
+export type ChatAttachmentSelection = components["schemas"]["ChatAttachmentSelection"];
+export type ChatFileProcessRequest = components["schemas"]["ChatFileProcessRequest"];
+
+function filePath(conversationId: string, fileId: string): string {
+  return `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/files/${encodeURIComponent(fileId)}`;
+}
+
+export async function uploadChatFile(
+  conversationId: string,
+  file: File,
+  expectedRevision: number,
+): Promise<ChatAttachment> {
+  const form = new FormData();
+  form.set("filename", file.name);
+  form.set("expected_revision", String(expectedRevision));
+  form.set("file", file);
+  const response = await fetch(
+    `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/files`,
+    { method: "POST", credentials: "same-origin", body: form },
+  );
+  if (!response.ok) throw await apiError(response);
+  return (await response.json()) as ChatAttachment;
+}
+
+export function getChatFile(conversationId: string, fileId: string): Promise<ChatAttachment> {
+  return api<ChatAttachment>(filePath(conversationId, fileId));
+}
+
+export function processChatFile(
+  conversationId: string,
+  fileId: string,
+  body: ChatFileProcessRequest,
+): Promise<ChatAttachment> {
+  return api<ChatAttachment>(`${filePath(conversationId, fileId)}/process`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function chatFileDownloadUrl(conversationId: string, fileId: string): string {
+  return `${filePath(conversationId, fileId)}/content`;
+}
+
+export function chatFilePreviewUrl(
+  conversationId: string,
+  fileId: string,
+  assetId: string,
+): string {
+  return `${filePath(conversationId, fileId)}/previews/${encodeURIComponent(assetId)}`;
+}
 
 export function listChatModels(): Promise<ChatPickerResponse> {
   return api<ChatPickerResponse>("/api/v1/chat/models");
@@ -42,10 +93,13 @@ export function deleteChatConversation(
   conversationId: string,
   body: ChatDeleteRequest,
 ): Promise<ChatDeletionResult> {
-  return api<ChatDeletionResult>(`/api/v1/chat/conversations/${encodeURIComponent(conversationId)}`, {
-    method: "DELETE",
-    body: JSON.stringify(body),
-  });
+  return api<ChatDeletionResult>(
+    `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 export function listChatConversations(

@@ -5,10 +5,15 @@ import {
   createChatConversation,
   deleteChatConversation,
   getChatConversation,
+  getChatFile,
   listChatModels,
   listChatConversations,
+  processChatFile,
   stopChatTurn,
   updateChatConversation,
+  uploadChatFile,
+  type ChatAttachment,
+  type ChatAttachmentSelection,
   type ChatConversation,
   type ChatEvent,
   type ChatMessage,
@@ -24,6 +29,9 @@ export function useConversation(ownerId: string) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [selections, setSelections] = useState<ChatAttachmentSelection[]>([]);
+  const [fileBusy, setFileBusy] = useState(false);
   const [history, setHistory] = useState<ChatConversation[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [olderPosition, setOlderPosition] = useState<number | null>(null);
@@ -186,9 +194,9 @@ export function useConversation(ownerId: string) {
             ? "Waiting for capacity…"
             : payload.state === "stop_requested"
               ? "Stopping response…"
-            : payload.state === "running"
-              ? "Writing response…"
-              : "Preparing response…",
+              : payload.state === "running"
+                ? "Writing response…"
+                : "Preparing response…",
       );
     } else if (payload.type === "message.delta") {
       setMessages((current) =>
@@ -228,7 +236,14 @@ export function useConversation(ownerId: string) {
 
   const send = async () => {
     const input = draft.trim();
-    if (!input || !selectedId || busyRef.current || stream.active || conversation?.active_turn_id)
+    if (
+      !input ||
+      !selectedId ||
+      selections.length ||
+      busyRef.current ||
+      stream.active ||
+      conversation?.active_turn_id
+    )
       return;
     busyRef.current = true;
     setBusy(true);
@@ -281,6 +296,76 @@ export function useConversation(ownerId: string) {
     remember(conversation?.id ?? "new", draft, id);
   };
 
+  const refreshFiles = async (id: string, generation: number) => {
+    const detail = await getChatConversation(id);
+    if (selection.current !== generation) return;
+    setConversation(detail.conversation);
+    setAttachments(detail.attachments ?? []);
+  };
+
+  const uploadFile = async (file: File) => {
+    if (fileBusy || busyRef.current || stream.active || conversation?.active_turn_id || !selectedId)
+      return;
+    setFileBusy(true);
+    setError(null);
+    const generation = selection.current;
+    let current = conversation;
+    try {
+      if (!current) {
+        current = await createChatConversation({ mode: "chat", model_id: selectedId });
+        if (selection.current !== generation) return;
+        setConversation(current);
+        setHistory((rows) => [current!, ...rows.filter((row) => row.id !== current!.id)]);
+        remember(current.id, draft, selectedId);
+        forget("new");
+      }
+      const uploaded = await uploadChatFile(current.id, file, current.revision);
+      if (selection.current !== generation) return;
+      setAttachments((rows) => [...rows.filter((row) => row.id !== uploaded.id), uploaded]);
+      await refreshFiles(current.id, generation);
+    } catch (cause) {
+      if (selection.current === generation) {
+        setError(String(cause));
+        if (current) await refreshFiles(current.id, generation).catch(() => {});
+      }
+    } finally {
+      setFileBusy(false);
+    }
+  };
+
+  const processFile = async (fileId: string, operation: "inspect" | "render", pages?: number[]) => {
+    const current = conversation;
+    if (!current || fileBusy || busyRef.current || stream.active || current.active_turn_id) return;
+    setFileBusy(true);
+    setError(null);
+    const generation = selection.current;
+    try {
+      const updated = await processChatFile(current.id, fileId, {
+        request_id: crypto.randomUUID(),
+        expected_revision: current.revision,
+        operation,
+        selected_pages: pages ?? [],
+      });
+      if (selection.current !== generation) return;
+      setAttachments((rows) => rows.map((row) => (row.id === fileId ? updated : row)));
+      await refreshFiles(current.id, generation);
+    } catch (cause) {
+      if (selection.current === generation) {
+        setError(String(cause));
+        await refreshFiles(current.id, generation).catch(() => {});
+      }
+    } finally {
+      setFileBusy(false);
+    }
+  };
+
+  const selectFile = (value: ChatAttachmentSelection | null, fileId: string) => {
+    setSelections((rows) => [
+      ...rows.filter((row) => row.file_id !== fileId),
+      ...(value ? [value] : []),
+    ]);
+  };
+
   const openConversation = async (id: string) => {
     if (conversation?.id === id) return;
     if (busyRef.current && !conversation?.active_turn_id) return;
@@ -295,6 +380,8 @@ export function useConversation(ownerId: string) {
       eventCursor.current = detail.event_cursor;
       setConversation(detail.conversation);
       setMessages(detail.messages ?? []);
+      setAttachments(detail.attachments ?? []);
+      setSelections([]);
       setOlderPosition(detail.next_message_position ?? null);
       const saved = drafts.current.get(id);
       setDraft(saved?.text ?? "");
@@ -358,6 +445,8 @@ export function useConversation(ownerId: string) {
     pending.current = null;
     setConversation(null);
     setMessages([]);
+    setAttachments([]);
+    setSelections([]);
     const saved = drafts.current.get("new");
     setDraft(saved?.text ?? "");
     if (saved?.modelId && models.some((model) => model.id === saved.modelId)) {
@@ -388,6 +477,8 @@ export function useConversation(ownerId: string) {
       forget(event.conversation_id);
       setConversation(null);
       setMessages([]);
+      setAttachments([]);
+      setSelections([]);
       setOlderPosition(null);
       setDraft(drafts.current.get("new")?.text ?? "");
       setStatus("Conversation deleted.");
@@ -397,6 +488,7 @@ export function useConversation(ownerId: string) {
       const detail = event.payload.detail;
       setConversation(detail.conversation);
       setMessages(detail.messages ?? []);
+      setAttachments(detail.attachments ?? []);
       setOlderPosition(detail.next_message_position ?? null);
       setHistory((rows) =>
         rows.map((row) => (row.id === event.conversation_id ? detail.conversation : row)),
@@ -417,10 +509,9 @@ export function useConversation(ownerId: string) {
             if (selection.current !== generation) return;
             setConversation(detail.conversation);
             setMessages(detail.messages ?? []);
+            setAttachments(detail.attachments ?? []);
             setOlderPosition(detail.next_message_position ?? null);
-            setHistory((rows) =>
-              rows.map((row) => (row.id === id ? detail.conversation : row)),
-            );
+            setHistory((rows) => rows.map((row) => (row.id === id ? detail.conversation : row)));
             setStatus(detail.conversation.active_turn_id ? "A response is still running." : null);
           })
           .catch((cause) => {
@@ -438,7 +529,32 @@ export function useConversation(ownerId: string) {
     refresh();
   };
 
-  useChatConversationObserver(conversation?.id ?? null, !stream.active, eventCursor, refreshObserved);
+  useChatConversationObserver(
+    conversation?.id ?? null,
+    !stream.active,
+    eventCursor,
+    refreshObserved,
+  );
+
+  useEffect(() => {
+    const id = conversation?.id;
+    if (!id || !attachments.some((item) => item.state === "processing")) return;
+    const generation = selection.current;
+    const timer = window.setInterval(() => {
+      for (const item of attachments) {
+        if (item.state !== "processing") continue;
+        void getChatFile(id, item.id)
+          .then((updated) => {
+            if (selection.current !== generation) return;
+            setAttachments((rows) => rows.map((row) => (row.id === updated.id ? updated : row)));
+          })
+          .catch((cause) => {
+            if (selection.current === generation) setError(String(cause));
+          });
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [conversation?.id, attachments]);
 
   useEffect(
     () => () => {
@@ -462,7 +578,9 @@ export function useConversation(ownerId: string) {
         if (selection.current === generation) {
           setConversation(detail.conversation);
           setMessages(detail.messages ?? []);
-          setStatus(turn.state === "completed" ? null : "Response ended. Your partial answer was saved.");
+          setStatus(
+            turn.state === "completed" ? null : "Response ended. Your partial answer was saved.",
+          );
         }
       }
     } catch (cause) {
@@ -509,6 +627,8 @@ export function useConversation(ownerId: string) {
         pending.current = null;
         setConversation(null);
         setMessages([]);
+        setAttachments([]);
+        setSelections([]);
         setOlderPosition(null);
         setDraft(drafts.current.get("new")?.text ?? "");
         setStatus(null);
@@ -536,6 +656,12 @@ export function useConversation(ownerId: string) {
     setSelectedId: chooseModel,
     conversation,
     messages,
+    attachments,
+    selections,
+    fileBusy,
+    uploadFile,
+    processFile,
+    selectFile,
     history,
     historyCursor,
     olderPosition,

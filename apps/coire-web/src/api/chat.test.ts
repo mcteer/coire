@@ -3,6 +3,8 @@ import {
   getChatConversation,
   listChatConversations,
   sendChatTurn,
+  uploadChatFile,
+  chatFilePreviewUrl,
   type ChatTurnCreate,
 } from "./chat";
 
@@ -114,4 +116,30 @@ test("uses typed, same-origin history pages and encoded cursors", async () => {
   expect(fetchMock.mock.calls[0]?.[0]).toContain("cursor=time%3Aid");
   expect(fetchMock.mock.calls[1]?.[0]).toContain("before_position=7");
   expect(fetchMock.mock.calls[1]?.[1]?.credentials).toBe("same-origin");
+});
+
+test("uploads multipart bytes with same-origin credentials and no JSON content header", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(JSON.stringify({ id: "file" }), {
+      status: 202,
+      headers: { "content-type": "application/json" },
+    }),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  const file = new File(["hello"], "notes.txt", { type: "text/plain" });
+  await uploadChatFile(conversationId, file, 4);
+  const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+  expect(init.credentials).toBe("same-origin");
+  expect(init.headers).toBeUndefined();
+  expect(init.body).toBeInstanceOf(FormData);
+  const form = init.body as FormData;
+  expect(form.get("file")).toBe(file);
+  expect(form.get("filename")).toBe("notes.txt");
+  expect(form.get("expected_revision")).toBe("4");
+});
+
+test("private previews use the owner-scoped path without a token in the URL", () => {
+  expect(chatFilePreviewUrl(conversationId, "file", "asset")).toBe(
+    `/api/v1/chat/conversations/${conversationId}/files/file/previews/asset`,
+  );
 });
