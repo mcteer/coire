@@ -4,6 +4,8 @@ import { readEventStream } from "./eventStream";
 
 export type ChatPickerResponse = components["schemas"]["ChatPickerResponse"];
 export type ChatConversation = components["schemas"]["ChatConversation"];
+export type ChatConversationPage = components["schemas"]["ChatConversationPage"];
+export type ChatConversationDetail = components["schemas"]["ChatConversationDetail"];
 export type ChatConversationCreate = components["schemas"]["ChatConversationCreate"];
 export type ChatTurnCreate = components["schemas"]["ChatTurnCreate"];
 export type ChatTurnDetail = components["schemas"]["ChatTurnDetail"];
@@ -20,6 +22,27 @@ export function createChatConversation(body: ChatConversationCreate): Promise<Ch
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export function listChatConversations(
+  cursor: string | null = null,
+  limit = 50,
+): Promise<ChatConversationPage> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (cursor) query.set("cursor", cursor);
+  return api<ChatConversationPage>("/api/v1/chat/conversations?" + query.toString());
+}
+
+export function getChatConversation(
+  conversationId: string,
+  beforePosition?: number,
+  limit = 50,
+): Promise<ChatConversationDetail> {
+  const query = new URLSearchParams({ limit: String(limit) });
+  if (beforePosition !== undefined) query.set("before_position", String(beforePosition));
+  return api<ChatConversationDetail>(
+    `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}?${query.toString()}`,
+  );
 }
 
 export function getChatTurn(conversationId: string, turnId: string): Promise<ChatTurnDetail> {

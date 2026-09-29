@@ -1,5 +1,10 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { sendChatTurn, type ChatTurnCreate } from "./chat";
+import {
+  getChatConversation,
+  listChatConversations,
+  sendChatTurn,
+  type ChatTurnCreate,
+} from "./chat";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -86,4 +91,27 @@ test("surfaces safe problem details and does not retry a refused POST", async ()
     sendChatTurn(conversationId, body, new AbortController().signal, () => {}),
   ).rejects.toThrow("Revision changed");
   expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("uses typed, same-origin history pages and encoded cursors", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({ data: [], next_cursor: null })))
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          conversation: { id: conversationId },
+          messages: [],
+          turns: [],
+          attachments: [],
+          event_cursor: 0,
+        }),
+      ),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  await listChatConversations("time:id", 10);
+  await getChatConversation(conversationId, 7, 20);
+  expect(fetchMock.mock.calls[0]?.[0]).toContain("cursor=time%3Aid");
+  expect(fetchMock.mock.calls[1]?.[0]).toContain("before_position=7");
+  expect(fetchMock.mock.calls[1]?.[1]?.credentials).toBe("same-origin");
 });

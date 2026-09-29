@@ -876,10 +876,28 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List Chat Conversations */
+        get: operations["list_chat_conversations_api_v1_chat_conversations_get"];
         put?: never;
         /** Create Chat Conversation */
         post: operations["create_chat_conversation_api_v1_chat_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/chat/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Chat Conversation */
+        get: operations["get_chat_conversation_api_v1_chat_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2315,6 +2333,13 @@ export interface components {
             next_message_position?: number | null;
             /** Turns */
             turns?: components["schemas"]["ChatTurn"][];
+        };
+        /** ChatConversationPage */
+        ChatConversationPage: {
+            /** Data */
+            data?: components["schemas"]["ChatConversation"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
         };
         /** ChatConversationUpdated */
         ChatConversationUpdated: {
@@ -6712,6 +6737,40 @@ export interface operations {
             };
         };
     };
+    list_chat_conversations_api_v1_chat_conversations_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                limit?: number;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversationPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_chat_conversation_api_v1_chat_conversations_post: {
         parameters: {
             query?: never;
@@ -6734,6 +6793,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatConversation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_chat_conversation_api_v1_chat_conversations__conversation_id__get: {
+        parameters: {
+            query?: {
+                before_position?: number | null;
+                limit?: number;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                conversation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversationDetail"];
                 };
             };
             /** @description Validation Error */

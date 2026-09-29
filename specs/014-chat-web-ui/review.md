@@ -26,7 +26,8 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 10. `014j` first-use Chat UI; cold-model experience remains a separate follow-up.
 11. `014k` populated PostgreSQL migration proof and Alembic cleanup.
 12. `014l` measured cold wait and failure remedy.
-13. Later children: queue status, history, recovery, cancellation, coding actions, private file processing, bare Studio VLM, reasoning, final telemetry and end-to-end acceptance.
+13. `014m` private history list/detail reads.
+14. Later children: queue status, history mutation/navigation, recovery, cancellation, coding actions, private file processing, bare Studio VLM, reasoning, final telemetry and end-to-end acceptance.
 
 ## Runtime dependency gate (014b)
 
@@ -93,3 +94,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Cold turns now persist the latest nonnegative measured engine load time as a nullable `turn.status` estimate. The composer shows the measured seconds or says the estimate is unavailable. Existing keepalives hold the connection; readiness resumes generation automatically. A load failure produces a content-free terminal suggestion to retry or choose another model.
 - Focused backend streaming tests passed 9 cases, and web tests covered known/unknown picker estimates, inline wait and load failure. The web suite passed 38 tests; build/typecheck, lint, strict mypy and OpenAPI freshness passed. Parent T023–T026 remain open for actual queue-state integration and the full cold/eviction acceptance matrix.
+
+## Private history read gate (014m)
+
+- Added owner-scoped, tombstone-filtered newest-first conversation pages with bounded opaque timestamp/ID cursors. Detail uses a shared PostgreSQL conversation lock while reading a bounded message/related-turn page, saved partial answer/model names and event cursor. Browser API functions use generated page/detail types. Storage keys and model paths stay out of responses.
+- Four focused route/service contracts passed for pagination, lock/owner predicates, partial output, safe 404s and JSON shape. The full Python suite passed 862 tests with 117 skips; strict mypy, Ruff, OpenAPI freshness, 39 web tests, build/typecheck and lint passed. Parent T027–T028 remain open for mutation, deletion, replay, Stop and recovery. Attachment summaries are supplied by the later file child.

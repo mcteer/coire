@@ -10,7 +10,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from coire_api.auth import CurrentChatUser
-from coire_api.chat.service import create_conversation, picker
+from coire_api.chat.service import (
+    create_conversation,
+    get_conversation_detail,
+    list_conversations,
+    picker,
+)
 from coire_api.chat.streaming import native_stream, replay_saved_events
 from coire_api.chat.telemetry import requests_total, tracer
 from coire_api.chat.turns import admit_turn, read_turn_detail
@@ -19,7 +24,11 @@ from coire_core.errors import ChatModelUnavailable, CoireError
 from coire_core.models.chat import (
     ChatConversation,
     ChatConversationCreate,
+    ChatConversationDetail,
+    ChatConversationPage,
     ChatEvent,
+    ChatMessagePageQuery,
+    ChatPageQuery,
     ChatPickerQuery,
     ChatPickerResponse,
     ChatTurnCreate,
@@ -86,6 +95,56 @@ async def create_chat_conversation(
             response.id,
         )
         return response
+
+
+@router.get("/conversations", response_model=ChatConversationPage)
+async def list_chat_conversations(
+    query: Annotated[ChatPageQuery, Query()],
+    principal: CurrentChatUser,
+    session: SessionDep,
+) -> ChatConversationPage:
+    with tracer.start_as_current_span("coire.api.chat.history_list"):
+        try:
+            page = await list_conversations(session, principal, query)
+        except CoireError:
+            requests_total.add(1, {"operation": "history_list", "outcome": "refused"})
+            raise
+        except Exception as exc:
+            requests_total.add(1, {"operation": "history_list", "outcome": "failed"})
+            logger.error(
+                "chat history list failed user_id=%s error_type=%s",
+                principal.user_id,
+                type(exc).__name__,
+            )
+            raise ChatModelUnavailable("chat service temporarily unavailable") from None
+        requests_total.add(1, {"operation": "history_list", "outcome": "succeeded"})
+        return page
+
+
+@router.get("/conversations/{conversation_id}", response_model=ChatConversationDetail)
+async def get_chat_conversation(
+    conversation_id: uuid.UUID,
+    query: Annotated[ChatMessagePageQuery, Query()],
+    principal: CurrentChatUser,
+    session: SessionDep,
+) -> ChatConversationDetail:
+    with tracer.start_as_current_span("coire.api.chat.history_detail"):
+        try:
+            detail = await get_conversation_detail(session, principal, conversation_id, query)
+        except CoireError:
+            requests_total.add(1, {"operation": "history_detail", "outcome": "refused"})
+            raise
+        except Exception as exc:
+            requests_total.add(1, {"operation": "history_detail", "outcome": "failed"})
+            logger.error(
+                "chat history detail failed user_id=%s conversation_id=%s error_type=%s",
+                principal.user_id,
+                conversation_id,
+                type(exc).__name__,
+            )
+            raise ChatModelUnavailable("chat service temporarily unavailable") from None
+        requests_total.add(1, {"operation": "history_detail", "outcome": "succeeded"})
+        return detail
 
 
 @router.post(

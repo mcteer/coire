@@ -2,20 +2,34 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+import json
 import uuid
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Literal, cast
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal
-from coire_api.db import ChatConversationRow, EngineProcessRow, ModelRow
+from coire_api.db import (
+    ChatConversationRow,
+    ChatMessageRow,
+    ChatTurnRow,
+    EngineProcessRow,
+    ModelRow,
+)
 from coire_api.registry.service import chat_model_eligible, load_state_for
-from coire_core.errors import ChatNotFound
+from coire_core.errors import ChatConflict, ChatNotFound
 from coire_core.models.chat import (
     ChatConversation,
     ChatConversationCreate,
+    ChatConversationDetail,
+    ChatConversationPage,
+    ChatMessagePageQuery,
+    ChatPageQuery,
     ChatPickerEntry,
     ChatPickerResponse,
 )
@@ -105,6 +119,126 @@ def project_conversation(row: ChatConversationRow) -> ChatConversation:
         active_turn_id=row.active_turn_id,
         created_at=row.created_at,
         updated_at=row.updated_at,
+    )
+
+
+def _encode_cursor(row: ChatConversationRow) -> str:
+    payload = json.dumps([row.updated_at.isoformat(), str(row.id)], separators=(",", ":"))
+    return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+
+
+def _decode_cursor(value: str) -> tuple[datetime, uuid.UUID]:
+    try:
+        raw = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
+        parsed = json.loads(raw)
+        if (
+            not isinstance(parsed, list)
+            or len(parsed) != 2
+            or not all(isinstance(part, str) for part in parsed)
+        ):
+            raise ValueError("invalid cursor")
+        timestamp = datetime.fromisoformat(parsed[0])
+        if timestamp.tzinfo is None:
+            raise ValueError("cursor needs timezone")
+        return timestamp, uuid.UUID(parsed[1])
+    except (ValueError, TypeError, UnicodeDecodeError, binascii.Error) as exc:
+        raise ChatConflict("invalid conversation cursor") from exc
+
+
+async def list_conversations(
+    session: AsyncSession, principal: Principal, query: ChatPageQuery
+) -> ChatConversationPage:
+    assert principal.user_id is not None
+    statement = select(ChatConversationRow).where(
+        ChatConversationRow.owner_user_id == principal.user_id,
+        ChatConversationRow.deleted_at.is_(None),
+    )
+    if query.cursor is not None:
+        timestamp, row_id = _decode_cursor(query.cursor)
+        statement = statement.where(
+            or_(
+                ChatConversationRow.updated_at < timestamp,
+                and_(
+                    ChatConversationRow.updated_at == timestamp,
+                    ChatConversationRow.id < row_id,
+                ),
+            )
+        )
+    rows = (
+        (
+            await session.execute(
+                statement.order_by(
+                    ChatConversationRow.updated_at.desc(), ChatConversationRow.id.desc()
+                ).limit(query.limit + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    page = rows[: query.limit]
+    return ChatConversationPage(
+        data=[project_conversation(row) for row in page],
+        next_cursor=_encode_cursor(page[-1]) if len(rows) > query.limit else None,
+    )
+
+
+async def get_conversation_detail(
+    session: AsyncSession,
+    principal: Principal,
+    conversation_id: uuid.UUID,
+    query: ChatMessagePageQuery,
+) -> ChatConversationDetail:
+    assert principal.user_id is not None
+    row = await session.scalar(
+        select(ChatConversationRow)
+        .where(
+            ChatConversationRow.id == conversation_id,
+            ChatConversationRow.owner_user_id == principal.user_id,
+            ChatConversationRow.deleted_at.is_(None),
+        )
+        .with_for_update(read=True)
+    )
+    if row is None:
+        raise ChatNotFound()
+    statement = select(ChatMessageRow).where(ChatMessageRow.conversation_id == conversation_id)
+    if query.before_position is not None:
+        statement = statement.where(ChatMessageRow.position < query.before_position)
+    newest = (
+        (
+            await session.execute(
+                statement.order_by(ChatMessageRow.position.desc()).limit(query.limit + 1)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    page = list(reversed(newest[: query.limit]))
+    answer_ids = [message.id for message in page if message.role == "assistant"]
+    turns: list[ChatTurnRow] = []
+    if answer_ids:
+        turns = list(
+            (
+                await session.execute(
+                    select(ChatTurnRow)
+                    .where(
+                        ChatTurnRow.conversation_id == conversation_id,
+                        ChatTurnRow.assistant_message_id.in_(answer_ids),
+                    )
+                    .order_by(ChatTurnRow.created_at)
+                )
+            )
+            .scalars()
+            .all()
+        )
+    from coire_api.chat.turns import project_message, project_turn
+
+    return ChatConversationDetail(
+        conversation=project_conversation(row),
+        messages=[project_message(message) for message in page],
+        turns=[project_turn(turn) for turn in turns],
+        attachments=[],
+        event_cursor=row.event_cursor,
+        next_message_position=page[0].position if len(newest) > query.limit and page else None,
     )
 
 
