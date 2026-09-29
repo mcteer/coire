@@ -24,7 +24,8 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 8. `014h` persistent text turns and remaining shared inference admission.
 9. `014i` browser event transport.
 10. `014j` first-use Chat UI; cold-model experience remains a separate follow-up.
-11. Later children: history, recovery, cancellation, coding actions, private file processing, bare Studio VLM, reasoning, final telemetry and end-to-end acceptance.
+11. `014k` populated PostgreSQL migration proof and Alembic cleanup.
+12. Later children: cold-model UX, history, recovery, cancellation, coding actions, private file processing, bare Studio VLM, reasoning, final telemetry and end-to-end acceptance.
 
 ## Runtime dependency gate (014b)
 
@@ -81,3 +82,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 - Extracted a shared Chat/Admin shell. Ordinary users land on Chat; the Admin link is visible only to admins and server authorization remains authoritative. The picker renders only the API's eligible entries with task grouping, metadata and an honest unknown warm-up estimate.
 - A new conversation is created on the first send. Accepted events add input and assistant messages with the model's saved display-name snapshot; deltas grow the answer. Subsequent sends can switch models. Admission errors retain the unsent draft. An uncertain network failure reuses the same request identity on retry. The UI refuses overlapping sends while a conversation is being created.
 - Markdown renders without raw HTML or automatic images and filters executable URLs. Web tests cover routing, empty picker, selection, streamed answer, model switch, draft preservation, retry identity and hostile Markdown. The web suite passed 35 tests; build/typecheck and lint passed. Parent T016 and T021 are complete. T020 stays open for full responsive/a11y/code-copy acceptance.
+
+## Populated migration gate (014k)
+
+- An opt-in automated test creates a unique database on an explicitly configured local PostgreSQL server, upgrades through 0014, seeds legacy model/user rows, upgrades to 0015, saves chat content, confirms downgrade refuses without removing content, clears chat, downgrades and verifies older model data survives, then re-upgrades. It ran successfully against a disposable local PostgreSQL 17 container; the container was removed.
+- The first test run exposed an Alembic connection pool left open when downgrade raises. `alembic/env.py` now disposes the engine in `finally`; the rerun passed. The full Python suite passed 856 tests with 117 skips (the new opt-in database test plus pre-existing conditional integration/engine scenarios). Ruff and strict mypy passed. Parent T008 is complete.
