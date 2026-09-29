@@ -81,7 +81,7 @@ export function AttachmentList({
                 {attachment.state === "processing"
                   ? "Processing…"
                   : attachment.state === "failed"
-                    ? `Failed: ${attachment.safe_error ?? "processing failed"}`
+                    ? `Failed: ${attachment.safe_error === "pdf_password_required" ? "PDF is password-protected" : (attachment.safe_error ?? "processing failed")}`
                     : attachment.state === "ready"
                       ? `Ready${pdf ? ` · ${pageCount} pages` : ""}`
                       : attachment.state}

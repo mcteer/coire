@@ -61,7 +61,7 @@ test("shows failed extraction and offers an explicit retry", () => {
   render(
     <AttachmentList
       conversationId={conversationId}
-      attachments={[{ ...pdf, state: "failed", safe_error: "PDF is encrypted", previews: [] }]}
+      attachments={[{ ...pdf, state: "failed", safe_error: "pdf_password_required", previews: [] }]}
       selections={[]}
       busy={false}
       onUpload={vi.fn()}
@@ -69,7 +69,7 @@ test("shows failed extraction and offers an explicit retry", () => {
       onSelect={vi.fn()}
     />,
   );
-  expect(screen.getByText(/PDF is encrypted/)).toBeInTheDocument();
+  expect(screen.getByText(/PDF is password-protected/)).toBeInTheDocument();
   expect(screen.getByLabelText("scanned.pdf")).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Retry processing" }));
   expect(process).toHaveBeenCalledWith(fileId, "inspect");

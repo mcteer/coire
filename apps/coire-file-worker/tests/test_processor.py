@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import io
+import subprocess
+import sys
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -130,6 +132,16 @@ def test_scanned_pdf_inspect_and_render(tmp_path: Path) -> None:
     assert (tmp_path / "derived" / JOB_ID / f"{asset_id}.png").is_file()
 
 
+def test_pdf_unicode_extraction_has_page_attribution(tmp_path: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "hello_world.pdf"
+    request = _request(tmp_path / "originals", fixture.read_bytes())
+    result = process_file(request, tmp_path / "originals", tmp_path / "derived")
+    assert result.detected_type == "application/pdf"
+    assert result.extracted_text is not None
+    assert result.extracted_text.startswith("[Page 1]\n")
+    assert "Hello, world!" in result.extracted_text
+
+
 def test_bad_pdf_and_missing_page(tmp_path: Path) -> None:
     originals = tmp_path / "originals"
     request = _request(originals, b"%PDF-this is corrupt")
@@ -141,6 +153,41 @@ def test_bad_pdf_and_missing_page(tmp_path: Path) -> None:
     )
     with pytest.raises(FileProcessingError, match="pdf_page_out_of_range"):
         process_file(render, tmp_path / "other_originals", tmp_path / "derived")
+
+
+def test_password_protected_pdf_has_a_specific_safe_failure(tmp_path: Path) -> None:
+    encrypted = Path(__file__).parent / "fixtures" / "encrypted_hello_world_r3.pdf"
+    request = _request(tmp_path / "originals", encrypted.read_bytes())
+    with pytest.raises(FileProcessingError, match="pdf_password_required"):
+        process_file(request, tmp_path / "originals", tmp_path / "derived")
+
+
+def test_native_watchdog_exits_a_stuck_worker_process() -> None:
+    script = """
+import time
+import uuid
+from datetime import UTC, datetime, timedelta
+from coire_core.models.files import FileProcessRequest
+from coire_core.settings import Settings
+import coire_file_worker.app as worker_module
+
+worker_module.process_file = lambda *_args: time.sleep(5)
+request = FileProcessRequest(
+    job_id="01K00000000000000000000000",
+    input_id=uuid.uuid4(),
+    source_sha256="a" * 64,
+    operation="inspect",
+    deadline_at=datetime.now(UTC) + timedelta(seconds=0.3),
+)
+worker_module.Worker(Settings(_secrets_dir="/nonexistent"))._process_with_watchdog(request)
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        check=False,
+        timeout=5,
+    )
+    assert completed.returncode == 124
 
 
 def test_original_symlink_refused(tmp_path: Path) -> None:

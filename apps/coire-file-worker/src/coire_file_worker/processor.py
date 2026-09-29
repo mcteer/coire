@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pypdfium2 as pdfium
+import pypdfium2.raw as pdfium_raw
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from coire_core.models.files import FileProcessAsset, FileProcessRequest, FileProcessResult
@@ -220,7 +221,11 @@ def _pdf(
             document.close()
     except FileProcessingError:
         raise
-    except (pdfium.PdfiumError, OSError, ValueError) as exc:
+    except pdfium.PdfiumError as exc:
+        if exc.err_code == pdfium_raw.FPDF_ERR_PASSWORD:
+            raise FileProcessingError("pdf_password_required") from exc
+        raise FileProcessingError("invalid_pdf") from exc
+    except (OSError, ValueError) as exc:
         raise FileProcessingError("invalid_pdf") from exc
 
 
