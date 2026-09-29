@@ -8,6 +8,10 @@ leases, and stops by `INSTANCE_DRAIN_TIMEOUT_S`. Do not stop engines directly ex
 
 For a stalled launch, inspect the instance, placement decision, `placement_commands`, scheduler logs
 with `instance_id`, and node health. Restarting only the scheduler is safe because DBOS reattaches.
+For a visual launch refused as an incomplete or mismatched local copy, inspect the node's local
+processor inventory and manifest verification result. Retry only through the audited admin
+acquisition path; do not repair weights or processor files by hand. The node checks the visual
+manifest again before process spawn and strips Hub credentials from the engine environment.
 
 The admin API returns a node registration token once. Store it as `coire-node-registration-token`
 in the Studio System Keychain, separately from `coire-node-token`, which authenticates core-to-node

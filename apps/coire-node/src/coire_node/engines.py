@@ -135,7 +135,8 @@ def build_engine_env(base: dict[str, str]) -> dict[str, str]:
     env = dict(base)
     env["HF_HUB_OFFLINE"] = "1"
     env["TRANSFORMERS_OFFLINE"] = "1"
-    env.pop("HF_TOKEN", None)
+    for credential in ("HF_TOKEN", "HF_API_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+        env.pop(credential, None)
     env.pop("MLX_TRUST_REMOTE_CODE", None)
     return env
 
@@ -337,8 +338,16 @@ class EngineManager:
                 logger.info("%s is already served by engine %s", slug, existing.engine_id)
                 return True, existing.status()
 
-            if not self._store.exists(slug) or self._store.read_manifest(slug) is None:
+            manifest = self._store.read_manifest(slug)
+            if not self._store.exists(slug) or manifest is None:
                 raise CopyMissing(f"no verified copy of {slug} on this node")
+            if backend is EngineBackend.MLX_VLM:
+                from coire_node.visual_validation import inspect_local_variant
+
+                if inspect_local_variant(self._store.path_for(slug)) is not None:
+                    raise CopyMissing(f"visual copy of {slug} is incomplete or linked")
+                if self._store.verify_against(slug, manifest):
+                    raise CopyMissing(f"visual copy of {slug} differs from its manifest")
 
             committed = self.committed_bytes()
             budget = self.budget_bytes()

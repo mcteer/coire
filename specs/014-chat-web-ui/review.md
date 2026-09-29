@@ -1,5 +1,10 @@
 # Feature 014 implementation review
 
+## Visual node startup guards (014bv, 2026-09-29)
+
+- Before a VLM process starts, coire-node now checks complete unlinked local processor files and re-hashes the stored copy against its manifest. Its bare engine environment strips `HF_TOKEN`, `HF_API_TOKEN` and `HUGGING_FACE_HUB_TOKEN`; offline mode and remote-code refusal remain. Mock node contracts cover corrupt/linked copy refusal, budget and option bounds, cancellation and backend identity. Parent T052/T053 stay open for a real Studio lifecycle run.
+- Full Python suite: 1,109 passed, 119 conditional integration skips. The eight focused visual engine contracts, Ruff, strict mypy on 241 source files and the changed test, all 84 web tests plus lint/build, and local-only locked node wheel staging passed. No model or Metal work ran on core.
+
 ## Tiny-model disposable integration (014bu, 2026-09-29)
 
 - The local `coire-it` Compose topology ran the admin acquisition pipeline with the tiny raw Llama text model and the pinned `mlx-community/SmolVLM-256M-Instruct-4bit` visual model. Both test requests went through the admin API; the text pipeline reached two verified copies. The visual pipeline pulled the real model, then failed at validation on the Linux test node and remained unvalidated/unready, as required when native MLX-VLM is absent. The two targeted integration tests passed in 143 seconds after rebuilding the stale disposable migration image. All `coire-it` containers, networks and model-bearing volumes were removed afterward.

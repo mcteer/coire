@@ -3,23 +3,37 @@
 from __future__ import annotations
 
 import json
+import threading
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
-from coire_core.models.engine import EngineState
+from coire_core.models.engine import EngineStartRequest, EngineState
 from coire_core.models.registry import EngineBackend
-from coire_node.engines import BackendMismatch, _Engine, build_engine_env, build_vision_argv
+from coire_node.engines import (
+    BackendMismatch,
+    BudgetExceeded,
+    CopyMissing,
+    _Engine,
+    build_engine_env,
+    build_vision_argv,
+)
 from coire_node.testing.harness import Agent
 
 
 def _seed(agent: Agent, slug: str) -> None:
     base = agent.store.path_for(slug)
     base.mkdir(parents=True, exist_ok=True)
-    (base / "config.json").write_bytes(b"{}")
+    (base / "config.json").write_text(
+        json.dumps({"architectures": ["Idefics3ForConditionalGeneration"]})
+    )
+    for name in ("processor_config.json", "preprocessor_config.json", "tokenizer_config.json"):
+        (base / name).write_text("{}")
+    (base / "tokenizer.json").write_text("{}")
     (base / "model.safetensors").write_bytes(b"\0" * 2048)
     agent.store.write_manifest(agent.store.hash_tree(slug, repo_id="fake/vision", revision="r"))
 
@@ -53,10 +67,18 @@ def test_vision_argv_is_fixed_local_offline_and_bounded() -> None:
         "2048",
     ]
     assert "--trust-remote-code" not in argv
-    env = build_engine_env({"HF_TOKEN": "secret", "MLX_TRUST_REMOTE_CODE": "true"})
+    env = build_engine_env(
+        {
+            "HF_TOKEN": "secret",
+            "HF_API_TOKEN": "secret",
+            "HUGGING_FACE_HUB_TOKEN": "secret",
+            "MLX_TRUST_REMOTE_CODE": "true",
+        }
+    )
     assert env["HF_HUB_OFFLINE"] == "1"
     assert env["TRANSFORMERS_OFFLINE"] == "1"
-    assert "HF_TOKEN" not in env and "MLX_TRUST_REMOTE_CODE" not in env
+    for key in ("HF_TOKEN", "HF_API_TOKEN", "HUGGING_FACE_HUB_TOKEN", "MLX_TRUST_REMOTE_CODE"):
+        assert key not in env
 
 
 def test_vision_process_records_backend_and_rejects_wrong_backend(
@@ -225,5 +247,94 @@ def test_vision_readiness_generates_with_verified_local_model_path(
                 "model": str(agent.store.path_for(slug)),
             }
         ]
+    finally:
+        agent.close()
+
+
+def test_visual_start_refuses_corrupt_or_linked_copy_before_process_spawn(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = Agent(tmp_path / "node")
+    slug = "fake--vision"
+    _seed(agent, slug)
+    spawned: list[object] = []
+    monkeypatch.setattr("coire_node.engines.subprocess.Popen", lambda *_a, **_k: spawned.append(1))
+    try:
+        (agent.store.path_for(slug) / "model.safetensors").write_bytes(b"corrupt")
+        with pytest.raises(CopyMissing):
+            agent.engines.start(
+                engine_id=uuid.uuid4(),
+                slug=slug,
+                estimate_bytes=1024,
+                backend=EngineBackend.MLX_VLM,
+            )
+        assert not spawned
+        _seed_replacement = agent.store.path_for(slug) / "model.safetensors"
+        _seed_replacement.write_bytes(b"\0" * 2048)
+        linked = agent.store.path_for(slug) / "processor_config.json"
+        linked.unlink()
+        linked.symlink_to(tmp_path / "outside")
+        with pytest.raises(CopyMissing):
+            agent.engines.start(
+                engine_id=uuid.uuid4(),
+                slug=slug,
+                estimate_bytes=1024,
+                backend=EngineBackend.MLX_VLM,
+            )
+        assert not spawned
+    finally:
+        agent.close()
+
+
+def test_visual_start_refuses_excess_reservation_and_bounds_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = Agent(tmp_path / "node")
+    slug = "fake--vision"
+    _seed(agent, slug)
+    spawned: list[object] = []
+    monkeypatch.setattr("coire_node.engines.subprocess.Popen", lambda *_a, **_k: spawned.append(1))
+    try:
+        with pytest.raises(BudgetExceeded):
+            agent.engines.start(
+                engine_id=uuid.uuid4(),
+                slug=slug,
+                estimate_bytes=10**15,
+                backend=EngineBackend.MLX_VLM,
+            )
+        assert not spawned
+        command = {
+            "engine_id": str(uuid.uuid4()),
+            "slug": slug,
+            "estimate_bytes": 1024,
+            "backend": "mlx_vlm",
+        }
+        for field, value in (("vision_cache_size", 0), ("max_num_seqs", 17), ("max_kv_size", 0)):
+            with pytest.raises(ValidationError):
+                EngineStartRequest.model_validate({**command, field: value})
+    finally:
+        agent.close()
+
+
+def test_visual_cancel_keeps_backend_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = Agent(tmp_path / "node")
+    engine_id = uuid.uuid4()
+    engine = _Engine(
+        engine_id=engine_id,
+        slug="fake--vision",
+        port=9500,
+        estimate_bytes=2048,
+        backend=EngineBackend.MLX_VLM,
+    )
+    agent.engines._engines[str(engine_id)] = engine
+    stopped = threading.Event()
+    monkeypatch.setattr(agent.engines, "_terminate", lambda _engine: stopped.set())
+    try:
+        status = agent.engines.stop(engine_id)
+        assert status is not None and status.backend is EngineBackend.MLX_VLM
+        assert status.state is EngineState.STOPPING
+        assert stopped.wait(2)
     finally:
         agent.close()
