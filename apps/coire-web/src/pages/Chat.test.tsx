@@ -36,6 +36,26 @@ const conversation = {
 };
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
+
+test("platform management is available only to admins in Chat", async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url.startsWith("/api/v1/chat/models")) return Promise.resolve(json({ data: [model] }));
+    if (url.startsWith("/api/v1/chat/conversations?"))
+      return Promise.resolve(json({ data: [], next_cursor: null }));
+    if (url === "/api/v1/workspaces") return Promise.resolve(json([]));
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const view = render(<Chat ownerId={conversation.owner_id} />);
+  await act(async () => {});
+  expect(screen.queryByRole("button", { name: "Manage platform" })).not.toBeInTheDocument();
+  view.rerender(<Chat ownerId={conversation.owner_id} isAdmin />);
+  fireEvent.click(screen.getByRole("button", { name: "Manage platform" }));
+  expect(screen.getByRole("heading", { name: "Chat · Platform" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Question")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Back to chat" }));
+  expect(screen.getByRole("heading", { name: "Chat" })).toBeInTheDocument();
+});
 function event(cursor: number, payload: object): string {
   const type = (payload as { type: string }).type;
   return `event: ${type}\nid: ${conversationId}:${cursor}\ndata: ${JSON.stringify({

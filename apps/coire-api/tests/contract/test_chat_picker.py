@@ -85,11 +85,14 @@ class _Session:
         self.committed = True
 
 
-def _app(principal: Principal, session: _Session) -> FastAPI:
+def _app(
+    principal: Principal, session: _Session, *, default_model_id: uuid.UUID | None = None
+) -> FastAPI:
     settings = Settings(
         _secrets_dir="/nonexistent",
         chat_browser_origin="http://localhost",
         chat_enabled=True,
+        chat_default_model_id=default_model_id,
         provider_chat_enabled=True,
         openai_api_key=SecretStr("test-provider-key"),
         identity_legacy_admin_enabled=True,
@@ -147,6 +150,26 @@ async def test_picker_is_entitled_ready_published_and_safe_for_admin() -> None:
     assert (await _request(_app(unentitled, session), "GET", "/api/v1/chat/models")).json() == {
         "data": []
     }
+
+
+async def test_curated_default_is_first_only_when_entitled_and_published() -> None:
+    first = _model(display_name="A Studio")
+    preferred = _model(display_name="Z Curated")
+    session = _Session([first, preferred])
+    principal = Principal(
+        kind=PrincipalKind.USER, user_id=uuid.uuid4(), entitlements=frozenset({"team-a"})
+    )
+    app = _app(principal, session, default_model_id=preferred.id)
+    response = await _request(app, "GET", "/api/v1/chat/models")
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == [
+        str(preferred.id),
+        str(first.id),
+    ]
+    preferred.visibility = Visibility.ADMIN_ONLY
+    response = await _request(app, "GET", "/api/v1/chat/models")
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["data"]] == [str(first.id)]
 
 
 async def test_code_picker_filters_profile_and_verified_apply_variant() -> None:

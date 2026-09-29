@@ -11,7 +11,6 @@ import {
   type User,
   ApiError,
 } from "./api/client";
-import { AskCoire } from "./pages/admin/AskCoire";
 import { useEventStream } from "./hooks/useEventStream";
 import { ConfirmAction } from "./components/ConfirmAction";
 import { AppShell, type AdminTab } from "./components/AppShell";
@@ -146,7 +145,6 @@ export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
           </p>
         ))}
       </section>
-      <AskCoire />
     </main>
   );
 }
@@ -1100,7 +1098,7 @@ export function App() {
   if (!admin)
     return (
       <AppShell view="chat" canAdmin={me.role === "admin"} onSignOut={signOut}>
-        <Chat ownerId={me.id} />
+        <Chat ownerId={me.id} isAdmin={me.role === "admin"} />
       </AppShell>
     );
   return (

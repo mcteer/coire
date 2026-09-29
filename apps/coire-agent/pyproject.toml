@@ -14,6 +14,9 @@ dependencies = [
 # MIT. The long-lived ops-only distribution exposes a narrow internal HTTP/health boundary;
 # keeping these optional prevents either server dependency from entering the Studio user image.
 ops = [
+    # MIT (Anthropic Python SDK and Pydantic AI). Only the core ops image receives this
+    # optional client; the Studio user harness remains OpenAI-compatible/Studio-only.
+    "pydantic-ai-slim[anthropic]==2.37.0",
     "fastapi==0.135.1",
     "uvicorn==0.41.0",
 ]

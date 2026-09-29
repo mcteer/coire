@@ -101,7 +101,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 - [X] T062 [US5] Implement profile-driven incremental answer/reasoning parsing and typed channel persistence in apps/coire-api/src/coire_api/chat/reasoning.py and streaming.py (FR-017, FR-029).
 - [X] T063 [P] [US5] Add hostile Markdown/URL/remote-image, code copy, reasoning disclosure and attachment-model-switch tests in apps/coire-web/src/components/chat/Message.test.tsx and ReasoningBlock.test.tsx (FR-017, FR-029, FR-037).
 - [X] T064 [US5] Implement collapsed reasoning, context/visual compatibility remedies and safe attachment attribution in apps/coire-web/src/components/chat/ReasoningBlock.tsx, Message.tsx, ModelPicker.tsx and Composer.tsx (FR-015–017, FR-027, FR-029, FR-037–039).
-- [ ] T065 [US5] Add local tiny-VLM image/selected scanned-page streaming/Stop, offline lifecycle and CPU-worker isolation cases in tests/integration/test_chat_ui.py, using runtime-generated fixtures and COIRE_TEST_VISION_MODEL (SC-012, SC-014).
+- [X] T065 [US5] Add local tiny-VLM image/selected scanned-page streaming/Stop, offline lifecycle and CPU-worker isolation cases in tests/integration/test_chat_ui.py, using runtime-generated fixtures and COIRE_TEST_VISION_MODEL (SC-012, SC-014).
 - [X] T066 [US5] Extend apps/coire-api/src/coire_api/chat/maintenance.py and tests/unit/test_chat_cleanup.py to purge originals/derivatives/temporary inline images/processing leftovers/control inputs and release quota, including deletion during rendering/inference (FR-025–026, FR-035–039).
 - [X] T067 [US5] Align upload-only nginx bounds in apps/coire-web/nginx/nginx.conf and all file-worker/backend environment/resource settings in packages/coire-core/src/coire_core/settings.py and deploy/compose/README.md, with compose/settings contract coverage (FR-026, FR-036–038).
 
@@ -120,9 +120,15 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 
 - [X] T076 [US1] Add strict external-provider/model registration, picker/source and usage contracts in coire-core; add a reversible registry migration and admin audit tests (FR-040).
 - [X] T077 [US1] Implement administrator-controlled OpenAI and Anthropic provider adapters with Keychain-sourced secrets, bounded usage/spend, cancellation, telemetry, dashboard and alert (FR-033–034, FR-040).
-- [X] T078 [US1] Route native Chat and compatible `/v1` generation by registry target while preserving Studio lifecycle, entitlements, history and Code-mode harness placement (FR-012, FR-022, FR-040).
+- [X] T078 [US1] Route native Chat by registry target while keeping frontier providers private to first-party Chat and compatible `/v1`, MCP and Code-mode generation Studio-only; preserve Studio lifecycle, entitlements and history (FR-012, FR-022, FR-040).
 - [X] T079 [US1] Show source/provider and compatible capabilities in the picker; test switching, attribution, safe unsupported input and Stop (FR-015, FR-037, FR-040).
-- [ ] T080 [US1] Run bounded external-provider acceptance with operator credentials and document rollback, cost and privacy controls (SC-015).
+- [X] T080 [US1] Run bounded external-provider acceptance with operator credentials and document rollback, cost and privacy controls (SC-015).
+
+## Phase 10 — Administrator platform management in Chat
+
+- [X] T081 [US1] Add admin-only Chat management UX using the existing ops conversation and exact proposal card; remove the duplicate Admin Overview placement and cover ordinary-user exclusion, degraded mode and confirmation behavior (FR-041, SC-016).
+- [X] T082 [US1] Support pinned Sonnet in the core-only ops service with the Keychain-sourced Anthropic credential, fixed model identity, bounded output and read/propose-only tools; preserve the existing Studio-backed option and exact audited confirmation boundary (FR-041).
+- [X] T083 [US1] Run live Sonnet management status/proposal acceptance through headless Chat, verify ordinary-user denial, degraded refusal and audit, then update the runbook and review ledger (SC-016).
 
 ## Dependencies and execution order
 

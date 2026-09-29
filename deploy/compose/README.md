@@ -20,6 +20,10 @@ project credentials after the stack stops and preserves volumes unless `--purge`
 
 Optional `coire-openai-api-key` and `coire-anthropic-api-key` Keychain items are mounted only
 into coire-api; absent items stage empty files. `COIRE_PROVIDER_CHAT_ENABLED` defaults false.
+`COIRE_CHAT_DEFAULT_MODEL_ID` may name an administrator-registered model UUID to place first
+in the plain Chat picker. It is considered only while published and entitled; Code mode and
+saved conversation selections retain their own model choice. Keep the provider key in Keychain,
+not `.env.local` or Compose environment variables.
 See [the frontier Chat runbook](../../docs/runbooks/frontier-chat.md) for bounded acceptance,
 publication and rollback.
 The integration override creates a shared control network and an
@@ -137,6 +141,10 @@ than five minutes). Session liveness uses `OPS_SESSION_HEARTBEAT_S` (10) and
 Set the non-secret registry UUID as `COIRE_OPS_MODEL_ID` (see `.env.example`) before bring-up, and
 provision `coire-ops-service-token` with `scripts/coire-secrets-init.sh`. Operational procedures
 are in [`docs/runbooks/coire-ops.md`](../../docs/runbooks/coire-ops.md).
+For administrator management inside Chat, set `COIRE_OPS_MODEL_SOURCE=anthropic` and use the
+curated Sonnet registry UUID as `COIRE_OPS_MODEL_ID`. Coire Ops stays on internal networks and
+uses its scoped token to call the API's bounded provider relay; the Anthropic Keychain secret
+remains mounted only in coire-api. The default source is `studio`.
 
 Studio container orchestration uses `RUN_CONCURRENCY_CAP` (3),
 `RUN_DEFAULT_MEMORY_BYTES` (4 GiB), `RUN_MAX_MEMORY_BYTES` (16 GiB),

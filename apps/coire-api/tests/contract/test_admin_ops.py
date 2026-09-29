@@ -8,12 +8,16 @@ from typing import Any
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from pydantic import SecretStr
 
 from coire_api.app import create_app
 from coire_api.auth import Principal, PrincipalKind
 from coire_api.db import get_session
+from coire_api.gateway.provider_budget import ProviderBudgetExceeded
+from coire_api.gateway.resolution import ResolvedModel
 from coire_core.models.auth import UserRole
-from coire_core.settings import Settings
+from coire_core.models.registry import ModelSource
+from coire_core.settings import Settings, get_settings
 
 
 def _document() -> dict[str, Any]:
@@ -33,6 +37,8 @@ def test_ops_routes_are_present_with_exact_human_and_service_boundaries() -> Non
         ("/api/v1/internal/ops/sessions", "post"),
         ("/api/v1/internal/ops/sessions/{session_id}", "patch"),
         ("/api/v1/internal/ops/proposals", "post"),
+        ("/api/v1/internal/ops/anthropic/v1/models/{model_id}", "get"),
+        ("/api/v1/internal/ops/anthropic/v1/messages", "post"),
     }
     assert expected <= {(path, method) for path, item in paths.items() for method in item}
     for path, method in expected:
@@ -90,6 +96,10 @@ def test_create_message_confirm_and_decline_contracts_are_strict() -> None:
     }
     decline = document["components"]["schemas"]["OpsDeclineRequest"]
     assert decline["additionalProperties"] is False
+    relay = document["components"]["schemas"]["OpsAnthropicRelayRequest"]
+    assert relay["additionalProperties"] is False
+    assert relay["properties"]["model"]["const"] == "claude-sonnet-5-5"
+    assert relay["properties"]["max_tokens"]["maximum"] == 512
 
 
 @pytest.mark.parametrize(
@@ -141,3 +151,66 @@ async def test_only_a_human_admin_can_reach_confirmation(
 def test_checked_in_openapi_is_fresh_for_ops_routes() -> None:
     checked_in = json.loads((Path(__file__).resolve().parents[2] / "openapi.json").read_text())
     assert checked_in == _document()
+
+
+async def test_ops_provider_relay_requires_infer_scope_and_daily_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model_id = uuid.uuid4()
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    settings.ops_enabled = True
+    settings.ops_model_source = "anthropic"
+    settings.ops_model_id = str(model_id)
+    settings.provider_chat_enabled = True
+    settings.anthropic_api_key = SecretStr("test-provider-key")
+    app = create_app(settings)
+    app.dependency_overrides[get_settings] = lambda: settings
+
+    async def session():  # type: ignore[no-untyped-def]
+        yield object()
+
+    app.dependency_overrides[get_session] = session
+    principal = Principal(
+        kind=PrincipalKind.OPS_SERVICE,
+        subject="coire-ops",
+        scopes=frozenset({"ops:infer"}),
+        permitted_model_ids=frozenset({model_id}),
+    )
+
+    async def authenticate(_request: object) -> Principal:
+        return principal
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id,
+            "anthropic--sonnet",
+            100_000,
+            None,
+            None,
+            None,
+            None,
+            source=ModelSource.ANTHROPIC,
+            provider_model_id="claude-sonnet-5-5",
+            max_output_tokens=1024,
+            daily_token_budget=30_000,
+        )
+
+    async def refuse(*_: object) -> int:
+        raise ProviderBudgetExceeded("provider daily token budget exhausted")
+
+    monkeypatch.setattr("coire_api.auth.authenticate_request", authenticate)
+    monkeypatch.setattr("coire_api.routes.internal_ops.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.internal_ops.reserve_provider_budget", refuse)
+    body = {
+        "model": "claude-sonnet-5-5",
+        "max_tokens": 512,
+        "messages": [{"role": "user", "content": "Status?"}],
+        "tools": [{"name": "read_snapshot", "input_schema": {"type": "object"}}],
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        denied = await client.post("/api/v1/internal/ops/anthropic/v1/messages", json=body)
+        assert denied.status_code == 429
+        assert denied.json()["detail"] == "provider daily token budget exhausted"
+        principal = principal.model_copy(update={"scopes": frozenset({"ops:read"})})
+        forbidden = await client.post("/api/v1/internal/ops/anthropic/v1/messages", json=body)
+        assert forbidden.status_code == 403

@@ -36,6 +36,7 @@ async def list_models(principal: CurrentPrincipal, session: SessionDep) -> list[
         if service.visible_to(
             is_admin=principal.is_admin, model=m, entitlements=principal.entitlements
         )
+        and (m.source or "studio") == "studio"
     ]
     if not visible:
         return []

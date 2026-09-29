@@ -43,14 +43,6 @@ from coire_api.gateway.execution import (
     track_stream as _tracked_stream,
 )
 from coire_api.gateway.loading import ModelLoadError
-from coire_api.gateway.provider_budget import ProviderBudgetExceeded, reserve_provider_budget
-from coire_api.gateway.providers import (
-    ProviderUnavailable,
-    credential_present,
-    provider_stream,
-    target_for,
-    validate_provider_request,
-)
 from coire_api.gateway.proxy import (
     EngineProxyError,
     EngineSaturatedError,
@@ -69,11 +61,10 @@ from coire_api.gateway.temporary import (
     normalize_inline_images,
 )
 from coire_api.gateway.usage import UsageTracker
-from coire_api.registry.service import load_state_for, published_ready_entitled, visible_to
+from coire_api.registry.service import load_state_for, visible_to
 from coire_core.models.gateway import (
     AnthropicMessagesRequest,
     ChatCompletionRequest,
-    ChatMessage,
     GatewayModel,
     GatewayModelList,
     GatewayProtocol,
@@ -83,67 +74,6 @@ from coire_core.models.registry import EngineBackend, LoadState, ModelSource
 from coire_core.settings import Settings
 
 router = APIRouter(prefix="/v1", tags=["compatible"], dependencies=[Depends(require_scope("chat"))])
-
-
-async def _guard_provider_stream(
-    source: AsyncIterator[bytes], usage: UsageTracker
-) -> AsyncIterator[bytes]:
-    try:
-        async for frame in source:
-            yield frame
-    except ProviderUnavailable:
-        await usage.finish(UsageOutcome.FAILED, failure_code="provider_stream_failed")
-        yield b'data: {"error":{"type":"provider_error","message":"provider request failed"}}\n\n'
-        yield b"data: [DONE]\n\n"
-
-
-async def _guard_anthropic_provider_stream(
-    source: AsyncIterator[bytes], usage: UsageTracker
-) -> AsyncIterator[bytes]:
-    try:
-        async for frame in source:
-            yield frame
-    except ProviderUnavailable:
-        await usage.finish(UsageOutcome.FAILED, failure_code="provider_stream_failed")
-        yield b'event: error\ndata: {"type":"error","error":{"type":"api_error","message":"provider request failed"}}\n\n'
-
-
-async def _complete_provider(
-    source: AsyncIterator[bytes], usage: UsageTracker
-) -> dict[str, object]:
-    parts: list[str] = []
-    try:
-        async for frame in source:
-            for line in frame.decode().splitlines():
-                if not line.startswith("data: ") or line == "data: [DONE]":
-                    continue
-                event = json.loads(line[6:])
-                choices = event.get("choices", [])
-                if choices:
-                    content = choices[0].get("delta", {}).get("content")
-                    if isinstance(content, str):
-                        parts.append(content)
-    except ProviderUnavailable as exc:
-        await usage.finish(UsageOutcome.FAILED, failure_code="provider_request_failed")
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "provider request failed") from exc
-    return {
-        "id": f"chatcmpl-coire-{usage.request_id}",
-        "object": "chat.completion",
-        "created": int(usage.started_at.timestamp()),
-        "model": usage.requested_model_id,
-        "choices": [
-            {
-                "index": 0,
-                "message": {"role": "assistant", "content": "".join(parts)},
-                "finish_reason": "stop",
-            }
-        ],
-        "usage": {
-            "prompt_tokens": usage.prompt_tokens,
-            "completion_tokens": usage.completion_tokens,
-            "total_tokens": usage.prompt_tokens + usage.completion_tokens,
-        },
-    }
 
 
 def _tool_names(tools: list[dict[str, Any]] | None) -> set[str]:
@@ -302,14 +232,7 @@ async def list_models(
         model
         for model in rows
         if visible_to(is_admin=principal.is_admin, model=model, entitlements=principal.entitlements)
-        and (
-            (model.source or "studio") == "studio"
-            or (
-                published_ready_entitled(model, principal.entitlements)
-                and settings.provider_chat_enabled
-                and credential_present(ModelSource(model.source), settings)
-            )
-        )
+        and (model.source or "studio") == "studio"
         and (principal.kind is not PrincipalKind.RUN or model.id in principal.permitted_model_ids)
     ]
     engines: Sequence[EngineProcessRow] = []
@@ -363,23 +286,10 @@ async def chat_completions(
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
-    usage.bind_resolution(resolved)
     if resolved.source is not ModelSource.STUDIO:
-        if any(
-            value is not None
-            for value in (
-                body.tools,
-                body.tool_choice,
-                body.response_format,
-                body.stop,
-                body.temperature,
-                body.top_p,
-                body.coire_affinity_node,
-            )
-        ):
-            await usage.finish(UsageOutcome.REFUSED, failure_code="provider_unsupported_option")
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "provider supports plain text only")
-        body.max_tokens = body.max_tokens or min(resolved.max_output_tokens or 0, 1024)
+        await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found")
+    usage.bind_resolution(resolved)
     try:
         has_images = any(
             isinstance(message.content, list)
@@ -425,33 +335,6 @@ async def chat_completions(
         await usage.finish(UsageOutcome.REFUSED, failure_code="run_scope_refused")
         raise
     await _reserve_run_spend(session, principal, usage, max_tokens=body.max_tokens)
-    if resolved.source is not ModelSource.STUDIO:
-        try:
-            target = target_for(resolved)
-            if not settings.provider_chat_enabled or not credential_present(
-                target.source, settings
-            ):
-                raise ProviderUnavailable("provider credential unavailable")
-            assert body.max_tokens is not None
-            validate_provider_request(target, body.messages, body.max_tokens)
-            await reserve_provider_budget(
-                session, resolved, body.messages, body.max_tokens, usage.request_id
-            )
-        except ProviderBudgetExceeded as exc:
-            await usage.finish(UsageOutcome.REFUSED, failure_code="provider_budget_exhausted")
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
-        except ProviderUnavailable as exc:
-            await usage.finish(UsageOutcome.REFUSED, failure_code="provider_unavailable")
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-        source = _tracked_stream(
-            provider_stream(target, body.messages, body.max_tokens, settings),
-            usage,
-            request,
-            timing,
-        )
-        if body.stream:
-            return _streaming_response(_guard_provider_stream(source, usage), usage)
-        return await _complete_provider(source, usage)
     if resolved.engine_url is None or resolved.model_path is None:
         retry_after = await retry_after_seconds(
             session, body.model, fallback=settings.gateway_retry_after_s
@@ -542,28 +425,10 @@ async def anthropic_messages(
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
         raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found") from exc
+    if resolved.source is not ModelSource.STUDIO:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "model not found")
     usage.bind_resolution(resolved)
-    if resolved.source is not ModelSource.STUDIO and any(
-        value is not None
-        for value in (
-            body.tools,
-            body.tool_choice,
-            body.thinking,
-            body.output_config,
-            body.temperature,
-            body.top_p,
-            body.top_k,
-            body.stop_sequences,
-            body.metadata,
-            body.service_tier,
-            body.context_management,
-            body.container,
-            body.mcp_servers,
-            body.coire_affinity_node,
-        )
-    ):
-        await usage.finish(UsageOutcome.REFUSED, failure_code="provider_unsupported_option")
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "provider supports plain text only")
     try:
         usage.prompt_tokens = enforce_anthropic_context(body, limit=resolved.context_window)
     except ContextLengthError as exc:
@@ -582,38 +447,6 @@ async def anthropic_messages(
     assert bounded_max_tokens is not None
     body.max_tokens = bounded_max_tokens
     await _reserve_run_spend(session, principal, usage, max_tokens=body.max_tokens)
-    if resolved.source is not ModelSource.STUDIO:
-        try:
-            target = target_for(resolved)
-            if not settings.provider_chat_enabled or not credential_present(
-                target.source, settings
-            ):
-                raise ProviderUnavailable("provider credential unavailable")
-            canonical = to_openai_payload(body, model_path=str(body.model))
-            raw_messages = canonical["messages"]
-            assert isinstance(raw_messages, list)
-            messages = [ChatMessage.model_validate(item) for item in raw_messages]
-            validate_provider_request(target, messages, body.max_tokens)
-            await reserve_provider_budget(
-                session, resolved, messages, body.max_tokens, usage.request_id
-            )
-        except ProviderBudgetExceeded as exc:
-            await usage.finish(UsageOutcome.REFUSED, failure_code="provider_budget_exhausted")
-            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, str(exc)) from exc
-        except ProviderUnavailable as exc:
-            await usage.finish(UsageOutcome.REFUSED, failure_code="provider_unavailable")
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
-        source = _tracked_stream(
-            provider_stream(target, messages, body.max_tokens, settings),
-            usage,
-            request,
-            timing,
-        )
-        if body.stream:
-            adapted = from_openai_stream(source, model=body.model)
-            return _streaming_response(_guard_anthropic_provider_stream(adapted, usage), usage)
-        result = await _complete_provider(source, usage)
-        return from_openai_response(result, model=body.model)
     if resolved.engine_url is None or resolved.model_path is None:
         retry_after = await retry_after_seconds(
             session, body.model, fallback=settings.gateway_retry_after_s

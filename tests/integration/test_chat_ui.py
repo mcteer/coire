@@ -178,6 +178,107 @@ def test_tiny_text_stream_usage_and_healthy_stop() -> None:
                         )
 
 
+def test_bounded_anthropic_chat_stream_stop_and_private_routing() -> None:
+    """The curated provider target works in native Chat and stays out of /v1."""
+    provider_model = os.environ.get("COIRE_TEST_ANTHROPIC_MODEL")
+    if not provider_model or os.environ.get("COIRE_TEST_PAID_PROVIDER") != "1":
+        pytest.skip("enable the bounded paid Anthropic acceptance explicitly")
+    url, _, service = _configuration()
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    with _RateLimitedClient(
+        base_url=url,
+        timeout=90,
+        headers={"Authorization": f"Bearer {key}", "Origin": origin},
+    ) as client:
+        picker = client.get("/api/v1/chat/models")
+        assert picker.status_code == 200
+        target = next(row for row in picker.json()["data"] if row["id"] == provider_model)
+        assert target["source"] == "anthropic"
+        created = client.post(
+            "/api/v1/chat/conversations",
+            json={"mode": "chat", "model_id": provider_model},
+        )
+        assert created.status_code == 201, created.text
+        conversation_id = created.json()["id"]
+        path = f"/api/v1/chat/conversations/{conversation_id}"
+        try:
+            for stop_after_delta in (False, True):
+                detail = client.get(path)
+                assert detail.status_code == 200
+                accepted: dict[str, object] | None = None
+                terminal: dict[str, object] | None = None
+                deltas = 0
+                with client.stream(
+                    "POST",
+                    f"{path}/turns",
+                    json={
+                        "client_request_id": str(uuid.uuid4()),
+                        "expected_revision": detail.json()["conversation"]["revision"],
+                        "model_id": provider_model,
+                        "content": (
+                            "Write 300 numbered lines, one per line."
+                            if stop_after_delta
+                            else "Reply with the single word ready."
+                        ),
+                    },
+                ) as response:
+                    assert response.status_code == 200, response.text
+                    for event in _events(response):
+                        payload = _event_payload(event)
+                        if payload["type"] == "turn.accepted":
+                            accepted = cast(dict[str, object], payload["turn"])
+                            assert accepted["model_id"] == provider_model
+                        elif payload["type"] == "message.delta":
+                            deltas += 1
+                            if stop_after_delta and deltas == 1:
+                                assert accepted is not None
+                                stopped = client.post(
+                                    f"{path}/turns/{accepted['id']}/stop",
+                                    json={"reason": "user_stop"},
+                                )
+                                assert stopped.status_code == 200
+                        elif payload["type"] == "turn.terminal":
+                            terminal = payload
+                            break
+                assert accepted is not None and terminal is not None
+                assert deltas > 0
+                if stop_after_delta:
+                    assert terminal["state"] == "stopped"
+                else:
+                    assert terminal["state"] == "completed"
+                    usage = cast(dict[str, object], terminal["usage"])
+                    assert cast(int, usage["prompt_tokens"]) > 0
+                    assert cast(int, usage["completion_tokens"]) > 0
+            compatible = client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": provider_model,
+                    "messages": [{"role": "user", "content": "Reply with ready."}],
+                    "stream": False,
+                    "max_tokens": 32,
+                },
+            )
+            assert compatible.status_code == 404
+            compatible_models = client.get("/v1/models")
+            assert compatible_models.status_code == 200
+            assert provider_model not in {row["id"] for row in compatible_models.json()["data"]}
+            legacy_models = client.get("/api/v1/models")
+            assert legacy_models.status_code == 200
+            assert provider_model not in {row["id"] for row in legacy_models.json()}
+        finally:
+            detail = client.get(path)
+            if detail.status_code == 200:
+                deleted = client.request(
+                    "DELETE",
+                    path,
+                    json={"expected_revision": detail.json()["conversation"]["revision"]},
+                )
+                assert deleted.status_code == 202
+
+
 def test_completed_turn_observer_replays_without_regeneration() -> None:
     """A second tab can resume saved deltas with a cursor after the writer exits."""
     url, model_id, service = _configuration()
@@ -504,6 +605,131 @@ def test_private_image_processing_and_download() -> None:
                         assert client.get(f"{file_url}/previews/{preview_id}").status_code == 404
 
 
+def test_text_stream_isolated_from_cpu_file_worker_outage() -> None:
+    """A failed private parser does not take the Studio text path down."""
+    if os.environ.get("COIRE_TEST_CHAT_WORKER_COMPOSE") != "1":
+        pytest.skip("enable the managed pre-prod CPU-worker outage acceptance explicitly")
+    url, model_id, service = _configuration()
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    manifest = Path.home() / ".coire/projects/coire/current/compose.json"
+    assert manifest.is_file()
+    compose = ["docker", "compose", "-p", "coire", "-f", str(manifest)]
+    image = BytesIO()
+    Image.new("RGB", (16, 16), color=(255, 0, 0)).save(image, format="PNG")
+    with _RateLimitedClient(
+        base_url=url,
+        timeout=90,
+        headers={"Authorization": f"Bearer {key}", "Origin": origin},
+    ) as client:
+        created = client.post(
+            "/api/v1/chat/conversations", json={"mode": "chat", "model_id": model_id}
+        )
+        assert created.status_code == 201, created.text
+        conversation_id = created.json()["id"]
+        path = f"/api/v1/chat/conversations/{conversation_id}"
+        worker_stopped = False
+        try:
+            subprocess.run(
+                [*compose, "stop", "coire-file-worker"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+            worker_stopped = True
+            with client.stream(
+                "POST",
+                f"{path}/turns",
+                json={
+                    "client_request_id": str(uuid.uuid4()),
+                    "expected_revision": created.json()["revision"],
+                    "model_id": model_id,
+                    "content": "Reply briefly with the word ready.",
+                },
+            ) as response:
+                assert response.status_code == 200
+                events = [_event_payload(event) for event in _events(response)]
+            assert any(event["type"] == "message.delta" for event in events)
+            assert events[-1]["type"] == "turn.terminal"
+            assert events[-1]["state"] == "completed"
+            detail = client.get(path)
+            assert detail.status_code == 200
+            uploaded = client.post(
+                f"{path}/files",
+                data={
+                    "filename": "worker-outage.png",
+                    "expected_revision": str(detail.json()["conversation"]["revision"]),
+                },
+                files={"file": ("worker-outage.png", image.getvalue(), "image/png")},
+            )
+            assert uploaded.status_code == 202, uploaded.text
+            file_path = f"{path}/files/{uploaded.json()['id']}"
+            deadline = time.monotonic() + 75
+            while time.monotonic() < deadline:
+                attachment_response = client.get(file_path)
+                assert attachment_response.status_code == 200
+                attachment = attachment_response.json()
+                if attachment["state"] in {"ready", "failed"}:
+                    break
+                time.sleep(1)
+            assert attachment["state"] == "failed"
+            assert attachment["safe_error"] == "worker_unavailable"
+            subprocess.run(
+                [*compose, "start", "coire-file-worker"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=45,
+            )
+            worker_stopped = False
+            detail = client.get(path)
+            assert detail.status_code == 200
+            retry_body = {
+                "request_id": str(uuid.uuid4()),
+                "expected_revision": detail.json()["conversation"]["revision"],
+                "operation": "inspect",
+            }
+            deadline = time.monotonic() + 75
+            while time.monotonic() < deadline:
+                retried = client.post(f"{file_path}/process", json=retry_body)
+                if retried.status_code == 202:
+                    break
+                assert retried.status_code == 409
+                assert retried.json()["detail"] == "file cleanup is still pending"
+                time.sleep(2)
+            assert retried.status_code == 202, retried.text
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                attachment_response = client.get(file_path)
+                assert attachment_response.status_code == 200
+                attachment = attachment_response.json()
+                if attachment["state"] in {"ready", "failed"}:
+                    break
+                time.sleep(1)
+            assert attachment["state"] == "ready", attachment.get("safe_error")
+            assert len(attachment["previews"]) == 1
+        finally:
+            if worker_stopped:
+                subprocess.run(
+                    [*compose, "start", "coire-file-worker"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                )
+            detail = client.get(path)
+            if detail.status_code == 200:
+                deleted = client.request(
+                    "DELETE",
+                    path,
+                    json={"expected_revision": detail.json()["conversation"]["revision"]},
+                )
+                assert deleted.status_code == 202
+
+
 def test_concurrent_file_uploads_preserve_revision_and_private_storage() -> None:
     url, model_id, service = _configuration()
     origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
@@ -617,6 +843,9 @@ def test_native_visual_file_stream_and_stop() -> None:
         assert picker.status_code == 200
         selected = next(row for row in picker.json()["data"] if row["id"] == vision_model)
         assert selected["accepts_images"] is True and selected["max_images"] >= 1
+        cold_lifecycle = os.environ.get("COIRE_TEST_VLM_COLD") == "1"
+        if cold_lifecycle:
+            assert selected["load_state"] == "cold"
         created = client.post(
             "/api/v1/chat/conversations",
             json={"mode": "chat", "model_id": vision_model},
@@ -703,6 +932,13 @@ def test_native_visual_file_stream_and_stop() -> None:
                     usage = terminal["usage"]
                     assert isinstance(usage, dict)
                     assert usage["prompt_tokens"] > 0 and usage["completion_tokens"] > 0
+                    if cold_lifecycle:
+                        refreshed = client.get("/api/v1/chat/models")
+                        assert refreshed.status_code == 200
+                        current = next(
+                            row for row in refreshed.json()["data"] if row["id"] == vision_model
+                        )
+                        assert current["load_state"] == "loaded"
         finally:
             detail = client.get(f"/api/v1/chat/conversations/{conversation_id}")
             if detail.status_code == 200:

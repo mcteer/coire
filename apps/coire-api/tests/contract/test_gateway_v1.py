@@ -5,6 +5,7 @@ import base64
 import io
 import uuid
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -68,6 +69,26 @@ async def test_models_has_openai_list_shape(app: FastAPI) -> None:
     assert response.json() == {"object": "list", "data": []}
 
 
+async def test_provider_is_absent_from_both_non_chat_model_lists(
+    app: FastAPI, gateway_fake_session: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = SimpleNamespace(source="anthropic", id=uuid.uuid4())
+
+    async def execute(*_: object, **__: object) -> object:
+        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [provider]))
+
+    monkeypatch.setattr(gateway_fake_session, "execute", execute)
+    monkeypatch.setattr("coire_api.routes.v1.visible_to", lambda **_: True)
+    monkeypatch.setattr("coire_api.routes.models.service.visible_to", lambda **_: True)
+    for path, expected in (
+        ("/v1/models", {"object": "list", "data": []}),
+        ("/api/v1/models", []),
+    ):
+        response = await request(app, "GET", path)
+        assert response.status_code == 200
+        assert response.json() == expected
+
+
 async def test_every_compatible_route_requires_authentication(app: FastAPI) -> None:
     app.dependency_overrides[require_principal] = lambda: ANONYMOUS
     for method, path, body in (
@@ -124,101 +145,7 @@ async def test_openai_nonstream_replaces_model_with_resolved_path(
 
 
 @pytest.mark.parametrize("route", ["/v1/chat/completions", "/v1/messages"])
-async def test_provider_text_routes_use_registry_target_and_report_usage(
-    app: FastAPI, monkeypatch: pytest.MonkeyPatch, route: str
-) -> None:
-    model_id = uuid.uuid4()
-    captured: dict[str, object] = {}
-    app.state.settings.openai_api_key = SecretStr("provider-test-secret")
-    app.state.settings.provider_chat_enabled = True
-
-    async def resolve(*_: object) -> ResolvedModel:
-        return ResolvedModel(
-            model_id,
-            "openai--example",
-            4096,
-            None,
-            None,
-            None,
-            None,
-            source=ModelSource.OPENAI,
-            provider_model_id="gpt-example",
-            max_output_tokens=64,
-            daily_token_budget=1000,
-        )
-
-    async def reserve(
-        _session: object, _resolved: object, _messages: object, output: int, _request_id: object
-    ) -> int:
-        captured["output"] = output
-        return output + 100
-
-    async def provider(
-        target: object, messages: object, output: int, _settings: object
-    ) -> AsyncIterator[bytes]:
-        captured["target"] = target
-        captured["messages"] = messages
-        assert output == captured["output"]
-        yield b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n'
-        yield b'data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":2}}\n\n'
-        yield b"data: [DONE]\n\n"
-
-    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
-    monkeypatch.setattr("coire_api.routes.v1.reserve_provider_budget", reserve)
-    monkeypatch.setattr("coire_api.routes.v1.provider_stream", provider)
-    body: dict[str, object] = {
-        "model": str(model_id),
-        "messages": [{"role": "user", "content": "Hi"}],
-    }
-    if route.endswith("/messages"):
-        body["max_tokens"] = 32
-    response = await request(app, "POST", route, json=body)
-    assert response.status_code == 200, response.text
-    assert response.json()["model"] == str(model_id)
-    assert captured["target"].provider_model_id == "gpt-example"  # type: ignore[attr-defined]
-    assert response.json()["usage"] == (
-        {"input_tokens": 9, "output_tokens": 2}
-        if route.endswith("/messages")
-        else {"prompt_tokens": 9, "completion_tokens": 2, "total_tokens": 11}
-    )
-
-
-async def test_provider_rejects_tools_before_paid_call(
-    app: FastAPI, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    model_id = uuid.uuid4()
-
-    async def resolve(*_: object) -> ResolvedModel:
-        return ResolvedModel(
-            model_id,
-            "openai--example",
-            4096,
-            None,
-            None,
-            None,
-            None,
-            source=ModelSource.OPENAI,
-            provider_model_id="gpt-example",
-            max_output_tokens=64,
-            daily_token_budget=1000,
-        )
-
-    async def reserve(*_: object) -> None:
-        pytest.fail("unsupported tools must not reserve provider budget")
-
-    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
-    monkeypatch.setattr("coire_api.routes.v1.reserve_provider_budget", reserve)
-    response = await request(
-        app,
-        "POST",
-        "/v1/chat/completions",
-        json={"model": str(model_id), "messages": [{"role": "user", "content": "Hi"}], "tools": []},
-    )
-    assert response.status_code == 400
-
-
-@pytest.mark.parametrize("route", ["/v1/chat/completions", "/v1/messages"])
-async def test_provider_sse_keeps_public_model_and_reported_tokens(
+async def test_provider_target_is_private_to_native_chat(
     app: FastAPI, monkeypatch: pytest.MonkeyPatch, route: str
 ) -> None:
     model_id = uuid.uuid4()
@@ -240,38 +167,16 @@ async def test_provider_sse_keeps_public_model_and_reported_tokens(
             daily_token_budget=1000,
         )
 
-    async def reserve(*_: object) -> int:
-        return 100
-
-    async def provider(*_: object) -> AsyncIterator[bytes]:
-        yield (
-            f'data: {{"model":"{model_id}","choices":[{{"delta":{{"content":"Hello"}}}}]}}\n\n'
-        ).encode()
-        yield b'data: {"choices":[],"usage":{"prompt_tokens":9,"completion_tokens":2}}\n\n'
-        yield b"data: [DONE]\n\n"
-
     monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
-    monkeypatch.setattr("coire_api.routes.v1.reserve_provider_budget", reserve)
-    monkeypatch.setattr("coire_api.routes.v1.provider_stream", provider)
-    response = await request(
-        app,
-        "POST",
-        route,
-        json={
-            "model": str(model_id),
-            "messages": [{"role": "user", "content": "Hi"}],
-            "max_tokens": 32,
-            "stream": True,
-        },
-    )
-    assert response.status_code == 200
-    assert "Hello" in response.text
+    body: dict[str, object] = {
+        "model": str(model_id),
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 32,
+    }
+    response = await request(app, "POST", route, json=body)
+    assert response.status_code == 404
+    assert response.json()["detail"] == "model not found"
     assert "claude-example" not in response.text
-    assert str(model_id) in response.text
-    if route.endswith("/messages"):
-        assert '"output_tokens":2' in response.text
-    else:
-        assert '"completion_tokens":2' in response.text
 
 
 async def test_inline_image_is_refused_before_engine_or_spend(

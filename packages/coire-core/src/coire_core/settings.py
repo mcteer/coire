@@ -8,7 +8,9 @@ environment-sourced secrets that Docker materialises as files (research R4).
 from __future__ import annotations
 
 import json
+import uuid
 from functools import lru_cache
+from typing import Literal
 from urllib.parse import quote, urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
@@ -150,6 +152,7 @@ class Settings(BaseSettings):
 
     # --- private native chat and CPU file worker -----------------------
     chat_enabled: bool = False
+    chat_default_model_id: uuid.UUID | None = None
     chat_output_tokens: int = Field(default=1024, ge=1, le=4096)
     chat_upload_max_bytes: int = Field(default=10 * 1024**2, ge=1, le=10 * 1024**2)
     chat_conversation_quota_bytes: int = Field(default=50 * 1024**2, ge=1, le=50 * 1024**2)
@@ -163,6 +166,11 @@ class Settings(BaseSettings):
     chat_event_retention_hours: int = Field(default=24, ge=1, le=24)
     chat_purge_deadline_hours: int = Field(default=24, ge=1, le=24)
     chat_browser_origin: str = ""
+
+    @field_validator("chat_default_model_id", mode="before")
+    @classmethod
+    def empty_chat_default_model(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("chat_browser_origin")
     @classmethod
@@ -209,6 +217,7 @@ class Settings(BaseSettings):
     ops_api_url: str = "http://coire-api:8000"
     ops_gateway_url: str = "http://coire-api:8000/v1"
     ops_model_id: str = ""
+    ops_model_source: Literal["studio", "anthropic"] = "studio"
     ops_confirmation_ttl_s: int = Field(default=300, ge=30, le=300)
     ops_session_heartbeat_s: float = Field(default=10.0, gt=0.0, le=60.0)
     ops_session_stale_s: float = Field(default=30.0, gt=0.0, le=300.0)

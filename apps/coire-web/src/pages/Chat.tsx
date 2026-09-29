@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Composer } from "../components/chat/Composer";
 import { AttachmentList } from "../components/chat/AttachmentList";
 import { ConversationHistory } from "../components/chat/ConversationHistory";
@@ -6,13 +7,15 @@ import { ModelPicker } from "../components/chat/ModelPicker";
 import { CodeControls } from "../components/chat/CodeControls";
 import { RunActivity } from "../components/chat/RunActivity";
 import { useConversation } from "../hooks/useConversation";
+import { AskCoire } from "./admin/AskCoire";
 import "../styles/chat.css";
 
-export function Chat({ ownerId }: { ownerId: string }) {
-  return <ChatSession key={ownerId} ownerId={ownerId} />;
+export function Chat({ ownerId, isAdmin = false }: { ownerId: string; isAdmin?: boolean }) {
+  return <ChatSession key={ownerId} ownerId={ownerId} isAdmin={isAdmin} />;
 }
 
-function ChatSession({ ownerId }: { ownerId: string }) {
+function ChatSession({ ownerId, isAdmin }: { ownerId: string; isAdmin: boolean }) {
+  const [platformMode, setPlatformMode] = useState(false);
   const chat = useConversation(ownerId);
   const latestCodeTurn = chat.turns.filter((turn) => turn.action !== "chat").at(-1);
   if (!chat.available)
@@ -36,6 +39,21 @@ function ChatSession({ ownerId }: { ownerId: string }) {
         </section>
       </main>
     );
+  if (platformMode && isAdmin)
+    return (
+      <main className="chat-page">
+        <div className="chat-topline">
+          <div>
+            <h1>Chat · Platform</h1>
+            <p className="muted">Ask about live status and review proposed changes.</p>
+          </div>
+          <button className="button" type="button" onClick={() => setPlatformMode(false)}>
+            Back to chat
+          </button>
+        </div>
+        <AskCoire />
+      </main>
+    );
   return (
     <main className="chat-page">
       <div className="chat-topline">
@@ -43,14 +61,21 @@ function ChatSession({ ownerId }: { ownerId: string }) {
           <h1>Chat</h1>
           <p className="muted">Choose a model and send a message or repository task.</p>
         </div>
-        <button
-          className="button"
-          type="button"
-          onClick={() => void chat.newConversation()}
-          disabled={chat.active && !chat.conversation?.active_turn_id}
-        >
-          New conversation
-        </button>
+        <div className="row">
+          {isAdmin && (
+            <button className="button" type="button" onClick={() => setPlatformMode(true)}>
+              Manage platform
+            </button>
+          )}
+          <button
+            className="button"
+            type="button"
+            onClick={() => void chat.newConversation()}
+            disabled={chat.active && !chat.conversation?.active_turn_id}
+          >
+            New conversation
+          </button>
+        </div>
       </div>
       <div className="chat-layout">
         <ConversationHistory

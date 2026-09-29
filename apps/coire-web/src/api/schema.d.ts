@@ -1240,6 +1240,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/ops/anthropic/v1/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ops Anthropic Message
+         * @description Relay only the pinned, bounded ops tool turn; the provider key stays in the API.
+         */
+        post: operations["ops_anthropic_message_api_v1_internal_ops_anthropic_v1_messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/ops/anthropic/v1/models/{model_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ops Anthropic Model
+         * @description Health lookup through the API's existing provider egress, with no model payload.
+         */
+        get: operations["ops_anthropic_model_api_v1_internal_ops_anthropic_v1_models__model_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/ops/proposals": {
         parameters: {
             query?: never;
@@ -4191,6 +4231,55 @@ export interface components {
             expected_state: string;
             /** Resource Version */
             resource_version: string;
+        };
+        /**
+         * OpsAnthropicRelayRequest
+         * @description Bounded SDK payload relayed only for the core ops Chat conversation.
+         */
+        OpsAnthropicRelayRequest: {
+            /** Max Tokens */
+            max_tokens: number;
+            /** Messages */
+            messages: {
+                [key: string]: unknown;
+            }[];
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Model
+             * @constant
+             */
+            model: "claude-sonnet-5-5";
+            /** Output Config */
+            output_config?: {
+                [key: string]: unknown;
+            } | null;
+            /** Stop Sequences */
+            stop_sequences?: string[] | null;
+            /**
+             * Stream
+             * @default false
+             * @constant
+             */
+            stream: false;
+            /** System */
+            system?: string | {
+                [key: string]: unknown;
+            }[] | null;
+            /** Temperature */
+            temperature?: number | null;
+            /** Tool Choice */
+            tool_choice?: {
+                [key: string]: unknown;
+            } | null;
+            /** Tools */
+            tools?: {
+                [key: string]: unknown;
+            }[] | null;
+            /** Top P */
+            top_p?: number | null;
         };
         /** OpsConfirmRequest */
         OpsConfirmRequest: {
@@ -8124,6 +8213,74 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ops_anthropic_message_api_v1_internal_ops_anthropic_v1_messages_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpsAnthropicRelayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ops_anthropic_model_api_v1_internal_ops_anthropic_v1_models__model_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                model_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
             };
             /** @description Validation Error */
             422: {

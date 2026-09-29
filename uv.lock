@@ -304,6 +304,7 @@ dependencies = [
 [package.optional-dependencies]
 ops = [
     { name = "fastapi" },
+    { name = "pydantic-ai-slim", extra = ["anthropic"] },
     { name = "uvicorn" },
 ]
 
@@ -311,6 +312,7 @@ ops = [
 requires-dist = [
     { name = "coire-core", editable = "packages/coire-core" },
     { name = "fastapi", marker = "extra == 'ops'", specifier = "==0.135.1" },
+    { name = "pydantic-ai-slim", extras = ["anthropic"], marker = "extra == 'ops'", specifier = "==2.37.0" },
     { name = "pydantic-ai-slim", extras = ["openai"], specifier = "==2.37.0" },
     { name = "pytest", specifier = "==9.1.1" },
     { name = "uvicorn", marker = "extra == 'ops'", specifier = "==0.41.0" },
@@ -1495,6 +1497,9 @@ wheels = [
 ]
 
 [package.optional-dependencies]
+anthropic = [
+    { name = "anthropic" },
+]
 openai = [
     { name = "openai" },
     { name = "tiktoken" },

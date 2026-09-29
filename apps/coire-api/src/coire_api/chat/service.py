@@ -172,6 +172,9 @@ async def picker(
                 max_images=visual.max_images if accepts_images and visual is not None else None,
             )
         )
+    if query.mode == "chat" and settings is not None and settings.chat_default_model_id:
+        preferred = settings.chat_default_model_id
+        entries.sort(key=lambda entry: entry.id != preferred)
     return ChatPickerResponse(data=entries)
 
 

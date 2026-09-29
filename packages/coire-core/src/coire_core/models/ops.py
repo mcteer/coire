@@ -251,3 +251,22 @@ class OpsTurnResponse(BaseModel):
     degraded: bool = False
     sources: list[str] = Field(default_factory=list)
     proposal: OpsProposalIssued | None = None
+
+
+class OpsAnthropicRelayRequest(BaseModel):
+    """Bounded SDK payload relayed only for the core ops Chat conversation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: Literal["claude-sonnet-5-5"]
+    max_tokens: int = Field(ge=1, le=512)
+    messages: list[dict[str, object]] = Field(min_length=1, max_length=32)
+    system: str | list[dict[str, object]] | None = None
+    tools: list[dict[str, object]] | None = Field(default=None, max_length=4)
+    tool_choice: dict[str, object] | None = None
+    output_config: dict[str, object] | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    stop_sequences: list[str] | None = None
+    metadata: dict[str, object] | None = None
+    stream: Literal[False] = False
