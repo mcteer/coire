@@ -6,7 +6,7 @@ import logging
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from coire_api.auth import CurrentChatUser
@@ -16,11 +16,11 @@ from coire_api.chat.service import (
     list_conversations,
     picker,
 )
-from coire_api.chat.streaming import native_stream, replay_saved_events
+from coire_api.chat.streaming import native_stream, observe_conversation, replay_saved_events
 from coire_api.chat.telemetry import requests_total, tracer
 from coire_api.chat.turns import admit_turn, read_turn_detail, request_turn_stop
 from coire_api.deps import SessionDep, SettingsDep
-from coire_core.errors import ChatModelUnavailable, CoireError
+from coire_core.errors import ChatConflict, ChatModelUnavailable, CoireError
 from coire_core.models.chat import (
     ChatConversation,
     ChatConversationCreate,
@@ -147,6 +147,44 @@ async def get_chat_conversation(
             raise ChatModelUnavailable("chat service temporarily unavailable") from None
         requests_total.add(1, {"operation": "history_detail", "outcome": "succeeded"})
         return detail
+
+
+@router.get(
+    "/conversations/{conversation_id}/events",
+    response_model=ChatEvent,
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "content": {"text/event-stream": {"schema": {"$ref": "#/components/schemas/ChatEvent"}}}
+        }
+    },
+)
+async def get_chat_events(
+    conversation_id: uuid.UUID,
+    request: Request,
+    principal: CurrentChatUser,
+    session: SessionDep,
+    settings: SettingsDep,
+    last_event_id: Annotated[str | None, Header(max_length=128)] = None,
+) -> StreamingResponse:
+    from coire_api.auth import require_owned_chat
+
+    with tracer.start_as_current_span("coire.api.chat.observe"):
+        conversation = await require_owned_chat(session, conversation_id, principal)
+        cursor: int | None = None
+        if last_event_id is not None:
+            parts = last_event_id.split(":")
+            if len(parts) != 2 or parts[0] != str(conversation_id) or not parts[1].isdigit():
+                raise ChatConflict("invalid conversation event cursor")
+            cursor = int(parts[1])
+            if cursor < 0 or cursor > conversation.event_cursor:
+                raise ChatConflict("invalid conversation event cursor")
+        requests_total.add(1, {"operation": "observe", "outcome": "accepted"})
+        return StreamingResponse(
+            observe_conversation(conversation_id, principal, request, settings, cursor),
+            media_type="text/event-stream",
+            headers={"X-Accel-Buffering": "no", "Cache-Control": "no-store"},
+        )
 
 
 @router.post(

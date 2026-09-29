@@ -40,6 +40,8 @@ from coire_core.errors import ChatConflict, ChatNotFound
 from coire_core.models.chat import (
     ChatEvent,
     ChatMessageDelta,
+    ChatMessagePageQuery,
+    ChatSnapshot,
     ChatTurnStatus,
     ChatTurnTerminal,
     ChatUsage,
@@ -568,3 +570,92 @@ async def replay_saved_events(
         except asyncio.CancelledError:
             return
         yield b": coire turn active\n\n"
+
+
+async def observe_conversation(
+    conversation_id: uuid.UUID,
+    principal: Principal,
+    request: Request,
+    settings: Settings,
+    cursor: int | None,
+) -> AsyncIterator[bytes]:
+    """Follow saved events without acquiring generation or cancellation authority."""
+    from coire_api.chat.service import get_conversation_detail
+
+    while True:
+        snapshot = False
+        rows: list[ChatEventRow] = []
+        async with session_scope() as session:
+            if principal.user_id is None:
+                return
+            user = await session.get(UserRow, principal.user_id)
+            if user is None or not user.active:
+                return
+            if principal.api_key_id is not None:
+                from coire_api.identity.keys import key_is_active
+
+                if not await key_is_active(session, principal):
+                    return
+            conversation = await session.get(ChatConversationRow, conversation_id)
+            if (
+                conversation is None
+                or conversation.deleted_at is not None
+                or conversation.owner_user_id != principal.user_id
+            ):
+                return
+            if cursor is None:
+                snapshot = conversation.event_cursor > 0
+            else:
+                rows = list(
+                    (
+                        await session.execute(
+                            select(ChatEventRow)
+                            .where(
+                                ChatEventRow.conversation_id == conversation_id,
+                                ChatEventRow.cursor > cursor,
+                            )
+                            .order_by(ChatEventRow.cursor)
+                            .limit(100)
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                snapshot = bool(rows and rows[0].cursor != cursor + 1) or (
+                    not rows and conversation.event_cursor > cursor
+                )
+            if snapshot:
+                detail = await get_conversation_detail(
+                    session, principal, conversation_id, ChatMessagePageQuery()
+                )
+        if snapshot:
+            event = ChatEvent(
+                conversation_id=conversation_id,
+                cursor=detail.event_cursor,
+                created_at=datetime.now(UTC),
+                payload=ChatSnapshot(detail=detail, replacement=True),
+            )
+            cursor = event.cursor
+            yield encode_event(event)
+        elif cursor is None:
+            cursor = 0
+        else:
+            for row in rows:
+                event = ChatEvent.model_validate(
+                    {
+                        "conversation_id": row.conversation_id,
+                        "cursor": row.cursor,
+                        "turn_id": row.turn_id,
+                        "created_at": row.created_at,
+                        "payload": row.payload,
+                    }
+                )
+                cursor = row.cursor
+                yield encode_event(event)
+        if await request.is_disconnected():
+            return
+        try:
+            await asyncio.sleep(min(settings.credential_stream_recheck_s, 1.0))
+        except asyncio.CancelledError:
+            return
+        yield b": coire conversation active\n\n"

@@ -132,3 +132,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Leaving a conversation with a locally owned stream now persists `navigation` Stop before aborting transport. Viewing tabs can navigate without stopping another tab's generator. Late events from an aborted stream cannot replace the newly selected conversation. Disconnect cleanup checks the durable Stop before finalizing terminal state and usage.
 - Browser and backend tests cover navigation Stop, draft separation and the disconnect race. Parent T034 remains open for observer reconciliation, explicit retry/continue and full tab-close acceptance.
+
+## Read-only observer gate (014t)
+
+- Added owner-scoped GET SSE replay over persisted conversation events, with scoped cursor validation and live user/key checks. A cursor gap caused by retention sends a replacement snapshot. The observer never opens a gateway stream or cancellation path.
+- Owner/foreign/cursor contract and snapshot-gap unit tests passed; OpenAPI and generated browser types updated. Parent T014/T034 remain open for browser observer reconciliation and two-tab acceptance.
