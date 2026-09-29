@@ -1,5 +1,10 @@
 # Feature 014 implementation review
 
+## Disposable Chat deletion and title purge (2026-09-29)
+
+- Added an opt-in disposable `coire-it` integration case that creates a private Chat conversation, deletes it, confirms owner detail and observer access return 404 immediately, then advances only that test row past the five-minute grace period and waits for maintenance to scrub its persisted title. The case passed unskipped in 62.55 seconds with `COIRE_INTEGRATION=1`, Chat enabled and the local `ops,mcp` profile; its fixture removed the disposable Compose project and volumes. No Studio, model or provider was contacted. This supplies deletion and background title-scrub evidence for T035, which remains open for the rest of its live restart, two-tab and healthy-Stop acceptance.
+- The full default Python suite passed with 1,168 tests and 133 conditional skips. Strict mypy passed all 246 source files and the new integration module separately; changed-file Ruff and formatting, API OpenAPI freshness and `git diff --check` passed. The broader `mypy apps/ packages/` command still reports 213 existing errors across 17 test files; the source-only check is the established passing gate recorded above.
+
 ## Two-tab integration fixture (2026-09-29)
 
 - Added an opt-in two-client race on one conversation revision. It asserts that exactly one turn is accepted, the other receives 409, retrying the winner's request ID replays the same terminal and the conversation contains one turn. The branch-tip Python suite passed with 1,168 tests and 132 conditional integration skips; source mypy passed on 246 files, the changed test passed its strict standalone mypy check, and repository Ruff, format and OpenAPI freshness passed. This extends T035's live test coverage but does not close it: the case still needs an unskipped run, and automated API-restart and timed-purge acceptance remain outstanding. Provider credentials are deferred to T080 and do not gate local pre-prod work.
