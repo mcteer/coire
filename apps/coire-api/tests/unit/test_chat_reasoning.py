@@ -33,3 +33,13 @@ def test_non_reasoning_profile_does_not_parse_tags() -> None:
     parser = ReasoningParser(Reasoning.NONE)
     assert parser.feed("ordinary text") == [("answer", "ordinary text")]
     assert parser.finish() == []
+
+
+def test_mixed_answer_and_reasoning_in_one_frame() -> None:
+    parser = ReasoningParser(Reasoning.HYBRID)
+    assert parser.feed("Start<think>private</think>Finish") == [
+        ("answer", "Start"),
+        ("reasoning", "private"),
+        ("answer", "Finish"),
+    ]
+    assert parser.finish() == []

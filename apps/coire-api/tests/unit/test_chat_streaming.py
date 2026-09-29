@@ -201,6 +201,104 @@ async def test_reasoning_stream_saves_split_thinking_in_separate_channel(
     assert chunks[-1].startswith(b"event: turn.terminal")
 
 
+async def test_reasoning_content_frame_uses_reasoning_channel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.chat import streaming
+
+    original = _admission()
+    admission = Admission(
+        original.turn,
+        original.event,
+        original.history,
+        original.prompt_tokens,
+        False,
+        original.output_tokens,
+        Reasoning.THINKING,
+    )
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    deltas: list[tuple[object, object]] = []
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "resolve_model", AsyncMock(return_value=_resolved(admission)))
+
+    async def upstream(*_args: object) -> AsyncIterator[bytes]:
+        yield b'data: {"choices":[{"delta":{"reasoning_content":"private","content":"Public"}}]}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        if kind == "delta":
+            deltas.append((kwargs.get("channel"), kwargs.get("text")))
+        return _saved_event(admission, kind, len(deltas) + 1, **kwargs)
+
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    _ = [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+    assert deltas == [("answer", "Public"), ("reasoning", "private")]
+
+
+async def test_stop_with_split_opening_marker_never_emits_reasoning_as_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from coire_api.chat import streaming
+
+    original = _admission()
+    admission = Admission(
+        original.turn,
+        original.event,
+        original.history,
+        original.prompt_tokens,
+        False,
+        original.output_tokens,
+        Reasoning.THINKING,
+    )
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    first_chunk = asyncio.Event()
+    deltas: list[object] = []
+    states: list[object] = []
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "resolve_model", AsyncMock(return_value=_resolved(admission)))
+
+    async def upstream(*_args: object) -> AsyncIterator[bytes]:
+        yield b'data: {"choices":[{"delta":{"content":"<thi"}}]}\n\n'
+        first_chunk.set()
+        await asyncio.Event().wait()
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        if kind == "delta":
+            deltas.append(kwargs.get("text"))
+        if kind == "terminal":
+            states.append(kwargs.get("state"))
+        return _saved_event(admission, kind, len(deltas) + len(states) + 1, **kwargs)
+
+    async def stop_requested(_turn_id: uuid.UUID) -> bool:
+        return first_chunk.is_set()
+
+    monkeypatch.setattr(streaming, "_stop_requested", stop_requested)
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    _ = [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+    assert deltas == []
+    assert states == ["stopped"]
+
+
 @pytest.mark.parametrize("estimate", [None, 42.5])
 async def test_cold_then_ready_emits_loading_before_generation(
     monkeypatch: pytest.MonkeyPatch,

@@ -288,3 +288,7 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Fenced code now has a plain-text **Copy code** control with a visible failure state. Protocol-relative links join executable links as inert text; raw HTML and remote images remain inert. Browser tests cover the rendered DOM, successful clipboard text and refusal. Parent T063/T064 remain open for attachment-model compatibility and broader visual remedies.
 - All 74 web tests, lint and build passed. The local arm64 web image built, passed image policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-web-014av.spdx.json` (local evidence). Chat remains default-off.
+
+## Reasoning boundary gate (014aw)
+
+- Parser tests now cover mixed answer/reasoning content; native stream tests cover a direct `reasoning_content` field and owner Stop while a split opening delimiter is held. Stop emits no answer delta for that fragment. Parent T061 is complete. Focused parser/stream suite passed 19 tests; Ruff passed. This test-only slice does not change an image. Chat remains default-off.
