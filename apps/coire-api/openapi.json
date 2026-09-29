@@ -1653,6 +1653,16 @@
             "default": false,
             "title": "Verified",
             "type": "boolean"
+          },
+          "visual_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualCapability"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "CapabilityProfile",
@@ -1893,6 +1903,26 @@
             "anyOf": [
               {
                 "type": "string"
+              },
+              {
+                "items": {
+                  "discriminator": {
+                    "mapping": {
+                      "image_url": "#/components/schemas/OpenAIImagePart",
+                      "text": "#/components/schemas/OpenAITextPart"
+                    },
+                    "propertyName": "type"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/OpenAITextPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OpenAIImagePart"
+                    }
+                  ]
+                },
+                "type": "array"
               },
               {
                 "type": "null"
@@ -2416,6 +2446,14 @@
         "properties": {},
         "title": "EmptyOpsParameters",
         "type": "object"
+      },
+      "EngineBackend": {
+        "enum": [
+          "mlx_lm",
+          "mlx_vlm"
+        ],
+        "title": "EngineBackend",
+        "type": "string"
       },
       "EvaluationVerdict": {
         "enum": [
@@ -3766,6 +3804,10 @@
         "additionalProperties": false,
         "description": "The user-facing shape.\n\nDeliberately narrow: no paths, no copies, no failure reasons, no repo id. What a user may\nsee about a model is what the picker needs to choose one.",
         "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/EngineBackend",
+            "default": "mlx_lm"
+          },
           "capability_profile": {
             "$ref": "#/components/schemas/CapabilityProfile"
           },
@@ -4030,6 +4072,10 @@
       "ModelVariant": {
         "additionalProperties": false,
         "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/EngineBackend",
+            "default": "mlx_lm"
+          },
           "byte_size": {
             "minimum": 0.0,
             "title": "Byte Size",
@@ -4121,6 +4167,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ValidationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visual_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualCapability"
               },
               {
                 "type": "null"
@@ -4567,6 +4623,78 @@
         ],
         "title": "OccupantReason",
         "type": "string"
+      },
+      "OpenAIImagePart": {
+        "additionalProperties": false,
+        "properties": {
+          "image_url": {
+            "$ref": "#/components/schemas/OpenAIImageURL"
+          },
+          "type": {
+            "const": "image_url",
+            "default": "image_url",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_url"
+        ],
+        "title": "OpenAIImagePart",
+        "type": "object"
+      },
+      "OpenAIImageURL": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "low",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "url": {
+            "maxLength": 14000000,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "OpenAIImageURL",
+        "type": "object"
+      },
+      "OpenAITextPart": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 2000000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "type": {
+            "const": "text",
+            "default": "text",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "OpenAITextPart",
+        "type": "object"
       },
       "OpsActionPrecondition": {
         "additionalProperties": false,
@@ -6423,6 +6551,54 @@
         ],
         "title": "Visibility",
         "type": "string"
+      },
+      "VisualCapability": {
+        "additionalProperties": false,
+        "description": "Measured visual limits, populated by validation rather than admin curation.",
+        "properties": {
+          "cache_memory_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Cache Memory Bytes",
+            "type": "integer"
+          },
+          "encoder_memory_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Encoder Memory Bytes",
+            "type": "integer"
+          },
+          "max_encoded_bytes": {
+            "maximum": 10485760.0,
+            "minimum": 1.0,
+            "title": "Max Encoded Bytes",
+            "type": "integer"
+          },
+          "max_image_pixels": {
+            "maximum": 4000000.0,
+            "minimum": 1.0,
+            "title": "Max Image Pixels",
+            "type": "integer"
+          },
+          "max_images": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Images",
+            "type": "integer"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "max_images",
+          "max_image_pixels",
+          "max_encoded_bytes"
+        ],
+        "title": "VisualCapability",
+        "type": "object"
       },
       "WorkspaceRegistrationCreate": {
         "additionalProperties": false,

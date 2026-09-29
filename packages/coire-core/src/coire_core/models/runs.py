@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -54,6 +54,41 @@ class RunCommandState(StrEnum):
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+
+
+class RunActivity(BaseModel):
+    """Bounded content-free tool lifecycle receipt from one user run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: uuid.UUID
+    sequence: int = Field(ge=1, le=10_000)
+    tool_name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    state: Literal["started", "completed", "failed"]
+    created_at: datetime
+    duration_ms: int | None = Field(default=None, ge=0)
+    safe_error: str | None = Field(default=None, max_length=200)
+
+
+class RunActivityPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: uuid.UUID
+    data: list[RunActivity] = Field(default_factory=list, max_length=100)
+    next_sequence: int | None = Field(default=None, ge=1, le=10_000)
+    truncated: bool = False
+    available: bool = True
+
+    @model_validator(mode="after")
+    def same_run_and_ordered(self) -> RunActivityPage:
+        if any(item.run_id != self.run_id for item in self.data):
+            raise ValueError("activity page contains a foreign run")
+        if any(
+            left.sequence >= right.sequence
+            for left, right in zip(self.data, self.data[1:], strict=False)
+        ):
+            raise ValueError("activity sequence must increase")
+        return self
 
 
 class RunProblemCode(StrEnum):

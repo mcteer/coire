@@ -93,6 +93,24 @@ class LoadState(StrEnum):
     COLD = "cold"
 
 
+class EngineBackend(StrEnum):
+    MLX_LM = "mlx_lm"
+    MLX_VLM = "mlx_vlm"
+
+
+class VisualCapability(BaseModel):
+    """Measured visual limits, populated by validation rather than admin curation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    verified: bool = False
+    max_images: int = Field(ge=1, le=10)
+    max_image_pixels: int = Field(ge=1, le=4_000_000)
+    max_encoded_bytes: int = Field(ge=1, le=10 * 1024 * 1024)
+    encoder_memory_bytes: int = Field(default=0, ge=0)
+    cache_memory_bytes: int = Field(default=0, ge=0)
+
+
 class CopyRole(StrEnum):
     """Which copy came from Hugging Face. Exactly one `origin` per model proves the
     pull-once rule held (spec SC-004)."""
@@ -128,6 +146,7 @@ class CapabilityProfile(BaseModel):
     reasoning: Reasoning = Reasoning.NONE
     parallel_tools: bool = False
     chat_template_present: bool = False
+    visual_input: VisualCapability | None = None
     verified: bool = False
     """Set only by feature 017's harness evaluation. The router refuses unverified models for
     write-capable tasks, so this is never editable through the curation API."""
@@ -228,6 +247,7 @@ class Model(BaseModel):
     context_window: int | None = None
     chat_template: str | None = None
     capability_profile: CapabilityProfile = Field(default_factory=CapabilityProfile)
+    backend: EngineBackend = EngineBackend.MLX_LM
     manifest_sha256: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -253,6 +273,7 @@ class ModelListing(BaseModel):
     loaded_on: list[str] = Field(default_factory=list)
     estimated_warmup_seconds: float | None = None
     capability_profile: CapabilityProfile
+    backend: EngineBackend = EngineBackend.MLX_LM
 
 
 class ModelRejected(BaseModel):

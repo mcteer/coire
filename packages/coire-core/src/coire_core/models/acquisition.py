@@ -8,6 +8,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from coire_core.models.registry import EngineBackend, VisualCapability
+
 
 class AcquisitionStage(StrEnum):
     INSPECT = "inspect"
@@ -194,6 +196,8 @@ class ModelVariant(BaseModel):
     estimate_delta_bytes: int | None = None
     validated: bool
     harness_verified: bool = False
+    backend: EngineBackend = EngineBackend.MLX_LM
+    visual_input: VisualCapability | None = None
     harness_verified_at: datetime | None = None
     published: bool
     is_default: bool

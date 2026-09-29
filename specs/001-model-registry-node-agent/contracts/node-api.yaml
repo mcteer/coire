@@ -296,7 +296,11 @@ paths:
               properties:
                 engine_id: { type: string, format: uuid }
                 slug: { type: string }
+                backend: { type: string, enum: [mlx_lm, mlx_vlm], default: mlx_lm }
                 estimate_bytes: { type: integer, minimum: 1 }
+                vision_cache_size: { type: [integer, "null"], minimum: 1, maximum: 1024 }
+                max_num_seqs: { type: [integer, "null"], minimum: 1, maximum: 16 }
+                max_kv_size: { type: [integer, "null"], minimum: 1 }
                 chat_template: { type: [string, "null"], description: "Registry-supplied override written to a file beside the copy and passed as --chat-template; never caller-derived." }
       responses:
         "202":
@@ -399,6 +403,7 @@ paths:
                     properties:
                       engine_id: { type: string, format: uuid }
                       slug: { type: string }
+                      backend: { type: string, enum: [mlx_lm, mlx_vlm], default: mlx_lm }
                       port: { type: integer }
                       pid: { type: [integer, "null"] }
                       process_create_time: { type: [number, "null"] }
@@ -550,10 +555,11 @@ components:
     EngineStatus:
       type: object
       additionalProperties: false
-      required: [engine_id, slug, port, state, estimate_bytes, started_at]
+      required: [engine_id, slug, backend, port, state, estimate_bytes, started_at]
       properties:
         engine_id: { type: [string, "null"], format: uuid, description: "null for an orphan." }
         slug: { type: [string, "null"] }
+        backend: { type: string, enum: [mlx_lm, mlx_vlm] }
         port: { type: integer }
         pid: { type: [integer, "null"] }
         process_create_time: { type: [number, "null"] }

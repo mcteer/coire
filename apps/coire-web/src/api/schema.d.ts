@@ -2026,6 +2026,7 @@ export interface components {
              * @default false
              */
             verified: boolean;
+            visual_input?: components["schemas"]["VisualCapability"] | null;
         };
         /**
          * CapabilityProfileUpdate
@@ -2095,7 +2096,7 @@ export interface components {
         /** ChatMessage */
         ChatMessage: {
             /** Content */
-            content?: string | null;
+            content?: string | (components["schemas"]["OpenAITextPart"] | components["schemas"]["OpenAIImagePart"])[] | null;
             /** Name */
             name?: string | null;
             /**
@@ -2288,6 +2289,11 @@ export interface components {
         };
         /** EmptyOpsParameters */
         EmptyOpsParameters: Record<string, never>;
+        /**
+         * EngineBackend
+         * @enum {string}
+         */
+        EngineBackend: "mlx_lm" | "mlx_vlm";
         /**
          * EvaluationVerdict
          * @enum {string}
@@ -2857,6 +2863,8 @@ export interface components {
          *     see about a model is what the picker needs to choose one.
          */
         ModelListing: {
+            /** @default mlx_lm */
+            backend: components["schemas"]["EngineBackend"];
             capability_profile: components["schemas"]["CapabilityProfile"];
             /** Context Window */
             context_window?: number | null;
@@ -2947,6 +2955,8 @@ export interface components {
         };
         /** ModelVariant */
         ModelVariant: {
+            /** @default mlx_lm */
+            backend: components["schemas"]["EngineBackend"];
             /** Byte Size */
             byte_size: number;
             /**
@@ -2994,6 +3004,7 @@ export interface components {
             /** Validated */
             validated: boolean;
             validation?: components["schemas"]["ValidationResult"] | null;
+            visual_input?: components["schemas"]["VisualCapability"] | null;
         };
         /**
          * Node
@@ -3180,6 +3191,32 @@ export interface components {
          * @enum {string}
          */
         OccupantReason: "pinned" | "in_use" | "eligible";
+        /** OpenAIImagePart */
+        OpenAIImagePart: {
+            image_url: components["schemas"]["OpenAIImageURL"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "image_url";
+        };
+        /** OpenAIImageURL */
+        OpenAIImageURL: {
+            /** Detail */
+            detail?: ("auto" | "low" | "high") | null;
+            /** Url */
+            url: string;
+        };
+        /** OpenAITextPart */
+        OpenAITextPart: {
+            /** Text */
+            text: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+        };
         /** OpsActionPrecondition */
         OpsActionPrecondition: {
             /** Expected State */
@@ -3914,6 +3951,33 @@ export interface components {
          * @enum {string}
          */
         Visibility: "admin_only" | "published";
+        /**
+         * VisualCapability
+         * @description Measured visual limits, populated by validation rather than admin curation.
+         */
+        VisualCapability: {
+            /**
+             * Cache Memory Bytes
+             * @default 0
+             */
+            cache_memory_bytes: number;
+            /**
+             * Encoder Memory Bytes
+             * @default 0
+             */
+            encoder_memory_bytes: number;
+            /** Max Encoded Bytes */
+            max_encoded_bytes: number;
+            /** Max Image Pixels */
+            max_image_pixels: number;
+            /** Max Images */
+            max_images: number;
+            /**
+             * Verified
+             * @default false
+             */
+            verified: boolean;
+        };
         /** WorkspaceRegistrationCreate */
         WorkspaceRegistrationCreate: {
             /**

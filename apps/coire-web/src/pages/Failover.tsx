@@ -99,7 +99,8 @@ export function FailoverPage({
         ) : null}
         {messages.map((message, index) => (
           <p key={index}>
-            <strong>{message.role}:</strong> {message.content}
+            <strong>{message.role}:</strong>{" "}
+            {typeof message.content === "string" ? message.content : "[visual content unavailable]"}
           </p>
         ))}
         {responseText ? <p aria-live="polite">{responseText}</p> : null}
