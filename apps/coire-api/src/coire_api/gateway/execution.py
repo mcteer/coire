@@ -144,6 +144,18 @@ def _record_usage_frame(data_lines: list[bytes], usage: UsageTracker) -> None:
         pass
 
 
+async def _credential_is_active(principal: Principal) -> bool:
+    from coire_api.db import session_scope
+    from coire_api.identity.keys import key_is_active
+    from coire_api.run_tokens import run_token_is_active
+
+    async with session_scope() as session:
+        if principal.kind is PrincipalKind.RUN:
+            assert principal.run_id is not None
+            return await run_token_is_active(session, principal.run_id)
+        return await key_is_active(session, principal)
+
+
 async def track_stream(
     source: AsyncIterator[bytes],
     usage: UsageTracker,
@@ -156,29 +168,31 @@ async def track_stream(
     credential_checked_at = 0.0
     line_buffer = b""
     data_lines: list[bytes] = []
+    needs_recheck = request is not None and (
+        usage.principal.api_key_id is not None or usage.principal.kind is PrincipalKind.RUN
+    )
+    # The first recheck can run while the engine is producing its first chunk. It still
+    # gates delivery, including a revocation between route authentication and output.
+    first_recheck = (
+        asyncio.create_task(_credential_is_active(usage.principal)) if needs_recheck else None
+    )
     try:
         async for chunk in source:
             if request is not None and await request.is_disconnected():
                 await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
                 return
-            if (
-                usage.principal.api_key_id is not None or usage.principal.kind is PrincipalKind.RUN
-            ) and request is not None:
+            if needs_recheck:
+                assert request is not None
                 settings = getattr(request.app.state, "settings", None)
                 interval = settings.credential_stream_recheck_s if settings is not None else 1.0
                 now = monotonic()
-                if now - credential_checked_at >= interval:
-                    from coire_api.db import session_scope
-                    from coire_api.identity.keys import key_is_active
-                    from coire_api.run_tokens import run_token_is_active
-
+                if first_recheck is not None or now - credential_checked_at >= interval:
+                    if first_recheck is not None:
+                        active = await first_recheck
+                        first_recheck = None
+                    else:
+                        active = await _credential_is_active(usage.principal)
                     credential_checked_at = now
-                    async with session_scope() as session:
-                        if usage.principal.kind is PrincipalKind.RUN:
-                            assert usage.principal.run_id is not None
-                            active = await run_token_is_active(session, usage.principal.run_id)
-                        else:
-                            active = await key_is_active(session, usage.principal)
                     if not active:
                         await usage.finish(UsageOutcome.REFUSED, failure_code="credential_revoked")
                         error = json.dumps(
@@ -241,6 +255,9 @@ async def track_stream(
     else:
         await usage.finish(UsageOutcome.SUCCEEDED)
     finally:
+        if first_recheck is not None:
+            first_recheck.cancel()
+            await asyncio.gather(first_recheck, return_exceptions=True)
         # Returning on disconnect from an async-for does not close its source. Close the
         # proxy generator explicitly so its engine slot and memory lease are released now.
         close = getattr(source, "aclose", None)
