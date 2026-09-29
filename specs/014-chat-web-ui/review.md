@@ -1,5 +1,11 @@
 # Feature 014 implementation review
 
+## Tiny-model disposable integration (014bu, 2026-09-29)
+
+- The local `coire-it` Compose topology ran the admin acquisition pipeline with the tiny raw Llama text model and the pinned `mlx-community/SmolVLM-256M-Instruct-4bit` visual model. Both test requests went through the admin API; the text pipeline reached two verified copies. The visual pipeline pulled the real model, then failed at validation on the Linux test node and remained unvalidated/unready, as required when native MLX-VLM is absent. The two targeted integration tests passed in 143 seconds after rebuilding the stale disposable migration image. All `coire-it` containers, networks and model-bearing volumes were removed afterward.
+- The active host is `coire-core.lab`. Principle II prohibits loading model weights or starting Metal here, so the real visual smoke and complete native vision acquisition acceptance remain open. An authorized separate Apple Silicon development host is needed; no real Studio was contacted. Parent T054/T055 remain open. The 014bu child J003 remains open.
+- The repository gate after adding the integration test passed: 1,106 Python tests, 119 conditional integration skips, Ruff, strict typing for the new test, and a clean diff. `.env.local` is ignored and was neither printed nor staged.
+
 ## Admin visual acquisition publication gate (014bt, 2026-09-29)
 
 - Supported preconverted Idefics3 sources now enter the audited admin acquisition workflow when their inspected quantization matches the requested recipe. Mismatches fail before transfer. The scheduler carries the inspected backend to node validation and requires a passing result with measured verified visual capability; final publication rechecks that result and matching origin/replica manifests before storing backend and visual limits in the model and variant registry. Parent T054/T055 remain open pending a real tiny-model local acquisition and end-to-end acceptance.
