@@ -110,12 +110,13 @@ def test_visual_smoke_uses_only_local_loader_and_fails_closed(tmp_path: Path) ->
     assert failure is None
     assert capability is not None and capability.verified
     load.assert_called_once_with(str(model), trust_remote_code=False, strict=True)
+    assert "<image>" in generate.call_args.args[2]
     assert generate.call_args.kwargs["image"].endswith("fixture.png")
 
     with patch("mlx_vlm.load", side_effect=RuntimeError("sensitive path")):
         outcome, failure, capability = run_visual_smoke(model)
     assert outcome is ValidationOutcome.FAIL
-    assert failure == "visual generation failed: RuntimeError"
+    assert failure == "visual load failed: RuntimeError"
     assert capability is None
 
 

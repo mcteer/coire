@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
@@ -21,6 +22,7 @@ REQUIRED_FILES = frozenset(
         "tokenizer.json",
     }
 )
+logger = logging.getLogger(__name__)
 
 
 def inspect_local_variant(model_path: Path) -> str | None:
@@ -68,14 +70,17 @@ def run_visual_smoke(
         os.environ.pop(key, None)
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
+    phase = "import"
     try:
         import mlx.core as mx
         from mlx_vlm import generate as mlx_generate  # type: ignore[attr-defined]
         from mlx_vlm import load as mlx_load  # type: ignore[attr-defined]
         from PIL import Image
 
+        phase = "load"
         mx.metal.reset_peak_memory()
         model, processor = mlx_load(str(model_path), trust_remote_code=False, strict=True)
+        phase = "generate"
         with tempfile.TemporaryDirectory(prefix="coire-visual-smoke-") as temporary:
             image_path = Path(temporary) / "fixture.png"
             Image.new("RGB", (16, 16), color=(255, 0, 0)).save(image_path)
@@ -85,7 +90,7 @@ def run_visual_smoke(
                 mlx_generate(
                     model,
                     cast(Any, processor),
-                    "Describe the single colored square in this image.",
+                    "<image>\nDescribe the single colored square in this image.",
                     image=str(image_path),
                     max_tokens=32,
                     verbose=False,
@@ -93,6 +98,7 @@ def run_visual_smoke(
             )
         if not output_is_nondegenerate(str(result.text)):
             return ValidationOutcome.FAIL, "visual generation produced degenerate output", None
+        phase = "measure"
         capability = VisualCapability(
             verified=True,
             max_images=1,
@@ -103,7 +109,11 @@ def run_visual_smoke(
         )
         return ValidationOutcome.PASS, None, capability
     except Exception as exc:
-        return ValidationOutcome.FAIL, f"visual generation failed: {type(exc).__name__}", None
+        logger.exception("visual smoke failed during %s", phase)
+        reason = f"visual {phase} failed: {type(exc).__name__}"
+        if isinstance(exc, ValueError):
+            reason += f": {str(exc)[:200]}"
+        return ValidationOutcome.FAIL, reason, None
     finally:
         for key, value in previous.items():
             if value is None:
