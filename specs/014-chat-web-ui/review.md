@@ -117,3 +117,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Added an owner-scoped, idempotent Stop route with a persisted `stop_requested` event. The controlling API process polls the durable turn state while waiting for cold load or engine output, then closes its upstream stream, releases its slot/lease, saves a `stopped` terminal and preserves partial answer text. A shared cold load survives one stopped waiter. Duplicate observers have no cancellation authority.
 - Focused Stop, streaming and load-coordinator tests passed 17 cases. Strict mypy, Ruff, OpenAPI freshness and the 50 web tests/build/lint passed. Full Python suite was run for this child. Parent T029 remains open for expired-lease and crash reconciliation, and browser Stop wiring is a later child.
+
+## Browser Stop gate (014q)
+
+- An active plain-chat conversation now shows Stop, including after history load. The generated-type API call requests owner Stop and leaves the original SSE stream connected for its persisted terminal; partial output remains visible. A terminal response that wins the race refreshes saved conversation detail. Stop errors remain visible and retryable.
+- A live-stream browser test covers the Stop POST, progress and saved partial output after the stopped terminal. Web test/build/lint gates passed. Parent T034 remains open for navigation and tab-close cancellation, observer reconciliation and explicit retry/continue.

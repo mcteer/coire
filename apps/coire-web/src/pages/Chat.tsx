@@ -80,6 +80,16 @@ function ChatSession({ ownerId }: { ownerId: string }) {
             disabled={!chat.selectedId || chat.active || Boolean(chat.conversation?.active_turn_id)}
             status={chat.status}
           />
+          {chat.conversation?.active_turn_id && (
+            <button
+              className="button"
+              type="button"
+              onClick={() => void chat.stop()}
+              disabled={chat.stopPending}
+            >
+              {chat.stopPending ? "Stopping…" : "Stop response"}
+            </button>
+          )}
         </div>
       </div>
     </main>

@@ -103,6 +103,87 @@ test("shows accepted input, streamed answer and model snapshot", async () => {
   expect(loadChatDrafts(conversation.owner_id).get(conversationId)).toBeUndefined();
 });
 
+test("Stop requests server cancellation and keeps the saved partial answer", async () => {
+  const accepted = {
+    type: "turn.accepted",
+    turn: {
+      id: turnId,
+      conversation_id: conversationId,
+      client_request_id: crypto.randomUUID(),
+      accepted_revision: 1,
+      input_message_id: inputId,
+      assistant_message_id: answerId,
+      model_id: modelId,
+      model_display_name: "Friendly model",
+      state: "accepted",
+      action: "chat",
+      created_at: "2026-09-28T00:00:00Z",
+      updated_at: "2026-09-28T00:00:00Z",
+    },
+  };
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(value) {
+        controller = value;
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [], next_cursor: null }))
+    .mockResolvedValueOnce(json(conversation, 201))
+    .mockResolvedValueOnce(response)
+    .mockResolvedValueOnce(json({ ...accepted.turn, state: "stop_requested" }));
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  await screen.findByText("Friendly model");
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Keep this" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+  await act(async () => {
+    controller.enqueue(
+      new TextEncoder().encode(
+        event(1, accepted) +
+          event(2, {
+            type: "message.delta",
+            message_id: answerId,
+            channel: "answer",
+            text: "Partial",
+            offset: 7,
+          }),
+      ),
+    );
+  });
+  expect(screen.getByText("Partial")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Stop response" }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
+  expect(fetchMock.mock.calls[4]?.[0]).toContain(`/turns/${turnId}/stop`);
+  expect(JSON.parse(fetchMock.mock.calls[4]?.[1]?.body as string)).toEqual({ reason: "user_stop" });
+  expect(screen.getByRole("status")).toHaveTextContent("Stopping response");
+  await act(async () => {
+    controller.enqueue(
+      new TextEncoder().encode(
+        event(3, {
+          type: "turn.terminal",
+          state: "stopped",
+          answer_length: 7,
+          reasoning_length: 0,
+          safe_error: "stopped by user",
+        }),
+      ),
+    );
+    controller.close();
+  });
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Stop response" })).toBeNull());
+  expect(screen.getByText("Partial")).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("stopped by user");
+});
+
 test("preserves the draft when admission refuses the send", async () => {
   const fetchMock = vi
     .fn()

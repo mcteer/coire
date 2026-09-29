@@ -6,6 +6,7 @@ import {
   getChatConversation,
   listChatModels,
   listChatConversations,
+  stopChatTurn,
   type ChatConversation,
   type ChatEvent,
   type ChatMessage,
@@ -31,6 +32,7 @@ export function useConversation(ownerId: string) {
   const [loading, setLoading] = useState(true);
   const [available, setAvailable] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [stopPending, setStopPending] = useState(false);
   const busyRef = useRef(false);
   const pending = useRef<{ key: string; body: ChatTurnCreate } | null>(null);
   const selection = useRef(0);
@@ -176,6 +178,8 @@ export function useConversation(ownerId: string) {
             : "Warming up the model · about " + Math.ceil(payload.estimate_seconds) + " s"
           : payload.state === "queued"
             ? "Waiting for capacity…"
+            : payload.state === "stop_requested"
+              ? "Stopping response…"
             : payload.state === "running"
               ? "Writing response…"
               : "Preparing response…",
@@ -347,6 +351,31 @@ export function useConversation(ownerId: string) {
     setError(null);
   };
 
+  const stop = async () => {
+    const current = conversation;
+    if (!current?.active_turn_id || stopPending) return;
+    const generation = selection.current;
+    setStopPending(true);
+    setError(null);
+    try {
+      const turn = await stopChatTurn(current.id, current.active_turn_id);
+      if (turn.state === "stop_requested") {
+        setStatus("Stopping response…");
+      } else if (["completed", "failed", "stopped", "interrupted"].includes(turn.state)) {
+        const detail = await getChatConversation(current.id);
+        if (selection.current === generation) {
+          setConversation(detail.conversation);
+          setMessages(detail.messages ?? []);
+          setStatus(turn.state === "completed" ? null : "Response ended. Your partial answer was saved.");
+        }
+      }
+    } catch (cause) {
+      setError(String(cause));
+    } finally {
+      setStopPending(false);
+    }
+  };
+
   return {
     models,
     selectedId,
@@ -364,6 +393,8 @@ export function useConversation(ownerId: string) {
     loading,
     available,
     active: busy || stream.active,
+    stopPending,
+    stop,
     send,
     newConversation,
     openConversation,

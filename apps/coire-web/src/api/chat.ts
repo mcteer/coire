@@ -9,6 +9,7 @@ export type ChatConversationDetail = components["schemas"]["ChatConversationDeta
 export type ChatConversationCreate = components["schemas"]["ChatConversationCreate"];
 export type ChatTurnCreate = components["schemas"]["ChatTurnCreate"];
 export type ChatTurnDetail = components["schemas"]["ChatTurnDetail"];
+export type ChatTurn = components["schemas"]["ChatTurn"];
 export type ChatEvent = components["schemas"]["ChatEvent"];
 export type ChatMessage = components["schemas"]["ChatMessage-Output"];
 export type ChatPickerEntry = components["schemas"]["ChatPickerEntry"];
@@ -48,6 +49,13 @@ export function getChatConversation(
 export function getChatTurn(conversationId: string, turnId: string): Promise<ChatTurnDetail> {
   return api<ChatTurnDetail>(
     `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/turns/${encodeURIComponent(turnId)}`,
+  );
+}
+
+export function stopChatTurn(conversationId: string, turnId: string): Promise<ChatTurn> {
+  return api<ChatTurn>(
+    `/api/v1/chat/conversations/${encodeURIComponent(conversationId)}/turns/${encodeURIComponent(turnId)}/stop`,
+    { method: "POST", body: JSON.stringify({ reason: "user_stop" }) },
   );
 }
 
