@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Native Chat terminal and refusal telemetry (2026-09-29)
+
+- Persisted native Chat terminals now increment `coire_chat_turns_total{mode="chat",outcome}` exactly after the database event commits; a durable Stop request records its acknowledgement time in `coire_chat_stop_seconds`. Owner upload refusals increment `coire_chat_upload_rejections_total{reason}` with only the fixed domain error code. The Chat dashboard plots all three; `CoireChatStopSlow` alerts on a sustained p95 above five seconds. A route contract asserts the upload metric has no owner, file or conversation label. Full Python suite: 1,144 passed, 126 conditional skipped; strict mypy, Ruff/format, OpenAPI freshness and `git diff --check` passed. The dashboard JSON/YAML parsed and the pinned local Prometheus image's `promtool` accepted all five rules. Parent T068 stays open for the specified active-turn gauge and coding/node/agent correlation metrics.
+
 ## Context limit remedy in browser Chat (2026-09-29)
 
 - A typed `chat_context_exceeded` admission response now shows explicit options to remove selected files or pages, choose a larger-context model, or start a new conversation. The unsent draft remains intact. Existing collapsed reasoning, inert Markdown, per-message model attribution, attachment mode/page labels and image-capability picker were verified with the new remedy; parent T064 is complete. Web tests: 91 passed; lint and TypeScript production build passed.

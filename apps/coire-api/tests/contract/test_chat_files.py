@@ -197,7 +197,18 @@ async def test_commit_failure_removes_published_original(tmp_path: Path) -> None
     assert not staged.target.exists()
 
 
-async def test_routes_reauthorize_upload_and_download(tmp_path: Path) -> None:
+async def test_routes_reauthorize_upload_and_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from coire_api.routes import chat
+
+    rejection_labels: list[dict[str, str]] = []
+
+    class Rejections:
+        def add(self, _value: int, labels: dict[str, str]) -> None:
+            rejection_labels.append(labels)
+
+    monkeypatch.setattr(chat, "upload_rejections_total", Rejections())
     session = FileSession()
     settings = _settings(tmp_path)
     app = create_app(settings)
@@ -254,6 +265,7 @@ async def test_routes_reauthorize_upload_and_download(tmp_path: Path) -> None:
             headers={"Origin": "http://localhost"},
         )
         assert denied_upload.status_code == 404
+        assert rejection_labels == [{"reason": "chat_not_found"}]
         assert len(await asyncio.to_thread(lambda: list(tmp_path.iterdir()))) == 1
         app.dependency_overrides[require_principal] = lambda: Principal(
             kind=PrincipalKind.USER, user_id=session.owner

@@ -18,7 +18,13 @@ from sqlalchemy import select
 from coire_api.auth import Principal
 from coire_api.chat.maintenance import maintain_turn_lease
 from coire_api.chat.reasoning import ReasoningParser
-from coire_api.chat.telemetry import parser_failures_total, requests_total, tracer
+from coire_api.chat.telemetry import (
+    parser_failures_total,
+    requests_total,
+    stop_seconds,
+    tracer,
+    turns_total,
+)
 from coire_api.chat.turns import Admission
 from coire_api.db import (
     ChatConversationRow,
@@ -92,6 +98,7 @@ async def persist_native_event(
     """Commit state and event atomically, then return bytes to the streaming caller."""
     turn_id = admission.turn.id
     conversation_id = admission.turn.conversation_id
+    stop_duration: float | None = None
     async with session_scope() as session:
         conversation = await session.scalar(
             select(ChatConversationRow)
@@ -130,6 +137,8 @@ async def persist_native_event(
             )
         else:
             assert state in {"completed", "failed", "interrupted", "stopped"}
+            if turn.state == "stop_requested":
+                stop_duration = max(0.0, (now - turn.updated_at).total_seconds())
             turn.state = state
             turn.finished_at = now
             turn.owner_process = None
@@ -168,6 +177,9 @@ async def persist_native_event(
         )
     if kind == "terminal":
         requests_total.add(1, {"operation": "send_terminal", "outcome": state or "unknown"})
+        turns_total.add(1, {"mode": "chat", "outcome": state or "unknown"})
+        if stop_duration is not None:
+            stop_seconds.record(stop_duration, {"mode": "chat"})
         logger.info(
             "chat turn terminal turn_id=%s model_id=%s state=%s",
             turn_id,

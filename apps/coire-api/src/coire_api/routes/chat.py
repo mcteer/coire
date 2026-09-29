@@ -45,7 +45,7 @@ from coire_api.chat.service import (
     update_conversation,
 )
 from coire_api.chat.streaming import native_stream, observe_conversation, replay_saved_events
-from coire_api.chat.telemetry import requests_total, tracer
+from coire_api.chat.telemetry import requests_total, tracer, upload_rejections_total
 from coire_api.chat.turns import admit_turn, read_turn_detail, request_turn_stop
 from coire_api.coding_calls import owned_chat_artifact_id
 from coire_api.deps import SessionDep, SettingsDep
@@ -115,8 +115,9 @@ async def upload_chat_file(
             result = await admit_original(
                 session, principal, conversation_id, parsed_metadata, staged, settings
             )
-        except CoireError:
+        except CoireError as exc:
             requests_total.add(1, {"operation": "upload", "outcome": "refused"})
+            upload_rejections_total.add(1, {"reason": exc.code})
             raise
         except Exception as exc:
             requests_total.add(1, {"operation": "upload", "outcome": "failed"})
