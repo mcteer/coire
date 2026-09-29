@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## History stop and purge audit (2026-09-29)
+
+- Parent T029 and T030 are complete after code and coverage audit. Owner Stop is durable and idempotent; only the original stream closes generation, and the observer path only replays saved events. Persisted terminal state plus once-only usage settlement handle Stop/disconnect, while an expired plain-chat lease saves one terminal event and preserves partial output. Deletion immediately tombstones and blocks owner reads, expiry blocks the existing `/mcp/artifacts` URL, and bounded maintenance sweeps text, files, staging uploads and expired events. The alternate artifact guard lives in `routes/mcp_artifacts.py` rather than the older task path `mcp_calls.py`. Focused stop/delete/artifact/maintenance/file-purge tests passed 23; streaming/observer tests passed 27. T027 remains open for broader history/version race contracts, and T066 remains open for complete visual/control-input cleanup.
+
 ## File deployment bounds (2026-09-29)
 
 - Parent T067 is complete. Compose now passes bounded API upload, quota, PDF, image and purge settings explicitly, and gives the scheduler and CPU worker the same processing deadline. The private worker remains single-conversion with 512 MiB, one CPU and 64 processes; nginx grants the 11 MiB multipart envelope only to the Chat upload path. The Compose README records the operator settings and fixed worker caps. Rendered Compose and settings contracts passed (40 tests, one unrelated conditional skip), as did Ruff and `docker compose config --quiet`.
