@@ -128,6 +128,7 @@ class ChatTurnCreate(BaseModel):
     attachments: list[ChatAttachmentSelection] = Field(default_factory=list, max_length=10)
     action: Literal["chat", "research", "plan", "apply"] = "chat"
     retry_of: uuid.UUID | None = None
+    recovery_mode: Literal["retry", "continue"] | None = None
     workspace_id: uuid.UUID | None = None
     source_revision: str | None = Field(default=None, max_length=128)
     plan_id: uuid.UUID | None = None
@@ -139,6 +140,8 @@ class ChatTurnCreate(BaseModel):
             raise ValueError("content exceeds 64 KiB")
         if len({selection.file_id for selection in self.attachments}) != len(self.attachments):
             raise ValueError("each attachment may be selected once")
+        if (self.retry_of is None) != (self.recovery_mode is None):
+            raise ValueError("recovery mode and prior turn must be supplied together")
         return self
 
 
@@ -166,6 +169,7 @@ class ChatTurn(BaseModel):
     ]
     action: Literal["chat", "research", "plan", "apply"] = "chat"
     retry_of: uuid.UUID | None = None
+    recovery_mode: Literal["retry", "continue"] | None = None
     usage: ChatUsage | None = None
     created_at: datetime
     updated_at: datetime

@@ -92,6 +92,13 @@ def test_message_context_migration_preserves_old_rows_and_reverses() -> None:
     assert "def upgrade()" in source and "def downgrade()" in source
 
 
+def test_recovery_mode_migration_is_additive_and_reversible() -> None:
+    assert "recovery_mode" in Base.metadata.tables["chat_turns"].c
+    source = Path("apps/coire-api/alembic/versions/0018_chat_recovery_mode.py").read_text()
+    assert 'down_revision: str | None = "0017_chat_message_context"' in source
+    assert "def upgrade()" in source and "def downgrade()" in source
+
+
 def test_populated_chat_blocks_downgrade_before_any_drop() -> None:
     namespace = runpy.run_path("apps/coire-api/alembic/versions/0015_chat_conversations.py")
     downgrade = namespace["downgrade"]

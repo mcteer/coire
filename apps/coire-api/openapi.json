@@ -3053,6 +3053,21 @@
             "title": "Model Id",
             "type": "string"
           },
+          "recovery_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "retry",
+                  "continue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Mode"
+          },
           "retry_of": {
             "anyOf": [
               {
@@ -3185,6 +3200,21 @@
               }
             ],
             "title": "Plan Id"
+          },
+          "recovery_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "retry",
+                  "continue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Mode"
           },
           "research_id": {
             "anyOf": [

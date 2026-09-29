@@ -856,6 +856,7 @@ test("explicit retry keeps the partial answer and does not duplicate the user in
             client_request_id: crypto.randomUUID(),
             accepted_revision: 2,
             retry_of: oldTurnId,
+            recovery_mode: "retry",
             state: "accepted",
           },
         }) +
@@ -881,7 +882,113 @@ test("explicit retry keeps the partial answer and does not duplicate the user in
   expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("New unsent draft");
   const posted = JSON.parse(fetchMock.mock.calls[3]?.[1]?.body as string);
   expect(posted.retry_of).toBe(oldTurnId);
+  expect(posted.recovery_mode).toBe("retry");
   expect(posted.content).toBe("Prompt");
+});
+
+test("explicit continuation keeps the partial answer and creates a separate input", async () => {
+  const oldTurnId = "00000000-0000-0000-0000-000000000087";
+  const oldAnswerId = "00000000-0000-0000-0000-000000000088";
+  const nextInputId = "00000000-0000-0000-0000-000000000089";
+  const savedConversation = { ...conversation, title: "Continue me", revision: 2 };
+  const oldTurn = {
+    id: oldTurnId,
+    conversation_id: conversationId,
+    client_request_id: crypto.randomUUID(),
+    accepted_revision: 1,
+    input_message_id: inputId,
+    assistant_message_id: oldAnswerId,
+    model_id: modelId,
+    model_display_name: "Friendly model",
+    state: "interrupted",
+    action: "chat",
+    created_at: conversation.created_at,
+    updated_at: conversation.updated_at,
+  };
+  const savedMessages = [
+    {
+      id: inputId,
+      conversation_id: conversationId,
+      position: 1,
+      role: "user",
+      text: "Prompt",
+      reasoning: "",
+      model_id: modelId,
+      model_display_name: "Friendly model",
+      attachment_ids: [],
+      created_at: conversation.created_at,
+    },
+    {
+      id: oldAnswerId,
+      conversation_id: conversationId,
+      position: 2,
+      role: "assistant",
+      text: "Saved partial",
+      reasoning: "",
+      model_id: modelId,
+      model_display_name: "Friendly model",
+      attachment_ids: [],
+      created_at: conversation.created_at,
+    },
+  ];
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(json({ data: [model] }))
+    .mockResolvedValueOnce(json({ data: [savedConversation], next_cursor: null }))
+    .mockResolvedValueOnce(
+      json({
+        conversation: savedConversation,
+        messages: savedMessages,
+        turns: [oldTurn],
+        attachments: [],
+        event_cursor: 2,
+      }),
+    )
+    .mockResolvedValueOnce(
+      stream(
+        event(3, {
+          type: "turn.accepted",
+          turn: {
+            ...oldTurn,
+            id: turnId,
+            input_message_id: nextInputId,
+            assistant_message_id: answerId,
+            client_request_id: crypto.randomUUID(),
+            accepted_revision: 2,
+            retry_of: oldTurnId,
+            recovery_mode: "continue",
+            state: "accepted",
+          },
+        }) +
+          event(4, {
+            type: "turn.terminal",
+            state: "completed",
+            answer_length: 0,
+            reasoning_length: 0,
+          }),
+      ),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  const view = render(<Chat ownerId={conversation.owner_id} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Continue me/ }));
+  const continueButton = await screen.findByRole("button", {
+    name: "Continue from partial answer",
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "Different draft" },
+  });
+  fireEvent.click(continueButton);
+  await waitFor(() => expect(view.container.querySelectorAll("article.user")).toHaveLength(2));
+  expect(view.container.querySelectorAll("article.assistant")).toHaveLength(2);
+  expect(screen.getByText("Saved partial")).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Different draft");
+  const posted = JSON.parse(fetchMock.mock.calls[3]?.[1]?.body as string);
+  expect(posted).toMatchObject({
+    recovery_mode: "continue",
+    retry_of: oldTurnId,
+    content: "Continue the previous response.",
+    attachments: [],
+  });
 });
 
 test("restores same-tab text and an eligible model after reload", async () => {

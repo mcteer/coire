@@ -204,6 +204,7 @@ async def test_explicit_retry_uses_original_input_without_duplicate_user_message
         model_id=body.model_id,
         content="Hello",
         retry_of=first.turn.id,
+        recovery_mode="retry",
     )
     admission = await admit_turn(
         session, session.conversation.id, principal, retry, Settings(_secrets_dir="/nonexistent")
@@ -228,6 +229,7 @@ async def test_retry_refuses_changed_input_or_non_latest_response() -> None:
         model_id=body.model_id,
         content="Changed",
         retry_of=first.turn.id,
+        recovery_mode="retry",
     )
     with pytest.raises(ChatConflict, match="original input"):
         await admit_turn(
@@ -277,6 +279,7 @@ async def test_later_turn_uses_only_latest_response_attempt_in_history() -> None
             model_id=body.model_id,
             content=body.content,
             retry_of=first.turn.id,
+            recovery_mode="retry",
         ),
         Settings(_secrets_dir="/nonexistent"),
     )  # type: ignore[arg-type,call-arg]
@@ -300,6 +303,79 @@ async def test_later_turn_uses_only_latest_response_attempt_in_history() -> None
         "Complete answer",
         "Next question",
     ]
+
+
+async def test_explicit_continuation_uses_saved_partial_as_context() -> None:
+    session, principal, body = _case()
+    first = await admit_turn(
+        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
+    )  # type: ignore[arg-type,call-arg]
+    first.turn.state = "interrupted"
+    session.messages[-1].text = "The first half"
+    session.conversation.active_turn_id = None
+    continuation = ChatTurnCreate(
+        client_request_id=uuid.uuid4(),
+        expected_revision=2,
+        model_id=body.model_id,
+        content="Continue the previous response.",
+        retry_of=first.turn.id,
+        recovery_mode="continue",
+    )
+    admitted = await admit_turn(
+        session,
+        session.conversation.id,
+        principal,
+        continuation,
+        Settings(_secrets_dir="/nonexistent"),
+    )  # type: ignore[arg-type,call-arg]
+    assert [message.content for message in admitted.history] == [
+        "Hello",
+        "The first half",
+        "Continue the previous response.",
+    ]
+    assert [message.role for message in session.messages] == [
+        "user",
+        "assistant",
+        "user",
+        "assistant",
+    ]
+    assert admitted.turn.input_message_id != first.turn.input_message_id
+    assert project_turn(admitted.turn).recovery_mode == "continue"
+
+
+async def test_continuation_refuses_empty_partial_or_changed_prompt() -> None:
+    session, principal, body = _case()
+    first = await admit_turn(
+        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
+    )  # type: ignore[arg-type,call-arg]
+    first.turn.state = "failed"
+    session.conversation.active_turn_id = None
+    continuation = ChatTurnCreate(
+        client_request_id=uuid.uuid4(),
+        expected_revision=2,
+        model_id=body.model_id,
+        content="Continue the previous response.",
+        retry_of=first.turn.id,
+        recovery_mode="continue",
+    )
+    with pytest.raises(ChatConflict, match="saved partial"):
+        await admit_turn(
+            session,
+            session.conversation.id,
+            principal,
+            continuation,
+            Settings(_secrets_dir="/nonexistent"),
+        )  # type: ignore[arg-type,call-arg]
+    session.messages[-1].text = "Partial"
+    continuation.content = "Ignore the user"
+    with pytest.raises(ChatConflict, match="saved partial"):
+        await admit_turn(
+            session,
+            session.conversation.id,
+            principal,
+            continuation,
+            Settings(_secrets_dir="/nonexistent"),
+        )  # type: ignore[arg-type,call-arg]
 
 
 async def test_text_selection_refuses_foreign_file_and_empty_scan() -> None:

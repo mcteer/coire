@@ -2760,6 +2760,8 @@ export interface components {
              * Format: uuid
              */
             model_id: string;
+            /** Recovery Mode */
+            recovery_mode?: ("retry" | "continue") | null;
             /** Retry Of */
             retry_of?: string | null;
             /**
@@ -2809,6 +2811,8 @@ export interface components {
             model_id: string;
             /** Plan Id */
             plan_id?: string | null;
+            /** Recovery Mode */
+            recovery_mode?: ("retry" | "continue") | null;
             /** Research Id */
             research_id?: string | null;
             /** Retry Of */

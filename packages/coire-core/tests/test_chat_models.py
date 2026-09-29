@@ -63,6 +63,10 @@ def test_turn_create_rejects_unbounded_or_ambiguous_selection() -> None:
         )
     with pytest.raises(ValidationError):
         ChatTurnCreate.model_validate({**request.model_dump(), "owner_id": str(uuid4())})
+    with pytest.raises(ValidationError):
+        ChatTurnCreate.model_validate({**request.model_dump(), "recovery_mode": "continue"})
+    with pytest.raises(ValidationError):
+        ChatTurnCreate.model_validate({**request.model_dump(), "retry_of": str(uuid4())})
 
 
 def test_turn_detail_requires_saved_messages_and_cursor() -> None:

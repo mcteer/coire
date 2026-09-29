@@ -99,6 +99,16 @@ function ChatSession({ ownerId }: { ownerId: string }) {
               >
                 Retry response
               </button>
+              {chat.canContinue && (
+                <button
+                  className="button"
+                  type="button"
+                  disabled={!chat.selectedId || chat.active || chat.fileBusy}
+                  onClick={() => void chat.continueResponse()}
+                >
+                  Continue from partial answer
+                </button>
+              )}
             </div>
           )}
           <AttachmentList

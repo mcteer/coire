@@ -1354,6 +1354,7 @@ class ChatTurnRow(Base):
     state: Mapped[str] = mapped_column(String(24), default="accepted")
     event_cursor: Mapped[int] = mapped_column(BigInteger, default=0)
     retry_of: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("chat_turns.id"), nullable=True)
+    recovery_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     coding_call_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("mcp_calls.id", ondelete="SET NULL"), nullable=True
     )

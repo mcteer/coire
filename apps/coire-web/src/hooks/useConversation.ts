@@ -50,6 +50,10 @@ export function useConversation(ownerId: string) {
     !conversation?.active_turn_id
       ? latestTurn
       : null;
+  const canContinue = Boolean(
+    retryableTurn &&
+    messages.find((message) => message.id === retryableTurn.assistant_message_id)?.text.trim(),
+  );
   const [history, setHistory] = useState<ChatConversation[]>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [olderPosition, setOlderPosition] = useState<number | null>(null);
@@ -348,7 +352,7 @@ export function useConversation(ownerId: string) {
     }
   };
 
-  const retry = async () => {
+  const recover = async (mode: "retry" | "continue") => {
     const current = conversation;
     const previous = retryableTurn;
     const input = messages.find((message) => message.id === previous?.input_message_id);
@@ -356,6 +360,7 @@ export function useConversation(ownerId: string) {
       !current ||
       !previous ||
       !input ||
+      (mode === "continue" && !canContinue) ||
       !selectedId ||
       busyRef.current ||
       stream.active ||
@@ -365,7 +370,8 @@ export function useConversation(ownerId: string) {
     busyRef.current = true;
     setBusy(true);
     setError(null);
-    const key = [current.id, current.revision, selectedId, previous.id, "retry"].join("\0");
+    const content = mode === "retry" ? input.text : "Continue the previous response.";
+    const key = [current.id, current.revision, selectedId, previous.id, mode].join("\0");
     const body: ChatTurnCreate =
       pending.current?.key === key
         ? pending.current.body
@@ -373,27 +379,30 @@ export function useConversation(ownerId: string) {
             client_request_id: crypto.randomUUID(),
             expected_revision: current.revision,
             model_id: selectedId,
-            content: input.text,
-            attachments: input.attachment_selections ?? [],
+            content,
+            attachments: mode === "retry" ? (input.attachment_selections ?? []) : [],
             action: "chat",
             retry_of: previous.id,
+            recovery_mode: mode,
           };
     pending.current = { key, body };
     const generation = selection.current;
     try {
       await stream.send(current.id, body, (event) => {
-        if (selection.current === generation) onEvent(event, input.text);
+        if (selection.current === generation) onEvent(event, content);
       });
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === "AbortError")) {
         reportError(cause);
-        setStatus("Retry failed. Review the response and try again.");
+        setStatus("Recovery failed. Review the response and try again.");
       }
     } finally {
       busyRef.current = false;
       setBusy(false);
     }
   };
+  const retry = () => recover("retry");
+  const continueResponse = () => recover("continue");
 
   const changeDraft = (value: string) => {
     setDraft(value);
@@ -790,7 +799,9 @@ export function useConversation(ownerId: string) {
     conversation,
     messages,
     retryableTurn,
+    canContinue,
     retry,
+    continueResponse,
     attachments,
     selections,
     canSendSelections,

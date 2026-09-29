@@ -100,6 +100,7 @@ def project_turn(row: ChatTurnRow) -> ChatTurn:
         ),
         action=cast(Literal["chat", "research", "plan", "apply"], row.action),
         retry_of=row.retry_of,
+        recovery_mode=cast(Literal["retry", "continue"] | None, row.recovery_mode),
         usage=usage,
         created_at=row.created_at,
         updated_at=row.updated_at,
@@ -257,30 +258,39 @@ async def admit_turn(
         latest_by_input[previous.input_message_id] = previous.assistant_message_id
     prior_assistant_ids = {row.assistant_message_id for row in prior_turns}
     selected_assistant_ids = set(latest_by_input.values())
-    retry_source: ChatTurnRow | None = None
+    recovery_source: ChatTurnRow | None = None
     source_input: ChatMessageRow | None = None
     if body.retry_of is not None:
-        retry_source = await session.get(ChatTurnRow, body.retry_of)
+        recovery_source = await session.get(ChatTurnRow, body.retry_of)
         if (
-            retry_source is None
-            or retry_source.conversation_id != conversation_id
-            or retry_source.action != "chat"
-            or retry_source.state not in {"failed", "stopped", "interrupted"}
+            recovery_source is None
+            or recovery_source.conversation_id != conversation_id
+            or recovery_source.action != "chat"
+            or recovery_source.state not in {"failed", "stopped", "interrupted"}
             or not saved
-            or saved[-1].id != retry_source.assistant_message_id
+            or saved[-1].id != recovery_source.assistant_message_id
         ):
-            raise ChatConflict("only the latest interrupted response can be retried")
-        source_input = next(
-            (message for message in saved if message.id == retry_source.input_message_id), None
-        )
-        if (
-            source_input is None
-            or source_input.role != "user"
-            or source_input.text != body.content
-            or source_input.attachment_selections
-            != [item.model_dump(mode="json") for item in body.attachments]
+            raise ChatConflict("only the latest interrupted response can be recovered")
+        if body.recovery_mode == "retry":
+            source_input = next(
+                (message for message in saved if message.id == recovery_source.input_message_id),
+                None,
+            )
+            if (
+                source_input is None
+                or source_input.role != "user"
+                or source_input.text != body.content
+                or source_input.attachment_selections
+                != [item.model_dump(mode="json") for item in body.attachments]
+            ):
+                raise ChatConflict("retry must keep the original input and file choices")
+        elif (
+            body.recovery_mode != "continue"
+            or body.content != "Continue the previous response."
+            or body.attachments
+            or not saved[-1].text.strip()
         ):
-            raise ChatConflict("retry must keep the original input and file choices")
+            raise ChatConflict("continuation requires a saved partial answer")
     prompt_content = await compose_text_prompt(
         session, principal.user_id, conversation_id, body.content, body.attachments
     )
@@ -362,6 +372,7 @@ async def admit_turn(
         model_display_name=model.display_name,
         action="chat",
         retry_of=body.retry_of,
+        recovery_mode=body.recovery_mode,
         state="accepted",
         owner_process=PROCESS_ID,
         lease_expires_at=now + timedelta(seconds=LEASE_SECONDS),
