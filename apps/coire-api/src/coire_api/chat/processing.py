@@ -158,15 +158,16 @@ async def publish_processed_job(job_id: str, settings: Settings) -> str:
             conversation = await session.get(
                 ChatConversationRow, attachment.conversation_id, with_for_update=True
             )
+            attachment = await session.get(
+                ChatAttachmentRow, snapshot.attachment_id, with_for_update=True
+            )
             job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
             if job is None or job.state != "processed":
                 return "unchanged"
-            attachment = await session.get(
-                ChatAttachmentRow, job.attachment_id, with_for_update=True
-            )
             if (
                 attachment is None
                 or conversation is None
+                or job.attachment_id != attachment.id
                 or attachment.deleted_at is not None
                 or conversation.deleted_at is not None
             ):

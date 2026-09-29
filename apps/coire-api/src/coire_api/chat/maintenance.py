@@ -24,6 +24,7 @@ from coire_api.db import (
     ChatMessageRow,
     ChatQuotaReservationRow,
     ChatTurnRow,
+    UserRow,
     session_scope,
 )
 from coire_core.models.chat import ChatEvent, ChatTurnTerminal
@@ -331,6 +332,91 @@ async def purge_deleted_files(settings: Settings) -> int:
     return purged
 
 
+async def reclaim_failed_file_quota() -> int:
+    """Release derivative capacity only after the worker confirmed failed-output purge."""
+
+    async with session_scope() as session:
+        job_ids = list(
+            (
+                await session.execute(
+                    select(ChatFileProcessingRow.id)
+                    .join(
+                        ChatQuotaReservationRow,
+                        ChatQuotaReservationRow.job_id == ChatFileProcessingRow.id,
+                    )
+                    .join(
+                        ChatAttachmentRow,
+                        ChatAttachmentRow.id == ChatQuotaReservationRow.attachment_id,
+                    )
+                    .join(
+                        ChatConversationRow,
+                        ChatConversationRow.id == ChatAttachmentRow.conversation_id,
+                    )
+                    .where(
+                        ChatFileProcessingRow.state == "failed",
+                        func.coalesce(
+                            ChatFileProcessingRow.output_manifest["output_purged"].as_boolean(),
+                            False,
+                        ).is_(True),
+                        ChatQuotaReservationRow.state == "active",
+                        ChatQuotaReservationRow.reserved_bytes
+                        > ChatAttachmentRow.original_bytes + ChatAttachmentRow.derived_bytes,
+                        ChatConversationRow.deleted_at.is_(None),
+                    )
+                    .order_by(ChatFileProcessingRow.updated_at, ChatFileProcessingRow.id)
+                    .limit(100)
+                )
+            ).scalars()
+        )
+    reclaimed = 0
+    for job_id in job_ids:
+        with tracer.start_as_current_span("coire.api.chat.file_quota_reclaim") as span:
+            span.set_attribute("job_id", job_id)
+            async with session_scope() as session:
+                snapshot = await session.get(ChatFileProcessingRow, job_id)
+                if snapshot is None or snapshot.owner_user_id is None:
+                    continue
+                owner = await session.get(UserRow, snapshot.owner_user_id, with_for_update=True)
+                attachment = await session.get(ChatAttachmentRow, snapshot.attachment_id)
+                if owner is None or attachment is None:
+                    continue
+                conversation = await session.get(
+                    ChatConversationRow, attachment.conversation_id, with_for_update=True
+                )
+                attachment = await session.get(
+                    ChatAttachmentRow, attachment.id, with_for_update=True
+                )
+                job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
+                if (
+                    conversation is None
+                    or conversation.deleted_at is not None
+                    or job is None
+                    or job.state != "failed"
+                    or not job.output_manifest
+                    or job.output_manifest.get("output_purged") is not True
+                    or attachment is None
+                    or attachment.owner_user_id != snapshot.owner_user_id
+                ):
+                    continue
+                reservation = await session.scalar(
+                    select(ChatQuotaReservationRow)
+                    .where(
+                        ChatQuotaReservationRow.attachment_id == attachment.id,
+                        ChatQuotaReservationRow.job_id == job.id,
+                        ChatQuotaReservationRow.state == "active",
+                    )
+                    .with_for_update()
+                )
+                target = attachment.original_bytes + attachment.derived_bytes
+                if reservation is None or reservation.reserved_bytes <= target:
+                    continue
+                reservation.reserved_bytes = target
+            reclaimed += 1
+            requests_total.add(1, {"operation": "file_quota_reclaim", "outcome": "succeeded"})
+            logger.info("failed file quota reclaimed job_id=%s", job_id)
+    return reclaimed
+
+
 def purge_stale_uploads(root: Path, *, limit: int = 100) -> int:
     """Remove only aged generated temporary originals left by interrupted uploads."""
 
@@ -414,6 +500,7 @@ class ChatMaintenance:
             try:
                 await sweep_stale_turns(self._settings)
                 await publish_processed_files(self._settings)
+                await reclaim_failed_file_quota()
                 await purge_deleted_files(self._settings)
                 await purge_deleted_text()
                 stale_uploads = await asyncio.to_thread(

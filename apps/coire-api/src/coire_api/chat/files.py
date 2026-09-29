@@ -150,6 +150,42 @@ def project_attachment(row: ChatAttachmentRow) -> ChatAttachment:
     )
 
 
+async def reserve_derived_capacity(
+    session: AsyncSession,
+    owner_user_id: uuid.UUID,
+    conversation_id: uuid.UUID,
+    reservation: ChatQuotaReservationRow,
+    original_bytes: int,
+    settings: Settings,
+) -> None:
+    """Expand a locked reservation without exceeding either owner-scoped quota."""
+
+    if reservation.reserved_bytes < original_bytes:
+        raise ChatConflict("file reservation unavailable")
+    desired = original_bytes + settings.chat_derived_job_max_bytes
+    delta = max(0, desired - reservation.reserved_bytes)
+    if delta == 0:
+        return
+    owner_used = await session.scalar(
+        select(func.coalesce(func.sum(ChatQuotaReservationRow.reserved_bytes), 0)).where(
+            ChatQuotaReservationRow.owner_user_id == owner_user_id,
+            ChatQuotaReservationRow.state == "active",
+        )
+    )
+    conversation_used = await session.scalar(
+        select(func.coalesce(func.sum(ChatQuotaReservationRow.reserved_bytes), 0)).where(
+            ChatQuotaReservationRow.conversation_id == conversation_id,
+            ChatQuotaReservationRow.state == "active",
+        )
+    )
+    if (
+        int(owner_used or 0) + delta > settings.chat_owner_quota_bytes
+        or int(conversation_used or 0) + delta > settings.chat_conversation_quota_bytes
+    ):
+        raise ChatQuotaExceeded("file retry or page rendering exceeds chat file quota")
+    reservation.reserved_bytes = desired
+
+
 async def owned_attachment(
     session: AsyncSession, principal: Principal, conversation_id: uuid.UUID, file_id: uuid.UUID
 ) -> ChatAttachmentRow:
@@ -395,12 +431,16 @@ async def retry_inspection(
         )
         .with_for_update()
     )
-    if (
-        reservation is None
-        or reservation.reserved_bytes
-        < attachment.original_bytes + settings.chat_derived_job_max_bytes
-    ):
+    if reservation is None:
         raise ChatConflict("file reservation unavailable")
+    await reserve_derived_capacity(
+        session,
+        principal.user_id,
+        conversation_id,
+        reservation,
+        attachment.original_bytes,
+        settings,
+    )
     now = datetime.now(UTC)
     next_job = ChatFileProcessingRow(
         id=new_job_id(),
@@ -570,31 +610,16 @@ async def render_pdf_pages(
     )
     if reservation is None:
         raise ChatConflict("file reservation unavailable")
-    desired = attachment.original_bytes + settings.chat_derived_job_max_bytes
-    if latest is None:
-        if reservation.reserved_bytes < attachment.original_bytes:
-            raise ChatConflict("file reservation unavailable")
-        delta = max(0, desired - reservation.reserved_bytes)
-        owner_used = await session.scalar(
-            select(func.coalesce(func.sum(ChatQuotaReservationRow.reserved_bytes), 0)).where(
-                ChatQuotaReservationRow.owner_user_id == principal.user_id,
-                ChatQuotaReservationRow.state == "active",
-            )
-        )
-        conversation_used = await session.scalar(
-            select(func.coalesce(func.sum(ChatQuotaReservationRow.reserved_bytes), 0)).where(
-                ChatQuotaReservationRow.conversation_id == conversation_id,
-                ChatQuotaReservationRow.state == "active",
-            )
-        )
-        if (
-            int(owner_used or 0) + delta > settings.chat_owner_quota_bytes
-            or int(conversation_used or 0) + delta > settings.chat_conversation_quota_bytes
-        ):
-            raise ChatQuotaExceeded("PDF page rendering exceeds chat file quota")
-        reservation.reserved_bytes = max(reservation.reserved_bytes, desired)
-    elif reservation.job_id != latest.id or reservation.reserved_bytes < desired:
+    if latest is not None and reservation.job_id != latest.id:
         raise ChatConflict("file reservation unavailable")
+    await reserve_derived_capacity(
+        session,
+        principal.user_id,
+        conversation_id,
+        reservation,
+        attachment.original_bytes,
+        settings,
+    )
     now = datetime.now(UTC)
     job = ChatFileProcessingRow(
         id=new_job_id(),

@@ -180,12 +180,28 @@ async def test_retry_route_requires_cleanup_and_admits_once() -> None:
         assert pending.status_code == 409
         assert session.commits == 0
         session.old.output_manifest = {"output_purged": True}
+        session.reservation.reserved_bytes = session.attachment.original_bytes
+        session.used = session.reservation.reserved_bytes
         stale = await client.post(
             path,
             json={**body, "expected_revision": 2},
             headers={"Origin": "http://localhost"},
         )
         assert stale.status_code == 409
+        limited = Settings(  # type: ignore[call-arg]
+            _secrets_dir="/nonexistent",
+            chat_enabled=True,
+            chat_browser_origin="http://localhost",
+            identity_legacy_admin_enabled=True,
+            admin_token=SecretStr("file-retry-test"),
+            chat_conversation_quota_bytes=32 * 1024 * 1024,
+        )
+        app.dependency_overrides[get_settings] = lambda: limited
+        assert (
+            await client.post(path, json=body, headers={"Origin": "http://localhost"})
+        ).status_code == 413
+        assert session.attachment.state == "failed"
+        app.dependency_overrides[get_settings] = lambda: settings
         accepted = await client.post(path, json=body, headers={"Origin": "http://localhost"})
         assert accepted.status_code == 202, accepted.text
         assert accepted.json()["state"] == "processing"
@@ -195,6 +211,7 @@ async def test_retry_route_requires_cleanup_and_admits_once() -> None:
         assert admitted.state == "queued"
         assert admitted.source_sha256 == session.old.source_sha256
         assert session.reservation.job_id == admitted.id
+        assert session.reservation.reserved_bytes == 20 + 32 * 1024 * 1024
         assert session.conversation.revision == 4
         assert len(session.events) == 1
         duplicate = await client.post(path, json=body, headers={"Origin": "http://localhost"})
