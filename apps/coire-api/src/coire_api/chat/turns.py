@@ -6,6 +6,7 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Literal, cast
 
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.auth import Principal
 from coire_api.chat.maintenance import LEASE_SECONDS, PROCESS_ID
 from coire_api.chat.text_context import compose_text_prompt
+from coire_api.chat.visual_context import visual_message
 from coire_api.db import (
     ChatConversationRow,
     ChatEventRow,
@@ -22,7 +24,7 @@ from coire_api.db import (
     McpCallRow,
     ModelRow,
 )
-from coire_api.gateway.context import ContextLengthError, enforce_context
+from coire_api.gateway.context import ContextLengthError, VisualContextUnavailable, enforce_context
 from coire_api.registry.service import chat_model_eligible
 from coire_core.errors import ChatConflict, ChatContextExceeded, ChatNotFound
 from coire_core.models.chat import (
@@ -40,7 +42,7 @@ from coire_core.models.chat import (
 from coire_core.models.files import ChatAttachmentSelection
 from coire_core.models.gateway import ChatMessage as GatewayMessage
 from coire_core.models.mcp import ApplyResult, McpCallState, McpToolName, PlanResult, ResearchResult
-from coire_core.models.registry import Reasoning
+from coire_core.models.registry import EngineBackend, Reasoning, VisualCapability
 from coire_core.settings import Settings
 
 
@@ -352,8 +354,18 @@ async def admit_turn(
             or not saved[-1].text.strip()
         ):
             raise ChatConflict("continuation requires a saved partial answer")
+    visual = (
+        VisualCapability.model_validate(model.visual_capability)
+        if model.backend == EngineBackend.MLX_VLM and model.visual_capability is not None
+        else None
+    )
     prompt_content = await compose_text_prompt(
-        session, principal.user_id, conversation_id, body.content, body.attachments
+        session,
+        principal.user_id,
+        conversation_id,
+        body.content,
+        body.attachments,
+        allow_visual=True,
     )
     if source_input is not None and prompt_content != (
         source_input.prompt_content
@@ -361,20 +373,47 @@ async def admit_turn(
         else source_input.text
     ):
         raise ChatConflict("retry input changed; upload a new file or send a new turn")
-    history = [
-        GatewayMessage(
-            role=cast(Literal["user", "assistant"], message.role),
-            content=message.prompt_content if message.prompt_content is not None else message.text,
-        )
-        for message in saved
-        if source_input is None or message.position < source_input.position
+    derived_root = Path(settings.chat_derived_root)
+    history: list[GatewayMessage] = []
+    for message in saved:
+        if source_input is not None and message.position >= source_input.position:
+            continue
         if (
-            message.role != "assistant"
-            or message.id not in prior_assistant_ids
-            or message.id in selected_assistant_ids
+            message.role == "assistant"
+            and message.id in prior_assistant_ids
+            and message.id not in selected_assistant_ids
+        ):
+            continue
+        text = message.prompt_content if message.prompt_content is not None else message.text
+        if message.role == "user":
+            selections = [
+                ChatAttachmentSelection.model_validate(value)
+                for value in message.attachment_selections or []
+            ]
+            history.append(
+                await visual_message(
+                    session,
+                    principal.user_id,
+                    conversation_id,
+                    text,
+                    selections,
+                    visual,
+                    derived_root,
+                )
+            )
+        else:
+            history.append(GatewayMessage(role="assistant", content=text))
+    history.append(
+        await visual_message(
+            session,
+            principal.user_id,
+            conversation_id,
+            prompt_content,
+            body.attachments,
+            visual,
+            derived_root,
         )
-    ]
-    history.append(GatewayMessage(role="user", content=prompt_content))
+    )
     output_tokens = (
         min(settings.chat_output_tokens, max(1, model.context_window // 4))
         if model.context_window is not None
@@ -382,9 +421,9 @@ async def admit_turn(
     )
     try:
         prompt_tokens = enforce_context(
-            history, limit=model.context_window, output_tokens=output_tokens
+            history, limit=model.context_window, output_tokens=output_tokens, visual=visual
         )
-    except ContextLengthError as exc:
+    except (ContextLengthError, VisualContextUnavailable) as exc:
         raise ChatContextExceeded(str(exc)) from exc
 
     now = datetime.now(UTC)

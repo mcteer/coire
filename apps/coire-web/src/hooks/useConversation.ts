@@ -52,18 +52,25 @@ export function useConversation(ownerId: string) {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [selections, setSelections] = useState<ChatAttachmentSelection[]>([]);
   const [fileBusy, setFileBusy] = useState(false);
+  const selectedModel = models.find((item) => item.id === selectedId);
+  const visualSelections = selections.filter((item) => item.mode === "visual");
+  const visualUnits = visualSelections.reduce((count, item) => count + (item.pages?.length || 1), 0);
   const selectionIssue =
-    mode === "code"
-      ? null
-      : selections.some((item) => item.mode === "visual")
-        ? "Visual Chat is not available yet. Remove the image or page selection to send text."
+    visualSelections.length > 0 && (mode === "code" || !selectedModel?.accepts_images)
+      ? "Choose a verified image-capable model, or remove visual selections."
+      : visualSelections.length > 0 && visualUnits > (selectedModel?.max_images ?? 0)
+        ? "The selected model accepts fewer images or pages. Remove some visual selections."
         : selections.some((item) => {
               const attachment = attachments.find((row) => row.id === item.file_id);
               return !attachment || attachment.state !== "ready";
             })
           ? "Wait for the selected file to finish processing, or remove it."
-          : selections.some((item) =>
-                attachments.find((row) => row.id === item.file_id)?.detected_type.startsWith("image/"),
+          : selections.some(
+                (item) =>
+                  item.mode === "text" &&
+                  attachments
+                    .find((row) => row.id === item.file_id)
+                    ?.detected_type.startsWith("image/"),
               )
             ? "This image cannot be sent as text. Remove it to continue."
             : null;

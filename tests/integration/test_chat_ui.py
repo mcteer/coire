@@ -6,6 +6,7 @@ control-plane path. This test never acquires weights or starts an engine directl
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -13,7 +14,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from io import BytesIO
-from typing import cast
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -37,6 +38,20 @@ def _events(response: httpx.Response) -> Iterator[dict[str, object]]:
             yield json.loads(line[6:])
 
 
+class _RateLimitedClient(httpx.Client):
+    """Honor the temporary key's minute window during multi-case live acceptance."""
+
+    def send(self, request: httpx.Request, **kwargs: Any) -> httpx.Response:
+        for _ in range(3):
+            response = super().send(request, **kwargs)
+            if response.status_code != 429:
+                return response
+            delay = min(65, max(1, int(response.headers.get("Retry-After", "1")) + 1))
+            response.close()
+            time.sleep(delay)
+        raise AssertionError("live Chat API key remained rate limited")
+
+
 def test_tiny_text_stream_usage_and_healthy_stop() -> None:
     url, model_id, service = _configuration()
     origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
@@ -44,7 +59,7 @@ def test_tiny_text_stream_usage_and_healthy_stop() -> None:
         ["security", "find-generic-password", "-w", "-s", service], text=True
     ).strip()
     assert key
-    with httpx.Client(
+    with _RateLimitedClient(
         base_url=url, timeout=90, headers={"Authorization": f"Bearer {key}"}
     ) as client:
         picker = client.get("/api/v1/chat/models")
@@ -163,7 +178,7 @@ def test_private_image_processing_and_download() -> None:
     fixture = BytesIO()
     Image.new("RGB", (16, 16), color=(255, 0, 0)).save(fixture, format="PNG")
     original = fixture.getvalue()
-    with httpx.Client(
+    with _RateLimitedClient(
         base_url=url, timeout=30, headers={"Authorization": f"Bearer {key}"}
     ) as client:
         created = client.post(
@@ -193,7 +208,7 @@ def test_private_image_processing_and_download() -> None:
                 attachment = file_response.json()
                 if attachment["state"] in {"ready", "failed"}:
                     break
-                time.sleep(0.5)
+                time.sleep(1)
             assert attachment["state"] == "ready", attachment.get("safe_error")
             assert attachment["detected_type"] == "image/png"
             assert len(attachment["previews"]) == 1
@@ -216,3 +231,258 @@ def test_private_image_processing_and_download() -> None:
                     assert client.get(f"{file_url}/content").status_code == 404
                     if preview_id is not None:
                         assert client.get(f"{file_url}/previews/{preview_id}").status_code == 404
+
+
+def test_managed_vlm_compatible_image_usage() -> None:
+    url, _, service = _configuration()
+    vision_model = os.environ.get("COIRE_TEST_VISION_MODEL")
+    if not vision_model:
+        pytest.skip("configure a verified, managed tiny VLM instance")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    fixture = BytesIO()
+    Image.new("RGB", (16, 16), color=(255, 0, 0)).save(fixture, format="PNG", optimize=True)
+    image = fixture.getvalue()
+    with _RateLimitedClient(
+        base_url=url, timeout=120, headers={"Authorization": f"Bearer {key}"}
+    ) as client:
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": vision_model,
+                "max_tokens": 8,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "What color is the image? Reply briefly."},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": "data:image/png;base64,"
+                                    + base64.b64encode(image).decode("ascii")
+                                },
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        assert response.status_code == 200
+        result = response.json()
+        assert len(result["choices"]) == 1
+        assert result["usage"]["prompt_tokens"] > 0
+        assert result["usage"]["completion_tokens"] > 0
+
+
+def test_native_visual_file_stream_and_stop() -> None:
+    url, _, service = _configuration()
+    vision_model = os.environ.get("COIRE_TEST_VISION_MODEL")
+    if not vision_model:
+        pytest.skip("configure a published, verified tiny VLM for native Chat")
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    fixture = BytesIO()
+    Image.new("RGB", (16, 16), color=(255, 0, 0)).save(fixture, format="PNG", optimize=True)
+    with _RateLimitedClient(
+        base_url=url, timeout=120, headers={"Authorization": f"Bearer {key}"}
+    ) as client:
+        picker = client.get("/api/v1/chat/models")
+        assert picker.status_code == 200
+        selected = next(row for row in picker.json()["data"] if row["id"] == vision_model)
+        assert selected["accepts_images"] is True and selected["max_images"] >= 1
+        created = client.post(
+            "/api/v1/chat/conversations",
+            json={"mode": "chat", "model_id": vision_model},
+            headers={"Origin": origin},
+        )
+        assert created.status_code == 201
+        conversation_id = created.json()["id"]
+        try:
+            uploaded = client.post(
+                f"/api/v1/chat/conversations/{conversation_id}/files",
+                data={"filename": "red.png", "expected_revision": str(created.json()["revision"])},
+                files={"file": ("red.png", fixture.getvalue(), "image/png")},
+                headers={"Origin": origin},
+            )
+            assert uploaded.status_code == 202
+            file_id = uploaded.json()["id"]
+            deadline = time.monotonic() + 45
+            while time.monotonic() < deadline:
+                attachment = client.get(
+                    f"/api/v1/chat/conversations/{conversation_id}/files/{file_id}"
+                ).json()
+                if attachment["state"] in {"ready", "failed"}:
+                    break
+                time.sleep(1)
+            assert attachment["state"] == "ready", attachment.get("safe_error")
+            assert len(attachment["previews"]) == 1
+            for stop_at_running in (False, True):
+                detail = client.get(f"/api/v1/chat/conversations/{conversation_id}")
+                assert detail.status_code == 200
+                turn_body = {
+                    "client_request_id": str(uuid.uuid4()),
+                    "expected_revision": detail.json()["conversation"]["revision"],
+                    "model_id": vision_model,
+                    "content": (
+                        "Describe this image in detail."
+                        if stop_at_running
+                        else "What color is this image? Reply briefly."
+                    ),
+                    "attachments": (
+                        []
+                        if stop_at_running
+                        else [{"file_id": file_id, "mode": "visual", "pages": []}]
+                    ),
+                }
+                accepted: dict[str, object] | None = None
+                terminal: dict[str, object] | None = None
+                deltas = 0
+                stop_sent = False
+                with client.stream(
+                    "POST",
+                    f"/api/v1/chat/conversations/{conversation_id}/turns",
+                    json=turn_body,
+                    headers={"Origin": origin},
+                ) as response:
+                    assert response.status_code == 200
+                    for event in _events(response):
+                        payload = event["payload"]
+                        assert isinstance(payload, dict)
+                        if payload["type"] == "turn.accepted":
+                            accepted = payload["turn"]
+                            assert isinstance(accepted, dict)
+                            assert accepted["model_id"] == vision_model
+                        elif payload["type"] == "turn.status":
+                            if stop_at_running and payload["state"] == "running" and not stop_sent:
+                                assert accepted is not None
+                                stopped = client.post(
+                                    f"/api/v1/chat/conversations/{conversation_id}/turns/"
+                                    f"{accepted['id']}/stop",
+                                    json={"reason": "user_stop"},
+                                    headers={"Origin": origin},
+                                )
+                                assert stopped.status_code == 200
+                                stop_sent = True
+                        elif payload["type"] == "message.delta":
+                            deltas += 1
+                        elif payload["type"] == "turn.terminal":
+                            terminal = payload
+                            break
+                assert accepted is not None and terminal is not None
+                if stop_at_running:
+                    assert stop_sent and terminal["state"] == "stopped"
+                else:
+                    assert deltas > 0 and terminal["state"] == "completed"
+                    usage = terminal["usage"]
+                    assert isinstance(usage, dict)
+                    assert usage["prompt_tokens"] > 0 and usage["completion_tokens"] > 0
+        finally:
+            detail = client.get(f"/api/v1/chat/conversations/{conversation_id}")
+            if detail.status_code == 200:
+                deleted = client.request(
+                    "DELETE",
+                    f"/api/v1/chat/conversations/{conversation_id}",
+                    json={"expected_revision": detail.json()["conversation"]["revision"]},
+                    headers={"Origin": origin},
+                )
+                assert deleted.status_code == 202
+
+
+def test_native_scanned_pdf_page_stream() -> None:
+    url, _, service = _configuration()
+    vision_model = os.environ.get("COIRE_TEST_VISION_MODEL")
+    if not vision_model:
+        pytest.skip("configure a published, verified tiny VLM for native Chat")
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    fixture = BytesIO()
+    Image.new("RGB", (8, 8), color=(255, 0, 0)).save(fixture, format="PDF", resolution=72.0)
+    with _RateLimitedClient(
+        base_url=url, timeout=120, headers={"Authorization": f"Bearer {key}"}
+    ) as client:
+        created = client.post(
+            "/api/v1/chat/conversations",
+            json={"mode": "chat", "model_id": vision_model},
+            headers={"Origin": origin},
+        )
+        assert created.status_code == 201
+        conversation_id = created.json()["id"]
+        try:
+            uploaded = client.post(
+                f"/api/v1/chat/conversations/{conversation_id}/files",
+                data={"filename": "scan.pdf", "expected_revision": str(created.json()["revision"])},
+                files={"file": ("scan.pdf", fixture.getvalue(), "application/pdf")},
+                headers={"Origin": origin},
+            )
+            assert uploaded.status_code == 202
+            file_id = uploaded.json()["id"]
+            file_url = f"/api/v1/chat/conversations/{conversation_id}/files/{file_id}"
+            deadline = time.monotonic() + 45
+            while time.monotonic() < deadline:
+                attachment = client.get(file_url).json()
+                if attachment["state"] in {"ready", "failed"}:
+                    break
+                time.sleep(1)
+            assert attachment["state"] == "ready", attachment.get("safe_error")
+            assert attachment["detected_type"] == "application/pdf"
+            assert attachment["page_count"] == 1
+            detail = client.get(f"/api/v1/chat/conversations/{conversation_id}").json()
+            rendering = client.post(
+                f"{file_url}/process",
+                json={
+                    "request_id": str(uuid.uuid4()),
+                    "expected_revision": detail["conversation"]["revision"],
+                    "operation": "render",
+                    "selected_pages": [1],
+                },
+                headers={"Origin": origin},
+            )
+            assert rendering.status_code == 202
+            deadline = time.monotonic() + 45
+            while time.monotonic() < deadline:
+                attachment = client.get(file_url).json()
+                if attachment["state"] == "failed" or (
+                    attachment["state"] == "ready" and attachment["previews"]
+                ):
+                    break
+                time.sleep(1)
+            assert attachment["state"] == "ready", attachment.get("safe_error")
+            assert [asset["page"] for asset in attachment["previews"]] == [1]
+            detail = client.get(f"/api/v1/chat/conversations/{conversation_id}").json()
+            with client.stream(
+                "POST",
+                f"/api/v1/chat/conversations/{conversation_id}/turns",
+                json={
+                    "client_request_id": str(uuid.uuid4()),
+                    "expected_revision": detail["conversation"]["revision"],
+                    "model_id": vision_model,
+                    "content": "What color is on the scanned page? Reply briefly.",
+                    "attachments": [{"file_id": file_id, "mode": "visual", "pages": [1]}],
+                },
+                headers={"Origin": origin},
+            ) as response:
+                assert response.status_code == 200
+                payloads = [
+                    cast(dict[str, object], event["payload"]) for event in _events(response)
+                ]
+            assert any(payload["type"] == "message.delta" for payload in payloads)
+            terminal = next(payload for payload in payloads if payload["type"] == "turn.terminal")
+            assert terminal["state"] == "completed"
+            usage = terminal["usage"]
+            assert isinstance(usage, dict) and usage["prompt_tokens"] > 0
+        finally:
+            detail_response = client.get(f"/api/v1/chat/conversations/{conversation_id}")
+            if detail_response.status_code == 200:
+                deleted = client.request(
+                    "DELETE",
+                    f"/api/v1/chat/conversations/{conversation_id}",
+                    json={"expected_revision": detail_response.json()["conversation"]["revision"]},
+                    headers={"Origin": origin},
+                )
+                assert deleted.status_code == 202

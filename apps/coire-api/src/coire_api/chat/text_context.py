@@ -51,11 +51,15 @@ async def compose_text_prompt(
     conversation_id: uuid.UUID,
     content: str,
     selections: list[ChatAttachmentSelection],
+    *,
+    allow_visual: bool = False,
 ) -> str:
     chunks = [content]
     for index, selection in enumerate(selections, 1):
         if selection.mode != "text":
-            raise ChatConflict("image-capable Chat is not available yet")
+            if allow_visual:
+                continue
+            raise ChatConflict("selected model cannot accept visual files")
         attachment = await session.get(ChatAttachmentRow, selection.file_id)
         if (
             attachment is None

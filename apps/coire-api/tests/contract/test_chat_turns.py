@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import io
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import httpx
 import pytest
+from PIL import Image
 from pydantic import SecretStr
 
 from coire_api.app import create_app
@@ -472,6 +476,94 @@ async def test_rendered_pdf_keeps_verified_text_context() -> None:
         session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
     )  # type: ignore[arg-type,call-arg]
     assert "Readable words" in str(admission.history[-1].content)
+
+
+async def test_visual_turn_keeps_verified_image_in_later_context(tmp_path: Path) -> None:
+    session, principal, body = _case()
+    session.model.backend = "mlx_vlm"
+    session.model.visual_capability = {
+        "verified": True,
+        "max_images": 2,
+        "max_image_pixels": 256,
+        "max_encoded_bytes": 90,
+    }
+    file_id, asset_id = uuid.uuid4(), uuid.uuid4()
+    job_id = "01K00000000000000000000000"
+    output = io.BytesIO()
+    Image.new("RGB", (16, 16), (255, 0, 0)).save(output, format="PNG", optimize=True)
+    image = output.getvalue()
+    folder = tmp_path / job_id
+    folder.mkdir()
+    (folder / f"{asset_id}.png").write_bytes(image)
+    result = FileProcessResult(
+        job_id=job_id,
+        input_id=file_id,
+        source_sha256="a" * 64,
+        detected_type="image/png",
+        assets=[
+            FileProcessAsset(
+                id=asset_id,
+                sha256=hashlib.sha256(image).hexdigest(),
+                bytes=len(image),
+                media_type="image/png",
+                width=16,
+                height=16,
+            )
+        ],
+    )
+    session.attachments[file_id] = ChatAttachmentRow(
+        id=file_id,
+        owner_user_id=principal.user_id,
+        conversation_id=session.conversation.id,
+        filename="red.png",
+        detected_type="image/png",
+        original_bytes=len(image),
+        original_sha256="a" * 64,
+        original_key=str(file_id),
+        derived_bytes=len(image),
+        state="ready",
+        asset_manifest={"job_id": job_id, "result": result.model_dump(mode="json")},
+        created_at=NOW,
+        updated_at=NOW,
+    )
+    settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent", chat_derived_root=str(tmp_path)
+    )
+    body.attachments = [ChatAttachmentSelection(file_id=file_id, mode="visual")]
+    first = await admit_turn(  # type: ignore[arg-type]
+        session, session.conversation.id, principal, body, settings
+    )
+    assert isinstance(first.history[-1].content, list)
+    assert first.history[-1].content[-1].type == "image_url"
+    assert "data:image/png" not in (session.messages[0].prompt_content or "")
+    session.turns[0].state = "completed"
+    session.conversation.active_turn_id = None
+    session.messages[-1].text = "Red."
+    followup = ChatTurnCreate(
+        client_request_id=uuid.uuid4(),
+        expected_revision=session.conversation.revision,
+        model_id=session.model.id,
+        content="What was shown?",
+    )
+    second = await admit_turn(  # type: ignore[arg-type]
+        session, session.conversation.id, principal, followup, settings
+    )
+    assert isinstance(second.history[0].content, list)
+    assert second.history[0].content[-1].type == "image_url"
+
+
+async def test_text_model_refuses_visual_selection_before_turn_write() -> None:
+    session, principal, body = _case()
+    body.attachments = [ChatAttachmentSelection(file_id=uuid.uuid4(), mode="visual")]
+    with pytest.raises(ChatConflict, match="cannot accept visual"):
+        await admit_turn(  # type: ignore[arg-type,call-arg]
+            session,
+            session.conversation.id,
+            principal,
+            body,
+            Settings(_secrets_dir="/nonexistent"),
+        )
+    assert session.commits == 0 and not session.turns
 
 
 async def test_replay_is_idempotent_but_changed_body_conflicts() -> None:
