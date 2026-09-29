@@ -16,6 +16,8 @@ dependencies = [
     # engine instead, so every non-engine verb is still exercised on Linux (research R9).
     "huggingface_hub[hf_xet]>=1.29",
     "mlx-lm>=0.31.3; platform_system=='Darwin'",
+    # MIT. Bare visual serving on Studios only; node installer stages the locked graph.
+    "mlx-vlm==0.7.3; platform_system=='Darwin'",
 ]
 
 [project.scripts]

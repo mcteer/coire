@@ -5,6 +5,7 @@ members = [
     "apps/coire-node",
     "apps/coire-agent",
     "apps/coire-failover",
+    "apps/coire-file-worker",
 ]
 
 [tool.uv.sources]
@@ -30,7 +31,7 @@ dev = [
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-src = ["packages/coire-core/src", "apps/coire-api/src", "apps/coire-node/src", "apps/coire-agent/src", "apps/coire-failover/src"]
+src = ["packages/coire-core/src", "apps/coire-api/src", "apps/coire-node/src", "apps/coire-agent/src", "apps/coire-failover/src", "apps/coire-file-worker/src"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "ASYNC", "C4", "SIM", "RUF"]
@@ -49,6 +50,7 @@ known-first-party = [
     "coire_node",
     "coire_agent",
     "coire_failover",
+    "coire_file_worker",
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -66,6 +68,7 @@ mypy_path = [
     "apps/coire-node/src",
     "apps/coire-agent/src",
     "apps/coire-failover/src",
+    "apps/coire-file-worker/src",
 ]
 explicit_package_bases = true
 namespace_packages = true

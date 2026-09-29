@@ -15,11 +15,18 @@
 The 75-task implementation spans new shared contracts, a migration, API chat storage and routes, browser chat, coding-run integration, a separate PDF/image worker, bare Studio VLM lifecycle, deployment, and observability. Its non-generated source change is substantially larger than CONTRIBUTING.md's roughly 800-line PR threshold. Accordingly, 014 is the umbrella acceptance spec; implementation must be split into separately specced, reviewable child changes before code is written. Each child PR keeps the relevant constitution check, contract tests, runbook and operational gates. Child boundaries are:
 
 1. `014a` shared chat and multimodal contracts with additive backward-compatible fields.
-2. `014b` persistent text chat API, model eligibility and shared inference execution.
-3. `014c` chat SPA, event transport and cold-model experience.
-4. `014d` history, recovery, cancellation and coding actions.
-5. `014e` private file processing worker, storage, quotas and previews.
-6. `014f` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
-7. `014g` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
+2. `014b` exact runtime dependency pins and architecture boundaries.
+3. `014c` persistent text chat API, model eligibility and shared inference execution.
+4. `014d` chat SPA, event transport and cold-model experience.
+5. `014e` history, recovery, cancellation and coding actions.
+6. `014f` private file processing worker, storage, quotas and previews.
+7. `014g` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
+8. `014h` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
+
+## Runtime dependency gate (014b)
+
+- `uv lock --check`: pass; worker tree is `coire-core`, FastAPI/Uvicorn, Pillow 12.3.0 and pypdfium2 5.13.0, with no model engine. Linux `coire-node` tree omits MLX; macOS includes `mlx-lm` 0.31.3 and `mlx-vlm` 0.7.3.
+- `react-markdown` 10.1.0 resolved in both npm and pnpm graphs. `pnpm` install reported its existing supply-chain policy pass. `npm audit --omit=dev` found zero production vulnerabilities; the full npm audit reported four dev-only findings (two moderate, two high) that require separate assessment before the final image gate.
+- Web test/lint/build: 19 passed, lint and build passed. The runtime declarations do not yet implement the parser, visual serving, or Markdown rendering.
 
 The 014 tasks remain the full acceptance ledger. A child passing its local tests does not complete 014 or check later acceptance tasks. The `ChatFileProcessingRow` job ID was corrected to a ULID in `data-model.md` to follow the repository job-ID convention.

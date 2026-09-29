@@ -8,8 +8,8 @@ All tasks are unexecuted. Tests precede the corresponding implementation per Con
 ## Phase 1 — Setup
 
 - [X] T001 Record base revision, existing migration head, baseline gates and review-size delivery assessment in specs/014-chat-web-ui/review.md; follow CONTRIBUTING.md spec-splitting rules if the implementation exceeds a reviewable PR.
-- [ ] T002 Declare exact planned Markdown, worker PDFium/Pillow and Darwin node MLX-VLM dependencies in apps/coire-web/package.json, apps/coire-file-worker/pyproject.toml and apps/coire-node/pyproject.toml; synchronize apps/coire-web/package-lock.json, apps/coire-web/pnpm-lock.yaml and uv.lock, preserving licences/platform isolation.
-- [ ] T003 Reconcile the proposed architecture decision with implementation boundaries in docs/adr/0008-multimodal-chat-processing.md and docs/ARCHITECTURE.md, including bare VLM, CPU file worker, private volumes and text-only failover.
+- [X] T002 Declare exact planned Markdown, worker PDFium/Pillow and Darwin node MLX-VLM dependencies in apps/coire-web/package.json, apps/coire-file-worker/pyproject.toml and apps/coire-node/pyproject.toml; synchronize apps/coire-web/package-lock.json, apps/coire-web/pnpm-lock.yaml and uv.lock, preserving licences/platform isolation.
+- [X] T003 Reconcile the proposed architecture decision with implementation boundaries in docs/adr/0008-multimodal-chat-processing.md and docs/ARCHITECTURE.md, including bare VLM, CPU file worker, private volumes and text-only failover.
 
 ## Phase 2 — Foundation
 
