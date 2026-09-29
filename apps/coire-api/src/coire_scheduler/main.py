@@ -25,6 +25,7 @@ from sqlalchemy import literal, select, union_all
 from coire_api.db import (
     AcquisitionWorkflowRow,
     AgentRunRow,
+    ChatFileProcessingRow,
     ModelInstanceRow,
     PlacementDecisionRow,
     RunCommandRow,
@@ -42,6 +43,7 @@ from coire_core.models.runs import AgentRunState, RunCommandState, RunOperation
 from coire_core.settings import get_settings
 from coire_scheduler.acquisition import acquisition_workflow
 from coire_scheduler.dbos_runtime import DBOSRuntime
+from coire_scheduler.files import file_processing_workflow
 from coire_scheduler.instances import instance_drain_workflow, instance_launch_workflow
 from coire_scheduler.mcp_cleanup import sweep_mcp_workspaces
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
@@ -161,12 +163,26 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
             for run_id, _run_state in run_rows:
                 with SetWorkflowID(str(run_id)):
                     DBOS.start_workflow(run_workflow, str(run_id))
+            async with session_scope() as session:
+                file_ids = list(
+                    (
+                        await session.execute(
+                            select(ChatFileProcessingRow.id)
+                            .where(ChatFileProcessingRow.state.in_(["queued", "running"]))
+                            .order_by(ChatFileProcessingRow.created_at, ChatFileProcessingRow.id)
+                            .limit(1)
+                        )
+                    ).scalars()
+                )
+            for file_job_id in file_ids:
+                with SetWorkflowID(f"file-{file_job_id}"):
+                    DBOS.start_workflow(file_processing_workflow, file_job_id)
             delay = (
                 settings.acquisition_poll_interval_s
-                if ids or placement_ids or instance_rows or run_rows
+                if ids or placement_ids or instance_rows or run_rows or file_ids
                 else backoff.idle()
             )
-            if ids or placement_ids or instance_rows or run_rows:
+            if ids or placement_ids or instance_rows or run_rows or file_ids:
                 backoff.active()
         except Exception:
             logger.exception("acquisition dispatcher pass failed")
