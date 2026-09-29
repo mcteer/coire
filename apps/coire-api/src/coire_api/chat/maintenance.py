@@ -300,6 +300,16 @@ async def purge_deleted_files(settings: Settings) -> int:
                 )
                 if any(job.state != "purged" for job in jobs):
                     continue
+                active = await session.scalar(
+                    select(ChatTurnRow.id)
+                    .where(
+                        ChatTurnRow.conversation_id == conversation.id,
+                        ChatTurnRow.state.in_(ACTIVE_STATES),
+                    )
+                    .limit(1)
+                )
+                if active is not None:
+                    continue
                 if attachment.original_key != str(attachment.id):
                     logger.error("file original key mismatch file_id=%s", attachment.id)
                     continue

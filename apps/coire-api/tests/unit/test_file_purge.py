@@ -75,6 +75,11 @@ class FileRows:
         )
         self.commands: list[str] = []
         self.deleted = False
+        self.active_turn = False
+
+    async def scalar(self, statement: object) -> uuid.UUID | None:
+        assert "chat_turns.id" in str(statement)
+        return uuid.uuid4() if self.active_turn else None
 
     async def get(self, model: object, key: object, **_kwargs: object) -> Any:
         if model is ChatConversationRow and key == self.conversation.id:
@@ -175,6 +180,27 @@ async def test_api_waits_for_derived_marker_then_erases_original_and_rows(
     assert rows.deleted
     assert sum(command.startswith("DELETE FROM chat_") for command in rows.commands) == 2
     assert await maintenance.purge_deleted_files(_settings(tmp_path)) == 0
+
+
+async def test_deleted_original_waits_for_active_inference_to_finish(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    rows = FileRows()
+    rows.job.state = "purged"
+    rows.active_turn = True
+    original = tmp_path / str(rows.attachment.id)
+    original.write_bytes(b"private")
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[FileRows]:
+        yield rows
+
+    monkeypatch.setattr(maintenance, "session_scope", sessions)
+    assert await maintenance.purge_deleted_files(_settings(tmp_path)) == 0
+    assert original.exists() and not rows.deleted
+    rows.active_turn = False
+    assert await maintenance.purge_deleted_files(_settings(tmp_path)) == 1
+    assert not original.exists() and rows.deleted
 
 
 async def test_failed_output_cleanup_preserves_visible_failure_and_retries(
