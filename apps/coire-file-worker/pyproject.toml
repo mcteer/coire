@@ -7,6 +7,8 @@ dependencies = [
     "coire-core",
     "fastapi>=0.115",
     "uvicorn>=0.34",
+    # Apache-2.0. Emit low-cardinality processing spans and counters.
+    "opentelemetry-api==1.44.0",
     # Apache-2.0/BSD-3-Clause plus bundled PDFium notices. Unicode extraction and page render.
     "pypdfium2==5.13.0",
     # MIT-CMU. Decode, orient, normalize, and strip still-image metadata.

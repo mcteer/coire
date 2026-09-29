@@ -407,6 +407,7 @@ source = { editable = "apps/coire-file-worker" }
 dependencies = [
     { name = "coire-core" },
     { name = "fastapi" },
+    { name = "opentelemetry-api" },
     { name = "pillow" },
     { name = "pypdfium2" },
     { name = "uvicorn" },
@@ -416,6 +417,7 @@ dependencies = [
 requires-dist = [
     { name = "coire-core", editable = "packages/coire-core" },
     { name = "fastapi", specifier = ">=0.115" },
+    { name = "opentelemetry-api", specifier = "==1.44.0" },
     { name = "pillow", specifier = "==12.3.0" },
     { name = "pypdfium2", specifier = "==5.13.0" },
     { name = "uvicorn", specifier = ">=0.34" },
