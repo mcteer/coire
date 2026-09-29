@@ -60,7 +60,7 @@ def _pdf() -> bytes:
 
 
 def test_text_and_digest(tmp_path: Path) -> None:
-    request = _request(tmp_path / "originals", b"hello \xe2\x98\x83")
+    request = _request(tmp_path / "originals", b"hello \xe2\x98\x83", output_ids=[uuid.uuid4()])
     result = process_file(request, tmp_path / "originals", tmp_path / "derived")
     assert result.detected_type == "text/plain"
     assert result.extracted_text == "hello ☃"
@@ -115,7 +115,7 @@ def test_reject_image_above_pixel_cap(tmp_path: Path) -> None:
 def test_scanned_pdf_inspect_and_render(tmp_path: Path) -> None:
     data = _pdf()
     originals = tmp_path / "originals"
-    inspect = _request(originals, data)
+    inspect = _request(originals, data, output_ids=[uuid.uuid4()])
     result = process_file(inspect, originals, tmp_path / "derived")
     assert result.detected_type == "application/pdf"
     assert result.page_count == 1

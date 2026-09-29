@@ -154,7 +154,7 @@ def _pdf(
                 raise FileProcessingError("pdf_page_limit")
             if any(page > count for page in request.selected_pages):
                 raise FileProcessingError("pdf_page_out_of_range")
-            if request.operation == "inspect" and (request.selected_pages or request.output_ids):
+            if request.operation == "inspect" and request.selected_pages:
                 raise FileProcessingError("invalid_selection")
             chunks: list[str] = []
             total = 0
@@ -257,10 +257,10 @@ def process_file(
                 detected_type=f"image/{image.format.lower()}",
                 assets=[asset],
             )
-    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
+    except Image.DecompressionBombError as exc:
+        raise FileProcessingError("image_too_large") from exc
+    except (UnidentifiedImageError, OSError, ValueError):
         pass
-    if request.output_ids:
-        raise FileProcessingError("invalid_selection")
     value = _text(data)
     _check_deadline(request)
     return FileProcessResult(

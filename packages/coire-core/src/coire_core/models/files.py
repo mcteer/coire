@@ -128,6 +128,8 @@ class FileProcessRequest(BaseModel):
             raise ValueError("output IDs must be unique")
         if self.operation == "inspect" and self.selected_pages:
             raise ValueError("inspect cannot select pages")
+        if self.operation == "inspect" and len(self.output_ids) > 1:
+            raise ValueError("inspect permits one reserved still-image output ID")
         if self.operation == "render" and not self.selected_pages:
             raise ValueError("render requires selected pages")
         if self.operation == "render" and len(self.output_ids) != len(self.selected_pages):

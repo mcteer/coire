@@ -111,3 +111,12 @@ def test_worker_rejects_duplicate_output_ids() -> None:
             output_ids=[asset_id, asset_id],
             deadline_at=datetime.now(UTC),
         )
+    with pytest.raises(ValidationError):
+        FileProcessRequest(
+            job_id="01JZ6F7Y6CFWPDKBSAADRS6F3Z",
+            input_id=uuid4(),
+            source_sha256="a" * 64,
+            operation="inspect",
+            output_ids=[uuid4(), uuid4()],
+            deadline_at=datetime.now(UTC),
+        )
