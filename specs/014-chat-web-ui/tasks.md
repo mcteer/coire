@@ -24,8 +24,8 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 - [X] T010 Implement chat-owner authorization and shared entitlement eligibility in apps/coire-api/src/coire_api/auth.py, registry/service.py and gateway/resolution.py; preserve deliberate admin behavior outside Chat and uniform foreign/deleted 404s.
 - [ ] T011 [P] Add extraction regression tests for existing gateway load/wait/lease/usage/abort behavior in apps/coire-api/tests/unit/test_gateway_execution.py.
 - [ ] T012 Extract shared inference execution and canonical text adapter into apps/coire-api/src/coire_api/gateway/execution.py, updating routes/v1.py and gateway/usage.py without loopback HTTP or transaction-held engine I/O.
-- [ ] T013 [P] Add fragmented UTF-8/CRLF/multiline/comment/cursor/auth/terminal/abort and existing-admin regression tests in apps/coire-web/src/api/eventStream.test.ts and hooks/useEventStream.test.tsx.
-- [ ] T014 Extend apps/coire-web/src/api/eventStream.ts and hooks/useEventStream.ts for typed POST-turn and GET-observer modes, cursor reset and terminal handling; no automatic POST retry, and hidden generation tabs remain connected.
+- [X] T013 [P] Add fragmented UTF-8/CRLF/multiline/comment/cursor/auth/terminal/abort and existing-admin regression tests in apps/coire-web/src/api/eventStream.test.ts and hooks/useEventStream.test.tsx.
+- [X] T014 Extend apps/coire-web/src/api/eventStream.ts and hooks/useEventStream.ts for typed POST-turn and GET-observer modes, cursor reset and terminal handling; no automatic POST retry, and hidden generation tabs remain connected.
 
 ## Phase 3 — US1: Chat and switch models (P1)
 

@@ -326,3 +326,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 
 - Authenticated picker contracts now prove a selected model remains listed after its ready engine is evicted, the last measured warm-up remains visible, an unmeasured starting engine has a null estimate, and no rank/percent/ETA fields are invented. Existing native stream tests prove observed queue/loading transitions, safe load failure and Stop during cold load. Parent T023 is complete; T026 still needs browser timing and interaction acceptance.
 - Focused loading suite: 12 passed, 11 unrelated cases deselected. Changed test file passed strict mypy, Ruff and format. This test-only slice changes no production image. Chat remains default-off.
+
+## Chat stream contract audit (014be)
+
+- Audited the existing shared SSE parser, same-origin native POST and cursor-bearing GET observer. Existing tests cover fragmented UTF-8, CRLF, comments, multiline frames, terminal/refused POSTs, one-shot send, auth failure, hidden generation and admin reconnect. Added an expired-cursor observer test: a 409 resets to the conversation's zero cursor, then a saved replacement snapshot is accepted through GET only. Parent T013/T014 are complete; browser end-to-end acceptance remains open.
+- All 77 web tests, lint and TypeScript production build passed. This test-only slice changes no production image. Chat remains default-off.

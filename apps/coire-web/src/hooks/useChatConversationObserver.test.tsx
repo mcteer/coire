@@ -59,3 +59,50 @@ test("reports expired observer authentication once without replaying generation"
   expect(fetchMock).toHaveBeenCalledTimes(1);
   view.unmount();
 });
+
+test("resets an expired GET cursor and accepts the replacement snapshot", async () => {
+  const conversationId = "00000000-0000-0000-0000-000000000001";
+  const event = {
+    conversation_id: conversationId,
+    cursor: 9,
+    turn_id: null,
+    created_at: "2026-09-28T00:00:00Z",
+    payload: {
+      type: "snapshot",
+      snapshot: {
+        conversation: { id: conversationId },
+        messages: [],
+        turns: [],
+        attachments: [],
+        event_cursor: 9,
+      },
+    },
+  };
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(null, { status: 409 }))
+    .mockResolvedValueOnce(
+      new Response(
+        `event: snapshot\nid: ${conversationId}:9\ndata: ${JSON.stringify(event)}\n\n`,
+        { headers: { "content-type": "text/event-stream" } },
+      ),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  const received = vi.fn();
+  function Probe() {
+    const cursor = useRef(3);
+    useChatConversationObserver(conversationId, true, cursor, received);
+    return null;
+  }
+  const view = render(<Probe />);
+  await waitFor(() => expect(received).toHaveBeenCalledTimes(1), { timeout: 2500 });
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({
+    "Last-Event-ID": `${conversationId}:3`,
+  });
+  expect(fetchMock.mock.calls[1]?.[1]?.headers).toEqual({
+    "Last-Event-ID": `${conversationId}:0`,
+  });
+  expect(fetchMock.mock.calls.every((call) => call[1]?.method === undefined)).toBe(true);
+  view.unmount();
+});
