@@ -1,6 +1,11 @@
 import pytest
 
-from coire_api.gateway.context import ContextLengthError, enforce_anthropic_context, enforce_context
+from coire_api.gateway.context import (
+    ContextLengthError,
+    VisualContextUnavailable,
+    enforce_anthropic_context,
+    enforce_context,
+)
 from coire_core.models.gateway import AnthropicMessagesRequest, ChatMessage
 
 
@@ -17,6 +22,28 @@ def test_unknown_context_window_does_not_refuse() -> None:
         enforce_context([ChatMessage(role="user", content="hello")], limit=None, output_tokens=100)
         > 0
     )
+
+
+def test_text_parts_count_their_text_not_the_number_of_parts() -> None:
+    message = ChatMessage.model_validate(
+        {
+            "role": "user",
+            "content": [{"type": "text", "text": "x" * 90}],
+        }
+    )
+    with pytest.raises(ContextLengthError):
+        enforce_context([message], limit=10, output_tokens=4)
+
+
+def test_inline_image_has_no_unmeasured_text_token_estimate() -> None:
+    message = ChatMessage.model_validate(
+        {
+            "role": "user",
+            "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,YQ=="}}],
+        }
+    )
+    with pytest.raises(VisualContextUnavailable):
+        enforce_context([message], limit=None, output_tokens=4)
 
 
 def test_anthropic_context_limit_includes_system_blocks_and_output() -> None:

@@ -27,6 +27,28 @@ def test_translation_preserves_system_and_turn_order() -> None:
     assert [item["role"] for item in messages] == ["system", "user", "assistant", "user"]
 
 
+def test_image_block_is_refused_instead_of_silently_dropped() -> None:
+    body = AnthropicMessagesRequest.model_validate(
+        {
+            "model": str(uuid.uuid4()),
+            "max_tokens": 20,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": "image/png", "data": "YQ=="},
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    with pytest.raises(ValueError, match="other than text"):
+        to_openai_payload(body, model_path="/resolved/model")
+
+
 @pytest.mark.asyncio
 async def test_stream_emits_anthropic_event_sequence() -> None:
     async def source() -> AsyncIterator[bytes]:

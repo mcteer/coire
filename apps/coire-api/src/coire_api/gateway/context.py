@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from coire_core.models.gateway import AnthropicMessagesRequest, ChatMessage
+from coire_core.models.gateway import (
+    AnthropicMessagesRequest,
+    ChatMessage,
+    OpenAIImagePart,
+    OpenAITextPart,
+)
 
 
 class ContextLengthError(ValueError):
@@ -12,9 +17,24 @@ class ContextLengthError(ValueError):
         super().__init__(f"estimated prompt size {estimated_tokens} exceeds context limit {limit}")
 
 
+class VisualContextUnavailable(ValueError):
+    """Inline image admission awaits bounded temporary visual processing."""
+
+
 def estimate_chat_tokens(messages: list[ChatMessage]) -> int:
     """Overestimate common English/code prompts; engines remain the exact authority."""
-    characters = sum(len(message.content or "") + len(message.role) + 8 for message in messages)
+    characters = 0
+    for message in messages:
+        content = message.content
+        if isinstance(content, list):
+            if any(isinstance(part, OpenAIImagePart) for part in content):
+                raise VisualContextUnavailable("inline image processing is not available yet")
+            characters += sum(
+                len(part.text) for part in content if isinstance(part, OpenAITextPart)
+            )
+        elif isinstance(content, str):
+            characters += len(content)
+        characters += len(message.role) + 8
     return max(1, (characters + 2) // 3)
 
 

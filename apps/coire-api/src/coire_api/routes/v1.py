@@ -15,8 +15,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.auth import CurrentAuthenticated, Principal, PrincipalKind, require_scope
 from coire_api.db import EngineProcessRow, ModelRow
 from coire_api.deps import SessionDep, SettingsDep
-from coire_api.gateway.anthropic import from_openai_response, from_openai_stream, to_openai_payload
-from coire_api.gateway.context import ContextLengthError, enforce_anthropic_context, enforce_context
+from coire_api.gateway.anthropic import (
+    from_openai_response,
+    from_openai_stream,
+    require_anthropic_text,
+    to_openai_payload,
+)
+from coire_api.gateway.context import (
+    ContextLengthError,
+    VisualContextUnavailable,
+    enforce_anthropic_context,
+    enforce_context,
+)
 from coire_api.gateway.execution import (
     rewrite_openai_model as _rewrite_openai_model,
 )
@@ -283,6 +293,9 @@ async def chat_completions(
         usage.prompt_tokens = enforce_context(
             body.messages, limit=resolved.context_window, output_tokens=body.max_tokens or 0
         )
+    except VisualContextUnavailable as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="visual_processing_unavailable")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     except ContextLengthError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="context_length")
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
@@ -381,6 +394,11 @@ async def anthropic_messages(
 ) -> object:
     usage = UsageTracker(principal, str(body.model), GatewayProtocol.ANTHROPIC)
     timing = StreamTiming()
+    try:
+        require_anthropic_text(body)
+    except ValueError as exc:
+        await usage.finish(UsageOutcome.REFUSED, failure_code="unsupported_content")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
     try:
         resolved = await resolve_model(session, body.model, principal, body.coire_affinity_node)
     except ModelNotFoundError as exc:

@@ -10,7 +10,26 @@ from typing import Any
 from coire_core.models.gateway import AnthropicMessagesRequest
 
 
+def require_anthropic_text(body: AnthropicMessagesRequest) -> None:
+    """Do not silently drop image or other unsupported Anthropic blocks."""
+    blocks = [*(body.system if isinstance(body.system, list) else [])]
+    blocks.extend(
+        block
+        for message in body.messages
+        if isinstance(message.content, list)
+        for block in message.content
+    )
+    if any(
+        not isinstance(block, dict)
+        or block.get("type") != "text"
+        or not isinstance(block.get("text"), str)
+        for block in blocks
+    ):
+        raise ValueError("Anthropic content blocks other than text are not supported")
+
+
 def to_openai_payload(body: AnthropicMessagesRequest, *, model_path: str) -> dict[str, object]:
+    require_anthropic_text(body)
     messages: list[dict[str, object]] = []
     if isinstance(body.system, str):
         messages.append({"role": "system", "content": body.system})

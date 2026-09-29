@@ -118,6 +118,75 @@ async def test_openai_nonstream_replaces_model_with_resolved_path(
     assert "/opt/coire/models" not in response.text
 
 
+async def test_inline_image_is_refused_before_engine_or_spend(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_id = uuid.uuid4()
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id, "safe", 4096, "/opt/coire/models/safe", uuid.uuid4(), "edge", "http://engine"
+        )
+
+    async def complete(*_: object) -> object:
+        pytest.fail("inline image must not reach the text engine")
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.v1.complete", complete)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": str(model_id),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,YQ=="},
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 400
+    assert "inline image processing is not available" in response.text
+
+
+async def test_anthropic_image_block_is_refused_before_model_resolution(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def resolve(*_: object) -> ResolvedModel:
+        pytest.fail("unsupported Anthropic content must not resolve a model")
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    response = await request(
+        app,
+        "POST",
+        "/v1/messages",
+        json={
+            "model": str(uuid.uuid4()),
+            "max_tokens": 8,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": "image/png", "data": "YQ=="},
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 400
+    assert "other than text" in response.text
+
+
 async def test_unknown_model_is_rfc9457_problem(
     app: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
