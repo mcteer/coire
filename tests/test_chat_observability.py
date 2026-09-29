@@ -23,4 +23,8 @@ def test_chat_dashboard_and_alerts_cover_parser_file_and_vision() -> None:
     assert 'backend="mlx_vlm"' in expressions
     rules = yaml.safe_load((root / "alerts/chat.yaml").read_text())
     names = {rule["alert"] for group in rules["groups"] for rule in group["rules"]}
-    assert {"CoireChatParserFailures", "CoireChatFileProcessingFailures"} <= names
+    assert {
+        "CoireChatParserFailures",
+        "CoireChatFailuresHigh",
+        "CoireFileProcessingFailuresHigh",
+    } <= names

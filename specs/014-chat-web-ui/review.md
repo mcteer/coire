@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Baseline alert rule proof (2026-09-29)
+
+- A local `promtool check rules` against the changed Chat alert file passed seven rules. The committed `tests/observability/chat.alert.test.yaml` uses synthetic one-minute samples to fire API, parser, vision, overdue-purge and slow-Stop alerts, plus the planned Chat-turn failure ratio (>10% after >=20 eligible turns) and internal file-job failure ratio (>25% after >=10 eligible jobs). `promtool test rules` passed in a no-network, read-only `coire-prometheus:ci` container with only a temporary `/tmp`; the quiet fixture confirmed ordinary file refusals do not fire the internal-worker alert. The earlier file rule had alerted on any user refusal, contrary to the plan. This closes a local rule-behavior gap, but T075 still needs live lean-profile alert and parser-crash/engine acceptance.
+
 ## Browser layout and keyboard smoke (2026-09-29)
 
 - On this Apple M4 Pro Mac, a temporary Playwright installation outside the repository drove the actual Vite Chat page with mocked, non-secret owner/model/list API responses and reduced motion. Chromium for Testing 151.0.7922.34 and Playwright WebKit passed at 1024×768 and 1440×900: document widths equaled the viewport widths, the Files panel remained accessible above the composer, and measured composer/dock intersection area was zero at both widths after scrolling the composer into view. The old fixed Chat dock intersected the composer by 5,500 CSS px² at 1440×900; the Chat-only dock now sits in normal page flow below the composer. Admin navigation retains its existing fixed dock. The narrow history drawer opens with focus on the panel and Escape closes it with focus returned to the toggle; this passed in both engines and its component test. Temporary screenshots remain under `/tmp/coire-014-browser/` and are not committed.

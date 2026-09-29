@@ -1,0 +1,100 @@
+rule_files:
+  - /rules/chat.yaml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'coire_chat_requests_total{outcome="failed"}'
+        values: '0 0 1 1 1 1 1 1'
+      - series: 'coire_chat_parser_failures_total'
+        values: '0 0 1 1 1 1 1 1'
+      - series: 'coire_chat_turns_total{outcome="failed"}'
+        values: '0 0 1 2 3 3 3 3'
+      - series: 'coire_chat_turns_total{outcome="completed"}'
+        values: '0 2 4 6 8 10 12 17'
+      - series: 'coire_file_processing_total{outcome="internal_failure"}'
+        values: '0 0 1 2 3 3 3 3'
+      - series: 'coire_file_processing_total{outcome="processed"}'
+        values: '0 1 2 3 4 5 6 7'
+      - series: 'coire_vision_requests_total{outcome="failed"}'
+        values: '0 0 1 1 1 1 1 1'
+      - series: 'coire_chat_stop_seconds_bucket{le="1"}'
+        values: '0 0 0 0 0 0 0 0'
+      - series: 'coire_chat_stop_seconds_bucket{le="5"}'
+        values: '0 0 0 0 0 0 0 0'
+      - series: 'coire_chat_stop_seconds_bucket{le="10"}'
+        values: '0 1 2 3 4 5 6 7'
+      - series: 'coire_chat_stop_seconds_bucket{le="+Inf"}'
+        values: '0 1 2 3 4 5 6 7'
+      - series: 'coire_chat_purge_oldest_seconds'
+        values: '0 86401 86401 86401 86401 86401 86401 86401'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CoireChatApiFailures
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: Native Chat API request failed}
+      - eval_time: 2m
+        alertname: CoireChatParserFailures
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: Native Chat received malformed or incomplete engine stream frames}
+      - eval_time: 7m
+        alertname: CoireChatFailuresHigh
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: More than ten percent of eligible Chat turns failed}
+      - eval_time: 7m
+        alertname: CoireFileProcessingFailuresHigh
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: More than twenty-five percent of eligible private file jobs failed internally}
+      - eval_time: 2m
+        alertname: CoireVisionRequestsFailed
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: A resolved bare VLM request failed}
+      - eval_time: 7m
+        alertname: CoireChatStopSlow
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: Native Chat Stop acknowledgement exceeded five seconds}
+      - eval_time: 7m
+        alertname: CoireChatPurgeOverdue
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: Deleted Chat content is past its 24-hour purge deadline}
+  - interval: 1m
+    input_series:
+      - series: 'coire_chat_requests_total{outcome="failed"}'
+        values: '0 0 0 0 0 0 0 0'
+      - series: 'coire_chat_parser_failures_total'
+        values: '0 0 0 0 0 0 0 0'
+      - series: 'coire_file_processing_total{outcome="refused"}'
+        values: '0 1 2 3 4 5 6 7'
+      - series: 'coire_vision_requests_total{outcome="failed"}'
+        values: '0 0 0 0 0 0 0 0'
+      - series: 'coire_chat_purge_oldest_seconds'
+        values: '0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 7m
+        alertname: CoireChatApiFailures
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: CoireChatParserFailures
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: CoireChatFailuresHigh
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: CoireFileProcessingFailuresHigh
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: CoireVisionRequestsFailed
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: CoireChatPurgeOverdue
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: CoireChatStopSlow
+        exp_alerts: []
