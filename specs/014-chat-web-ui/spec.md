@@ -1,12 +1,14 @@
 # Feature Specification: Chat Web UI
 
-**Feature Branch**: `014-chat-web-ui`
+**Feature Branch**: `feat/014-chat-web-ui`
 
 **Roadmap ID**: 012 (Phase 4 — Chat UI, images, training)
 
 **Created**: 2026-08-29
 
-**Status**: Draft
+**Status**: Specified and clarified with documented planning defaults
+
+**Revised**: 2026-09-28
 
 **Input**: User description: "Claude-style conversation UI: streaming, task-grouped model picker showing only published models with descriptions, tags, and load state (with warm-up estimate for cold models), file upload, code mode using the coding agent, conversation history, thinking-block display."
 
@@ -15,6 +17,11 @@
 This is the platform's face for people who are not going to use an SDK. It is a conversation interface with streaming responses, a model picker that groups by task and tells the truth about whether a model is warm, file upload, a code mode backed by the coding agent, persistent history, and proper display of reasoning blocks. Its acceptance bar is explicitly non-technical: someone who does not know what a placement policy is should be able to chat, switch models, and understand why a response is slow to start.
 
 ## Clarifications
+
+### Session 2026-09-28
+
+- Q: Which file types should chat support in feature 014? → A: Text, code, PDFs, and images. PDF extraction and image-capable chat are included in this feature.
+- Q: Should PDF support also read scanned pages? → A: Read both text and scanned PDFs; selected page images are processed by an eligible image-capable model.
 
 ### Session 2026-08-29
 
@@ -54,7 +61,7 @@ A user selects a model that is not loaded and understands that it is warming up 
 
 **Acceptance Scenarios**:
 
-1. **Given** a cold model in the picker, **When** it is displayed, **Then** its cold state and an estimated warm-up time are shown before selection.
+1. **Given** a cold model in the picker, **When** it is displayed, **Then** its cold state and an estimated warm-up time are shown before selection; when no measurement exists, the entry says the estimate is unavailable.
 2. **Given** a message sent to a cold model, **When** the load begins, **Then** the interface shows warm-up progress rather than an idle spinner.
 3. **Given** the load completing, **When** it does, **Then** the response begins streaming without user action.
 4. **Given** a load that fails, **When** it fails, **Then** the user sees a clear failure with a suggested next step rather than a silent stall.
@@ -75,6 +82,9 @@ A user returns later and finds their conversations, with which model produced wh
 2. **Given** a reopened conversation, **When** it is displayed, **Then** every message appears with the model that produced it.
 3. **Given** a conversation, **When** the user deletes it, **Then** it is removed from their view.
 4. **Given** another user's conversation, **When** access is attempted, **Then** it is refused.
+5. **Given** two tabs viewing the same conversation, **When** both send against the same version, **Then** only one turn starts and the other tab preserves its draft and refreshes the transcript.
+6. **Given** a response interrupted by disconnection or service restart, **When** the conversation is reopened, **Then** its saved partial response is labelled interrupted and retry requires an explicit user action.
+7. **Given** a conversation containing uploaded files, **When** its owner deletes it, **Then** it becomes inaccessible immediately and its stored content is removed within 24 hours.
 
 ---
 
@@ -92,6 +102,8 @@ A user switches to code mode and the coding agent works with tools inside a sand
 2. **Given** a running code-mode request, **When** the agent uses tools, **Then** tool activity is visible as it happens.
 3. **Given** a code-mode run, **When** the user stops it, **Then** the run is killed and its credential invalidated.
 4. **Given** code mode with an unverified model, **When** a write action is attempted, **Then** it is refused consistently with the platform's verification gate.
+5. **Given** an approved repository and revision, **When** the user chooses Research, Plan, or Apply, **Then** the result records the resolved revision and Apply returns a downloadable change artifact with an honest test outcome.
+6. **Given** a previous Apply result, **When** another coding turn starts, **Then** the UI makes clear which repository revision is used; earlier changes are not silently assumed to exist in a new workspace.
 
 ---
 
@@ -109,6 +121,10 @@ A user uploads a file and uses it in conversation, and sees a reasoning model's 
 2. **Given** a file too large for context, **When** it is used, **Then** the limitation is stated rather than silently truncating without notice.
 3. **Given** a reasoning model, **When** it responds, **Then** reasoning is shown separately and collapsed by default, never merged into the answer.
 4. **Given** an unsupported file type, **When** upload is attempted, **Then** it is rejected with the supported types named.
+5. **Given** an accepted text, code, PDF, or image attachment, **When** the conversation is reopened, **Then** its owner can download and explicitly attach it to another turn in that conversation.
+6. **Given** generated HTML or an unsafe link, **When** the response is displayed, **Then** it remains inert and cannot run scripts or trigger remote image requests.
+7. **Given** a PDF, **When** it is attached, **Then** the user sees its processing state, page count and selected text/page content; extraction failure, encryption, or a page/size limit is explained without silently omitting content.
+8. **Given** an image attachment, **When** the selected model cannot read images, **Then** Send is blocked with a choice of eligible image-capable models or removal of the image; image content is never silently discarded.
 
 ---
 
@@ -119,9 +135,13 @@ A user uploads a file and uses it in conversation, and sees a reasoning model's 
 - A model is evicted between picker display and message send: the interface MUST handle the resulting warm-up transparently.
 - A conversation grows beyond the model's context: the interface MUST make the limit and its handling visible rather than silently dropping history.
 - The user's entitlements change mid-session: the picker MUST reflect it on next open and a now-forbidden model MUST be refused.
-- Two tabs hold the same conversation: both MUST remain consistent rather than overwriting each other.
+- Two tabs hold the same conversation: one active turn is allowed per conversation; a stale edit MUST preserve the draft and require refresh rather than overwrite another turn.
 - A very long response arrives: rendering MUST stay responsive.
 - The user is idle long enough for their session to expire: they MUST be prompted to re-authenticate without losing draft input.
+- A hidden browser tab still owns a stream: hiding alone MUST NOT cancel it; leaving the conversation, closing its tab, or pressing Stop MUST cancel it.
+- A repeated send or lost acknowledgement MUST NOT start duplicate generation or duplicate the user message.
+- A model is unpublished or access is revoked: admission MUST recheck eligibility on every send and file/conversation access; historical model attribution remains readable by the conversation owner.
+- Limits, quota exhaustion, empty model lists, unavailable cluster, and malformed uploads MUST leave the draft intact and offer a relevant next step.
 
 ## Requirements *(mandatory)*
 
@@ -130,13 +150,13 @@ A user uploads a file and uses it in conversation, and sees a reasoning model's 
 - **FR-001**: The UI MUST provide a conversation surface with incrementally streamed responses.
 - **FR-002**: The model picker MUST show only published, `ready` models the user is entitled to, grouped by task tag.
 - **FR-003**: Each picker entry MUST show display name, one-line description, tags, context size, size class, and live load state.
-- **FR-004**: Cold models MUST show an estimated warm-up time before selection.
+- **FR-004**: Cold models MUST show a measured-history warm-up estimate before selection, or explicitly state that no estimate is available.
 - **FR-005**: The UI MUST show warm-up progress while a model loads and begin streaming automatically when it completes.
 - **FR-006**: A failed load MUST be presented clearly with a suggested next step.
 - **FR-007**: The UI MUST NOT expose placement policies, variants, node identities, or internal identifiers to users.
 - **FR-008**: Users MUST be able to switch models mid-conversation, and the switch MUST be visible in the transcript.
 - **FR-009**: Conversations MUST persist per user, be listed most recent first, be reopenable, and be deletable.
-- **FR-010**: Each message MUST record and display the model that produced it.
+- **FR-010**: Each assistant message MUST record and display the selected model's name at generation time, even if that model is later renamed or retired; user messages MUST remain attributed to the user.
 - **FR-011**: A user MUST NOT be able to access another user's conversations.
 - **FR-012**: The UI MUST provide a code mode backed by the coding agent profile, executing as a sandboxed agent run.
 - **FR-013**: Code-mode tool activity MUST be visible as it happens, and the user MUST be able to stop the run, invalidating its credential.
@@ -144,16 +164,35 @@ A user uploads a file and uses it in conversation, and sees a reasoning model's 
 - **FR-015**: Content that exceeds the context limit MUST be reported rather than silently truncated.
 - **FR-016**: Unsupported file types MUST be rejected with the supported types named.
 - **FR-017**: Reasoning blocks MUST be displayed separately from answers, collapsed by default, and never merged into answer text.
-- **FR-018**: A dropped stream MUST preserve the partial response and offer continuation or retry.
+- **FR-018**: A dropped stream MUST preserve received text in the UI and saved partial text in history, mark the response interrupted, and offer explicit retry or continuation without automatically repeating generation.
 - **FR-019**: Navigating away mid-stream MUST cancel the request.
 - **FR-020**: An expired session MUST prompt re-authentication without losing draft input.
-- **FR-021**: The UI MUST remain responsive while rendering long responses.
+- **FR-021**: With 200 messages and a 50,000-character response, typing, Stop, and opening the picker MUST respond within 100 ms at the 95th percentile on the reference desktop acceptance environment.
+- **FR-022**: Ordinary authenticated users MUST reach Chat without admin access. Conversations, messages, attachments, coding results, and event streams MUST be owner-scoped, including for administrators; service/run credentials cannot create personal chat histories.
+- **FR-023**: One turn per conversation may be active at a time. Repeated submissions with the same request identity MUST return the same turn; stale conversation edits MUST be rejected without losing the unsent draft. Other viewing tabs MUST reconcile changes within two seconds while connected.
+- **FR-024**: Stop, conversation navigation, and tab closure MUST cancel generation; code-mode cancellation MUST revoke the run credential. Already received content MUST remain visible with a stopped/interrupted label. Hiding a tab alone MUST NOT cancel.
+- **FR-025**: Deletion MUST immediately revoke access to the conversation and its attachments, cancel active work, and remove live stored content within 24 hours. Security/usage audit metadata follows existing retention and MUST contain no conversation or file content. Ordinary history remains until its owner deletes it; backup expiry follows the deployment's documented backup policy.
+- **FR-026**: File upload MUST accept UTF-8 text/source files, PDFs, and still PNG/JPEG/WebP images; reject unsupported content/archives, and enforce default limits of 10 MiB per file, 50 MiB per conversation, 500 MiB per owner, and ten attachments per turn. Rejection MUST explain the applicable limit. Files are private to their conversation and do not execute.
+- **FR-027**: Before generating, the system MUST account for selected history, current input, attached content, and response allowance against the chosen model's context limit. An oversized request MUST be refused with options to remove attachments, choose a larger-context model, or start a new conversation; no automatic summarization or history loss occurs in plain chat.
+- **FR-028**: Code mode MUST offer Research and Plan as read-only actions, and explicit Apply as a write action against an approved repository/revision using the existing coding safety boundaries. Apply requires a plan and a verified model, produces a branch/diff/test summary and owner-downloadable artifact, and never pushes. Each action starts from the stated repository revision; persistent editable workspaces are outside 014.
+- **FR-029**: Responses MUST support readable paragraphs, lists, links, and fenced code with copy. Raw HTML, executable links, and automatic external images MUST remain inert. Reasoning MUST be separated incrementally even when delimiters cross stream chunks; partial reasoning MUST never leak into the answer.
+- **FR-030**: Chat MUST follow the shared Glass design at desktop widths of 1024–1920 px; below 1200 px side panels become keyboard-accessible drawers. All actions MUST work by keyboard, retain visible focus, announce meaningful stream state without announcing each token, and respect reduced motion.
+- **FR-031**: Browser authentication expiry MUST preserve the draft through reauthentication in the same tab, scoped to the returning identity and cleared on logout or identity change. No API key or bearer token may be stored as a browser draft.
+- **FR-032**: Warm-up and queue status MUST appear inline in the composer; progress, queue position, and estimates MUST reflect actual available information, with no invented percentages or queue ranks.
+- **FR-033**: Chat MUST retain existing scoped authorization, request limits, usage accounting, and spending limits. Rate/quota refusals and model failures MUST present a plain-language explanation and preserve input.
+- **FR-034**: Operators MUST be able to see chat failures, active/interrupted turns, cancellation latency, and upload refusals, with a dashboard panel and actionable failure alert. Telemetry MUST exclude message/file/reasoning content; diagnostic-history availability MUST follow the active observability profile.
+- **FR-035**: User drafts and completed conversations MUST survive normal navigation as appropriate: drafts survive reauthentication, saved messages survive reload, and a service restart leaves interrupted plain-chat turns recoverable without silently restarting them. Existing durable code runs retain their platform restart guarantees and remain owner-stoppable.
+- **FR-036**: PDFs MUST expose processing state, page count, extraction outcome and explicit included pages/content mode before Send. Password-protected, malformed or over-limit PDFs MUST fail clearly. Default upload limit is 50 pages; selecting a subset MUST be visible and intentional, never silent truncation.
+- **FR-037**: Images MUST have private previews and safe orientation/normalization, with original downloads preserved. Visual input requires a published, ready, entitled model whose measured capability supports it. The picker MUST identify compatible models; no compatible model yields an actionable unavailable state, never auto-acquisition or dropped images.
+- **FR-038**: Visual requests MUST enforce each selected model's image count, dimensions and context limits before inference. Default safety bounds are 20 megapixels per decoded upload and ten visual units per turn (images plus selected PDF pages); exceeding a bound requires an explicit smaller selection or a clear refusal.
+- **FR-039**: PDF input MUST support extracted text and selected page images so scanned pages and visual material can be read by an eligible image-capable model. The chosen mode and included pages MUST be visible. A text-only model MUST NOT accept a scan as an empty successful document; no separate automatic OCR service is required.
 
 ### Key Entities
 
-- **Conversation**: A user's thread. Owner, title, messages, created and updated timestamps, mode.
-- **Message**: One turn. Role, content, model used, reasoning block, attachments, token usage, timestamp.
-- **Attachment**: An uploaded file. Owner, conversation, filename, type, size, storage reference, uploaded-at.
+- **Conversation**: A user's thread. Owner, title, ordered messages, created and updated timestamps, mode, selected model, version, active turn, deletion state.
+- **Message**: A user input or assistant response. Role, content, model name snapshot for assistant messages, reasoning, attachments, token usage, timestamp, turn and completion state.
+- **Turn**: One accepted generation attempt. Request identity, conversation version, input/response message references, plain-chat or coding action, lifecycle, failure/stop reason, event position, and optional retry reference or coding run/result references.
+- **Attachment**: An uploaded file. Owner, conversation, filename, type, size, storage reference, processing state/error, page/image dimensions where applicable, extracted text and derived preview references, uploaded-at. Per-message references record selected pages and text/visual mode.
 - **Picker Entry**: A user-facing model summary. Display name, description, tags, context size, size class, load state, warm-up estimate, task group.
 
 ## Success Criteria *(mandatory)*
@@ -168,16 +207,26 @@ A user uploads a file and uses it in conversation, and sees a reasoning model's 
 - **SC-006**: Code-mode requests execute as sandboxed agent runs and are stoppable within 5 seconds.
 - **SC-007**: Reasoning content never appears merged into answer text.
 - **SC-008**: A dropped stream never loses the already-received portion of a response.
+- **SC-009**: A simultaneous-send and repeated-send test starts exactly one turn, and connected viewing tabs reconcile within two seconds.
+- **SC-010**: All keyboard-only chat, model switch, attachment, Stop, history, and drawer flows pass at 1024 px and 1440 px widths; transcript interaction meets FR-021's 100 ms target.
+- **SC-011**: All cross-owner conversation, file, event, and coding-result access attempts are refused; deleted content is inaccessible immediately and purged within 24 hours.
+- **SC-012**: Upload size/type/quota failures and context overflow are rejected before generation with no silent content loss; hostile rendering fixtures execute no script or remote image request.
+- **SC-013**: A stopped plain-chat turn ceases upstream generation within five seconds on a healthy worker, preserves its partial output, and cannot be restarted by transport reconnection.
+- **SC-014**: PDF/image fixtures preserve the explicitly selected content, refuse incompatible models and invalid/over-limit files, and complete a real local visual question without loading a model on core.
 
 ## Assumptions
 
-- Features 001–011 have shipped: the gateway with streaming and wait behaviour, the registry's user-facing curation fields, credentials, the console shell, and sandboxed runs for code mode.
+- Features 001–013 supply registry, gateway, scheduler, identity, shell, observability, harnesses, runs, and the coding repository/artifact lifecycle. Integration gaps required by this feature belong to 014.
 - This feature extends the same SPA and ingress the admin console established in feature 008; it is not a separate application.
 - Retrieval over uploaded files for the general agent requires an embedding model and is explicitly backlog; this feature covers upload, attachment, and in-context use only.
 - Image generation appears in the UI with feature 015 and extends this surface rather than replacing it.
 - Feedback capture — thumbs, regenerate-and-compare — is feature 018 and is deliberately not in this feature, though the message model must be able to accommodate it.
 - Streaming passes through the tunnel and nginx with buffering disabled, established in feature 000.
 - Warm-up estimates come from recorded load durations produced by features 004 and 009.
+- User-confirmed upload scope is text, code, PDFs and images. Planning defaults remain explicitly blocked plain-chat context overflow, one active turn per conversation, and fresh repository snapshots per code action. Defaults are distinguished from the recorded user answers.
+- Desktop browsers are the acceptance target; mobile layouts, shared conversations, collaborative editing, retrieval, automatic plain-chat summarization, persistent coding workspaces, image generation, and feedback collection are outside this feature. Image understanding is in scope; generating images remains feature 015.
+- Scope excludes full settings pages and new global command-palette behavior. Chat supplies the existing design's send and popover keyboard actions; later feature controls remain hidden or inert with an explanation.
+- Contract, unit, browser, and a tiny-model integration acceptance run are required before implementation is considered complete; no real-Studio execution is part of specification or planning.
 
 ## Design reference
 
@@ -195,4 +244,4 @@ token set feature 008 establishes rather than defining its own.
 Two design rules carry behavioural weight and are requirements of this feature, not styling choices:
 a cold-model warning and queue position appear as a line inside the composer rather than as a modal,
 and models the user is not entitled to are absent from the picker rather than shown disabled.
-The feedback row is rendered here but only becomes functional in feature 018.
+Copy and interrupted-response retry/continue work in 014. Feedback/compare controls remain inert with an accessible explanation until feature 018. The spec's user-facing privacy rule takes precedence over mockup sample variant/node labels; no placement or node identifiers appear in Chat. This feature does not add the full settings-page thinking preference: each response's reasoning disclosure is collapsed initially.
