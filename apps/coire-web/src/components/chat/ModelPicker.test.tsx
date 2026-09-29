@@ -31,3 +31,14 @@ test("shows task group, metadata and honest unknown warm-up", () => {
   fireEvent.click(screen.getByRole("button", { name: /Helpful model/ }));
   expect(onSelect).toHaveBeenCalledWith(model.id);
 });
+
+test("shows a measured warm-up estimate before selection", () => {
+  render(
+    <ModelPicker
+      models={[{ ...model, estimated_warmup_seconds: 32.2 }]}
+      selectedId={null}
+      onSelect={() => {}}
+    />,
+  );
+  expect(screen.getByText(/about 33 s warm-up/)).toBeInTheDocument();
+});

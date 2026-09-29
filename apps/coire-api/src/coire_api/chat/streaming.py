@@ -23,6 +23,7 @@ from coire_api.db import (
     ChatEventRow,
     ChatMessageRow,
     ChatTurnRow,
+    EngineProcessRow,
     EntitlementRow,
     ModelRow,
     UserRow,
@@ -62,6 +63,7 @@ async def persist_native_event(
     text: str | None = None,
     usage: ChatUsage | None = None,
     safe_error: str | None = None,
+    estimate_seconds: float | None = None,
     settings: Settings,
 ) -> ChatEvent:
     """Commit state and event atomically, then return bytes to the streaming caller."""
@@ -88,7 +90,7 @@ async def persist_native_event(
         if kind == "status":
             assert state in {"loading", "running"}
             turn.state = state
-            payload = ChatTurnStatus(state=state)  # type: ignore[arg-type]
+            payload = ChatTurnStatus(state=state, estimate_seconds=estimate_seconds)  # type: ignore[arg-type]
         elif kind == "delta":
             assert text
             if len(answer.text) + len(text) > 512 * 1024:
@@ -149,6 +151,20 @@ async def _resolve(admission: Admission, principal: Principal) -> ResolvedModel:
         return await resolve_model(session, admission.turn.model_id, principal)
 
 
+async def _measured_warmup_seconds(model_id: uuid.UUID) -> float | None:
+    async with session_scope() as session:
+        return await session.scalar(
+            select(EngineProcessRow.load_seconds)
+            .where(
+                EngineProcessRow.model_id == model_id,
+                EngineProcessRow.load_seconds.is_not(None),
+                EngineProcessRow.load_seconds >= 0,
+            )
+            .order_by(EngineProcessRow.started_at.desc())
+            .limit(1)
+        )
+
+
 async def _ensure_current_access(principal: Principal, model_id: uuid.UUID) -> None:
     """Recheck live user/key/entitlements without trusting the stream-start snapshot."""
     if principal.user_id is None:
@@ -198,6 +214,7 @@ async def native_stream(
     span.set_attribute("chat.model_id", str(admission.turn.model_id))
     terminal_saved = False
     persistence_failed = False
+    loading_failed = False
     try:
         yield encode_event(admission.event)
         try:
@@ -205,8 +222,13 @@ async def native_stream(
             last_access_check = monotonic()
             resolved = await _resolve(admission, principal)
             if resolved.engine_url is None or resolved.model_path is None:
+                loading_failed = True
                 loading = await persist_native_event(
-                    "status", admission, state="loading", settings=settings
+                    "status",
+                    admission,
+                    state="loading",
+                    estimate_seconds=await _measured_warmup_seconds(admission.turn.model_id),
+                    settings=settings,
                 )
                 yield encode_event(loading)
                 task = asyncio.create_task(
@@ -228,6 +250,7 @@ async def native_stream(
                 resolved = await _resolve(admission, principal)
             if resolved.engine_url is None or resolved.model_path is None:
                 raise RuntimeError("model did not become ready")
+            loading_failed = False
             usage.model_id = resolved.model_id
             usage.engine_id = resolved.engine_id
             running = await persist_native_event(
@@ -345,7 +368,11 @@ async def native_stream(
                     "terminal",
                     admission,
                     state="failed",
-                    safe_error="generation failed; retry this turn",
+                    safe_error=(
+                        "model warm-up failed; try again or choose another model"
+                        if loading_failed
+                        else "generation failed; retry this turn"
+                    ),
                     settings=settings,
                 )
             except Exception as exc:

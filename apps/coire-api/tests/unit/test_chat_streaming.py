@@ -154,8 +154,10 @@ async def test_text_stream_persists_before_each_native_event(
     assert chunks[-1].startswith(b"event: turn.terminal")
 
 
+@pytest.mark.parametrize("estimate", [None, 42.5])
 async def test_cold_then_ready_emits_loading_before_generation(
     monkeypatch: pytest.MonkeyPatch,
+    estimate: float | None,
 ) -> None:
     from coire_api.chat import streaming
 
@@ -169,15 +171,19 @@ async def test_cold_then_ready_emits_loading_before_generation(
         AsyncMock(side_effect=[_resolved(admission, cold=True), _resolved(admission)]),
     )
     monkeypatch.setattr(streaming, "load_model", AsyncMock())
+    monkeypatch.setattr(streaming, "_measured_warmup_seconds", AsyncMock(return_value=estimate))
 
     async def upstream(*_args: object) -> AsyncIterator[bytes]:
         yield b"data: [DONE]\n\n"
 
     cursor = 1
+    estimates: list[float | None] = []
 
     async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
         nonlocal cursor
         cursor += 1
+        if kind == "status" and kwargs.get("state") == "loading":
+            estimates.append(kwargs.get("estimate_seconds"))  # type: ignore[arg-type]
         return _saved_event(admission, kind, cursor, **kwargs)
 
     monkeypatch.setattr(streaming, "stream", upstream)
@@ -192,6 +198,43 @@ async def test_cold_then_ready_emits_loading_before_generation(
     ]  # type: ignore[arg-type,call-arg]
     assert any(b"event: turn.status" in chunk for chunk in chunks)
     assert any(b"turn.terminal" in chunk for chunk in chunks)
+    assert estimates == [estimate]
+
+
+async def test_cold_load_failure_has_safe_actionable_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(
+        streaming, "resolve_model", AsyncMock(return_value=_resolved(admission, cold=True))
+    )
+    monkeypatch.setattr(streaming, "_measured_warmup_seconds", AsyncMock(return_value=None))
+    monkeypatch.setattr(
+        streaming, "load_model", AsyncMock(side_effect=RuntimeError("private node failure"))
+    )
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+    saved_errors: list[str | None] = []
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        if kind == "terminal":
+            saved_errors.append(kwargs.get("safe_error"))  # type: ignore[arg-type]
+        return _saved_event(admission, kind, len(saved_errors) + 2, **kwargs)
+
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    chunks = [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+    assert saved_errors == ["model warm-up failed; try again or choose another model"]
+    assert b"private node failure" not in b"".join(chunks)
 
 
 @pytest.mark.parametrize("failure", ["engine", "disconnect"])

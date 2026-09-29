@@ -94,7 +94,9 @@ export function useConversation() {
     } else if (payload.type === "turn.status") {
       setStatus(
         payload.state === "loading"
-          ? "Warming up the model…"
+          ? payload.estimate_seconds == null
+            ? "Warming up the model · estimate unavailable"
+            : "Warming up the model · about " + Math.ceil(payload.estimate_seconds) + " s"
           : payload.state === "queued"
             ? "Waiting for capacity…"
             : payload.state === "running"

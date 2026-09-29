@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { Chat } from "./Chat";
 
@@ -247,4 +247,72 @@ test("switches models within one conversation and keeps each answer attribution"
   expect(screen.getByText("First answer").closest("article")).toHaveTextContent("Friendly model");
   expect(screen.getByText("Second answer").closest("article")).toHaveTextContent("Second model");
   expect(fetchMock).toHaveBeenCalledTimes(4);
+});
+
+test.each([
+  [null, /estimate unavailable/],
+  [41.2, /about 42 s/],
+])("shows measured or unknown warm-up during the stream (%s)", async (estimate, label) => {
+  const accepted = {
+    type: "turn.accepted",
+    turn: {
+      id: turnId,
+      conversation_id: conversationId,
+      client_request_id: "request",
+      accepted_revision: 1,
+      input_message_id: inputId,
+      assistant_message_id: answerId,
+      model_id: modelId,
+      model_display_name: "Friendly model",
+      state: "accepted",
+      action: "chat",
+      created_at: "2026-09-28T00:00:00Z",
+      updated_at: "2026-09-28T00:00:00Z",
+    },
+  };
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(value) {
+        controller = value;
+        value.enqueue(
+          new TextEncoder().encode(
+            event(1, accepted) +
+              event(2, { type: "turn.status", state: "loading", estimate_seconds: estimate }),
+          ),
+        );
+      },
+    }),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(
+        json({ data: [{ ...model, load_state: "cold", estimated_warmup_seconds: estimate }] }),
+      )
+      .mockResolvedValueOnce(json(conversation, 201))
+      .mockResolvedValueOnce(response),
+  );
+  render(<Chat />);
+  await screen.findByRole("button", { name: /Friendly model/ });
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Hi" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(label));
+  await act(async () => {
+    controller.enqueue(
+      new TextEncoder().encode(
+        event(3, {
+          type: "turn.terminal",
+          state: "failed",
+          answer_length: 0,
+          reasoning_length: 0,
+          safe_error: "model warm-up failed; try again or choose another model",
+        }),
+      ),
+    );
+    controller.close();
+  });
+  expect(screen.getByRole("status")).toHaveTextContent(/choose another model/);
 });
