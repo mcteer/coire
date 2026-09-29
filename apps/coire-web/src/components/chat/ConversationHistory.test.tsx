@@ -41,6 +41,7 @@ test("opens an accessible history drawer and selects an owner conversation", () 
   fireEvent.click(screen.getByRole("button", { name: /Saved notes/ }));
   expect(open).toHaveBeenCalledWith(conversation.id);
   expect(toggle).toHaveAttribute("aria-expanded", "false");
+  expect(toggle).toHaveFocus();
 });
 
 test("prevents history navigation during active generation", () => {

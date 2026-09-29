@@ -28,6 +28,10 @@ export function ConversationHistory({
   const [title, setTitle] = useState("");
   const toggleRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const closeDrawer = () => {
+    setExpanded(false);
+    toggleRef.current?.focus();
+  };
   useEffect(() => {
     if (expanded) panelRef.current?.focus();
   }, [expanded]);
@@ -52,8 +56,7 @@ export function ConversationHistory({
         onKeyDown={(event) => {
           if (expanded && event.key === "Escape") {
             event.stopPropagation();
-            setExpanded(false);
-            toggleRef.current?.focus();
+            closeDrawer();
           }
         }}
       >
@@ -71,7 +74,7 @@ export function ConversationHistory({
                 aria-current={selectedId === conversation.id ? "page" : undefined}
                 onClick={() => {
                   onOpen(conversation.id);
-                  setExpanded(false);
+                  closeDrawer();
                 }}
               >
                 <span id={`chat-title-${conversation.id}`}>{conversation.title}</span>
