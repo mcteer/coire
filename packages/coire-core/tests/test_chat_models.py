@@ -11,11 +11,14 @@ from coire_core.models.chat import (
     ChatConversationCreate,
     ChatEvent,
     ChatMessageDelta,
+    ChatRunActivity,
+    ChatRunActivityStatus,
     ChatTurnCreate,
     ChatTurnDetail,
     ChatTurnStatus,
 )
 from coire_core.models.conversation import Conversation, ConversationMessage, TextPart
+from coire_core.models.runs import RunActivity
 
 
 def test_canonical_conversation_is_ordered_and_strict() -> None:
@@ -43,6 +46,46 @@ def test_native_chat_owner_is_server_supplied_and_revision_bounded() -> None:
         ChatConversationCreate.model_validate({"owner_id": str(owner_id)})
     with pytest.raises(ValidationError):
         ChatConversation.model_validate({**conversation.model_dump(), "revision": 0})
+
+
+def test_chat_activity_event_is_strict_and_content_free() -> None:
+    run_id = uuid4()
+    event = ChatEvent(
+        conversation_id=uuid4(),
+        cursor=1,
+        turn_id=uuid4(),
+        created_at=datetime.now(UTC),
+        payload=ChatRunActivity(
+            activity=RunActivity(
+                run_id=run_id,
+                sequence=1,
+                tool_name="read_file",
+                state="started",
+                created_at=datetime.now(UTC),
+            )
+        ),
+    )
+    assert ChatEvent.model_validate_json(event.model_dump_json()).payload.type == "run.activity"
+    status = event.model_copy(
+        update={"payload": ChatRunActivityStatus(run_id=run_id, state="truncated", last_sequence=1)}
+    )
+    assert (
+        ChatEvent.model_validate_json(status.model_dump_json()).payload.type
+        == "run.activity_status"
+    )
+    with pytest.raises(ValidationError):
+        ChatEvent.model_validate(
+            {
+                **event.model_dump(mode="json"),
+                "payload": {
+                    **event.payload.model_dump(mode="json"),
+                    "activity": {
+                        **event.payload.activity.model_dump(mode="json"),
+                        "arguments": {"path": "/private"},
+                    },
+                },
+            }
+        )
 
 
 def test_turn_create_rejects_unbounded_or_ambiguous_selection() -> None:

@@ -110,7 +110,7 @@ async def test_activity_reader_refuses_invalid_archive(failure: str) -> None:
         records[1].tool_name = "private_filepath"
     archive = _archive(run_id, records, filename=filename)
     if failure == "oversize":
-        archive += b"x" * (2 * 1024 * 1024)
+        archive += b"x" * (4 * 1024 * 1024)
     elif failure == "extra":
         output = io.BytesIO()
         with tarfile.open(fileobj=output, mode="w") as bundle:
@@ -151,8 +151,10 @@ def test_activity_route_requires_node_auth_and_returns_typed_page(tmp_path: Path
     app = agent.app()
 
     class StubRuns:
-        async def activity(self, requested: uuid.UUID, *, after_sequence: int) -> RunActivityPage:
-            assert requested == run_id and after_sequence == 4
+        async def activity(
+            self, requested: uuid.UUID, *, after_sequence: int, limit: int
+        ) -> RunActivityPage:
+            assert requested == run_id and after_sequence == 4 and limit == 100
             return RunActivityPage(run_id=run_id, data=[_record(run_id, 5)])
 
     app.state.runs = StubRuns()

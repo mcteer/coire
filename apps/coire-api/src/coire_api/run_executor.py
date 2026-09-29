@@ -207,6 +207,23 @@ class RunCommandExecutor:
                         {"outcome": "failed"},
                     )
 
+    async def _poll_chat_activity(self, run_id: uuid.UUID, node_name: str) -> None:
+        """Persist live receipts while WAIT owns the run; finalization drains the tail."""
+        from coire_api.chat.activity import activity_cursor, collect_run_activity
+
+        if await activity_cursor(run_id) is None:
+            return
+        while True:
+            try:
+                await collect_run_activity(run_id, node_name, self.settings)
+            except Exception as exc:
+                logger.error(
+                    "chat live activity poll failed run_id=%s error_type=%s",
+                    run_id,
+                    type(exc).__name__,
+                )
+            await asyncio.sleep(0.5)
+
     async def _execute(self, command_id: uuid.UUID) -> dict[str, object]:
         with tracer.start_as_current_span("coire.api.run.command") as span:
             span.set_attribute("command_id", str(command_id))
@@ -344,7 +361,16 @@ class RunCommandExecutor:
                     chunks = await client.run_logs(node_name, run_id)
                     return {"items": [item.model_dump(mode="json") for item in chunks]}
                 if operation is RunOperation.WAIT:
-                    return (await client.wait_run(node_name, run_id)).model_dump(mode="json")
+                    polling = asyncio.create_task(
+                        self._poll_chat_activity(run_id, node_name),
+                        name=f"chat-activity-{run_id}",
+                    )
+                    try:
+                        return (await client.wait_run(node_name, run_id)).model_dump(mode="json")
+                    finally:
+                        polling.cancel()
+                        with suppress(asyncio.CancelledError):
+                            await polling
                 if operation is RunOperation.COLLECT:
                     return (await client.collect_run(node_name, run_id)).model_dump(mode="json")
                 if operation in {RunOperation.REMOVE, RunOperation.KILL}:

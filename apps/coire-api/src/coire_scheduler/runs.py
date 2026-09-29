@@ -23,7 +23,7 @@ from coire_api.db import (
     RunCommandRow,
     session_scope,
 )
-from coire_api.nodes_client import NodeClient
+from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.run_tokens import revoke_run_token
 from coire_api.runs import run_command_id, transition
 from coire_core.models.mcp import ApplyResult, McpToolName
@@ -315,6 +315,31 @@ async def execute_run(run_id_text: str) -> str | None:
 async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> None:
     run_id = uuid.UUID(run_id_text)
     async with session_scope() as session:
+        staged = await session.get(AgentRunRow, run_id)
+        node = (
+            await session.get(NodeRow, staged.node_id)
+            if staged is not None and staged.node_id is not None
+            else None
+        )
+        node_name = node.name if node is not None else None
+    if node_name is not None:
+        from coire_api.chat.activity import collect_run_activity
+
+        try:
+            await collect_run_activity(run_id, node_name, get_settings(), final=True)
+        except NodeError as exc:
+            if exc.retryable:
+                raise
+            logger.error(
+                "chat final activity unavailable run_id=%s error_type=%s",
+                run_id,
+                type(exc).__name__,
+            )
+        except ValueError as exc:
+            logger.error(
+                "chat final activity invalid run_id=%s error_type=%s", run_id, type(exc).__name__
+            )
+    async with session_scope() as session:
         run = await session.get(AgentRunRow, run_id, with_for_update=True)
         if run is None:
             return
@@ -371,7 +396,19 @@ async def run_kill_workflow(run_id_text: str) -> None:
         if run is None or run.state is not AgentRunState.KILL_REQUESTED:
             return
         placed = run.node_id is not None
+        node = await session.get(NodeRow, run.node_id) if run.node_id is not None else None
     if placed:
+        if node is not None:
+            from coire_api.chat.activity import collect_run_activity
+
+            try:
+                await collect_run_activity(run_id, node.name, get_settings(), final=True)
+            except (NodeError, ValueError) as exc:
+                logger.error(
+                    "chat kill activity unavailable run_id=%s error_type=%s",
+                    run_id,
+                    type(exc).__name__,
+                )
         await _submit(run_id, RunOperation.KILL)
     async with session_scope() as session:
         run = await session.get(AgentRunRow, run_id, with_for_update=True)

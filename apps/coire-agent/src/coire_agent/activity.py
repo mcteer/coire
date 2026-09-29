@@ -17,6 +17,7 @@ from coire_core.models.runs import (
     RUN_ACTIVITY_MAX_RECORDS,
     RUN_ACTIVITY_TOOL_NAMES,
     RunActivity,
+    RunActivityTool,
 )
 
 _MARKER_RESERVE = 512
@@ -69,7 +70,7 @@ class ActivitySpool:
         marker = RunActivity(
             run_id=self.run_id,
             sequence=self.sequence + 1,
-            tool_name="activity_spool",
+            tool_name=RunActivityTool.ACTIVITY_SPOOL,
             state="failed",
             created_at=datetime.now(UTC),
             safe_error="limit_reached",
@@ -83,6 +84,7 @@ class ActivitySpool:
         *,
         duration_ms: int | None = None,
         safe_error: str | None = None,
+        tool_call_id: uuid.UUID | None = None,
     ) -> None:
         if tool_name not in RUN_ACTIVITY_TOOL_NAMES or tool_name == "activity_spool":
             raise ValueError("activity tool name is not allowed")
@@ -93,7 +95,8 @@ class ActivitySpool:
         record = RunActivity(
             run_id=self.run_id,
             sequence=self.sequence + 1,
-            tool_name=tool_name,
+            tool_name=RunActivityTool(tool_name),
+            tool_call_id=tool_call_id,
             state=state,
             created_at=datetime.now(UTC),
             duration_ms=duration_ms,
@@ -110,7 +113,8 @@ class ActivitySpool:
 
     @contextmanager
     def step(self, tool_name: str) -> Iterator[None]:
-        self.record(tool_name, "started")
+        tool_call_id = uuid.uuid4()
+        self.record(tool_name, "started", tool_call_id=tool_call_id)
         started = monotonic()
         try:
             yield
@@ -120,6 +124,7 @@ class ActivitySpool:
                 "failed",
                 duration_ms=max(0, int((monotonic() - started) * 1000)),
                 safe_error="operation_failed",
+                tool_call_id=tool_call_id,
             )
             raise
         else:
@@ -127,4 +132,5 @@ class ActivitySpool:
                 tool_name,
                 "completed",
                 duration_ms=max(0, int((monotonic() - started) * 1000)),
+                tool_call_id=tool_call_id,
             )

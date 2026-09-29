@@ -16,12 +16,36 @@ from coire_core.models.engine import ReconcileRequest
 from coire_core.models.harness import ProfileName
 from coire_core.models.jobs import ChecksumManifest
 from coire_core.models.registry import EngineBackend
-from coire_core.models.runs import RunContainerCreate, RunLimits
+from coire_core.models.runs import RunActivity, RunActivityPage, RunContainerCreate, RunLimits
 from coire_core.net import ControlClient
 from coire_core.settings import Settings
 
 JOB_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 NOW = datetime.now(UTC).isoformat()
+
+
+async def test_run_activity_client_validates_run_and_cursor() -> None:
+    run_id = uuid.uuid4()
+    record = RunActivity(
+        run_id=run_id,
+        sequence=1,
+        tool_name="read_file",
+        state="started",
+        created_at=datetime.now(UTC),
+    )
+    good = RunActivityPage(run_id=run_id, data=[record]).model_dump(mode="json")
+    client, seen = _client(lambda _request: _json(good))
+    page = await client.run_activity("coire-edge-a", run_id)
+    await client.aclose()
+    assert page.data == [record]
+    assert str(seen[0].url).endswith(f"/node/runs/{run_id}/activity?after_sequence=0&limit=100")
+
+    bad = {**good, "next_sequence": 2}
+    client, _ = _client(lambda _request: _json(bad))
+    with pytest.raises(NodeError) as exc:
+        await client.run_activity("coire-edge-a", run_id)
+    await client.aclose()
+    assert exc.value.kind is NodeErrorKind.PROTOCOL
 
 
 def _client(

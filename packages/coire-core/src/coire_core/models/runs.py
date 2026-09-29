@@ -56,18 +56,20 @@ class RunCommandState(StrEnum):
     FAILED = "failed"
 
 
-RUN_ACTIVITY_MAX_BYTES = 1_048_576
+RUN_ACTIVITY_MAX_BYTES = 2_097_152
 RUN_ACTIVITY_MAX_RECORDS = 10_000
-RUN_ACTIVITY_TOOL_NAMES = frozenset(
-    {
-        "read_file",
-        "model_generation",
-        "apply_patch",
-        "run_tests",
-        "branch_bundle",
-        "activity_spool",
-    }
-)
+
+
+class RunActivityTool(StrEnum):
+    READ_FILE = "read_file"
+    MODEL_GENERATION = "model_generation"
+    APPLY_PATCH = "apply_patch"
+    RUN_TESTS = "run_tests"
+    BRANCH_BUNDLE = "branch_bundle"
+    ACTIVITY_SPOOL = "activity_spool"
+
+
+RUN_ACTIVITY_TOOL_NAMES = frozenset(item.value for item in RunActivityTool)
 
 
 class RunActivity(BaseModel):
@@ -77,7 +79,8 @@ class RunActivity(BaseModel):
 
     run_id: uuid.UUID
     sequence: int = Field(ge=1, le=10_000)
-    tool_name: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
+    tool_call_id: uuid.UUID | None = None
+    tool_name: RunActivityTool
     state: Literal["started", "completed", "failed"]
     created_at: datetime
     duration_ms: int | None = Field(default=None, ge=0)

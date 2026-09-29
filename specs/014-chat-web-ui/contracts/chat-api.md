@@ -48,6 +48,7 @@ Picker UUIDs are opaque transport identities. Display name, description, tags, c
 | `turn.status` | Actual state, nullable estimate/queue position and safe explanation. |
 | `message.delta` | Assistant ID, channel `answer|reasoning`, append text and resulting offset. |
 | `run.activity` | Validated `RunActivity` metadata. |
+| `run.activity_status` | Final `complete`, `truncated` or `unavailable` spool state and last durable sequence. |
 | `turn.result` | Existing typed research/plan/apply result, bounded diff/citations/test outcome/artifact metadata. |
 | `turn.terminal` | Completed/failed/stopped/interrupted state, final usage/lengths and optional safe problem. |
 | `attachment.changed` | Safe metadata or removed ID. |

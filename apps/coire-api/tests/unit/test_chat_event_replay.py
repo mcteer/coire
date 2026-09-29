@@ -18,8 +18,11 @@ from coire_core.models.chat import (
     ChatConversation,
     ChatConversationDeleted,
     ChatConversationDetail,
+    ChatRunActivity,
+    ChatRunActivityStatus,
     ChatTurnStatus,
 )
+from coire_core.models.runs import RunActivity, RunActivityTool
 from coire_core.settings import Settings
 
 
@@ -156,3 +159,83 @@ async def test_existing_observer_receives_deletion_event_then_closes(
     assert len(chunks) == 1
     assert b"event: conversation.deleted" in chunks[0]
     assert b"Private" not in chunks[0]
+
+
+async def test_owner_replays_durable_run_activity_and_final_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    owner, run_id, turn_id, conversation_id = (uuid.uuid4() for _ in range(4))
+    conversation = ChatConversationRow(
+        id=conversation_id,
+        owner_user_id=owner,
+        title="Private",
+        mode="code",
+        revision=1,
+        event_cursor=3,
+        created_at=now,
+        updated_at=now,
+    )
+    rows = [
+        ChatEventRow(
+            id=uuid.uuid4(),
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            cursor=2,
+            type="run.activity",
+            payload=ChatRunActivity(
+                activity=RunActivity(
+                    run_id=run_id,
+                    sequence=1,
+                    tool_name=RunActivityTool.READ_FILE,
+                    state="completed",
+                    created_at=now,
+                )
+            ).model_dump(mode="json"),
+            created_at=now,
+            expires_at=now,
+        ),
+        ChatEventRow(
+            id=uuid.uuid4(),
+            conversation_id=conversation_id,
+            turn_id=turn_id,
+            cursor=3,
+            type="run.activity_status",
+            payload=ChatRunActivityStatus(
+                run_id=run_id, state="complete", last_sequence=1
+            ).model_dump(mode="json"),
+            created_at=now,
+            expires_at=now,
+        ),
+    ]
+
+    class Session:
+        async def get(self, model: type, _id: uuid.UUID) -> object:
+            if model is UserRow:
+                return SimpleNamespace(active=True)
+            if model is ChatConversationRow:
+                return conversation
+            return None
+
+        async def execute(self, _statement: object) -> SimpleNamespace:
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(streaming, "session_scope", sessions)
+    chunks = [
+        chunk
+        async for chunk in streaming.observe_conversation(
+            conversation_id,
+            Principal(kind=PrincipalKind.USER, user_id=owner),
+            SimpleNamespace(is_disconnected=AsyncMock(return_value=True)),  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+            1,
+        )
+    ]
+    assert len(chunks) == 2
+    assert b"event: run.activity" in chunks[0]
+    assert b"event: run.activity_status" in chunks[1]
+    assert f"id: {conversation_id}:3".encode() in chunks[1]

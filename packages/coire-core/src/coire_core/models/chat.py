@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from coire_core.models.files import ChatAttachment, ChatAttachmentSelection
 from coire_core.models.registry import LoadState, Tag
+from coire_core.models.runs import RunActivity
 
 
 class ChatPickerQuery(BaseModel):
@@ -257,6 +258,22 @@ class ChatAttachmentChanged(BaseModel):
     removed_id: uuid.UUID | None = None
 
 
+class ChatRunActivity(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["run.activity"] = "run.activity"
+    activity: RunActivity
+
+
+class ChatRunActivityStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["run.activity_status"] = "run.activity_status"
+    run_id: uuid.UUID
+    state: Literal["complete", "truncated", "unavailable"]
+    last_sequence: int = Field(ge=0, le=10_000)
+
+
 class ChatConversationDeleted(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -273,6 +290,8 @@ ChatEventPayload = Annotated[
     | ChatMessageDelta
     | ChatTurnTerminal
     | ChatAttachmentChanged
+    | ChatRunActivity
+    | ChatRunActivityStatus
     | ChatConversationDeleted,
     Field(discriminator="type"),
 ]

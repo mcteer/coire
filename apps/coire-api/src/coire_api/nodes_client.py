@@ -35,6 +35,7 @@ from coire_core.models.node import (
 )
 from coire_core.models.registry import EngineBackend
 from coire_core.models.runs import (
+    RunActivityPage,
     RunCollectedResult,
     RunContainerCreate,
     RunContainerObservation,
@@ -599,6 +600,32 @@ class NodeClient:
     async def collect_run(self, node: str, run_id: uuid.UUID) -> RunCollectedResult:
         _, body = await self._call("GET", node, f"/node/runs/{run_id}/result", expect=(200,))
         return RunCollectedResult.model_validate(body)
+
+    async def run_activity(
+        self, node: str, run_id: uuid.UUID, *, after_sequence: int = 0
+    ) -> RunActivityPage:
+        _, body = await self._call(
+            "GET",
+            node,
+            f"/node/runs/{run_id}/activity?after_sequence={after_sequence}&limit=100",
+            expect=(200,),
+        )
+        page = RunActivityPage.model_validate(body)
+        if page.run_id != run_id:
+            raise NodeError(NodeErrorKind.PROTOCOL, node, detail="activity run identity changed")
+        if (
+            (not page.available and (page.data or page.next_sequence is not None))
+            or any(
+                record.sequence != after_sequence + index
+                for index, record in enumerate(page.data, start=1)
+            )
+            or (
+                page.next_sequence is not None
+                and (not page.data or page.next_sequence != page.data[-1].sequence)
+            )
+        ):
+            raise NodeError(NodeErrorKind.PROTOCOL, node, detail="activity page cursor is invalid")
+        return page
 
     async def remove_run(self, node: str, run_id: uuid.UUID, *, kill: bool = False) -> None:
         suffix = "?kill=true" if kill else ""

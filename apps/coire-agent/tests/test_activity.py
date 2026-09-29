@@ -34,6 +34,9 @@ def test_activity_records_lifecycle_without_arguments_or_error_text(tmp_path: Pa
     ]
     assert {record.run_id for record in records} == {run_id}
     assert records[-1].safe_error == "operation_failed"
+    assert records[0].tool_call_id == records[1].tool_call_id
+    assert records[2].tool_call_id == records[3].tool_call_id
+    assert records[0].tool_call_id != records[2].tool_call_id
     assert b"private source content" not in path.read_bytes()
     assert path.stat().st_mode & 0o777 == 0o600
 

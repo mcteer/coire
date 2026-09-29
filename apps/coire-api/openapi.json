@@ -2477,6 +2477,8 @@
                 "conversation.deleted": "#/components/schemas/ChatConversationDeleted",
                 "conversation.updated": "#/components/schemas/ChatConversationUpdated",
                 "message.delta": "#/components/schemas/ChatMessageDelta",
+                "run.activity": "#/components/schemas/ChatRunActivity",
+                "run.activity_status": "#/components/schemas/ChatRunActivityStatus",
                 "snapshot": "#/components/schemas/ChatSnapshot",
                 "turn.accepted": "#/components/schemas/ChatTurnAccepted",
                 "turn.status": "#/components/schemas/ChatTurnStatus",
@@ -2505,6 +2507,12 @@
               },
               {
                 "$ref": "#/components/schemas/ChatAttachmentChanged"
+              },
+              {
+                "$ref": "#/components/schemas/ChatRunActivity"
+              },
+              {
+                "$ref": "#/components/schemas/ChatRunActivityStatus"
               },
               {
                 "$ref": "#/components/schemas/ChatConversationDeleted"
@@ -2949,6 +2957,63 @@
           "height"
         ],
         "title": "ChatPreviewAsset",
+        "type": "object"
+      },
+      "ChatRunActivity": {
+        "additionalProperties": false,
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/RunActivity"
+          },
+          "type": {
+            "const": "run.activity",
+            "default": "run.activity",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activity"
+        ],
+        "title": "ChatRunActivity",
+        "type": "object"
+      },
+      "ChatRunActivityStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "last_sequence": {
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Last Sequence",
+            "type": "integer"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "complete",
+              "truncated",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.activity_status",
+            "default": "run.activity_status",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "state",
+          "last_sequence"
+        ],
+        "title": "ChatRunActivityStatus",
         "type": "object"
       },
       "ChatSnapshot": {
@@ -7192,6 +7257,97 @@
           "run"
         ],
         "title": "ReservationHolder",
+        "type": "string"
+      },
+      "RunActivity": {
+        "additionalProperties": false,
+        "description": "Bounded content-free tool lifecycle receipt from one user run.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "sequence": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "started",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Call Id"
+          },
+          "tool_name": {
+            "$ref": "#/components/schemas/RunActivityTool"
+          }
+        },
+        "required": [
+          "run_id",
+          "sequence",
+          "tool_name",
+          "state",
+          "created_at"
+        ],
+        "title": "RunActivity",
+        "type": "object"
+      },
+      "RunActivityTool": {
+        "enum": [
+          "read_file",
+          "model_generation",
+          "apply_patch",
+          "run_tests",
+          "branch_bundle",
+          "activity_spool"
+        ],
+        "title": "RunActivityTool",
         "type": "string"
       },
       "RunKillAction": {

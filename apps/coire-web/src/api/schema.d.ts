@@ -2528,7 +2528,7 @@ export interface components {
             /** Cursor */
             cursor: number;
             /** Payload */
-            payload: components["schemas"]["ChatSnapshot"] | components["schemas"]["ChatConversationUpdated"] | components["schemas"]["ChatTurnAccepted"] | components["schemas"]["ChatTurnStatus"] | components["schemas"]["ChatMessageDelta"] | components["schemas"]["ChatTurnTerminal"] | components["schemas"]["ChatAttachmentChanged"] | components["schemas"]["ChatConversationDeleted"];
+            payload: components["schemas"]["ChatSnapshot"] | components["schemas"]["ChatConversationUpdated"] | components["schemas"]["ChatTurnAccepted"] | components["schemas"]["ChatTurnStatus"] | components["schemas"]["ChatMessageDelta"] | components["schemas"]["ChatTurnTerminal"] | components["schemas"]["ChatAttachmentChanged"] | components["schemas"]["ChatRunActivity"] | components["schemas"]["ChatRunActivityStatus"] | components["schemas"]["ChatConversationDeleted"];
             /** Turn Id */
             turn_id?: string | null;
         };
@@ -2690,6 +2690,35 @@ export interface components {
             page?: number | null;
             /** Width */
             width: number;
+        };
+        /** ChatRunActivity */
+        ChatRunActivity: {
+            activity: components["schemas"]["RunActivity"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "run.activity";
+        };
+        /** ChatRunActivityStatus */
+        ChatRunActivityStatus: {
+            /** Last Sequence */
+            last_sequence: number;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "complete" | "truncated" | "unavailable";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "run.activity_status";
         };
         /** ChatSnapshot */
         ChatSnapshot: {
@@ -4403,6 +4432,41 @@ export interface components {
          * @enum {string}
          */
         ReservationHolder: "sandbox" | "model" | "conversion" | "training" | "image" | "run";
+        /**
+         * RunActivity
+         * @description Bounded content-free tool lifecycle receipt from one user run.
+         */
+        RunActivity: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /** Safe Error */
+            safe_error?: string | null;
+            /** Sequence */
+            sequence: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "started" | "completed" | "failed";
+            /** Tool Call Id */
+            tool_call_id?: string | null;
+            tool_name: components["schemas"]["RunActivityTool"];
+        };
+        /**
+         * RunActivityTool
+         * @enum {string}
+         */
+        RunActivityTool: "read_file" | "model_generation" | "apply_patch" | "run_tests" | "branch_bundle" | "activity_spool";
         /** RunKillAction */
         RunKillAction: {
             /**

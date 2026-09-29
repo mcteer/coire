@@ -1337,7 +1337,11 @@ class ChatTurnRow(Base):
                 "state IN ('accepted', 'queued', 'loading', 'running', 'stop_requested')"
             ),
         ),
+        Index(
+            "uq_chat_turn_run", "run_id", unique=True, postgresql_where=text("run_id IS NOT NULL")
+        ),
         CheckConstraint("accepted_revision >= 1", name="ck_chat_turn_revision"),
+        CheckConstraint("activity_sequence >= 0", name="ck_chat_turn_activity_sequence"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -1354,6 +1358,8 @@ class ChatTurnRow(Base):
     action: Mapped[str] = mapped_column(String(16), default="chat")
     state: Mapped[str] = mapped_column(String(24), default="accepted")
     event_cursor: Mapped[int] = mapped_column(BigInteger, default=0)
+    activity_sequence: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    activity_final_state: Mapped[str | None] = mapped_column(String(16), nullable=True)
     retry_of: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("chat_turns.id"), nullable=True)
     recovery_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     coding_call_id: Mapped[uuid.UUID | None] = mapped_column(

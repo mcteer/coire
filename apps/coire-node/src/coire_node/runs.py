@@ -373,9 +373,11 @@ class RunManager:
             raise RunRuntimeError("run_result_unreadable", str(exc)) from exc
         return RunCollectedResult(run_id=run_id, result=result)
 
-    async def activity(self, run_id: uuid.UUID, *, after_sequence: int = 0) -> RunActivityPage:
+    async def activity(
+        self, run_id: uuid.UUID, *, after_sequence: int = 0, limit: int = 100
+    ) -> RunActivityPage:
         """Read one assigned run's bounded, content-free output spool."""
-        if not 0 <= after_sequence <= RUN_ACTIVITY_MAX_RECORDS:
+        if not 0 <= after_sequence <= RUN_ACTIVITY_MAX_RECORDS or not 1 <= limit <= 100:
             raise RunRuntimeError("run_activity_invalid", "activity cursor is invalid")
         name = self.container_name(run_id)
         observed = await self.docker.inspect_container(name)
@@ -430,11 +432,11 @@ class RunManager:
         except (tarfile.TarError, ValueError, OSError) as exc:
             raise RunRuntimeError("run_activity_unreadable", "activity spool is invalid") from exc
         remaining = [record for record in records if record.sequence > after_sequence]
-        page = remaining[:100]
+        page = remaining[:limit]
         return RunActivityPage(
             run_id=run_id,
             data=page,
-            next_sequence=page[-1].sequence if len(remaining) > 100 else None,
+            next_sequence=page[-1].sequence if len(remaining) > limit else None,
             truncated=bool(markers),
         )
 

@@ -119,10 +119,13 @@ async def run_activity(
     run_id: uuid.UUID,
     request: Request,
     after_sequence: int = Query(default=0, ge=0, le=RUN_ACTIVITY_MAX_RECORDS),
+    limit: int = Query(default=100, ge=1, le=100),
 ) -> RunActivityPage:
     with _instrument("activity", run_id):
         try:
-            return await _manager(request).activity(run_id, after_sequence=after_sequence)
+            return await _manager(request).activity(
+                run_id, after_sequence=after_sequence, limit=limit
+            )
         except (RunRuntimeError, DockerAPIError) as exc:
             raise _translate(exc) from exc
 
