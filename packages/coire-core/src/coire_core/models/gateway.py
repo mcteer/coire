@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import re
 import uuid
 from datetime import datetime
@@ -34,10 +35,13 @@ class OpenAIImageURL(BaseModel):
         if match is None:
             raise ValueError("only inline PNG, JPEG, or WebP data images are allowed")
         encoded = match.group(1)
-        if (
-            len(encoded) > 14_000_000
-            or len(base64.b64decode(encoded, validate=True)) > 10 * 1024 * 1024
-        ):
+        if len(encoded) > 14_000_000:
+            raise ValueError("inline image exceeds 10 MiB")
+        try:
+            decoded_bytes = len(base64.b64decode(encoded, validate=True))
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("inline image is not valid base64") from exc
+        if decoded_bytes > 10 * 1024 * 1024:
             raise ValueError("inline image exceeds 10 MiB")
         return value
 

@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Visual URL preflight (2026-09-29)
+
+- The shared OpenAI-compatible image URL schema now maps malformed base64 into a bounded validation error, and the visual context layer refuses it again if an internal caller bypasses model validation. Contract tests show remote HTTP, file URL and malformed inline image requests return 422 before registry resolution or engine I/O; 32 focused `/v1` and context tests passed, as did Ruff and source mypy. T051 remains open for native Chat visual context and full modality contracts.
+
 ## History contract audit (2026-09-29)
 
 - Parent T027 is complete through split, focused contract files rather than the older proposed `test_chat_history.py`/`test_chat_state.py` names. History pagination/detail, revisioned edit and concurrent-admission conflict, idempotent send/delete/Stop, replay cursor replacement and owner scoping are covered; 34 relevant tests passed. T035 remains open for two-tab and process-restart integration against a running control plane.

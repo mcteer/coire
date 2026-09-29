@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 
 from coire_core.models.gateway import (
     AnthropicMessagesRequest,
@@ -29,7 +30,10 @@ def _inline_image_tokens(part: OpenAIImagePart, visual: VisualCapability) -> int
     url = part.image_url.url
     if not url.startswith("data:image/png;base64,"):
         raise VisualContextUnavailable("this visual model accepts inline PNG only")
-    data = base64.b64decode(url.partition(",")[2], validate=True)
+    try:
+        data = base64.b64decode(url.partition(",")[2], validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise VisualContextUnavailable("inline image is not valid base64") from exc
     if len(data) > visual.max_encoded_bytes:
         raise VisualContextUnavailable("inline image exceeds this model's measured byte limit")
     if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":

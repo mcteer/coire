@@ -3,6 +3,7 @@ import io
 
 import pytest
 from PIL import Image
+from pydantic import ValidationError
 
 from coire_api.gateway.context import (
     ContextLengthError,
@@ -10,7 +11,12 @@ from coire_api.gateway.context import (
     enforce_anthropic_context,
     enforce_context,
 )
-from coire_core.models.gateway import AnthropicMessagesRequest, ChatMessage
+from coire_core.models.gateway import (
+    AnthropicMessagesRequest,
+    ChatMessage,
+    OpenAIImagePart,
+    OpenAIImageURL,
+)
 from coire_core.models.registry import VisualCapability
 
 
@@ -84,6 +90,29 @@ def test_verified_inline_png_counts_visual_tokens_and_enforces_measured_limits()
             output_tokens=32,
             visual=visual.model_copy(update={"max_image_pixels": 255}),
         )
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://example.test/image.png", "file:///private/image.png", "data:image/png;base64,abc"],
+)
+def test_visual_contract_refuses_remote_file_and_malformed_inline_urls(url: str) -> None:
+    with pytest.raises(ValidationError):
+        ChatMessage.model_validate(
+            {"role": "user", "content": [{"type": "image_url", "image_url": {"url": url}}]}
+        )
+
+
+def test_visual_preflight_rejects_invalid_encoded_part_even_after_bypassed_validation() -> None:
+    part = OpenAIImagePart.model_construct(
+        image_url=OpenAIImageURL.model_construct(url="data:image/png;base64,abc")
+    )
+    message = ChatMessage.model_construct(role="user", content=[part])
+    visual = VisualCapability(
+        verified=True, max_images=1, max_image_pixels=256, max_encoded_bytes=1024
+    )
+    with pytest.raises(VisualContextUnavailable):
+        enforce_context([message], limit=None, output_tokens=32, visual=visual)
 
 
 def test_anthropic_context_limit_includes_system_blocks_and_output() -> None:

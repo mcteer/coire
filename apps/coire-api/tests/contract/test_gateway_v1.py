@@ -409,6 +409,34 @@ async def test_anthropic_image_block_is_refused_before_model_resolution(
     assert "other than text" in response.text
 
 
+@pytest.mark.parametrize(
+    "image_url",
+    ["https://example.test/image.png", "file:///private/image.png", "data:image/png;base64,abc"],
+)
+async def test_openai_compatible_route_refuses_unsafe_image_url_before_resolution(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch, image_url: str
+) -> None:
+    async def resolve(*_: object) -> ResolvedModel:
+        pytest.fail("invalid image URL must not resolve a model")
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": str(uuid.uuid4()),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "image_url", "image_url": {"url": image_url}}],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 422
+
+
 async def test_unknown_model_is_rfc9457_problem(
     app: FastAPI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
