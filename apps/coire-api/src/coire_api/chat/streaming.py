@@ -27,6 +27,7 @@ from coire_api.db import (
     ChatTurnRow,
     EngineProcessRow,
     EntitlementRow,
+    ModelInstanceRow,
     ModelRow,
     UserRow,
     session_scope,
@@ -48,6 +49,7 @@ from coire_core.models.chat import (
     ChatUsage,
 )
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
+from coire_core.models.instance import InstanceState
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -99,7 +101,7 @@ async def persist_native_event(
         now = datetime.now(UTC)
         payload: ChatTurnStatus | ChatMessageDelta | ChatTurnTerminal
         if kind == "status":
-            assert state in {"loading", "running"}
+            assert state in {"queued", "loading", "running"}
             turn.state = state
             payload = ChatTurnStatus(state=state, estimate_seconds=estimate_seconds)  # type: ignore[arg-type]
         elif kind == "delta":
@@ -180,6 +182,32 @@ async def _measured_warmup_seconds(model_id: uuid.UUID) -> float | None:
             .order_by(EngineProcessRow.started_at.desc())
             .limit(1)
         )
+
+
+async def _observed_load_state(model_id: uuid.UUID) -> Literal["queued", "loading"] | None:
+    """Report only a real placement transition; no inferred queue rank or ETA."""
+    async with session_scope() as session:
+        state = await session.scalar(
+            select(ModelInstanceRow.state)
+            .where(
+                ModelInstanceRow.model_id == model_id,
+                ModelInstanceRow.state.in_(
+                    [
+                        InstanceState.REQUESTED,
+                        InstanceState.RESERVING,
+                        InstanceState.LAUNCHING,
+                        InstanceState.WARMING,
+                    ]
+                ),
+            )
+            .order_by(ModelInstanceRow.created_at.desc())
+            .limit(1)
+        )
+    if state in {InstanceState.REQUESTED, InstanceState.RESERVING}:
+        return "queued"
+    if state in {InstanceState.LAUNCHING, InstanceState.WARMING}:
+        return "loading"
+    return None
 
 
 async def _stop_requested(turn_id: uuid.UUID) -> bool:
@@ -282,6 +310,7 @@ async def native_stream(
                     settings=settings,
                 )
                 yield encode_event(loading)
+                last_load_state: Literal["queued", "loading"] = "loading"
                 task = asyncio.create_task(
                     asyncio.wait_for(
                         load_model(admission.turn.model_id, settings),
@@ -304,6 +333,13 @@ async def native_stream(
                             raise ChatStopRequested() from None
                         await _ensure_current_access(principal, admission.turn.model_id)
                         last_access_check = monotonic()
+                        observed = await _observed_load_state(admission.turn.model_id)
+                        if observed is not None and observed != last_load_state:
+                            last_load_state = observed
+                            changed = await persist_native_event(
+                                "status", admission, state=observed, settings=settings
+                            )
+                            yield encode_event(changed)
                         if monotonic() - last_keepalive >= settings.gateway_keepalive_interval_s:
                             last_keepalive = monotonic()
                             yield b": coire model loading\n\n"

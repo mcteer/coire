@@ -46,7 +46,7 @@ Tests precede the corresponding implementation per Constitution VII; schema chan
 
 - [ ] T023 [P] [US2] Add known/unknown estimate, eviction-after-selection, load failure and queue/status contract tests in apps/coire-api/tests/contract/test_chat_loading.py (FR-004–006, FR-032).
 - [ ] T024 [P] [US2] Add inline composer cold/queue/failure component tests in apps/coire-web/src/components/chat/Composer.test.tsx (SC-003).
-- [ ] T025 [US2] Connect actual placement/load transitions and nullable measured estimates to chat events in apps/coire-api/src/coire_api/gateway/loading.py and chat/streaming.py; never manufacture percentages/ranks (FR-004–006, FR-032).
+- [X] T025 [US2] Connect actual placement/load transitions and nullable measured estimates to chat events in apps/coire-api/src/coire_api/gateway/loading.py and chat/streaming.py; never manufacture percentages/ranks (FR-004–006, FR-032).
 - [ ] T026 [US2] Render warm-up/queue/failure and recovery inside apps/coire-web/src/components/chat/Composer.tsx and ModelPicker.tsx; validate <=1 s status in tests/integration/test_chat_ui.py (SC-003).
 
 ## Phase 5 — US3: Persistent private history and recovery (P2)

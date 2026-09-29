@@ -292,3 +292,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 ## Reasoning boundary gate (014aw)
 
 - Parser tests now cover mixed answer/reasoning content; native stream tests cover a direct `reasoning_content` field and owner Stop while a split opening delimiter is held. Stop emits no answer delta for that fragment. Parent T061 is complete. Focused parser/stream suite passed 19 tests; Ruff passed. This test-only slice does not change an image. Chat remains default-off.
+
+## Observed load status gate (014ax)
+
+- A cold Chat turn now observes the latest active placement instance. Requested/reserving publishes `queued`; launching/warming publishes `loading`; `running` follows engine readiness. Each phase change uses the existing persisted owner event. The historical warm-up estimate stays nullable and no rank or percentage is inferred. Parent T025 is complete; T026 still needs browser cold/queue/failure interaction acceptance and the <=1-second status measurement.
+- Focused status mapping and cold-stream tests passed. Full Python suite: 978 passed, 117 conditional skipped. Strict mypy on 159 API/core source files, changed-file Ruff and OpenAPI freshness passed. Local arm64 API image passed policy and Trivy CRITICAL scan with no findings; Syft wrote `/tmp/coire-api-014ax.spdx.json` (local evidence). Chat remains default-off.

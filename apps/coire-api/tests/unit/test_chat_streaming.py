@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from coire_api.auth import Principal, PrincipalKind
-from coire_api.chat.streaming import native_stream, replay_saved_events
+from coire_api.chat.streaming import _observed_load_state, native_stream, replay_saved_events
 from coire_api.chat.turns import Admission
 from coire_api.db import ChatConversationRow, ChatEventRow, ChatTurnRow, ModelRow, UserRow
 from coire_api.gateway.proxy import EngineProxyError
@@ -27,10 +27,90 @@ from coire_core.models.chat import (
 )
 from coire_core.models.gateway import ChatMessage as GatewayMessage
 from coire_core.models.gateway import UsageOutcome
+from coire_core.models.instance import InstanceState
 from coire_core.models.registry import ModelState, Reasoning, Visibility
 from coire_core.settings import Settings
 
 NOW = datetime.now(UTC)
+
+
+@pytest.mark.parametrize(
+    ("instance_state", "expected"),
+    [
+        (InstanceState.REQUESTED, "queued"),
+        (InstanceState.RESERVING, "queued"),
+        (InstanceState.LAUNCHING, "loading"),
+        (InstanceState.WARMING, "loading"),
+        (None, None),
+    ],
+)
+async def test_load_status_uses_observed_instance_transition(
+    monkeypatch: pytest.MonkeyPatch,
+    instance_state: InstanceState | None,
+    expected: str | None,
+) -> None:
+    from coire_api.chat import streaming
+
+    class Session:
+        async def scalar(self, _statement: object) -> InstanceState | None:
+            return instance_state
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(streaming, "session_scope", sessions)
+    assert await _observed_load_state(uuid.uuid4()) == expected
+
+
+async def test_cold_turn_reports_observed_queue_before_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import asyncio
+
+    from coire_api.chat import streaming
+
+    admission = _admission()
+    principal = Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4())
+    release_load = asyncio.Event()
+    statuses: list[str] = []
+    monkeypatch.setattr(streaming, "session_scope", _sessions)
+    monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
+    monkeypatch.setattr(streaming, "_stop_requested", AsyncMock(return_value=False))
+    monkeypatch.setattr(
+        streaming,
+        "_resolve",
+        AsyncMock(side_effect=[_resolved(admission, cold=True), _resolved(admission)]),
+    )
+    monkeypatch.setattr(streaming, "_measured_warmup_seconds", AsyncMock(return_value=None))
+    monkeypatch.setattr(streaming, "_observed_load_state", AsyncMock(return_value="queued"))
+
+    async def load_model(_model_id: uuid.UUID, _settings: Settings) -> None:
+        await release_load.wait()
+
+    async def upstream(*_args: object) -> AsyncIterator[bytes]:
+        yield b"data: [DONE]\n\n"
+
+    async def saved(kind: str, _admission: Admission, **kwargs: object) -> ChatEvent:
+        if kind == "status":
+            state = str(kwargs.get("state"))
+            statuses.append(state)
+            if state == "queued":
+                release_load.set()
+        return _saved_event(admission, kind, len(statuses) + 1, **kwargs)
+
+    monkeypatch.setattr(streaming, "load_model", load_model)
+    monkeypatch.setattr(streaming, "stream", upstream)
+    monkeypatch.setattr(streaming, "persist_native_event", saved)
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", AsyncMock())
+    request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
+    _ = [
+        chunk
+        async for chunk in native_stream(
+            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+        )
+    ]  # type: ignore[arg-type,call-arg]
+    assert statuses == ["loading", "queued", "running"]
 
 
 def _admission() -> Admission:
