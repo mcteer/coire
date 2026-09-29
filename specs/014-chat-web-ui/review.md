@@ -19,12 +19,13 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 3. `014c` additive compatible multimodal, backend and run-activity contracts.
 4. `014d` private chat persistence, typed failures and bounded settings.
 5. `014e` verified chat authorization and shared model eligibility.
-6. `014f` persistent text chat API and shared inference execution.
-7. `014g` chat SPA, event transport and cold-model experience.
-8. `014h` history, recovery, cancellation and coding actions.
-9. `014i` private file processing worker, storage, quotas and previews.
-10. `014j` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
-11. `014k` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
+6. `014f` shared gateway stream execution and compatible regression protection.
+7. `014g` persistent text chat API and remaining shared inference admission.
+8. `014h` chat SPA, event transport and cold-model experience.
+9. `014i` history, recovery, cancellation and coding actions.
+10. `014j` private file processing worker, storage, quotas and previews.
+11. `014k` bare Studio VLM acquisition, serving and visual gateway/harness inputs.
+12. `014l` reasoning UI, final telemetry, dashboards and end-to-end acceptance.
 
 ## Runtime dependency gate (014b)
 
@@ -51,3 +52,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 - Native Chat requires a verified user-bound Access principal or user-owned API key with `chat` scope. Browser writes require an exact configured Origin; the empty default refuses them. Owner lookup returns the same 404 for missing, foreign and deleted rows, including admin callers.
 - Existing nonadmin registry listings and compatible gateway resolution now use identity entitlements rather than API scopes. Native Chat has a stricter published/ready/entitled predicate even for admins; existing admin discovery behavior outside Chat is retained.
 - The new guard and eligibility tests passed; the API/core suite passed 544 tests. The full suite passed 830 tests with 116 pre-existing conditional skips; Ruff and strict mypy passed (216 source files), as did OpenAPI freshness, web build and 19 web tests. Parent T009 remains open until actual list/send route contracts exist; T010 is complete.
+
+## Shared gateway stream gate (014f)
+
+- Moved streaming usage tracking, credential rechecks, cancellation-resistant finalization and public model rewriting into `gateway/execution.py`; `/v1` imports the same functions. The existing proxy still owns engine slots and leases.
+- Direct tests cover fragmented CRLF SSE usage, public model rewriting, cancellation and first-token metrics; the existing gateway auth test covers credential revocation. Gateway auth and compatible contract tests passed 16/16. The full suite passed 834 tests with 116 pre-existing conditional skips, as did Ruff, strict mypy (217 source files), OpenAPI freshness and web build. Parent T011/T012 remain open because shared load/admission and the canonical native text adapter are not yet built.

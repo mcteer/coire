@@ -1,0 +1,198 @@
+"""Shared gateway stream accounting and public-model transport.
+
+Compatible routes and native Chat consume the same proxied engine stream. The proxy owns
+engine slots and memory leases; this module owns credential rechecks and once-only usage.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import suppress
+from time import monotonic, perf_counter
+
+from fastapi import Request
+from fastapi.responses import StreamingResponse
+from starlette.types import Receive, Scope, Send
+
+from coire_api.auth import PrincipalKind
+from coire_api.gateway.proxy import EngineProxyError, StreamTiming
+from coire_api.gateway.telemetry import first_token_duration_ms, overhead_duration_ms
+from coire_api.gateway.usage import UsageTracker
+from coire_core.models.gateway import UsageOutcome
+
+logger = logging.getLogger(__name__)
+
+
+async def finish_detached(usage: UsageTracker, outcome: UsageOutcome, *, failure_code: str) -> None:
+    """Finish usage even if the ASGI caller is already cancelled."""
+    task = asyncio.create_task(usage.finish(outcome, failure_code=failure_code))
+    with suppress(asyncio.CancelledError):
+        await asyncio.shield(task)
+
+
+class UsageStreamingResponse(StreamingResponse):
+    def __init__(self, source: AsyncIterator[bytes], usage: UsageTracker) -> None:
+        super().__init__(
+            source,
+            media_type="text/event-stream",
+            headers={"X-Accel-Buffering": "no"},
+        )
+        self._usage = usage
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            await finish_detached(
+                self._usage,
+                UsageOutcome.DISCONNECTED,
+                failure_code="client_disconnected",
+            )
+
+
+def streaming_response(source: AsyncIterator[bytes], usage: UsageTracker) -> StreamingResponse:
+    """Finalize accounting when the ASGI server closes an abandoned response."""
+    return UsageStreamingResponse(source, usage)
+
+
+def _record_usage_frame(data_lines: list[bytes], usage: UsageTracker) -> None:
+    if not data_lines:
+        return
+    raw = b"\n".join(data_lines)
+    if raw == b"[DONE]":
+        return
+    try:
+        event = json.loads(raw)
+        if not isinstance(event, dict):
+            return
+        reported = event.get("usage") or {}
+        if isinstance(reported, dict) and reported:
+            usage.prompt_tokens = int(reported.get("prompt_tokens", usage.prompt_tokens))
+            usage.completion_tokens = int(
+                reported.get("completion_tokens", usage.completion_tokens)
+            )
+        elif event.get("choices", [{}])[0].get("delta", {}).get("content"):
+            usage.completion_tokens += 1
+    except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+        pass
+
+
+async def track_stream(
+    source: AsyncIterator[bytes],
+    usage: UsageTracker,
+    request: Request | None = None,
+    timing: StreamTiming | None = None,
+) -> AsyncIterator[bytes]:
+    """Forward bytes unchanged while accounting for complete, possibly fragmented SSE frames."""
+    first_observed = False
+    credential_checked_at = 0.0
+    line_buffer = b""
+    data_lines: list[bytes] = []
+    try:
+        async for chunk in source:
+            if request is not None and await request.is_disconnected():
+                await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
+                return
+            if (
+                usage.principal.api_key_id is not None or usage.principal.kind is PrincipalKind.RUN
+            ) and request is not None:
+                settings = getattr(request.app.state, "settings", None)
+                interval = settings.credential_stream_recheck_s if settings is not None else 1.0
+                now = monotonic()
+                if now - credential_checked_at >= interval:
+                    from coire_api.db import session_scope
+                    from coire_api.identity.keys import key_is_active
+                    from coire_api.run_tokens import run_token_is_active
+
+                    credential_checked_at = now
+                    async with session_scope() as session:
+                        if usage.principal.kind is PrincipalKind.RUN:
+                            assert usage.principal.run_id is not None
+                            active = await run_token_is_active(session, usage.principal.run_id)
+                        else:
+                            active = await key_is_active(session, usage.principal)
+                    if not active:
+                        await usage.finish(UsageOutcome.REFUSED, failure_code="credential_revoked")
+                        error = json.dumps(
+                            {
+                                "error": {
+                                    "message": "credential revoked",
+                                    "type": "authentication_error",
+                                    "code": "credential_revoked",
+                                }
+                            }
+                        )
+                        yield f"data: {error}\n\ndata: [DONE]\n\n".encode()
+                        return
+            if (
+                not first_observed
+                and timing is not None
+                and timing.upstream_started_at is not None
+                and timing.first_chunk_at is not None
+            ):
+                first_observed = True
+                first_token_ms = (perf_counter() - timing.request_started_at) * 1000
+                engine_ms = (timing.first_chunk_at - timing.upstream_started_at) * 1000
+                overhead_ms = max(first_token_ms - engine_ms, 0)
+                attributes = {"protocol": usage.protocol.value}
+                first_token_duration_ms.record(first_token_ms, attributes)
+                overhead_duration_ms.record(overhead_ms, attributes)
+                logger.info(
+                    "gateway first token request_id=%s model_id=%s engine_id=%s "
+                    "first_token_ms=%.2f gateway_overhead_ms=%.2f",
+                    usage.request_id,
+                    usage.model_id,
+                    usage.engine_id,
+                    first_token_ms,
+                    overhead_ms,
+                )
+            line_buffer += chunk
+            while b"\n" in line_buffer:
+                line, line_buffer = line_buffer.split(b"\n", 1)
+                line = line.removesuffix(b"\r")
+                if not line:
+                    _record_usage_frame(data_lines, usage)
+                    data_lines.clear()
+                elif line.startswith(b"data:"):
+                    data_lines.append(line[5:].lstrip(b" "))
+            if len(line_buffer) + sum(map(len, data_lines)) > 64 * 1024:
+                # The proxy is still authoritative for the wire; only accounting state resets.
+                line_buffer = b""
+                data_lines.clear()
+            yield chunk
+    except asyncio.CancelledError:
+        await finish_detached(usage, UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
+        raise
+    except EngineProxyError:
+        await usage.finish(UsageOutcome.FAILED, failure_code="engine_stream_failed")
+    else:
+        await usage.finish(UsageOutcome.SUCCEEDED)
+
+
+async def rewrite_openai_model(
+    source: AsyncIterator[bytes], model: uuid.UUID
+) -> AsyncIterator[bytes]:
+    """Keep the registry UUID at the public boundary; never expose the node's model path."""
+    public_model = str(model)
+    async for chunk in source:
+        if not chunk.startswith(b"data: "):
+            yield chunk
+            continue
+        raw = chunk[6:].strip()
+        if raw == b"[DONE]":
+            yield chunk
+            continue
+        try:
+            event = json.loads(raw)
+        except (TypeError, ValueError):
+            yield chunk
+            continue
+        if not isinstance(event, dict) or "model" not in event:
+            yield chunk
+            continue
+        event["model"] = public_model
+        yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n".encode()

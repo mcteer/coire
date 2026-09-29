@@ -4,24 +4,28 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import uuid
 from collections.abc import AsyncIterator, Sequence
-from contextlib import suppress
-from time import monotonic, perf_counter
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from starlette.types import Receive, Scope, Send
 
 from coire_api.auth import CurrentAuthenticated, Principal, PrincipalKind, require_scope
 from coire_api.db import EngineProcessRow, ModelRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.anthropic import from_openai_response, from_openai_stream, to_openai_payload
 from coire_api.gateway.context import ContextLengthError, enforce_anthropic_context, enforce_context
+from coire_api.gateway.execution import (
+    rewrite_openai_model as _rewrite_openai_model,
+)
+from coire_api.gateway.execution import (
+    streaming_response as _streaming_response,
+)
+from coire_api.gateway.execution import (
+    track_stream as _tracked_stream,
+)
 from coire_api.gateway.loading import ModelLoadError, load_model
 from coire_api.gateway.proxy import (
     EngineProxyError,
@@ -36,7 +40,6 @@ from coire_api.gateway.resolution import (
     resolve_model,
     retry_after_seconds,
 )
-from coire_api.gateway.telemetry import first_token_duration_ms, overhead_duration_ms
 from coire_api.gateway.usage import UsageTracker
 from coire_api.registry.service import load_state_for, visible_to
 from coire_core.models.gateway import (
@@ -51,7 +54,6 @@ from coire_core.models.registry import LoadState
 from coire_core.settings import Settings
 
 router = APIRouter(prefix="/v1", tags=["compatible"], dependencies=[Depends(require_scope("chat"))])
-logger = logging.getLogger(__name__)
 
 
 def _tool_names(tools: list[dict[str, Any]] | None) -> set[str]:
@@ -105,35 +107,6 @@ async def _reserve_run_spend(
         await usage.finish(UsageOutcome.REFUSED, failure_code="run_spend_exhausted")
         raise HTTPException(status.HTTP_403_FORBIDDEN, "run spend exhausted") from exc
     usage.reserved_tokens = reservation
-
-
-async def _finish_detached(
-    usage: UsageTracker, outcome: UsageOutcome, *, failure_code: str
-) -> None:
-    task = asyncio.create_task(usage.finish(outcome, failure_code=failure_code))
-    # The detached task must outlive an ASGI cancel scope long enough to commit.
-    with suppress(asyncio.CancelledError):
-        await asyncio.shield(task)
-
-
-class _UsageStreamingResponse(StreamingResponse):
-    def __init__(self, source: AsyncIterator[bytes], usage: UsageTracker) -> None:
-        super().__init__(
-            source,
-            media_type="text/event-stream",
-            headers={"X-Accel-Buffering": "no"},
-        )
-        self._usage = usage
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        try:
-            await super().__call__(scope, receive, send)
-        finally:
-            await _finish_detached(
-                self._usage,
-                UsageOutcome.DISCONNECTED,
-                failure_code="client_disconnected",
-            )
 
 
 async def _load_and_resolve(
@@ -196,131 +169,6 @@ async def _openai_cold_stream(
         await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
         error = json.dumps({"error": {"message": str(exc), "type": "model_load_error"}})
         yield f"data: {error}\n\n".encode()
-
-
-async def _tracked_stream(
-    source: AsyncIterator[bytes],
-    usage: UsageTracker,
-    request: Request | None = None,
-    timing: StreamTiming | None = None,
-) -> AsyncIterator[bytes]:
-    first_observed = False
-    credential_checked_at = 0.0
-    try:
-        async for chunk in source:
-            if request is not None and await request.is_disconnected():
-                await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
-                return
-            if (
-                usage.principal.api_key_id is not None or usage.principal.kind is PrincipalKind.RUN
-            ) and request is not None:
-                settings = getattr(request.app.state, "settings", None)
-                interval = settings.credential_stream_recheck_s if settings is not None else 1.0
-                now = monotonic()
-                if now - credential_checked_at >= interval:
-                    from coire_api.db import session_scope
-                    from coire_api.identity.keys import key_is_active
-                    from coire_api.run_tokens import run_token_is_active
-
-                    credential_checked_at = now
-                    async with session_scope() as session:
-                        if usage.principal.kind is PrincipalKind.RUN:
-                            assert usage.principal.run_id is not None
-                            active = await run_token_is_active(session, usage.principal.run_id)
-                        else:
-                            active = await key_is_active(session, usage.principal)
-                    if not active:
-                        await usage.finish(UsageOutcome.REFUSED, failure_code="credential_revoked")
-                        error = json.dumps(
-                            {
-                                "error": {
-                                    "message": "credential revoked",
-                                    "type": "authentication_error",
-                                    "code": "credential_revoked",
-                                }
-                            }
-                        )
-                        yield f"data: {error}\n\ndata: [DONE]\n\n".encode()
-                        return
-            if (
-                not first_observed
-                and timing is not None
-                and timing.upstream_started_at is not None
-                and timing.first_chunk_at is not None
-            ):
-                first_observed = True
-                first_token_ms = (perf_counter() - timing.request_started_at) * 1000
-                engine_ms = (timing.first_chunk_at - timing.upstream_started_at) * 1000
-                overhead_ms = max(first_token_ms - engine_ms, 0)
-                attributes = {"protocol": usage.protocol.value}
-                first_token_duration_ms.record(first_token_ms, attributes)
-                overhead_duration_ms.record(overhead_ms, attributes)
-                logger.info(
-                    "gateway first token request_id=%s model_id=%s engine_id=%s "
-                    "first_token_ms=%.2f gateway_overhead_ms=%.2f",
-                    usage.request_id,
-                    usage.model_id,
-                    usage.engine_id,
-                    first_token_ms,
-                    overhead_ms,
-                )
-            for line in chunk.decode(errors="replace").splitlines():
-                if not line.startswith("data: ") or line == "data: [DONE]":
-                    continue
-                try:
-                    event = json.loads(line[6:])
-                    reported = event.get("usage") or {}
-                    if reported:
-                        usage.prompt_tokens = int(
-                            reported.get("prompt_tokens", usage.prompt_tokens)
-                        )
-                        usage.completion_tokens = int(
-                            reported.get("completion_tokens", usage.completion_tokens)
-                        )
-                    elif event.get("choices", [{}])[0].get("delta", {}).get("content"):
-                        usage.completion_tokens += 1
-                except (ValueError, TypeError, KeyError, IndexError, AttributeError):
-                    pass
-            yield chunk
-    except asyncio.CancelledError:
-        await _finish_detached(usage, UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
-        raise
-    except EngineProxyError:
-        await usage.finish(UsageOutcome.FAILED, failure_code="engine_stream_failed")
-    else:
-        await usage.finish(UsageOutcome.SUCCEEDED)
-
-
-async def _rewrite_openai_model(
-    source: AsyncIterator[bytes], model: uuid.UUID
-) -> AsyncIterator[bytes]:
-    """Keep the registry UUID at the public boundary; never expose the node's model path."""
-
-    public_model = str(model)
-    async for chunk in source:
-        if not chunk.startswith(b"data: "):
-            yield chunk
-            continue
-        raw = chunk[6:].strip()
-        if raw == b"[DONE]":
-            yield chunk
-            continue
-        try:
-            event = json.loads(raw)
-        except (TypeError, ValueError):
-            yield chunk
-            continue
-        if not isinstance(event, dict) or "model" not in event:
-            yield chunk
-            continue
-        event["model"] = public_model
-        yield f"data: {json.dumps(event, separators=(',', ':'))}\n\n".encode()
-
-
-def _streaming_response(source: AsyncIterator[bytes], usage: UsageTracker) -> StreamingResponse:
-    """Finalize accounting when the ASGI server closes an abandoned response."""
-
-    return _UsageStreamingResponse(source, usage)
 
 
 async def _anthropic_cold_stream(
