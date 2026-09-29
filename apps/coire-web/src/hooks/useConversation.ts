@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client";
+import { loadChatDrafts, saveChatDrafts } from "../api/chatDrafts";
 import {
   createChatConversation,
   getChatConversation,
@@ -13,7 +14,9 @@ import {
 } from "../api/chat";
 import { useChatTurnStream } from "./useEventStream";
 
-export function useConversation() {
+export function useConversation(ownerId: string) {
+  const [initialDrafts] = useState(() => loadChatDrafts(ownerId));
+  const drafts = useRef(initialDrafts);
   const [models, setModels] = useState<ChatPickerEntry[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [conversation, setConversation] = useState<ChatConversation | null>(null);
@@ -22,7 +25,7 @@ export function useConversation() {
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [olderPosition, setOlderPosition] = useState<number | null>(null);
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(() => drafts.current.get("new")?.text ?? "");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,8 +34,23 @@ export function useConversation() {
   const busyRef = useRef(false);
   const pending = useRef<{ key: string; body: ChatTurnCreate } | null>(null);
   const selection = useRef(0);
-  const drafts = useRef(new Map<string, string>());
   const stream = useChatTurnStream();
+
+  const remember = (key: string, text: string, modelId: string | null) => {
+    drafts.current.delete(key);
+    drafts.current.set(key, { text, modelId });
+    while (drafts.current.size > 20) {
+      const oldest = drafts.current.keys().next().value;
+      if (!oldest) break;
+      drafts.current.delete(oldest);
+    }
+    saveChatDrafts(ownerId, drafts.current);
+  };
+
+  const forget = (key: string) => {
+    drafts.current.delete(key);
+    saveChatDrafts(ownerId, drafts.current);
+  };
 
   useEffect(() => {
     let live = true;
@@ -41,7 +59,14 @@ export function useConversation() {
         if (!live) return;
         const available = response.data ?? [];
         setModels(available);
-        setSelectedId((current) => current ?? available[0]?.id ?? null);
+        setSelectedId((current) => {
+          const saved = drafts.current.get("new")?.modelId;
+          return (
+            current ??
+            (available.some((model) => model.id === saved) ? saved : available[0]?.id) ??
+            null
+          );
+        });
       })
       .catch((cause) => {
         if (live) {
@@ -125,7 +150,7 @@ export function useConversation() {
         ];
       });
       setDraft("");
-      drafts.current.delete(event.conversation_id);
+      forget(event.conversation_id);
       pending.current = null;
       setHistory((current) => {
         const item = current.find((row) => row.id === event.conversation_id);
@@ -204,8 +229,8 @@ export function useConversation() {
         current = await createChatConversation({ mode: "chat", model_id: selectedId });
         setConversation(current);
         setHistory((rows) => [current!, ...rows.filter((row) => row.id !== current!.id)]);
-        drafts.current.set(current.id, input);
-        drafts.current.delete("new");
+        remember(current.id, input, selectedId);
+        forget("new");
       }
       const key = [current.id, current.revision, selectedId, input].join("\0");
       const body: ChatTurnCreate =
@@ -231,12 +256,18 @@ export function useConversation() {
 
   const changeDraft = (value: string) => {
     setDraft(value);
-    drafts.current.set(conversation?.id ?? "new", value);
+    remember(conversation?.id ?? "new", value, selectedId);
+  };
+
+  const chooseModel = (id: string) => {
+    if (!models.some((model) => model.id === id)) return;
+    setSelectedId(id);
+    remember(conversation?.id ?? "new", draft, id);
   };
 
   const openConversation = async (id: string) => {
     if (busyRef.current || stream.active) return;
-    drafts.current.set(conversation?.id ?? "new", draft);
+    remember(conversation?.id ?? "new", draft, selectedId);
     const generation = ++selection.current;
     setHistoryLoading(true);
     setError(null);
@@ -246,12 +277,10 @@ export function useConversation() {
       setConversation(detail.conversation);
       setMessages(detail.messages ?? []);
       setOlderPosition(detail.next_message_position ?? null);
-      setDraft(drafts.current.get(id) ?? "");
-      setSelectedId(
-        models.some((model) => model.id === detail.conversation.selected_model_id)
-          ? (detail.conversation.selected_model_id ?? null)
-          : null,
-      );
+      const saved = drafts.current.get(id);
+      setDraft(saved?.text ?? "");
+      const preferred = saved?.modelId ?? detail.conversation.selected_model_id;
+      setSelectedId(models.some((model) => model.id === preferred) ? (preferred ?? null) : null);
       setStatus(
         detail.conversation.active_turn_id
           ? "A response is still running. Refresh this conversation to see saved progress."
@@ -303,12 +332,16 @@ export function useConversation() {
 
   const newConversation = () => {
     if (busyRef.current || stream.active) return;
-    drafts.current.set(conversation?.id ?? "new", draft);
+    remember(conversation?.id ?? "new", draft, selectedId);
     selection.current += 1;
     pending.current = null;
     setConversation(null);
     setMessages([]);
-    setDraft(drafts.current.get("new") ?? "");
+    const saved = drafts.current.get("new");
+    setDraft(saved?.text ?? "");
+    if (saved?.modelId && models.some((model) => model.id === saved.modelId)) {
+      setSelectedId(saved.modelId);
+    }
     setOlderPosition(null);
     setStatus(null);
     setError(null);
@@ -317,7 +350,7 @@ export function useConversation() {
   return {
     models,
     selectedId,
-    setSelectedId,
+    setSelectedId: chooseModel,
     conversation,
     messages,
     history,

@@ -1084,7 +1084,7 @@ export function App() {
   if (!admin)
     return (
       <AppShell view="chat" canAdmin={me.role === "admin"}>
-        <Chat />
+        <Chat ownerId={me.id} />
       </AppShell>
     );
   return (

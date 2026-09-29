@@ -1,8 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { Chat } from "./Chat";
+import { loadChatDrafts, saveChatDrafts } from "../api/chatDrafts";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  sessionStorage.clear();
+});
 
 const conversationId = "00000000-0000-0000-0000-000000000001";
 const modelId = "00000000-0000-0000-0000-000000000002";
@@ -88,7 +92,7 @@ test("shows accepted input, streamed answer and model snapshot", async () => {
       ),
     );
   vi.stubGlobal("fetch", fetchMock);
-  render(<Chat />);
+  render(<Chat ownerId="00000000-0000-0000-0000-000000000006" />);
   await screen.findByText("Friendly model");
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -96,6 +100,7 @@ test("shows accepted input, streamed answer and model snapshot", async () => {
   expect(screen.getByText("Hi")).toBeInTheDocument();
   expect(screen.getAllByText("Friendly model").length).toBeGreaterThan(1);
   expect(fetchMock).toHaveBeenCalledTimes(4);
+  expect(loadChatDrafts(conversation.owner_id).get(conversationId)).toBeUndefined();
 });
 
 test("preserves the draft when admission refuses the send", async () => {
@@ -106,7 +111,7 @@ test("preserves the draft when admission refuses the send", async () => {
     .mockResolvedValueOnce(json(conversation, 201))
     .mockResolvedValueOnce(json({ title: "Conflict", detail: "Conversation changed" }, 409));
   vi.stubGlobal("fetch", fetchMock);
-  render(<Chat />);
+  render(<Chat ownerId="00000000-0000-0000-0000-000000000006" />);
   await screen.findByText("Friendly model");
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
     target: { value: "Keep me" },
@@ -114,6 +119,7 @@ test("preserves the draft when admission refuses the send", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Conversation changed"));
   expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Keep me");
+  expect(loadChatDrafts(conversation.owner_id).get(conversationId)?.text).toBe("Keep me");
 });
 
 test("reuses request identity after an uncertain network failure", async () => {
@@ -152,7 +158,7 @@ test("reuses request identity after an uncertain network failure", async () => {
       ),
     );
   vi.stubGlobal("fetch", fetchMock);
-  render(<Chat />);
+  render(<Chat ownerId="00000000-0000-0000-0000-000000000006" />);
   await screen.findByText("Friendly model");
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
     target: { value: "Retry me" },
@@ -235,7 +241,7 @@ test("switches models within one conversation and keeps each answer attribution"
       ),
     );
   vi.stubGlobal("fetch", fetchMock);
-  render(<Chat />);
+  render(<Chat ownerId="00000000-0000-0000-0000-000000000006" />);
   await screen.findByRole("button", { name: /Friendly model/ });
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
     target: { value: "First" },
@@ -300,7 +306,7 @@ test.each([
       .mockResolvedValueOnce(json(conversation, 201))
       .mockResolvedValueOnce(response),
   );
-  render(<Chat />);
+  render(<Chat ownerId="00000000-0000-0000-0000-000000000006" />);
   await screen.findByRole("button", { name: /Friendly model/ });
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -366,7 +372,7 @@ test("reopens saved partial output with model attribution and older messages", a
     );
   });
   vi.stubGlobal("fetch", fetchMock);
-  render(<Chat />);
+  render(<Chat ownerId="00000000-0000-0000-0000-000000000006" />);
   fireEvent.click(await screen.findByRole("button", { name: /Saved notes/ }));
   expect(await screen.findByText("Saved partial")).toBeInTheDocument();
   expect(screen.getByText("Saved partial").closest("article")).toHaveTextContent("Earlier model");
@@ -418,7 +424,7 @@ test("late history response cannot replace a newer selected conversation", async
       );
     }),
   );
-  render(<Chat />);
+  render(<Chat ownerId="00000000-0000-0000-0000-000000000006" />);
   fireEvent.click(await screen.findByRole("button", { name: /First saved/ }));
   fireEvent.click(screen.getByRole("button", { name: /Second saved/ }));
   expect(await screen.findByText("Second content")).toBeInTheDocument();
@@ -450,7 +456,7 @@ test("keeps separate unsent drafts while navigating saved and new conversations"
       );
     }),
   );
-  render(<Chat />);
+  render(<Chat ownerId="00000000-0000-0000-0000-000000000006" />);
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
     target: { value: "New draft" },
   });
@@ -472,7 +478,65 @@ test("shows a clear unavailable state while the server release flag is off", asy
     "fetch",
     vi.fn().mockImplementation(() => Promise.resolve(json({ title: "Not Found" }, 404))),
   );
-  render(<Chat />);
+  render(<Chat ownerId="00000000-0000-0000-0000-000000000006" />);
   expect(await screen.findByRole("heading", { name: "Chat is unavailable" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+});
+
+test("restores same-tab text and an eligible model after reload", async () => {
+  const second = {
+    ...model,
+    id: "00000000-0000-0000-0000-000000000099",
+    display_name: "Saved choice",
+  };
+  loadChatDrafts(conversation.owner_id);
+  saveChatDrafts(
+    conversation.owner_id,
+    new Map([["new", { text: "Recovered draft", modelId: second.id }]]),
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockImplementation((url: string) =>
+        Promise.resolve(
+          url === "/api/v1/chat/models"
+            ? json({ data: [model, second] })
+            : json({ data: [], next_cursor: null }),
+        ),
+      ),
+  );
+  render(<Chat ownerId={conversation.owner_id} />);
+  expect(await screen.findByRole("button", { name: /Saved choice/ })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Recovered draft");
+});
+
+test("changing verified identity in one tab clears the former owner's draft", async () => {
+  loadChatDrafts(conversation.owner_id);
+  saveChatDrafts(
+    conversation.owner_id,
+    new Map([["new", { text: "Owner A private draft", modelId: null }]]),
+  );
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockImplementation((url: string) =>
+        Promise.resolve(
+          url === "/api/v1/chat/models"
+            ? json({ data: [model] })
+            : json({ data: [], next_cursor: null }),
+        ),
+      ),
+  );
+  const view = render(<Chat ownerId={conversation.owner_id} />);
+  await screen.findByRole("button", { name: /Friendly model/ });
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Owner A private draft");
+  const other = "00000000-0000-0000-0000-000000000010";
+  await act(async () => view.rerender(<Chat ownerId={other} />));
+  expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
+  expect(sessionStorage.getItem("coire.chat.drafts." + conversation.owner_id)).toBeNull();
 });

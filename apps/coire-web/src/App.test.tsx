@@ -5,6 +5,7 @@ import { App } from "./App";
 afterEach(() => {
   vi.restoreAllMocks();
   location.hash = "";
+  sessionStorage.clear();
 });
 
 const user = {
@@ -31,7 +32,9 @@ test("opens Chat for a non-admin without an admin navigation link", async () => 
       })
       .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
       .mockResolvedValueOnce({
-        ok: true, status: 200, json: async () => ({ data: [], next_cursor: null }),
+        ok: true,
+        status: 200,
+        json: async () => ({ data: [], next_cursor: null }),
       }),
   );
   render(<App />);

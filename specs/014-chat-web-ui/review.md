@@ -28,7 +28,8 @@ The 75-task implementation spans new shared contracts, a migration, API chat sto
 12. `014l` measured cold wait and failure remedy.
 13. `014m` private history list/detail reads.
 14. `014n` browser history navigation and draft separation.
-15. Later children: queue status, history mutation, recovery, cancellation, coding actions, private file processing, bare Studio VLM, reasoning, final telemetry and end-to-end acceptance.
+15. `014o` same-tab text/model draft recovery.
+16. Later children: queue status, history mutation, recovery, cancellation, coding actions, private file processing, bare Studio VLM, reasoning, final telemetry and end-to-end acceptance.
 
 ## Runtime dependency gate (014b)
 
@@ -106,3 +107,8 @@ The 014 tasks remain the full acceptance ledger. A child passing its local tests
 - Chat now lists saved conversations, opens owner-scoped message pages after reload, loads older list/message pages, and shows saved partial output with the original model-name snapshot. Narrow screens use an accessible history drawer. Selection generations discard stale async responses; separate in-memory drafts survive navigation between a saved conversation and a new one. A recorded active turn disables Send and is never automatically restarted.
 - Browser tests cover drawer controls, reload/open, older pages, model attribution, stale selection response and draft separation. All 44 web tests, typecheck/build and lint passed. Parent T031–T034 remain open for delete, cross-tab reconciliation, session-scoped draft restoration and Stop/retry.
 - With the server's default-off release flag, Chat now shows an explicit unavailable state instead of an empty picker or raw 404. The follow-up browser test brings the web suite to 45 passing tests; build/typecheck and lint remain green.
+
+## Same-tab draft gate (014o)
+
+- The verified user ID now keys a bounded sessionStorage draft map. Text and eligible model choice survive reload/re-authentication in the same tab; owner changes remove the previous owner's key. Accepted sends clear their draft and failed admissions retain it. Only text and model IDs are stored; no credentials, file bytes, response content or server paths.
+- Storage helper and page tests cover UTF-8 byte bounds, invalid IDs, restore, owner change and send outcomes. The web suite passed 50 tests with build/typecheck and lint green. Parent T032–T033 remain open for explicit logout handling and future file selections.

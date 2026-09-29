@@ -5,8 +5,12 @@ import { ModelPicker } from "../components/chat/ModelPicker";
 import { useConversation } from "../hooks/useConversation";
 import "../styles/chat.css";
 
-export function Chat() {
-  const chat = useConversation();
+export function Chat({ ownerId }: { ownerId: string }) {
+  return <ChatSession key={ownerId} ownerId={ownerId} />;
+}
+
+function ChatSession({ ownerId }: { ownerId: string }) {
+  const chat = useConversation(ownerId);
   if (!chat.available)
     return (
       <main className="chat-page">
