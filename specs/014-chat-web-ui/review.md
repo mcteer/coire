@@ -1,5 +1,9 @@
 # Feature 014 implementation review
 
+## Local production-image evidence (2026-09-29)
+
+- The Docker context was the local OrbStack Unix socket. Current `coire-api`, `coire-scheduler`, `coire-mcp`, `coire-migrate`, `coire-agent`, `coire-agent-ops`, `coire-web` and `coire-file-worker` images built for linux/arm64 as `:014final`. All eight passed `scripts/image-policy.sh` rules 1–7 and their applicable core/worker exclusions. Trivy CRITICAL scans returned zero findings for each, and Syft wrote eight SPDX JSON SBOMs to `/tmp/coire-<service>-014final.spdx.json`. The worker's native PDFium/Pillow import passed, and its installed pypdfium2 distribution includes PDFium and dependency license files. `docker compose -p coire-it -f deploy/compose/compose.yaml config --quiet` passed. The disposable migration reversal and locked node environment/broken-smoke rollback evidence are recorded below. Parent T074 stays open until these final image checks are repeated after the remaining implementation changes.
+
 ## Deleted originals wait for active inference (2026-09-29)
 
 - The deleted-file purge now holds the conversation lock and checks for an active plain-Chat turn before erasing the original and releasing reservation rows. A focused test keeps a deleted attachment present through active inference, then verifies the next purge erases it after the turn becomes terminal. All five file-purge tests, changed-file mypy, Ruff and formatting passed. Parent T066 remains open for temporary inline images, future control inputs and end-to-end purge timing.
