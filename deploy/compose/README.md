@@ -81,6 +81,9 @@ are wired into the API and applicable scheduler settings. The `coire-blobs` volu
 only by the API; the isolated file worker uses dedicated `images` subpaths of its existing
 original/derived mounts. Routes are not yet implemented. Do not enable admission until
 authorization, storage, cancellation and operator gates pass.
+The file worker reads recipe-only imports from `FILE_WORKER_IMAGE_INPUT_ROOT`
+(`/opt/coire/chat/originals/images`), a read-only namespace containing generated UUID
+names. Its authenticated internal parse route accepts an ID, size and SHA-256, never a path.
 
 | Compose-facing setting | Default | Maximum |
 | --- | ---: | ---: |

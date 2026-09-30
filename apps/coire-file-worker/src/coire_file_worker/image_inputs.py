@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 import struct
@@ -158,7 +159,9 @@ def _parse_stream(source: BinaryIO, file_size: int) -> ImageRecipe:
     raise ImageRecipeParseError("invalid_png")
 
 
-def parse_recipe_png(path: Path) -> ImageRecipe:
+def parse_recipe_png(
+    path: Path, *, expected_size: int | None = None, expected_sha256: str | None = None
+) -> ImageRecipe:
     """Read a private staged PNG at <=64 MiB without decoding or retaining IDAT bytes."""
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
@@ -170,8 +173,15 @@ def parse_recipe_png(path: Path) -> ImageRecipe:
             raise ImageRecipeParseError("recipe_input_unavailable")
         if not 0 < details.st_size <= RECIPE_INPUT_MAX_BYTES:
             raise ImageRecipeParseError("recipe_input_too_large")
+        if expected_size is not None and details.st_size != expected_size:
+            raise ImageRecipeParseError("recipe_input_mismatch")
         with os.fdopen(fd, "rb", closefd=False) as source:
-            return _parse_stream(source, details.st_size)
+            recipe = _parse_stream(source, details.st_size)
+            if expected_sha256 is not None:
+                source.seek(0)
+                if hashlib.file_digest(source, "sha256").hexdigest() != expected_sha256:
+                    raise ImageRecipeParseError("recipe_input_mismatch")
+            return recipe
     except OSError as exc:
         raise ImageRecipeParseError("recipe_input_unavailable") from exc
     finally:

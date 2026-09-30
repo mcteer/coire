@@ -12,10 +12,32 @@ from coire_core.models.files import SHA256_PATTERN, ULID_PATTERN
 from coire_core.models.images import (
     GENERATION_INPUT_MAX_BYTES,
     RECIPE_INPUT_MAX_BYTES,
+    ImageRecipe,
     ResolvedImageSpec,
 )
 
 NODE_PATTERN = r"^coire-[a-z0-9-]{1,50}$"
+
+
+class ImageRecipeParseRequest(BaseModel):
+    """Private file-worker command; no caller-controlled path is accepted."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    input_id: uuid.UUID
+    source_sha256: str = Field(pattern=SHA256_PATTERN)
+    byte_count: int = Field(ge=1, le=RECIPE_INPUT_MAX_BYTES)
+
+
+class ImageRecipeParseResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    input_id: uuid.UUID
+    source_sha256: str = Field(pattern=SHA256_PATTERN)
+    byte_count: int = Field(ge=1, le=RECIPE_INPUT_MAX_BYTES)
+    recipe: ImageRecipe
 
 
 class ImageJobBinding(BaseModel):
