@@ -37,6 +37,7 @@ Branch and merge status remains separate from task completion.
 | `015e4-image-asset-file-policy` | Studio metadata preflight and exact safe-file snapshot helper | part of T027 |
 | `015e5-image-routing-regression` | MCP kind/backend fix and signed-snapshot isolation regressions | completes T028 |
 | `015e6-image-classifier` | Supervised local Studio CPU tagger and strict provenance result | T016; part of T021 |
+| `015e8-image-txt2img-pipeline` | Fixed offline Turbo txt2img with synchronized progress and exact output validation | part of T029 |
 | `015g1-image-gallery` | Owner-only metadata list/detail with stable cursor and generated clients | part of T022, T023, T043–T044 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -193,6 +194,11 @@ It binds a registry slug to an exact local manifest and rejects unsafe files bef
 load. T024/T029/T030/T033 remain open for the resident worker, admin acquisition,
 node routes and real runtime evidence. Draft PR #31 supplies the pinned native mflux
 runtime and must land before live worker execution.
+The fixed local Turbo txt2img pipeline is
+[draft PR #78](https://github.com/mcteer/coire/pull/78), reviewed against PR #77.
+It rejects unsupported settings before generation and synchronizes each progress
+callback. T029 remains open until process supervision, output metadata and real
+Studio execution are integrated; public admission stays closed.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
