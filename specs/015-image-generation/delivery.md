@@ -17,7 +17,9 @@ Branch and merge status remains separate from task completion.
 | `015b4-image-worker-contracts` | Node/worker/transfer command shapes | remainder of T005; part of T007 |
 | `015b5-image-asset-contracts` | Auxiliary acquisition, isolated parser and console shapes | remainder of T007 |
 | `015b6-image-settings` | Settings, errors and deployment defaults | T011 |
-| `015c-image-persistence` | Durable tables, constraints and migrations | T008–T009 |
+| `015c1-image-job-schema` | Durable job, event and preset tables | part of T008–T009 |
+| `015c2-image-asset-schema` | Durable inputs, outputs, grants and transfer receipts | part of T008–T009 |
+| `015c3-image-capacity-schema` | Quotas, execution leases and coexistence profiles | remainder of T008–T009 |
 | `015d-image-security` | Identity, entitlement, audit and presets | T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
 | `015f-image-storage` | Bounded blob staging, grants and cleanup | T012–T013, T026, T031, T036, T038–T039 |
@@ -39,7 +41,9 @@ Fenced node/worker commands are [draft PR #35](https://github.com/mcteer/coire/p
 reviewed against PR #34. Asset, parser and console shapes are
 [draft PR #36](https://github.com/mcteer/coire/pull/36), reviewed against PR #35.
 Conservative settings and safe errors are [draft PR #37](https://github.com/mcteer/coire/pull/37),
-reviewed against PR #36. The next foundational task is T008–T009 persistence.
+reviewed against PR #36. The first persistence slice is
+[draft PR #38](https://github.com/mcteer/coire/pull/38), reviewed against PR #37.
+T008–T009 remain open until all three persistence slices and their migration checks finish.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
