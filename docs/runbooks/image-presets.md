@@ -14,3 +14,12 @@ entry is an invalid request; do not use request or imported recipe fields to gra
 entitlements. Retiring a preset blocks new admissions while existing job revisions
 remain in the database. If a preset appears stale or unsafe, retire it through the
 future audited admin route; this slice does not expose a mutation endpoint.
+
+`load_resolved_image_preset` now performs that database lookup and policy recheck in
+the caller's transaction. It locks the published preset pointer, immutable revision,
+and every current registry dependency. It requires a ready Studio image base with a
+valid measured capability profile; auxiliary kinds must match their requested roles.
+It then checks the union of frozen preset and current registry entitlements against
+the live user/key. A missing or malformed row fails before worker dispatch. The
+future admission route must keep this transaction open through job/quota/audit commit
+and must audit service-level refusals; no route calls the loader yet.
