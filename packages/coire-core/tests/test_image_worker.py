@@ -71,6 +71,7 @@ def _receipt(**overrides: object) -> ImageTransferReceipt:
 
 def test_worker_load_is_mflux_registry_only() -> None:
     load = ImageWorkerLoadRequest(
+        slug="studio--z-image-turbo",
         model_id=MODEL,
         instance_id=INSTANCE,
         manifest_sha256="a" * 64,
@@ -82,6 +83,8 @@ def test_worker_load_is_mflux_registry_only() -> None:
         {"backend": "mlx_lm"},
         {"model_path": "/tmp/model"},
         {"model_id": "org/model"},
+        {"slug": "../weights"},
+        {"slug": "studio--model\n"},
     ):
         with pytest.raises(ValidationError):
             ImageWorkerLoadRequest.model_validate({**load.model_dump(), **override})
