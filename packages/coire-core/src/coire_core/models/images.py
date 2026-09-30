@@ -484,18 +484,59 @@ class ImageRecipe(BaseModel):
         return self
 
 
+class ImageJobSettingsSnapshot(BaseModel):
+    """Persisted settings before and after a Studio runtime is selected."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    effective_spec: ImageSpec
+    resolved: ResolvedImageSpec | None = None
+
+    @model_validator(mode="after")
+    def matching_spec(self) -> ImageJobSettingsSnapshot:
+        if self.resolved is not None and self.resolved.spec != self.effective_spec:
+            raise ValueError("resolved spec differs from effective_spec")
+        return self
+
+    def bind(self, resolved: ResolvedImageSpec) -> ImageJobSettingsSnapshot:
+        if self.resolved is not None:
+            if self.resolved == resolved:
+                return self
+            raise ValueError("runtime already bound")
+        if resolved.spec != self.effective_spec:
+            raise ValueError("resolved spec differs from effective_spec")
+        return ImageJobSettingsSnapshot(effective_spec=self.effective_spec, resolved=resolved)
+
+
 class ImageJob(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(pattern=ULID_PATTERN)
     state: ImageJobState
-    resolved: ResolvedImageSpec
+    effective_spec: ImageSpec
+    resolved: ResolvedImageSpec | None
     queue_position: int | None = Field(default=None, ge=0)
     progress_step: int | None = Field(default=None, ge=0)
     failure_code: str | None = Field(default=None, max_length=100)
     latest_event_sequence: int = Field(default=0, ge=0)
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="after")
+    def runtime_state(self) -> ImageJob:
+        if self.resolved is not None and self.resolved.spec != self.effective_spec:
+            raise ValueError("resolved spec differs from effective_spec")
+        if (
+            self.state
+            in {
+                ImageJobState.RUNNING,
+                ImageJobState.TRANSFERRING,
+                ImageJobState.SUCCEEDED,
+            }
+            and self.resolved is None
+        ):
+            raise ValueError("resolved runtime is required for active or completed job")
+        return self
 
 
 class ImageJobReceipt(BaseModel):
