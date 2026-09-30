@@ -2,4 +2,4 @@
 
 - [X] C001 Add failing quota reservation, rollover and transition tests.
 - [X] C002 Implement transactional capacity helpers and runbook update.
-- [ ] C003 Run local gates and publish draft PR; keep durable admission open.
+- [X] C003 Run local gates and publish draft PR; keep durable admission open.
