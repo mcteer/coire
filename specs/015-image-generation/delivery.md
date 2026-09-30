@@ -121,8 +121,13 @@ The local Studio classifier is [draft PR #62](https://github.com/mcteer/coire/pu
 reviewed against PR #61. T016 is complete. T021 stays open until the generation worker
 uses the stage with a measured reservation and the pinned model is tested on a Studio.
 Private gallery metadata is [draft PR #63](https://github.com/mcteer/coire/pull/63),
-reviewed against PR #62. T022 remains open for download grants/content and explicit
-redemption checks; T023 and UI tasks remain open for the other routes and flows.
+reviewed against PR #62. T023 and UI tasks remain open for the other routes and flows.
+Subject-bound output grants and authenticated content are
+[draft PR #64](https://github.com/mcteer/coire/pull/64), reviewed against PR #63.
+T022 remains open for completion audits, runtime prompt preservation and full policy
+boundary tests. The grant token moved from the URL query to a fragment plus request
+header after tracing instrumentation was found to capture query strings; ADR 0009
+records the decision.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles

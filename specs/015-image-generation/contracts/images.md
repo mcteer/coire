@@ -33,7 +33,7 @@ Audit admission/refusal for explicit requests and every admin mutation; do not l
 | GET `/api/v1/image-outputs` | cursor/limit/tag -> `ImageOutputPage` | Private published gallery, default 25 / max 100, policy-safe preview projections. |
 | GET `/api/v1/image-outputs/{id}` | -> `ImageOutput` | Owner metadata and reuse settings; no raw storage path. |
 | POST `/api/v1/image-outputs/{id}/download-grants` | empty -> `ImageDownloadGrant` | Opaque URL, expires_at; <=300 s and subject-bound. |
-| GET `/api/v1/image-outputs/{id}/content` | grant query + current credentials -> PNG | Both required; exact output+owner binding, expiry/tombstone/entitlement rechecked; private/no-store. |
+| GET `/api/v1/image-outputs/{id}/content` | `X-Coire-Image-Grant` header + current credentials -> PNG | Both required; exact output+owner binding, expiry/tombstone/entitlement rechecked; private/no-store. Grant URL fragment is parsed by the client and never sent as a query string (ADR 0009). |
 | DELETE `/api/v1/image-outputs/{id}` | -> 202 `ImageDeletionReceipt` | Deny reads immediately, purge within 24 h, release quota after bytes removed. |
 
 Recipe extraction accepts the same maximum PNG size as generation output, including valid files larger than 10 MiB. Validate signature and streamed chunk lengths/CRCs; accept only the bounded uncompressed `coire.image` recipe, reject compressed recipe chunks, and never decode IDAT data. Multipart framing has its own small allowance; application limits apply to the file bytes and purpose.
