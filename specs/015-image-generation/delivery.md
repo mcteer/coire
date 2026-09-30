@@ -21,7 +21,8 @@ Branch and merge status remains separate from task completion.
 | `015c2-image-asset-schema` | Durable inputs, outputs, grants and transfer receipts | part of T008–T009 |
 | `015c3-image-capacity-schema` | Quotas, execution leases and coexistence profiles | remainder of T008–T009 |
 | `015c4-image-migration-verification` | Disposable PostgreSQL upgrade/downgrade and constraint checks | part of T008; verifies T009 |
-| `015d-image-security` | Identity, entitlement, audit and presets | T014–T020, T022 |
+| `015d1-image-identity-guard` | Human/personal-key preflight and live rechecks | part of T014, T017–T018 |
+| `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
 | `015f1-image-storage-config` | Disabled API-only blob volume, settings and ingress bounds | part of T012 |
 | `015f2-image-telemetry` | Content-free API/node metrics, spans, dashboard and alerts | T013 |
@@ -61,6 +62,9 @@ The inherited PyJWT 2.13.0 critical scan finding is fixed separately in
 the image PR stack can pass the unchanged image scan gate.
 The bounded telemetry seam is [draft PR #45](https://github.com/mcteer/coire/pull/45),
 reviewed against PR #42. T013 is complete; later services must call its helpers.
+The user-bound authorization guard is [draft PR #46](https://github.com/mcteer/coire/pull/46),
+reviewed against PR #45. Its parent story tasks remain open for routes, audit, owner
+filtering, revocation cancellation and full entitlement integration.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
