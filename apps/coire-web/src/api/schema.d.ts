@@ -1256,6 +1256,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/image-outputs/{output_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Content */
+        get: operations["download_content_api_v1_image_outputs__output_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-outputs/{output_id}/download-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Download Grant */
+        post: operations["create_download_grant_api_v1_image_outputs__output_id__download_grants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/images/presets": {
         parameters: {
             query?: never;
@@ -3678,6 +3712,21 @@ export interface components {
             type: "canny";
             /** Variant Id */
             variant_id?: string | null;
+        };
+        /** ImageDownloadGrant */
+        ImageDownloadGrant: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Output Id
+             * Format: uuid
+             */
+            output_id: string;
+            /** Url */
+            url: string;
         };
         /** ImageInputDigest */
         ImageInputDigest: {
@@ -8814,6 +8863,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImageOutput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_content_api_v1_image_outputs__output_id__content_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Coire-Image-Grant": string;
+                "x-api-key"?: string | null;
+            };
+            path: {
+                output_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_download_grant_api_v1_image_outputs__output_id__download_grants_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                output_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageDownloadGrant"];
                 };
             };
             /** @description Validation Error */

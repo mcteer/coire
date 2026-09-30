@@ -29,7 +29,21 @@ and include no blob path or content URL. The opaque cursor carries owner and pos
 it remains valid if the boundary record is deleted. The gallery remains readable when
 new image admission is disabled. Inspect the `gallery` operation in
 `coire_image_requests_total` for success/refusal rates and the `coire.api.image.gallery`
-span for request timing. Content downloads, grants and deletion are still pending.
+span for request timing. Output deletion is still pending.
+
+Owners can now issue five-minute download grants via
+`POST /api/v1/image-outputs/{id}/download-grants`. The response URL has a `#grant=`
+fragment. Clients must parse that fragment locally and send the token as
+`X-Coire-Image-Grant` with their normal credentials to
+`GET /api/v1/image-outputs/{id}/content`; navigating to the URL alone cannot fetch
+bytes. Do not put the token in a query string or log/capture this header. The API
+rechecks owner, current key and explicit entitlement at issue and redemption, then
+opens and hashes the blob under the configured root without following symlinks.
+Content and grant responses are `private, no-store`. Investigate failed downloads via
+the fixed-label `download` operation metric and `coire.api.image.download` span; the
+refusal details and blob key are never exposed. Keep image admission disabled to stop
+new output; existing owner downloads remain available. A rollback removes these
+routes but preserves existing grant rows until the maintenance sweep is implemented.
 
 ## Stop and roll back
 
