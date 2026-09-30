@@ -26,3 +26,14 @@ to own the process, deadline, cancellation and output transfer before the
 submit route can open. To diagnose a pipeline refusal, inspect the safe worker
 error code and the resolved model/runtime manifest, then re-acquire a bad copy
 through the admin path. Do not use the worker process as a Hub downloader.
+
+Generated RGB frames are now serialized to exclusive 0600 PNGs in node-owned
+scratch. The writer embeds one uncompressed `coire.image` iTXt recipe with
+exact effective settings, output index, seed and pixel digest. It returns the
+file size and SHA-256 for the later transfer receipt and removes a partial
+file after a write failure or the 64 MiB bound. It copies raw pixels into a
+fresh PIL image before encoding so upstream ICC/EXIF fields are not carried
+forward. A pre-existing destination is
+never overwritten. To diagnose a failed recipe transfer, compare the file
+digest and embedded recipe with the durable resolved job settings; discard
+the scratch output and retry under a new fenced attempt if they differ.
