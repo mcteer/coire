@@ -12,6 +12,16 @@ Check the API-only blob mount, existing file-worker original read-only mount, an
 route-specific Nginx body limits. Once services exist, inspect quota rows, transfer receipts
 and disk safety floor before any admission change. Do not log or expose blob paths.
 
+The isolated file worker now has a settings-only `parse_recipe_png` helper for future
+owner-scoped recipe uploads. It accepts regular PNG files up to 64 MiB, validates PNG chunk
+framing and CRCs, and extracts at most 64 KiB of uncompressed `coire.image` iTXt JSON into
+the strict `ImageRecipe` model. It never decodes IDAT or promotes the upload to a generation
+source. Inspect only its stable error codes (`invalid_png`, `invalid_recipe`,
+`recipe_too_large`, `unsupported_recipe_encoding`, `duplicate_recipe`,
+`missing_recipe`, `recipe_input_too_large`, `recipe_input_unavailable`). The API upload path
+must stage an immutable owner-scoped file and enforce the purpose-specific limits before
+calling it; that route is not yet enabled.
+
 ## Stop and roll back
 
 Keep or restore `COIRE_IMAGE_ENABLED=false`. Drain/cancel image workers and reconcile
