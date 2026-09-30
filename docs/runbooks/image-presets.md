@@ -54,3 +54,9 @@ entitlement and a personal key, if used, still has `images:explicit`. Admin role
 does not reveal them. Missing or malformed dependencies are logged by preset ID only
 and omitted from the response. The picker returns at most 100 name-ordered presets;
 the job submit path must repeat every check in its own transaction.
+
+Starter templates live in `recipes/images/`. Copy one, bind `__MODEL_ID__` to a
+ready measured registry image base UUID, and submit it through the human-admin POST
+route. The JSON is intentionally invalid until bound; it has no acquisition or
+entitlement fields. The admin route validates dependencies and records the import as
+an ordinary audited preset creation. See `recipes/images/README.md` for the steps.
