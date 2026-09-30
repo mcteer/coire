@@ -90,15 +90,40 @@ def test_registry_kind_upgrade_and_guarded_downgrade(monkeypatch: pytest.MonkeyP
                            1, 1, 1, 1, 'mflux', 'image_model')""",
                 image_id,
             )
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    "UPDATE models SET state = 'ready' WHERE id = $1", image_id
+                )
+            with pytest.raises(asyncpg.CheckViolationError):
+                await connection.execute(
+                    "UPDATE models SET image_capability_profile = '{}'::jsonb WHERE id = $1",
+                    text_id,
+                )
+            await connection.execute(
+                "UPDATE models SET image_capability_profile = '{}'::jsonb, "
+                "state = 'ready' WHERE id = $1",
+                image_id,
+            )
+        finally:
+            await connection.close()
+
+    async def clear_profile() -> None:
+        connection = await asyncpg.connect(test_dsn)
+        try:
+            assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
+                "0027_image_capability_profile"
+            )
+            await connection.execute(
+                "UPDATE models SET state = 'downloading', "
+                "image_capability_profile = NULL WHERE id = $1",
+                image_id,
+            )
         finally:
             await connection.close()
 
     async def remove_image() -> None:
         connection = await asyncpg.connect(test_dsn)
         try:
-            assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "0026_image_registry_kind"
-            )
             await connection.execute("DELETE FROM models WHERE id = $1", image_id)
         finally:
             await connection.close()
@@ -132,6 +157,9 @@ def test_registry_kind_upgrade_and_guarded_downgrade(monkeypatch: pytest.MonkeyP
         asyncio.run(seed_old_rows())
         command.upgrade(config, "head")
         asyncio.run(check_upgrade())
+        with pytest.raises(RuntimeError, match="image capability"):
+            command.downgrade(config, "0025_image_capacity")
+        asyncio.run(clear_profile())
         with pytest.raises(RuntimeError, match="image assets"):
             command.downgrade(config, "0025_image_capacity")
         asyncio.run(remove_image())

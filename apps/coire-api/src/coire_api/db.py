@@ -208,6 +208,12 @@ class ModelRow(Base):
             "AND backend = 'auxiliary' AND source = 'studio')",
             name="ck_models_kind_backend",
         ),
+        CheckConstraint(
+            "(image_capability_profile IS NULL OR kind = 'image_model') AND "
+            "(kind <> 'image_model' OR state <> 'ready' OR "
+            "image_capability_profile IS NOT NULL)",
+            name="ck_models_image_capability",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -240,6 +246,7 @@ class ModelRow(Base):
     context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chat_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     capability_profile: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    image_capability_profile: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     backend: Mapped[str] = mapped_column(String(16), default="mlx_lm", server_default="mlx_lm")
     kind: Mapped[str] = mapped_column(
         String(32), default=ModelKind.LANGUAGE_MODEL, server_default="language_model"

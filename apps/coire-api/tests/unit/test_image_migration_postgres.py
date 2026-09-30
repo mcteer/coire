@@ -158,7 +158,7 @@ def test_image_migrations_preserve_existing_rows_and_guard_downgrade(
         connection = await asyncpg.connect(test_dsn)
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "0026_image_registry_kind"
+                "0027_image_capability_profile"
             )
             assert await connection.fetchval("SELECT count(*) FROM image_jobs") == 1
             await connection.execute("DELETE FROM image_jobs WHERE id = $1", job_id)
