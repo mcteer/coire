@@ -11,7 +11,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from coire_core.models.files import SHA256_PATTERN, ULID_PATTERN
 
@@ -37,6 +37,45 @@ class ImageContentTag(StrEnum):
     NORMAL = "normal"
     EXPLICIT = "explicit"
     UNKNOWN = "unknown"
+
+
+class ImageClassificationResult(BaseModel):
+    """Bounded Studio classifier IPC and persisted gallery-tag provenance."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tag: ImageContentTag
+    score: Decimal | None = Field(default=None, ge=0, le=1)
+    threshold: Decimal = Field(default=Decimal("0.5"), ge=0, le=1)
+    classifier_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
+    processor_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+    safe_error: (
+        Literal[
+            "classifier_failed",
+            "classifier_timeout",
+            "classifier_memory",
+            "classifier_invalid_result",
+        ]
+        | None
+    ) = None
+    tagged_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def consistent_result(self) -> ImageClassificationResult:
+        if self.threshold != Decimal("0.5"):
+            raise ValueError("classifier threshold must be 0.5")
+        if self.tag is ImageContentTag.UNKNOWN:
+            if self.score is not None or self.safe_error is None:
+                raise ValueError("unknown classification requires a safe diagnostic")
+        elif self.tag is ImageContentTag.NORMAL and self.score is None:
+            raise ValueError("normal classification requires a score")
+        elif self.score is None and self.safe_error is None:
+            raise ValueError("known classification requires a score or safe diagnostic")
+        if self.score is not None and (
+            self.processor_sha256 is None or self.safe_error is not None
+        ):
+            raise ValueError("scored classification requires processor digest and no error")
+        return self
 
 
 class ImageJobState(StrEnum):
