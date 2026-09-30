@@ -181,6 +181,12 @@ The queued-job settings snapshot is
 [draft PR #75](https://github.com/mcteer/coire/pull/75), reviewed against PR #74.
 It carries effective settings before Studio selection and binds runtime facts once;
 T023/T035/T037 remain open until native job routes and durable admission use it.
+Internal replay-safe queued admission is
+[draft PR #76](https://github.com/mcteer/coire/pull/76), reviewed against PR #75.
+It commits a canonical intent, quota hold, job, first event and audit atomically for
+basic txt2img, but T023/T035/T037 remain open for a public route, denial audit,
+cross-process PostgreSQL contention and dispatch/recovery. Default image admission
+stays disabled until worker, publication and cancellation gates complete.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
