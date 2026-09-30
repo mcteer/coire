@@ -137,6 +137,10 @@ The private recipe parser handoff is
 T053 remains open for generation-input normalization and T054 for owner upload,
 processing and cleanup. The worker accepts generated IDs and checks the recipe PNG
 against its committed size/hash without decoding pixels.
+The typed private parser client is
+[draft PR #67](https://github.com/mcteer/coire/pull/67), reviewed against PR #66.
+It refuses mismatched worker identity, size or digest and keeps response content out
+of errors. T054 stays open until a durable owner-upload workflow calls this client.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
