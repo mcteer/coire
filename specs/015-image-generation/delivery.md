@@ -36,6 +36,7 @@ Branch and merge status remains separate from task completion.
 | `015e3-image-profile-schema` | Persist measured base capability with ready-state and downgrade constraints | part of T027 |
 | `015e4-image-asset-file-policy` | Studio metadata preflight and exact safe-file snapshot helper | part of T027 |
 | `015e5-image-routing-regression` | MCP kind/backend fix and signed-snapshot isolation regressions | completes T028 |
+| `015e6-image-classifier` | Supervised local Studio CPU tagger and strict provenance result | T016; part of T021 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
 | `015f1-image-storage-config` | Disabled API-only blob volume, settings and ingress bounds | part of T012 |
@@ -115,6 +116,9 @@ T012, T050 and T053 are not yet complete.
 MCP routing isolation is corrected in [draft PR #61](https://github.com/mcteer/coire/pull/61),
 reviewed against PR #60. The combined chat, listing, direct resolver, MCP and failover paths
 complete T028; an image asset with a stray `coding` tag cannot enter a coding run.
+The local Studio classifier is [draft PR #62](https://github.com/mcteer/coire/pull/62),
+reviewed against PR #61. T016 is complete. T021 stays open until the generation worker
+uses the stage with a measured reservation and the pinned model is tested on a Studio.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
