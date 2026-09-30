@@ -292,6 +292,7 @@ async def add_model(
 
     model = ModelRow(
         id=uuid.uuid4(),
+        kind=ModelKind.LANGUAGE_MODEL,
         repo_id=request.repo_id,
         slug=slug,
         display_name=request.display_name or request.repo_id.split("/", 1)[1],
@@ -548,7 +549,9 @@ def published_ready_entitled(model: ModelRow, entitlements: frozenset[str]) -> b
 
 def is_chat_backend(model: ModelRow) -> bool:
     """Only language and vision engines may enter chat/MCP/failover resolution."""
-    return (model.backend or EngineBackend.MLX_LM) in {
+    return (model.kind or ModelKind.LANGUAGE_MODEL) == ModelKind.LANGUAGE_MODEL and (
+        model.backend or EngineBackend.MLX_LM
+    ) in {
         EngineBackend.MLX_LM,
         EngineBackend.MLX_VLM,
     }

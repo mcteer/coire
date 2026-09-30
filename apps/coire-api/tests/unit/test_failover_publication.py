@@ -66,6 +66,7 @@ async def test_publisher_signs_a_fresh_registry_snapshot(
                 context_window=2048,
                 source="studio",
                 backend="mlx_lm",
+                kind="language_model",
             )
             visual = SimpleNamespace(**{**vars(row), "id": uuid4(), "backend": "mlx_vlm"})
             provider = SimpleNamespace(**{**vars(row), "id": uuid4(), "source": "openai"})
