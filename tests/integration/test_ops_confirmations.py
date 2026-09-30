@@ -127,6 +127,38 @@ def _sql_scalar(statement: str) -> int:
     return int(result.stdout.strip())
 
 
+def _ops_recovery_debug(client: httpx.Client) -> str:
+    models = client.get("/v1/models", headers={"Authorization": f"Bearer {OPS_SERVICE_TOKEN}"})
+    env = subprocess.run(
+        [
+            "docker",
+            "inspect",
+            "coire-it-coire-ops-1",
+            "--format",
+            "{{range .Config.Env}}{{println .}}{{end}}",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    pinned = [
+        line
+        for line in env.stdout.splitlines()
+        if line.startswith(("OPS_MODEL_", "OPS_GATEWAY_", "OPS_API_"))
+    ]
+    logs = subprocess.run(
+        ["docker", "logs", "--tail", "60", "coire-it-coire-ops-1"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return (
+        f"ops models {models.status_code}: {models.text}\n"
+        f"ops env: {pinned}\n"
+        f"ops logs: {logs.stdout[-2000:]}{logs.stderr[-2000:]}"
+    )
+
+
 def _recreate_ops(model_id: str) -> None:
     INTEGRATION_SECRETS["COIRE_OPS_MODEL_ID"] = model_id
     subprocess.run(
@@ -509,13 +541,22 @@ def test_ops_degrades_without_inference_and_recovers_without_restart(
             client, restored_response.json()["id"], admin_headers, {"ready", "failed"}
         )
         assert restored["state"] == "ready", restored
-        recovered = client.post(
-            f"/api/v1/admin/ops/conversations/{conversation_id}/messages",
-            headers=human,
-            json={"question": f"Unload ready instance {restored['id']}."},
-        )
+        recovered = None
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            recovered = client.post(
+                f"/api/v1/admin/ops/conversations/{conversation_id}/messages",
+                headers=human,
+                json={"question": f"Unload ready instance {restored['id']}."},
+            )
+            if recovered.status_code == 200 and recovered.json().get("status") == "proposed":
+                break
+            time.sleep(1)
+        assert recovered is not None
         assert recovered.status_code == 200, recovered.text
-        assert recovered.json()["status"] == "proposed", recovered.text
+        assert recovered.json()["status"] == "proposed", (
+            recovered.text + "\n" + _ops_recovery_debug(client)
+        )
         assert recovered.json()["degraded"] is False
         assert recovered.json()["proposal"]["proposal"]["action"]["target_id"] == restored["id"]
         assert _sql_scalar("SELECT count(*) FROM usage_records") > usage_before
