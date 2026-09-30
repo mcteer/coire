@@ -58,6 +58,7 @@ async def test_publisher_signs_a_fresh_registry_snapshot(
 
     class _Session:
         async def scalars(self, _query: object) -> SimpleNamespace:
+            assert "models.kind" in str(_query)
             row = SimpleNamespace(
                 id=model_id,
                 slug="tiny-model",
@@ -70,7 +71,14 @@ async def test_publisher_signs_a_fresh_registry_snapshot(
             )
             visual = SimpleNamespace(**{**vars(row), "id": uuid4(), "backend": "mlx_vlm"})
             provider = SimpleNamespace(**{**vars(row), "id": uuid4(), "source": "openai"})
-            return SimpleNamespace(all=lambda: [row, visual, provider])
+            image = SimpleNamespace(
+                **{**vars(row), "id": uuid4(), "backend": "mflux", "kind": "image_model"}
+            )
+            auxiliary = SimpleNamespace(
+                **{**vars(row), "id": uuid4(), "backend": "auxiliary", "kind": "image_lora"}
+            )
+            malformed = SimpleNamespace(**{**vars(row), "id": uuid4(), "kind": "image_model"})
+            return SimpleNamespace(all=lambda: [row, visual, provider, image, auxiliary, malformed])
 
     @asynccontextmanager
     async def _session() -> AsyncIterator[_Session]:
