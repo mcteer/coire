@@ -186,6 +186,9 @@ class Settings(BaseSettings):
     image_cancel_grace_s: int = Field(default=5, ge=1, le=5)
     image_prompt_cache_max_bytes: int = Field(default=256 * 1024**2, ge=0, le=256 * 1024**2)
     image_control_cache_max_bytes: int = Field(default=256 * 1024**2, ge=0, le=256 * 1024**2)
+    image_blob_root: str = "/opt/coire/blobs"
+    image_input_original_root: str = "/opt/coire/chat/originals/images"
+    image_input_derived_root: str = "/opt/coire/chat/derived/images"
 
     @field_validator("chat_default_model_id", mode="before")
     @classmethod

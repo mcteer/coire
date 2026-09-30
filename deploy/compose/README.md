@@ -76,10 +76,11 @@ compose secrets. Gateway tuning variables and operational procedures are documen
 
 Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 is incomplete).
 
-Image admission is reserved behind `COIRE_IMAGE_ENABLED` (default `false`). This contract
-slice defines the `image_*` settings but does not wire them into Compose or add image routes;
-feature 015 task T012 will map the following Compose-facing names to their matching settings.
-Do not enable admission until authorization, storage, cancellation and operator gates pass.
+Image admission is reserved behind `COIRE_IMAGE_ENABLED` (default `false`). These values
+are wired into the API and applicable scheduler settings. The `coire-blobs` volume is mounted
+only by the API; the isolated file worker uses dedicated `images` subpaths of its existing
+original/derived mounts. Routes are not yet implemented. Do not enable admission until
+authorization, storage, cancellation and operator gates pass.
 
 | Compose-facing setting | Default | Maximum |
 | --- | ---: | ---: |
@@ -100,6 +101,11 @@ Do not enable admission until authorization, storage, cancellation and operator 
 | `COIRE_IMAGE_CANCEL_GRACE_S` | 5 s | 5 s |
 | `COIRE_IMAGE_PROMPT_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
 | `COIRE_IMAGE_CONTROL_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
+
+Nginx allows a 65 MiB multipart body only at `/api/v1/image-inputs` to fit a 64 MiB
+recipe PNG plus framing. The API enforces the purpose-specific 10 MiB generation and
+64 MiB recipe file caps. The internal raw PNG transfer path is limited to 64 MiB. Other
+API paths retain their existing body bounds.
 
 See [native Chat operations](../../docs/runbooks/chat-web-ui.md) for turn inspection,
 Stop, parser alerts, private-file purge, diagnostics and visual rollback.

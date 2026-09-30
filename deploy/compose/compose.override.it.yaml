@@ -45,6 +45,7 @@ services:
       DISK_RESERVE_BYTES: "268435456"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
       GATEWAY_MAX_INFLIGHT_PER_ENGINE: "4"
+      IMAGE_ENABLED: "false"
       PLACEMENT_POLL_INTERVAL_S: "0.2"
       INSTANCE_DRAIN_TIMEOUT_S: "2"
       # Pre-007 integration scenarios still use their generated static bearer. Feature 007's
