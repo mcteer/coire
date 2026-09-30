@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import timedelta
+from pathlib import Path
 from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -94,6 +95,34 @@ class ImageWorkerLoadResult(BaseModel):
         values = (self.pid, self.process_create_time, self.port)
         if self.state == "ready" and any(value is None for value in values):
             raise ValueError("ready worker requires pid, create time and port")
+        return self
+
+
+class ImageWorkerProcessConfig(BaseModel):
+    """Node-created private launch file; no caller-supplied model path is accepted."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    load: ImageWorkerLoadRequest
+    store_dir: Path
+    scratch_dir: Path
+    token_file: Path
+    port: int = Field(ge=1, le=65535)
+
+    @model_validator(mode="after")
+    def absolute_local_paths(self) -> ImageWorkerProcessConfig:
+        paths = (self.store_dir, self.scratch_dir, self.token_file)
+        if any(not path.is_absolute() or ".." in path.parts for path in paths):
+            raise ValueError("worker launch paths must be absolute and normalized")
+        if (
+            len(set(paths)) != len(paths)
+            or self.token_file.is_relative_to(self.store_dir)
+            or self.token_file.is_relative_to(self.scratch_dir)
+            or self.scratch_dir.is_relative_to(self.store_dir)
+            or self.store_dir.is_relative_to(self.scratch_dir)
+        ):
+            raise ValueError("worker launch paths cannot overlap")
         return self
 
 
