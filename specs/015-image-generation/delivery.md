@@ -46,6 +46,7 @@ Branch and merge status remains separate from task completion.
 | `015e14-image-process-readiness` | Authenticated health, durable ready state and exact process re-adoption | part of T024/T030/T033 |
 | `015e15-image-process-stop` | Fenced TERM/KILL and reservation release after confirmed death | part of T024/T030/T039/T041 |
 | `015e16-image-node-routes` | Authenticated node control routes, restart adoption and shared image/language memory budget | part of T024/T030/T033 |
+| `015e17-image-node-journal` | Private fenced image attempt journal with restart-safe replay and status transitions | part of T024/T032 |
 | `015g1-image-gallery` | Owner-only metadata list/detail with stable cursor and generated clients | part of T022, T023, T043–T044 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -247,6 +248,11 @@ Authenticated Studio worker routes and shared memory admission are
 ADR 0010 records the dedicated route choice. T024/T030/T032/T033 remain open
 for journaled job commands, transfer, acquisition validation and live Studio
 acceptance; the public admission flag remains disabled.
+The private, restart-safe image job journal is
+[draft PR #87](https://github.com/mcteer/coire/pull/87), reviewed against PR #86.
+It persists the exact request and safe status, refuses changed fences or corrupt
+records, and does not rerun generation after restart. T024/T032 remain open for
+node dispatch, polling, hard cancellation, transfer and receipt-aware cleanup.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
