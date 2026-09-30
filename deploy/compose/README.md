@@ -75,6 +75,32 @@ compose secrets. Gateway tuning variables and operational procedures are documen
 `.env`, an image, or a compose environment block.
 
 Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 is incomplete).
+
+Image admission is reserved behind `COIRE_IMAGE_ENABLED` (default `false`). This contract
+slice defines the `image_*` settings but does not wire them into Compose or add image routes;
+feature 015 task T012 will map the following Compose-facing names to their matching settings.
+Do not enable admission until authorization, storage, cancellation and operator gates pass.
+
+| Compose-facing setting | Default | Maximum |
+| --- | ---: | ---: |
+| `COIRE_IMAGE_GENERATION_INPUT_MAX_BYTES` | 10 MiB | 10 MiB |
+| `COIRE_IMAGE_RECIPE_INPUT_MAX_BYTES` | 64 MiB | 64 MiB |
+| `COIRE_IMAGE_RECIPE_METADATA_MAX_BYTES` | 64 KiB | 64 KiB |
+| `COIRE_IMAGE_OUTPUT_MAX_BYTES` | 64 MiB | 64 MiB |
+| `COIRE_IMAGE_MAX_OUTPUTS` | 4 | 4 |
+| `COIRE_IMAGE_PENDING_PER_OWNER` | 4 | 4 |
+| `COIRE_IMAGE_PENDING_GLOBAL` | 32 | 32 |
+| `COIRE_IMAGE_DAILY_OUTPUTS_PER_OWNER` | 100 | 100 |
+| `COIRE_IMAGE_OWNER_STORAGE_QUOTA_BYTES` | 5 GiB | 5 GiB |
+| `COIRE_IMAGE_GLOBAL_STORAGE_QUOTA_BYTES` | 50 GiB | 50 GiB |
+| `COIRE_IMAGE_DISK_SAFETY_FLOOR_BYTES` | 2 GiB | Cannot be lowered |
+| `COIRE_IMAGE_WORKER_IDLE_TTL_S` | 900 s | 86,400 s |
+| `COIRE_IMAGE_EVENT_RETENTION_HOURS` | 24 h | 24 h |
+| `COIRE_IMAGE_COMPATIBLE_WAIT_S` | 90 s | 90 s |
+| `COIRE_IMAGE_CANCEL_GRACE_S` | 5 s | 5 s |
+| `COIRE_IMAGE_PROMPT_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
+| `COIRE_IMAGE_CONTROL_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
+
 See [native Chat operations](../../docs/runbooks/chat-web-ui.md) for turn inspection,
 Stop, parser alerts, private-file purge, diagnostics and visual rollback.
 The experimental inline PNG/JPEG/WebP `/v1` visual route is separately gated by

@@ -167,6 +167,26 @@ class Settings(BaseSettings):
     chat_purge_deadline_hours: int = Field(default=24, ge=1, le=24)
     chat_browser_origin: str = ""
 
+    # --- private native images; disabled until authorization/publication exist ---
+    image_enabled: bool = False
+    image_generation_input_max_bytes: int = Field(default=10 * 1024**2, ge=1, le=10 * 1024**2)
+    image_recipe_input_max_bytes: int = Field(default=64 * 1024**2, ge=1, le=64 * 1024**2)
+    image_recipe_metadata_max_bytes: int = Field(default=64 * 1024, ge=1, le=64 * 1024)
+    image_output_max_bytes: int = Field(default=64 * 1024**2, ge=1, le=64 * 1024**2)
+    image_max_outputs: int = Field(default=4, ge=1, le=4)
+    image_pending_per_owner: int = Field(default=4, ge=1, le=4)
+    image_pending_global: int = Field(default=32, ge=1, le=32)
+    image_daily_outputs_per_owner: int = Field(default=100, ge=1, le=100)
+    image_owner_storage_quota_bytes: int = Field(default=5 * 1024**3, ge=1, le=5 * 1024**3)
+    image_global_storage_quota_bytes: int = Field(default=50 * 1024**3, ge=1, le=50 * 1024**3)
+    image_disk_safety_floor_bytes: int = Field(default=2 * 1024**3, ge=2 * 1024**3)
+    image_worker_idle_ttl_s: int = Field(default=900, ge=60, le=86_400)
+    image_event_retention_hours: int = Field(default=24, ge=1, le=24)
+    image_compatible_wait_s: int = Field(default=90, ge=1, le=90)
+    image_cancel_grace_s: int = Field(default=5, ge=1, le=5)
+    image_prompt_cache_max_bytes: int = Field(default=256 * 1024**2, ge=0, le=256 * 1024**2)
+    image_control_cache_max_bytes: int = Field(default=256 * 1024**2, ge=0, le=256 * 1024**2)
+
     @field_validator("chat_default_model_id", mode="before")
     @classmethod
     def empty_chat_default_model(cls, value: object) -> object:
