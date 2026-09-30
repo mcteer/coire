@@ -24,6 +24,7 @@ Branch and merge status remains separate from task completion.
 | `015d1-image-identity-guard` | Human/personal-key preflight and live rechecks | part of T014, T017–T018 |
 | `015d2-image-route-guard` | Audited route dependency and owner-only ordinary reads | part of T014, T017–T018 |
 | `015d3-image-preset-resolution` | Immutable preset override and dependency-policy resolution | part of T015, T019 |
+| `015d4-image-preset-store` | Live revision/dependency lookup and entitlement recheck | part of T015, T017, T019 |
 | `015e1-image-routing-isolation` | Exclude image backends from language/vision routing and legacy acquisition | part of T027–T028 |
 | `015e2-image-registry-kind` | Persist asset kind and kind/backend DB constraint with guarded rollback | part of T027–T028 |
 | `015e3-image-profile-schema` | Persist measured base capability with ready-state and downgrade constraints | part of T027 |
@@ -81,6 +82,9 @@ base profile schema is [draft PR #51](https://github.com/mcteer/coire/pull/51),
 reviewed against PR #50 and verified on disposable local PostgreSQL 17. The dedicated
 admin image acquisition and inspection path remains required before T027–T028 can be
 marked complete.
+Live preset revision and dependency lookup is [draft PR #52](https://github.com/mcteer/coire/pull/52),
+reviewed against PR #51. Admin preset mutation/list routes and admission integration
+remain required before T015, T017 and T019 can be marked complete.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
