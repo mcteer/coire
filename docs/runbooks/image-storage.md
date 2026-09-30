@@ -33,6 +33,11 @@ returns the strict recipe without decoding pixels. It refuses concurrent file co
 Inspect `coire_image_recipe_parse_total` by its fixed outcome label and the
 `coire.file_worker.image_recipe_parse` span. A 422 response carries only a stable parser
 code, including `recipe_input_mismatch`; never log image metadata or source bytes.
+The API's typed `FileWorkerClient.parse_image_recipe` call now checks that the returned
+input UUID, byte count and SHA-256 match the request before a scheduler may persist
+the recipe. A busy worker is retryable; a parser refusal is a stable input failure;
+transport and malformed-response errors require investigation. The client never logs
+the service token, recipe or worker response body.
 
 The private output gallery metadata routes are now available at
 `GET /api/v1/image-outputs` and `GET /api/v1/image-outputs/{id}`. They require a live
