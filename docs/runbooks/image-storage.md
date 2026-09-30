@@ -32,6 +32,15 @@ adjust counters manually. Inspect `coire_image_input_processing_total` and the
 If the upload commit outcome is uncertain, the generated original is retained so a
 committed processing row can recover; the orphan sweeper must reconcile unreferenced
 files before image admission is enabled.
+The API maintenance loop now purges failed recipe input originals before releasing
+their quota holds, while preserving the failed status for owner polling. It also
+removes generated-key originals and `.uploading` files older than one hour only
+after a quota-lock-protected database check finds no committed input row. It skips
+symlinks, unfamiliar names and recent files. Inspect
+`coire_image_input_cleanup_total` and `coire_image_input_purge_oldest_seconds`; the
+Images dashboard and alerts `CoireImageInputCleanupFailures` and
+`CoireImageInputPurgeOverdue` cover repeated failures and the 24-hour deadline.
+If cleanup fails, keep the row and hold for retry; do not remove the original volume.
 
 The isolated file worker has a `parse_recipe_png` helper for owner-scoped recipe
 uploads. It accepts regular PNG files up to 64 MiB, validates PNG chunk

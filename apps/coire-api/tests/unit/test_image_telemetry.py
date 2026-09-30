@@ -79,10 +79,17 @@ def test_image_dashboard_and_alert_are_provisioned() -> None:
     expressions = [target["expr"] for panel in dashboard["panels"] for target in panel["targets"]]
     assert any("coire_image_requests_total" in expression for expression in expressions)
     assert any("coire_image_purge_oldest_seconds" in expression for expression in expressions)
+    assert any("coire_image_input_cleanup_total" in expression for expression in expressions)
+    assert any("coire_image_input_purge_oldest_seconds" in expression for expression in expressions)
     alerts: dict[str, Any] = yaml.safe_load(
         (ROOT / "deploy/observability/alerts/image.yaml").read_text()
     )
     names = {rule["alert"] for group in alerts["groups"] for rule in group["rules"]}
-    assert {"CoireImageFailures", "CoireImagePurgeOverdue"} <= names
+    assert {
+        "CoireImageFailures",
+        "CoireImagePurgeOverdue",
+        "CoireImageInputCleanupFailures",
+        "CoireImageInputPurgeOverdue",
+    } <= names
     assert "alerts/image.yaml" in (ROOT / "deploy/compose/prometheus.Dockerfile").read_text()
     assert "dashboards/image.json" in (ROOT / "deploy/compose/grafana.Dockerfile").read_text()
