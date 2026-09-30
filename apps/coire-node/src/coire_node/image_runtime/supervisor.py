@@ -14,6 +14,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+import httpx
 import psutil
 
 from coire_core.models.image_worker import (
@@ -23,6 +24,11 @@ from coire_core.models.image_worker import (
     ImageWorkerProcessRecord,
 )
 from coire_core.settings import Settings
+from coire_node.image_runtime.bootstrap import (
+    ImageWorkerBootstrapError,
+    _read_private,
+    read_process_config,
+)
 from coire_node.image_runtime.preflight import verify_image_copy
 from coire_node.metrics import (
     ImageNodeOutcome,
@@ -36,6 +42,27 @@ from coire_node.store import Store, write_atomic
 class ImageProcessUnavailable(RuntimeError):
     def __init__(self) -> None:
         super().__init__("image process unavailable")
+
+
+def _identity_alive(record: ImageWorkerProcessRecord) -> bool:
+    pid = record.status.pid
+    created = record.status.process_create_time
+    if pid is None or created is None:
+        return False
+    try:
+        process = psutil.Process(pid)
+        expected = [
+            "-m",
+            "coire_node.image_runtime.bootstrap",
+            str(record.config.token_file.parent / "launch.json"),
+        ]
+        return bool(
+            process.is_running()
+            and abs(process.create_time() - created) <= 0.01
+            and process.cmdline()[-3:] == expected
+        )
+    except (psutil.Error, OSError, ValueError):
+        return False
 
 
 def _private_directory(path: Path, *, exclusive: bool = False) -> None:
@@ -102,7 +129,77 @@ class ImageProcessSupervisor:
         with self._lock:
             if self._record is not None:
                 return self._record.status.reserved_bytes
+            if self.record_path.exists():
+                return int(self.memory_total_bytes * self.settings.node_memory_budget_fraction)
             return self._uncertain_reserved_bytes
+
+    def adopt_from_state(self) -> ImageWorkerLoadResult | None:
+        """Re-own only the exact node child; uncertain state keeps a full budget hold."""
+        with self._lock:
+            if self._record is not None:
+                return self._record.status
+            if not self.record_path.exists():
+                return None
+            try:
+                record = ImageWorkerProcessRecord.model_validate_json(
+                    _read_private(self.record_path, 32 * 1024)
+                )
+                config_file = record.config.token_file.parent / "launch.json"
+                config, _ = read_process_config(config_file)
+                if config != record.config or not _identity_alive(record):
+                    raise ImageProcessUnavailable()
+                verify_image_copy(self.store, record.config.load)
+            except Exception:
+                raise ImageProcessUnavailable() from None
+            self._record = record
+            return record.status
+
+    async def refresh_ready(self, client: httpx.AsyncClient) -> ImageWorkerLoadResult:
+        """Promote to ready only after private health proves this exact live process."""
+        with self._lock:
+            record = self._record
+        if record is None or not _identity_alive(record):
+            raise ImageProcessUnavailable()
+        if record.status.state == "ready":
+            return record.status
+        try:
+            config, token = read_process_config(record.config.token_file.parent / "launch.json")
+            if config != record.config:
+                raise ImageProcessUnavailable()
+            response = await client.get(
+                f"http://127.0.0.1:{record.config.port}/health",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=2.0,
+            )
+            if response.status_code != 200:
+                return record.status
+            candidate = ImageWorkerLoadResult.model_validate(response.json())
+        except (httpx.HTTPError, ValueError, OSError, ImageWorkerBootstrapError):
+            return record.status
+        if (
+            candidate.state != "ready"
+            or candidate.backend != record.status.backend
+            or candidate.instance_id != record.status.instance_id
+            or candidate.pid != record.status.pid
+            or candidate.process_create_time != record.status.process_create_time
+            or candidate.port != record.status.port
+            or candidate.reserved_bytes != record.status.reserved_bytes
+            or candidate.safe_error is not None
+            or not _identity_alive(record)
+        ):
+            return record.status
+        with self._lock:
+            if self._record != record or not _identity_alive(record):
+                raise ImageProcessUnavailable()
+            ready_record = ImageWorkerProcessRecord(config=record.config, status=candidate)
+            try:
+                write_atomic(self.record_path, ready_record.model_dump_json().encode("utf-8"))
+            except OSError:
+                raise ImageProcessUnavailable() from None
+            self._record = ready_record
+        with image_node_span(ImageNodeStage.LOAD):
+            record_image_stage(ImageNodeStage.LOAD, ImageNodeOutcome.SUCCEEDED)
+        return candidate
 
     def start(self, request: ImageWorkerLoadRequest) -> ImageWorkerLoadResult:
         started = time.monotonic()

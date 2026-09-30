@@ -80,4 +80,14 @@ reservation before returning `starting`. An identical load replays that
 status; a different load or stale on-disk record is refused. On a launch or
 record-write failure it kills the child and releases the reservation. Do not
 delete a stale record manually while its PID/create-time pair might still be
-alive; readiness and re-adoption are the next supervisor steps.
+alive.
+
+Readiness now requires authenticated `GET /health` on the dedicated loopback
+port and an exact match of instance, backend, PID, create time, port and
+reservation. The supervisor checks the live bootstrap command before and
+after the probe and atomically persists `ready`; an open socket or forged
+health response leaves the worker `starting`. After a node-agent restart,
+re-adoption reads the owner-only record, config and token, rechecks the local
+manifest and accepts only that same live process. If the record is corrupt,
+the process has changed or health is unreachable, keep the record and the
+memory hold for reconciliation; do not start a replacement blindly.
