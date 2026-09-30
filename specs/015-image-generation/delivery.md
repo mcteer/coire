@@ -39,6 +39,7 @@ Branch and merge status remains separate from task completion.
 | `015e6-image-classifier` | Supervised local Studio CPU tagger and strict provenance result | T016; part of T021 |
 | `015e8-image-txt2img-pipeline` | Fixed offline Turbo txt2img with synchronized progress and exact output validation | part of T029 |
 | `015e9-image-metadata` | Canonical private PNG recipe, pixel and file digests, bounded writer | T031 |
+| `015e10-image-worker-job` | Fenced in-process Studio job execution and private scratch | part of T029/T032/T039 |
 | `015g1-image-gallery` | Owner-only metadata list/detail with stable cursor and generated clients | part of T022, T023, T043–T044 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -205,6 +206,11 @@ Canonical private PNG serialization is
 T031 is complete: the bounded writer embeds the exact recipe, strips upstream
 metadata, returns file and pixel digests and cleans incomplete scratch files.
 Transfer, publication and operator-run verification remain open.
+Fenced in-process image attempts are
+[draft PR #80](https://github.com/mcteer/coire/pull/80), reviewed against PR #79.
+The executor binds the resident model and attempt, writes canonical outputs in
+private scratch and cleans failed attempts. T029/T032/T039 remain open for
+supervision, durable journal, transfer and cleanup acknowledgments.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
