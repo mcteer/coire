@@ -187,6 +187,12 @@ It commits a canonical intent, quota hold, job, first event and audit atomically
 basic txt2img, but T023/T035/T037 remain open for a public route, denial audit,
 cross-process PostgreSQL contention and dispatch/recovery. Default image admission
 stays disabled until worker, publication and cancellation gates complete.
+Studio image-copy preflight is
+[draft PR #77](https://github.com/mcteer/coire/pull/77), reviewed against PR #76.
+It binds a registry slug to an exact local manifest and rejects unsafe files before
+load. T024/T029/T030/T033 remain open for the resident worker, admin acquisition,
+node routes and real runtime evidence. Draft PR #31 supplies the pinned native mflux
+runtime and must land before live worker execution.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
