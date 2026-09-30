@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import timedelta
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from coire_core.models.files import SHA256_PATTERN, ULID_PATTERN
 from coire_core.models.images import (
@@ -15,6 +16,7 @@ from coire_core.models.images import (
     ImageRecipe,
     ResolvedImageSpec,
 )
+from coire_core.models.registry import SLUG_PATTERN
 
 NODE_PATTERN = r"^coire-[a-z0-9-]{1,50}$"
 
@@ -58,6 +60,7 @@ class ImageWorkerLoadRequest(BaseModel):
 
     schema_version: Literal[1] = 1
     backend: Literal["mflux"] = "mflux"
+    slug: str = Field(pattern=SLUG_PATTERN)
     model_id: uuid.UUID
     variant_id: uuid.UUID | None = None
     instance_id: uuid.UUID
@@ -65,6 +68,13 @@ class ImageWorkerLoadRequest(BaseModel):
     reservation_bytes: int = Field(ge=1)
     runtime_version: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9._-]+$")
     idle_ttl_seconds: int = Field(default=900, ge=60, le=86_400)
+
+    @field_validator("slug")
+    @classmethod
+    def exact_slug(cls, value: str) -> str:
+        if re.fullmatch(SLUG_PATTERN, value) is None:
+            raise ValueError("invalid image model slug")
+        return value
 
 
 class ImageWorkerLoadResult(BaseModel):
