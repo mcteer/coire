@@ -11,8 +11,14 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal, PrincipalKind
-from coire_api.images.authorization import authorize_live_image_action, preflight_image_action
-from coire_core.errors import ImageForbidden
+from coire_api.db import ImageOutputRow
+from coire_api.images.authorization import (
+    authorize_live_image_action,
+    output_is_shareable,
+    preflight_image_action,
+    require_downloadable_image_output,
+)
+from coire_core.errors import ImageForbidden, ImageNotFound
 
 OWNER = uuid.uuid4()
 KEY_ID = uuid.uuid4()
@@ -176,3 +182,108 @@ async def test_live_owner_binding_and_human_explicit_entitlement() -> None:
         await authorize_live_image_action(
             cast(AsyncSession, FakeSession(entitlements=[])), _user(), explicit=True
         )
+
+
+def _output(*, tag: str = "normal", mode: str = "standard") -> ImageOutputRow:
+    return cast(
+        ImageOutputRow,
+        SimpleNamespace(
+            owner_user_id=OWNER,
+            state="published",
+            deleted_at=None,
+            content_tag=tag,
+            recipe={"resolved": {"spec": {"content_mode": mode}}},
+        ),
+    )
+
+
+class FakeOutputSession(FakeSession):
+    def __init__(
+        self,
+        output: ImageOutputRow | None,
+        *,
+        active: bool = True,
+        revoked: bool = False,
+        entitlements: list[str] | None = None,
+    ) -> None:
+        super().__init__(active=active, revoked=revoked, entitlements=entitlements)
+        self.output = output
+
+    async def get(self, model: type[object], identity: object, **kwargs: object) -> object | None:
+        if identity not in (OWNER, KEY_ID):
+            assert kwargs == {"populate_existing": True, "with_for_update": True}
+            return self.output
+        return await super().get(model, identity, **kwargs)
+
+
+async def test_output_download_checks_owner_publication_and_live_identity() -> None:
+    other_owner = _output()
+    other_owner.owner_user_id = uuid.uuid4()
+    staged = _output()
+    staged.state = "staged"
+    for row in (None, other_owner, staged):
+        with pytest.raises(ImageNotFound):
+            await require_downloadable_image_output(
+                cast(AsyncSession, FakeOutputSession(row)), uuid.uuid4(), _user()
+            )
+    deleted = _output()
+    deleted.deleted_at = datetime.now(UTC)
+    with pytest.raises(ImageNotFound):
+        await require_downloadable_image_output(
+            cast(AsyncSession, FakeOutputSession(deleted)), uuid.uuid4(), _user()
+        )
+    with pytest.raises(ImageForbidden):
+        await require_downloadable_image_output(
+            cast(AsyncSession, FakeOutputSession(_output(), active=False)),
+            uuid.uuid4(),
+            _user(PrincipalKind.ADMIN),
+        )
+
+
+async def test_download_rechecks_policy_explicit_and_classifier_explicit() -> None:
+    for row in (_output(tag="explicit"), _output(mode="explicit")):
+        for principal, session in (
+            (_user(PrincipalKind.ADMIN), FakeOutputSession(row, entitlements=[])),
+            (_key("images"), FakeOutputSession(row)),
+            (_key("images", "images:explicit"), FakeOutputSession(row, revoked=True)),
+        ):
+            with pytest.raises(ImageForbidden):
+                await require_downloadable_image_output(
+                    cast(AsyncSession, session), uuid.uuid4(), principal
+                )
+        assert (
+            await require_downloadable_image_output(
+                cast(AsyncSession, FakeOutputSession(row)),
+                uuid.uuid4(),
+                _key("images", "images:explicit"),
+            )
+            is row
+        )
+
+
+async def test_unknown_owner_access_and_shared_view_exclusion() -> None:
+    unknown = _output(tag="unknown")
+    assert (
+        await require_downloadable_image_output(
+            cast(AsyncSession, FakeOutputSession(unknown, entitlements=[])),
+            uuid.uuid4(),
+            _user(),
+        )
+        is unknown
+    )
+    assert output_is_shareable(_output())
+    for row in (unknown, _output(tag="explicit"), _output(mode="explicit")):
+        assert not output_is_shareable(row)
+
+
+async def test_unrecognized_or_missing_policy_fails_closed() -> None:
+    missing = _output()
+    missing.recipe = {}
+    malformed = _output()
+    malformed.recipe = {"resolved": []}
+    for row in (_output(tag="other"), _output(mode="other"), missing, malformed):
+        assert not output_is_shareable(row)
+        with pytest.raises(ImageForbidden):
+            await require_downloadable_image_output(
+                cast(AsyncSession, FakeOutputSession(row)), uuid.uuid4(), _user()
+            )

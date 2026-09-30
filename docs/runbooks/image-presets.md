@@ -60,3 +60,12 @@ ready measured registry image base UUID, and submit it through the human-admin P
 route. The JSON is intentionally invalid until bound; it has no acquisition or
 entitlement fields. The admin route validates dependencies and records the import as
 an ordinary audited preset creation. See `recipes/images/README.md` for the steps.
+
+The future output grant and content routes must call `require_downloadable_image_output`
+in their transaction before issuing or redeeming a grant. It locks the published
+owner row and rechecks current user, personal key, and explicit permission based on
+both the classifier tag and the saved generation policy. A revoked explicit grant
+therefore cannot rely on its earlier entitlement snapshot. Shared/public projections
+must use `output_is_shareable` after owner/share authorization; only published,
+nondeleted, policy-standard and normally tagged rows qualify. Unknown tags remain
+available privately to their owner. No shared or download route is enabled yet.

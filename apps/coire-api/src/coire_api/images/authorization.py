@@ -23,6 +23,7 @@ from coire_api.db import (
 )
 from coire_core.errors import ImageForbidden, ImageNotFound
 from coire_core.models.audit import AuditOutcome
+from coire_core.models.images import ImageContentMode, ImageContentTag
 from coire_core.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -162,9 +163,18 @@ async def require_owned_image_input(
 
 
 async def require_owned_image_output(
-    session: AsyncSession, output_id: uuid.UUID, principal: Principal
+    session: AsyncSession,
+    output_id: uuid.UUID,
+    principal: Principal,
+    *,
+    lock: bool = False,
 ) -> ImageOutputRow:
-    row = await session.get(ImageOutputRow, output_id)
+    if lock:
+        row = await session.get(
+            ImageOutputRow, output_id, populate_existing=True, with_for_update=True
+        )
+    else:
+        row = await session.get(ImageOutputRow, output_id)
     if (
         row is None
         or row.owner_user_id != principal.user_id
@@ -172,4 +182,40 @@ async def require_owned_image_output(
         or row.deleted_at is not None
     ):
         raise ImageNotFound()
+    return row
+
+
+def _output_requires_explicit(row: ImageOutputRow) -> bool:
+    """Read persisted policy defensively; classification cannot downgrade explicit mode."""
+    recipe = row.recipe
+    resolved = recipe.get("resolved") if isinstance(recipe, dict) else None
+    spec = resolved.get("spec") if isinstance(resolved, dict) else None
+    mode = spec.get("content_mode") if isinstance(spec, dict) else None
+    if mode not in (ImageContentMode.STANDARD, ImageContentMode.EXPLICIT):
+        raise ImageForbidden()
+    if row.content_tag not in (
+        ImageContentTag.NORMAL,
+        ImageContentTag.EXPLICIT,
+        ImageContentTag.UNKNOWN,
+    ):
+        raise ImageForbidden()
+    return mode == ImageContentMode.EXPLICIT or row.content_tag == ImageContentTag.EXPLICIT
+
+
+def output_is_shareable(row: ImageOutputRow) -> bool:
+    """Conservative predicate for any future shared/public projection."""
+    if row.state != "published" or row.deleted_at is not None:
+        return False
+    try:
+        return not _output_requires_explicit(row) and row.content_tag == ImageContentTag.NORMAL
+    except ImageForbidden:
+        return False
+
+
+async def require_downloadable_image_output(
+    session: AsyncSession, output_id: uuid.UUID, principal: Principal
+) -> ImageOutputRow:
+    """Recheck owner and live explicit authority when issuing or redeeming a grant."""
+    row = await require_owned_image_output(session, output_id, principal, lock=True)
+    await authorize_live_image_action(session, principal, explicit=_output_requires_explicit(row))
     return row
