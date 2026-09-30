@@ -16,6 +16,7 @@ from coire_core.settings import Settings
 if TYPE_CHECKING:
     from coire_node.engines import EngineManager
     from coire_node.grants import Grants
+    from coire_node.image_runtime.supervisor import ImageProcessSupervisor
     from coire_node.jobs import JobSupervisor
     from coire_node.reservations import ReservationLedger
     from coire_node.store import Store
@@ -41,6 +42,10 @@ def get_engines(request: Request) -> EngineManager:
     return request.app.state.engines  # type: ignore[no-any-return]
 
 
+def get_image_workers(request: Request) -> ImageProcessSupervisor:
+    return request.app.state.image_workers  # type: ignore[no-any-return]
+
+
 def get_reservations(request: Request) -> ReservationLedger:
     return request.app.state.reservations  # type: ignore[no-any-return]
 
@@ -50,4 +55,5 @@ StoreDep = Annotated["Store", Depends(get_store)]
 JobsDep = Annotated["JobSupervisor", Depends(get_jobs)]
 GrantsDep = Annotated["Grants", Depends(get_grants)]
 EngineDep = Annotated["EngineManager", Depends(get_engines)]
+ImageWorkersDep = Annotated["ImageProcessSupervisor", Depends(get_image_workers)]
 ReservationsDep = Annotated["ReservationLedger", Depends(get_reservations)]

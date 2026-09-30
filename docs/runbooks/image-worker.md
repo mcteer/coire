@@ -101,3 +101,15 @@ job cleanup path remove it. A reused PID receives no signal. If process
 inspection, signalling or state cleanup is uncertain, the node reports a safe
 failure and retains the reservation and record; inspect the PID/create-time
 pair and reconcile before attempting a replacement.
+
+The node control listeners now expose authenticated `PUT /node/images/worker`,
+`GET /node/images/worker/{instance_id}` and
+`DELETE /node/images/worker/{instance_id}`. The data listener does not mount
+these routes. `GET` probes the worker's private health endpoint before
+promoting `starting` to `ready`; the loopback token never leaves coire-node.
+The image worker and language engines share one admission lock and count one
+another's committed reservations. The node reservation ledger sees their sum.
+On agent restart, image re-adoption runs before listeners bind. An uncertain
+record holds the full image budget; inspect the process and private record
+before reconciliation. Roll back the node wheel after an exact-instance
+unload and confirmed process exit.
