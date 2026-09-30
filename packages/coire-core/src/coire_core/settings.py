@@ -220,6 +220,7 @@ class Settings(BaseSettings):
     chat_original_root: str = "/opt/coire/chat/originals"
     chat_derived_root: str = "/opt/coire/chat/derived"
     file_worker_input_root: str = "/opt/coire/chat/originals"
+    file_worker_image_input_root: str = "/opt/coire/chat/originals/images"
     file_worker_output_root: str = "/opt/coire/chat/derived"
     file_worker_url: str = "http://coire-file-worker:8010"
     file_worker_service_token: SecretStr = SecretStr("")

@@ -26,6 +26,13 @@ the 10 MiB generation or 64 MiB recipe cap and the declared count, then hashes a
 fsyncs. Admission must call its exclusive `publish()` only after owner quota and DB
 checks; call `discard()` after any refusal. A failed or cancelled staging read removes
 its temporary file. Orphan cleanup is still required before upload admission is enabled.
+The file worker's private `POST /v1/image-recipes/parse` handoff requires its dedicated
+service token and a generated input UUID, expected byte count and SHA-256. It reads the
+configured read-only `images` namespace, verifies size and hash on one descriptor, and
+returns the strict recipe without decoding pixels. It refuses concurrent file conversions.
+Inspect `coire_image_recipe_parse_total` by its fixed outcome label and the
+`coire.file_worker.image_recipe_parse` span. A 422 response carries only a stable parser
+code, including `recipe_input_mismatch`; never log image metadata or source bytes.
 
 The private output gallery metadata routes are now available at
 `GET /api/v1/image-outputs` and `GET /api/v1/image-outputs/{id}`. They require a live
