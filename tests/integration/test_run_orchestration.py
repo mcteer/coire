@@ -189,11 +189,13 @@ def prepare_verified_model(client: httpx.Client, admin_headers: dict[str, str]) 
         model_id, variant_id = str(workflow["model_id"]), str(workflow["variant_id"])
 
     model = client.get(f"/api/v1/admin/models/{model_id}", headers=admin_headers).json()
+    # Studio publication refuses a model that has variants until one is the
+    # validated default. Set routing metadata first; the variant patch below
+    # publishes the model.
     updated = client.patch(
         f"/api/v1/admin/models/{model_id}",
         headers={**admin_headers, "If-Match": model["updated_at"]},
         json={
-            "visibility": "published",
             "tags": ["general"],
             "capability_profile": {
                 "tool_calling": "none",
