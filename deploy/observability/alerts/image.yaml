@@ -19,3 +19,15 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: Private image blobs are past the 24-hour purge deadline
+      - alert: CoireImageInputCleanupFailures
+        expr: sum(increase(coire_image_input_cleanup_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Private image input cleanup failed
+      - alert: CoireImageInputPurgeOverdue
+        expr: max(coire_image_input_purge_oldest_seconds) > 86400
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Failed image inputs are past the 24-hour purge deadline

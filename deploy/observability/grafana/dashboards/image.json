@@ -15,6 +15,26 @@
     {
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "id": 4,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [{"expr": "sum by (kind, outcome) (rate(coire_image_input_cleanup_total[5m]))", "legendFormat": "{{kind}} {{outcome}} /s", "refId": "A"}],
+      "title": "Private image input cleanup",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
+      "id": 5,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [{"expr": "max(coire_image_input_purge_oldest_seconds)", "legendFormat": "oldest failed input", "refId": "A"}],
+      "title": "Failed image input cleanup age",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
       "id": 2,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
