@@ -35,6 +35,7 @@ from coire_api.routes import (
     chat,
     failover,
     health,
+    image_inputs,
     image_outputs,
     images,
     instances,
@@ -158,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(nodes.router)
     app.include_router(models.router)
     app.include_router(images.router)
+    app.include_router(image_inputs.router)
     app.include_router(image_outputs.router)
     app.include_router(chat.router)
     app.include_router(runs.router)
