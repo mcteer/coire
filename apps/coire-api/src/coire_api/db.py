@@ -1779,3 +1779,104 @@ class ImageDownloadGrantRow(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageQuotaRow(Base):
+    """Row-locked owner or global capacity counters."""
+
+    __tablename__ = "image_quotas"
+    __table_args__ = (
+        Index(
+            "uq_image_quota_owner",
+            "owner_user_id",
+            unique=True,
+            postgresql_where=text("scope = 'owner'"),
+        ),
+        Index(
+            "uq_image_quota_global",
+            "scope",
+            unique=True,
+            postgresql_where=text("scope = 'global'"),
+        ),
+        CheckConstraint(
+            "(scope = 'owner' AND owner_user_id IS NOT NULL) OR "
+            "(scope = 'global' AND owner_user_id IS NULL)",
+            name="ck_image_quota_scope",
+        ),
+        CheckConstraint(
+            "held_bytes >= 0 AND stored_bytes >= 0 AND pending_jobs >= 0 "
+            "AND held_outputs >= 0 AND consumed_outputs >= 0",
+            name="ck_image_quota_nonnegative",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    scope: Mapped[str] = mapped_column(String(8))
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    held_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    stored_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    pending_jobs: Mapped[int] = mapped_column(Integer, default=0)
+    day_bucket: Mapped[date] = mapped_column(Date)
+    held_outputs: Mapped[int] = mapped_column(Integer, default=0)
+    consumed_outputs: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageExecutionLeaseRow(Base):
+    """Durable fence shared by image and inference admission on a Studio."""
+
+    __tablename__ = "image_execution_leases"
+    __table_args__ = (
+        Index("ix_image_execution_leases_node_expiry", "node_id", "expires_at"),
+        CheckConstraint(
+            "(mode = 'image' AND job_id IS NOT NULL AND request_id IS NULL) OR "
+            "(mode = 'inference' AND job_id IS NULL AND request_id IS NOT NULL)",
+            name="ck_image_execution_lease_subject",
+        ),
+        CheckConstraint("fence >= 0", name="ck_image_execution_lease_fence"),
+        CheckConstraint(
+            "released_at IS NULL OR release_evidence IS NOT NULL",
+            name="ck_image_execution_lease_release",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="RESTRICT"))
+    job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("image_jobs.id", ondelete="RESTRICT"), nullable=True
+    )
+    request_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    mode: Mapped[str] = mapped_column(String(16))
+    fence: Mapped[int] = mapped_column(BigInteger)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    release_evidence: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageCoexistenceProfileRow(Base):
+    __tablename__ = "image_coexistence_profiles"
+    __table_args__ = (
+        Index("ix_image_coexistence_node_status", "node_id", "status"),
+        CheckConstraint("first_token_p95_ms >= 0", name="ck_image_coexistence_latency"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    profile_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="RESTRICT"))
+    hardware_fingerprint: Mapped[str] = mapped_column(String(64))
+    runtime_fingerprint: Mapped[str] = mapped_column(String(64))
+    chat_variant_ids: Mapped[list[str]] = mapped_column(JSONB)
+    image_model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="RESTRICT"))
+    image_mode: Mapped[str] = mapped_column(String(16))
+    measured_bounds: Mapped[dict[str, object]] = mapped_column(JSONB)
+    benchmark_result: Mapped[dict[str, object]] = mapped_column(JSONB)
+    first_token_p95_ms: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(16))
+    valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
