@@ -4981,6 +4981,30 @@
         "title": "ImageControl",
         "type": "object"
       },
+      "ImageDeletionReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "output_id": {
+            "format": "uuid",
+            "title": "Output Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "tombstoned",
+              "purged"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "output_id",
+          "state"
+        ],
+        "title": "ImageDeletionReceipt",
+        "type": "object"
+      },
       "ImageDownloadGrant": {
         "additionalProperties": false,
         "properties": {
@@ -16858,6 +16882,68 @@
       }
     },
     "/api/v1/image-outputs/{output_id}": {
+      "delete": {
+        "operationId": "delete_output_api_v1_image_outputs__output_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "output_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Output Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageDeletionReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Output",
+        "tags": [
+          "images"
+        ]
+      },
       "get": {
         "operationId": "get_output_api_v1_image_outputs__output_id__get",
         "parameters": [

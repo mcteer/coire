@@ -29,6 +29,9 @@ purge_oldest_seconds = meter.create_gauge(
     unit="s",
     description="Age of oldest image blob awaiting verified physical purge",
 )
+purges_total = meter.create_counter(
+    "coire_image_purge_total", unit="1", description="Private image blob purge outcomes"
+)
 
 _ULID = re.compile(r"[0-9A-HJKMNP-TV-Z]{26}\Z")
 

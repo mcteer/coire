@@ -1250,7 +1250,8 @@ export interface paths {
         get: operations["get_output_api_v1_image_outputs__output_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Output */
+        delete: operations["delete_output_api_v1_image_outputs__output_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -3712,6 +3713,19 @@ export interface components {
             type: "canny";
             /** Variant Id */
             variant_id?: string | null;
+        };
+        /** ImageDeletionReceipt */
+        ImageDeletionReceipt: {
+            /**
+             * Output Id
+             * Format: uuid
+             */
+            output_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "tombstoned" | "purged";
         };
         /** ImageDownloadGrant */
         ImageDownloadGrant: {
@@ -8863,6 +8877,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ImageOutput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_output_api_v1_image_outputs__output_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                output_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageDeletionReceipt"];
                 };
             };
             /** @description Validation Error */
