@@ -26,7 +26,7 @@ admission disabled until US4 and the applicable US1 safety/publication paths are
 - [X] T010 Add canonical recipe/hash/seed helpers in `packages/coire-core/src/coire_core/models/images.py` and their tamper/precision tests in `packages/coire-core/tests/test_images.py`; exclude paths, identity and secrets and distinguish pixel digest from PNG bytes (FR-013, FR-014, FR-028).
 - [X] T011 Add image settings, conservative bounds, feature enablement and safe `CoireError` subclasses in `packages/coire-core/src/coire_core/settings.py` and `packages/coire-core/src/coire_core/errors.py`; document env names/defaults in `deploy/compose/README.md` (FR-001, FR-023, FR-031, FR-036).
 - [ ] T012 Add `coire-blobs`, least-privilege volume namespaces, image settings and route-specific purpose-specific bounded upload/proxy settings (64 MiB recipe file plus bounded multipart framing, application-enforced 10 MiB generation inputs) in `deploy/compose/compose.yaml`, `compose.override.it.yaml` and `apps/coire-web/nginx/nginx.conf`; no network/CORS/capability widening (FR-011, FR-023, FR-030, FR-031, FR-036).
-- [ ] T013 Add content-free span/log/metric helpers in `apps/coire-api/src/coire_api/images/telemetry.py` and node image telemetry in `apps/coire-node/src/coire_node/metrics.py`; test label cardinality and redaction in `apps/coire-api/tests/unit/test_image_telemetry.py` (FR-033).
+- [X] T013 Add content-free span/log/metric helpers in `apps/coire-api/src/coire_api/images/telemetry.py` and node image telemetry in `apps/coire-node/src/coire_node/metrics.py`; test label cardinality and redaction in `apps/coire-api/tests/unit/test_image_telemetry.py` (FR-033).
 
 ## Phase 3: US4 — Explicit content authorization (P1)
 

@@ -24,7 +24,8 @@ Branch and merge status remains separate from task completion.
 | `015d-image-security` | Identity, entitlement, audit and presets | T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
 | `015f1-image-storage-config` | Disabled API-only blob volume, settings and ingress bounds | part of T012 |
-| `015f-image-storage` | Bounded blob staging, grants and cleanup | remainder of T012, T013, T026, T031, T036, T038–T039 |
+| `015f2-image-telemetry` | Content-free API/node metrics, spans, dashboard and alerts | T013 |
+| `015f-image-storage` | Bounded blob staging, grants and cleanup | remainder of T012, T026, T031, T036, T038–T039 |
 | `015g-image-jobs` | DBOS admission, events, cancellation and API | T023, T025, T034–T035, T037, T040–T042 |
 | `015h-image-ui` | Generated types, native UI and gallery | T043–T048 |
 | `015i-image-inputs` | Isolated parsing, owner inputs and reproduction | T049–T058 |
@@ -58,6 +59,8 @@ reviewed against PR #41. T012 stays open until the API enforces purpose-specific
 The inherited PyJWT 2.13.0 critical scan finding is fixed separately in
 [draft PR #44](https://github.com/mcteer/coire/pull/44) from issue #43; it must land before
 the image PR stack can pass the unchanged image scan gate.
+The bounded telemetry seam is [draft PR #45](https://github.com/mcteer/coire/pull/45),
+reviewed against PR #42. T013 is complete; later services must call its helpers.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
