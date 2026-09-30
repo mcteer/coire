@@ -107,8 +107,15 @@ class OpsService:
     async def turn(self, *, conversation_id: uuid.UUID, question: str) -> OpsTurnResponse:
         with tracer.start_as_current_span("coire.ops.turn") as span:
             span.set_attribute("conversation_id", str(conversation_id))
-            snapshot = await self._admin.read_snapshot()
-            self.model_healthy = await self._model.healthy()
+            try:
+                snapshot = await self._admin.read_snapshot()
+                self.model_healthy = await self._model.healthy()
+            except Exception:
+                logger.exception(
+                    "ops turn probe failed",
+                    extra={"conversation_id": str(conversation_id)},
+                )
+                raise
             if not self.model_healthy:
                 turns.add(1, {"outcome": "degraded"})
                 logger.warning(
@@ -116,19 +123,26 @@ class OpsService:
                     extra={"conversation_id": str(conversation_id)},
                 )
                 raise RuntimeError("pinned ops model is unavailable")
-            result = await self._model.run(question=question, snapshot=snapshot)
-        issued = None
-        status = OpsTurnStatus.ANSWERED
-        if result.action is not None:
-            issued = await self._admin.submit_proposal(
-                OpsProposalSubmission(
-                    conversation_id=conversation_id,
-                    session_id=self.session_id,
-                    action=result.action,
-                    rationale=result.rationale or "Proposed by the isolated ops service.",
+            try:
+                result = await self._model.run(question=question, snapshot=snapshot)
+                issued = None
+                status = OpsTurnStatus.ANSWERED
+                if result.action is not None:
+                    issued = await self._admin.submit_proposal(
+                        OpsProposalSubmission(
+                            conversation_id=conversation_id,
+                            session_id=self.session_id,
+                            action=result.action,
+                            rationale=result.rationale or "Proposed by the isolated ops service.",
+                        )
+                    )
+                    status = OpsTurnStatus.PROPOSED
+            except Exception:
+                logger.exception(
+                    "ops model turn failed",
+                    extra={"conversation_id": str(conversation_id)},
                 )
-            )
-            status = OpsTurnStatus.PROPOSED
+                raise
         turns.add(1, {"outcome": status.value})
         logger.info(
             "ops turn completed",

@@ -147,7 +147,35 @@ def _ops_recovery_debug(client: httpx.Client) -> str:
         if line.startswith(("OPS_MODEL_", "OPS_GATEWAY_", "OPS_API_"))
     ]
     logs = subprocess.run(
-        ["docker", "logs", "--tail", "60", "coire-it-coire-ops-1"],
+        ["docker", "logs", "--tail", "80", "coire-it-coire-ops-1"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    api_logs = subprocess.run(
+        ["docker", "logs", "--tail", "40", "coire-it-coire-api-1"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    sessions = subprocess.run(
+        [
+            "docker",
+            "compose",
+            "-p",
+            "coire-it",
+            "exec",
+            "-T",
+            "postgres",
+            "psql",
+            "-U",
+            "coire",
+            "-d",
+            "coire",
+            "-c",
+            "SELECT state, started_at, last_seen_at FROM ops_sessions ORDER BY started_at",
+        ],
+        cwd=COMPOSE_DIR,
         check=False,
         capture_output=True,
         text=True,
@@ -155,7 +183,9 @@ def _ops_recovery_debug(client: httpx.Client) -> str:
     return (
         f"ops models {models.status_code}: {models.text}\n"
         f"ops env: {pinned}\n"
-        f"ops logs: {logs.stdout[-2000:]}{logs.stderr[-2000:]}"
+        f"sessions: {sessions.stdout}\n"
+        f"ops logs: {logs.stdout[-2500:]}{logs.stderr[-2500:]}\n"
+        f"api logs: {api_logs.stdout[-1500:]}{api_logs.stderr[-1500:]}"
     )
 
 
