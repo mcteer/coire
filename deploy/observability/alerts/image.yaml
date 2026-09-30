@@ -30,4 +30,4 @@ groups:
         for: 5m
         labels: {severity: warning}
         annotations:
-          summary: Failed image inputs are past the 24-hour purge deadline
+          summary: Failed or deleted image inputs are past the 24-hour purge deadline

@@ -15,7 +15,7 @@ from httpx import ASGITransport, AsyncClient
 
 from coire_api.auth import Principal, PrincipalKind, require_principal
 from coire_api.db import ImageInputRow, UserRow, get_session
-from coire_api.images import authorization, inputs
+from coire_api.images import authorization, input_deletion, inputs
 from coire_api.routes import image_inputs
 from coire_core.errors import CoireError
 from coire_core.models.images import ImageInput
@@ -26,6 +26,9 @@ ORIGIN = "https://coire.test"
 
 
 class FakeSession:
+    async def commit(self) -> None:
+        pass
+
     async def get(self, model: type[object], identity: object, **_: object) -> object | None:
         assert model is UserRow
         return SimpleNamespace(active=True)
@@ -140,3 +143,38 @@ async def test_owner_can_poll_existing_input_when_admission_is_disabled(
     async with AsyncClient(transport=ASGITransport(app=app), base_url=ORIGIN) as client:
         response = await client.get(f"/api/v1/image-inputs/{input_id}")
     assert response.status_code == 200 and response.json()["state"] == "processing"
+
+
+async def test_owner_delete_requires_origin_and_commits_tombstone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_id = uuid.uuid4()
+    committed: list[str] = []
+
+    async def tombstone(session: object, principal: Principal, requested: uuid.UUID) -> ImageInput:
+        assert principal.user_id == OWNER and requested == input_id
+        committed.append("tombstone")
+        return ImageInput(
+            id=input_id,
+            purpose="recipe",
+            state="deleting",
+            byte_count=7,
+            sha256="a" * 64,
+            created_at=datetime.now(UTC),
+        )
+
+    async def commit(self: FakeSession) -> None:
+        committed.append("commit")
+
+    monkeypatch.setattr(input_deletion, "tombstone_owned_input", tombstone)
+    monkeypatch.setattr(FakeSession, "commit", commit)
+    app = _app(monkeypatch, enabled=False)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=ORIGIN) as client:
+        denied = await client.delete(f"/api/v1/image-inputs/{input_id}")
+        accepted = await client.delete(
+            f"/api/v1/image-inputs/{input_id}", headers={"Origin": ORIGIN}
+        )
+    assert denied.status_code == 403
+    assert accepted.status_code == 202 and accepted.json()["state"] == "deleting"
+    assert accepted.headers["cache-control"] == "private, no-store"
+    assert committed == ["tombstone", "commit"]

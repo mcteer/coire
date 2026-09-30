@@ -14,7 +14,11 @@ from sqlalchemy import func, select
 
 from coire_api.db import ImageOutputRow, ImageQuotaRow, session_scope
 from coire_api.images.deletion import purge_output_blob
-from coire_api.images.input_cleanup import sweep_failed_inputs, sweep_orphan_inputs
+from coire_api.images.input_cleanup import (
+    sweep_deleted_inputs,
+    sweep_failed_inputs,
+    sweep_orphan_inputs,
+)
 from coire_api.images.telemetry import purge_oldest_seconds, purges_total
 from coire_core.errors import ImageStorageUnavailable
 from coire_core.settings import Settings
@@ -109,6 +113,7 @@ class ImageOutputMaintenance:
             try:
                 await sweep_deleted_outputs(self._settings)
                 await sweep_failed_inputs(self._settings)
+                await sweep_deleted_inputs(self._settings)
                 await sweep_orphan_inputs(self._settings)
             except Exception as exc:
                 logger.error("image maintenance failed error_type=%s", type(exc).__name__)
