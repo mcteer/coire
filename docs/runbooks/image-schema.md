@@ -16,3 +16,10 @@ reconcile any image jobs, and back up all image tables. The downgrade refuses to
 while any image record exists; it never deletes records on its own. Blob cleanup is separate
 and must follow the image storage runbook when that service ships. An empty schema can be
 downgraded from revision `0023_image_jobs_presets` to `0022_stopped_usage_outcome`.
+
+Revision `0024_image_assets` adds `image_inputs`, `image_outputs`, `image_transfers` and
+`image_download_grants`. Inspect their counts and expiry state before rollback. It refuses
+downgrade while any asset record remains. Revoke grants, reconcile transfers, physically
+purge private blobs, and back up asset records before removing them from the database.
+Only then downgrade to `0023_image_jobs_presets`; it also removes the owner-pair key added
+to `image_jobs`. Never use a schema downgrade to delete private blobs.

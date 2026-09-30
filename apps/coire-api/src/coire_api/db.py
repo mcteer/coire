@@ -1572,6 +1572,7 @@ class ImageJobRow(Base):
     __tablename__ = "image_jobs"
     __table_args__ = (
         UniqueConstraint("owner_user_id", "idempotency_key", name="uq_image_job_owner_key"),
+        UniqueConstraint("id", "owner_user_id", name="uq_image_job_id_owner"),
         ForeignKeyConstraint(
             ["preset_id", "preset_revision"],
             ["image_preset_revisions.preset_id", "image_preset_revisions.revision"],
@@ -1644,4 +1645,137 @@ class ImageJobEventRow(Base):
     sequence: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     event_type: Mapped[str] = mapped_column(String(32))
     payload: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageInputRow(Base):
+    __tablename__ = "image_inputs"
+    __table_args__ = (
+        Index("ix_image_inputs_owner_created", "owner_user_id", "created_at", "id"),
+        CheckConstraint(
+            "original_bytes >= 0 AND held_bytes >= 0 AND active_references >= 0",
+            name="ck_image_input_counts",
+        ),
+        CheckConstraint(
+            "state <> 'ready' OR (original_bytes > 0 AND original_sha256 IS NOT NULL)",
+            name="ck_image_input_ready_original",
+        ),
+        CheckConstraint(
+            "(purpose = 'recipe' AND (state <> 'ready' OR recipe IS NOT NULL) "
+            "AND normalized_key IS NULL AND normalized_bytes IS NULL "
+            "AND normalized_sha256 IS NULL AND normalized_width IS NULL "
+            "AND normalized_height IS NULL) OR "
+            "(purpose IN ('init', 'mask', 'control') AND "
+            "(state <> 'ready' OR (normalized_key IS NOT NULL "
+            "AND normalized_bytes IS NOT NULL AND normalized_bytes > 0 "
+            "AND normalized_sha256 IS NOT NULL AND normalized_width IS NOT NULL "
+            "AND normalized_width > 0 AND normalized_height IS NOT NULL "
+            "AND normalized_height > 0)))",
+            name="ck_image_input_purpose_shape",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    purpose: Mapped[str] = mapped_column(String(16))
+    original_key: Mapped[str] = mapped_column(String(128))
+    original_bytes: Mapped[int] = mapped_column(BigInteger)
+    original_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    normalized_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    normalized_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    normalized_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    normalized_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    normalized_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    state: Mapped[str] = mapped_column(String(16))
+    recipe: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    processing_job_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+    held_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    active_references: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ImageOutputRow(Base):
+    __tablename__ = "image_outputs"
+    __table_args__ = (
+        UniqueConstraint("job_id", "output_index", name="uq_image_output_job_index"),
+        UniqueConstraint("id", "owner_user_id", name="uq_image_output_id_owner"),
+        ForeignKeyConstraint(
+            ["job_id", "owner_user_id"],
+            ["image_jobs.id", "image_jobs.owner_user_id"],
+            name="fk_image_output_job_owner",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_image_outputs_owner_created", "owner_user_id", "created_at", "id"),
+        CheckConstraint("output_index >= 0 AND output_index < 4", name="ck_image_output_index"),
+        CheckConstraint("size_bytes > 0", name="ck_image_output_size"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[str] = mapped_column(String(26))
+    owner_user_id: Mapped[uuid.UUID] = mapped_column()
+    output_index: Mapped[int] = mapped_column(Integer)
+    blob_key: Mapped[str] = mapped_column(String(128))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    file_sha256: Mapped[str] = mapped_column(String(64))
+    pixel_sha256: Mapped[str] = mapped_column(String(64))
+    recipe: Mapped[dict[str, object]] = mapped_column(JSONB)
+    content_tag: Mapped[str] = mapped_column(String(16))
+    classifier_provenance: Mapped[dict[str, object]] = mapped_column(JSONB)
+    entitlement_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
+    state: Mapped[str] = mapped_column(String(16), default="staged")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ImageTransferRow(Base):
+    __tablename__ = "image_transfers"
+    __table_args__ = (
+        CheckConstraint(
+            "attempt >= 1 AND output_index >= 0 AND output_index < 4", name="ck_image_transfer_slot"
+        ),
+        CheckConstraint("expected_bytes > 0", name="ck_image_transfer_size"),
+        Index("ix_image_transfers_expiry", "lease_expires_at"),
+    )
+
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("image_jobs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    attempt: Mapped[int] = mapped_column(Integer, primary_key=True)
+    output_index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    expected_bytes: Mapped[int] = mapped_column(BigInteger)
+    expected_sha256: Mapped[str] = mapped_column(String(64))
+    staging_key: Mapped[str] = mapped_column(String(128))
+    state: Mapped[str] = mapped_column(String(16))
+    receipt: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    node_cleanup_ack_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    grant_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageDownloadGrantRow(Base):
+    __tablename__ = "image_download_grants"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["output_id", "owner_user_id"],
+            ["image_outputs.id", "image_outputs.owner_user_id"],
+            name="fk_image_grant_output_owner",
+            ondelete="CASCADE",
+        ),
+        Index("ix_image_download_grants_expiry", "expires_at"),
+    )
+
+    grant_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    output_id: Mapped[uuid.UUID] = mapped_column()
+    owner_user_id: Mapped[uuid.UUID] = mapped_column()
+    access_policy_version: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
