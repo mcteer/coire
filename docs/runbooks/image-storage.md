@@ -20,7 +20,12 @@ source. Inspect only its stable error codes (`invalid_png`, `invalid_recipe`,
 `recipe_too_large`, `unsupported_recipe_encoding`, `duplicate_recipe`,
 `missing_recipe`, `recipe_input_too_large`, `recipe_input_unavailable`). The API upload path
 must stage an immutable owner-scoped file and enforce the purpose-specific limits before
-calling it; that route is not yet enabled.
+calling it; that route is not yet enabled. The API now has a private staging primitive
+for this route. It streams into a generated temporary key, checks actual bytes against
+the 10 MiB generation or 64 MiB recipe cap and the declared count, then hashes and
+fsyncs. Admission must call its exclusive `publish()` only after owner quota and DB
+checks; call `discard()` after any refusal. A failed or cancelled staging read removes
+its temporary file. Orphan cleanup is still required before upload admission is enabled.
 
 The private output gallery metadata routes are now available at
 `GET /api/v1/image-outputs` and `GET /api/v1/image-outputs/{id}`. They require a live
