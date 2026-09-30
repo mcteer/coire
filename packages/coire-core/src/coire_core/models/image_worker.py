@@ -253,6 +253,17 @@ def _check_inputs(
         raise ValueError("inputs differ from resolved input manifest")
 
 
+class ImageWorkerOutputManifest(BaseModel):
+    """Path-free generated output identity for node transfer verification."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    index: int = Field(ge=0, le=3)
+    byte_count: int = Field(ge=1, le=RECIPE_INPUT_MAX_BYTES)
+    sha256: str = Field(pattern=SHA256_PATTERN)
+    recipe_sha256: str = Field(pattern=SHA256_PATTERN)
+
+
 class ImageWorkerStatus(ImageJobBinding):
     state: Literal["waiting", "running", "generated", "cancelled", "failed"]
     stage: str | None = Field(default=None, max_length=80)
@@ -260,7 +271,18 @@ class ImageWorkerStatus(ImageJobBinding):
     step: int | None = Field(default=None, ge=0)
     total_steps: int | None = Field(default=None, ge=1)
     safe_error: str | None = Field(default=None, max_length=200)
+    outputs: tuple[ImageWorkerOutputManifest, ...] = Field(default_factory=tuple, max_length=4)
     updated_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def outputs_match_state(self) -> ImageWorkerStatus:
+        if self.state == "generated" and not self.outputs:
+            raise ValueError("generated worker status requires output manifests")
+        if self.state != "generated" and self.outputs:
+            raise ValueError("output manifests require generated state")
+        if len({output.index for output in self.outputs}) != len(self.outputs):
+            raise ValueError("output indexes cannot repeat")
+        return self
 
 
 class ImageWorkerCancelRequest(ImageJobBinding):
