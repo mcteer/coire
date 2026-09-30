@@ -40,6 +40,7 @@ Branch and merge status remains separate from task completion.
 | `015e8-image-txt2img-pipeline` | Fixed offline Turbo txt2img with synchronized progress and exact output validation | part of T029 |
 | `015e9-image-metadata` | Canonical private PNG recipe, pixel and file digests, bounded writer | T031 |
 | `015e10-image-worker-job` | Fenced in-process Studio job execution and private scratch | part of T029/T032/T039 |
+| `015e11-image-worker-control` | Authenticated resident worker control and path-free output status | part of T024/T029/T030/T032 |
 | `015g1-image-gallery` | Owner-only metadata list/detail with stable cursor and generated clients | part of T022, T023, T043–T044 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -211,6 +212,11 @@ Fenced in-process image attempts are
 The executor binds the resident model and attempt, writes canonical outputs in
 private scratch and cleans failed attempts. T029/T032/T039 remain open for
 supervision, durable journal, transfer and cleanup acknowledgments.
+Authenticated resident worker control is
+[draft PR #81](https://github.com/mcteer/coire/pull/81), reviewed against PR #80.
+Its loopback app accepts typed fenced run/status/cancel commands and reports
+path-free manifests; T024/T029/T030/T032 remain open for node process launch,
+durable journal, hard cancellation and end-to-end tests.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
