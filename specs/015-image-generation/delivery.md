@@ -43,6 +43,7 @@ Branch and merge status remains separate from task completion.
 | `015e11-image-worker-control` | Authenticated resident worker control and path-free output status | part of T024/T029/T030/T032 |
 | `015e12-image-worker-bootstrap` | Strict 0600 launch config and offline native child entrypoint | part of T024/T029/T030/T033 |
 | `015e13-image-process-launch` | Reserved node-owned process launch and durable PID/port identity | part of T024/T030/T033 |
+| `015e14-image-process-readiness` | Authenticated health, durable ready state and exact process re-adoption | part of T024/T030/T033 |
 | `015g1-image-gallery` | Owner-only metadata list/detail with stable cursor and generated clients | part of T022, T023, T043–T044 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -230,6 +231,10 @@ It verifies the local copy, reserves the configured memory and loopback port,
 and persists PID/create-time identity before returning `starting`. T024/T030/T033
 remain open for readiness, re-adoption, stop/kill, route integration and live
 Studio validation.
+Authenticated readiness and exact process re-adoption are
+[draft PR #84](https://github.com/mcteer/coire/pull/84), reviewed against PR #83.
+Unknown or corrupt records keep a conservative memory hold; T024/T030/T033
+remain open for stop/kill, node routes, scheduler use and real Studio proof.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
