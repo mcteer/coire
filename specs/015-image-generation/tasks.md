@@ -2,7 +2,7 @@
 
 **Input**: `specs/015-image-generation/{spec.md,plan.md,research.md,data-model.md,contracts/images.md,quickstart.md}`.
 **Tests**: Required by FR-035 and Constitution VII; write meaningful failing tests before the
-corresponding behavior, then keep each committed increment green. All tasks below are unstarted.
+corresponding behavior, then keep each committed increment green.
 **Organization**: Foundations -> US4 authorization (P1) -> US1 generation (P1) -> US2 reproduction
 (P1) -> US3 caches (P2) -> US5 coexistence (P2) -> release verification. Stories retain spec IDs.
 
@@ -24,7 +24,7 @@ admission disabled until US4 and the applicable US1 safety/publication paths are
 - [ ] T008 Add Postgres migration/constraint/quota/cancel-publication-race tests to `apps/coire-api/tests/unit/test_image_persistence.py`, including existing text/VLM rows and downgrade-drain preconditions (FR-025, FR-026, FR-029, FR-031, SC-012).
 - [ ] T009 Add typed image persistence/indices to `apps/coire-api/src/coire_api/db.py` and reversible migration(s) under `apps/coire-api/alembic/versions/`, one per child PR after the actual current head; include jobs/events, preset revisions, inputs/outputs, grants/receipts, quotas and execution profiles/leases (FR-003, FR-005, FR-025, FR-026, FR-029, FR-031).
 - [X] T010 Add canonical recipe/hash/seed helpers in `packages/coire-core/src/coire_core/models/images.py` and their tamper/precision tests in `packages/coire-core/tests/test_images.py`; exclude paths, identity and secrets and distinguish pixel digest from PNG bytes (FR-013, FR-014, FR-028).
-- [ ] T011 Add image settings, conservative bounds, feature enablement and safe `CoireError` subclasses in `packages/coire-core/src/coire_core/settings.py` and `packages/coire-core/src/coire_core/errors.py`; document env names/defaults in `deploy/compose/README.md` (FR-001, FR-023, FR-031, FR-036).
+- [X] T011 Add image settings, conservative bounds, feature enablement and safe `CoireError` subclasses in `packages/coire-core/src/coire_core/settings.py` and `packages/coire-core/src/coire_core/errors.py`; document env names/defaults in `deploy/compose/README.md` (FR-001, FR-023, FR-031, FR-036).
 - [ ] T012 Add `coire-blobs`, least-privilege volume namespaces, image settings and route-specific purpose-specific bounded upload/proxy settings (64 MiB recipe file plus bounded multipart framing, application-enforced 10 MiB generation inputs) in `deploy/compose/compose.yaml`, `compose.override.it.yaml` and `apps/coire-web/nginx/nginx.conf`; no network/CORS/capability widening (FR-011, FR-023, FR-030, FR-031, FR-036).
 - [ ] T013 Add content-free span/log/metric helpers in `apps/coire-api/src/coire_api/images/telemetry.py` and node image telemetry in `apps/coire-node/src/coire_node/metrics.py`; test label cardinality and redaction in `apps/coire-api/tests/unit/test_image_telemetry.py` (FR-033).
 

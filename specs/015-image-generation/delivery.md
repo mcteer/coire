@@ -38,7 +38,8 @@ reviewed against PR #33.
 Fenced node/worker commands are [draft PR #35](https://github.com/mcteer/coire/pull/35),
 reviewed against PR #34. Asset, parser and console shapes are
 [draft PR #36](https://github.com/mcteer/coire/pull/36), reviewed against PR #35.
-T005 and T007 are complete; the next foundational contract task is T011 settings.
+Conservative settings and safe errors are [draft PR #37](https://github.com/mcteer/coire/pull/37),
+reviewed against PR #36. The next foundational task is T008–T009 persistence.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
