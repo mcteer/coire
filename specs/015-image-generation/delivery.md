@@ -157,6 +157,12 @@ T012/T049/T050/T054 remain open for generation-input normalization, failed-input
 orphan cleanup, full owner lifecycle and cross-process quota evidence. The route stays
 behind disabled-by-default `COIRE_IMAGE_ENABLED`; uncertain commits retain bytes for
 reconciliation rather than risking a committed row pointing to missing data.
+Failed and orphaned input cleanup is
+[draft PR #71](https://github.com/mcteer/coire/pull/71), reviewed against PR #70.
+T039/T054 remain open for ready-input deletion, normalization and end-to-end
+retention evidence; T073/T074 remain open for the remaining generation metrics and
+alerts. Failed-input holds release only after unlink, and uncertain-commit files are
+removed after a quota-lock-protected row absence check and one-hour grace.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
