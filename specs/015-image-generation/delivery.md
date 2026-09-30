@@ -16,6 +16,7 @@ Branch and merge status remains separate from task completion.
 | `015b3-image-registry-contracts` | Registry kinds, backend isolation and generated clients | part of T005, T007 |
 | `015b4-image-worker-contracts` | Node/worker/transfer command shapes | remainder of T005; part of T007 |
 | `015b5-image-asset-contracts` | Auxiliary acquisition, isolated parser and console shapes | remainder of T007 |
+| `015b7-image-profile-dependencies` | Required hidden base dependencies in capability contract and live policy | part of T006, T015, T019, T027 |
 | `015b6-image-settings` | Settings, errors and deployment defaults | T011 |
 | `015c1-image-job-schema` | Durable job, event and preset tables | part of T008–T009 |
 | `015c2-image-asset-schema` | Durable inputs, outputs, grants and transfer receipts | part of T008–T009 |
@@ -85,6 +86,8 @@ marked complete.
 Live preset revision and dependency lookup is [draft PR #52](https://github.com/mcteer/coire/pull/52),
 reviewed against PR #51. Admin preset mutation/list routes and admission integration
 remain required before T015, T017 and T019 can be marked complete.
+The additive required-dependency contract and policy check are
+[draft PR #53](https://github.com/mcteer/coire/pull/53), reviewed against PR #52.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
