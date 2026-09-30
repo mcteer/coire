@@ -22,6 +22,15 @@ source. Inspect only its stable error codes (`invalid_png`, `invalid_recipe`,
 must stage an immutable owner-scoped file and enforce the purpose-specific limits before
 calling it; that route is not yet enabled.
 
+The private output gallery metadata routes are now available at
+`GET /api/v1/image-outputs` and `GET /api/v1/image-outputs/{id}`. They require a live
+human or personal image key, return only the caller's published, nondeleted records,
+and include no blob path or content URL. The opaque cursor carries owner and position;
+it remains valid if the boundary record is deleted. The gallery remains readable when
+new image admission is disabled. Inspect the `gallery` operation in
+`coire_image_requests_total` for success/refusal rates and the `coire.api.image.gallery`
+span for request timing. Content downloads, grants and deletion are still pending.
+
 ## Stop and roll back
 
 Keep or restore `COIRE_IMAGE_ENABLED=false`. Drain/cancel image workers and reconcile

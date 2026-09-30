@@ -4845,6 +4845,15 @@
         "title": "ImageContentMode",
         "type": "string"
       },
+      "ImageContentTag": {
+        "enum": [
+          "normal",
+          "explicit",
+          "unknown"
+        ],
+        "title": "ImageContentTag",
+        "type": "string"
+      },
       "ImageControl-Input": {
         "additionalProperties": false,
         "properties": {
@@ -4972,6 +4981,41 @@
         "title": "ImageControl",
         "type": "object"
       },
+      "ImageInputDigest": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "input_id": {
+            "format": "uuid",
+            "title": "Input Id",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "width": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_id",
+          "sha256",
+          "width",
+          "height"
+        ],
+        "title": "ImageInputDigest",
+        "type": "object"
+      },
       "ImageLora-Input": {
         "additionalProperties": false,
         "properties": {
@@ -5047,6 +5091,47 @@
         "title": "ImageLora",
         "type": "object"
       },
+      "ImageManifestDigest": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "revision": {
+            "maxLength": 120,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Revision",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "model_id",
+          "revision",
+          "sha256"
+        ],
+        "title": "ImageManifestDigest",
+        "type": "object"
+      },
       "ImageMode": {
         "enum": [
           "txt2img",
@@ -5056,6 +5141,91 @@
         ],
         "title": "ImageMode",
         "type": "string"
+      },
+      "ImageOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_count": {
+            "maximum": 67108864.0,
+            "minimum": 1.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "file_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "File Sha256",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "index": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "job_id": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/ImageRecipe"
+          },
+          "tag": {
+            "$ref": "#/components/schemas/ImageContentTag"
+          }
+        },
+        "required": [
+          "id",
+          "job_id",
+          "index",
+          "recipe",
+          "tag",
+          "byte_count",
+          "file_sha256",
+          "created_at"
+        ],
+        "title": "ImageOutput",
+        "type": "object"
+      },
+      "ImageOutputPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImageOutput"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ImageOutputPage",
+        "type": "object"
       },
       "ImageOutputSettings": {
         "additionalProperties": false,
@@ -5211,6 +5381,236 @@
           "expected_revision"
         ],
         "title": "ImagePresetUpdate",
+        "type": "object"
+      },
+      "ImageRecipe": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "output_index": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Output Index",
+            "type": "integer"
+          },
+          "pixel_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Pixel Sha256",
+            "type": "string"
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedImageSpec"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "maximum": 4294967295.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "width": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resolved",
+          "output_index",
+          "seed",
+          "pixel_sha256",
+          "width",
+          "height"
+        ],
+        "title": "ImageRecipe",
+        "type": "object"
+      },
+      "ImageSpec": {
+        "additionalProperties": false,
+        "description": "Fully specified client-side values before model-capability validation.",
+        "properties": {
+          "content_mode": {
+            "$ref": "#/components/schemas/ImageContentMode",
+            "default": "standard"
+          },
+          "control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageControl-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "guidance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Guidance",
+            "type": "string"
+          },
+          "height": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "init_image_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Init Image Id"
+          },
+          "loras": {
+            "items": {
+              "$ref": "#/components/schemas/ImageLora-Output"
+            },
+            "maxItems": 4,
+            "title": "Loras",
+            "type": "array"
+          },
+          "mask_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Id"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImageMode",
+            "default": "txt2img"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "n": {
+            "default": 1,
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "N",
+            "type": "integer"
+          },
+          "negative_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative Prompt"
+          },
+          "output": {
+            "$ref": "#/components/schemas/ImageOutputSettings"
+          },
+          "prompt": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 4294967295.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "steps": {
+            "maximum": 150.0,
+            "minimum": 1.0,
+            "title": "Steps",
+            "type": "integer"
+          },
+          "strength": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strength"
+          },
+          "upscale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageUpscale"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "width": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model_id",
+          "prompt",
+          "width",
+          "height",
+          "steps",
+          "guidance"
+        ],
+        "title": "ImageSpec",
         "type": "object"
       },
       "ImageSubmitRequest-Input": {
@@ -9125,6 +9525,102 @@
         ],
         "title": "ReservationHolder",
         "type": "string"
+      },
+      "ResolvedImageSpec": {
+        "additionalProperties": false,
+        "description": "Immutable execution facts; no owner, path, URL or secret field exists.",
+        "properties": {
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/ImageManifestDigest"
+            },
+            "maxItems": 16,
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "environment_fingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Environment Fingerprint",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/ImageInputDigest"
+            },
+            "maxItems": 3,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "model_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Model Sha256",
+            "type": "string"
+          },
+          "pipeline_version": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Pipeline Version",
+            "type": "string"
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          },
+          "preset_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Revision"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seeds": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Seeds",
+            "type": "array"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/ImageSpec"
+          },
+          "spec_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Spec Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spec",
+          "seeds",
+          "pipeline_version",
+          "environment_fingerprint",
+          "model_sha256",
+          "spec_hash"
+        ],
+        "title": "ResolvedImageSpec",
+        "type": "object"
       },
       "RunActivity": {
         "additionalProperties": false,
@@ -16231,6 +16727,169 @@
         "summary": "Cast Vote",
         "tags": [
           "failover"
+        ]
+      }
+    },
+    "/api/v1/image-outputs": {
+      "get": {
+        "operationId": "list_outputs_api_v1_image_outputs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ImageContentTag"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOutputPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Outputs",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/image-outputs/{output_id}": {
+      "get": {
+        "operationId": "get_output_api_v1_image_outputs__output_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "output_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Output Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Output",
+        "tags": [
+          "images"
         ]
       }
     },
