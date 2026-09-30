@@ -132,6 +132,11 @@ Bounded private image input staging is
 [draft PR #65](https://github.com/mcteer/coire/pull/65), reviewed against PR #64.
 T012, T049 and T054 remain open for authenticated upload admission, quota/processing,
 real-size boundary tests and cleanup before the route can be enabled.
+The private recipe parser handoff is
+[draft PR #66](https://github.com/mcteer/coire/pull/66), reviewed against PR #65.
+T053 remains open for generation-input normalization and T054 for owner upload,
+processing and cleanup. The worker accepts generated IDs and checks the recipe PNG
+against its committed size/hash without decoding pixels.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
