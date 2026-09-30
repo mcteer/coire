@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from coire_core.models.files import SHA256_PATTERN
+from coire_core.models.files import SHA256_PATTERN, ULID_PATTERN
 
 UINT32_MAX = 2**32 - 1
 GENERATION_INPUT_MAX_BYTES = 10 * 1024 * 1024
@@ -31,6 +31,23 @@ class ImageMode(StrEnum):
 class ImageContentMode(StrEnum):
     STANDARD = "standard"
     EXPLICIT = "explicit"
+
+
+class ImageContentTag(StrEnum):
+    NORMAL = "normal"
+    EXPLICIT = "explicit"
+    UNKNOWN = "unknown"
+
+
+class ImageJobState(StrEnum):
+    QUEUED = "queued"
+    RESERVING = "reserving"
+    RUNNING = "running"
+    TRANSFERRING = "transferring"
+    CANCELLING = "cancelling"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 class ImageLora(BaseModel):
@@ -396,6 +413,236 @@ class ImageRecipe(BaseModel):
         ):
             raise ValueError("output dimensions differ from resolved spec")
         return self
+
+
+class ImageJob(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(pattern=ULID_PATTERN)
+    state: ImageJobState
+    resolved: ResolvedImageSpec
+    queue_position: int | None = Field(default=None, ge=0)
+    progress_step: int | None = Field(default=None, ge=0)
+    failure_code: str | None = Field(default=None, max_length=100)
+    latest_event_sequence: int = Field(default=0, ge=0)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ImageJobReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str = Field(pattern=ULID_PATTERN)
+    state: ImageJobState
+    queue_position: int | None = Field(default=None, ge=0)
+    event_cursor: str | None = Field(default=None, max_length=50)
+
+
+class ImageJobPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ImageJob] = Field(max_length=100)
+    next_cursor: str | None = Field(default=None, max_length=100)
+
+
+class ImageJobEvent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str = Field(pattern=ULID_PATTERN)
+    sequence: int = Field(ge=1)
+    at: datetime
+    type: Literal["queued", "started", "progress", "done", "error", "cancelled", "reset"]
+    state: ImageJobState
+    queue_position: int | None = Field(default=None, ge=0)
+    stage: str | None = Field(default=None, max_length=80)
+    output_index: int | None = Field(default=None, ge=0, le=3)
+    step: int | None = Field(default=None, ge=0)
+    total_steps: int | None = Field(default=None, ge=1)
+    safe_code: str | None = Field(default=None, max_length=100)
+
+    @model_validator(mode="after")
+    def event_matches_state(self) -> ImageJobEvent:
+        required = {
+            "queued": ImageJobState.QUEUED,
+            "started": ImageJobState.RUNNING,
+            "progress": ImageJobState.RUNNING,
+            "done": ImageJobState.SUCCEEDED,
+            "error": ImageJobState.FAILED,
+            "cancelled": ImageJobState.CANCELLED,
+        }
+        if self.type in required and self.state is not required[self.type]:
+            raise ValueError("event type and state differ")
+        if self.type == "progress" and (self.stage is None or self.step is None):
+            raise ValueError("progress requires stage and step")
+        if self.type == "error" and self.safe_code is None:
+            raise ValueError("error requires safe_code")
+        return self
+
+
+class ImageOutput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    job_id: str = Field(pattern=ULID_PATTERN)
+    index: int = Field(ge=0, le=3)
+    recipe: ImageRecipe
+    tag: ImageContentTag
+    byte_count: int = Field(ge=1, le=RECIPE_INPUT_MAX_BYTES)
+    file_sha256: str = Field(pattern=SHA256_PATTERN)
+    created_at: datetime
+
+
+class ImageOutputPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ImageOutput] = Field(max_length=100)
+    next_cursor: str | None = Field(default=None, max_length=100)
+
+
+class ImagePreset(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    revision: int = Field(ge=1)
+    name: str = Field(min_length=1, max_length=120)
+    prompt_prefix: str = Field(default="", max_length=1000)
+    defaults: ImageSubmitRequest
+    retired: bool = False
+
+    @model_validator(mode="after")
+    def no_nested_preset(self) -> ImagePreset:
+        if self.defaults.preset_id is not None or self.defaults.model_id is None:
+            raise ValueError("preset defaults require a direct registry model_id")
+        return self
+
+
+class ImagePresetCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1, max_length=120)
+    prompt_prefix: str = Field(default="", max_length=1000)
+    defaults: ImageSubmitRequest
+
+    @model_validator(mode="after")
+    def no_nested_preset(self) -> ImagePresetCreate:
+        if self.defaults.preset_id is not None or self.defaults.model_id is None:
+            raise ValueError("preset defaults require a direct registry model_id")
+        return self
+
+
+class ImagePresetUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_revision: int = Field(ge=1)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    prompt_prefix: str | None = Field(default=None, max_length=1000)
+    defaults: ImageSubmitRequest | None = None
+
+
+class ImagePresetList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[ImagePreset] = Field(max_length=100)
+
+
+class ImageDownloadGrant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    output_id: uuid.UUID
+    url: str = Field(min_length=1, max_length=500)
+    expires_at: datetime
+
+
+class ImageDeletionReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    output_id: uuid.UUID
+    state: Literal["tombstoned", "purged"]
+
+
+class ImageRecipeImport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    recipe: ImageRecipe
+    settings: ImageSubmitRequest
+    exact_reproduction_available: bool
+    missing_input_sha256: list[str] = Field(default_factory=list, max_length=3)
+    missing_dependency_sha256: list[str] = Field(default_factory=list, max_length=16)
+    unavailable_reason: str | None = Field(default=None, max_length=200)
+
+    @field_validator("missing_input_sha256", "missing_dependency_sha256")
+    @classmethod
+    def valid_missing_digests(cls, value: list[str]) -> list[str]:
+        if any(not re.fullmatch(SHA256_PATTERN, digest) for digest in value):
+            raise ValueError("missing digests must be SHA-256")
+        return value
+
+    @model_validator(mode="after")
+    def availability_matches_reasons(self) -> ImageRecipeImport:
+        if self.exact_reproduction_available and (
+            self.missing_input_sha256
+            or self.missing_dependency_sha256
+            or self.unavailable_reason is not None
+        ):
+            raise ValueError("exact reproduction cannot have missing inputs or dependencies")
+        if not self.exact_reproduction_available and not (
+            self.missing_input_sha256 or self.missing_dependency_sha256 or self.unavailable_reason
+        ):
+            raise ValueError("unavailable reproduction needs a reason")
+        return self
+
+
+class OpenAIImageGenerationRequest(BaseModel):
+    """Standard image fields plus prefixed Coire extensions."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: uuid.UUID
+    prompt: str = Field(min_length=1, max_length=4000)
+    n: int = Field(default=1, ge=1, le=4)
+    size: str | None = Field(default=None, pattern=r"^[0-9]{2,4}x[0-9]{2,4}$")
+    quality: Literal["auto", "standard", "hd", "low", "medium", "high"] | None = None
+    response_format: Literal["url", "b64_json"] = "url"
+    output_format: Literal["png"] = "png"
+    stream: Literal[False] = False
+    user: str | None = Field(default=None, max_length=128)
+    coire_preset_id: uuid.UUID | None = None
+    coire_preset_revision: int | None = Field(default=None, ge=1)
+    coire_seed: int | None = Field(default=None, ge=0, le=UINT32_MAX)
+    coire_content_mode: ImageContentMode | None = None
+
+    @model_validator(mode="after")
+    def valid_size_and_preset(self) -> OpenAIImageGenerationRequest:
+        if self.coire_preset_revision is not None and self.coire_preset_id is None:
+            raise ValueError("coire_preset_revision requires coire_preset_id")
+        if self.size is not None:
+            width, height = map(int, self.size.split("x"))
+            if not 64 <= width <= 4096 or not 64 <= height <= 4096:
+                raise ValueError("size exceeds image dimensions")
+            if width % 8 or height % 8 or width * height > 16_000_000:
+                raise ValueError("size violates alignment or pixel bound")
+        return self
+
+
+class OpenAIImageData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str | None = None
+    b64_json: str | None = None
+
+    @model_validator(mode="after")
+    def one_format(self) -> OpenAIImageData:
+        if (self.url is None) == (self.b64_json is None):
+            raise ValueError("exactly one of url or b64_json is required")
+        return self
+
+
+class OpenAIImageGenerationResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    created: int = Field(ge=0)
+    data: list[OpenAIImageData] = Field(min_length=1, max_length=4)
+    coire_job_id: str = Field(pattern=ULID_PATTERN)
 
 
 def expand_image_seeds(seed: int, count: int) -> list[int]:

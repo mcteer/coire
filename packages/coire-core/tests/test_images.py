@@ -14,13 +14,18 @@ from coire_core.models.images import (
     ImageInput,
     ImageInputDigest,
     ImageInputUpload,
+    ImageJobEvent,
     ImageLora,
     ImageManifestDigest,
     ImageMode,
+    ImagePresetCreate,
     ImageRecipe,
+    ImageRecipeImport,
     ImageRecipeImportRequest,
     ImageSpec,
     ImageSubmitRequest,
+    OpenAIImageData,
+    OpenAIImageGenerationRequest,
     ResolvedImageSpec,
     canonical_client_intent_hash,
     canonical_recipe_bytes,
@@ -158,6 +163,20 @@ def test_recipe_is_bounded_precise_and_has_separate_pixel_digest() -> None:
         ResolvedImageSpec.model_validate({**resolved.model_dump(), "spec_hash": "0" * 64})
     with pytest.raises(ValidationError, match="output dimensions"):
         ImageRecipe.model_validate({**recipe.model_dump(), "width": 513})
+    restored = ImageRecipeImport(
+        recipe=recipe,
+        settings=ImageSubmitRequest(model_id=MODEL, prompt="fox"),
+        exact_reproduction_available=False,
+        unavailable_reason="changed runtime",
+    )
+    assert restored.unavailable_reason == "changed runtime"
+    with pytest.raises(ValidationError, match="exact reproduction"):
+        ImageRecipeImport(
+            recipe=recipe,
+            settings=restored.settings,
+            exact_reproduction_available=True,
+            unavailable_reason="changed runtime",
+        )
     with pytest.raises(ValidationError, match="dependencies"):
         ResolvedImageSpec.model_validate(
             {
@@ -201,3 +220,37 @@ def test_capability_limits() -> None:
         capability.validate_spec(spec(negative_prompt="no blur"))
     with pytest.raises(ValueError, match="steps"):
         capability.validate_spec(spec(steps=31))
+
+
+def test_events_enforce_job_identity_and_terminal_shapes() -> None:
+    event: dict[str, object] = {
+        "job_id": "01J00000000000000000000000",
+        "sequence": 1,
+        "at": datetime.now(UTC),
+        "type": "done",
+        "state": "succeeded",
+    }
+    ImageJobEvent.model_validate(event)
+    with pytest.raises(ValidationError, match="job_id"):
+        ImageJobEvent.model_validate({**event, "job_id": str(MODEL)})
+    with pytest.raises(ValidationError, match="event type and state"):
+        ImageJobEvent.model_validate({**event, "state": "failed"})
+    with pytest.raises(ValidationError, match="progress requires"):
+        ImageJobEvent.model_validate({**event, "type": "progress", "state": "running"})
+
+
+def test_compatible_format_and_preset_are_strict() -> None:
+    OpenAIImageGenerationRequest(model=MODEL, prompt="fox", output_format="png")
+    with pytest.raises(ValidationError, match="output_format"):
+        OpenAIImageGenerationRequest.model_validate(
+            {"model": MODEL, "prompt": "fox", "output_format": "jpeg"}
+        )
+    with pytest.raises(ValidationError, match="size"):
+        OpenAIImageGenerationRequest(model=MODEL, prompt="fox", size="9999x9999")
+    with pytest.raises(ValidationError, match="exactly one"):
+        OpenAIImageData(url="/image", b64_json="base64")
+    with pytest.raises(ValidationError, match="preset defaults"):
+        ImagePresetCreate(
+            name="bad",
+            defaults=ImageSubmitRequest(preset_id=MODEL, prompt="fox"),
+        )
