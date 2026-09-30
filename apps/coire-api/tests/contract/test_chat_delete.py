@@ -77,19 +77,19 @@ async def test_owner_tombstone_is_immediate_and_idempotent() -> None:
     principal = Principal(kind=PrincipalKind.USER, user_id=session.owner)
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     first = await delete_conversation(
-        session,
+        session,  # type: ignore[arg-type]
         principal,
         session.conversation.id,
         ChatDeleteRequest(expected_revision=2),
         settings,
-    )  # type: ignore[arg-type]
+    )
     second = await delete_conversation(
-        session,
+        session,  # type: ignore[arg-type]
         principal,
         session.conversation.id,
         ChatDeleteRequest(expected_revision=2),
         settings,
-    )  # type: ignore[arg-type]
+    )
     assert first == second
     assert session.conversation.deleted_at is not None
     assert session.conversation.revision == 3
@@ -112,21 +112,21 @@ async def test_foreign_and_stale_delete_are_refused() -> None:
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     with pytest.raises(ChatNotFound):
         await delete_conversation(
-            session,
+            session,  # type: ignore[arg-type]
             Principal(kind=PrincipalKind.USER, user_id=uuid.uuid4()),
             session.conversation.id,
             ChatDeleteRequest(expected_revision=2),
             settings,
-        )  # type: ignore[arg-type]
+        )
     session.allowed = True
     with pytest.raises(ChatConflict):
         await delete_conversation(
-            session,
+            session,  # type: ignore[arg-type]
             Principal(kind=PrincipalKind.USER, user_id=session.owner),
             session.conversation.id,
             ChatDeleteRequest(expected_revision=1),
             settings,
-        )  # type: ignore[arg-type]
+        )
 
 
 async def test_delete_expires_completed_chat_coding_artifact_before_commit() -> None:
@@ -148,13 +148,13 @@ async def test_delete_expires_completed_chat_coding_artifact_before_commit() -> 
     )
     session.artifacts.append(artifact)
     await delete_conversation(
-        session,
+        session,  # type: ignore[arg-type]
         Principal(kind=PrincipalKind.USER, user_id=session.owner),
         session.conversation.id,
         ChatDeleteRequest(expected_revision=2),
-        Settings(_secrets_dir="/nonexistent"),
-    )  # type: ignore[arg-type,call-arg]
-    assert artifact.expires_at <= session.conversation.deleted_at
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
+    assert artifact.expires_at <= session.conversation.deleted_at  # type: ignore[operator]
     assert session.commits == 1
 
 

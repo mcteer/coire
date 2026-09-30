@@ -103,13 +103,15 @@ async def test_foreign_missing_and_deleted_conversations_share_404() -> None:
     for result, user_id in ((None, owner_id), (row, other_id)):
         with pytest.raises(ChatNotFound) as error:
             await require_owned_chat(
-                Session(result),
+                Session(result),  # type: ignore[arg-type]
                 conversation_id,
                 Principal(kind=PrincipalKind.USER, user_id=user_id),
-            )  # type: ignore[arg-type]
+            )
         assert error.value.to_problem().status == 404
     row.deleted_at = datetime.now(UTC)
     with pytest.raises(ChatNotFound):
         await require_owned_chat(
-            Session(row), conversation_id, Principal(kind=PrincipalKind.ADMIN, user_id=owner_id)
-        )  # type: ignore[arg-type]
+            Session(row),  # type: ignore[arg-type]
+            conversation_id,
+            Principal(kind=PrincipalKind.ADMIN, user_id=owner_id),
+        )

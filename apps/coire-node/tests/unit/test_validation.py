@@ -99,12 +99,22 @@ def test_visual_inventory_requires_local_complete_processor_and_weights(tmp_path
 def test_visual_smoke_uses_only_local_loader_and_fails_closed(tmp_path: Path) -> None:
     model = tmp_path / "model"
     _visual_files(model)
-    with (
-        patch("mlx_vlm.load", return_value=(object(), object())) as load,
-        patch(
-            "mlx_vlm.generate", return_value=SimpleNamespace(text="The square is red.")
-        ) as generate,
-    ):
+    # mlx and mlx-vlm are Darwin node extras. The unit test supplies their loader
+    # interface so Linux CI can prove the smoke stays local and fails closed.
+    mlx_pkg = ModuleType("mlx")
+    mlx_core = ModuleType("mlx.core")
+    mlx_core.metal = SimpleNamespace(  # type: ignore[attr-defined]
+        reset_peak_memory=lambda: None,
+        get_peak_memory=lambda: 1,
+        get_cache_memory=lambda: 1,
+    )
+    mlx_pkg.core = mlx_core  # type: ignore[attr-defined]
+    mlx_vlm = ModuleType("mlx_vlm")
+    load = MagicMock(return_value=(object(), object()))
+    generate = MagicMock(return_value=SimpleNamespace(text="The square is red."))
+    mlx_vlm.load = load  # type: ignore[attr-defined]
+    mlx_vlm.generate = generate  # type: ignore[attr-defined]
+    with patch.dict(sys.modules, {"mlx": mlx_pkg, "mlx.core": mlx_core, "mlx_vlm": mlx_vlm}):
         outcome, failure, capability = run_visual_smoke(model)
     assert outcome is ValidationOutcome.PASS
     assert failure is None
@@ -113,7 +123,8 @@ def test_visual_smoke_uses_only_local_loader_and_fails_closed(tmp_path: Path) ->
     assert "<image>" in generate.call_args.args[2]
     assert generate.call_args.kwargs["image"].endswith("fixture.png")
 
-    with patch("mlx_vlm.load", side_effect=RuntimeError("sensitive path")):
+    load.side_effect = RuntimeError("sensitive path")
+    with patch.dict(sys.modules, {"mlx": mlx_pkg, "mlx.core": mlx_core, "mlx_vlm": mlx_vlm}):
         outcome, failure, capability = run_visual_smoke(model)
     assert outcome is ValidationOutcome.FAIL
     assert failure == "visual load failed: RuntimeError"

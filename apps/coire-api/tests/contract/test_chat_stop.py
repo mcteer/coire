@@ -72,21 +72,21 @@ async def test_owner_stop_persists_one_status_and_repeats_idempotently() -> None
     principal = Principal(kind=PrincipalKind.USER, user_id=session.owner)
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     first = await request_turn_stop(
-        session,
+        session,  # type: ignore[arg-type]
         principal,
         session.conversation.id,
         session.turn.id,
         ChatStopRequest(reason="user_stop"),
         settings,
-    )  # type: ignore[arg-type]
+    )
     second = await request_turn_stop(
-        session,
+        session,  # type: ignore[arg-type]
         principal,
         session.conversation.id,
         session.turn.id,
         ChatStopRequest(reason="user_stop"),
         settings,
-    )  # type: ignore[arg-type]
+    )
     assert first.state == second.state == "stop_requested"
     assert session.turn.stop_reason == "user_stop"
     assert session.conversation.event_cursor == 4
@@ -100,13 +100,13 @@ async def test_owner_stop_persists_one_status_and_repeats_idempotently() -> None
     }
     session.turn.state = "stopped"
     finished = await request_turn_stop(
-        session,
+        session,  # type: ignore[arg-type]
         principal,
         session.conversation.id,
         session.turn.id,
         ChatStopRequest(reason="user_stop"),
         settings,
-    )  # type: ignore[arg-type]
+    )
     assert finished.state == "stopped"
     assert session.commits == 1
 
@@ -157,25 +157,25 @@ async def test_queued_coding_stop_revokes_and_finishes_once(
     principal = Principal(kind=PrincipalKind.USER, user_id=session.owner)
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     first = await turns.request_turn_stop(
-        session,
+        session,  # type: ignore[arg-type]
         principal,
         session.conversation.id,
         session.turn.id,
         ChatStopRequest(reason="user_stop"),
         settings,
-    )  # type: ignore[arg-type]
+    )
     second = await turns.request_turn_stop(
-        session,
+        session,  # type: ignore[arg-type]
         principal,
         session.conversation.id,
         session.turn.id,
         ChatStopRequest(reason="user_stop"),
         settings,
-    )  # type: ignore[arg-type]
+    )
     assert first.state == second.state == "stopped"
     assert killed == [session.turn.run_id]
     assert session.conversation.active_turn_id is None
-    assert [row.type for row in session.events] == ["turn.terminal"]
+    assert [row.type for row in session.events] == ["turn.terminal"]  # type: ignore[unreachable]
     assert terminal_metrics == [{"mode": "coding", "outcome": "stopped"}]
     assert len(stop_metrics) == 1 and stop_metrics[0] >= 0
 
@@ -186,33 +186,33 @@ async def test_foreign_missing_and_cross_parent_stop_are_uniform_404() -> None:
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
     with pytest.raises(ChatNotFound):
         await request_turn_stop(
-            session,
+            session,  # type: ignore[arg-type]
             principal,
             session.conversation.id,
             session.turn.id,
             ChatStopRequest(reason="navigation"),
             settings,
-        )  # type: ignore[arg-type]
+        )
     session.allowed = True
     with pytest.raises(ChatNotFound):
         await request_turn_stop(
-            session,
+            session,  # type: ignore[arg-type]
             principal,
             session.conversation.id,
             uuid.uuid4(),
             ChatStopRequest(reason="navigation"),
             settings,
-        )  # type: ignore[arg-type]
+        )
     session.turn.conversation_id = uuid.uuid4()
     with pytest.raises(ChatNotFound):
         await request_turn_stop(
-            session,
+            session,  # type: ignore[arg-type]
             principal,
             session.conversation.id,
             session.turn.id,
             ChatStopRequest(reason="navigation"),
             settings,
-        )  # type: ignore[arg-type]
+        )
 
 
 async def test_stop_route_requires_exact_browser_origin_and_returns_typed_state() -> None:

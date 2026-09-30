@@ -19,7 +19,7 @@ from coire_api.db import get_session
 from coire_api.gateway.proxy import EngineProxyError
 from coire_api.gateway.resolution import ModelNotFoundError, ResolvedModel
 from coire_api.gateway.usage import UsageTracker
-from coire_api.routes.v1 import _tracked_stream
+from coire_api.routes.v1 import _tracked_stream  # type: ignore[attr-defined]
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
 from coire_core.models.registry import EngineBackend, ModelSource, VisualCapability
 from coire_core.settings import Settings, get_settings

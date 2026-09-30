@@ -137,11 +137,11 @@ async def test_coding_visual_input_is_owned_and_copied_from_verified_worker_asse
         ),
         model_id=model.id,
     )
-    assert recorded.input["coire_visual_inputs"][0]["data_base64"] == staged[0].data_base64
+    assert recorded.input["coire_visual_inputs"][0]["data_base64"] == staged[0].data_base64  # type: ignore[index]
     call = McpCallRow(input={"coire_visual_inputs": [staged[0].model_dump(mode="json")]})
     assert prepared_run_visual_inputs(call) == list(staged)
     call.input = {
-        "coire_visual_inputs": [{**call.input["coire_visual_inputs"][0], "sha256": "0" * 64}]
+        "coire_visual_inputs": [{**call.input["coire_visual_inputs"][0], "sha256": "0" * 64}]  # type: ignore[index]
     }
     with pytest.raises(ValueError, match="manifest"):
         prepared_run_visual_inputs(call)

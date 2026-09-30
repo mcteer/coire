@@ -63,7 +63,7 @@ async def test_owner_edit_commits_one_version_and_event() -> None:
     assert changed.title == "After" and changed.revision == 3
     assert session.row.event_cursor == 4
     assert session.events[0].type == "conversation.updated"
-    assert session.events[0].payload["conversation"]["title"] == "After"
+    assert session.events[0].payload["conversation"]["title"] == "After"  # type: ignore[index]
     assert session.commits == 1
     assert "FOR UPDATE" in session.sql and "owner_user_id" in session.sql
     with pytest.raises(ChatConflict):

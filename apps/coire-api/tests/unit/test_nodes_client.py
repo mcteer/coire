@@ -16,7 +16,13 @@ from coire_core.models.engine import ReconcileRequest
 from coire_core.models.harness import ProfileName
 from coire_core.models.jobs import ChecksumManifest
 from coire_core.models.registry import EngineBackend
-from coire_core.models.runs import RunActivity, RunActivityPage, RunContainerCreate, RunLimits
+from coire_core.models.runs import (
+    RunActivity,
+    RunActivityPage,
+    RunActivityTool,
+    RunContainerCreate,
+    RunLimits,
+)
 from coire_core.net import ControlClient
 from coire_core.settings import Settings
 
@@ -29,7 +35,7 @@ async def test_run_activity_client_validates_run_and_cursor() -> None:
     record = RunActivity(
         run_id=run_id,
         sequence=1,
-        tool_name="read_file",
+        tool_name=RunActivityTool.READ_FILE,
         state="started",
         created_at=datetime.now(UTC),
     )

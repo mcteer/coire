@@ -7,11 +7,12 @@ import pytest
 from pydantic import ValidationError
 
 from coire_core.models.acquisition import ModelVariant, Precision, VariantRecipe, VariantState
+from coire_core.models.conversation import ImagePart
 from coire_core.models.engine import EngineStartRequest
 from coire_core.models.gateway import ChatMessage, EngineChatRequest
 from coire_core.models.harness import HarnessMessage, HarnessRunRequest, ProfileName, TaskClass
 from coire_core.models.registry import CapabilityProfile, CapabilityProfileUpdate, EngineBackend
-from coire_core.models.runs import RunActivity, RunActivityPage
+from coire_core.models.runs import RunActivity, RunActivityPage, RunActivityTool
 
 
 def test_openai_text_null_and_inline_image_parts() -> None:
@@ -26,7 +27,9 @@ def test_openai_text_null_and_inline_image_parts() -> None:
             ],
         }
     )
-    assert len(message.content) == 2
+    content = message.content
+    assert isinstance(content, list)
+    assert len(content) == 2
     for url in (
         "https://example.com/a.png",
         "file:///etc/passwd",
@@ -72,7 +75,7 @@ def test_backend_and_visual_capability_default_to_text_and_are_server_controlled
             engine_id=uuid4(),
             slug="org--model",
             estimate_bytes=1024,
-            backend="mlx_vlm",
+            backend=EngineBackend.MLX_VLM,
             chat_template="x",
         )
     with pytest.raises(ValidationError):
@@ -88,7 +91,7 @@ def test_harness_visual_inputs_are_trusted_refs_and_activity_excludes_content() 
         task="Inspect diagram",
         capability_profile=CapabilityProfile(),
         context_window=1024,
-        visual_inputs=[image],
+        visual_inputs=[ImagePart.model_validate(image)],
     )
     assert request.visual_inputs[0].asset_id
     assert HarnessMessage(role="user", content="hi").visual_inputs == []
@@ -99,7 +102,7 @@ def test_harness_visual_inputs_are_trusted_refs_and_activity_excludes_content() 
     activity = RunActivity(
         run_id=uuid4(),
         sequence=1,
-        tool_name="read_file",
+        tool_name=RunActivityTool.READ_FILE,
         state="started",
         created_at=datetime.now(UTC),
     )

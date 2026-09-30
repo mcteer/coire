@@ -52,21 +52,21 @@ class FakeHistorySession:
         self.queries: list[str] = []
 
     async def scalar(self, statement: object) -> ChatConversationRow | None:
-        self.queries.append(str(statement.compile(dialect=postgresql.dialect())))
+        self.queries.append(str(statement.compile(dialect=postgresql.dialect())))  # type: ignore[attr-defined, no-untyped-call]
         return self.detail
 
     async def execute(self, statement: object) -> object:
-        sql = str(statement.compile(dialect=postgresql.dialect()))
+        sql = str(statement.compile(dialect=postgresql.dialect()))  # type: ignore[attr-defined, no-untyped-call]
         self.queries.append(sql)
         rows: list[object]
         if "FROM chat_turns" in sql:
-            rows = self.turns
+            rows = self.turns  # type: ignore[assignment]
         elif "FROM chat_messages" in sql:
-            rows = self.messages
+            rows = self.messages  # type: ignore[assignment]
         elif "FROM chat_attachments" in sql:
             rows = []
         else:
-            rows = self.conversations
+            rows = self.conversations  # type: ignore[assignment]
         return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: rows))
 
 
@@ -82,8 +82,10 @@ async def test_list_uses_owner_filter_and_stable_opaque_cursor() -> None:
     assert "updated_at DESC" in session.queries[0]
     later = FakeHistorySession(conversations=[rows[2]])
     second = await list_conversations(
-        later, principal, ChatPageQuery(limit=2, cursor=first.next_cursor)
-    )  # type: ignore[arg-type]
+        later,  # type: ignore[arg-type]
+        principal,
+        ChatPageQuery(limit=2, cursor=first.next_cursor),
+    )
     assert [item.id for item in second.data] == [rows[2].id]
     assert second.next_cursor is None
     assert "updated_at <" in later.queries[0]
@@ -132,11 +134,11 @@ async def test_detail_returns_partial_answer_snapshot_and_older_position() -> No
     )
     session = FakeHistorySession(detail=conversation, messages=[answer, user], turns=[turn])
     detail = await get_conversation_detail(
-        session,
+        session,  # type: ignore[arg-type]
         Principal(kind=PrincipalKind.USER, user_id=OWNER),
         conversation.id,
         ChatMessagePageQuery(limit=1),
-    )  # type: ignore[arg-type]
+    )
     assert detail.event_cursor == 4
     assert detail.messages[0].text == "Partial answer"
     assert detail.messages[0].model_display_name == "Saved model name"

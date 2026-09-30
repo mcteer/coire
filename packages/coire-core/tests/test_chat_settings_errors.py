@@ -27,15 +27,13 @@ def test_chat_limits_and_worker_secret_defaults() -> None:
         ("file_worker_max_active", 2),
     ):
         with pytest.raises(ValidationError):
-            Settings(_secrets_dir="/nonexistent", **{field: value})  # type: ignore[call-arg]
+            Settings(_secrets_dir="/nonexistent", **{field: value})  # type: ignore[arg-type,call-arg]
 
 
 def test_chat_browser_origin_is_exact() -> None:
     for valid in ("https://chat.example.test", "http://localhost:8080"):
-        assert (
-            Settings(_secrets_dir="/nonexistent", chat_browser_origin=valid).chat_browser_origin
-            == valid
-        )  # type: ignore[call-arg]
+        created = Settings(_secrets_dir="/nonexistent", chat_browser_origin=valid)  # type: ignore[call-arg]
+        assert created.chat_browser_origin == valid
     for invalid in (
         "http://chat.example.test",
         "https://chat.example.test/",

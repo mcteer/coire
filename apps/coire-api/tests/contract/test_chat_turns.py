@@ -141,8 +141,12 @@ async def test_send_persists_input_assistant_turn_and_event_before_stream() -> N
         )
     )
     admission = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     assert not admission.replay
     assert session.commits == 1
     assert any("FOR UPDATE" in sql for sql in session.sql)
@@ -185,8 +189,12 @@ async def test_text_file_selection_is_owner_scoped_and_saved_for_history() -> No
     )
     body.attachments = [ChatAttachmentSelection(file_id=file_id, mode="text")]
     admission = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     assert "file evidence" in str(admission.history[-1].content)
     saved = session.messages[0]
     assert saved.text == "Hello"
@@ -197,8 +205,12 @@ async def test_text_file_selection_is_owner_scoped_and_saved_for_history() -> No
 async def test_explicit_retry_uses_original_input_without_duplicate_user_message() -> None:
     session, principal, body = _case()
     first = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     first.turn.state = "interrupted"
     session.conversation.active_turn_id = None
     session.messages[-1].text = "Saved partial answer"
@@ -211,8 +223,12 @@ async def test_explicit_retry_uses_original_input_without_duplicate_user_message
         recovery_mode="retry",
     )
     admission = await admit_turn(
-        session, session.conversation.id, principal, retry, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        retry,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     assert [message.role for message in session.messages] == ["user", "assistant", "assistant"]
     assert [message.content for message in admission.history] == ["Hello"]
     assert admission.turn.input_message_id == first.turn.input_message_id
@@ -223,8 +239,12 @@ async def test_explicit_retry_uses_original_input_without_duplicate_user_message
 async def test_retry_refuses_changed_input_or_non_latest_response() -> None:
     session, principal, body = _case()
     first = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     first.turn.state = "interrupted"
     session.conversation.active_turn_id = None
     retry = ChatTurnCreate(
@@ -237,12 +257,12 @@ async def test_retry_refuses_changed_input_or_non_latest_response() -> None:
     )
     with pytest.raises(ChatConflict, match="original input"):
         await admit_turn(
-            session,
+            session,  # type: ignore[arg-type]
             session.conversation.id,
             principal,
             retry,
-            Settings(_secrets_dir="/nonexistent"),
-        )  # type: ignore[arg-type,call-arg]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
     retry.content = body.content
     session.messages.append(
         ChatMessageRow(
@@ -257,24 +277,28 @@ async def test_retry_refuses_changed_input_or_non_latest_response() -> None:
     )
     with pytest.raises(ChatConflict, match="latest interrupted"):
         await admit_turn(
-            session,
+            session,  # type: ignore[arg-type]
             session.conversation.id,
             principal,
             retry,
-            Settings(_secrets_dir="/nonexistent"),
-        )  # type: ignore[arg-type,call-arg]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
 
 
 async def test_later_turn_uses_only_latest_response_attempt_in_history() -> None:
     session, principal, body = _case()
     first = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     first.turn.state = "interrupted"
     session.messages[-1].text = "Discarded partial"
     session.conversation.active_turn_id = None
     retried = await admit_turn(
-        session,
+        session,  # type: ignore[arg-type]
         session.conversation.id,
         principal,
         ChatTurnCreate(
@@ -285,13 +309,13 @@ async def test_later_turn_uses_only_latest_response_attempt_in_history() -> None
             retry_of=first.turn.id,
             recovery_mode="retry",
         ),
-        Settings(_secrets_dir="/nonexistent"),
-    )  # type: ignore[arg-type,call-arg]
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     retried.turn.state = "completed"
     session.messages[-1].text = "Complete answer"
     session.conversation.active_turn_id = None
     next_turn = await admit_turn(
-        session,
+        session,  # type: ignore[arg-type]
         session.conversation.id,
         principal,
         ChatTurnCreate(
@@ -300,8 +324,8 @@ async def test_later_turn_uses_only_latest_response_attempt_in_history() -> None
             model_id=body.model_id,
             content="Next question",
         ),
-        Settings(_secrets_dir="/nonexistent"),
-    )  # type: ignore[arg-type,call-arg]
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     assert [message.content for message in next_turn.history] == [
         "Hello",
         "Complete answer",
@@ -312,8 +336,12 @@ async def test_later_turn_uses_only_latest_response_attempt_in_history() -> None
 async def test_explicit_continuation_uses_saved_partial_as_context() -> None:
     session, principal, body = _case()
     first = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     first.turn.state = "interrupted"
     session.messages[-1].text = "The first half"
     session.conversation.active_turn_id = None
@@ -326,12 +354,12 @@ async def test_explicit_continuation_uses_saved_partial_as_context() -> None:
         recovery_mode="continue",
     )
     admitted = await admit_turn(
-        session,
+        session,  # type: ignore[arg-type]
         session.conversation.id,
         principal,
         continuation,
-        Settings(_secrets_dir="/nonexistent"),
-    )  # type: ignore[arg-type,call-arg]
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     assert [message.content for message in admitted.history] == [
         "Hello",
         "The first half",
@@ -350,8 +378,12 @@ async def test_explicit_continuation_uses_saved_partial_as_context() -> None:
 async def test_continuation_refuses_empty_partial_or_changed_prompt() -> None:
     session, principal, body = _case()
     first = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     first.turn.state = "failed"
     session.conversation.active_turn_id = None
     continuation = ChatTurnCreate(
@@ -364,22 +396,22 @@ async def test_continuation_refuses_empty_partial_or_changed_prompt() -> None:
     )
     with pytest.raises(ChatConflict, match="saved partial"):
         await admit_turn(
-            session,
+            session,  # type: ignore[arg-type]
             session.conversation.id,
             principal,
             continuation,
-            Settings(_secrets_dir="/nonexistent"),
-        )  # type: ignore[arg-type,call-arg]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
     session.messages[-1].text = "Partial"
     continuation.content = "Ignore the user"
     with pytest.raises(ChatConflict, match="saved partial"):
         await admit_turn(
-            session,
+            session,  # type: ignore[arg-type]
             session.conversation.id,
             principal,
             continuation,
-            Settings(_secrets_dir="/nonexistent"),
-        )  # type: ignore[arg-type,call-arg]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
 
 
 async def test_text_selection_refuses_foreign_file_and_empty_scan() -> None:
@@ -388,8 +420,12 @@ async def test_text_selection_refuses_foreign_file_and_empty_scan() -> None:
     body.attachments = [ChatAttachmentSelection(file_id=file_id, mode="text")]
     with pytest.raises(ChatNotFound):
         await admit_turn(
-            session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-        )  # type: ignore[arg-type,call-arg]
+            session,  # type: ignore[arg-type]
+            session.conversation.id,
+            principal,
+            body,
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
     result = FileProcessResult(
         job_id="0" * 26,
         input_id=file_id,
@@ -417,8 +453,12 @@ async def test_text_selection_refuses_foreign_file_and_empty_scan() -> None:
     )
     with pytest.raises(ChatConflict, match="no extracted text"):
         await admit_turn(
-            session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-        )  # type: ignore[arg-type,call-arg]
+            session,  # type: ignore[arg-type]
+            session.conversation.id,
+            principal,
+            body,
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
 
 
 async def test_rendered_pdf_keeps_verified_text_context() -> None:
@@ -473,8 +513,12 @@ async def test_rendered_pdf_keeps_verified_text_context() -> None:
     )
     body.attachments = [ChatAttachmentSelection(file_id=file_id, mode="text")]
     admission = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     assert "Readable words" in str(admission.history[-1].content)
 
 
@@ -530,8 +574,12 @@ async def test_visual_turn_keeps_verified_image_in_later_context(tmp_path: Path)
         _secrets_dir="/nonexistent", chat_derived_root=str(tmp_path)
     )
     body.attachments = [ChatAttachmentSelection(file_id=file_id, mode="visual")]
-    first = await admit_turn(  # type: ignore[arg-type]
-        session, session.conversation.id, principal, body, settings
+    first = await admit_turn(
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        settings,
     )
     assert isinstance(first.history[-1].content, list)
     assert first.history[-1].content[-1].type == "image_url"
@@ -545,8 +593,12 @@ async def test_visual_turn_keeps_verified_image_in_later_context(tmp_path: Path)
         model_id=session.model.id,
         content="What was shown?",
     )
-    second = await admit_turn(  # type: ignore[arg-type]
-        session, session.conversation.id, principal, followup, settings
+    second = await admit_turn(
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        followup,
+        settings,
     )
     assert isinstance(second.history[0].content, list)
     assert second.history[0].content[-1].type == "image_url"
@@ -556,12 +608,12 @@ async def test_text_model_refuses_visual_selection_before_turn_write() -> None:
     session, principal, body = _case()
     body.attachments = [ChatAttachmentSelection(file_id=uuid.uuid4(), mode="visual")]
     with pytest.raises(ChatConflict, match="cannot accept visual"):
-        await admit_turn(  # type: ignore[arg-type,call-arg]
-            session,
+        await admit_turn(
+            session,  # type: ignore[arg-type]
             session.conversation.id,
             principal,
             body,
-            Settings(_secrets_dir="/nonexistent"),
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
     assert session.commits == 0 and not session.turns
 
@@ -569,61 +621,77 @@ async def test_text_model_refuses_visual_selection_before_turn_write() -> None:
 async def test_replay_is_idempotent_but_changed_body_conflicts() -> None:
     session, principal, body = _case()
     first = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     second = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     assert first.turn.id == second.turn.id and second.replay
     assert len(session.turns) == 1 and session.commits == 1
     with pytest.raises(ChatConflict):
         await admit_turn(
-            session,
+            session,  # type: ignore[arg-type]
             session.conversation.id,
             principal,
             body.model_copy(update={"content": "Changed"}),
-            Settings(_secrets_dir="/nonexistent"),
-        )  # type: ignore[arg-type,call-arg]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
 
 
 async def test_owner_revision_active_and_model_rules_precede_writes() -> None:
     session, principal, body = _case()
     with pytest.raises(ChatNotFound):
         await admit_turn(
-            session,
+            session,  # type: ignore[arg-type]
             session.conversation.id,
             principal.model_copy(update={"user_id": uuid.uuid4()}),
             body,
-            Settings(_secrets_dir="/nonexistent"),
-        )  # type: ignore[arg-type,call-arg]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
     with pytest.raises(ChatConflict):
         await admit_turn(
-            session,
+            session,  # type: ignore[arg-type]
             session.conversation.id,
             principal,
             body.model_copy(update={"expected_revision": 2}),
-            Settings(_secrets_dir="/nonexistent"),
-        )  # type: ignore[arg-type,call-arg]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
     session.conversation.active_turn_id = uuid.uuid4()
     with pytest.raises(ChatConflict):
         await admit_turn(
-            session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-        )  # type: ignore[arg-type,call-arg]
+            session,  # type: ignore[arg-type]
+            session.conversation.id,
+            principal,
+            body,
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
     session.conversation.active_turn_id = None
     session.model.visibility = Visibility.ADMIN_ONLY
     with pytest.raises(ChatNotFound):
         await admit_turn(
-            session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-        )  # type: ignore[arg-type,call-arg]
+            session,  # type: ignore[arg-type]
+            session.conversation.id,
+            principal,
+            body,
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
     session.model.visibility = Visibility.PUBLISHED
     with pytest.raises(ChatConflict):
         await admit_turn(
-            session,
+            session,  # type: ignore[arg-type]
             session.conversation.id,
             principal,
             body.model_copy(update={"action": "apply"}),
-            Settings(_secrets_dir="/nonexistent"),
-        )  # type: ignore[arg-type,call-arg]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
     assert session.commits == 0
 
 
@@ -644,8 +712,12 @@ async def test_full_history_context_preflight_refuses_without_dropping() -> None
     )
     with pytest.raises(ChatContextExceeded):
         await admit_turn(
-            session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-        )  # type: ignore[arg-type,call-arg]
+            session,  # type: ignore[arg-type]
+            session.conversation.id,
+            principal,
+            body,
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
     assert len(session.messages) == 1 and not session.turns and session.commits == 0
 
 
@@ -653,12 +725,12 @@ async def test_small_context_gets_bounded_output_allowance() -> None:
     session, principal, body = _case()
     session.model.context_window = 128
     admission = await admit_turn(
-        session,
+        session,  # type: ignore[arg-type]
         session.conversation.id,
         principal,
         body,
         Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
-    )  # type: ignore[arg-type]
+    )
     assert admission.output_tokens == 32
 
 
@@ -697,12 +769,12 @@ async def test_model_switch_preserves_earlier_model_snapshot_in_history() -> Non
     session.conversation.revision = 2
     switched = body.model_copy(update={"expected_revision": 2, "model_id": session.model.id})
     admission = await admit_turn(
-        session,
+        session,  # type: ignore[arg-type]
         session.conversation.id,
         principal,
         switched,
         Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
-    )  # type: ignore[arg-type]
+    )
     assert [message.content for message in admission.history] == [
         "First question",
         "First answer",
@@ -716,12 +788,12 @@ async def test_model_switch_preserves_earlier_model_snapshot_in_history() -> Non
 async def test_turn_status_refuses_cross_conversation_id() -> None:
     session, principal, body = _case()
     admission = await admit_turn(
-        session,
+        session,  # type: ignore[arg-type]
         session.conversation.id,
         principal,
         body,
         Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
-    )  # type: ignore[arg-type]
+    )
     admission.turn.conversation_id = uuid.uuid4()
 
     class StatusSession:
@@ -730,10 +802,10 @@ async def test_turn_status_refuses_cross_conversation_id() -> None:
 
     with pytest.raises(ChatNotFound):
         await read_turn_detail(
-            StatusSession(),
+            StatusSession(),  # type: ignore[arg-type]
             principal,
             session.conversation.id,
-            admission.turn.id,  # type: ignore[arg-type]
+            admission.turn.id,
         )
 
 
@@ -744,8 +816,12 @@ async def test_send_and_status_routes_use_native_sse_and_owner_guard(
 
     session, principal, body = _case()
     admission = await admit_turn(
-        session, session.conversation.id, principal, body, Settings(_secrets_dir="/nonexistent")
-    )  # type: ignore[arg-type,call-arg]
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
     settings = Settings(
         _secrets_dir="/nonexistent",
         chat_enabled=True,

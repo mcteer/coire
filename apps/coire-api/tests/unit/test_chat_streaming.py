@@ -108,9 +108,12 @@ async def test_cold_turn_reports_observed_queue_before_running(
     _ = [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
     assert statuses == ["loading", "queued", "running"]
 
 
@@ -207,17 +210,17 @@ def _saved_event(admission: Admission, kind: str, cursor: int, **kwargs: object)
     if kind == "status":
         payload = ChatTurnStatus(state=kwargs["state"])  # type: ignore[arg-type]
     elif kind == "delta":
-        payload = ChatMessageDelta(
+        payload = ChatMessageDelta(  # type: ignore[assignment]
             message_id=admission.turn.assistant_message_id,
             channel="answer",
             text=str(kwargs["text"]),
             offset=len(str(kwargs["text"])),
         )
     else:
-        payload = ChatTurnTerminal(
-            state=kwargs["state"],
+        payload = ChatTurnTerminal(  # type: ignore[assignment]
+            state=kwargs["state"],  # type: ignore[arg-type]
             answer_length=0,
-            reasoning_length=0,  # type: ignore[arg-type]
+            reasoning_length=0,
         )
     return ChatEvent(
         conversation_id=admission.turn.conversation_id,
@@ -266,15 +269,18 @@ async def test_text_stream_persists_before_each_native_event(
     chunks = [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
     assert model_path == ["/opt/coire/models/safe"]
     assert b"/opt/coire/models" not in b"".join(chunks)
     assert b"Hello" not in chunks[0]
     assert sequence == ["persist:status", "persist:delta", "persist:terminal"]
-    assert actual_usage[0].prompt_tokens == 8  # type: ignore[union-attr]
-    assert actual_usage[0].completion_tokens == 3  # type: ignore[union-attr]
+    assert actual_usage[0].prompt_tokens == 8  # type: ignore[attr-defined]
+    assert actual_usage[0].completion_tokens == 3  # type: ignore[attr-defined]
     assert chunks[-1].startswith(b"event: turn.terminal")
 
 
@@ -448,9 +454,12 @@ async def test_bad_native_engine_stream_counts_one_bounded_parser_failure(
     chunks = [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
     assert recorded == [(1, {"reason": reason})]
     assert b'"state":"failed"' in chunks[-1]
 
@@ -495,9 +504,12 @@ async def test_reasoning_stream_saves_split_thinking_in_separate_channel(
     chunks = [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
     assert deltas == [("reasoning", "private"), ("answer", "Answer")]
     assert chunks[-1].startswith(b"event: turn.terminal")
 
@@ -539,9 +551,12 @@ async def test_reasoning_content_frame_uses_reasoning_channel(
     _ = [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
     assert deltas == [("answer", "Public"), ("reasoning", "private")]
 
 
@@ -593,9 +608,12 @@ async def test_stop_with_split_opening_marker_never_emits_reasoning_as_answer(
     _ = [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
     assert deltas == []
     assert states == ["stopped"]
 
@@ -639,9 +657,12 @@ async def test_cold_then_ready_emits_loading_before_generation(
     chunks = [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
     assert any(b"event: turn.status" in chunk for chunk in chunks)
     assert any(b"turn.terminal" in chunk for chunk in chunks)
     assert estimates == [estimate]
@@ -677,9 +698,12 @@ async def test_cold_load_failure_has_safe_actionable_terminal(
     chunks = [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
     assert saved_errors == ["model warm-up failed; try again or choose another model"]
     assert b"private node failure" not in b"".join(chunks)
 
@@ -731,9 +755,12 @@ async def test_owner_stop_closes_upstream_and_saves_partial_answer(
         return [
             chunk
             async for chunk in native_stream(
-                admission, principal, request, Settings(_secrets_dir="/nonexistent")
+                admission,
+                principal,
+                request,  # type: ignore[arg-type]
+                Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
             )
-        ]  # type: ignore[arg-type,call-arg]
+        ]
 
     chunks = await asyncio.wait_for(consume(), timeout=3)
     assert saved_kinds == ["status", "delta", "terminal"]
@@ -826,7 +853,7 @@ async def test_navigation_abort_after_durable_stop_saves_stopped_terminal(
     assert b"turn.status" in await anext(source)
     assert b"partial" in await anext(source)
     stopped = True
-    await source.aclose()
+    await source.aclose()  # type: ignore[attr-defined]
     assert terminal_states == ["stopped"]
     assert outcomes == [UsageOutcome.STOPPED]
 
@@ -837,9 +864,12 @@ async def consume_native(
     return [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
 
 
 @pytest.mark.parametrize("failure", ["engine", "disconnect"])
@@ -875,9 +905,12 @@ async def test_failure_or_disconnect_saves_safe_terminal(
     chunks = [
         chunk
         async for chunk in native_stream(
-            admission, principal, request, Settings(_secrets_dir="/nonexistent")
+            admission,
+            principal,
+            request,  # type: ignore[arg-type]
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
-    ]  # type: ignore[arg-type,call-arg]
+    ]
     assert saved_kinds[-1][0] == "terminal"
     assert saved_kinds[-1][1] in {"failed", "interrupted"}
     assert b"private stack details" not in b"".join(chunks)
@@ -942,9 +975,9 @@ async def test_duplicate_replays_saved_events_without_engine(
         async for chunk in replay_saved_events(
             admission,
             principal,
-            request,
+            request,  # type: ignore[arg-type]
             Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
-        )  # type: ignore[arg-type]
+        )
     ]
     assert len(chunks) == 1
     assert chunks[0].startswith(b"event: turn.accepted")
@@ -1012,9 +1045,9 @@ async def test_persistence_failure_closes_stream_without_engine_details(
         async for chunk in native_stream(
             admission,
             principal,
-            request,
+            request,  # type: ignore[arg-type]
             Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
-        )  # type: ignore[arg-type]
+        )
     ]
     assert len(chunks) == 1
     assert b"private database error" not in chunks[0]

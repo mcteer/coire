@@ -137,5 +137,5 @@ async def test_provider_registration_writes_audit_and_starts_private(
         actor="operator",
         provider_ready=True,
     )
-    assert model.visibility is Visibility.PUBLISHED
+    assert cast(Visibility, model.visibility) is Visibility.PUBLISHED
     assert audits[-1]["action"] == "model.publish"

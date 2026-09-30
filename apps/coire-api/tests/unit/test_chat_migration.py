@@ -61,7 +61,7 @@ def test_registry_backend_defaults_are_populated_on_existing_rows() -> None:
     for name in ("models", "model_variants"):
         column = tables[name].c.backend
         assert column.server_default is not None
-        assert "mlx_lm" in str(column.server_default.arg)
+        assert "mlx_lm" in str(getattr(column.server_default, "arg", ""))
         assert "visual_capability" in tables[name].c
 
 
@@ -103,7 +103,7 @@ def test_recovery_mode_migration_is_additive_and_reversible() -> None:
 def test_engine_backend_migration_backfills_text_and_is_reversible() -> None:
     column = Base.metadata.tables["engine_processes"].c.backend
     assert column.server_default is not None
-    assert "mlx_lm" in str(column.server_default.arg)
+    assert "mlx_lm" in str(getattr(column.server_default, "arg", ""))
     source = Path("apps/coire-api/alembic/versions/0019_engine_backend.py").read_text()
     assert 'down_revision: str | None = "0018_chat_recovery_mode"' in source
     assert 'server_default="mlx_lm"' in source

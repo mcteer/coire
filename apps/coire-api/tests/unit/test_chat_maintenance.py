@@ -175,7 +175,7 @@ async def test_text_purge_scrubs_only_safe_tombstones(
         assert conversation.title == "Deleted conversation"
         assert conversation.selected_model_id is None
         assert conversation.active_turn_id is None
-        assert conversation.purged_at is not None
+        assert conversation.purged_at is not None  # type: ignore[unreachable]
         assert sum(command.startswith("DELETE FROM chat_") for command in commands) == 4
         assert await maintenance.purge_deleted_text() == 0
     else:

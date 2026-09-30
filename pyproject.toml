@@ -81,7 +81,7 @@ namespace_packages = true
 exclude = ["/conftest\\.py$"]
 
 [[tool.mypy.overrides]]
-module = ["psutil.*", "jsonschema.*", "mlx.*", "mlx_lm.*", "pypdfium2.*"]
+module = ["asyncpg.*", "psutil.*", "jsonschema.*", "mlx.*", "mlx_lm.*", "mlx_vlm.*", "pypdfium2.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------- pytest

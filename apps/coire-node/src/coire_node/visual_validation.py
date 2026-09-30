@@ -72,10 +72,14 @@ def run_visual_smoke(
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     phase = "import"
     try:
+        import importlib
+
         import mlx.core as mx
-        from mlx_vlm import generate as mlx_generate  # type: ignore[attr-defined]
-        from mlx_vlm import load as mlx_load  # type: ignore[attr-defined]
         from PIL import Image
+
+        mlx_module = importlib.import_module("mlx_vlm")
+        mlx_generate = mlx_module.generate
+        mlx_load = mlx_module.load
 
         phase = "load"
         mx.metal.reset_peak_memory()
