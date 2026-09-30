@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.util
 import logging
+import math
 import platform
 import re
 import shutil
@@ -20,10 +21,15 @@ import socket
 import subprocess
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
+from enum import StrEnum
 
 import psutil
 from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace
+from opentelemetry.trace import Span
 
 from coire_core.models.engine import EngineStatus
 from coire_core.models.jobs import JobStatus
@@ -37,6 +43,74 @@ _data_link_up = _meter.create_gauge("coire_data_link_up", description="Studio da
 _data_link_latency = _meter.create_histogram(
     "coire_data_link_latency_ms", unit="ms", description="Studio data-link connect latency"
 )
+
+_image_meter = otel_metrics.get_meter("coire.node.image")
+_image_tracer = trace.get_tracer("coire.node.image")
+image_stages_total = _image_meter.create_counter(
+    "coire_image_node_stages_total", unit="1", description="Studio image stage outcomes"
+)
+image_stage_seconds = _image_meter.create_histogram(
+    "coire_image_node_stage_seconds", unit="s", description="Studio image stage duration"
+)
+image_cache_bytes = _image_meter.create_gauge(
+    "coire_image_node_cache_bytes", unit="By", description="Studio image cache occupancy"
+)
+
+
+class ImageNodeStage(StrEnum):
+    LOAD = "load"
+    PREPROCESS = "preprocess"
+    GENERATE = "generate"
+    UPSCALE = "upscale"
+    CLASSIFY = "classify"
+    TRANSFER = "transfer"
+    CLEANUP = "cleanup"
+
+
+class ImageNodeOutcome(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+def record_image_stage(
+    stage: ImageNodeStage,
+    outcome: ImageNodeOutcome,
+    *,
+    duration_s: float | None = None,
+    job_id: str | None = None,
+) -> None:
+    """Only fixed stage/outcome labels reach node metrics."""
+    if not isinstance(stage, ImageNodeStage):
+        raise ValueError("unknown image stage")
+    if not isinstance(outcome, ImageNodeOutcome):
+        raise ValueError("unknown image outcome")
+    if duration_s is not None and (not math.isfinite(duration_s) or duration_s < 0):
+        raise ValueError("invalid image stage duration")
+    if job_id is not None and re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", job_id) is None:
+        raise ValueError("invalid image job identifier")
+    attributes = {"stage": stage.value, "outcome": outcome.value}
+    image_stages_total.add(1, attributes=attributes)
+    if duration_s is not None:
+        image_stage_seconds.record(duration_s, attributes=attributes)
+    logger.info(
+        "image stage",
+        extra={"image_stage": stage.value, "image_outcome": outcome.value, "job_id": job_id},
+    )
+
+
+@contextmanager
+def image_node_span(stage: ImageNodeStage, *, job_id: str | None = None) -> Iterator[Span]:
+    """Start a fixed-name Studio image span with an optional validated ULID."""
+    if not isinstance(stage, ImageNodeStage):
+        raise ValueError("unknown image stage")
+    if job_id is not None and re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", job_id) is None:
+        raise ValueError("invalid image job identifier")
+    with _image_tracer.start_as_current_span(f"coire.node.image.{stage.value}") as span:
+        if job_id is not None:
+            span.set_attribute("job_id", job_id)
+        yield span
+
 
 IOREG_TIMEOUT_S = 3.0
 _GPU_UTIL_RE = re.compile(rb'"Device Utilization %"\s*=\s*(\d+)')

@@ -23,6 +23,7 @@ COPY deploy/compose/prometheus/prometheus.yml /etc/prometheus/prometheus.yml
 COPY deploy/compose/prometheus/rules/ /etc/prometheus/rules/
 COPY deploy/observability/alerts/control-plane-efficiency.yaml /etc/prometheus/rules/control-plane-efficiency.yml
 COPY deploy/observability/alerts/chat.yaml /etc/prometheus/rules/chat.yml
+COPY deploy/observability/alerts/image.yaml /etc/prometheus/rules/image.yml
 COPY --from=build /src/web/ui /web/ui
 COPY --from=build --chown=65534:65534 /data/prometheus /prometheus
 USER 65534:65534
