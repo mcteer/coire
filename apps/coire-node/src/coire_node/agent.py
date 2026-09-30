@@ -18,6 +18,7 @@ import asyncio
 import hmac
 import logging
 import socket
+import threading
 from pathlib import Path
 from typing import Annotated, Protocol
 
@@ -32,6 +33,7 @@ from coire_node.benchmarks import BenchmarkRunner
 from coire_node.docker_api import DockerAPI
 from coire_node.engines import EngineManager
 from coire_node.grants import Grants
+from coire_node.image_runtime.supervisor import ImageProcessSupervisor, ImageProcessUnavailable
 from coire_node.jobs import JobSupervisor
 from coire_node.link_probes import LinkProbeRunner
 from coire_node.reservations import ReservationLedger
@@ -39,6 +41,7 @@ from coire_node.routes import benchmarks as benchmark_routes
 from coire_node.routes import engines as engines_routes
 from coire_node.routes import export as export_routes
 from coire_node.routes import failover as failover_routes
+from coire_node.routes import image_workers as image_workers_routes
 from coire_node.routes import jobs as jobs_routes
 from coire_node.routes import link_probes as link_probe_routes
 from coire_node.routes import models as models_routes
@@ -136,6 +139,7 @@ def create_app(
     store: Store | None = None,
     jobs: JobSupervisor | None = None,
     engines: EngineManager | None = None,
+    image_workers: ImageProcessSupervisor | None = None,
     grants: Grants | None = None,
     reservations: ReservationLedger | None = None,
     shard_groups: ShardGroupManager | None = None,
@@ -155,6 +159,7 @@ def create_app(
     app.state.store = store
     app.state.jobs = jobs
     app.state.engines = engines
+    app.state.image_workers = image_workers
     app.state.grants = grants
     app.state.reservations = reservations
     app.state.shard_groups = shard_groups
@@ -244,6 +249,8 @@ def create_app(
         app.include_router(models_routes.router, dependencies=guard)
         app.include_router(jobs_routes.router, dependencies=guard)
         app.include_router(engines_routes.router, dependencies=guard)
+        if image_workers is not None:
+            app.include_router(image_workers_routes.router, dependencies=guard)
         app.include_router(sharding_routes.router, dependencies=guard)
         app.include_router(link_probe_routes.router, dependencies=guard)
         app.include_router(benchmark_routes.router, dependencies=guard)
@@ -282,8 +289,23 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     grants = Grants()
     # Bare engines are private implementation details of coire-node. The authenticated
     # control listener is their sole network boundary; no engine port binds to Wi-Fi.
-    engines = EngineManager(settings, store, "127.0.0.1")
-    reservations = ReservationLedger(settings, store, engines.committed_bytes)
+    memory_lock = threading.RLock()
+    image_workers: ImageProcessSupervisor | None = None
+    engines = EngineManager(
+        settings,
+        store,
+        "127.0.0.1",
+        memory_lock=memory_lock,
+        additional_committed_bytes=lambda: image_workers.committed_bytes() if image_workers else 0,
+    )
+    image_workers = ImageProcessSupervisor(
+        settings, store, engines.committed_bytes, memory_lock=memory_lock
+    )
+    reservations = ReservationLedger(
+        settings,
+        store,
+        lambda: engines.committed_bytes() + image_workers.committed_bytes(),
+    )
     shard_groups = ShardGroupManager(settings, store)
     link_probes = LinkProbeRunner(settings)
     benchmarks = BenchmarkRunner(settings, store)
@@ -294,6 +316,13 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     # running. Both happen before the listeners bind, so the first /node/health after a restart
     # already tells the truth (spec FR-015, edge case 3).
     adopted = engines.adopt_from_state()
+    try:
+        adopted_image = image_workers.adopt_from_state()
+    except ImageProcessUnavailable:
+        logger.warning("image worker state uncertain; retaining memory budget")
+    else:
+        if adopted_image is not None:
+            logger.info("adopted image worker %s after restart", adopted_image.instance_id)
     if adopted:
         logger.info("adopted %d running engine(s) after restart", len(adopted))
     resumed = jobs.resume_all()
@@ -315,6 +344,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         store=store,
                         jobs=jobs,
                         engines=engines,
+                        image_workers=image_workers,
                         grants=grants,
                         reservations=reservations,
                         shard_groups=shard_groups,
@@ -341,6 +371,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                             store=store,
                             jobs=jobs,
                             engines=engines,
+                            image_workers=image_workers,
                             grants=grants,
                             reservations=reservations,
                             shard_groups=shard_groups,
@@ -366,6 +397,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         store=store,
                         jobs=jobs,
                         engines=engines,
+                        image_workers=image_workers,
                         grants=grants,
                         reservations=reservations,
                         runs=runs,
@@ -398,6 +430,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         store=store,
                         jobs=jobs,
                         engines=engines,
+                        image_workers=image_workers,
                         grants=grants,
                         reservations=reservations,
                         runs=runs,

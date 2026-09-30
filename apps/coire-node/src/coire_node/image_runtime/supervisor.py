@@ -135,6 +135,7 @@ class ImageProcessSupervisor:
         other_committed_bytes: Callable[[], int],
         *,
         memory_total_bytes: int | None = None,
+        memory_lock: threading.RLock | None = None,
     ) -> None:
         self.settings = settings
         self.store = store
@@ -143,7 +144,7 @@ class ImageProcessSupervisor:
         self.state_root = Path(settings.node_state_dir) / "image-workers"
         self.record_path = self.state_root / "worker.json"
         self.scratch_root = Path(settings.node_state_dir) / "image-scratch"
-        self._lock = threading.RLock()
+        self._lock = memory_lock or threading.RLock()
         self._record: ImageWorkerProcessRecord | None = None
         self._last_stopped: ImageWorkerLoadResult | None = None
         self._uncertain_reserved_bytes = 0
@@ -155,6 +156,10 @@ class ImageProcessSupervisor:
             if self.record_path.exists():
                 return int(self.memory_total_bytes * self.settings.node_memory_budget_fraction)
             return self._uncertain_reserved_bytes
+
+    def current_status(self) -> ImageWorkerLoadResult | None:
+        with self._lock:
+            return self._record.status if self._record is not None else None
 
     def adopt_from_state(self) -> ImageWorkerLoadResult | None:
         """Re-own only the exact node child; uncertain state keeps a full budget hold."""

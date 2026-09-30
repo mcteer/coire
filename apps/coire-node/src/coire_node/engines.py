@@ -31,6 +31,7 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -290,12 +291,21 @@ def _alive(pid: int | None, create_time: float | None, *, needle: str | None = N
 class EngineManager:
     """Spawns, watches, adopts and stops engines."""
 
-    def __init__(self, settings: Settings, store: Store, mesh_address: str) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        store: Store,
+        mesh_address: str,
+        *,
+        memory_lock: threading.RLock | None = None,
+        additional_committed_bytes: Callable[[], int] | None = None,
+    ) -> None:
         self._settings = settings
         self._store = store
         self._address = mesh_address
         self._engines: dict[str, _Engine] = {}
-        self._lock = threading.RLock()
+        self._lock = memory_lock or threading.RLock()
+        self._additional_committed_bytes = additional_committed_bytes or (lambda: 0)
         """One lock spanning the budget check *and* the spawn. Two concurrent loads that each
         fit but together do not must not both be admitted (spec edge case 8)."""
         self._state_file = Path(settings.node_state_dir) / ENGINES_FILE
@@ -351,7 +361,7 @@ class EngineManager:
                 if self._store.verify_against(slug, manifest):
                     raise CopyMissing(f"visual copy of {slug} differs from its manifest")
 
-            committed = self.committed_bytes()
+            committed = self.committed_bytes() + self._additional_committed_bytes()
             budget = self.budget_bytes()
             if committed + estimate_bytes > budget:
                 raise BudgetExceeded(
