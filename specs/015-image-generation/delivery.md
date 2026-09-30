@@ -168,6 +168,11 @@ Owner input tombstones and safe purge are
 T039/T054 remain open for generation-job reference cancellation, normalized inputs,
 and end-to-end retention evidence. Active references return 409 until job cancellation
 can drain them; held or stored input bytes release only after physical deletion.
+Measured defaults and strict basic txt2img request resolution are
+[draft PR #73](https://github.com/mcteer/coire/pull/73), reviewed against PR #72.
+T035 remains open for live registry/entitlement checks, idempotent transaction admission,
+quota, audit and durable queue receipts. Profiles without measured defaults are readable
+but cannot admit a job.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
