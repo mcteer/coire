@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Path, Query, Response, status
 
-from coire_core.models.image_worker import NodeImageJob, NodeImageStartRequest
+from coire_core.models.files import ULID_PATTERN
+from coire_core.models.image_worker import ImageJobBinding, NodeImageJob, NodeImageStartRequest
 from coire_node.deps import ImageDispatcherDep
 from coire_node.image_dispatch import ImageDispatchConflict, ImageDispatchUnavailable
 from coire_node.image_jobs import ImageJournalConflict, ImageJournalUnavailable
@@ -25,4 +26,23 @@ async def start_image_job(
     except (ImageJournalUnavailable, ImageDispatchUnavailable):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "image job unavailable") from None
     response.status_code = status.HTTP_202_ACCEPTED if created else status.HTTP_200_OK
+    return item
+
+
+@router.get("/{job_id}", response_model=NodeImageJob)
+async def get_image_job(
+    dispatcher: ImageDispatcherDep,
+    job_id: str = Path(pattern=ULID_PATTERN),
+    attempt: int = Query(ge=1),
+    fence: int = Query(ge=1),
+) -> NodeImageJob:
+    binding = ImageJobBinding(job_id=job_id, attempt=attempt, fence=fence)
+    try:
+        item = await dispatcher.status(binding)
+    except ImageDispatchConflict:
+        raise HTTPException(status.HTTP_409_CONFLICT, "image job binding unavailable") from None
+    except (ImageJournalUnavailable, ImageDispatchUnavailable):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "image job unavailable") from None
+    if item is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "image job unavailable")
     return item

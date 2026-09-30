@@ -59,6 +59,7 @@ image_cache_bytes = _image_meter.create_gauge(
 
 class ImageNodeStage(StrEnum):
     JOURNAL = "journal"
+    STATUS = "status"
     LAUNCH = "launch"
     LOAD = "load"
     PREPROCESS = "preprocess"

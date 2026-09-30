@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 
 from coire_core.models.image_worker import (
+    ImageJobBinding,
     ImageWorkerLoadRequest,
     ImageWorkerRunRequest,
     ImageWorkerStatus,
@@ -15,7 +16,7 @@ from coire_core.models.image_worker import (
     NodeImageStartRequest,
 )
 from coire_core.models.images import ImageMode
-from coire_node.image_jobs import ImageJobJournal
+from coire_node.image_jobs import ImageJobJournal, ImageJournalConflict
 from coire_node.image_runtime.supervisor import ImageProcessSupervisor, ImageProcessUnavailable
 from coire_node.metrics import ImageNodeOutcome, ImageNodeStage, image_node_span, record_image_stage
 
@@ -52,6 +53,24 @@ def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> 
 
 def _later(status: NodeImageJob) -> datetime:
     return max(datetime.now(UTC), status.updated_at + timedelta(microseconds=1))
+
+
+def _progress(
+    worker_status: ImageWorkerStatus, request: NodeImageStartRequest
+) -> tuple[int | None, int | None]:
+    if worker_status.step is None:
+        return None, None
+    if (
+        worker_status.output_index is None
+        or worker_status.total_steps != request.resolved.spec.steps
+        or worker_status.step > request.resolved.spec.steps
+        or worker_status.output_index >= request.resolved.spec.n
+    ):
+        raise ImageDispatchUnavailable()
+    return (
+        worker_status.output_index * request.resolved.spec.steps + worker_status.step,
+        request.resolved.spec.n * request.resolved.spec.steps,
+    )
 
 
 class ImageNodeDispatcher:
@@ -131,17 +150,22 @@ class ImageNodeDispatcher:
             if worker_status.state == "waiting":
                 return True, reserving
             if worker_status.state in {"running", "generated"}:
+                progress_step, progress_total = _progress(worker_status, request)
                 running = self.journal.advance(
                     reserving.model_copy(
                         update={
                             "state": "running",
-                            "progress_step": worker_status.step,
-                            "progress_total": worker_status.total_steps,
+                            "progress_step": progress_step,
+                            "progress_total": progress_total,
                             "updated_at": _later(reserving),
                         }
                     )
                 )
                 if worker_status.state == "generated":
+                    if {output.index for output in worker_status.outputs} != set(
+                        range(request.resolved.spec.n)
+                    ):
+                        raise ImageDispatchUnavailable()
                     return True, self.journal.advance(
                         running.model_copy(
                             update={"state": "transferring", "updated_at": _later(running)}
@@ -158,3 +182,115 @@ class ImageNodeDispatcher:
                     }
                 )
             )
+
+    async def status(self, binding: ImageJobBinding) -> NodeImageJob | None:
+        """Observe an exact attempt; worker loss never causes a new run."""
+        async with self._lock:
+            current = self.journal.get(binding.job_id)
+            if current is None:
+                return None
+            if (current.attempt, current.fence) != (binding.attempt, binding.fence):
+                raise ImageDispatchConflict()
+            if current.state in {"cancelled", "failed", "succeeded"}:
+                return current
+            request = self.journal.request(binding.job_id)
+            if request is None:
+                raise ImageDispatchUnavailable()
+            try:
+                load, port, token = self.worker.private_control(current.instance_id)
+            except ImageProcessUnavailable:
+                raise ImageDispatchUnavailable() from None
+            if not _supported(request, load):
+                raise ImageDispatchUnavailable()
+            with image_node_span(ImageNodeStage.STATUS, job_id=binding.job_id):
+                try:
+                    async with httpx.AsyncClient(
+                        transport=self.transport, trust_env=False, timeout=2.0
+                    ) as client:
+                        response = await client.post(
+                            f"http://127.0.0.1:{port}/status",
+                            headers={"Authorization": f"Bearer {token}"},
+                            json=binding.model_dump(mode="json"),
+                        )
+                    if response.status_code != 200:
+                        raise ImageDispatchUnavailable()
+                    observed = ImageWorkerStatus.model_validate(response.json())
+                    if (
+                        observed.job_id != binding.job_id
+                        or observed.attempt != binding.attempt
+                        or observed.fence != binding.fence
+                    ):
+                        raise ImageDispatchUnavailable()
+                    updated = self._reconcile(current, request, observed)
+                except (
+                    httpx.HTTPError,
+                    ValueError,
+                    ImageDispatchUnavailable,
+                    ImageJournalConflict,
+                ):
+                    record_image_stage(
+                        ImageNodeStage.STATUS, ImageNodeOutcome.FAILED, job_id=binding.job_id
+                    )
+                    raise ImageDispatchUnavailable() from None
+                record_image_stage(
+                    ImageNodeStage.STATUS, ImageNodeOutcome.SUCCEEDED, job_id=binding.job_id
+                )
+                return updated
+
+    def _reconcile(
+        self,
+        current: NodeImageJob,
+        request: NodeImageStartRequest,
+        observed: ImageWorkerStatus,
+    ) -> NodeImageJob:
+        if observed.state == "waiting":
+            if current.state not in {"queued", "reserving"}:
+                raise ImageDispatchUnavailable()
+            return current
+        if observed.state == "running":
+            if current.state not in {"reserving", "running"}:
+                raise ImageDispatchUnavailable()
+            progress_step, progress_total = _progress(observed, request)
+            if progress_step is None:
+                progress_step, progress_total = current.progress_step, current.progress_total
+            return self.journal.advance(
+                current.model_copy(
+                    update={
+                        "state": "running",
+                        "progress_step": progress_step,
+                        "progress_total": progress_total,
+                        "updated_at": _later(current),
+                    }
+                )
+            )
+        if observed.state == "generated":
+            if {output.index for output in observed.outputs} != set(range(request.resolved.spec.n)):
+                raise ImageDispatchUnavailable()
+            if current.state == "transferring":
+                return current
+            if current.state not in {"reserving", "running"}:
+                raise ImageDispatchUnavailable()
+            running = current
+            if current.state == "reserving":
+                running = self.journal.advance(
+                    current.model_copy(update={"state": "running", "updated_at": _later(current)})
+                )
+            return self.journal.advance(
+                running.model_copy(update={"state": "transferring", "updated_at": _later(running)})
+            )
+        if current.state not in {"queued", "reserving", "running", "transferring", "cancelling"}:
+            raise ImageDispatchUnavailable()
+        terminal = "cancelled" if observed.state == "cancelled" else "failed"
+        if current.state == "queued" and terminal == "cancelled":
+            pass
+        elif current.state == "queued":
+            raise ImageDispatchUnavailable()
+        return self.journal.advance(
+            current.model_copy(
+                update={
+                    "state": terminal,
+                    "safe_error": None if terminal == "cancelled" else "generation_failed",
+                    "updated_at": _later(current),
+                }
+            )
+        )
