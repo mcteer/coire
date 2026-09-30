@@ -23,3 +23,9 @@ downgrade while any asset record remains. Revoke grants, reconcile transfers, ph
 purge private blobs, and back up asset records before removing them from the database.
 Only then downgrade to `0023_image_jobs_presets`; it also removes the owner-pair key added
 to `image_jobs`. Never use a schema downgrade to delete private blobs.
+
+Revision `0025_image_capacity` adds quota counters, execution leases and coexistence
+profiles. Inspect `image_quotas`, `image_execution_leases` and
+`image_coexistence_profiles`. Before rollback, stop admission and reconcile every active
+lease with node process/PID evidence. A timeout alone is not proof a worker stopped.
+Back up the rows; downgrade to `0024_image_assets` only after all three tables are empty.
