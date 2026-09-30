@@ -11,7 +11,8 @@ Branch and merge status remains separate from task completion.
 | Child | Scope | Parent tasks |
 | --- | --- | --- |
 | `015a-image-runtime` | Frozen, native Studio mflux installation | T002–T003 |
-| `015b-image-contracts` | Typed contracts, validation, hashes and settings | T004–T007, T010–T011 |
+| `015b-image-contracts` | Request, capability, input and recipe contracts | T004, T010; part of T006 |
+| `015b2-image-worker-contracts` | Job/compatible projections, registry, worker and settings contracts | T005–T007, T011 |
 | `015c-image-persistence` | Durable tables, constraints and migrations | T008–T009 |
 | `015d-image-security` | Identity, entitlement, audit and presets | T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -25,6 +26,8 @@ Branch and merge status remains separate from task completion.
 
 The first child is [draft PR #31](https://github.com/mcteer/coire/pull/31), based on `main`.
 Its installer tests and local smoke passed; real Studio upgrade/rollback evidence is pending.
+The request/recipe contracts are [draft PR #32](https://github.com/mcteer/coire/pull/32),
+also based on `main`. Parent T006 remains open for the remaining projection contracts.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
