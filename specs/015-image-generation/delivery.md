@@ -24,6 +24,7 @@ Branch and merge status remains separate from task completion.
 | `015d1-image-identity-guard` | Human/personal-key preflight and live rechecks | part of T014, T017–T018 |
 | `015d2-image-route-guard` | Audited route dependency and owner-only ordinary reads | part of T014, T017–T018 |
 | `015d3-image-preset-resolution` | Immutable preset override and dependency-policy resolution | part of T015, T019 |
+| `015e1-image-routing-isolation` | Exclude image backends from language/vision routing and legacy acquisition | part of T027–T028 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
 | `015f1-image-storage-config` | Disabled API-only blob volume, settings and ingress bounds | part of T012 |
@@ -71,6 +72,9 @@ Preset override and frozen dependency-policy resolution are
 [draft PR #48](https://github.com/mcteer/coire/pull/48), reviewed against PR #47.
 The parent story tasks remain open for production routes, admission and completion audits,
 revocation cancellation, preset persistence/admin routes and full entitlement integration.
+Routing isolation is [draft PR #49](https://github.com/mcteer/coire/pull/49), reviewed
+against PR #48. Image asset-kind persistence and the dedicated admin acquisition path
+remain required before T027–T028 can be marked complete.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
