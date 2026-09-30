@@ -11,7 +11,7 @@ from pathlib import Path
 
 def smoke(python: Path) -> None:
     subprocess.run(
-        [str(python), "-c", "import coire_core, coire_node, mlx_lm, mlx_vlm"],
+        [str(python), "-c", "import coire_core, coire_node, mlx_lm, mlx_vlm, mflux"],
         check=True,
         timeout=30,
         stdout=subprocess.DEVNULL,
@@ -23,6 +23,13 @@ def smoke(python: Path) -> None:
             timeout=30,
             stdout=subprocess.DEVNULL,
         )
+    # Check the direct Python entry point without loading weights or reaching Hugging Face.
+    subprocess.run(
+        [str(python), "-c", "from mflux.models.flux.variants.txt2img.flux import Flux1"],
+        check=True,
+        timeout=30,
+        stdout=subprocess.DEVNULL,
+    )
 
 
 def publish_environment(

@@ -18,6 +18,8 @@ dependencies = [
     "mlx-lm>=0.31.3; platform_system=='Darwin'",
     # MIT. Bare visual serving on Studios only; node installer stages the locked graph.
     "mlx-vlm==0.7.3; platform_system=='Darwin'",
+    # MIT. Bare image generation on Studios; model assets require separate admin licence review.
+    "mflux==0.20.0; platform_system=='Darwin'",
     # BSD-3-Clause. Transformers 5's Idefics3 AutoProcessor needs the Torchvision backend
     # even when its local PIL processor exists; keep this off core and Linux CI.
     "torchvision; platform_system=='Darwin'",
