@@ -4806,6 +4806,15 @@
             "title": "Modes",
             "type": "array"
           },
+          "required_dependency_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Required Dependency Ids",
+            "type": "array"
+          },
           "supports_negative_prompt": {
             "default": false,
             "title": "Supports Negative Prompt",

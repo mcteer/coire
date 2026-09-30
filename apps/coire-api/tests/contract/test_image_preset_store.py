@@ -21,6 +21,7 @@ OWNER = uuid.uuid4()
 PRESET = uuid.uuid4()
 BASE = uuid.uuid4()
 ADAPTER = uuid.uuid4()
+HIDDEN = uuid.uuid4()
 
 PROFILE: dict[str, object] = {
     "modes": ["txt2img"],
@@ -110,6 +111,47 @@ async def test_preset_store_unions_frozen_and_registry_policy(
     assert checks == [
         {"explicit": True, "required_entitlements": frozenset({"explicit", "base", "adapter"})}
     ]
+
+
+async def test_hidden_base_dependency_cannot_be_removed_by_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows = _rows()
+    base = cast(ModelRow, rows[(ModelRow, BASE)])
+    base.image_capability_profile = {
+        **PROFILE,
+        "required_dependency_ids": [str(HIDDEN)],
+    }
+    rows[(ModelRow, HIDDEN)] = ModelRow(
+        id=HIDDEN,
+        kind=ModelKind.IMAGE_CLASSIFIER,
+        backend=EngineBackend.AUXILIARY,
+        source="studio",
+        state=ModelState.READY,
+        entitlement=["hidden"],
+    )
+    checks: list[dict[str, object]] = []
+
+    async def live(session: object, principal: Principal, **kwargs: object) -> uuid.UUID:
+        checks.append(kwargs)
+        return OWNER
+
+    monkeypatch.setattr(presets, "authorize_live_image_action", live)
+    result = await presets.load_resolved_image_preset(
+        cast(AsyncSession, FakeSession(rows)),
+        ImageSubmitRequest(preset_id=PRESET, loras=[]),
+        Principal(kind=PrincipalKind.USER, user_id=OWNER),
+    )
+    assert HIDDEN in result.dependency_ids
+    assert "hidden" in result.required_entitlements
+    assert "hidden" in cast(frozenset[str], checks[0]["required_entitlements"])
+    rows.pop((ModelRow, HIDDEN))
+    with pytest.raises(ImageValidationError):
+        await presets.load_resolved_image_preset(
+            cast(AsyncSession, FakeSession(rows)),
+            ImageSubmitRequest(preset_id=PRESET, loras=[]),
+            Principal(kind=PrincipalKind.USER, user_id=OWNER),
+        )
 
 
 @pytest.mark.parametrize(

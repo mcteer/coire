@@ -3500,6 +3500,8 @@ export interface components {
             min_width: number;
             /** Modes */
             modes: components["schemas"]["ImageMode"][];
+            /** Required Dependency Ids */
+            required_dependency_ids?: string[];
             /**
              * Supports Negative Prompt
              * @default false

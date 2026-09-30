@@ -23,3 +23,9 @@ It then checks the union of frozen preset and current registry entitlements agai
 the live user/key. A missing or malformed row fails before worker dispatch. The
 future admission route must keep this transaction open through job/quota/audit commit
 and must audit service-level refusals; no route calls the loader yet.
+
+The base model's measured `required_dependency_ids` are also loaded under the same
+locks, even when they are absent from the visible preset fields. Their current
+registry entitlement requirements join the admission union; an override cannot
+remove them. A missing required asset blocks the request. Admin acquisition must
+populate this list from validated local component manifests, using registry UUIDs.

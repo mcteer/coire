@@ -178,14 +178,36 @@ async def load_resolved_image_preset(
         raise ImageConflict()
     frozen_ids = _stored_uuid_set(revision.dependency_ids)
     requirements = _stored_requirements(revision.entitlement_requirements)
-    asset_ids = frozen_ids | _asset_ids(defaults) | _asset_ids(request)
+    base_id = defaults.model_id
+    if base_id is None:
+        raise ImageValidationError()
+    base = await session.get(ModelRow, base_id, populate_existing=True, with_for_update=True)
+    if (
+        base is None
+        or base.kind != ModelKind.IMAGE_MODEL
+        or base.backend != EngineBackend.MFLUX
+        or base.state is not ModelState.READY
+        or base.source != ModelSource.STUDIO
+        or base.image_capability_profile is None
+    ):
+        raise ImageValidationError()
+    try:
+        profile = ImageCapabilityProfile.model_validate(base.image_capability_profile)
+    except ValidationError as exc:
+        raise ImageValidationError() from exc
+    all_frozen_ids = frozen_ids | frozenset(profile.required_dependency_ids)
+    asset_ids = all_frozen_ids | _asset_ids(defaults) | _asset_ids(request)
     if len(asset_ids) > 16:
         raise ImageValidationError()
 
     models: dict[uuid.UUID, ModelRow] = {}
     registry_requirements: dict[uuid.UUID, frozenset[str]] = {}
     for model_id in sorted(asset_ids):
-        model = await session.get(ModelRow, model_id, populate_existing=True, with_for_update=True)
+        model = (
+            base
+            if model_id == base_id
+            else await session.get(ModelRow, model_id, populate_existing=True, with_for_update=True)
+        )
         if (
             model is None
             or model.state is not ModelState.READY
@@ -204,8 +226,7 @@ async def load_resolved_image_preset(
         models[model_id] = model
         registry_requirements[model_id] = _stored_requirements(model.entitlement or [])
 
-    base_id = defaults.model_id
-    if base_id is None or models[base_id].kind != ModelKind.IMAGE_MODEL:
+    if models[base_id].kind != ModelKind.IMAGE_MODEL:
         raise ImageValidationError()
     for source in (defaults, request):
         for lora in source.loras or []:
@@ -226,7 +247,7 @@ async def load_resolved_image_preset(
         request,
         preset,
         published=True,
-        preset_dependency_ids=frozen_ids,
+        preset_dependency_ids=all_frozen_ids,
         preset_requirements=requirements,
         registry_requirements=registry_requirements,
     )
