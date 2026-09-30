@@ -3209,7 +3209,7 @@ export interface components {
          * EngineBackend
          * @enum {string}
          */
-        EngineBackend: "mlx_lm" | "mlx_vlm";
+        EngineBackend: "mlx_lm" | "mlx_vlm" | "mflux" | "auxiliary";
         /**
          * EvaluationVerdict
          * @enum {string}
@@ -3468,6 +3468,49 @@ export interface components {
          * @enum {string}
          */
         HealthStatus: "healthy" | "degraded" | "unhealthy";
+        /**
+         * ImageCapabilityProfile
+         * @description Measured base-model bounds; checked after request and preset resolution.
+         */
+        ImageCapabilityProfile: {
+            /** Max Guidance */
+            max_guidance: string;
+            /** Max Height */
+            max_height: number;
+            /**
+             * Max Loras
+             * @default 0
+             */
+            max_loras: number;
+            /** Max Outputs */
+            max_outputs: number;
+            /** Max Pixels */
+            max_pixels: number;
+            /** Max Steps */
+            max_steps: number;
+            /** Max Width */
+            max_width: number;
+            /** Min Guidance */
+            min_guidance: string;
+            /** Min Height */
+            min_height: number;
+            /** Min Steps */
+            min_steps: number;
+            /** Min Width */
+            min_width: number;
+            /** Modes */
+            modes: components["schemas"]["ImageMode"][];
+            /**
+             * Supports Negative Prompt
+             * @default false
+             */
+            supports_negative_prompt: boolean;
+        };
+        /**
+         * ImageMode
+         * @enum {string}
+         */
+        ImageMode: "txt2img" | "img2img" | "fill" | "control";
         /** InstanceCreate */
         InstanceCreate: {
             /** Affinity Node Id */
@@ -3740,6 +3783,9 @@ export interface components {
             id: string;
             /** Idle Ttl Seconds */
             idle_ttl_seconds?: number | null;
+            image_capability_profile?: components["schemas"]["ImageCapabilityProfile"] | null;
+            /** @default language_model */
+            kind: components["schemas"]["ModelKind"];
             /** Manifest Sha256 */
             manifest_sha256?: string | null;
             /** Max Output Tokens */
@@ -3785,6 +3831,8 @@ export interface components {
             display_name?: string | null;
             /** Idle Ttl Seconds */
             idle_ttl_seconds?: number | null;
+            /** @default language_model */
+            kind: components["schemas"]["ModelKind"];
             /**
              * Placement Policy
              * @default single:auto
@@ -3854,6 +3902,11 @@ export interface components {
             variant_id: string;
         };
         /**
+         * ModelKind
+         * @enum {string}
+         */
+        ModelKind: "language_model" | "image_model" | "image_lora" | "control_model" | "upscale_model" | "image_classifier";
+        /**
          * ModelListing
          * @description The user-facing shape.
          *
@@ -3877,6 +3930,9 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            image_capability_profile?: components["schemas"]["ImageCapabilityProfile"] | null;
+            /** @default language_model */
+            kind: components["schemas"]["ModelKind"];
             load_state: components["schemas"]["LoadState"];
             /** Loaded On */
             loaded_on?: string[];

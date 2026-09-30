@@ -4135,7 +4135,9 @@
       "EngineBackend": {
         "enum": [
           "mlx_lm",
-          "mlx_vlm"
+          "mlx_vlm",
+          "mflux",
+          "auxiliary"
         ],
         "title": "EngineBackend",
         "type": "string"
@@ -4720,6 +4722,120 @@
           "unhealthy"
         ],
         "title": "HealthStatus",
+        "type": "string"
+      },
+      "ImageCapabilityProfile": {
+        "additionalProperties": false,
+        "description": "Measured base-model bounds; checked after request and preset resolution.",
+        "properties": {
+          "max_guidance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Max Guidance",
+            "type": "string"
+          },
+          "max_height": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Max Height",
+            "type": "integer"
+          },
+          "max_loras": {
+            "default": 0,
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Max Loras",
+            "type": "integer"
+          },
+          "max_outputs": {
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Max Outputs",
+            "type": "integer"
+          },
+          "max_pixels": {
+            "maximum": 16000000.0,
+            "minimum": 4096.0,
+            "title": "Max Pixels",
+            "type": "integer"
+          },
+          "max_steps": {
+            "maximum": 150.0,
+            "minimum": 1.0,
+            "title": "Max Steps",
+            "type": "integer"
+          },
+          "max_width": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Max Width",
+            "type": "integer"
+          },
+          "min_guidance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Min Guidance",
+            "type": "string"
+          },
+          "min_height": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Min Height",
+            "type": "integer"
+          },
+          "min_steps": {
+            "maximum": 150.0,
+            "minimum": 1.0,
+            "title": "Min Steps",
+            "type": "integer"
+          },
+          "min_width": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Min Width",
+            "type": "integer"
+          },
+          "modes": {
+            "items": {
+              "$ref": "#/components/schemas/ImageMode"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Modes",
+            "type": "array"
+          },
+          "supports_negative_prompt": {
+            "default": false,
+            "title": "Supports Negative Prompt",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "modes",
+          "min_width",
+          "max_width",
+          "min_height",
+          "max_height",
+          "max_pixels",
+          "min_steps",
+          "max_steps",
+          "min_guidance",
+          "max_guidance",
+          "max_outputs"
+        ],
+        "title": "ImageCapabilityProfile",
+        "type": "object"
+      },
+      "ImageMode": {
+        "enum": [
+          "txt2img",
+          "img2img",
+          "fill",
+          "control"
+        ],
+        "title": "ImageMode",
         "type": "string"
       },
       "InstanceCreate": {
@@ -5403,6 +5519,20 @@
             ],
             "title": "Idle Ttl Seconds"
           },
+          "image_capability_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCapabilityProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ModelKind",
+            "default": "language_model"
+          },
           "manifest_sha256": {
             "anyOf": [
               {
@@ -5569,6 +5699,10 @@
               }
             ],
             "title": "Idle Ttl Seconds"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ModelKind",
+            "default": "language_model"
           },
           "placement_policy": {
             "default": "single:auto",
@@ -5741,6 +5875,18 @@
         "title": "ModelInstance",
         "type": "object"
       },
+      "ModelKind": {
+        "enum": [
+          "language_model",
+          "image_model",
+          "image_lora",
+          "control_model",
+          "upscale_model",
+          "image_classifier"
+        ],
+        "title": "ModelKind",
+        "type": "string"
+      },
       "ModelListing": {
         "additionalProperties": false,
         "description": "The user-facing shape.\n\nDeliberately narrow: no paths, no copies, no failure reasons, no repo id. What a user may\nsee about a model is what the picker needs to choose one.",
@@ -5793,6 +5939,20 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "image_capability_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCapabilityProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ModelKind",
+            "default": "language_model"
           },
           "load_state": {
             "$ref": "#/components/schemas/LoadState"
