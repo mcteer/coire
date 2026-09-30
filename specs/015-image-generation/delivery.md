@@ -1,12 +1,14 @@
 # Image generation delivery map
 
-The parent specification is the acceptance contract. Each child is a separately reviewed
-feature branch from `main`, with its own spec, plan, tasks, tests, and PR. Rebase a child
-onto current `main` after preceding children merge. Keep each PR near the 800-line review
-limit (generated lockfiles and API types excluded); split a child again if it exceeds it.
-No image admission is enabled until authorization, persistence, publication, and cancellation
-paths are complete. Parent tasks are checked when their child implementation is validated.
-Branch and merge status remains separate from task completion.
+The parent specification is the acceptance contract. The child rows and draft PR links below
+record the original delivery history; they are not instructions to open another PR for each
+small slice. On 2026-09-30 the user asked for fewer PRs and notifications. Remaining work is
+being assembled as local commits on `feat/015e20-image-node-cancel`, with the parent spec and
+plan merged into that branch. Open a small number of coherent PRs only after local checks pass.
+Leave the existing draft stack untouched until consolidation is reviewable so closing drafts
+does not send another wave of notifications. No image admission is enabled until authorization,
+persistence, publication, and cancellation paths are complete. Parent tasks are checked only
+when their full behavior is validated; branch and merge status is tracked separately.
 
 | Child | Scope | Parent tasks |
 | --- | --- | --- |

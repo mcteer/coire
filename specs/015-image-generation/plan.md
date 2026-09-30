@@ -3,6 +3,10 @@
 **Branch**: `feat/015-image-generation` | **Date**: 2026-09-30 | **Spec**: [spec.md](spec.md)
 **Input**: `specs/015-image-generation/spec.md`; baseline `origin/main` at `ff69d75`.
 
+**Delivery amendment (2026-09-30)**: The user requested fewer review notifications. Complete
+remaining implementation in local, tested commits and group it into a few coherent PRs; the
+historical child PR map in `delivery.md` is no longer the workflow for new work.
+
 ## Summary
 
 Add private image generation through a typed native job API and the Images shell. The API

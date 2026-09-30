@@ -8,7 +8,7 @@ corresponding behavior, then keep each committed increment green.
 
 ## Phase 1: Setup and reviewable delivery
 
-- [X] T001 Record child delivery slices and parent task mappings in `specs/015-image-generation/delivery.md`; create the first small child spec/plan/tasks and `feat/015a-...` branch from current main before code, and repeat per slice under CONTRIBUTING's ~800-line review limit (FR-035).
+- [X] T001 Record the original child delivery slices and parent task mappings in `specs/015-image-generation/delivery.md`; subsequent work follows the user's 2026-09-30 grouped local review direction recorded there (FR-035).
 - [X] T002 Add native image import/install regression cases to `tests/unit/test_node_install.py`, covering frozen mflux/MLX dependency staging, preservation of text/VLM smoke, and no image runtime in core images (FR-004, FR-036).
 - [X] T003 Pin Darwin-only mflux 0.20.0 in `apps/coire-node/pyproject.toml` and `uv.lock`; extend `apps/coire-node/install_runtime.py` and `scripts/stage-node-wheels.py` smoke/provenance as needed; record MIT reason and separately reviewed model licences in the child PR (FR-004, FR-015).
 
