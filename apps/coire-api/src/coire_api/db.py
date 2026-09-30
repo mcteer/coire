@@ -65,7 +65,7 @@ from coire_core.models.placement import (
     PlacementState,
     ReservationHolder,
 )
-from coire_core.models.registry import CopyRole, ModelState, Visibility
+from coire_core.models.registry import CopyRole, ModelKind, ModelState, Visibility
 from coire_core.models.runs import AgentRunState, RunCommandState, RunOperation
 from coire_core.models.sharding import (
     BenchmarkRunState,
@@ -200,6 +200,15 @@ class ModelRow(Base):
     """The registry record (spec FR-001)."""
 
     __tablename__ = "models"
+    __table_args__ = (
+        CheckConstraint(
+            "(kind = 'language_model' AND backend IN ('mlx_lm', 'mlx_vlm')) OR "
+            "(kind = 'image_model' AND backend = 'mflux' AND source = 'studio') OR "
+            "(kind IN ('image_lora', 'control_model', 'upscale_model', 'image_classifier') "
+            "AND backend = 'auxiliary' AND source = 'studio')",
+            name="ck_models_kind_backend",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     repo_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
@@ -232,6 +241,9 @@ class ModelRow(Base):
     chat_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     capability_profile: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
     backend: Mapped[str] = mapped_column(String(16), default="mlx_lm", server_default="mlx_lm")
+    kind: Mapped[str] = mapped_column(
+        String(32), default=ModelKind.LANGUAGE_MODEL, server_default="language_model"
+    )
     source: Mapped[str] = mapped_column(String(16), default="studio", server_default="studio")
     provider_model_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
