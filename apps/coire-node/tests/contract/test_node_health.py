@@ -56,9 +56,20 @@ def settings() -> Settings:
 
 
 async def call(
-    listener: NodePath | NetworkPath, headers: dict[str, str] | None = None
+    listener: NodePath | NetworkPath,
+    headers: dict[str, str] | None = None,
+    *,
+    run_images_configured: bool = False,
 ) -> httpx.Response:
-    app = create_app(settings(), StubCollector(), listener=listener)
+    configured = settings()
+    if run_images_configured:
+        configured = configured.model_copy(
+            update={
+                "run_agent_image": f"coire-agent@sha256:{'a' * 64}",
+                "run_relay_image": f"coire-run-relay@sha256:{'b' * 64}",
+            }
+        )
+    app = create_app(configured, StubCollector(), listener=listener)
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://node") as client:
         return await client.get("/node/health", headers=headers or {})
@@ -86,6 +97,9 @@ class TestListenerSeparation:
         response = await call(NetworkPath.CONTROL, AUTH)
         assert response.status_code == 200
         assert response.json()["path"] == "control"
+        assert response.json()["run_images_configured"] is False
+        ready = await call(NetworkPath.CONTROL, AUTH, run_images_configured=True)
+        assert ready.json()["run_images_configured"] is True
 
     async def test_data_listener_has_no_health_route(self) -> None:
         assert (await call(NetworkPath.DATA, AUTH)).status_code == 404

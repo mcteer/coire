@@ -496,8 +496,9 @@ async def load_model(
             backend=EngineBackend(model.backend),
         )
     except NodeError as exc:
-        await session.delete(row)
-        await session.commit()
+        # The row has only been added to this session; DELETE requires a
+        # persisted row and masks the node refusal with an HTTP 500.
+        await session.rollback()
         if exc.kind.value == "conflict":
             body_out = exc.body or {}
             raise HTTPException(

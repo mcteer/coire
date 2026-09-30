@@ -325,3 +325,4 @@ class NodeStatusV2(BaseModel):
     memory_committed_bytes: int = Field(default=0, ge=0)
     store_free_bytes: int = Field(default=0, ge=0)
     supported_backends: list[EngineBackend] = Field(default_factory=lambda: [EngineBackend.MLX_LM])
+    run_images_configured: bool = False

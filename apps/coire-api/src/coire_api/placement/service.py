@@ -36,14 +36,15 @@ class LedgerNotFoundError(LookupError):
 meter = metrics.get_meter("coire.api.placement")
 ledger_drift = meter.create_gauge(
     "coire_placement_ledger_drift_ratio",
-    unit="1",
-    description="Measured model residency minus reservations, divided by reservations.",
+    description="Measured model residency minus model reservations, divided by model reservations.",
 )
 
 
 def drift_ratio(*, reserved_bytes: int, measured_bytes: int | None) -> float | None:
-    if measured_bytes is None or reserved_bytes == 0:
+    if measured_bytes is None:
         return None
+    if reserved_bytes == 0:
+        return 1.0 if measured_bytes > 0 else None
     return (measured_bytes - reserved_bytes) / reserved_bytes
 
 
@@ -172,10 +173,12 @@ async def project_ledgers(session: AsyncSession) -> list[MemoryLedger]:
         )
         reserved = sum(row.bytes for row in reservations)
         measured = ledger.measured_resident_bytes
-        drift = drift_ratio(reserved_bytes=reserved, measured_bytes=measured)
+        model_reserved = sum(
+            row.bytes for row in reservations if row.holder_type is ReservationHolder.MODEL
+        )
+        drift = drift_ratio(reserved_bytes=model_reserved, measured_bytes=measured)
         node = nodes[ledger.node_id]
-        if drift is not None:
-            ledger_drift.set(drift, {"node": node.name})
+        ledger_drift.set(drift if drift is not None else 0.0, {"node": node.name})
         result.append(
             MemoryLedger(
                 node_id=ledger.node_id,

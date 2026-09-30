@@ -1,0 +1,34 @@
+rule_files:
+  - /rules/control-plane-efficiency.yaml
+evaluation_interval: 1m
+tests:
+  - interval: 1m
+    input_series:
+      - series: 'coire_placement_ledger_drift_ratio{node="coire-edge-a"}'
+        values: '0.04 0.04 0.04 0.18 0.18 0.18 0.18 0.18 0.18'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CoireModelMemoryDrift
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: CoireModelMemoryDrift
+        exp_alerts:
+          - exp_labels: {severity: warning, subject: placement, node: coire-edge-a}
+            exp_annotations:
+              summary: Measured Studio model residency differs from model reservations by over ten percent
+              runbook_url: /docs/runbooks/placement#inspect
+  - interval: 1m
+    input_series:
+      - series: 'coire_placement_ledger_drift_ratio{node="coire-edge-b"}'
+        values: '0 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 0 0'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CoireModelMemoryDrift
+        exp_alerts:
+          - exp_labels: {severity: warning, subject: placement, node: coire-edge-b}
+            exp_annotations:
+              summary: Measured Studio model residency differs from model reservations by over ten percent
+              runbook_url: /docs/runbooks/placement#inspect
+      - eval_time: 8m
+        alertname: CoireModelMemoryDrift
+        exp_alerts: []

@@ -217,7 +217,13 @@ def create_app(
             status_value = collector.latest(path=legacy_path)
             if listener is NetworkPath.CONTROL:
                 return NodeStatusV2.model_validate(
-                    status_value.model_dump(exclude={"path"}) | {"path": "control"}
+                    status_value.model_dump(exclude={"path"})
+                    | {
+                        "path": "control",
+                        "run_images_configured": bool(
+                            settings.run_agent_image and settings.run_relay_image
+                        ),
+                    }
                 )
             return status_value
 

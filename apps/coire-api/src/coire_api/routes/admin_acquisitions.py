@@ -16,7 +16,7 @@ from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.registry import acquisition, service
 from coire_api.registry.inspection import (
     classify_inspection,
-    estimate_weight_bytes,
+    estimate_variant_memory_bytes,
     visual_recipe_rejection,
 )
 from coire_api.registry.placement import NoCandidate, choose_origin, replica_for
@@ -197,11 +197,6 @@ async def submit_acquisition(
                 },
             )
 
-    estimated = (
-        metadata.weight_bytes
-        if decision.backend is EngineBackend.MLX_VLM
-        else estimate_weight_bytes(metadata.weight_bytes, body.variant.precision)
-    )
     node_rows = {
         row.name: row
         for row in (
@@ -222,8 +217,8 @@ async def submit_acquisition(
             revision=metadata.revision,
             weight_bytes=metadata.weight_bytes,
             total_bytes=metadata.total_bytes,
-            memory_estimate_bytes=int(
-                estimated * settings.overhead_for(body.variant.precision.value)
+            memory_estimate_bytes=estimate_variant_memory_bytes(
+                metadata, body.variant.precision, decision.backend, settings
             ),
             origin_node_id=node_rows[origin.name].id,
             replica_node_id=node_rows[replica.name].id,

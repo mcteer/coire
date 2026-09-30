@@ -13,8 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import ADMIN
 from coire_api.nodes_client import NodeClient
-from coire_api.registry.inspection import classify_inspection, visual_recipe_rejection
+from coire_api.registry.inspection import (
+    classify_inspection,
+    estimate_variant_memory_bytes,
+    visual_recipe_rejection,
+)
 from coire_api.registry.placement import NodeView
+from coire_core.memory import ENGINE_RUNTIME_BASELINE_BYTES
 from coire_core.models.acquisition import (
     AcquisitionRequest,
     InspectionResult,
@@ -49,7 +54,7 @@ def _inspect(*, mlx: bool = True, files: tuple[str, ...] = _FILES) -> RepoInspec
 
 
 def _classify(repo: RepoInspection) -> InspectionResult:
-    nodes = [NodeView("coire-edge-a", Reachability.HEALTHY, memory_budget_bytes=10_000)]
+    nodes = [NodeView("coire-edge-a", Reachability.HEALTHY, memory_budget_bytes=1024**3)]
     return classify_inspection(repo, nodes, Settings())
 
 
@@ -58,6 +63,26 @@ def test_complete_preconverted_vision_source_gets_vision_backend() -> None:
     assert result.supported
     assert result.backend is EngineBackend.MLX_VLM
     assert result.source_format == "mlx"
+
+
+def test_preconverted_text_estimate_keeps_actual_quantized_bytes() -> None:
+    repo = _inspect().model_copy(update={"weight_bytes": 880_000_000, "total_bytes": 900_000_000})
+    estimated = estimate_variant_memory_bytes(
+        repo, Precision.BIT4, EngineBackend.MLX_LM, Settings()
+    )
+    assert estimated >= repo.total_bytes + ENGINE_RUNTIME_BASELINE_BYTES
+    assert estimated > int(repo.weight_bytes * 0.32)
+
+
+def test_raw_source_estimate_uses_conversion_ratio_once() -> None:
+    repo = _inspect(mlx=False).model_copy(
+        update={"weight_bytes": 880_000_000, "total_bytes": 900_000_000}
+    )
+    estimated = estimate_variant_memory_bytes(
+        repo, Precision.BIT4, EngineBackend.MLX_LM, Settings()
+    )
+    assert estimated < repo.total_bytes
+    assert estimated >= int(repo.weight_bytes * 0.32) + ENGINE_RUNTIME_BASELINE_BYTES
 
 
 def test_missing_processor_file_is_refused_before_weight_transfer() -> None:
@@ -192,6 +217,8 @@ async def test_supported_preconverted_visual_source_enters_admin_workflow(
         cast(NodeClient, client),
     )
     assert result is expected
-    assert submit.await_args.kwargs["inspection"]["backend"] == "mlx_vlm"
-    assert submit.await_args.kwargs["weight_bytes"] == 100
+    awaited = submit.await_args
+    assert awaited is not None
+    assert awaited.kwargs["inspection"]["backend"] == "mlx_vlm"
+    assert awaited.kwargs["weight_bytes"] == 100
     reject.assert_not_awaited()

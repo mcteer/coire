@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.audit import write_audit
 from coire_api.db import ModelRow, ModelVariantRow, ValidationResultRow
 from coire_api.registry.acquisition import AcquisitionError, variant_projection
+from coire_core.memory import runtime_reservation_bytes
 from coire_core.models.acquisition import ModelVariant, ValidationResult, VariantPublication
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.registry import Visibility
@@ -85,6 +86,11 @@ async def update_publication(
             raise AcquisitionError(404, "model_missing", "the owning model no longer exists")
         model.precision = row.precision
         model.total_bytes = row.byte_size
+        # A validated variant's actual bytes are authoritative when old acquisition
+        # estimates were derived from already-quantized weights a second time.
+        row.memory_estimate_bytes = runtime_reservation_bytes(
+            row.memory_estimate_bytes, row.byte_size
+        )
         model.memory_estimate_bytes = row.memory_estimate_bytes
         model.visibility = Visibility.PUBLISHED
     elif request.is_default is False:

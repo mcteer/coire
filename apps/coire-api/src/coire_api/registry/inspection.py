@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from coire_api.registry.placement import NodeView
+from coire_core.memory import runtime_reservation_bytes
 from coire_core.models.acquisition import FitDecision, InspectionResult, Precision, VariantRecipe
 from coire_core.models.jobs import RepoInspection
 from coire_core.models.registry import EngineBackend
@@ -92,6 +93,24 @@ def estimate_weight_bytes(source_bytes: int, precision: Precision) -> int:
     return int(source_bytes * ratios[precision])
 
 
+def estimate_variant_memory_bytes(
+    metadata: RepoInspection,
+    precision: Precision,
+    backend: EngineBackend,
+    settings: Settings,
+) -> int:
+    """Reserve actual preconverted weights once, plus the measured MLX runtime floor."""
+    estimated = (
+        metadata.weight_bytes
+        if metadata.is_mlx_format or backend is EngineBackend.MLX_VLM
+        else estimate_weight_bytes(metadata.weight_bytes, precision)
+    )
+    return runtime_reservation_bytes(
+        int(estimated * settings.overhead_for(precision.value)),
+        metadata.total_bytes if metadata.is_mlx_format else estimated,
+    )
+
+
 def classify_inspection(
     repo: RepoInspection,
     nodes: list[NodeView],
@@ -113,8 +132,7 @@ def classify_inspection(
     candidates = list(Precision)
     fit: list[FitDecision] = []
     for precision in candidates:
-        weight = estimate_weight_bytes(repo.weight_bytes, precision)
-        required = int(weight * settings.overhead_for(precision.value))
+        required = estimate_variant_memory_bytes(repo, precision, backend, settings)
         fit.extend(
             FitDecision(
                 node=node.name,

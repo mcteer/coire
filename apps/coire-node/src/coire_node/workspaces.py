@@ -292,7 +292,20 @@ class WorkspaceManager:
                     image_path.chmod(0o444)
                 images.chmod(0o555)
             request_path = control / "request.json"
-            request_path.write_text(command.harness_request.model_dump_json(), encoding="utf-8")
+            # Empty visual fields carry no input. Omit them at every nested level so
+            # an already deployed strict text-only harness can execute text Code runs.
+            harness = command.harness_request
+            payload = harness.model_dump(mode="json")
+            if not harness.visual_inputs and not any(
+                item.visual_inputs for item in harness.history
+            ):
+                payload.pop("visual_inputs", None)
+                profile = payload["capability_profile"]
+                if isinstance(profile, dict):
+                    profile.pop("visual_input", None)
+                for item in payload["history"]:
+                    item.pop("visual_inputs", None)
+            request_path.write_text(json.dumps(payload), encoding="utf-8")
             request_path.chmod(0o444)
             result = WorkspacePrepareResult(
                 run_id=command.run_id,

@@ -43,6 +43,7 @@ meter = metrics.get_meter("coire.scheduler.runs")
 transitions_total = meter.create_counter("coire_run_transitions_total", unit="1")
 queued_total = meter.create_counter("coire_run_capacity_waits_total", unit="1")
 last_transition = meter.create_gauge("coire_run_last_transition_timestamp_seconds", unit="s")
+placement_skips = meter.create_counter("coire_run_placement_skips_total", unit="1")
 
 
 def rank_studio_candidates(
@@ -69,8 +70,22 @@ def rank_studio_candidates(
     return candidates
 
 
+async def first_run_ready_studio(candidates: list[NodeRow], client: NodeClient) -> uuid.UUID | None:
+    """Use the node's authenticated capability, never its registry role alone."""
+    for candidate in candidates:
+        try:
+            status = await client.health(candidate.name)
+        except NodeError:
+            placement_skips.add(1, {"node": candidate.name, "reason": "health_failed"})
+            continue
+        if getattr(status, "run_images_configured", False):
+            return candidate.id
+        placement_skips.add(1, {"node": candidate.name, "reason": "images_unconfigured"})
+    return None
+
+
 async def choose_studio(run_id: uuid.UUID) -> uuid.UUID | None:
-    """Choose only a healthy Studio, preferring a verified local primary-model copy."""
+    """Choose a healthy Studio with trusted run images, preferring a local model copy."""
     settings = get_settings()
     if settings.placement_sandbox_bytes <= 0:
         return None
@@ -128,7 +143,10 @@ async def choose_studio(run_id: uuid.UUID) -> uuid.UUID | None:
             ).all()
         )
         candidates = rank_studio_candidates(nodes, counts, copies, cap=settings.run_concurrency_cap)
-        return candidates[0].id if candidates else None
+    # Health probes happen outside the database transaction. Older nodes report no
+    # capability and cannot receive a run they would refuse indefinitely.
+    async with NodeClient(settings) as client:
+        return await first_run_ready_studio(candidates, client)
 
 
 async def _advance(run_id: uuid.UUID, state: AgentRunState, reason: str) -> None:

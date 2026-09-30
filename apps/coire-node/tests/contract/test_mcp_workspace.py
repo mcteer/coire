@@ -6,6 +6,7 @@ import asyncio
 import base64
 import hashlib
 import io
+import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -166,6 +167,11 @@ async def test_preparation_is_idempotent_and_cleanup_removes_only_this_run(tmp_p
     first = await manager.prepare(command)
     assert (tmp_path / first.workspace_ref / ".coire" / "request.json").is_file()
     assert (tmp_path / first.workspace_ref / ".coire" / "request.json").stat().st_mode & 0o222 == 0
+    control_input = json.loads(
+        (tmp_path / first.workspace_ref / ".coire" / "request.json").read_text()
+    )
+    assert "visual_inputs" not in control_input
+    assert "visual_input" not in control_input["capability_profile"]
     assert (tmp_path / first.workspace_ref / "README.md").read_text() == "sample\n"
     assert (tmp_path / first.output_ref).is_dir()
     activity = tmp_path / first.output_ref / f"activity-{run_id}.jsonl"
@@ -207,6 +213,14 @@ async def test_visual_control_input_is_verified_and_staged_read_only(tmp_path: P
     command = WorkspacePrepareRequest.model_validate(payload)
     prepared = await manager.prepare(command)
     staged = tmp_path / prepared.workspace_ref / ".coire" / "inputs" / f"{asset_id}.png"
+    assert (
+        len(
+            json.loads((tmp_path / prepared.workspace_ref / ".coire" / "request.json").read_text())[
+                "visual_inputs"
+            ]
+        )
+        == 1
+    )
     assert staged.read_bytes() == image
     assert staged.stat().st_mode & 0o222 == 0
     assert await manager.prepare(command) == prepared

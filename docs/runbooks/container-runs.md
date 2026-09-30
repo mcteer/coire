@@ -30,7 +30,9 @@ returns. Confirm state `killed` and an `agent_run.kill` plus terminal audit row.
 ## Diagnose
 
 - `queued`/`placing`: inspect Studio health, sandbox slice, `RUN_CONCURRENCY_CAP`, and capacity-wait
-  metrics. Never enable core fallback.
+  metrics. The authenticated `/node/health` response must report `run_images_configured=true` for
+  a Studio to receive a run; older agents and Studios missing either pinned image are skipped.
+  Inspect `coire_run_placement_skips_total` by node and reason. Never enable core fallback.
 - `creating`: verify OrbStack is running, the node can read its local Docker socket, both image
   settings are digest-pinned, and the workspace exists directly below `RUN_WORKSPACE_ROOT`.
 - `running`: inspect bounded node logs and gateway authentication outcomes. Internet, database,
