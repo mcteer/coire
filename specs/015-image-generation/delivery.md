@@ -23,7 +23,8 @@ Branch and merge status remains separate from task completion.
 | `015c4-image-migration-verification` | Disposable PostgreSQL upgrade/downgrade and constraint checks | part of T008; verifies T009 |
 | `015d-image-security` | Identity, entitlement, audit and presets | T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
-| `015f-image-storage` | Bounded blob staging, grants and cleanup | T012–T013, T026, T031, T036, T038–T039 |
+| `015f1-image-storage-config` | Disabled API-only blob volume, settings and ingress bounds | part of T012 |
+| `015f-image-storage` | Bounded blob staging, grants and cleanup | remainder of T012, T013, T026, T031, T036, T038–T039 |
 | `015g-image-jobs` | DBOS admission, events, cancellation and API | T023, T025, T034–T035, T037, T040–T042 |
 | `015h-image-ui` | Generated types, native UI and gallery | T043–T048 |
 | `015i-image-inputs` | Isolated parsing, owner inputs and reproduction | T049–T058 |
@@ -52,6 +53,8 @@ The three migrations are drafted and verified on disposable local PostgreSQL 17 
 [draft PR #41](https://github.com/mcteer/coire/pull/41), reviewed against PR #40.
 T009 is complete. T008 remains open for cancellation/publication race evidence and
 operator-run drain/rollout checks; no Studio or production database was contacted.
+The disabled storage topology is [draft PR #42](https://github.com/mcteer/coire/pull/42),
+reviewed against PR #41. T012 stays open until the API enforces purpose-specific file limits.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
