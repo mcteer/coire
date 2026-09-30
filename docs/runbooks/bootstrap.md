@@ -126,6 +126,17 @@ ssh mcteer@coire-edge-a.lab '~/coire-stage/apps/coire-node/install.sh --wheel-di
 
 Then the printed `sudo` steps to install and bootstrap the LaunchDaemon.
 
+For image-runtime upgrades, the node wheelhouse includes Darwin-only `mflux==0.20.0`.
+Run `scripts/build-node-wheel.sh --local-only` first to verify the frozen wheel graph
+without contacting a Studio. The staged installer checks text, VLM, and mflux imports
+without loading a model before flipping `/opt/coire/envs/current`. If smoke fails,
+the previous target stays active and the staged tree is left for inspection. Record
+the previous symlink target before an operator-run upgrade; to roll back after a
+successful flip, point `current` at that immutable prior environment and restart
+the node LaunchDaemon. Confirm authenticated `/node/health` on each Studio before
+resuming new work. Model weights and licences are handled by admin acquisition,
+not by this runtime installer.
+
 Check it:
 
 ```bash
