@@ -13,6 +13,7 @@ from coire_core.models.image_worker import (
     ImageTransferGrant,
     ImageTransferReceipt,
     ImageWorkerLoadRequest,
+    ImageWorkerOutputManifest,
     ImageWorkerRunRequest,
     NodeImageCleanupRequest,
     NodeImageInputManifest,
@@ -67,6 +68,16 @@ def _receipt(**overrides: object) -> ImageTransferReceipt:
     }
     values.update(overrides)
     return ImageTransferReceipt.model_validate(values)
+
+
+def test_worker_output_manifest_is_bounded_and_path_free() -> None:
+    output = ImageWorkerOutputManifest(
+        index=0, byte_count=100, sha256="a" * 64, recipe_sha256="b" * 64
+    )
+    assert output.byte_count == 100
+    for changes in ({"path": "/private/output.png"}, {"byte_count": 64 * 1024 * 1024 + 1}):
+        with pytest.raises(ValidationError):
+            ImageWorkerOutputManifest.model_validate(output.model_dump() | changes)
 
 
 def test_worker_load_is_mflux_registry_only() -> None:

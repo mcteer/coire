@@ -32,6 +32,10 @@ class ImageJobExecutionError(RuntimeError):
         super().__init__("image job failed")
 
 
+class ImageJobCancelled(RuntimeError):
+    """Cooperative cancellation at a synchronized generation step."""
+
+
 class _ImagePipeline(Protocol):
     def generate(
         self, resolved: ResolvedImageSpec, on_progress: Progress
@@ -138,6 +142,14 @@ def run_image_job(
                 monotonic=monotonic,
                 utc_now=utc_now,
             )
+        except ImageJobCancelled:
+            record_image_stage(
+                ImageNodeStage.GENERATE,
+                ImageNodeOutcome.CANCELLED,
+                duration_s=time.monotonic() - started,
+                job_id=request.job_id,
+            )
+            raise ImageJobExecutionError() from None
         except Exception:
             record_image_stage(
                 ImageNodeStage.GENERATE,

@@ -46,3 +46,15 @@ Intermediate step reports are throttled to 4 Hz; each output's final step is
 reported. Expired deadlines and write errors fail the attempt and remove its
 scratch directory. Process-level TERM/KILL, durable re-adoption and core
 transfer still need to wrap this executor before public admission opens.
+
+The worker control app is served on `127.0.0.1` with no docs endpoint. Every
+route requires a strong per-worker bearer; `/health` reports the worker's
+instance, PID, create time, port and reservation. A typed `PUT /job` returns
+202 while generation runs in a background thread. Replays with the same full
+request return current status; changed requests or overlapping attempts return
+409. `/status` and `/cancel` require the exact job, attempt and fence. Cancel
+remains in `running` until the worker stops; the node's future supervisor must
+TERM/KILL it when a callback cannot run. Generated status returns only bounded
+size, PNG digest and recipe digest, never a path or prompt. The in-memory
+control keeps at most 32 attempt statuses, so the future node supervisor must
+drain and unload before that bound is reached.
