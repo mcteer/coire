@@ -113,3 +113,16 @@ On agent restart, image re-adoption runs before listeners bind. An uncertain
 record holds the full image budget; inspect the process and private record
 before reconciliation. Roll back the node wheel after an exact-instance
 unload and confirmed process exit.
+
+The node image job journal stores one 0600 JSON record per ULID under
+`node_state_dir/image-jobs/` (0700). It records the exact resolved request and
+last safe job status before worker dispatch. After an agent restart, read this
+journal to reconcile the existing attempt; do not submit a new fence or rerun
+denoising merely because the worker status is temporarily unavailable. A
+corrupt or unexpectedly public record is left untouched and blocks replacement.
+Inspect its ownership, mode and bounded JSON while the node is stopped, then
+reconcile the matching scheduler attempt before any repair. Never delete an
+uncertain record to make admission succeed.
+Journal writes emit the `coire.node.image.journal` span and the fixed-label
+`coire_image_node_stage_total{stage="journal"}` counter; a failure means the
+scheduler must retain the attempt for reconciliation.
