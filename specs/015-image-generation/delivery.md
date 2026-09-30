@@ -13,7 +13,9 @@ Branch and merge status remains separate from task completion.
 | `015a-image-runtime` | Frozen, native Studio mflux installation | T002–T003 |
 | `015b-image-contracts` | Request, capability, input and recipe contracts | T004, T010; part of T006 |
 | `015b2-image-projections` | Job, event, preset, grant and compatible API projections | remainder of T006 |
-| `015b3-image-worker-contracts` | Registry, worker and settings contracts | T005, T007, T011 |
+| `015b3-image-registry-contracts` | Registry kinds, backend isolation and generated clients | part of T005, T007 |
+| `015b4-image-worker-contracts` | Node commands, auxiliary acquisition and file-worker shapes | remainder of T005, T007 |
+| `015b5-image-settings` | Settings, errors and deployment defaults | T011 |
 | `015c-image-persistence` | Durable tables, constraints and migrations | T008–T009 |
 | `015d-image-security` | Identity, entitlement, audit and presets | T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -30,6 +32,8 @@ Its installer tests and local smoke passed; real Studio upgrade/rollback evidenc
 The request/recipe contracts are [draft PR #32](https://github.com/mcteer/coire/pull/32),
 also based on `main`. The remaining projections are
 [draft PR #33](https://github.com/mcteer/coire/pull/33), reviewed against PR #32 until it merges.
+Registry kind isolation is [draft PR #34](https://github.com/mcteer/coire/pull/34),
+reviewed against PR #33. Parent T005 and T007 remain open for node command and acquisition shapes.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
