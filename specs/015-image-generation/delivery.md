@@ -55,6 +55,9 @@ T009 is complete. T008 remains open for cancellation/publication race evidence a
 operator-run drain/rollout checks; no Studio or production database was contacted.
 The disabled storage topology is [draft PR #42](https://github.com/mcteer/coire/pull/42),
 reviewed against PR #41. T012 stays open until the API enforces purpose-specific file limits.
+The inherited PyJWT 2.13.0 critical scan finding is fixed separately in
+[draft PR #44](https://github.com/mcteer/coire/pull/44) from issue #43; it must land before
+the image PR stack can pass the unchanged image scan gate.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
