@@ -15,6 +15,7 @@ from coire_core.models.files import (
     FilePurgeResult,
     is_ulid,
 )
+from coire_core.models.image_worker import ImageRecipeParseRequest, ImageRecipeParseResult
 from coire_core.settings import Settings
 
 
@@ -28,6 +29,10 @@ class FileWorkerBusy(FileWorkerError):
 
 class FileWorkerMissing(FileWorkerError):
     pass
+
+
+class FileWorkerParseRefused(FileWorkerError):
+    """A staged input failed the worker's private parser validation."""
 
 
 class FileWorkerClient:
@@ -79,6 +84,38 @@ class FileWorkerClient:
         if status.job_id != request.job_id:
             raise FileWorkerError("worker job identity mismatch")
         return status
+
+    async def parse_image_recipe(self, request: ImageRecipeParseRequest) -> ImageRecipeParseResult:
+        """Parse one staged recipe, requiring exact response binding before persistence."""
+        token = self.settings.file_worker_service_token.get_secret_value()
+        if not token or self.client is None:
+            raise FileWorkerError("recipe worker unavailable")
+        try:
+            response = await self.client.post(
+                "/v1/image-recipes/parse",
+                json=request.model_dump(mode="json"),
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=self.settings.file_worker_process_timeout_s + 5.0,
+            )
+        except httpx.HTTPError:
+            raise FileWorkerError("recipe worker unavailable") from None
+        if response.status_code == 429:
+            raise FileWorkerBusy("recipe worker busy")
+        if response.status_code == 422:
+            raise FileWorkerParseRefused("recipe worker refused input")
+        if response.status_code != 200:
+            raise FileWorkerError("recipe worker unavailable")
+        try:
+            result = ImageRecipeParseResult.model_validate(response.json())
+        except (ValueError, ValidationError):
+            raise FileWorkerError("invalid recipe worker response") from None
+        if (
+            result.input_id != request.input_id
+            or result.source_sha256 != request.source_sha256
+            or result.byte_count != request.byte_count
+        ):
+            raise FileWorkerError("recipe worker identity mismatch")
+        return result
 
     async def status(self, job_id: str) -> FileProcessStatus:
         if not is_ulid(job_id):
