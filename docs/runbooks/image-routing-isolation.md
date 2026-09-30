@@ -4,6 +4,9 @@ The existing `/api/v1/models`, `/v1/models`, chat, vision and MCP model selector
 only `language_model` registry rows with `mlx_lm` or `mlx_vlm` backends. The direct
 gateway resolver also checks this before looking for an engine. Failover snapshots
 select only `language_model` rows on `mlx_lm`.
+MCP's coding selector now applies the same kind/backend check before consulting
+`coding` tags or validated variants; a tag cannot promote an image asset into a run.
+The signed failover publisher filters in both its SQL query and final projection.
 Image generation (`mflux`) and auxiliary image assets (`auxiliary`) must be offered
 through the future image capability and admin acquisition routes, never these selectors.
 

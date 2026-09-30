@@ -20,6 +20,7 @@ from coire_api.db import (
     ModelVariantRow,
     session_scope,
 )
+from coire_api.registry.service import is_chat_backend
 from coire_core.errors import ChatNotFound
 from coire_core.models.harness import PROFILE_MODEL_TAGS, ProfileName, TaskClass
 from coire_core.models.mcp import (
@@ -59,6 +60,8 @@ async def _choose_model(
         )
         eligible = []
         for model in models:
+            if not is_chat_backend(model):
+                continue
             if requested is not None and model.id != requested:
                 continue
             if model.visibility is not Visibility.PUBLISHED and not principal.is_admin:

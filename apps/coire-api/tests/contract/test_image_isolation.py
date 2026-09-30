@@ -76,6 +76,24 @@ def test_language_and_vision_backends_remain_chat_eligible() -> None:
         ModelKind.IMAGE_CLASSIFIER,
     ],
 )
+def test_image_kind_never_routes_even_with_malformed_language_backend(kind: ModelKind) -> None:
+    row = _model(EngineBackend.MLX_LM)
+    row.kind = kind
+    assert not service.is_chat_backend(row)
+    assert not service.visible_to(is_admin=True, model=row)
+    assert not service.visible_to(is_admin=False, model=row)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        ModelKind.IMAGE_MODEL,
+        ModelKind.IMAGE_LORA,
+        ModelKind.CONTROL_MODEL,
+        ModelKind.UPSCALE_MODEL,
+        ModelKind.IMAGE_CLASSIFIER,
+    ],
+)
 async def test_legacy_add_refuses_image_kind_before_inspection(
     kind: ModelKind, monkeypatch: pytest.MonkeyPatch
 ) -> None:
