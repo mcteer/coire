@@ -14,3 +14,15 @@ manifest manually. The native mflux installation is in draft PR #31 and must
 land before a live worker can start. To stop image loading, keep
 `COIRE_IMAGE_ENABLED=false`; do not remove model copies while an engine is
 active. No real Studio or engine was run by this slice.
+
+The fixed Turbo pipeline now requires `HF_HUB_OFFLINE=1` and
+`TRANSFORMERS_OFFLINE=1`, with no Hub token in its process environment, before
+it imports mflux. It loads the preflight-verified local directory with the
+pinned Z-Image Turbo configuration. A plain txt2img job is refused if it has
+nonzero guidance, a negative prompt, LoRA, input, control or upscale settings.
+Each progress callback evaluates the MLX latents before reporting a completed
+step; it carries only output index and step counts. The node worker still needs
+to own the process, deadline, cancellation and output transfer before the
+submit route can open. To diagnose a pipeline refusal, inspect the safe worker
+error code and the resolved model/runtime manifest, then re-acquire a bad copy
+through the admin path. Do not use the worker process as a Hub downloader.
