@@ -2,14 +2,30 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
+from typing import Annotated
 
+from fastapi import Depends, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.auth import Principal, PrincipalKind
-from coire_api.db import ApiKeyRow, EntitlementRow, UserRow
-from coire_core.errors import ImageForbidden
+from coire_api.audit import write_audit
+from coire_api.auth import CurrentPrincipal, Principal, PrincipalKind, audit_actor
+from coire_api.db import (
+    ApiKeyRow,
+    EntitlementRow,
+    ImageInputRow,
+    ImageJobRow,
+    ImageOutputRow,
+    UserRow,
+    session_scope,
+)
+from coire_core.errors import ImageForbidden, ImageNotFound
+from coire_core.models.audit import AuditOutcome
+from coire_core.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 _HUMAN_KINDS = frozenset({PrincipalKind.USER, PrincipalKind.ADMIN})
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
@@ -84,3 +100,76 @@ async def authorize_live_image_action(
         if not required <= active:
             raise ImageForbidden()
     return owner_id
+
+
+async def require_image_principal(request: Request, principal: CurrentPrincipal) -> Principal:
+    """Reusable route guard; refusal audit commits outside the rejected request transaction."""
+    settings = getattr(request.app.state, "settings", None) or get_settings()
+    try:
+        preflight_image_action(
+            principal,
+            method=request.method,
+            origin=request.headers.get("origin"),
+            browser_origin=settings.chat_browser_origin,
+        )
+        async with session_scope() as session:
+            await authorize_live_image_action(session, principal)
+    except ImageForbidden:
+        actor, actor_type, actor_user_id = audit_actor(principal)
+        try:
+            async with session_scope() as audit_session:
+                await write_audit(
+                    audit_session,
+                    actor=actor,
+                    actor_type=actor_type,
+                    actor_user_id=actor_user_id,
+                    action="image.refused",
+                    target_type="route",
+                    target_id=f"{request.method} {request.url.path}",
+                    outcome=AuditOutcome.REFUSED,
+                    context={"reason": "authorization"},
+                )
+        except Exception:
+            logger.exception("image refusal audit failed")
+        raise
+    return principal
+
+
+CurrentImageUser = Annotated[Principal, Depends(require_image_principal)]
+
+
+async def require_owned_image_job(
+    session: AsyncSession, job_id: str, principal: Principal
+) -> ImageJobRow:
+    row = await session.get(ImageJobRow, job_id)
+    if row is None or row.owner_user_id != principal.user_id:
+        raise ImageNotFound()
+    return row
+
+
+async def require_owned_image_input(
+    session: AsyncSession, input_id: uuid.UUID, principal: Principal
+) -> ImageInputRow:
+    row = await session.get(ImageInputRow, input_id)
+    if (
+        row is None
+        or row.owner_user_id != principal.user_id
+        or row.deleted_at is not None
+        or row.state in {"deleting", "purged"}
+    ):
+        raise ImageNotFound()
+    return row
+
+
+async def require_owned_image_output(
+    session: AsyncSession, output_id: uuid.UUID, principal: Principal
+) -> ImageOutputRow:
+    row = await session.get(ImageOutputRow, output_id)
+    if (
+        row is None
+        or row.owner_user_id != principal.user_id
+        or row.state != "published"
+        or row.deleted_at is not None
+    ):
+        raise ImageNotFound()
+    return row
