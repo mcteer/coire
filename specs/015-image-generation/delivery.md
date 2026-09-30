@@ -44,6 +44,8 @@ Conservative settings and safe errors are [draft PR #37](https://github.com/mcte
 reviewed against PR #36. The first persistence slice is
 [draft PR #38](https://github.com/mcteer/coire/pull/38), reviewed against PR #37.
 T008–T009 remain open until all three persistence slices and their migration checks finish.
+The asset/transfer/grant schema is [draft PR #39](https://github.com/mcteer/coire/pull/39),
+reviewed against PR #38. Capacity, lease and coexistence persistence remains next.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
