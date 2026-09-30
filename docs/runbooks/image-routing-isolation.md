@@ -21,3 +21,10 @@ future image-asset drain procedure; the migration refuses a downgrade while any 
 Check `SELECT kind, backend, source FROM models` during a staging rollout. The local
 disposable PostgreSQL migration test covers old text/VLM rows, the kind constraint and
 guarded rollback.
+
+Migration `0027_image_capability_profile` adds a separate nullable JSONB profile for
+measured image base limits. A ready `image_model` row must have one; all other kinds
+must leave it null. The admin image validation path must parse the stored value through
+`ImageCapabilityProfile` before moving an image base to ready. A downgrade to 0026
+refuses while any profile is stored. Drain or remove those assets through the future
+admin image path before rollback; never clear a live profile merely to force migration.
