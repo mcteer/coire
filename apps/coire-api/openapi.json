@@ -16972,6 +16972,68 @@
       }
     },
     "/api/v1/image-inputs/{input_id}": {
+      "delete": {
+        "operationId": "delete_image_input_api_v1_image_inputs__input_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "input_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Input Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageInput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Image Input",
+        "tags": [
+          "images"
+        ]
+      },
       "get": {
         "operationId": "get_image_input_api_v1_image_inputs__input_id__get",
         "parameters": [

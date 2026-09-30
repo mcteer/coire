@@ -163,3 +163,43 @@ async def test_recipe_workflow_retries_busy_but_records_stable_refusal(
     else:
         await workflow.drive_recipe_input(row.id)
         assert row.state == "failed" and row.held_bytes == 7
+
+
+async def test_deletion_during_parse_prevents_recipe_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_scheduler import image_inputs as workflow
+
+    row = _row()
+    session = FakeSession(row)
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[FakeSession]:
+        yield session
+
+    class Client:
+        def __init__(self, settings: Settings) -> None:
+            pass
+
+        async def __aenter__(self) -> Client:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+        async def parse_image_recipe(
+            self, request: ImageRecipeParseRequest
+        ) -> ImageRecipeParseResult:
+            row.state = "deleting"
+            row.deleted_at = datetime.now(UTC)
+            return _result(request)
+
+    async def no_settlement(*args: object) -> None:
+        pytest.fail("deleted input settled after parser finished")
+
+    monkeypatch.setattr(workflow, "session_scope", scope)
+    monkeypatch.setattr(workflow, "FileWorkerClient", Client)
+    monkeypatch.setattr(workflow, "settle_storage_hold", no_settlement)
+    monkeypatch.setattr(workflow, "get_settings", lambda: Settings(_secrets_dir="/nonexistent"))  # type: ignore[call-arg]
+    await workflow.drive_recipe_input(row.id)
+    assert row.state == "deleting" and row.recipe is None and row.held_bytes == 7

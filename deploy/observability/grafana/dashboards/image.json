@@ -28,8 +28,8 @@
       "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
       "id": 5,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
-      "targets": [{"expr": "max(coire_image_input_purge_oldest_seconds)", "legendFormat": "oldest failed input", "refId": "A"}],
-      "title": "Failed image input cleanup age",
+      "targets": [{"expr": "max(coire_image_input_purge_oldest_seconds)", "legendFormat": "oldest pending input", "refId": "A"}],
+      "title": "Image input cleanup age",
       "type": "timeseries"
     },
     {

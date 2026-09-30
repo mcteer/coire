@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, Response, Upl
 from pydantic import ValidationError
 
 from coire_api.deps import SessionDep
-from coire_api.images import inputs
+from coire_api.images import input_deletion, inputs
 from coire_api.images.authorization import CurrentImageUser, require_owned_image_input
 from coire_api.images.telemetry import (
     ImageOperation,
@@ -22,6 +22,7 @@ from coire_core.errors import (
     CoireError,
     ImageForbidden,
     ImageInputTooLarge,
+    ImageNotFound,
     ImageQuotaExceeded,
     ImageUnsupportedInput,
 )
@@ -29,6 +30,29 @@ from coire_core.models.images import ImageInput, ImageInputUpload
 from coire_core.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/image-inputs", tags=["images"])
+
+
+@router.delete("/{input_id}", response_model=ImageInput, status_code=status.HTTP_202_ACCEPTED)
+async def delete_image_input(
+    input_id: uuid.UUID, principal: CurrentImageUser, session: SessionDep, response: Response
+) -> ImageInput:
+    with image_span(ImageOperation.DELETE):
+        try:
+            result = await input_deletion.tombstone_owned_input(session, principal, input_id)
+            await session.commit()
+        except ImageNotFound:
+            record_image_request(
+                ImageOperation.DELETE, ImageOutcome.REFUSED, reason=ImageReason.AUTH
+            )
+            raise
+        except CoireError:
+            record_image_request(
+                ImageOperation.DELETE, ImageOutcome.REFUSED, reason=ImageReason.DEPENDENCY
+            )
+            raise
+        response.headers["Cache-Control"] = "private, no-store"
+        record_image_request(ImageOperation.DELETE, ImageOutcome.ACCEPTED)
+        return result
 
 
 @router.get("/{input_id}", response_model=ImageInput)

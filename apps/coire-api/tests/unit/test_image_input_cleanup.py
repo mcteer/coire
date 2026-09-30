@@ -39,9 +39,91 @@ def _row() -> ImageInputRow:
 
 
 def _quotas() -> tuple[ImageQuotaRow, ImageQuotaRow]:
-    owner = cast(ImageQuotaRow, SimpleNamespace(scope="owner", owner_user_id=OWNER, held_bytes=7))
-    global_row = cast(ImageQuotaRow, SimpleNamespace(scope="global", held_bytes=7))
+    owner = cast(
+        ImageQuotaRow,
+        SimpleNamespace(scope="owner", owner_user_id=OWNER, held_bytes=7, stored_bytes=0),
+    )
+    global_row = cast(ImageQuotaRow, SimpleNamespace(scope="global", held_bytes=7, stored_bytes=0))
     return owner, global_row
+
+
+@pytest.mark.parametrize("held", [0, 7])
+def test_deleted_input_purge_releases_only_after_unlink(tmp_path: Path, held: int) -> None:
+    row = _row()
+    row.state = "deleting"
+    row.deleted_at = datetime.now(UTC)
+    row.held_bytes = held
+    path = tmp_path / str(row.id)
+    path.write_bytes(b"pngdata")
+    owner, global_row = _quotas()
+    owner.held_bytes = global_row.held_bytes = held
+    owner.stored_bytes = global_row.stored_bytes = 7 - held
+    input_cleanup.purge_deleted_input_bytes(tmp_path, row, owner, global_row)
+    assert not path.exists() and row.state == "purged" and row.purged_at is not None
+    assert row.held_bytes == owner.held_bytes == global_row.held_bytes == 0
+    assert owner.stored_bytes == global_row.stored_bytes == 0
+    input_cleanup.purge_deleted_input_bytes(tmp_path, row, owner, global_row)
+
+
+def test_deleted_input_purge_rejects_symlink_and_references(tmp_path: Path) -> None:
+    row = _row()
+    row.state = "deleting"
+    row.deleted_at = datetime.now(UTC)
+    owner, global_row = _quotas()
+    target = tmp_path / str(row.id)
+    target.symlink_to(tmp_path / "outside")
+    with pytest.raises(ImageStorageUnavailable):
+        input_cleanup.purge_deleted_input_bytes(tmp_path, row, owner, global_row)
+    assert row.purged_at is None and owner.held_bytes == 7
+    target.unlink()
+    row.active_references = 1
+    with pytest.raises(ImageStorageUnavailable):
+        input_cleanup.purge_deleted_input_bytes(tmp_path, row, owner, global_row)
+    assert row.purged_at is None and owner.held_bytes == 7
+
+
+def test_deleted_input_missing_file_is_retry_safe(tmp_path: Path) -> None:
+    row = _row()
+    row.state = "deleting"
+    row.deleted_at = datetime.now(UTC)
+    owner, global_row = _quotas()
+    input_cleanup.purge_deleted_input_bytes(tmp_path, row, owner, global_row)
+    assert row.state == "purged" and row.purged_at is not None
+    assert owner.held_bytes == global_row.held_bytes == 0
+
+
+def test_deleted_input_maintenance_locks_quota_before_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    row = _row()
+    row.state = "deleting"
+    row.deleted_at = datetime.now(UTC)
+    owner, global_row = _quotas()
+    calls: list[str] = []
+
+    class FakeSession:
+        async def get(self, model: type[object], identity: object, **kwargs: object) -> object:
+            assert model is ImageInputRow and identity == row.id
+            calls.append("row_lock" if kwargs.get("with_for_update") else "snapshot")
+            return row
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[FakeSession]:
+        yield FakeSession()
+
+    async def locked(session: object, owner_id: uuid.UUID) -> tuple[ImageQuotaRow, ImageQuotaRow]:
+        assert owner_id == OWNER
+        calls.append("quotas")
+        return global_row, owner
+
+    monkeypatch.setattr(input_cleanup, "session_scope", scope)
+    monkeypatch.setattr(input_cleanup, "_locked_rows", locked)
+    settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent", image_input_original_root=str(tmp_path)
+    )
+    assert asyncio.run(input_cleanup.purge_deleted_input(settings, row.id))
+    assert calls == ["snapshot", "quotas", "row_lock"]
+    assert row.state == "purged" and owner.held_bytes == global_row.held_bytes == 0
 
 
 def test_failed_input_purge_is_ordered_idempotent_and_missing_safe(tmp_path: Path) -> None:

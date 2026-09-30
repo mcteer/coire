@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from opentelemetry import metrics, trace
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from coire_api.db import ImageInputRow, ImageQuotaRow, session_scope
 from coire_api.images.quota import _QUOTA_LOCK, _locked_rows
@@ -28,7 +28,7 @@ cleanup_total = metrics.get_meter("coire.api.image").create_counter(
 input_purge_oldest_seconds = metrics.get_meter("coire.api.image").create_gauge(
     "coire_image_input_purge_oldest_seconds",
     unit="s",
-    description="Age of oldest failed image input awaiting physical cleanup",
+    description="Age of oldest failed or deleted image input awaiting physical cleanup",
 )
 
 
@@ -121,6 +121,91 @@ async def purge_failed_input(settings: Settings, input_id: uuid.UUID) -> bool:
         return True
 
 
+def purge_deleted_input_bytes(
+    root: Path, row: ImageInputRow, owner_quota: ImageQuotaRow, global_quota: ImageQuotaRow
+) -> None:
+    """Release exactly one recipe original after it is absent on disk."""
+    if row.purged_at is not None:
+        return
+    held = row.held_bytes
+    stored = row.original_bytes - held
+    if (
+        row.state != "deleting"
+        or row.deleted_at is None
+        or row.purpose != "recipe"
+        or row.original_key != str(row.id)
+        or row.active_references != 0
+        or row.original_bytes <= 0
+        or held < 0
+        or stored < 0
+        or owner_quota.scope != "owner"
+        or owner_quota.owner_user_id != row.owner_user_id
+        or global_quota.scope != "global"
+        or owner_quota.held_bytes < held
+        or global_quota.held_bytes < held
+        or owner_quota.stored_bytes < stored
+        or global_quota.stored_bytes < stored
+    ):
+        raise ImageStorageUnavailable()
+    _unlink_generated_file(root, row.original_key)
+    owner_quota.held_bytes -= held
+    global_quota.held_bytes -= held
+    owner_quota.stored_bytes -= stored
+    global_quota.stored_bytes -= stored
+    row.held_bytes = 0
+    row.state = "purged"
+    row.purged_at = datetime.now(UTC)
+    row.updated_at = row.purged_at
+
+
+async def purge_deleted_input(settings: Settings, input_id: uuid.UUID) -> bool:
+    async with session_scope() as session:
+        snapshot = await session.get(ImageInputRow, input_id)
+        if snapshot is None or snapshot.state != "deleting" or snapshot.purged_at is not None:
+            return False
+        global_quota, owner_quota = await _locked_rows(session, snapshot.owner_user_id)
+        row = await session.get(
+            ImageInputRow, input_id, populate_existing=True, with_for_update=True
+        )
+        if row is None or row.state != "deleting" or row.purged_at is not None:
+            return False
+        with tracer.start_as_current_span("coire.api.image.input_purge"):
+            await asyncio.to_thread(
+                purge_deleted_input_bytes,
+                Path(settings.image_input_original_root),
+                row,
+                owner_quota,
+                global_quota,
+            )
+        return True
+
+
+async def sweep_deleted_inputs(settings: Settings) -> int:
+    async with session_scope() as session:
+        pending = (
+            await session.scalars(
+                select(ImageInputRow.id)
+                .where(ImageInputRow.state == "deleting", ImageInputRow.purged_at.is_(None))
+                .order_by(ImageInputRow.deleted_at, ImageInputRow.id)
+                .limit(_BATCH_SIZE)
+            )
+        ).all()
+    purged = 0
+    for input_id in pending:
+        try:
+            if await purge_deleted_input(settings, input_id):
+                cleanup_total.add(1, {"kind": "deleted", "outcome": "succeeded"})
+                purged += 1
+        except Exception as exc:
+            cleanup_total.add(1, {"kind": "deleted", "outcome": "failed"})
+            logger.error(
+                "image input purge failed input_id=%s error_type=%s",
+                input_id,
+                type(exc).__name__,
+            )
+    return purged
+
+
 async def sweep_failed_inputs(settings: Settings) -> int:
     async with session_scope() as session:
         pending = (
@@ -138,7 +223,7 @@ async def sweep_failed_inputs(settings: Settings) -> int:
         ).all()
         oldest = await session.scalar(
             select(func.min(ImageInputRow.updated_at)).where(
-                ImageInputRow.state == "failed",
+                or_(ImageInputRow.state == "failed", ImageInputRow.state == "deleting"),
                 ImageInputRow.purpose == "recipe",
                 ImageInputRow.purged_at.is_(None),
             )

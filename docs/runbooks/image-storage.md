@@ -41,6 +41,14 @@ symlinks, unfamiliar names and recent files. Inspect
 Images dashboard and alerts `CoireImageInputCleanupFailures` and
 `CoireImageInputPurgeOverdue` cover repeated failures and the 24-hour deadline.
 If cleanup fails, keep the row and hold for retry; do not remove the original volume.
+Owners can also `DELETE /api/v1/image-inputs/{id}`. A 202 response commits the
+tombstone before returning; subsequent status reads hide the input. Active job
+references return 409, so stop and drain those jobs before retrying. Maintenance
+removes tombstoned recipe originals and releases held or settled storage only after
+the generated regular file is absent. Inspect `coire_image_input_cleanup_total` with
+`kind="deleted"` and the oldest pending input gauge. Repeated deletion is safe,
+including after purge. Leave the original volume mounted until pending deletions
+reach `purged`; restore `COIRE_IMAGE_ENABLED=false` to stop new uploads.
 
 The isolated file worker has a `parse_recipe_png` helper for owner-scoped recipe
 uploads. It accepts regular PNG files up to 64 MiB, validates PNG chunk
