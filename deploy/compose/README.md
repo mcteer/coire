@@ -105,6 +105,12 @@ names. Its authenticated internal parse route accepts an ID, size and SHA-256, n
 | `COIRE_IMAGE_PROMPT_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
 | `COIRE_IMAGE_CONTROL_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
 
+On each native Studio node, `COIRE_NODE_IMAGE_WORKER_PORT` defaults to `9600`.
+It is reserved for the one resident image worker's authenticated loopback
+control app and must stay outside `COIRE_NODE_ENGINE_PORT_RANGE` (default
+`9500-9599`). The node refuses a collision; this setting opens no external
+listener.
+
 Nginx allows a 65 MiB multipart body only at `/api/v1/image-inputs` to fit a 64 MiB
 recipe PNG plus framing. The API enforces the purpose-specific 10 MiB generation and
 64 MiB recipe file caps. The internal raw PNG transfer path is limited to 64 MiB. Other

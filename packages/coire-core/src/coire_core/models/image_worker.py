@@ -126,6 +126,29 @@ class ImageWorkerProcessConfig(BaseModel):
         return self
 
 
+class ImageWorkerProcessRecord(BaseModel):
+    """Durable node-owned identity; never includes the bearer value."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal[1] = 1
+    config: ImageWorkerProcessConfig
+    status: ImageWorkerLoadResult
+
+    @model_validator(mode="after")
+    def process_identity_complete(self) -> ImageWorkerProcessRecord:
+        if (
+            self.status.state not in {"starting", "ready"}
+            or self.status.instance_id != self.config.load.instance_id
+            or self.status.port != self.config.port
+            or self.status.reserved_bytes != self.config.load.reservation_bytes
+            or self.status.pid is None
+            or self.status.process_create_time is None
+        ):
+            raise ValueError("image worker process record differs from launch")
+        return self
+
+
 class NodeImageInputManifest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

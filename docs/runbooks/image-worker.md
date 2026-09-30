@@ -69,3 +69,15 @@ secrets. It then removes Hub tokens, sets `HF_HUB_OFFLINE=1` and
 serving authenticated control on 127.0.0.1. A failed bootstrap prints only a
 safe error; inspect the node load status and the admin-acquired manifest to
 diagnose it. Do not place credentials in the launch JSON or command line.
+
+The node launch supervisor now verifies the exact Store copy and configured
+memory budget, including reservations supplied by its caller, before reserving
+the dedicated loopback port. It writes the 0600 token
+and launch JSON under `node_state_dir/image-workers/<instance_id>/` (0700),
+spawns the versioned Python process with explicit argv and no Hub credential,
+then atomically persists `worker.json` with PID, process create time, port and
+reservation before returning `starting`. An identical load replays that
+status; a different load or stale on-disk record is refused. On a launch or
+record-write failure it kills the child and releases the reservation. Do not
+delete a stale record manually while its PID/create-time pair might still be
+alive; readiness and re-adoption are the next supervisor steps.
