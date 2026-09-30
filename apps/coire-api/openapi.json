@@ -4757,6 +4757,59 @@
         "additionalProperties": false,
         "description": "Measured base-model bounds; checked after request and preset resolution.",
         "properties": {
+          "default_guidance": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Guidance"
+          },
+          "default_height": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 64.0,
+                "multipleOf": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Height"
+          },
+          "default_steps": {
+            "anyOf": [
+              {
+                "maximum": 150.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Steps"
+          },
+          "default_width": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 64.0,
+                "multipleOf": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Width"
+          },
           "max_guidance": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Max Guidance",

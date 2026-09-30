@@ -3643,6 +3643,14 @@ export interface components {
          * @description Measured base-model bounds; checked after request and preset resolution.
          */
         ImageCapabilityProfile: {
+            /** Default Guidance */
+            default_guidance?: string | null;
+            /** Default Height */
+            default_height?: number | null;
+            /** Default Steps */
+            default_steps?: number | null;
+            /** Default Width */
+            default_width?: number | null;
             /** Max Guidance */
             max_guidance: string;
             /** Max Height */

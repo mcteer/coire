@@ -229,6 +229,10 @@ class ImageCapabilityProfile(BaseModel):
     min_guidance: Decimal = Field(ge=0, le=30)
     max_guidance: Decimal = Field(ge=0, le=30)
     max_outputs: int = Field(ge=1, le=4)
+    default_width: int | None = Field(default=None, ge=64, le=4096, multiple_of=8)
+    default_height: int | None = Field(default=None, ge=64, le=4096, multiple_of=8)
+    default_steps: int | None = Field(default=None, ge=1, le=150)
+    default_guidance: Decimal | None = Field(default=None, ge=0, le=30)
     supports_negative_prompt: bool = False
     max_loras: int = Field(default=0, ge=0, le=4)
     required_dependency_ids: tuple[uuid.UUID, ...] = Field(default_factory=tuple, max_length=16)
@@ -245,6 +249,29 @@ class ImageCapabilityProfile(BaseModel):
             raise ValueError("capability bounds or modes are inconsistent")
         if len(set(self.required_dependency_ids)) != len(self.required_dependency_ids):
             raise ValueError("required dependencies cannot repeat")
+        defaults = (
+            self.default_width,
+            self.default_height,
+            self.default_steps,
+            self.default_guidance,
+        )
+        if any(value is not None for value in defaults):
+            if any(value is None for value in defaults):
+                raise ValueError("image defaults must be complete")
+            assert self.default_width is not None
+            assert self.default_height is not None
+            assert self.default_steps is not None
+            assert self.default_guidance is not None
+            if not self.min_width <= self.default_width <= self.max_width:
+                raise ValueError("default_width exceeds model bounds")
+            if not self.min_height <= self.default_height <= self.max_height:
+                raise ValueError("default_height exceeds model bounds")
+            if self.default_width * self.default_height > self.max_pixels:
+                raise ValueError("default_width and default_height exceed max_pixels")
+            if not self.min_steps <= self.default_steps <= self.max_steps:
+                raise ValueError("default_steps exceeds model bounds")
+            if not self.min_guidance <= self.default_guidance <= self.max_guidance:
+                raise ValueError("default_guidance exceeds model bounds")
         return self
 
     def validate_spec(self, spec: ImageSpec) -> None:
