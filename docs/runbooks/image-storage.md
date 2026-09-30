@@ -18,6 +18,13 @@ transaction as the owning input/job row. The physical disk floor counts existing
 unwritten holds. Inspect both `held_bytes` and `stored_bytes` when diagnosing a
 refusal; never reset them manually while a job or purge is uncertain. Cross-process
 PostgreSQL contention evidence is still required before image admission is enabled.
+The image-job capacity helper now reserves one pending slot, daily output allowance
+and the worst-case `n * 64 MiB` output hold in the same transaction as a future job
+row. At start it moves held outputs to consumed outputs and frees the queue slot;
+queued cancellation frees the slot, allowance and byte hold. UTC day rollover resets
+consumed outputs while preserving in-flight held outputs. These helpers are not yet
+called by a public job route. Inspect owner/global `pending_jobs`, `held_outputs`,
+`consumed_outputs` and `held_bytes` together when diagnosing admission refusal.
 
 The owner recipe-only `POST /api/v1/image-inputs` path now uses private staging and a
 quota hold in one admission transaction; `GET /api/v1/image-inputs/{id}` returns the
