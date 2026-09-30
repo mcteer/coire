@@ -11,6 +11,13 @@ Render production and integration Compose configurations and verify `IMAGE_ENABL
 Check the API-only blob mount, existing file-worker original read-only mount, and the
 route-specific Nginx body limits. Once services exist, inspect quota rows, transfer receipts
 and disk safety floor before any admission change. Do not log or expose blob paths.
+The image quota helper now initializes and locks global then owner rows under one
+transaction advisory lock. A caller reserves worst-case bytes before publication,
+then settles only confirmed stored bytes or releases a failed hold in that same
+transaction as the owning input/job row. The physical disk floor counts existing
+unwritten holds. Inspect both `held_bytes` and `stored_bytes` when diagnosing a
+refusal; never reset them manually while a job or purge is uncertain. Cross-process
+PostgreSQL contention evidence is still required before image admission is enabled.
 
 The isolated file worker now has a settings-only `parse_recipe_png` helper for future
 owner-scoped recipe uploads. It accepts regular PNG files up to 64 MiB, validates PNG chunk
