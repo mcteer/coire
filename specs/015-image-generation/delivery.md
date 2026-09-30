@@ -151,6 +151,12 @@ Atomic owner/global storage holds are
 T008/T026/T035/T054 remain open for cross-process PostgreSQL contention evidence and
 calling the ledger from upload/job admission, settlement and cancellation. The local
 environment did not have `COIRE_TEST_POSTGRES_DSN` configured.
+Owner recipe-only upload admission and durable parser recovery are
+[draft PR #70](https://github.com/mcteer/coire/pull/70), reviewed against PR #69.
+T012/T049/T050/T054 remain open for generation-input normalization, failed-input and
+orphan cleanup, full owner lifecycle and cross-process quota evidence. The route stays
+behind disabled-by-default `COIRE_IMAGE_ENABLED`; uncertain commits retain bytes for
+reconciliation rather than risking a committed row pointing to missing data.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
