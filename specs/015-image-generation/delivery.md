@@ -146,6 +146,11 @@ Owner output tombstones and API-side physical purge are
 T038 and T039 remain open for generation publication, Studio cleanup acknowledgments,
 input purging and end-to-end retention evidence. New reads fail after tombstone;
 stored-byte counters release only after a safe unlink or confirmed absence.
+Atomic owner/global storage holds are
+[draft PR #69](https://github.com/mcteer/coire/pull/69), reviewed against PR #68.
+T008/T026/T035/T054 remain open for cross-process PostgreSQL contention evidence and
+calling the ledger from upload/job admission, settlement and cancellation. The local
+environment did not have `COIRE_TEST_POSTGRES_DSN` configured.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
