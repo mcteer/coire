@@ -117,7 +117,7 @@ only coire-node reaches it. Loopback does not imply trusted callers.
 
 | Boundary | Request -> response |
 | --- | --- |
-| Existing engine start/status/stop | Extend `EngineStartRequest`/status for MFLUX instance with verified local manifest and memory reservation; no client-supplied import/class/path. |
+| PUT/GET/DELETE node `/images/worker` (`GET`/`DELETE` bind `{instance_id}`) | `ImageWorkerLoadRequest`, `ImageWorkerLoadResult`, `ImageWorkerUnloadRequest`; verified local manifest, one shared memory budget with language engines, exact process identity and authenticated control listener. Dedicated route per ADR 0010; no client-supplied import/class/path. |
 | PUT node `/images/jobs/{job_id}` | `NodeImageStartRequest -> NodeImageJob`; immutable resolved spec, owned transferred input manifest, attempt/fence, deadline, reservation; identical replay attaches. |
 | GET node `/images/jobs/{job_id}` | `NodeImageJob`; journal, progress cursor, PID/create_time, staged output receipts and cleanup status. |
 | DELETE node `/images/jobs/{job_id}` | `NodeImageCancelRequest -> NodeImageJob`; idempotent fence/cancel, TERM/KILL deadline. |

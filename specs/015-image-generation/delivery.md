@@ -45,6 +45,7 @@ Branch and merge status remains separate from task completion.
 | `015e13-image-process-launch` | Reserved node-owned process launch and durable PID/port identity | part of T024/T030/T033 |
 | `015e14-image-process-readiness` | Authenticated health, durable ready state and exact process re-adoption | part of T024/T030/T033 |
 | `015e15-image-process-stop` | Fenced TERM/KILL and reservation release after confirmed death | part of T024/T030/T039/T041 |
+| `015e16-image-node-routes` | Authenticated node control routes, restart adoption and shared image/language memory budget | part of T024/T030/T033 |
 | `015g1-image-gallery` | Owner-only metadata list/detail with stable cursor and generated clients | part of T022, T023, T043–T044 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -241,6 +242,11 @@ Fenced process TERM/KILL and cleanup are
 It holds memory on uncertain inspection or cleanup and leaves generated scratch
 untouched. T024/T030/T039/T041 remain open for node routes, job-level
 cancellation arbitration, receipt-aware cleanup and live timing evidence.
+Authenticated Studio worker routes and shared memory admission are
+[draft PR #86](https://github.com/mcteer/coire/pull/86), reviewed against PR #85.
+ADR 0010 records the dedicated route choice. T024/T030/T032/T033 remain open
+for journaled job commands, transfer, acquisition validation and live Studio
+acceptance; the public admission flag remains disabled.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
