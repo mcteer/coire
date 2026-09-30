@@ -178,6 +178,78 @@ def test_tiny_text_stream_usage_and_healthy_stop() -> None:
                         )
 
 
+def test_repeated_healthy_stop_latency() -> None:
+    if os.environ.get("COIRE_TEST_CHAT_STOP_P95") != "1":
+        pytest.skip("enable repeated live Stop timing explicitly")
+    url, model_id, service = _configuration()
+    origin = os.environ.get("COIRE_TEST_CHAT_ORIGIN", "http://localhost:8180")
+    key = subprocess.check_output(
+        ["security", "find-generic-password", "-w", "-s", service], text=True
+    ).strip()
+    latencies: list[float] = []
+    with _RateLimitedClient(
+        base_url=url, timeout=90, headers={"Authorization": f"Bearer {key}", "Origin": origin}
+    ) as client:
+        for _ in range(12):
+            created = client.post(
+                "/api/v1/chat/conversations", json={"mode": "chat", "model_id": model_id}
+            )
+            assert created.status_code == 201, created.text
+            conversation_id = created.json()["id"]
+            path = f"/api/v1/chat/conversations/{conversation_id}"
+            try:
+                accepted_id: str | None = None
+                stop_started: float | None = None
+                terminal: dict[str, object] | None = None
+                with client.stream(
+                    "POST",
+                    f"{path}/turns",
+                    json={
+                        "client_request_id": str(uuid.uuid4()),
+                        "expected_revision": created.json()["revision"],
+                        "model_id": model_id,
+                        "content": "Count from one to forty, one number at a time.",
+                    },
+                ) as response:
+                    assert response.status_code == 200, response.text
+                    for event in _events(response):
+                        payload = _event_payload(event)
+                        if payload["type"] == "turn.accepted":
+                            turn = payload["turn"]
+                            assert isinstance(turn, dict)
+                            accepted_id = str(turn["id"])
+                        elif payload["type"] == "message.delta" and stop_started is None:
+                            assert accepted_id is not None
+                            stop_started = time.monotonic()
+                            stopped = client.post(
+                                f"{path}/turns/{accepted_id}/stop", json={"reason": "user_stop"}
+                            )
+                            assert stopped.status_code == 200, stopped.text
+                        elif payload["type"] == "turn.terminal":
+                            terminal = payload
+                            break
+                assert stop_started is not None, (
+                    "model did not emit a delta before Stop",
+                    terminal.get("state") if terminal else None,
+                    terminal.get("safe_error") if terminal else None,
+                )
+                assert terminal is not None and terminal["state"] == "stopped", terminal
+                latencies.append(time.monotonic() - stop_started)
+            finally:
+                detail = client.get(path)
+                if detail.status_code == 200:
+                    deleted = client.request(
+                        "DELETE",
+                        path,
+                        json={"expected_revision": detail.json()["conversation"]["revision"]},
+                    )
+                    assert deleted.status_code == 202, deleted.text
+    assert len(latencies) == 12
+    p95 = sorted(latencies)[11]
+    print(f"12-call healthy Stop p95: {p95:.3f}s; maximum: {max(latencies):.3f}s")
+    assert p95 <= 5, f"12-call Stop p95 was {p95:.3f}s"
+
+
 def test_bounded_anthropic_chat_stream_stop_and_private_routing() -> None:
     """The curated provider target works in native Chat and stays out of /v1."""
     provider_model = os.environ.get("COIRE_TEST_ANTHROPIC_MODEL")
