@@ -29,6 +29,7 @@ Branch and merge status remains separate from task completion.
 | `015d5-image-preset-admin` | Append-only admin preset mutation and audit service | part of T015, T019–T020 |
 | `015d6-image-preset-routes` | Human-admin create/update/retire routes with live role and refusal audits | part of T014, T020 |
 | `015d7-image-preset-list` | Live entitlement-filtered picker listing, disabled until image admission | completes T015, T019; part of T022 |
+| `015d8-image-preset-templates` | Inert admin-bound template examples and import instructions | completes T020 |
 | `015e1-image-routing-isolation` | Exclude image backends from language/vision routing and legacy acquisition | part of T027–T028 |
 | `015e2-image-registry-kind` | Persist asset kind and kind/backend DB constraint with guarded rollback | part of T027–T028 |
 | `015e3-image-profile-schema` | Persist measured base capability with ready-state and downgrade constraints | part of T027 |
@@ -95,8 +96,10 @@ Audited append-only preset mutations are [draft PR #54](https://github.com/mctee
 reviewed against PR #53. Human-admin routes are [draft PR #55](https://github.com/mcteer/coire/pull/55),
 reviewed against PR #54. Admin-imported templates remain required.
 The eligible picker is [draft PR #56](https://github.com/mcteer/coire/pull/56), reviewed
-against PR #55. T015 and T019 are complete across the preset slices. T020 remains open for
-admin-imported templates; T022 remains open for output-access/tag filtering.
+against PR #55. T015 and T019 are complete across the preset slices. T022 remains open
+for output-access/tag filtering.
+The inert admin-imported templates are [draft PR #57](https://github.com/mcteer/coire/pull/57),
+reviewed against PR #56. T020 is complete across #54, #55 and #57.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
