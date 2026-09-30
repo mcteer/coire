@@ -25,6 +25,15 @@ queued cancellation frees the slot, allowance and byte hold. UTC day rollover re
 consumed outputs while preserving in-flight held outputs. These helpers are not yet
 called by a public job route. Inspect owner/global `pending_jobs`, `held_outputs`,
 `consumed_outputs` and `held_bytes` together when diagnosing admission refusal.
+The queued image-admission service now commits one job, generated seed, capacity hold,
+first event and content-free audit row for a new owner/idempotency key; a matching
+retry returns the existing job without charging again. It accepts only ready,
+published Studio image bases with a measured profile and valid manifest digest,
+plus ready hidden dependencies. It has no public submit route yet, and the default
+`COIRE_IMAGE_ENABLED=false` setting also refuses a direct service call. Inspect
+`image_jobs.intent_sha256`, the `authorization_snapshot` policy and quota counters
+together when investigating a replay conflict; never copy prompts from
+`submitted_spec` or `resolved_spec` into logs or audit details.
 
 The owner recipe-only `POST /api/v1/image-inputs` path now uses private staging and a
 quota hold in one admission transaction; `GET /api/v1/image-inputs/{id}` returns the
