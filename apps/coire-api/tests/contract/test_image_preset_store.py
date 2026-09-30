@@ -154,6 +154,18 @@ async def test_hidden_base_dependency_cannot_be_removed_by_override(
         )
 
 
+async def test_base_profile_cannot_require_itself() -> None:
+    rows = _rows()
+    base = cast(ModelRow, rows[(ModelRow, BASE)])
+    base.image_capability_profile = {**PROFILE, "required_dependency_ids": [str(BASE)]}
+    with pytest.raises(ImageValidationError):
+        await presets.load_resolved_image_preset(
+            cast(AsyncSession, FakeSession(rows)),
+            ImageSubmitRequest(preset_id=PRESET),
+            Principal(kind=PrincipalKind.USER, user_id=OWNER),
+        )
+
+
 @pytest.mark.parametrize(
     "change, error",
     [

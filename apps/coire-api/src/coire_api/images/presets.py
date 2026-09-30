@@ -228,6 +228,10 @@ async def load_resolved_image_preset(
 
     if models[base_id].kind != ModelKind.IMAGE_MODEL:
         raise ImageValidationError()
+    if any(
+        models[item].kind not in AUXILIARY_IMAGE_KINDS for item in profile.required_dependency_ids
+    ):
+        raise ImageValidationError()
     for source in (defaults, request):
         for lora in source.loras or []:
             if models[lora.model_id].kind != ModelKind.IMAGE_LORA:
