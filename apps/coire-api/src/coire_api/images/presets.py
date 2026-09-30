@@ -2,21 +2,24 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.auth import Principal
-from coire_api.db import ImagePresetRevisionRow, ImagePresetRow, ModelRow
+from coire_api.auth import Principal, PrincipalKind
+from coire_api.db import ApiKeyRow, EntitlementRow, ImagePresetRevisionRow, ImagePresetRow, ModelRow
 from coire_api.images.authorization import authorize_live_image_action
 from coire_core.errors import ImageConflict, ImageNotFound, ImageValidationError
 from coire_core.models.images import (
     ImageCapabilityProfile,
     ImageContentMode,
     ImagePreset,
+    ImagePresetList,
     ImageSubmitRequest,
 )
 from coire_core.models.registry import (
@@ -26,6 +29,8 @@ from coire_core.models.registry import (
     ModelSource,
     ModelState,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -142,10 +147,10 @@ def _stored_requirements(value: object) -> frozenset[str]:
     return frozenset(value)
 
 
-async def load_resolved_image_preset(
-    session: AsyncSession, request: ImageSubmitRequest, principal: Principal
-) -> PresetResolution:
-    """Load immutable preset and live dependencies under one admission transaction."""
+async def _load_preset_policy(
+    session: AsyncSession, request: ImageSubmitRequest
+) -> tuple[ImagePreset, PresetResolution]:
+    """Load immutable preset and current dependency policy under row locks."""
     if request.preset_id is None:
         raise ImageValidationError()
     row = await session.get(
@@ -255,6 +260,14 @@ async def load_resolved_image_preset(
         preset_requirements=requirements,
         registry_requirements=registry_requirements,
     )
+    return preset, resolved
+
+
+async def load_resolved_image_preset(
+    session: AsyncSession, request: ImageSubmitRequest, principal: Principal
+) -> PresetResolution:
+    """Recheck live identity and requirements in the caller's admission transaction."""
+    _, resolved = await _load_preset_policy(session, request)
     await authorize_live_image_action(
         session,
         principal,
@@ -262,3 +275,51 @@ async def load_resolved_image_preset(
         required_entitlements=resolved.required_entitlements,
     )
     return resolved
+
+
+async def list_eligible_image_presets(
+    session: AsyncSession, principal: Principal
+) -> ImagePresetList:
+    """List only published revisions eligible under current identity and registry state."""
+    owner_id = await authorize_live_image_action(session, principal)
+    entitlements = frozenset(
+        (
+            await session.scalars(
+                select(EntitlementRow.name)
+                .where(
+                    EntitlementRow.user_id == owner_id,
+                    EntitlementRow.revoked_at.is_(None),
+                )
+                .with_for_update()
+            )
+        ).all()
+    )
+    explicit_key_allowed = True
+    if principal.kind is PrincipalKind.API_KEY:
+        key = await session.get(
+            ApiKeyRow, principal.api_key_id, populate_existing=True, with_for_update=True
+        )
+        explicit_key_allowed = key is not None and "images:explicit" in key.scopes
+    rows = (
+        await session.scalars(
+            select(ImagePresetRow)
+            .where(ImagePresetRow.state == "published")
+            .order_by(ImagePresetRow.name, ImagePresetRow.id)
+            .limit(100)
+        )
+    ).all()
+    items: list[ImagePreset] = []
+    for row in rows:
+        try:
+            preset, resolved = await _load_preset_policy(
+                session, ImageSubmitRequest(preset_id=row.id)
+            )
+        except (ImageNotFound, ImageConflict, ImageValidationError):
+            logger.warning("skipped ineligible image preset", extra={"preset_id": str(row.id)})
+            continue
+        if not resolved.required_entitlements <= entitlements:
+            continue
+        if resolved.request.content_mode is ImageContentMode.EXPLICIT and not explicit_key_allowed:
+            continue
+        items.append(preset)
+    return ImagePresetList(items=items)

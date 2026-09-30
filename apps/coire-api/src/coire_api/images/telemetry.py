@@ -41,6 +41,7 @@ class ImageOperation(StrEnum):
     CANCEL = "cancel"
     DELETE = "delete"
     PRESET_MUTATION = "preset_mutation"
+    PRESET_LIST = "preset_list"
 
 
 class ImageOutcome(StrEnum):

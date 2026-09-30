@@ -1222,6 +1222,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/images/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Presets
+         * @description Show only currently usable published presets; no job is admitted here.
+         */
+        get: operations["list_presets_api_v1_images_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instances": {
         parameters: {
             query?: never;
@@ -3697,6 +3717,11 @@ export interface components {
              * @default
              */
             prompt_prefix: string;
+        };
+        /** ImagePresetList */
+        ImagePresetList: {
+            /** Items */
+            items: components["schemas"]["ImagePreset"][];
         };
         /** ImagePresetUpdate */
         ImagePresetUpdate: {
@@ -8529,6 +8554,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ElectionVoteGrant"];
+                };
+            };
+        };
+    };
+    list_presets_api_v1_images_presets_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePresetList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

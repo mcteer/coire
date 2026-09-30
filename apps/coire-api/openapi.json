@@ -5145,6 +5145,24 @@
         "title": "ImagePresetCreate",
         "type": "object"
       },
+      "ImagePresetList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImagePreset"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ImagePresetList",
+        "type": "object"
+      },
       "ImagePresetUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -16213,6 +16231,61 @@
         "summary": "Cast Vote",
         "tags": [
           "failover"
+        ]
+      }
+    },
+    "/api/v1/images/presets": {
+      "get": {
+        "description": "Show only currently usable published presets; no job is admitted here.",
+        "operationId": "list_presets_api_v1_images_presets_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagePresetList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Presets",
+        "tags": [
+          "images"
         ]
       }
     },
