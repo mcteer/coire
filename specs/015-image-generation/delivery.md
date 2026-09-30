@@ -128,6 +128,10 @@ T022 remains open for completion audits, runtime prompt preservation and full po
 boundary tests. The grant token moved from the URL query to a fragment plus request
 header after tracing instrumentation was found to capture query strings; ADR 0009
 records the decision.
+Bounded private image input staging is
+[draft PR #65](https://github.com/mcteer/coire/pull/65), reviewed against PR #64.
+T012, T049 and T054 remain open for authenticated upload admission, quota/processing,
+real-size boundary tests and cleanup before the route can be enabled.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
