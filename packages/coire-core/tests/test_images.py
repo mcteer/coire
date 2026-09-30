@@ -216,6 +216,20 @@ def test_capability_limits() -> None:
         max_outputs=2,
     )
     capability.validate_spec(spec())
+    with_defaults = ImageCapabilityProfile.model_validate(
+        {
+            **capability.model_dump(),
+            "default_width": 512,
+            "default_height": 512,
+            "default_steps": 9,
+            "default_guidance": "1.5",
+        }
+    )
+    assert with_defaults.default_steps == 9
+    with pytest.raises(ValidationError, match="defaults"):
+        ImageCapabilityProfile.model_validate({**capability.model_dump(), "default_steps": 9})
+    with pytest.raises(ValidationError, match="default_width"):
+        ImageCapabilityProfile.model_validate({**with_defaults.model_dump(), "default_width": 2048})
     with pytest.raises(ValueError, match="negative_prompt"):
         capability.validate_spec(spec(negative_prompt="no blur"))
     with pytest.raises(ValueError, match="steps"):
