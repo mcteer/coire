@@ -58,3 +58,14 @@ TERM/KILL it when a callback cannot run. Generated status returns only bounded
 size, PNG digest and recipe digest, never a path or prompt. The in-memory
 control keeps at most 32 attempt statuses, so the future node supervisor must
 drain and unload before that bound is reached.
+
+The native worker entrypoint is
+`python -m coire_node.image_runtime.bootstrap <private-config-file>`. The
+future node launcher writes a strict `ImageWorkerProcessConfig` JSON file and
+per-worker secret as owner-only 0600 regular files. Bootstrap refuses larger
+than 16 KiB configuration, symlinks, wrong ownership or mode, and weak
+secrets. It then removes Hub tokens, sets `HF_HUB_OFFLINE=1` and
+`TRANSFORMERS_OFFLINE=1`, verifies the local Store copy and loads mflux before
+serving authenticated control on 127.0.0.1. A failed bootstrap prints only a
+safe error; inspect the node load status and the admin-acquired manifest to
+diagnose it. Do not place credentials in the launch JSON or command line.

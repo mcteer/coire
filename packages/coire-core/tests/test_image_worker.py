@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -14,6 +15,7 @@ from coire_core.models.image_worker import (
     ImageTransferReceipt,
     ImageWorkerLoadRequest,
     ImageWorkerOutputManifest,
+    ImageWorkerProcessConfig,
     ImageWorkerRunRequest,
     NodeImageCleanupRequest,
     NodeImageInputManifest,
@@ -78,6 +80,33 @@ def test_worker_output_manifest_is_bounded_and_path_free() -> None:
     for changes in ({"path": "/private/output.png"}, {"byte_count": 64 * 1024 * 1024 + 1}):
         with pytest.raises(ValidationError):
             ImageWorkerOutputManifest.model_validate(output.model_dump() | changes)
+
+
+def test_worker_launch_config_rejects_untyped_paths_and_prompt(tmp_path: Path) -> None:
+    load = ImageWorkerLoadRequest(
+        slug="studio--z-image-turbo",
+        model_id=MODEL,
+        instance_id=INSTANCE,
+        manifest_sha256="a" * 64,
+        reservation_bytes=1024,
+        runtime_version="mflux-0.20.0",
+    )
+    values = {
+        "load": load.model_dump(mode="json"),
+        "store_dir": str(tmp_path / "store"),
+        "scratch_dir": str(tmp_path / "scratch"),
+        "token_file": str(tmp_path / "secret"),
+        "port": 39177,
+    }
+    assert ImageWorkerProcessConfig.model_validate(values).port == 39177
+    for changes in (
+        {"prompt": "private"},
+        {"store_dir": "../model"},
+        {"port": 0},
+        {"token_file": str(tmp_path / "store" / "secret")},
+    ):
+        with pytest.raises(ValidationError):
+            ImageWorkerProcessConfig.model_validate(values | changes)
 
 
 def test_worker_load_is_mflux_registry_only() -> None:
