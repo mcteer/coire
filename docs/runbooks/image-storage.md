@@ -46,7 +46,16 @@ and include no blob path or content URL. The opaque cursor carries owner and pos
 it remains valid if the boundary record is deleted. The gallery remains readable when
 new image admission is disabled. Inspect the `gallery` operation in
 `coire_image_requests_total` for success/refusal rates and the `coire.api.image.gallery`
-span for request timing. Output deletion is still pending.
+span for request timing.
+Owners can now DELETE an output. The API commits a tombstone before returning 202;
+subsequent gallery, grant and content requests treat it as absent. The API maintenance
+loop checks pending tombstones every 30 seconds, unlinks only regular files below its
+private blob root without following symlinks, then records `purged_at` and releases
+owner/global stored-byte counters. A missing file is retry-safe after an unlink-before-
+commit crash. A failed purge remains pending; inspect `coire_image_purge_total`,
+`coire_image_purge_oldest_seconds` and the `CoireImagePurgeOverdue` alert. To stop new
+output creation keep `COIRE_IMAGE_ENABLED=false`; let maintenance finish before removing
+the blob volume or rolling back the schema.
 
 Owners can now issue five-minute download grants via
 `POST /api/v1/image-outputs/{id}/download-grants`. The response URL has a `#grant=`

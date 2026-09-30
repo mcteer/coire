@@ -8,11 +8,11 @@ import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from fastapi import APIRouter, Header, Query, Request, Response
+from fastapi import APIRouter, Header, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from coire_api.deps import SessionDep
-from coire_api.images import downloads, outputs
+from coire_api.images import deletion, downloads, outputs
 from coire_api.images.authorization import CurrentImageUser
 from coire_api.images.telemetry import (
     ImageOperation,
@@ -24,6 +24,7 @@ from coire_api.images.telemetry import (
 from coire_core.errors import CoireError, ImageForbidden, ImageNotFound
 from coire_core.models.images import (
     ImageContentTag,
+    ImageDeletionReceipt,
     ImageDownloadGrant,
     ImageOutput,
     ImageOutputPage,
@@ -31,6 +32,36 @@ from coire_core.models.images import (
 from coire_core.settings import get_settings
 
 router = APIRouter(prefix="/api/v1/image-outputs", tags=["images"])
+
+
+@router.delete(
+    "/{output_id}",
+    response_model=ImageDeletionReceipt,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def delete_output(
+    output_id: uuid.UUID,
+    principal: CurrentImageUser,
+    session: SessionDep,
+    response: Response,
+) -> ImageDeletionReceipt:
+    with image_span(ImageOperation.DELETE):
+        try:
+            receipt = await deletion.tombstone_owned_output(session, principal, output_id)
+            await session.commit()
+        except ImageNotFound:
+            record_image_request(
+                ImageOperation.DELETE, ImageOutcome.REFUSED, reason=ImageReason.AUTH
+            )
+            raise
+        except CoireError:
+            record_image_request(
+                ImageOperation.DELETE, ImageOutcome.FAILED, reason=ImageReason.INTERNAL
+            )
+            raise
+        response.headers["Cache-Control"] = "private, no-store"
+        record_image_request(ImageOperation.DELETE, ImageOutcome.ACCEPTED)
+        return receipt
 
 
 @router.get("", response_model=ImageOutputPage)

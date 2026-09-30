@@ -100,6 +100,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         chat_maintenance = ChatMaintenance(settings)
         await chat_maintenance.start()
         app.state.chat_maintenance = chat_maintenance
+        from coire_api.images.maintenance import ImageOutputMaintenance
+
+        image_maintenance = ImageOutputMaintenance(settings)
+        await image_maintenance.start()
+        app.state.image_maintenance = image_maintenance
         from coire_api.failover.poller import build_poller
         from coire_api.failover.publication import CoreSnapshotService, configured_membership
 
@@ -126,6 +131,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await failover_poller.stop()
             if snapshot_service is not None:
                 await snapshot_service.stop()
+            await image_maintenance.stop()
             await chat_maintenance.stop()
             await reconciler.stop()
             await prober.stop()
