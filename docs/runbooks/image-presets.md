@@ -44,4 +44,13 @@ stale revisions and duplicate names return a safe conflict. Inspect those audit
 actions and the `coire_image_requests_total{operation="preset_mutation"}` counter
 without recording prompt content. To stop new use, retire the pointer; do not delete
 revision rows while jobs or outputs reference them. The feature flag still prevents
-image admission, and ordinary eligible preset listings remain to be wired.
+image admission.
+
+`GET /api/v1/images/presets` now serves the bounded picker. It returns an empty list
+while `COIRE_IMAGE_ENABLED=false`. When enabled, it checks the active user/key and
+current entitlement rows, then revalidates every published revision and registry
+dependency. Explicit-capable presets are hidden unless the user has a live `explicit`
+entitlement and a personal key, if used, still has `images:explicit`. Admin role alone
+does not reveal them. Missing or malformed dependencies are logged by preset ID only
+and omitted from the response. The picker returns at most 100 name-ordered presets;
+the job submit path must repeat every check in its own transaction.

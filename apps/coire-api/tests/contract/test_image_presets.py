@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from decimal import Decimal
 
 import pytest
+from pydantic import ValidationError
 
 from coire_api.images.presets import PresetResolution, resolve_image_preset
 from coire_core.errors import ImageConflict, ImageValidationError
@@ -14,6 +15,7 @@ from coire_core.models.images import (
     ImageContentMode,
     ImageLora,
     ImagePreset,
+    ImagePresetCreate,
     ImageSubmitRequest,
 )
 
@@ -119,3 +121,14 @@ def test_retired_preset_and_missing_registry_dependency_fail_closed() -> None:
 def test_overlong_prefixed_prompt_is_rejected() -> None:
     with pytest.raises(ImageValidationError):
         _resolve(ImageSubmitRequest(preset_id=PRESET_ID, prompt="x" * 3990))
+
+
+def test_imported_preset_cannot_supply_privilege_fields() -> None:
+    with pytest.raises(ValidationError):
+        ImagePresetCreate.model_validate(
+            {
+                "name": "forged",
+                "defaults": {"model_id": str(MODEL), "prompt": "subject"},
+                "entitlement_requirements": [],
+            }
+        )
