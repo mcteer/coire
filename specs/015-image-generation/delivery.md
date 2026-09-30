@@ -20,6 +20,7 @@ Branch and merge status remains separate from task completion.
 | `015c1-image-job-schema` | Durable job, event and preset tables | part of T008–T009 |
 | `015c2-image-asset-schema` | Durable inputs, outputs, grants and transfer receipts | part of T008–T009 |
 | `015c3-image-capacity-schema` | Quotas, execution leases and coexistence profiles | remainder of T008–T009 |
+| `015c4-image-migration-verification` | Disposable PostgreSQL upgrade/downgrade and constraint checks | part of T008; verifies T009 |
 | `015d-image-security` | Identity, entitlement, audit and presets | T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
 | `015f-image-storage` | Bounded blob staging, grants and cleanup | T012–T013, T026, T031, T036, T038–T039 |
@@ -47,8 +48,10 @@ T008–T009 remain open until all three persistence slices and their migration c
 The asset/transfer/grant schema is [draft PR #39](https://github.com/mcteer/coire/pull/39),
 reviewed against PR #38. Capacity, lease and coexistence persistence is
 [draft PR #40](https://github.com/mcteer/coire/pull/40), reviewed against PR #39.
-The three migrations are drafted; T008–T009 remain open for live PostgreSQL upgrade,
-existing text/VLM row compatibility, downgrade-drain and cancel/publication race evidence.
+The three migrations are drafted and verified on disposable local PostgreSQL 17 in
+[draft PR #41](https://github.com/mcteer/coire/pull/41), reviewed against PR #40.
+T009 is complete. T008 remains open for cancellation/publication race evidence and
+operator-run drain/rollout checks; no Studio or production database was contacted.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
