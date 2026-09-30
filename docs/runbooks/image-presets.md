@@ -13,7 +13,7 @@ requirements against the user's live entitlements. A missing dependency requirem
 entry is an invalid request; do not use request or imported recipe fields to grant
 entitlements. Retiring a preset blocks new admissions while existing job revisions
 remain in the database. If a preset appears stale or unsafe, retire it through the
-future audited admin route; this slice does not expose a mutation endpoint.
+future audited admin route; the mutation service is not exposed by a route yet.
 
 `load_resolved_image_preset` now performs that database lookup and policy recheck in
 the caller's transaction. It locks the published preset pointer, immutable revision,
@@ -29,3 +29,13 @@ locks, even when they are absent from the visible preset fields. Their current
 registry entitlement requirements join the admission union; an override cannot
 remove them. A missing required asset blocks the request. Admin acquisition must
 populate this list from validated local component manifests, using registry UUIDs.
+
+`admin_presets` now has transaction-scoped create, update and retire operations for
+human-admin routes to call. Create publishes revision 1 only after checking a ready
+measured base and every visible/hidden auxiliary. Update locks the pointer, requires
+the expected revision and inserts a new revision; old revisions are never edited.
+Retire changes only the pointer state, preserving job history. Each successful
+mutation writes a content-free `image.preset.*` audit row in the same transaction.
+The future route must require a live human admin, commit mutation and audit together,
+and surface stale revisions as conflicts. To stop new use, retire the pointer; do not
+delete revision rows while jobs or outputs reference them.
