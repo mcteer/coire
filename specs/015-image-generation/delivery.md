@@ -141,6 +141,11 @@ The typed private parser client is
 [draft PR #67](https://github.com/mcteer/coire/pull/67), reviewed against PR #66.
 It refuses mismatched worker identity, size or digest and keeps response content out
 of errors. T054 stays open until a durable owner-upload workflow calls this client.
+Owner output tombstones and API-side physical purge are
+[draft PR #68](https://github.com/mcteer/coire/pull/68), reviewed against PR #67.
+T038 and T039 remain open for generation publication, Studio cleanup acknowledgments,
+input purging and end-to-end retention evidence. New reads fail after tombstone;
+stored-byte counters release only after a safe unlink or confirmed absence.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
