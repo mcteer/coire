@@ -45,7 +45,10 @@ reviewed against PR #36. The first persistence slice is
 [draft PR #38](https://github.com/mcteer/coire/pull/38), reviewed against PR #37.
 T008–T009 remain open until all three persistence slices and their migration checks finish.
 The asset/transfer/grant schema is [draft PR #39](https://github.com/mcteer/coire/pull/39),
-reviewed against PR #38. Capacity, lease and coexistence persistence remains next.
+reviewed against PR #38. Capacity, lease and coexistence persistence is
+[draft PR #40](https://github.com/mcteer/coire/pull/40), reviewed against PR #39.
+The three migrations are drafted; T008–T009 remain open for live PostgreSQL upgrade,
+existing text/VLM row compatibility, downgrade-drain and cancel/publication race evidence.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
