@@ -192,6 +192,7 @@ class ImageCapabilityProfile(BaseModel):
     max_outputs: int = Field(ge=1, le=4)
     supports_negative_prompt: bool = False
     max_loras: int = Field(default=0, ge=0, le=4)
+    required_dependency_ids: tuple[uuid.UUID, ...] = Field(default_factory=tuple, max_length=16)
 
     @model_validator(mode="after")
     def ordered_bounds(self) -> ImageCapabilityProfile:
@@ -203,6 +204,8 @@ class ImageCapabilityProfile(BaseModel):
             or len(set(self.modes)) != len(self.modes)
         ):
             raise ValueError("capability bounds or modes are inconsistent")
+        if len(set(self.required_dependency_ids)) != len(self.required_dependency_ids):
+            raise ValueError("required dependencies cannot repeat")
         return self
 
     def validate_spec(self, spec: ImageSpec) -> None:

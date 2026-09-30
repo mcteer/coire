@@ -221,6 +221,23 @@ def test_capability_limits() -> None:
     with pytest.raises(ValueError, match="steps"):
         capability.validate_spec(spec(steps=31))
 
+    dependency = uuid.uuid4()
+    profile = ImageCapabilityProfile.model_validate(
+        {**capability.model_dump(), "required_dependency_ids": [str(dependency)]}
+    )
+    assert profile.required_dependency_ids == (dependency,)
+    with pytest.raises(ValidationError, match="dependencies"):
+        ImageCapabilityProfile.model_validate(
+            {**capability.model_dump(), "required_dependency_ids": [str(dependency)] * 2}
+        )
+    with pytest.raises(ValidationError):
+        ImageCapabilityProfile.model_validate(
+            {
+                **capability.model_dump(),
+                "required_dependency_ids": [str(uuid.uuid4()) for _ in range(17)],
+            }
+        )
+
 
 def test_events_enforce_job_identity_and_terminal_shapes() -> None:
     event: dict[str, object] = {
