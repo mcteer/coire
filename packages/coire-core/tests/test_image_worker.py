@@ -14,8 +14,10 @@ from coire_core.models.image_worker import (
     ImageTransferGrant,
     ImageTransferReceipt,
     ImageWorkerLoadRequest,
+    ImageWorkerLoadResult,
     ImageWorkerOutputManifest,
     ImageWorkerProcessConfig,
+    ImageWorkerProcessRecord,
     ImageWorkerRunRequest,
     NodeImageCleanupRequest,
     NodeImageInputManifest,
@@ -107,6 +109,36 @@ def test_worker_launch_config_rejects_untyped_paths_and_prompt(tmp_path: Path) -
     ):
         with pytest.raises(ValidationError):
             ImageWorkerProcessConfig.model_validate(values | changes)
+
+
+def test_worker_process_record_requires_matching_pid_port_and_reservation(tmp_path: Path) -> None:
+    load = ImageWorkerLoadRequest(
+        slug="studio--z-image-turbo",
+        model_id=MODEL,
+        instance_id=INSTANCE,
+        manifest_sha256="a" * 64,
+        reservation_bytes=1024,
+        runtime_version="mflux-0.20.0",
+    )
+    config = ImageWorkerProcessConfig(
+        load=load,
+        store_dir=tmp_path / "store",
+        scratch_dir=tmp_path / "scratch",
+        token_file=tmp_path / "secret",
+        port=9600,
+    )
+    ready = ImageWorkerLoadResult(
+        instance_id=INSTANCE,
+        state="starting",
+        pid=123,
+        process_create_time=1.0,
+        port=9600,
+        reserved_bytes=1024,
+    )
+    assert ImageWorkerProcessRecord(config=config, status=ready).status.pid == 123
+    for changes in ({"pid": None}, {"port": 9601}, {"reserved_bytes": 1}):
+        with pytest.raises(ValidationError):
+            ImageWorkerProcessRecord(config=config, status=ready.model_copy(update=changes))
 
 
 def test_worker_load_is_mflux_registry_only() -> None:

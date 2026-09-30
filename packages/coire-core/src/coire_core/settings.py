@@ -328,6 +328,7 @@ class Settings(BaseSettings):
     node_state_dir: str = "/opt/coire/state"
     node_hf_cache_dir: str = "/opt/coire/hf-cache"
     node_engine_port_range: str = "9500-9599"
+    node_image_worker_port: int = Field(default=9600, ge=1024, le=65535)
     node_memory_budget_fraction: float = Field(default=0.90, gt=0.0, le=1.0)
     """Share of physical memory the platform may commit to engines. 0.90 of 256 GB is the
     230 GB budget ARCHITECTURE.md section 4 assumes; macOS keeps the rest."""
