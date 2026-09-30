@@ -8957,6 +8957,20 @@
             "title": "Created At",
             "type": "string"
           },
+          "image_capability_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCapabilityProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ModelKind",
+            "default": "language_model"
+          },
           "perplexity": {
             "anyOf": [
               {

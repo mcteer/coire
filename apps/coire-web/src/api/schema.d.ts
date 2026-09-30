@@ -5150,6 +5150,9 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            image_capability_profile?: components["schemas"]["ImageCapabilityProfile"] | null;
+            /** @default language_model */
+            kind: components["schemas"]["ModelKind"];
             /** Perplexity */
             perplexity?: number | null;
             perplexity_outcome: components["schemas"]["ValidationOutcome"];
