@@ -26,6 +26,7 @@ from coire_api.db import (
     AcquisitionWorkflowRow,
     AgentRunRow,
     ChatFileProcessingRow,
+    ImageInputRow,
     ModelInstanceRow,
     PlacementDecisionRow,
     RunCommandRow,
@@ -49,6 +50,7 @@ from coire_scheduler.files import (
     purge_expired_temporary_outputs,
     purge_failed_file_outputs,
 )
+from coire_scheduler.image_inputs import image_recipe_workflow
 from coire_scheduler.instances import instance_drain_workflow, instance_launch_workflow
 from coire_scheduler.mcp_cleanup import sweep_mcp_workspaces
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
@@ -182,12 +184,31 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
             for file_job_id in file_ids:
                 with SetWorkflowID(f"file-{file_job_id}"):
                     DBOS.start_workflow(file_processing_workflow, file_job_id)
+            async with session_scope() as session:
+                image_rows = list(
+                    (
+                        await session.execute(
+                            select(ImageInputRow.id, ImageInputRow.processing_job_id)
+                            .where(
+                                ImageInputRow.state == "processing",
+                                ImageInputRow.purpose == "recipe",
+                                ImageInputRow.processing_job_id.is_not(None),
+                                ImageInputRow.deleted_at.is_(None),
+                            )
+                            .order_by(ImageInputRow.created_at, ImageInputRow.id)
+                            .limit(1)
+                        )
+                    ).tuples()
+                )
+            for image_input_id, processing_job_id in image_rows:
+                with SetWorkflowID(f"image-input-{processing_job_id}"):
+                    DBOS.start_workflow(image_recipe_workflow, str(image_input_id))
             delay = (
                 settings.acquisition_poll_interval_s
-                if ids or placement_ids or instance_rows or run_rows or file_ids
+                if ids or placement_ids or instance_rows or run_rows or file_ids or image_rows
                 else backoff.idle()
             )
-            if ids or placement_ids or instance_rows or run_rows or file_ids:
+            if ids or placement_ids or instance_rows or run_rows or file_ids or image_rows:
                 backoff.active()
         except Exception:
             logger.exception("acquisition dispatcher pass failed")

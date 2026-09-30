@@ -1222,6 +1222,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/image-inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Image Input */
+        post: operations["upload_image_input_api_v1_image_inputs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-inputs/{input_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Image Input */
+        get: operations["get_image_input_api_v1_image_inputs__input_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/image-outputs": {
         parameters: {
             query?: never;
@@ -2407,6 +2441,17 @@ export interface components {
             file: string;
             /** Filename */
             filename: string;
+        };
+        /** Body_upload_image_input_api_v1_image_inputs_post */
+        Body_upload_image_input_api_v1_image_inputs_post: {
+            /** Byte Count */
+            byte_count: number;
+            /** File */
+            file: string;
+            /** Filename */
+            filename: string;
+            /** Purpose */
+            purpose: string;
         };
         /** BranchArtifact */
         BranchArtifact: {
@@ -3741,6 +3786,39 @@ export interface components {
             output_id: string;
             /** Url */
             url: string;
+        };
+        /** ImageInput */
+        ImageInput: {
+            /** Byte Count */
+            byte_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Height */
+            height?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "init" | "mask" | "control" | "recipe";
+            /** Safe Error */
+            safe_error?: string | null;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "uploading" | "processing" | "ready" | "failed" | "deleting" | "purged";
+            /** Width */
+            width?: number | null;
         };
         /** ImageInputDigest */
         ImageInputDigest: {
@@ -8818,6 +8896,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ElectionVoteGrant"];
+                };
+            };
+        };
+    };
+    upload_image_input_api_v1_image_inputs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_image_input_api_v1_image_inputs_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageInput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_input_api_v1_image_inputs__input_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                input_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageInput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

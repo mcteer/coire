@@ -19,19 +19,32 @@ unwritten holds. Inspect both `held_bytes` and `stored_bytes` when diagnosing a
 refusal; never reset them manually while a job or purge is uncertain. Cross-process
 PostgreSQL contention evidence is still required before image admission is enabled.
 
-The isolated file worker now has a settings-only `parse_recipe_png` helper for future
-owner-scoped recipe uploads. It accepts regular PNG files up to 64 MiB, validates PNG chunk
+The owner recipe-only `POST /api/v1/image-inputs` path now uses private staging and a
+quota hold in one admission transaction; `GET /api/v1/image-inputs/{id}` returns the
+owner's processing/ready/failed state. Admission still requires
+`COIRE_IMAGE_ENABLED=true`, which remains false by default. The scheduler scans
+committed processing rows and starts `coire.image.input.recipe` with the row's
+processing ULID. Successful parsing stores the strict recipe and settles the hold
+once. Worker outages remain processing for retry. A stable parser refusal sets
+`failed` but retains the hold until the physical input cleanup path ships; do not
+adjust counters manually. Inspect `coire_image_input_processing_total` and the
+`coire.scheduler.image_input.parse` span without recording recipe text.
+If the upload commit outcome is uncertain, the generated original is retained so a
+committed processing row can recover; the orphan sweeper must reconcile unreferenced
+files before image admission is enabled.
+
+The isolated file worker has a `parse_recipe_png` helper for owner-scoped recipe
+uploads. It accepts regular PNG files up to 64 MiB, validates PNG chunk
 framing and CRCs, and extracts at most 64 KiB of uncompressed `coire.image` iTXt JSON into
 the strict `ImageRecipe` model. It never decodes IDAT or promotes the upload to a generation
 source. Inspect only its stable error codes (`invalid_png`, `invalid_recipe`,
 `recipe_too_large`, `unsupported_recipe_encoding`, `duplicate_recipe`,
-`missing_recipe`, `recipe_input_too_large`, `recipe_input_unavailable`). The API upload path
-must stage an immutable owner-scoped file and enforce the purpose-specific limits before
-calling it; that route is not yet enabled. The API now has a private staging primitive
-for this route. It streams into a generated temporary key, checks actual bytes against
+`missing_recipe`, `recipe_input_too_large`, `recipe_input_unavailable`). The API upload
+path stages an immutable owner-scoped file and enforces purpose-specific limits before
+calling it. The private staging primitive streams into a generated temporary key, checks actual bytes against
 the 10 MiB generation or 64 MiB recipe cap and the declared count, then hashes and
-fsyncs. Admission must call its exclusive `publish()` only after owner quota and DB
-checks; call `discard()` after any refusal. A failed or cancelled staging read removes
+fsyncs. Admission calls its exclusive `publish()` only after owner quota and DB
+checks; it calls `discard()` after refusal. A failed or cancelled staging read removes
 its temporary file. Orphan cleanup is still required before upload admission is enabled.
 The file worker's private `POST /v1/image-recipes/parse` handoff requires its dedicated
 service token and a generated input UUID, expected byte count and SHA-256. It reads the

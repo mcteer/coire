@@ -1655,6 +1655,35 @@
         "title": "Body_upload_chat_file_api_v1_chat_conversations__conversation_id__files_post",
         "type": "object"
       },
+      "Body_upload_image_input_api_v1_image_inputs_post": {
+        "properties": {
+          "byte_count": {
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "filename",
+          "byte_count",
+          "file"
+        ],
+        "title": "Body_upload_image_input_api_v1_image_inputs_post",
+        "type": "object"
+      },
       "BranchArtifact": {
         "additionalProperties": false,
         "properties": {
@@ -5031,6 +5060,102 @@
           "expires_at"
         ],
         "title": "ImageDownloadGrant",
+        "type": "object"
+      },
+      "ImageInput": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_count": {
+            "maximum": 67108864.0,
+            "minimum": 1.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "init",
+              "mask",
+              "control",
+              "recipe"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "uploading",
+              "processing",
+              "ready",
+              "failed",
+              "deleting",
+              "purged"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "state",
+          "byte_count",
+          "sha256",
+          "created_at"
+        ],
+        "title": "ImageInput",
         "type": "object"
       },
       "ImageInputDigest": {
@@ -16779,6 +16904,134 @@
         "summary": "Cast Vote",
         "tags": [
           "failover"
+        ]
+      }
+    },
+    "/api/v1/image-inputs": {
+      "post": {
+        "operationId": "upload_image_input_api_v1_image_inputs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_image_input_api_v1_image_inputs_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageInput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Image Input",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/image-inputs/{input_id}": {
+      "get": {
+        "operationId": "get_image_input_api_v1_image_inputs__input_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "input_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Input Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageInput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Image Input",
+        "tags": [
+          "images"
         ]
       }
     },

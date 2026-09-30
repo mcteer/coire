@@ -8,17 +8,23 @@ import os
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import UploadFile
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from coire_api.chat.files import new_job_id
+from coire_api.db import ImageInputRow
+from coire_api.images.quota import reserve_storage_hold
 from coire_core.errors import (
     ImageConflict,
     ImageInputTooLarge,
     ImageStorageUnavailable,
+    ImageUnsupportedInput,
     ImageValidationError,
 )
-from coire_core.models.images import ImageInputUpload
+from coire_core.models.images import ImageInput, ImageInputUpload
 from coire_core.settings import Settings
 
 _CHUNK = 64 * 1024
@@ -145,3 +151,62 @@ async def stage_image_input(
     os.close(fd)
     os.close(root_fd)
     return StagedImageInput(input_id, root, temporary_key, size, digest.hexdigest())
+
+
+def project_image_input(row: ImageInputRow) -> ImageInput:
+    if row.original_sha256 is None:
+        raise ImageStorageUnavailable()
+    return ImageInput.model_validate(
+        {
+            "id": row.id,
+            "purpose": row.purpose,
+            "state": row.state,
+            "byte_count": row.original_bytes,
+            "sha256": row.original_sha256,
+            "width": row.normalized_width,
+            "height": row.normalized_height,
+            "safe_error": "recipe_invalid" if row.state == "failed" else None,
+            "created_at": row.created_at,
+        }
+    )
+
+
+async def admit_recipe_upload(
+    session: AsyncSession,
+    owner_id: uuid.UUID,
+    metadata: ImageInputUpload,
+    file: UploadFile,
+    settings: Settings,
+) -> ImageInput:
+    """Stage bytes, then commit owner row/quota and the generated original key."""
+    if metadata.purpose != "recipe":
+        raise ImageUnsupportedInput()
+    staged = await stage_image_input(
+        file, Path(settings.image_input_original_root), metadata, settings
+    )
+    try:
+        await reserve_storage_hold(session, owner_id, staged.size, settings)
+        now = datetime.now(UTC)
+        row = ImageInputRow(
+            id=staged.id,
+            owner_user_id=owner_id,
+            purpose="recipe",
+            original_key=str(staged.id),
+            original_bytes=staged.size,
+            original_sha256=staged.sha256,
+            state="processing",
+            recipe=None,
+            processing_job_id=new_job_id(),
+            held_bytes=staged.size,
+            active_references=0,
+            created_at=now,
+            updated_at=now,
+        )
+        session.add(row)
+        await session.flush()
+        staged.publish()
+        await session.commit()
+        return project_image_input(row)
+    except BaseException:
+        staged.discard()
+        raise
