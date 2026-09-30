@@ -34,6 +34,7 @@ Branch and merge status remains separate from task completion.
 | `015e1-image-routing-isolation` | Exclude image backends from language/vision routing and legacy acquisition | part of T027–T028 |
 | `015e2-image-registry-kind` | Persist asset kind and kind/backend DB constraint with guarded rollback | part of T027–T028 |
 | `015e3-image-profile-schema` | Persist measured base capability with ready-state and downgrade constraints | part of T027 |
+| `015e4-image-asset-file-policy` | Studio metadata preflight and exact safe-file snapshot helper | part of T027 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
 | `015f1-image-storage-config` | Disabled API-only blob volume, settings and ingress bounds | part of T012 |
@@ -103,6 +104,9 @@ The inert admin-imported templates are [draft PR #57](https://github.com/mcteer/
 reviewed against PR #56. T020 is complete across #54, #55 and #57.
 The reusable output access guard is [draft PR #58](https://github.com/mcteer/coire/pull/58),
 reviewed against PR #57. T022 remains open until gallery and grant/content routes use it.
+Image asset file preflight is [draft PR #59](https://github.com/mcteer/coire/pull/59),
+reviewed against PR #58. T027 remains open for licence checks, component closure,
+dedicated admin acquisition, local validation and publication.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
