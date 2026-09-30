@@ -1,0 +1,43 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [{"expr": "sum by (operation, outcome) (rate(coire_image_requests_total[5m]))", "legendFormat": "{{operation}} {{outcome}} /s", "refId": "A"}],
+      "title": "Private image API operations",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "id": 2,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [{"expr": "sum by (stage, outcome) (rate(coire_image_node_stages_total[5m]))", "legendFormat": "{{stage}} {{outcome}} /s", "refId": "A"}],
+      "title": "Studio image worker stages",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "id": 3,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [{"expr": "max(coire_image_purge_oldest_seconds)", "legendFormat": "oldest pending purge", "refId": "A"}],
+      "title": "Private image blobs awaiting purge",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["coire", "image"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Coire Image",
+  "uid": "coire-image",
+  "version": 1
+}
