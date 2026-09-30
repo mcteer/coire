@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import cast
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Agent, PromptedOutput, RunContext
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.profiles import ModelProfile
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -18,6 +21,14 @@ from coire_core.models.ops import ResolvedOpsAction
 
 OPS_TOOL_NAMES = frozenset({"read_snapshot", "propose_reversible_action"})
 OPS_ANTHROPIC_MODEL = "claude-sonnet-5-5"
+
+
+def _coire_gateway_profile(profile: ModelProfile) -> ModelProfile:
+    """Keep the OpenAI token cap on the field Coire's gateway accepts."""
+
+    adjusted: dict[str, object] = dict(cast(Mapping[str, object], profile))
+    adjusted["openai_chat_supports_max_completion_tokens"] = False
+    return cast(ModelProfile, adjusted)
 
 
 def compact_snapshot(snapshot: ConsoleSnapshot) -> dict[str, object]:
@@ -148,7 +159,13 @@ class OpsModel:
                     transport=transport,
                 ),
             )
-            model = OpenAIChatModel(model_id, provider=provider)
+            # Coire's compatible gateway accepts max_tokens. The OpenAI profile
+            # otherwise renames that setting to max_completion_tokens.
+            model = OpenAIChatModel(
+                model_id,
+                provider=provider,
+                profile=_coire_gateway_profile,
+            )
 
         async def read_snapshot(ctx: RunContext[OpsModelDeps]) -> dict[str, object]:
             """Read the bounded control-plane snapshot supplied for this turn."""
