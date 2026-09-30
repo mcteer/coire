@@ -48,6 +48,7 @@ Branch and merge status remains separate from task completion.
 | `015e16-image-node-routes` | Authenticated node control routes, restart adoption and shared image/language memory budget | part of T024/T030/T033 |
 | `015e17-image-node-journal` | Private fenced image attempt journal with restart-safe replay and status transitions | part of T024/T032 |
 | `015e18-image-node-dispatch` | Authenticated journal-before-dispatch of fixed local txt2img jobs | part of T024/T032 |
+| `015e19-image-node-status` | Fenced restart-safe worker observation and durable progress reconciliation | part of T024/T032 |
 | `015g1-image-gallery` | Owner-only metadata list/detail with stable cursor and generated clients | part of T022, T023, T043–T044 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -259,6 +260,12 @@ The fenced node-to-worker start route is
 It journals intent before one private worker command and never resends an uncertain
 attempt on replay. T024/T032 remain open for status polling, cancellation,
 transfer, cleanup and live Studio acceptance.
+Fenced worker status reconciliation is
+[draft PR #89](https://github.com/mcteer/coire/pull/89), reviewed against PR #88.
+It observes the exact attempt without a second generation command, persists
+bounded aggregate progress and returns terminal journal states after worker
+exit. T024/T032 remain open for cancellation, transfer, cleanup and live
+Studio acceptance.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
