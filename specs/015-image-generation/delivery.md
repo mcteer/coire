@@ -39,6 +39,7 @@ Branch and merge status remains separate from task completion.
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
 | `015f1-image-storage-config` | Disabled API-only blob volume, settings and ingress bounds | part of T012 |
 | `015f2-image-telemetry` | Content-free API/node metrics, spans, dashboard and alerts | T013 |
+| `015i1-image-recipe-parser` | Isolated 64 MiB PNG recipe parser with bounded metadata and no pixel decode | part of T012, T050, T053 |
 | `015f-image-storage` | Bounded blob staging, grants and cleanup | remainder of T012, T026, T031, T036, T038–T039 |
 | `015g-image-jobs` | DBOS admission, events, cancellation and API | T023, T025, T034–T035, T037, T040–T042 |
 | `015h-image-ui` | Generated types, native UI and gallery | T043–T048 |
@@ -107,6 +108,9 @@ reviewed against PR #57. T022 remains open until gallery and grant/content route
 Image asset file preflight is [draft PR #59](https://github.com/mcteer/coire/pull/59),
 reviewed against PR #58. T027 remains open for licence checks, component closure,
 dedicated admin acquisition, local validation and publication.
+The isolated recipe-only PNG parser is [draft PR #60](https://github.com/mcteer/coire/pull/60),
+reviewed against PR #59. Upload routes, owner staging and quota enforcement remain open, so
+T012, T050 and T053 are not yet complete.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
