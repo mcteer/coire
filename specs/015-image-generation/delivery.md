@@ -160,9 +160,14 @@ reconciliation rather than risking a committed row pointing to missing data.
 Failed and orphaned input cleanup is
 [draft PR #71](https://github.com/mcteer/coire/pull/71), reviewed against PR #70.
 T039/T054 remain open for ready-input deletion, normalization and end-to-end
-retention evidence; T073/T074 remain open for the remaining generation metrics and
+retention evidence at this slice; T073/T074 remain open for the remaining generation metrics and
 alerts. Failed-input holds release only after unlink, and uncertain-commit files are
 removed after a quota-lock-protected row absence check and one-hour grace.
+Owner input tombstones and safe purge are
+[draft PR #72](https://github.com/mcteer/coire/pull/72), reviewed against PR #71.
+T039/T054 remain open for generation-job reference cancellation, normalized inputs,
+and end-to-end retention evidence. Active references return 409 until job cancellation
+can drain them; held or stored input bytes release only after physical deletion.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
