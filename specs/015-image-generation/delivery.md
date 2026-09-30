@@ -173,6 +173,10 @@ Measured defaults and strict basic txt2img request resolution are
 T035 remains open for live registry/entitlement checks, idempotent transaction admission,
 quota, audit and durable queue receipts. Profiles without measured defaults are readable
 but cannot admit a job.
+Queue, daily-output and worst-case disk reservation helpers are
+[draft PR #74](https://github.com/mcteer/coire/pull/74), reviewed against PR #73.
+T026/T035/T041 remain open until durable job admission and state transitions call the
+helpers under a fenced job row and publication/cancellation reconciles retained bytes.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
