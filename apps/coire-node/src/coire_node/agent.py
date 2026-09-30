@@ -33,6 +33,8 @@ from coire_node.benchmarks import BenchmarkRunner
 from coire_node.docker_api import DockerAPI
 from coire_node.engines import EngineManager
 from coire_node.grants import Grants
+from coire_node.image_dispatch import ImageNodeDispatcher
+from coire_node.image_jobs import ImageJobJournal
 from coire_node.image_runtime.supervisor import ImageProcessSupervisor, ImageProcessUnavailable
 from coire_node.jobs import JobSupervisor
 from coire_node.link_probes import LinkProbeRunner
@@ -41,6 +43,7 @@ from coire_node.routes import benchmarks as benchmark_routes
 from coire_node.routes import engines as engines_routes
 from coire_node.routes import export as export_routes
 from coire_node.routes import failover as failover_routes
+from coire_node.routes import image_jobs as image_jobs_routes
 from coire_node.routes import image_workers as image_workers_routes
 from coire_node.routes import jobs as jobs_routes
 from coire_node.routes import link_probes as link_probe_routes
@@ -140,6 +143,7 @@ def create_app(
     jobs: JobSupervisor | None = None,
     engines: EngineManager | None = None,
     image_workers: ImageProcessSupervisor | None = None,
+    image_dispatcher: ImageNodeDispatcher | None = None,
     grants: Grants | None = None,
     reservations: ReservationLedger | None = None,
     shard_groups: ShardGroupManager | None = None,
@@ -160,6 +164,7 @@ def create_app(
     app.state.jobs = jobs
     app.state.engines = engines
     app.state.image_workers = image_workers
+    app.state.image_dispatcher = image_dispatcher
     app.state.grants = grants
     app.state.reservations = reservations
     app.state.shard_groups = shard_groups
@@ -251,6 +256,8 @@ def create_app(
         app.include_router(engines_routes.router, dependencies=guard)
         if image_workers is not None:
             app.include_router(image_workers_routes.router, dependencies=guard)
+        if image_dispatcher is not None:
+            app.include_router(image_jobs_routes.router, dependencies=guard)
         app.include_router(sharding_routes.router, dependencies=guard)
         app.include_router(link_probe_routes.router, dependencies=guard)
         app.include_router(benchmark_routes.router, dependencies=guard)
@@ -301,6 +308,8 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     image_workers = ImageProcessSupervisor(
         settings, store, engines.committed_bytes, memory_lock=memory_lock
     )
+    image_journal = ImageJobJournal(settings.node_state_dir, hostname)
+    image_dispatcher = ImageNodeDispatcher(image_journal, image_workers)
     reservations = ReservationLedger(
         settings,
         store,
@@ -345,6 +354,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         jobs=jobs,
                         engines=engines,
                         image_workers=image_workers,
+                        image_dispatcher=image_dispatcher,
                         grants=grants,
                         reservations=reservations,
                         shard_groups=shard_groups,
@@ -372,6 +382,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                             jobs=jobs,
                             engines=engines,
                             image_workers=image_workers,
+                            image_dispatcher=image_dispatcher,
                             grants=grants,
                             reservations=reservations,
                             shard_groups=shard_groups,
@@ -398,6 +409,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         jobs=jobs,
                         engines=engines,
                         image_workers=image_workers,
+                        image_dispatcher=image_dispatcher,
                         grants=grants,
                         reservations=reservations,
                         runs=runs,
@@ -431,6 +443,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
                         jobs=jobs,
                         engines=engines,
                         image_workers=image_workers,
+                        image_dispatcher=image_dispatcher,
                         grants=grants,
                         reservations=reservations,
                         runs=runs,

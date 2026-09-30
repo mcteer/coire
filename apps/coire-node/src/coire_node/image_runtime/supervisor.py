@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
@@ -160,6 +161,25 @@ class ImageProcessSupervisor:
     def current_status(self) -> ImageWorkerLoadResult | None:
         with self._lock:
             return self._record.status if self._record is not None else None
+
+    def private_control(self, instance_id: uuid.UUID) -> tuple[ImageWorkerLoadRequest, int, str]:
+        """Return private control facts only for this exact ready, live child."""
+        with self._lock:
+            record = self._record
+            if (
+                record is None
+                or record.status.instance_id != instance_id
+                or record.status.state != "ready"
+                or not _identity_alive(record)
+            ):
+                raise ImageProcessUnavailable()
+            try:
+                config, token = read_process_config(record.config.token_file.parent / "launch.json")
+            except (ImageWorkerBootstrapError, OSError, ValueError):
+                raise ImageProcessUnavailable() from None
+            if config != record.config:
+                raise ImageProcessUnavailable()
+            return record.config.load, record.config.port, token
 
     def adopt_from_state(self) -> ImageWorkerLoadResult | None:
         """Re-own only the exact node child; uncertain state keeps a full budget hold."""

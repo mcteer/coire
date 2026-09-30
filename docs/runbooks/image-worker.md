@@ -126,3 +126,14 @@ uncertain record to make admission succeed.
 Journal writes emit the `coire.node.image.journal` span and the fixed-label
 `coire_image_node_stage_total{stage="journal"}` counter; a failure means the
 scheduler must retain the attempt for reconciliation.
+
+The authenticated control route `PUT /node/images/jobs/{job_id}` now accepts
+only a fixed, local txt2img request bound to the ready resident image worker.
+It writes `queued` then `reserving` to the private journal before the single
+loopback `PUT /job`. A repeat with the identical body returns the recorded
+status and never sends that command again. If the worker call times out or the
+reply cannot be verified, the node returns a safe 503 and leaves `reserving`
+for scheduler reconciliation. Query the exact worker attempt and journal;
+do not manually replay the worker command or delete the record. Node status
+polling, cancellation, transfer and publication are separate follow-up paths,
+so public image submission remains disabled.
