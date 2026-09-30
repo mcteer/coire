@@ -29,3 +29,9 @@ profiles. Inspect `image_quotas`, `image_execution_leases` and
 `image_coexistence_profiles`. Before rollback, stop admission and reconcile every active
 lease with node process/PID evidence. A timeout alone is not proof a worker stopped.
 Back up the rows; downgrade to `0024_image_assets` only after all three tables are empty.
+
+The migration chain was validated against disposable local PostgreSQL 17 by
+`apps/coire-api/tests/unit/test_image_migration_postgres.py`. Set
+`COIRE_TEST_POSTGRES_DSN` to a loopback PostgreSQL admin DSN; the test creates and drops
+its own random database. It verifies populated downgrade refusal and old text/VLM row
+survival. Operator-run cluster migration evidence is still required before rollout.
