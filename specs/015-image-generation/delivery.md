@@ -177,6 +177,10 @@ Queue, daily-output and worst-case disk reservation helpers are
 [draft PR #74](https://github.com/mcteer/coire/pull/74), reviewed against PR #73.
 T026/T035/T041 remain open until durable job admission and state transitions call the
 helpers under a fenced job row and publication/cancellation reconciles retained bytes.
+The queued-job settings snapshot is
+[draft PR #75](https://github.com/mcteer/coire/pull/75), reviewed against PR #74.
+It carries effective settings before Studio selection and binds runtime facts once;
+T023/T035/T037 remain open until native job routes and durable admission use it.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
