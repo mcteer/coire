@@ -2,4 +2,4 @@
 
 - [X] C001 Add failing replay/conflict, policy and atomic-write tests.
 - [X] C002 Implement direct/preset policy and admission service with content-free audit.
-- [ ] C003 Run local gates and publish draft PR; keep public submit route gated.
+- [X] C003 Run local gates and publish draft PR; keep public submit route gated.
