@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+import time
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
 import httpx
+import psutil
 import pytest
 
 from coire_core.models.image_worker import (
     ImageWorkerLoadRequest,
     ImageWorkerLoadResult,
     ImageWorkerProcessRecord,
+    ImageWorkerUnloadRequest,
 )
 from coire_core.settings import Settings
 from coire_node.image_runtime import supervisor
@@ -38,24 +42,32 @@ class FakePsutilProcess:
     command: ClassVar[list[str]] = []
     alive = True
     created = 100.0
+    inspection_error = False
 
     def __init__(self, pid: int) -> None:
         assert pid == FakeProcess.pid
+        self.pid = pid
 
     def create_time(self) -> float:
         return self.created
 
     def cmdline(self) -> list[str]:
+        if self.inspection_error:
+            raise psutil.AccessDenied(self.pid)
         return self.command
 
     def is_running(self) -> bool:
         return self.alive
+
+    def status(self) -> str:
+        return "running" if self.alive else psutil.STATUS_ZOMBIE
 
 
 def _setup(tmp_path: Path) -> tuple[Settings, Store, ImageWorkerLoadRequest]:
     FakePsutilProcess.command = []
     FakePsutilProcess.alive = True
     FakePsutilProcess.created = 100.0
+    FakePsutilProcess.inspection_error = False
     settings = Settings(
         _secrets_dir="/nonexistent",  # type: ignore[call-arg]
         node_store_dir=str(tmp_path / "models"),
@@ -295,3 +307,113 @@ def test_tampered_private_record_refuses_adoption_and_keeps_hold(
         restarted.adopt_from_state()
     assert restarted.record_path.exists()
     assert restarted.committed_bytes() == 9000
+
+
+def _started(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[supervisor.ImageProcessSupervisor, ImageWorkerLoadRequest]:
+    settings, store, request = _setup(tmp_path)
+    monkeypatch.setattr(
+        "coire_node.image_runtime.supervisor.subprocess.Popen",
+        lambda *args, **kwargs: FakeProcess(),
+    )
+    monkeypatch.setattr("coire_node.image_runtime.supervisor.psutil.Process", FakePsutilProcess)
+    manager = supervisor.ImageProcessSupervisor(
+        settings, store, lambda: 0, memory_total_bytes=10_000
+    )
+    manager.start(request)
+    record = ImageWorkerProcessRecord.model_validate_json(manager.record_path.read_bytes())
+    FakePsutilProcess.command = [
+        "python",
+        "-m",
+        "coire_node.image_runtime.bootstrap",
+        str(record.config.token_file.parent / "launch.json"),
+    ]
+    return manager, request
+
+
+def _unload(request: ImageWorkerLoadRequest) -> ImageWorkerUnloadRequest:
+    return ImageWorkerUnloadRequest(
+        instance_id=request.instance_id, reason="admin", requested_at=datetime.now(UTC)
+    )
+
+
+def test_stop_term_confirms_death_before_releasing_hold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, request = _started(tmp_path, monkeypatch)
+    signals: list[int] = []
+
+    def fake_signal(pid: int, sig: int) -> None:
+        assert pid == FakeProcess.pid
+        signals.append(sig)
+        FakePsutilProcess.alive = False
+
+    monkeypatch.setattr("coire_node.image_runtime.supervisor.os.killpg", fake_signal)
+    scratch = manager.scratch_root
+    scratch.mkdir(mode=0o700)
+    (scratch / "retained.png").write_bytes(b"private")
+    stopped = manager.stop(_unload(request))
+    assert stopped.reserved_bytes == 0 and stopped.safe_error == "worker_stopped"
+    assert signals == [15]
+    assert manager.committed_bytes() == 0
+    assert not manager.record_path.exists()
+    assert (scratch / "retained.png").read_bytes() == b"private"
+    assert manager.stop(_unload(request)) == stopped
+
+
+def test_stop_escalates_to_kill_within_grace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, request = _started(tmp_path, monkeypatch)
+    signals: list[int] = []
+
+    def fake_signal(pid: int, sig: int) -> None:
+        signals.append(sig)
+        if sig == 9:
+            FakePsutilProcess.alive = False
+
+    monkeypatch.setattr("coire_node.image_runtime.supervisor.os.killpg", fake_signal)
+    monkeypatch.setattr(supervisor, "_STOP_GRACE_S", 0.05)
+    started = time.monotonic()
+    manager.stop(_unload(request))
+    assert time.monotonic() - started < 0.5
+    assert signals == [15, 9]
+
+
+def test_stop_never_signals_reused_or_uncertain_pid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, request = _started(tmp_path, monkeypatch)
+    signals: list[int] = []
+    monkeypatch.setattr(
+        "coire_node.image_runtime.supervisor.os.killpg", lambda pid, sig: signals.append(sig)
+    )
+    FakePsutilProcess.inspection_error = True
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        manager.stop(_unload(request))
+    assert manager.committed_bytes() == 1000 and manager.record_path.exists()
+    assert signals == []
+    FakePsutilProcess.inspection_error = False
+    FakePsutilProcess.created = 101.0
+    assert manager.stop(_unload(request)).reserved_bytes == 0
+    assert signals == []
+
+
+def test_stop_cleanup_failure_keeps_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, request = _started(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        "coire_node.image_runtime.supervisor.os.killpg",
+        lambda pid, sig: setattr(FakePsutilProcess, "alive", False),
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_remove_private_state",
+        lambda record_path, record: (_ for _ in ()).throw(OSError("disk")),
+    )
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        manager.stop(_unload(request))
+    assert manager.committed_bytes() == 1000
+    assert manager.record_path.exists()

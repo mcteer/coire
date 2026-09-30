@@ -91,3 +91,13 @@ re-adoption reads the owner-only record, config and token, rechecks the local
 manifest and accepts only that same live process. If the record is corrupt,
 the process has changed or health is unreachable, keep the record and the
 memory hold for reconciliation; do not start a replacement blindly.
+
+An admin/shutdown unload now sends TERM only to the exact resident
+PID/create-time/bootstrap process group. If it remains alive, the node sends
+KILL before the five-second grace ends. It removes the private token, launch
+file and durable worker record, and releases the memory hold only after death
+is confirmed. Generated scratch remains until matching core receipts and the
+job cleanup path remove it. A reused PID receives no signal. If process
+inspection, signalling or state cleanup is uncertain, the node reports a safe
+failure and retains the reservation and record; inspect the PID/create-time
+pair and reconcile before attempting a replacement.
