@@ -48,6 +48,7 @@ from coire_core.models.registry import (
     EngineBackend,
     LoadState,
     ModelAddRequest,
+    ModelKind,
     ModelListing,
     ModelRejected,
     ModelState,
@@ -171,6 +172,17 @@ async def add_model(
     actor: str,
 ) -> tuple[ModelRow, DownloadJobRow]:
     """Add a model, refusing before any bytes move if it cannot work (spec FR-010)."""
+    if request.kind is not ModelKind.LANGUAGE_MODEL:
+        await write_audit(
+            session,
+            actor=actor,
+            action=AuditAction.MODEL_ADD,
+            target_type="model",
+            target_id=request.repo_id,
+            outcome=AuditOutcome.REFUSED,
+            detail={"reason": "unsupported_kind_in_language_acquisition"},
+        )
+        raise RegistryError(422, "image assets require the image acquisition path")
     slug = slug_for(request.repo_id)
 
     existing = (
@@ -527,10 +539,19 @@ def published_ready_entitled(model: ModelRow, entitlements: frozenset[str]) -> b
     """Shared non-admin and native Chat eligibility predicate."""
 
     return (
-        model.visibility is Visibility.PUBLISHED
+        is_chat_backend(model)
+        and model.visibility is Visibility.PUBLISHED
         and model.state is ModelState.READY
         and set(model.entitlement or []).issubset(entitlements)
     )
+
+
+def is_chat_backend(model: ModelRow) -> bool:
+    """Only language and vision engines may enter chat/MCP/failover resolution."""
+    return (model.backend or EngineBackend.MLX_LM) in {
+        EngineBackend.MLX_LM,
+        EngineBackend.MLX_VLM,
+    }
 
 
 def chat_model_eligible(model: ModelRow, principal: Principal) -> bool:
@@ -547,6 +568,8 @@ def visible_to(
     An admin sees everything. Anyone else sees only published, ready models for which the
     verified identity holds every required entitlement.
     """
+    if not is_chat_backend(model):
+        return False
     if is_admin:
         return True
     return published_ready_entitled(model, entitlements)
