@@ -37,3 +37,12 @@ forward. A pre-existing destination is
 never overwritten. To diagnose a failed recipe transfer, compare the file
 digest and embedded recipe with the durable resolved job settings; discard
 the scratch output and retry under a new fenced attempt if they differ.
+
+The in-process job executor accepts only a run bound to the resident instance,
+model manifest and runtime. It derives `<job ULID>-<attempt>-<fence>/` under a
+node-owned 0700 scratch root and refuses a replay that would reuse the same
+directory. Each successful output is `<index>.png` with its canonical recipe.
+Intermediate step reports are throttled to 4 Hz; each output's final step is
+reported. Expired deadlines and write errors fail the attempt and remove its
+scratch directory. Process-level TERM/KILL, durable re-adoption and core
+transfer still need to wrap this executor before public admission opens.
