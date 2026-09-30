@@ -41,6 +41,7 @@ Branch and merge status remains separate from task completion.
 | `015e9-image-metadata` | Canonical private PNG recipe, pixel and file digests, bounded writer | T031 |
 | `015e10-image-worker-job` | Fenced in-process Studio job execution and private scratch | part of T029/T032/T039 |
 | `015e11-image-worker-control` | Authenticated resident worker control and path-free output status | part of T024/T029/T030/T032 |
+| `015e12-image-worker-bootstrap` | Strict 0600 launch config and offline native child entrypoint | part of T024/T029/T030/T033 |
 | `015g1-image-gallery` | Owner-only metadata list/detail with stable cursor and generated clients | part of T022, T023, T043–T044 |
 | `015d-image-security` | Route audit, owner filtering, revocation cancellation and presets | remainder of T014–T020, T022 |
 | `015e-image-worker` | Engine, classifier, journal and asset validation | T016, T021, T024, T027–T033 |
@@ -217,6 +218,11 @@ Authenticated resident worker control is
 Its loopback app accepts typed fenced run/status/cancel commands and reports
 path-free manifests; T024/T029/T030/T032 remain open for node process launch,
 durable journal, hard cancellation and end-to-end tests.
+The offline native worker bootstrap is
+[draft PR #82](https://github.com/mcteer/coire/pull/82), reviewed against PR #81.
+It verifies owner-only launch files and sets offline mode before mflux import;
+T024/T029/T030/T033 remain open for node-owned launch, PID/reservation
+persistence, readiness, re-adoption and real Studio evidence.
 
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
