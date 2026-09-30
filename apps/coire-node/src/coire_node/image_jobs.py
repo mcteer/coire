@@ -182,17 +182,39 @@ class ImageJobJournal:
             if record is None:
                 raise ImageJournalConflict()
             old = record.status
+            initial_process_binding = (
+                old.state == "queued"
+                and status.state == "reserving"
+                and old.pid is None
+                and old.process_create_time is None
+                and status.pid is not None
+                and status.process_create_time is not None
+            )
             if (
                 status.job_id != old.job_id
                 or status.attempt != old.attempt
                 or status.fence != old.fence
                 or status.node != old.node
                 or status.instance_id != old.instance_id
+                or (
+                    not initial_process_binding
+                    and (
+                        status.pid != old.pid
+                        or status.process_create_time != old.process_create_time
+                    )
+                )
             ):
                 raise ImageJournalConflict()
             if status == old:
                 return old
-            if old.state in _TERMINAL or status.state not in _NEXT.get(old.state, frozenset()):
+            if old.state in _TERMINAL or (
+                status.state != old.state and status.state not in _NEXT.get(old.state, frozenset())
+            ):
+                raise ImageJournalConflict()
+            if (
+                old.progress_step is not None
+                and (status.progress_step is None or status.progress_step < old.progress_step)
+            ) or (old.progress_total is not None and status.progress_total != old.progress_total):
                 raise ImageJournalConflict()
             if status.updated_at <= old.updated_at:
                 raise ImageJournalConflict()

@@ -137,3 +137,13 @@ for scheduler reconciliation. Query the exact worker attempt and journal;
 do not manually replay the worker command or delete the record. Node status
 polling, cancellation, transfer and publication are separate follow-up paths,
 so public image submission remains disabled.
+
+The authenticated `GET /node/images/jobs/{job_id}?attempt=<n>&fence=<n>`
+observes the same journaled attempt. For active work it posts the exact binding
+to the private worker `/status` route, checks its identity and advances only
+valid state and aggregate progress. A complete generated batch becomes
+`transferring`; terminal journal states remain readable after worker exit.
+An unreachable or mismatched worker returns 503 and preserves the last journal
+record. Check the `coire.node.image.status` span and
+`coire_image_node_stage_total{stage="status"}` before reconciling; a status
+read never starts generation.
