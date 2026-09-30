@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import secrets
 import shutil
+import signal
 import socket
 import stat
 import subprocess
@@ -12,7 +13,9 @@ import sys
 import threading
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
+from typing import Literal
 
 import httpx
 import psutil
@@ -22,6 +25,7 @@ from coire_core.models.image_worker import (
     ImageWorkerLoadResult,
     ImageWorkerProcessConfig,
     ImageWorkerProcessRecord,
+    ImageWorkerUnloadRequest,
 )
 from coire_core.settings import Settings
 from coire_node.image_runtime.bootstrap import (
@@ -44,25 +48,43 @@ class ImageProcessUnavailable(RuntimeError):
         super().__init__("image process unavailable")
 
 
-def _identity_alive(record: ImageWorkerProcessRecord) -> bool:
+_STOP_GRACE_S = 5.0
+_ProcessState = Literal["same", "gone", "unknown"]
+
+
+def _process_state(record: ImageWorkerProcessRecord) -> _ProcessState:
     pid = record.status.pid
     created = record.status.process_create_time
     if pid is None or created is None:
-        return False
+        return "unknown"
     try:
         process = psutil.Process(pid)
+        if not process.is_running() or process.status() == psutil.STATUS_ZOMBIE:
+            return "gone"
+        if abs(process.create_time() - created) > 0.01:
+            return "gone"
         expected = [
             "-m",
             "coire_node.image_runtime.bootstrap",
             str(record.config.token_file.parent / "launch.json"),
         ]
-        return bool(
-            process.is_running()
-            and abs(process.create_time() - created) <= 0.01
-            and process.cmdline()[-3:] == expected
-        )
+        return "same" if process.cmdline()[-3:] == expected else "unknown"
+    except psutil.NoSuchProcess:
+        return "gone"
     except (psutil.Error, OSError, ValueError):
-        return False
+        return "unknown"
+
+
+def _identity_alive(record: ImageWorkerProcessRecord) -> bool:
+    return _process_state(record) == "same"
+
+
+def _remove_private_state(record_path: Path, record: ImageWorkerProcessRecord) -> None:
+    worker_dir = record.config.token_file.parent
+    record.config.token_file.unlink(missing_ok=True)
+    (worker_dir / "launch.json").unlink(missing_ok=True)
+    worker_dir.rmdir()
+    record_path.unlink()
 
 
 def _private_directory(path: Path, *, exclusive: bool = False) -> None:
@@ -123,6 +145,7 @@ class ImageProcessSupervisor:
         self.scratch_root = Path(settings.node_state_dir) / "image-scratch"
         self._lock = threading.RLock()
         self._record: ImageWorkerProcessRecord | None = None
+        self._last_stopped: ImageWorkerLoadResult | None = None
         self._uncertain_reserved_bytes = 0
 
     def committed_bytes(self) -> int:
@@ -200,6 +223,72 @@ class ImageProcessSupervisor:
         with image_node_span(ImageNodeStage.LOAD):
             record_image_stage(ImageNodeStage.LOAD, ImageNodeOutcome.SUCCEEDED)
         return candidate
+
+    def stop(self, request: ImageWorkerUnloadRequest) -> ImageWorkerLoadResult:
+        """TERM then KILL this exact child; release its hold only after confirmed death."""
+        started = time.monotonic()
+        with image_node_span(ImageNodeStage.CLEANUP):
+            try:
+                result = self._stop(request)
+            except Exception:
+                record_image_stage(
+                    ImageNodeStage.CLEANUP,
+                    ImageNodeOutcome.FAILED,
+                    duration_s=time.monotonic() - started,
+                )
+                raise ImageProcessUnavailable() from None
+            record_image_stage(
+                ImageNodeStage.CLEANUP,
+                ImageNodeOutcome.SUCCEEDED,
+                duration_s=time.monotonic() - started,
+            )
+            return result
+
+    def _stop(self, request: ImageWorkerUnloadRequest) -> ImageWorkerLoadResult:
+        with self._lock:
+            record = self._record
+            if record is None:
+                if (
+                    self._last_stopped is not None
+                    and self._last_stopped.instance_id == request.instance_id
+                ):
+                    return self._last_stopped
+                raise ImageProcessUnavailable()
+            if record.status.instance_id != request.instance_id:
+                raise ImageProcessUnavailable()
+            state = _process_state(record)
+            if state == "unknown":
+                raise ImageProcessUnavailable()
+            if state == "same":
+                assert record.status.pid is not None
+                deadline = time.monotonic() + _STOP_GRACE_S
+                with suppress(ProcessLookupError):
+                    os.killpg(record.status.pid, signal.SIGTERM)
+                state = self._await_death(record, max(time.monotonic(), deadline - 0.25))
+                if state == "same":
+                    with suppress(ProcessLookupError):
+                        os.killpg(record.status.pid, signal.SIGKILL)
+                    state = self._await_death(record, deadline)
+            if state != "gone":
+                raise ImageProcessUnavailable()
+            _remove_private_state(self.record_path, record)
+            result = ImageWorkerLoadResult(
+                instance_id=request.instance_id,
+                state="failed",
+                reserved_bytes=0,
+                safe_error="worker_stopped",
+            )
+            self._record = None
+            self._last_stopped = result
+            return result
+
+    @staticmethod
+    def _await_death(record: ImageWorkerProcessRecord, deadline: float) -> _ProcessState:
+        while True:
+            state = _process_state(record)
+            if state != "same" or time.monotonic() >= deadline:
+                return state
+            time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
 
     def start(self, request: ImageWorkerLoadRequest) -> ImageWorkerLoadResult:
         started = time.monotonic()
