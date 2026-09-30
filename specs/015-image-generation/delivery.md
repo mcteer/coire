@@ -269,6 +269,24 @@ bounded aggregate progress and returns terminal journal states after worker
 exit. T024/T032 remain open for cancellation, transfer, cleanup and live
 Studio acceptance.
 
+Local grouped implementation after the review-process correction:
+
+- `24b1bb7` verifies complete core receipts before restart-safe Studio scratch cleanup.
+- `4ec2611` streams bounded outputs to core with node and grant authentication, durable
+  private receipts, generated OpenAPI and TypeScript contracts, and a matching node command.
+- `aadbfb0` reconciles transfer grants, core receipts, and Studio cleanup through a DBOS
+  workflow without rerunning denoising. Expired/wrong grants and output mismatches are
+  covered by contract tests. This completes T036 through `images/transfer.py` and
+  `coire_scheduler/images.py`; T034, T038 and T039 remain open for initial dispatch,
+  publication and lifecycle sweeps.
+- `644d206` adds owner-only job detail reads with live explicit-access checks. T037 remains
+  open for submission, listing, cancellation and scheduler-backed completion.
+
+These commits are local on `feat/015e20-image-node-cancel`; no replacement PR has been
+opened or pushed. The full local Python suite passed with 1,511 tests and 143 existing
+skips before the job-detail route; its focused API, mypy, Ruff, OpenAPI and web build
+checks passed afterward.
+
 Some parent tasks cross child boundaries, as shown by repeated IDs. Their checklist marker
 changes only when all referenced work is complete. The final acceptance child reconciles
 every parent task and records operator-run real-cluster evidence without committing images.
