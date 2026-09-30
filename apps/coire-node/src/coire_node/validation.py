@@ -132,6 +132,25 @@ def run_template_check(model_path: Path) -> tuple[ValidationOutcome, str | None]
         from mlx_lm.tokenizer_utils import load as load_tokenizer
 
         tokenizer = cast(_ChatTemplateTokenizer, load_tokenizer(model_path))
+        template_config = json.loads((model_path / "tokenizer_config.json").read_text())
+        template = template_config.get("chat_template")
+        if isinstance(template, list):
+            template_text = "\n".join(
+                item.get("template", "") for item in template if isinstance(item, dict)
+            )
+        elif isinstance(template, str):
+            template_text = template
+        else:
+            return ValidationOutcome.FAIL, "chat template is missing or malformed"
+        if "tools" not in template_text and "tool_calls" not in template_text:
+            rendered_plain = tokenizer.apply_chat_template(
+                [{"role": "user", "content": "Validation prompt."}],
+                tools=None,
+                tokenize=False,
+            )
+            if "Validation prompt." not in str(rendered_plain):
+                return ValidationOutcome.FAIL, "rendered chat template omitted user content"
+            return ValidationOutcome.NOT_APPLICABLE, None
         rendered = tokenizer.apply_chat_template(
             [
                 {"role": "user", "content": "Echo ok using the tool."},

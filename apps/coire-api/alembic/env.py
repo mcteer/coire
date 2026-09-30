@@ -46,9 +46,11 @@ async def run_migrations_online() -> None:
     from sqlalchemy.ext.asyncio import create_async_engine
 
     engine = create_async_engine(_url(), pool_pre_ping=True)
-    async with engine.connect() as connection:
-        await connection.run_sync(_do_run)
-    await engine.dispose()
+    try:
+        async with engine.connect() as connection:
+            await connection.run_sync(_do_run)
+    finally:
+        await engine.dispose()
 
 
 if context.is_offline_mode():

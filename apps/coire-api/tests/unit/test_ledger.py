@@ -42,5 +42,6 @@ def test_budget_reduction_blocks_new_admission_without_releasing_holds() -> None
 
 def test_drift_is_measured_against_authoritative_reservations() -> None:
     assert drift_ratio(reserved_bytes=100, measured_bytes=110) == 0.1
-    assert drift_ratio(reserved_bytes=0, measured_bytes=10) is None
+    assert drift_ratio(reserved_bytes=0, measured_bytes=10) == 1.0
+    assert drift_ratio(reserved_bytes=0, measured_bytes=0) is None
     assert drift_ratio(reserved_bytes=100, measured_bytes=None) is None

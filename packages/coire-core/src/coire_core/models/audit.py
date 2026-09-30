@@ -27,6 +27,7 @@ class AuditOutcome(StrEnum):
 
 class AuditAction(StrEnum):
     MODEL_ADD = "model.add"
+    PROVIDER_MODEL_ADD = "provider_model.add"
     MODEL_RETRY = "model.retry"
     MODEL_UPDATE = "model.update"
     MODEL_PUBLISH = "model.publish"

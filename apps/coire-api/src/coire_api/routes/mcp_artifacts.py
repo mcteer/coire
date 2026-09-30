@@ -10,9 +10,10 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from opentelemetry import metrics, trace
+from sqlalchemy import select
 
 from coire_api.auth import CurrentAuthenticated
-from coire_api.db import McpArtifactRow
+from coire_api.db import ChatConversationRow, ChatTurnRow, McpArtifactRow
 from coire_api.deps import SessionDep
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_core.models.mcp import BranchArtifact
@@ -32,6 +33,17 @@ async def _owned_artifact(
 ) -> McpArtifactRow:
     row = await session.get(McpArtifactRow, artifact_id)
     if row is None or principal.user_id != row.owner_user_id or row.expires_at <= datetime.now(UTC):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "branch artifact is unavailable")
+    tombstoned = await session.scalar(
+        select(ChatConversationRow.id)
+        .join(ChatTurnRow, ChatTurnRow.conversation_id == ChatConversationRow.id)
+        .where(
+            ChatTurnRow.coding_call_id == row.call_id,
+            ChatConversationRow.deleted_at.is_not(None),
+        )
+        .limit(1)
+    )
+    if tombstoned is not None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "branch artifact is unavailable")
     return row
 

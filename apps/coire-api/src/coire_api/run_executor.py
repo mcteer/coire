@@ -25,9 +25,10 @@ from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.polling import PollBackoff, wait_or_stop
 from coire_api.run_tokens import rotate_run_token
 from coire_api.workspaces import resolve_source
+from coire_core.models.conversation import ImagePart
 from coire_core.models.harness import HarnessRunRequest, ProfileName, TaskClass
 from coire_core.models.mcp import WorkspaceSource
-from coire_core.models.node import WorkspacePrepareRequest
+from coire_core.models.node import WorkspacePrepareRequest, WorkspaceVisualInput
 from coire_core.models.registry import CapabilityProfile
 from coire_core.models.runs import (
     AgentRunState,
@@ -44,6 +45,13 @@ tracer = trace.get_tracer("coire.api.runs")
 meter = metrics.get_meter("coire.api.runs")
 commands_total = meter.create_counter("coire_run_commands_total", unit="1")
 kill_latency = meter.create_histogram("coire_run_kill_queue_latency_seconds", unit="s")
+
+
+def _coding_visual_inputs(call: McpCallRow) -> list[WorkspaceVisualInput]:
+    raw = call.input.get("coire_visual_inputs", []) if isinstance(call.input, dict) else []
+    if not isinstance(raw, list):
+        raise RuntimeError("MCP visual control inputs are invalid")
+    return [WorkspaceVisualInput.model_validate(value) for value in raw]
 
 
 class RunCommandExecutor:
@@ -207,6 +215,23 @@ class RunCommandExecutor:
                         {"outcome": "failed"},
                     )
 
+    async def _poll_chat_activity(self, run_id: uuid.UUID, node_name: str) -> None:
+        """Persist live receipts while WAIT owns the run; finalization drains the tail."""
+        from coire_api.chat.activity import activity_cursor, collect_run_activity
+
+        if await activity_cursor(run_id) is None:
+            return
+        while True:
+            try:
+                await collect_run_activity(run_id, node_name, self.settings)
+            except Exception as exc:
+                logger.error(
+                    "chat live activity poll failed run_id=%s error_type=%s",
+                    run_id,
+                    type(exc).__name__,
+                )
+            await asyncio.sleep(0.5)
+
     async def _execute(self, command_id: uuid.UUID) -> dict[str, object]:
         with tracer.start_as_current_span("coire.api.run.command") as span:
             span.set_attribute("command_id", str(command_id))
@@ -266,6 +291,7 @@ class RunCommandExecutor:
                                 or model is None
                             ):
                                 raise RuntimeError("MCP run preparation identity is invalid")
+                            visual_inputs = _coding_visual_inputs(mcp_call)
                             prepare = WorkspacePrepareRequest(
                                 run_id=run_id,
                                 source=await resolve_source(
@@ -282,11 +308,21 @@ class RunCommandExecutor:
                                     coding_mode=mcp_call.tool,
                                     coding_call_id=mcp_call.id,
                                     task=mcp_call.task,
+                                    visual_inputs=[
+                                        ImagePart(
+                                            asset_id=image.asset_id,
+                                            media_type="image/png",
+                                            width=image.width,
+                                            height=image.height,
+                                        )
+                                        for image in visual_inputs
+                                    ],
                                     capability_profile=CapabilityProfile.model_validate(
                                         model.capability_profile or {}
                                     ),
                                     context_window=model.context_window or 4096,
                                 ),
+                                visual_inputs=visual_inputs,
                             )
                         prepared = await client.prepare_workspace(node_name, prepare)
                         if prepared.run_id != run_id:
@@ -344,7 +380,16 @@ class RunCommandExecutor:
                     chunks = await client.run_logs(node_name, run_id)
                     return {"items": [item.model_dump(mode="json") for item in chunks]}
                 if operation is RunOperation.WAIT:
-                    return (await client.wait_run(node_name, run_id)).model_dump(mode="json")
+                    polling = asyncio.create_task(
+                        self._poll_chat_activity(run_id, node_name),
+                        name=f"chat-activity-{run_id}",
+                    )
+                    try:
+                        return (await client.wait_run(node_name, run_id)).model_dump(mode="json")
+                    finally:
+                        polling.cancel()
+                        with suppress(asyncio.CancelledError):
+                            await polling
                 if operation is RunOperation.COLLECT:
                     return (await client.collect_run(node_name, run_id)).model_dump(mode="json")
                 if operation in {RunOperation.REMOVE, RunOperation.KILL}:

@@ -1179,6 +1179,76 @@
         "title": "ApiKeyUpdate",
         "type": "object"
       },
+      "ApplyResult": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_url": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Url"
+          },
+          "base_revision": {
+            "maxLength": 40,
+            "minLength": 40,
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Base Revision",
+            "type": "string"
+          },
+          "branch": {
+            "pattern": "^coire/[a-z0-9][a-z0-9-]{0,100}$",
+            "title": "Branch",
+            "type": "string"
+          },
+          "diff_excerpt": {
+            "maxLength": 1048576,
+            "title": "Diff Excerpt",
+            "type": "string"
+          },
+          "diff_truncated": {
+            "title": "Diff Truncated",
+            "type": "boolean"
+          },
+          "head_revision": {
+            "maxLength": 40,
+            "minLength": 40,
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Head Revision",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "tests": {
+            "$ref": "#/components/schemas/TestSummary"
+          }
+        },
+        "required": [
+          "run_id",
+          "branch",
+          "base_revision",
+          "head_revision",
+          "diff_excerpt",
+          "diff_truncated",
+          "tests",
+          "artifact_id"
+        ],
+        "title": "ApplyResult",
+        "type": "object"
+      },
       "AskRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1559,6 +1629,32 @@
         "title": "BenchmarkRunState",
         "type": "string"
       },
+      "Body_upload_chat_file_api_v1_chat_conversations__conversation_id__files_post": {
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "title": "Filename",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "expected_revision",
+          "file"
+        ],
+        "title": "Body_upload_chat_file_api_v1_chat_conversations__conversation_id__files_post",
+        "type": "object"
+      },
       "BranchArtifact": {
         "additionalProperties": false,
         "properties": {
@@ -1653,6 +1749,16 @@
             "default": false,
             "title": "Verified",
             "type": "boolean"
+          },
+          "visual_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualCapability"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "title": "CapabilityProfile",
@@ -1756,6 +1862,191 @@
         "title": "CategoryScores",
         "type": "object"
       },
+      "ChatAttachment": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "derived_bytes": {
+            "default": 0,
+            "maximum": 33554432.0,
+            "minimum": 0.0,
+            "title": "Derived Bytes",
+            "type": "integer"
+          },
+          "detected_type": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Detected Type",
+            "type": "string"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "original_bytes": {
+            "maximum": 10485760.0,
+            "minimum": 1.0,
+            "title": "Original Bytes",
+            "type": "integer"
+          },
+          "original_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Original Sha256",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "page_count": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Count"
+          },
+          "previews": {
+            "items": {
+              "$ref": "#/components/schemas/ChatPreviewAsset"
+            },
+            "maxItems": 10,
+            "title": "Previews",
+            "type": "array"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "state": {
+            "enum": [
+              "uploading",
+              "processing",
+              "ready",
+              "failed",
+              "deleting"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "owner_id",
+          "conversation_id",
+          "filename",
+          "detected_type",
+          "original_bytes",
+          "original_sha256",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatAttachment",
+        "type": "object"
+      },
+      "ChatAttachmentChanged": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatAttachment"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "removed_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Removed Id"
+          },
+          "type": {
+            "const": "attachment.changed",
+            "default": "attachment.changed",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "title": "ChatAttachmentChanged",
+        "type": "object"
+      },
+      "ChatAttachmentSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "file_id": {
+            "format": "uuid",
+            "title": "File Id",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "text",
+              "visual"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "pages": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 10,
+            "title": "Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "file_id",
+          "mode"
+        ],
+        "title": "ChatAttachmentSelection",
+        "type": "object"
+      },
       "ChatCompletionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1790,7 +2081,7 @@
           },
           "messages": {
             "items": {
-              "$ref": "#/components/schemas/ChatMessage"
+              "$ref": "#/components/schemas/ChatMessage-Input"
             },
             "minItems": 1,
             "title": "Messages",
@@ -1886,13 +2177,510 @@
         "title": "ChatCompletionRequest",
         "type": "object"
       },
-      "ChatMessage": {
+      "ChatConversation": {
+        "additionalProperties": false,
+        "properties": {
+          "active_turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Turn Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "default": "chat",
+            "enum": [
+              "chat",
+              "code"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "selected_model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Selected Model Id"
+          },
+          "title": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "owner_id",
+          "title",
+          "revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatConversation",
+        "type": "object"
+      },
+      "ChatConversationCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "chat",
+            "enum": [
+              "chat",
+              "code"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "title": "ChatConversationCreate",
+        "type": "object"
+      },
+      "ChatConversationDeleted": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "type": {
+            "const": "conversation.deleted",
+            "default": "conversation.deleted",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "revision"
+        ],
+        "title": "ChatConversationDeleted",
+        "type": "object"
+      },
+      "ChatConversationDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ChatAttachment"
+            },
+            "maxItems": 100,
+            "title": "Attachments",
+            "type": "array"
+          },
+          "conversation": {
+            "$ref": "#/components/schemas/ChatConversation"
+          },
+          "event_cursor": {
+            "minimum": 0.0,
+            "title": "Event Cursor",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage-Output"
+            },
+            "maxItems": 100,
+            "title": "Messages",
+            "type": "array"
+          },
+          "next_message_position": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Message Position"
+          },
+          "turns": {
+            "items": {
+              "$ref": "#/components/schemas/ChatTurn"
+            },
+            "maxItems": 100,
+            "title": "Turns",
+            "type": "array"
+          }
+        },
+        "required": [
+          "conversation",
+          "event_cursor"
+        ],
+        "title": "ChatConversationDetail",
+        "type": "object"
+      },
+      "ChatConversationPage": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ChatConversation"
+            },
+            "maxItems": 100,
+            "title": "Data",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "title": "ChatConversationPage",
+        "type": "object"
+      },
+      "ChatConversationUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "chat",
+                  "code"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "ChatConversationUpdate",
+        "type": "object"
+      },
+      "ChatConversationUpdated": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/ChatConversation"
+          },
+          "reason": {
+            "maxLength": 100,
+            "title": "Reason",
+            "type": "string"
+          },
+          "type": {
+            "const": "conversation.updated",
+            "default": "conversation.updated",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conversation",
+          "reason"
+        ],
+        "title": "ChatConversationUpdated",
+        "type": "object"
+      },
+      "ChatDeleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "ChatDeleteRequest",
+        "type": "object"
+      },
+      "ChatDeletionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "purge_deadline_at": {
+            "format": "date-time",
+            "title": "Purge Deadline At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "purge_deadline_at"
+        ],
+        "title": "ChatDeletionResult",
+        "type": "object"
+      },
+      "ChatEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "cursor": {
+            "minimum": 1.0,
+            "title": "Cursor",
+            "type": "integer"
+          },
+          "payload": {
+            "discriminator": {
+              "mapping": {
+                "attachment.changed": "#/components/schemas/ChatAttachmentChanged",
+                "conversation.deleted": "#/components/schemas/ChatConversationDeleted",
+                "conversation.updated": "#/components/schemas/ChatConversationUpdated",
+                "message.delta": "#/components/schemas/ChatMessageDelta",
+                "run.activity": "#/components/schemas/ChatRunActivity",
+                "run.activity_status": "#/components/schemas/ChatRunActivityStatus",
+                "snapshot": "#/components/schemas/ChatSnapshot",
+                "turn.accepted": "#/components/schemas/ChatTurnAccepted",
+                "turn.result": "#/components/schemas/ChatTurnResult",
+                "turn.status": "#/components/schemas/ChatTurnStatus",
+                "turn.terminal": "#/components/schemas/ChatTurnTerminal"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ChatSnapshot"
+              },
+              {
+                "$ref": "#/components/schemas/ChatConversationUpdated"
+              },
+              {
+                "$ref": "#/components/schemas/ChatTurnAccepted"
+              },
+              {
+                "$ref": "#/components/schemas/ChatTurnStatus"
+              },
+              {
+                "$ref": "#/components/schemas/ChatMessageDelta"
+              },
+              {
+                "$ref": "#/components/schemas/ChatTurnTerminal"
+              },
+              {
+                "$ref": "#/components/schemas/ChatAttachmentChanged"
+              },
+              {
+                "$ref": "#/components/schemas/ChatRunActivity"
+              },
+              {
+                "$ref": "#/components/schemas/ChatRunActivityStatus"
+              },
+              {
+                "$ref": "#/components/schemas/ChatTurnResult"
+              },
+              {
+                "$ref": "#/components/schemas/ChatConversationDeleted"
+              }
+            ],
+            "title": "Payload"
+          },
+          "turn_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turn Id"
+          }
+        },
+        "required": [
+          "conversation_id",
+          "cursor",
+          "created_at",
+          "payload"
+        ],
+        "title": "ChatEvent",
+        "type": "object"
+      },
+      "ChatFileProcessRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "operation": {
+            "enum": [
+              "inspect",
+              "render"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "selected_pages": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 10,
+            "title": "Selected Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "request_id",
+          "expected_revision",
+          "operation"
+        ],
+        "title": "ChatFileProcessRequest",
+        "type": "object"
+      },
+      "ChatMessage-Input": {
         "additionalProperties": true,
         "properties": {
           "content": {
             "anyOf": [
               {
                 "type": "string"
+              },
+              {
+                "items": {
+                  "discriminator": {
+                    "mapping": {
+                      "image_url": "#/components/schemas/OpenAIImagePart",
+                      "text": "#/components/schemas/OpenAITextPart"
+                    },
+                    "propertyName": "type"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/OpenAITextPart"
+                    },
+                    {
+                      "$ref": "#/components/schemas/OpenAIImagePart"
+                    }
+                  ]
+                },
+                "type": "array"
               },
               {
                 "type": "null"
@@ -1937,6 +2725,933 @@
           "role"
         ],
         "title": "ChatMessage",
+        "type": "object"
+      },
+      "ChatMessage-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "attachment_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 10,
+            "title": "Attachment Ids",
+            "type": "array"
+          },
+          "attachment_selections": {
+            "items": {
+              "$ref": "#/components/schemas/ChatAttachmentSelection"
+            },
+            "maxItems": 10,
+            "title": "Attachment Selections",
+            "type": "array"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model_display_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Display Name"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "position": {
+            "minimum": 1.0,
+            "title": "Position",
+            "type": "integer"
+          },
+          "reasoning": {
+            "default": "",
+            "maxLength": 524288,
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "text": {
+            "default": "",
+            "maxLength": 524288,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "position",
+          "role",
+          "created_at"
+        ],
+        "title": "ChatMessage",
+        "type": "object"
+      },
+      "ChatMessageDelta": {
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "enum": [
+              "answer",
+              "reasoning"
+            ],
+            "title": "Channel",
+            "type": "string"
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "offset": {
+            "maximum": 524288.0,
+            "minimum": 1.0,
+            "title": "Offset",
+            "type": "integer"
+          },
+          "text": {
+            "maxLength": 65536,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "type": {
+            "const": "message.delta",
+            "default": "message.delta",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message_id",
+          "channel",
+          "text",
+          "offset"
+        ],
+        "title": "ChatMessageDelta",
+        "type": "object"
+      },
+      "ChatPickerEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "accepts_images": {
+            "default": false,
+            "title": "Accepts Images",
+            "type": "boolean"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "estimated_warmup_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Warmup Seconds"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "load_state": {
+            "$ref": "#/components/schemas/LoadState"
+          },
+          "max_images": {
+            "anyOf": [
+              {
+                "maximum": 10.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Images"
+          },
+          "size_class": {
+            "enum": [
+              "small",
+              "medium",
+              "large",
+              "unknown"
+            ],
+            "title": "Size Class",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ModelSource",
+            "default": "studio"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "maxItems": 10,
+            "title": "Tags",
+            "type": "array"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "size_class",
+          "load_state"
+        ],
+        "title": "ChatPickerEntry",
+        "type": "object"
+      },
+      "ChatPickerResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ChatPickerEntry"
+            },
+            "maxItems": 1000,
+            "title": "Data",
+            "type": "array"
+          }
+        },
+        "title": "ChatPickerResponse",
+        "type": "object"
+      },
+      "ChatPreviewAsset": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "maximum": 2048.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "media_type": {
+            "const": "image/png",
+            "default": "image/png",
+            "title": "Media Type",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "maximum": 50.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "width": {
+            "maximum": 2048.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "width",
+          "height"
+        ],
+        "title": "ChatPreviewAsset",
+        "type": "object"
+      },
+      "ChatRunActivity": {
+        "additionalProperties": false,
+        "properties": {
+          "activity": {
+            "$ref": "#/components/schemas/RunActivity"
+          },
+          "type": {
+            "const": "run.activity",
+            "default": "run.activity",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activity"
+        ],
+        "title": "ChatRunActivity",
+        "type": "object"
+      },
+      "ChatRunActivityStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "last_sequence": {
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Last Sequence",
+            "type": "integer"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "complete",
+              "truncated",
+              "unavailable"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "type": {
+            "const": "run.activity_status",
+            "default": "run.activity_status",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "state",
+          "last_sequence"
+        ],
+        "title": "ChatRunActivityStatus",
+        "type": "object"
+      },
+      "ChatSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ChatConversationDetail"
+          },
+          "replacement": {
+            "default": false,
+            "title": "Replacement",
+            "type": "boolean"
+          },
+          "type": {
+            "const": "snapshot",
+            "default": "snapshot",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ChatSnapshot",
+        "type": "object"
+      },
+      "ChatStopRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "enum": [
+              "user_stop",
+              "navigation"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "title": "ChatStopRequest",
+        "type": "object"
+      },
+      "ChatTurn": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_revision": {
+            "minimum": 1.0,
+            "title": "Accepted Revision",
+            "type": "integer"
+          },
+          "action": {
+            "default": "chat",
+            "enum": [
+              "chat",
+              "research",
+              "plan",
+              "apply"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "assistant_message_id": {
+            "format": "uuid",
+            "title": "Assistant Message Id",
+            "type": "string"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "coding_call_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coding Call Id"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_message_id": {
+            "format": "uuid",
+            "title": "Input Message Id",
+            "type": "string"
+          },
+          "model_display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Model Display Name",
+            "type": "string"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "recovery_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "retry",
+                  "continue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Mode"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
+          },
+          "state": {
+            "enum": [
+              "accepted",
+              "queued",
+              "loading",
+              "running",
+              "stop_requested",
+              "completed",
+              "failed",
+              "stopped",
+              "interrupted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "conversation_id",
+          "client_request_id",
+          "accepted_revision",
+          "input_message_id",
+          "assistant_message_id",
+          "model_id",
+          "model_display_name",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatTurn",
+        "type": "object"
+      },
+      "ChatTurnAccepted": {
+        "additionalProperties": false,
+        "properties": {
+          "turn": {
+            "$ref": "#/components/schemas/ChatTurn"
+          },
+          "type": {
+            "const": "turn.accepted",
+            "default": "turn.accepted",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn"
+        ],
+        "title": "ChatTurnAccepted",
+        "type": "object"
+      },
+      "ChatTurnCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "default": "chat",
+            "enum": [
+              "chat",
+              "research",
+              "plan",
+              "apply"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ChatAttachmentSelection"
+            },
+            "maxItems": 10,
+            "title": "Attachments",
+            "type": "array"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "content": {
+            "maxLength": 65536,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id"
+          },
+          "recovery_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "retry",
+                  "continue"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recovery Mode"
+          },
+          "research_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Id"
+          },
+          "retry_of": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retry Of"
+          },
+          "source_revision": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Revision"
+          },
+          "workspace_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Id"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_revision",
+          "model_id",
+          "content"
+        ],
+        "title": "ChatTurnCreate",
+        "type": "object"
+      },
+      "ChatTurnDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "assistant_message": {
+            "$ref": "#/components/schemas/ChatMessage-Output"
+          },
+          "coding_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchResult"
+              },
+              {
+                "$ref": "#/components/schemas/PlanResult"
+              },
+              {
+                "$ref": "#/components/schemas/ApplyResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coding Result"
+          },
+          "event_cursor": {
+            "minimum": 0.0,
+            "title": "Event Cursor",
+            "type": "integer"
+          },
+          "input_message": {
+            "$ref": "#/components/schemas/ChatMessage-Output"
+          },
+          "turn": {
+            "$ref": "#/components/schemas/ChatTurn"
+          }
+        },
+        "required": [
+          "turn",
+          "input_message",
+          "assistant_message",
+          "event_cursor"
+        ],
+        "title": "ChatTurnDetail",
+        "type": "object"
+      },
+      "ChatTurnResult": {
+        "additionalProperties": false,
+        "properties": {
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResearchResult"
+              },
+              {
+                "$ref": "#/components/schemas/PlanResult"
+              },
+              {
+                "$ref": "#/components/schemas/ApplyResult"
+              }
+            ],
+            "title": "Result"
+          },
+          "tool": {
+            "$ref": "#/components/schemas/McpToolName"
+          },
+          "type": {
+            "const": "turn.result",
+            "default": "turn.result",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool",
+          "result"
+        ],
+        "title": "ChatTurnResult",
+        "type": "object"
+      },
+      "ChatTurnStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "estimate_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimate Seconds"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "queue_position": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Position"
+          },
+          "state": {
+            "enum": [
+              "accepted",
+              "queued",
+              "loading",
+              "running",
+              "stop_requested"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "type": {
+            "const": "turn.status",
+            "default": "turn.status",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "ChatTurnStatus",
+        "type": "object"
+      },
+      "ChatTurnTerminal": {
+        "additionalProperties": false,
+        "properties": {
+          "answer_length": {
+            "maximum": 524288.0,
+            "minimum": 0.0,
+            "title": "Answer Length",
+            "type": "integer"
+          },
+          "reasoning_length": {
+            "maximum": 524288.0,
+            "minimum": 0.0,
+            "title": "Reasoning Length",
+            "type": "integer"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "state": {
+            "enum": [
+              "completed",
+              "failed",
+              "stopped",
+              "interrupted"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "type": {
+            "const": "turn.terminal",
+            "default": "turn.terminal",
+            "title": "Type",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "state",
+          "answer_length",
+          "reasoning_length"
+        ],
+        "title": "ChatTurnTerminal",
+        "type": "object"
+      },
+      "ChatUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "completion_tokens": {
+            "minimum": 0.0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "minimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prompt_tokens",
+          "completion_tokens"
+        ],
+        "title": "ChatUsage",
         "type": "object"
       },
       "ClusterNodeState": {
@@ -2417,6 +4132,14 @@
         "title": "EmptyOpsParameters",
         "type": "object"
       },
+      "EngineBackend": {
+        "enum": [
+          "mlx_lm",
+          "mlx_vlm"
+        ],
+        "title": "EngineBackend",
+        "type": "string"
+      },
       "EvaluationVerdict": {
         "enum": [
           "passed",
@@ -2673,6 +4396,40 @@
         "title": "FailoverSnapshot",
         "type": "object"
       },
+      "FileCitation": {
+        "additionalProperties": false,
+        "properties": {
+          "excerpt": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excerpt"
+          },
+          "line": {
+            "minimum": 1.0,
+            "title": "Line",
+            "type": "integer"
+          },
+          "path": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "line"
+        ],
+        "title": "FileCitation",
+        "type": "object"
+      },
       "GatewayModel": {
         "additionalProperties": false,
         "properties": {
@@ -2707,6 +4464,10 @@
             ],
             "title": "Coire Load State",
             "type": "string"
+          },
+          "coire_source": {
+            "$ref": "#/components/schemas/ModelSource",
+            "default": "studio"
           },
           "coire_tags": {
             "items": {
@@ -3551,6 +5312,224 @@
         "title": "MemoryReservationState",
         "type": "string"
       },
+      "Model": {
+        "additionalProperties": false,
+        "description": "The registry record.",
+        "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/EngineBackend",
+            "default": "mlx_lm"
+          },
+          "capability_profile": {
+            "$ref": "#/components/schemas/CapabilityProfile"
+          },
+          "chat_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Template"
+          },
+          "context_window": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Window"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "daily_token_budget": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Token Budget"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "entitlement": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entitlement",
+            "type": "array"
+          },
+          "file_count": {
+            "title": "File Count",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "idle_ttl_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idle Ttl Seconds"
+          },
+          "manifest_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manifest Sha256"
+          },
+          "max_output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Output Tokens"
+          },
+          "memory_estimate_bytes": {
+            "title": "Memory Estimate Bytes",
+            "type": "integer"
+          },
+          "placement_policy": {
+            "pattern": "^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$",
+            "title": "Placement Policy",
+            "type": "string"
+          },
+          "precision": {
+            "title": "Precision",
+            "type": "string"
+          },
+          "provider_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Model Id"
+          },
+          "ready_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ready At"
+          },
+          "repo_id": {
+            "title": "Repo Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ModelSource",
+            "default": "studio"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ModelState"
+          },
+          "state_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Reason"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "total_bytes": {
+            "title": "Total Bytes",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility",
+            "default": "admin_only"
+          },
+          "weight_bytes": {
+            "title": "Weight Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "repo_id",
+          "slug",
+          "display_name",
+          "state",
+          "placement_policy",
+          "precision",
+          "weight_bytes",
+          "total_bytes",
+          "file_count",
+          "memory_estimate_bytes",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Model",
+        "type": "object"
+      },
       "ModelAddRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3766,6 +5745,10 @@
         "additionalProperties": false,
         "description": "The user-facing shape.\n\nDeliberately narrow: no paths, no copies, no failure reasons, no repo id. What a user may\nsee about a model is what the picker needs to choose one.",
         "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/EngineBackend",
+            "default": "mlx_lm"
+          },
           "capability_profile": {
             "$ref": "#/components/schemas/CapabilityProfile"
           },
@@ -3876,6 +5859,26 @@
         ],
         "title": "ModelPinAction",
         "type": "object"
+      },
+      "ModelSource": {
+        "enum": [
+          "studio",
+          "openai",
+          "anthropic"
+        ],
+        "title": "ModelSource",
+        "type": "string"
+      },
+      "ModelState": {
+        "enum": [
+          "downloading",
+          "replicating",
+          "ready",
+          "failed",
+          "retired"
+        ],
+        "title": "ModelState",
+        "type": "string"
       },
       "ModelUnpinAction": {
         "additionalProperties": false,
@@ -4030,6 +6033,10 @@
       "ModelVariant": {
         "additionalProperties": false,
         "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/EngineBackend",
+            "default": "mlx_lm"
+          },
           "byte_size": {
             "minimum": 0.0,
             "title": "Byte Size",
@@ -4121,6 +6128,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/ValidationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visual_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualCapability"
               },
               {
                 "type": "null"
@@ -4568,6 +6585,78 @@
         "title": "OccupantReason",
         "type": "string"
       },
+      "OpenAIImagePart": {
+        "additionalProperties": false,
+        "properties": {
+          "image_url": {
+            "$ref": "#/components/schemas/OpenAIImageURL"
+          },
+          "type": {
+            "const": "image_url",
+            "default": "image_url",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "image_url"
+        ],
+        "title": "OpenAIImagePart",
+        "type": "object"
+      },
+      "OpenAIImageURL": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "low",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "url": {
+            "maxLength": 14000000,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "OpenAIImageURL",
+        "type": "object"
+      },
+      "OpenAITextPart": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "maxLength": 2000000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "type": {
+            "const": "text",
+            "default": "text",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "OpenAITextPart",
+        "type": "object"
+      },
       "OpsActionPrecondition": {
         "additionalProperties": false,
         "properties": {
@@ -4589,6 +6678,152 @@
           "expected_state"
         ],
         "title": "OpsActionPrecondition",
+        "type": "object"
+      },
+      "OpsAnthropicRelayRequest": {
+        "additionalProperties": false,
+        "description": "Bounded SDK payload relayed only for the core ops Chat conversation.",
+        "properties": {
+          "max_tokens": {
+            "maximum": 512.0,
+            "minimum": 1.0,
+            "title": "Max Tokens",
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Messages",
+            "type": "array"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "model": {
+            "const": "claude-sonnet-5-5",
+            "title": "Model",
+            "type": "string"
+          },
+          "output_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Config"
+          },
+          "stop_sequences": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Sequences"
+          },
+          "stream": {
+            "const": false,
+            "default": false,
+            "title": "Stream",
+            "type": "boolean"
+          },
+          "system": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "System"
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "tool_choice": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Choice"
+          },
+          "tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "maxItems": 4,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tools"
+          },
+          "top_p": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top P"
+          }
+        },
+        "required": [
+          "model",
+          "max_tokens",
+          "messages"
+        ],
+        "title": "OpsAnthropicRelayRequest",
         "type": "object"
       },
       "OpsConfirmRequest": {
@@ -5379,6 +7614,78 @@
         "title": "PlacementState",
         "type": "string"
       },
+      "PlanResult": {
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "maxLength": 100000,
+            "minLength": 1,
+            "title": "Goal",
+            "type": "string"
+          },
+          "result_id": {
+            "format": "uuid",
+            "title": "Result Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "source_revision": {
+            "maxLength": 40,
+            "minLength": 40,
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Source Revision",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlanStep"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "result_id",
+          "run_id",
+          "source_revision",
+          "goal",
+          "steps"
+        ],
+        "title": "PlanResult",
+        "type": "object"
+      },
+      "PlanStep": {
+        "additionalProperties": false,
+        "properties": {
+          "acceptance_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Acceptance Criteria",
+            "type": "array"
+          },
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "description",
+          "acceptance_criteria"
+        ],
+        "title": "PlanStep",
+        "type": "object"
+      },
       "Precision": {
         "enum": [
           "bf16",
@@ -5411,6 +7718,17 @@
         "additionalProperties": true,
         "description": "RFC 9457 problem detail used by the compatible gateway.",
         "properties": {
+          "coire_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Code"
+          },
           "detail": {
             "anyOf": [
               {
@@ -5463,6 +7781,76 @@
         ],
         "title": "ProfileName",
         "type": "string"
+      },
+      "ProviderModelAddRequest": {
+        "additionalProperties": false,
+        "description": "Admin-curated remote text target; no caller-controlled endpoint or credential.",
+        "properties": {
+          "context_window": {
+            "maximum": 2000000.0,
+            "minimum": 256.0,
+            "title": "Context Window",
+            "type": "integer"
+          },
+          "daily_token_budget": {
+            "maximum": 10000000.0,
+            "minimum": 1.0,
+            "title": "Daily Token Budget",
+            "type": "integer"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "max_output_tokens": {
+            "maximum": 16384.0,
+            "minimum": 1.0,
+            "title": "Max Output Tokens",
+            "type": "integer"
+          },
+          "provider_model_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Provider Model Id",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ModelSource"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            },
+            "maxItems": 10,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source",
+          "provider_model_id",
+          "display_name",
+          "context_window",
+          "max_output_tokens",
+          "daily_token_budget"
+        ],
+        "title": "ProviderModelAddRequest",
+        "type": "object"
       },
       "QuantizationMode": {
         "enum": [
@@ -5565,6 +7953,52 @@
         "title": "RegisteredWorkspace",
         "type": "object"
       },
+      "ResearchResult": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "maxLength": 200000,
+            "minLength": 1,
+            "title": "Answer",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/FileCitation"
+            },
+            "maxItems": 128,
+            "minItems": 1,
+            "title": "Citations",
+            "type": "array"
+          },
+          "result_id": {
+            "format": "uuid",
+            "title": "Result Id",
+            "type": "string"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "source_revision": {
+            "maxLength": 40,
+            "minLength": 40,
+            "pattern": "^[a-f0-9]{40}$",
+            "title": "Source Revision",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_id",
+          "run_id",
+          "source_revision",
+          "answer",
+          "citations"
+        ],
+        "title": "ResearchResult",
+        "type": "object"
+      },
       "ReservationHolder": {
         "enum": [
           "sandbox",
@@ -5575,6 +8009,97 @@
           "run"
         ],
         "title": "ReservationHolder",
+        "type": "string"
+      },
+      "RunActivity": {
+        "additionalProperties": false,
+        "description": "Bounded content-free tool lifecycle receipt from one user run.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "sequence": {
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "started",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "tool_call_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tool Call Id"
+          },
+          "tool_name": {
+            "$ref": "#/components/schemas/RunActivityTool"
+          }
+        },
+        "required": [
+          "run_id",
+          "sequence",
+          "tool_name",
+          "state",
+          "created_at"
+        ],
+        "title": "RunActivity",
+        "type": "object"
+      },
+      "RunActivityTool": {
+        "enum": [
+          "read_file",
+          "model_generation",
+          "apply_patch",
+          "run_tests",
+          "branch_bundle",
+          "activity_spool"
+        ],
+        "title": "RunActivityTool",
         "type": "string"
       },
       "RunKillAction": {
@@ -6006,6 +8531,61 @@
         "title": "TaskClass",
         "type": "string"
       },
+      "TestStatus": {
+        "enum": [
+          "passed",
+          "failed",
+          "not_found",
+          "unsupported"
+        ],
+        "title": "TestStatus",
+        "type": "string"
+      },
+      "TestSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Command",
+            "type": "array"
+          },
+          "failed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "output_excerpt": {
+            "default": "",
+            "maxLength": 16384,
+            "title": "Output Excerpt",
+            "type": "string"
+          },
+          "passed": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Passed",
+            "type": "integer"
+          },
+          "skipped": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Skipped",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TestStatus"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "TestSummary",
+        "type": "object"
+      },
       "ThermalState": {
         "enum": [
           "nominal",
@@ -6208,6 +8788,10 @@
       "ValidationResult": {
         "additionalProperties": false,
         "properties": {
+          "backend": {
+            "$ref": "#/components/schemas/EngineBackend",
+            "default": "mlx_lm"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -6292,6 +8876,16 @@
           "validator_version": {
             "title": "Validator Version",
             "type": "string"
+          },
+          "visual_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisualCapability"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -6423,6 +9017,54 @@
         ],
         "title": "Visibility",
         "type": "string"
+      },
+      "VisualCapability": {
+        "additionalProperties": false,
+        "description": "Measured visual limits, populated by validation rather than admin curation.",
+        "properties": {
+          "cache_memory_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Cache Memory Bytes",
+            "type": "integer"
+          },
+          "encoder_memory_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Encoder Memory Bytes",
+            "type": "integer"
+          },
+          "max_encoded_bytes": {
+            "maximum": 10485760.0,
+            "minimum": 1.0,
+            "title": "Max Encoded Bytes",
+            "type": "integer"
+          },
+          "max_image_pixels": {
+            "maximum": 4000000.0,
+            "minimum": 1.0,
+            "title": "Max Image Pixels",
+            "type": "integer"
+          },
+          "max_images": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Images",
+            "type": "integer"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "max_images",
+          "max_image_pixels",
+          "max_encoded_bytes"
+        ],
+        "title": "VisualCapability",
+        "type": "object"
       },
       "WorkspaceRegistrationCreate": {
         "additionalProperties": false,
@@ -10152,6 +12794,71 @@
         ]
       }
     },
+    "/api/v1/admin/provider-models": {
+      "post": {
+        "description": "Register a fixed-provider target; publication is a separate audited edit.",
+        "operationId": "add_provider_model_api_v1_admin_provider_models_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderModelAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Model"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Provider Model",
+        "tags": [
+          "admin: models"
+        ]
+      }
+    },
     "/api/v1/admin/runs": {
       "get": {
         "operationId": "list_runs_api_v1_admin_runs_get",
@@ -10872,6 +13579,1249 @@
         ]
       }
     },
+    "/api/v1/chat/conversations": {
+      "get": {
+        "operationId": "list_chat_conversations_api_v1_chat_conversations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 256,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Chat Conversations",
+        "tags": [
+          "chat"
+        ]
+      },
+      "post": {
+        "operationId": "create_chat_conversation_api_v1_chat_conversations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatConversationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Chat Conversation",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}": {
+      "delete": {
+        "operationId": "delete_chat_conversation_api_v1_chat_conversations__conversation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatDeletionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Chat Conversation",
+        "tags": [
+          "chat"
+        ]
+      },
+      "get": {
+        "operationId": "get_chat_conversation_api_v1_chat_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_position",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Position"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversationDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Chat Conversation",
+        "tags": [
+          "chat"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_chat_conversation_api_v1_chat_conversations__conversation_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatConversationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Chat Conversation",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/events": {
+      "get": {
+        "operationId": "get_chat_events_api_v1_chat_conversations__conversation_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatEvent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Chat Events",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/files": {
+      "post": {
+        "operationId": "upload_chat_file_api_v1_chat_conversations__conversation_id__files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_chat_file_api_v1_chat_conversations__conversation_id__files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAttachment"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Chat File",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/files/{file_id}": {
+      "get": {
+        "operationId": "get_chat_file_api_v1_chat_conversations__conversation_id__files__file_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAttachment"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Chat File",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/files/{file_id}/content": {
+      "get": {
+        "operationId": "download_chat_file_api_v1_chat_conversations__conversation_id__files__file_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Chat File",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/files/{file_id}/previews/{asset_id}": {
+      "get": {
+        "operationId": "preview_chat_file_api_v1_chat_conversations__conversation_id__files__file_id__previews__asset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "asset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Asset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Chat File",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/files/{file_id}/process": {
+      "post": {
+        "operationId": "process_chat_file_api_v1_chat_conversations__conversation_id__files__file_id__process_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatFileProcessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAttachment"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Process Chat File",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/turns": {
+      "post": {
+        "operationId": "send_chat_turn_api_v1_chat_conversations__conversation_id__turns_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatTurnCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatEvent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Chat Turn",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/turns/{turn_id}": {
+      "get": {
+        "operationId": "get_chat_turn_api_v1_chat_conversations__conversation_id__turns__turn_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Turn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTurnDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Chat Turn",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/turns/{turn_id}/artifact": {
+      "get": {
+        "operationId": "download_chat_artifact_api_v1_chat_conversations__conversation_id__turns__turn_id__artifact_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Turn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Chat Artifact",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/turns/{turn_id}/stop": {
+      "post": {
+        "operationId": "stop_chat_turn_api_v1_chat_conversations__conversation_id__turns__turn_id__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Turn Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatStopRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatTurn"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stop Chat Turn",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/models": {
+      "get": {
+        "operationId": "list_chat_models_api_v1_chat_models_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "chat",
+              "enum": [
+                "chat",
+                "code"
+              ],
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": "chat",
+              "enum": [
+                "chat",
+                "research",
+                "plan",
+                "apply"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatPickerResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Chat Models",
+        "tags": [
+          "chat"
+        ]
+      }
+    },
     "/api/v1/failover/events": {
       "post": {
         "operationId": "reconcile_api_v1_failover_events_post",
@@ -11279,6 +15229,131 @@
         "summary": "Instance Events",
         "tags": [
           "instances"
+        ]
+      }
+    },
+    "/api/v1/internal/ops/anthropic/v1/messages": {
+      "post": {
+        "description": "Relay only the pinned, bounded ops tool turn; the provider key stays in the API.",
+        "operationId": "ops_anthropic_message_api_v1_internal_ops_anthropic_v1_messages_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpsAnthropicRelayRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ops Anthropic Message",
+        "tags": [
+          "internal: ops"
+        ]
+      }
+    },
+    "/api/v1/internal/ops/anthropic/v1/models/{model_id}": {
+      "get": {
+        "description": "Health lookup through the API's existing provider egress, with no model payload.",
+        "operationId": "ops_anthropic_model_api_v1_internal_ops_anthropic_v1_models__model_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "title": "Model Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ops Anthropic Model",
+        "tags": [
+          "internal: ops"
         ]
       }
     },

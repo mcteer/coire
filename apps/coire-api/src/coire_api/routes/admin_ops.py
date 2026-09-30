@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -31,6 +32,8 @@ from coire_core.models.ops import (
     OpsTurnResponse,
     OpsTurnStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/admin/ops", tags=["admin: ops"])
 
@@ -93,7 +96,9 @@ async def post_message(
     except ops.OpsNotFound as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "ops conversation not found") from exc
     active = await ops.current_session(session, stale_seconds=settings.ops_session_stale_s)
-    if active is not None:
+    if active is None:
+        logger.warning("ops turn has no active session conversation=%s", conversation_id)
+    else:
         try:
             async with httpx.AsyncClient(
                 base_url=settings.ops_service_url,
@@ -111,8 +116,14 @@ async def post_message(
                 )
                 response.raise_for_status()
                 turn = OpsTurnResponse.model_validate(response.json())
-        except (httpx.HTTPError, ValueError):
-            pass
+        except (httpx.HTTPError, ValueError) as exc:
+            detail = exc.response.text[:300] if isinstance(exc, httpx.HTTPStatusError) else ""
+            logger.warning(
+                "ops turn fell back conversation=%s error=%s detail=%s",
+                conversation_id,
+                type(exc).__name__,
+                detail,
+            )
         else:
             await ops.append_message(
                 session,

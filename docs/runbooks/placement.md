@@ -10,6 +10,17 @@ reserved and free bytes, health freshness, measured residency, drift ratio, and 
 Inspect an individual durable decision at `GET /api/v1/admin/placements/{decision_id}`. Correlate
 that UUID with the `coire.scheduler.placement` trace and structured scheduler/API logs.
 
+The drift ratio compares measured model process residency with held or releasing **model**
+reservations. Standing sandbox and failover slices still consume admission capacity, but do not
+represent model memory. With no model reservation, positive measured residency reports 100%
+unreserved drift; zero residency reports a null ratio and a zero telemetry gauge.
+`CoireModelMemoryDrift` warns if absolute drift exceeds 10% for five minutes.
+Compare each active model's verified variant bytes and reservation in the ledger. A newly
+published default variant uses at least its actual bytes plus the MLX runtime floor. Drain and
+reload an older instance through the admin engine route after recalibration; its existing
+reservation does not change in place. Check node residency samples and engine health if drift
+persists. Keep measured residency diagnostic: only the reservation ledger controls admission.
+
 ## Change a budget or sandbox slice
 
 Patch `/api/v1/admin/ledger/{node_id}` with `budget_bytes` and/or `sandbox_bytes`. A reduction

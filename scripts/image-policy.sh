@@ -127,7 +127,7 @@ fi
 # Principle II: core control-plane images must not contain the user harness package. Runtime
 # placement is Studio-only, but omitting the executable from core makes fallback impossible.
 case "${IMAGE%%:*}" in
-  *coire-api|*coire-scheduler|*coire-mcp|*coire-migrate)
+  *coire-api|*coire-scheduler|*coire-mcp|*coire-migrate|*coire-file-worker)
     if printf '%s\n' "$FS" | grep -q '/coire_agent/'; then
       fail "user harness present on core" "coire_agent package found"
     else
@@ -135,6 +135,20 @@ case "${IMAGE%%:*}" in
     fi
     ;;
 esac
+
+if [[ "${IMAGE%%:*}" == *coire-file-worker ]]; then
+  if printf '%s\n' "$FS" | grep -qE '/(mlx|mlx_lm|mlx_vlm)/'; then
+    fail "model engine present on core" "MLX package found in file worker"
+  else
+    pass "principle II: no model engine in CPU file worker"
+  fi
+  if docker run --rm --entrypoint /app/.venv/bin/python3 "$IMAGE" \
+      -c 'import pypdfium2, PIL.Image; pypdfium2.PdfDocument.new().close()' >/dev/null 2>&1; then
+    pass "worker native PDFium/Pillow import on linux/arm64"
+  else
+    fail "worker native linkage" "PDFium/Pillow import failed"
+  fi
+fi
 
 if [[ "$FAILED" -ne 0 ]]; then
   echo "IMAGE POLICY FAILED: $IMAGE" >&2

@@ -25,6 +25,7 @@ from sqlalchemy import literal, select, union_all
 from coire_api.db import (
     AcquisitionWorkflowRow,
     AgentRunRow,
+    ChatFileProcessingRow,
     ModelInstanceRow,
     PlacementDecisionRow,
     RunCommandRow,
@@ -42,6 +43,12 @@ from coire_core.models.runs import AgentRunState, RunCommandState, RunOperation
 from coire_core.settings import get_settings
 from coire_scheduler.acquisition import acquisition_workflow
 from coire_scheduler.dbos_runtime import DBOSRuntime
+from coire_scheduler.files import (
+    file_processing_workflow,
+    purge_deleted_file_outputs,
+    purge_expired_temporary_outputs,
+    purge_failed_file_outputs,
+)
 from coire_scheduler.instances import instance_drain_workflow, instance_launch_workflow
 from coire_scheduler.mcp_cleanup import sweep_mcp_workspaces
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
@@ -161,12 +168,26 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
             for run_id, _run_state in run_rows:
                 with SetWorkflowID(str(run_id)):
                     DBOS.start_workflow(run_workflow, str(run_id))
+            async with session_scope() as session:
+                file_ids = list(
+                    (
+                        await session.execute(
+                            select(ChatFileProcessingRow.id)
+                            .where(ChatFileProcessingRow.state.in_(["queued", "running"]))
+                            .order_by(ChatFileProcessingRow.created_at, ChatFileProcessingRow.id)
+                            .limit(1)
+                        )
+                    ).scalars()
+                )
+            for file_job_id in file_ids:
+                with SetWorkflowID(f"file-{file_job_id}"):
+                    DBOS.start_workflow(file_processing_workflow, file_job_id)
             delay = (
                 settings.acquisition_poll_interval_s
-                if ids or placement_ids or instance_rows or run_rows
+                if ids or placement_ids or instance_rows or run_rows or file_ids
                 else backoff.idle()
             )
-            if ids or placement_ids or instance_rows or run_rows:
+            if ids or placement_ids or instance_rows or run_rows or file_ids:
                 backoff.active()
         except Exception:
             logger.exception("acquisition dispatcher pass failed")
@@ -235,6 +256,18 @@ async def dispatch_mcp_cleanup(stop: asyncio.Event) -> None:
         await wait_or_stop(stop, 300.0)
 
 
+async def dispatch_file_purge(stop: asyncio.Event) -> None:
+    settings = get_settings()
+    while not stop.is_set():
+        try:
+            await purge_deleted_file_outputs(settings)
+            await purge_failed_file_outputs(settings)
+            await purge_expired_temporary_outputs(settings)
+        except Exception as exc:
+            logger.error("file purge pass failed error_type=%s", type(exc).__name__)
+        await wait_or_stop(stop, 5.0)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_telemetry(SERVICE_NAME, settings.service_version, settings.otlp_endpoint)
@@ -260,6 +293,9 @@ def create_app() -> FastAPI:
             )
             background.append(
                 asyncio.create_task(dispatch_mcp_cleanup(stop), name="mcp-cleanup-dispatcher")
+            )
+            background.append(
+                asyncio.create_task(dispatch_file_purge(stop), name="file-purge-dispatcher")
             )
             app.state.dbos = runtime
             yield

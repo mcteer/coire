@@ -385,6 +385,8 @@ def run_convert(job: JobFile) -> int:
 
 
 def run_validate(job: JobFile) -> int:
+    from coire_core.models.acquisition import ValidationOutcome
+    from coire_core.models.registry import EngineBackend
     from coire_node.validation import (
         compare_perplexity,
         measure_perplexity,
@@ -393,6 +395,51 @@ def run_validate(job: JobFile) -> int:
     )
 
     store = _store(job)
+    backend = EngineBackend(job.params.get("backend", EngineBackend.MLX_LM))
+    if backend is EngineBackend.MLX_VLM:
+        from coire_node.visual_validation import run_visual_smoke
+
+        manifest = store.read_manifest(job.status.slug)
+        visual_failure: str | None
+        if manifest is None or store.verify_against(job.status.slug, manifest):
+            visual_smoke, visual_failure, visual = (
+                ValidationOutcome.FAIL,
+                "local visual manifest is unverified",
+                None,
+            )
+        else:
+            visual_smoke, visual_failure, visual = run_visual_smoke(store.path_for(job.status.slug))
+        visual_result: dict[str, object] = {
+            "validator_version": str(job.params.get("validator_version", "v1")),
+            "backend": backend.value,
+            "visual_input": visual.model_dump(mode="json") if visual else None,
+            "smoke": visual_smoke.value,
+            "smoke_failure": visual_failure,
+            "perplexity": None,
+            "reference_variant_id": None,
+            "reference_perplexity": None,
+            "tolerance": float(job.params.get("tolerance", 0.1)),
+            "perplexity_outcome": ValidationOutcome.NOT_COMPARABLE.value,
+            "template": ValidationOutcome.NOT_APPLICABLE.value,
+            "template_failure": None,
+            "validated": visual_smoke is ValidationOutcome.PASS,
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        if visual_smoke is ValidationOutcome.FAIL:
+            job.status.result = visual_result
+            logger.warning(
+                "visual validation failed for job %s model %s: %s",
+                job.status.job_id,
+                job.status.slug,
+                visual_failure,
+            )
+            job.fail(JobErrorKind.VALIDATION_FAILED, visual_failure or "visual validation failed")
+            return EXIT_FAILED
+        logger.info(
+            "visual validation passed for job %s model %s", job.status.job_id, job.status.slug
+        )
+        job.finish(result=visual_result)
+        return EXIT_OK
     smoke, failure = run_smoke(store.path_for(job.status.slug))
     measured = measure_perplexity(store.path_for(job.status.slug))
     reference_raw = job.params.get("reference_perplexity")

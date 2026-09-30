@@ -30,7 +30,14 @@ async def list_models(principal: CurrentPrincipal, session: SessionDep) -> list[
     (spec US5 scenario 1). Existence is not disclosed: an unpublished model is simply absent.
     """
     rows = (await session.execute(select(ModelRow).order_by(ModelRow.display_name))).scalars().all()
-    visible = [m for m in rows if service.visible_to(is_admin=principal.is_admin, model=m)]
+    visible = [
+        m
+        for m in rows
+        if service.visible_to(
+            is_admin=principal.is_admin, model=m, entitlements=principal.entitlements
+        )
+        and (m.source or "studio") == "studio"
+    ]
     if not visible:
         return []
 

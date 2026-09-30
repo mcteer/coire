@@ -1,0 +1,173 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (operation, outcome) (rate(coire_chat_requests_total[5m]))",
+          "legendFormat": "{{operation}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Native Chat requests",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 8},
+      "id": 2,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "max(coire_chat_purge_oldest_seconds)",
+          "legendFormat": "oldest pending purge",
+          "refId": "A"
+        }
+      ],
+      "title": "Deleted content awaiting purge",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "id": 3,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(coire_chat_parser_failures_total[5m]))",
+          "legendFormat": "{{reason}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Chat engine stream parser failures",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 24},
+      "id": 4,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_file_processing_total[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Private file processing",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 32},
+      "id": 5,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, backend) (rate(coire_engine_load_seconds_bucket{backend=\"mlx_vlm\"}[5m])))",
+          "legendFormat": "VLM p95 load",
+          "refId": "A"
+        }
+      ],
+      "title": "Bare VLM load time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 40},
+      "id": 6,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (mode, outcome) (rate(coire_chat_turns_total[5m]))",
+          "legendFormat": "{{mode}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Persisted Chat turn outcomes",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 48},
+      "id": 7,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(coire_chat_stop_seconds_bucket[5m])))",
+          "legendFormat": "native Stop p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Native Chat Stop acknowledgement",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 56},
+      "id": 8,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(coire_chat_upload_rejections_total[5m]))",
+          "legendFormat": "{{reason}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Private upload refusals",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 64},
+      "id": 9,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "max(coire_chat_active_turns)",
+          "legendFormat": "active native Chat turns",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Chat turns from persisted state",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 72},
+      "id": 10,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_vision_requests_total[5m]))",
+          "legendFormat": "VLM {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Bare VLM request outcomes",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["coire", "chat"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "title": "Coire Chat",
+  "uid": "coire-chat",
+  "version": 1
+}

@@ -26,8 +26,25 @@ reservations; partial conversion directories are removed and partial Hub pulls r
 - `gguf_only`: use the original safetensors repository or a pre-quantized MLX repository.
 - `unsupported_architecture`: the pinned `mlx-lm` cannot load it; do not enable remote code.
 - `no_fit_memory`: use a smaller/pre-quantized model; a merely busy node queues instead.
+- `incomplete_visual_processor` or `missing_visual_weights`: inspect the repository's processor,
+  tokenizer and safetensors inventory; no weights were transferred.
+- `vision_requires_preconverted_mlx` or `unsupported_visual_architecture`: use a supported,
+  already-converted MLX-VLM repository; visual conversion is not available.
+- `unsupported_visual_recipe`: a preconverted visual source has no matching inspected precision
+  or the requested recipe would convert it. The audited refusal transfers zero weight bytes.
+  Submit the source's measured precision and group size. A supported visual source enters the
+  admin acquisition workflow; it remains unpublished until the local one-image smoke passes
+  and the replica checksum matches. If either check fails, inspect the acquisition job and
+  cancel or retry through the admin API. To roll back, stop new visual submissions and keep
+  failed variants unpublished while retaining their job evidence.
 - `disk_full`: free model-store capacity; partial conversion output is removed.
 - validation failure: compare smoke, perplexity, and template outcomes; files stay unpublished.
+  For a visual node job, inspect `result.backend=mlx_vlm`, `smoke_failure`, and the local
+  checksum manifest. The node refuses incomplete or linked processor files, missing weights,
+  unsupported visual architecture, and degenerate one-image output. Visual perplexity is
+  `not_comparable`; a pass includes measured `visual_input`. A failure leaves the variant
+  unpublished. Stop the job through the existing acquisition cancel path and keep the admin
+  visual acquisition refusal enabled until scheduler publication is validated end to end.
 
 Use the **Coire Acquisition Jobs** dashboard for stage duration, reservations, validation, and
 estimate drift. Alerts cover stuck stages, exhausted conversion retries, and >10% size drift.

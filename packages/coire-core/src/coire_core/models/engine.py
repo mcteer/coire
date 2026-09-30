@@ -15,7 +15,9 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from coire_core.models.registry import EngineBackend
 
 
 class EngineState(StrEnum):
@@ -44,6 +46,7 @@ class EngineStatus(BaseModel):
     engine_id: uuid.UUID | None = None
     """None for an orphan: it matches no registry row by definition."""
     slug: str | None = None
+    backend: EngineBackend = EngineBackend.MLX_LM
     port: int
     pid: int | None = None
     process_create_time: float | None = None
@@ -73,6 +76,7 @@ class EngineProcess(BaseModel):
     model_id: uuid.UUID | None = None
     """None for an orphan whose slug matches no model."""
     node: str
+    backend: EngineBackend = EngineBackend.MLX_LM
     port: int
     pid: int | None = None
     state: EngineState
@@ -92,10 +96,25 @@ class EngineStartRequest(BaseModel):
 
     engine_id: uuid.UUID
     slug: str
+    backend: EngineBackend = EngineBackend.MLX_LM
     estimate_bytes: int = Field(ge=1)
+    vision_cache_size: int | None = Field(default=None, ge=1, le=1024)
+    max_num_seqs: int | None = Field(default=None, ge=1, le=16)
+    max_kv_size: int | None = Field(default=None, ge=1)
     chat_template: str | None = None
     """Registry-supplied override, written to a file beside the copy and passed as
     `--chat-template`. Never caller-derived (spec FR-017)."""
+
+    @model_validator(mode="after")
+    def backend_options_match(self) -> EngineStartRequest:
+        vision_options = (self.vision_cache_size, self.max_num_seqs, self.max_kv_size)
+        if self.backend is EngineBackend.MLX_LM and any(
+            value is not None for value in vision_options
+        ):
+            raise ValueError("vision options require the VLM backend")
+        if self.backend is EngineBackend.MLX_VLM and self.chat_template is not None:
+            raise ValueError("VLM backend does not support chat-template override")
+        return self
 
 
 class BudgetRefused(BaseModel):
@@ -115,6 +134,7 @@ class ReconcileExpectation(BaseModel):
 
     engine_id: uuid.UUID
     slug: str
+    backend: EngineBackend = EngineBackend.MLX_LM
     port: int
     pid: int | None = None
     process_create_time: float | None = None

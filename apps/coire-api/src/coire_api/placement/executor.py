@@ -26,6 +26,7 @@ from coire_api.polling import PollBackoff, wait_or_stop
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, PlacementState
+from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -210,6 +211,7 @@ class PlacementCommandExecutor:
                         if payload.get("chat_template") is not None
                         else None
                     ),
+                    backend=EngineBackend(str(payload.get("backend", "mlx_lm"))),
                 )
                 deadline = time.monotonic() + self.settings.gateway_wait_ceiling_s
                 while status.state is EngineState.STARTING and time.monotonic() < deadline:
@@ -230,6 +232,7 @@ class PlacementCommandExecutor:
                         reservation.state = MemoryReservationState.HELD
                     if engine is not None:
                         engine.state = status.state
+                        engine.backend = status.backend.value
                         engine.port = status.port
                         engine.pid = status.pid
                         engine.process_create_time = status.process_create_time

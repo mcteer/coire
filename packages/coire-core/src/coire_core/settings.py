@@ -8,8 +8,10 @@ environment-sourced secrets that Docker materialises as files (research R4).
 from __future__ import annotations
 
 import json
+import uuid
 from functools import lru_cache
-from urllib.parse import quote
+from typing import Literal
+from urllib.parse import quote, urlsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
@@ -69,6 +71,8 @@ class Settings(BaseSettings):
     this with edge identity and API keys."""
 
     bootstrap_admin_email: SecretStr = SecretStr("")
+    openai_api_key: SecretStr = SecretStr("")
+    anthropic_api_key: SecretStr = SecretStr("")
     """Configured first local administrator identity. It is sourced from Keychain like other
     bootstrap material and never grants access without a separately verified Access assertion."""
     cloudflare_access_issuer: str = ""
@@ -143,6 +147,61 @@ class Settings(BaseSettings):
     gateway_max_inflight_per_engine: int = Field(default=1, ge=1)
     gateway_retry_after_s: int = Field(default=30, ge=1)
     gateway_engine_request_timeout_s: float = Field(default=900.0, gt=0.0)
+    gateway_inline_visual_enabled: bool = False
+    provider_chat_enabled: bool = False
+
+    # --- private native chat and CPU file worker -----------------------
+    chat_enabled: bool = False
+    chat_default_model_id: uuid.UUID | None = None
+    chat_output_tokens: int = Field(default=1024, ge=1, le=4096)
+    chat_upload_max_bytes: int = Field(default=10 * 1024**2, ge=1, le=10 * 1024**2)
+    chat_conversation_quota_bytes: int = Field(default=50 * 1024**2, ge=1, le=50 * 1024**2)
+    chat_owner_quota_bytes: int = Field(default=500 * 1024**2, ge=1, le=500 * 1024**2)
+    chat_derived_job_max_bytes: int = Field(default=32 * 1024**2, ge=1, le=32 * 1024**2)
+    chat_extracted_text_max_bytes: int = Field(default=1024**2, ge=1, le=1024**2)
+    chat_pdf_max_pages: int = Field(default=50, ge=1, le=50)
+    chat_upload_max_pixels: int = Field(default=20_000_000, ge=1, le=20_000_000)
+    chat_normalized_max_pixels: int = Field(default=4_000_000, ge=1, le=4_000_000)
+    chat_normalized_max_side: int = Field(default=2048, ge=1, le=2048)
+    chat_event_retention_hours: int = Field(default=24, ge=1, le=24)
+    chat_purge_deadline_hours: int = Field(default=24, ge=1, le=24)
+    chat_browser_origin: str = ""
+
+    @field_validator("chat_default_model_id", mode="before")
+    @classmethod
+    def empty_chat_default_model(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @field_validator("chat_browser_origin")
+    @classmethod
+    def chat_origin_is_exact(cls, value: str) -> str:
+        if not value:
+            return value
+        parsed = urlsplit(value)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or parsed.netloc != value.split("://", 1)[-1]
+            or (parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1"})
+        ):
+            raise ValueError(
+                "chat browser origin must be an exact HTTPS origin or local HTTP origin"
+            )
+        return value
+
+    chat_original_root: str = "/opt/coire/chat/originals"
+    chat_derived_root: str = "/opt/coire/chat/derived"
+    file_worker_input_root: str = "/opt/coire/chat/originals"
+    file_worker_output_root: str = "/opt/coire/chat/derived"
+    file_worker_url: str = "http://coire-file-worker:8010"
+    file_worker_service_token: SecretStr = SecretStr("")
+    file_worker_process_timeout_s: int = Field(default=30, ge=1, le=30)
+    file_worker_max_active: int = Field(default=1, ge=1, le=1)
 
     # --- agent harness -------------------------------------------------
     harness_retry_limit: int = Field(default=2, ge=0, le=5)
@@ -158,6 +217,7 @@ class Settings(BaseSettings):
     ops_api_url: str = "http://coire-api:8000"
     ops_gateway_url: str = "http://coire-api:8000/v1"
     ops_model_id: str = ""
+    ops_model_source: Literal["studio", "anthropic"] = "studio"
     ops_confirmation_ttl_s: int = Field(default=300, ge=30, le=300)
     ops_session_heartbeat_s: float = Field(default=10.0, gt=0.0, le=60.0)
     ops_session_stale_s: float = Field(default=30.0, gt=0.0, le=300.0)

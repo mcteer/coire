@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import AgentRunRow, NodeRow
+from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.runs import AgentRunState
-from coire_scheduler.runs import choose_studio, rank_studio_candidates
+from coire_scheduler.runs import choose_studio, first_run_ready_studio, rank_studio_candidates
 
 
 def node(name: str, role: NodeRole, state: Reachability = Reachability.HEALTHY) -> NodeRow:
@@ -44,6 +46,34 @@ def test_run_placement_prefers_model_copy_then_fifo_capacity() -> None:
     )
     assert ranked == [local, emptier]
     assert rank_studio_candidates([local], {local.id: 3}, {local.id}, cap=3) == []
+
+
+async def test_run_placement_skips_studio_without_locked_run_images() -> None:
+    unconfigured = node("coire-edge-b", NodeRole.STUDIO)
+    ready = node("coire-edge-a", NodeRole.STUDIO)
+
+    class Client:
+        async def health(self, name: str) -> SimpleNamespace:
+            return SimpleNamespace(run_images_configured=name == ready.name)
+
+    assert (
+        await first_run_ready_studio([unconfigured, ready], cast(NodeClient, Client())) == ready.id
+    )
+
+
+async def test_run_placement_skips_failed_health_probe() -> None:
+    unreachable = node("coire-edge-b", NodeRole.STUDIO)
+    ready = node("coire-edge-a", NodeRole.STUDIO)
+
+    class Client:
+        async def health(self, name: str) -> SimpleNamespace:
+            if name == unreachable.name:
+                raise NodeError(NodeErrorKind.UNREACHABLE, name)
+            return SimpleNamespace(run_images_configured=True)
+
+    assert (
+        await first_run_ready_studio([unreachable, ready], cast(NodeClient, Client())) == ready.id
+    )
 
 
 async def test_non_fifo_head_stays_queued(monkeypatch: pytest.MonkeyPatch) -> None:

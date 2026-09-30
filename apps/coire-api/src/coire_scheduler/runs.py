@@ -23,7 +23,7 @@ from coire_api.db import (
     RunCommandRow,
     session_scope,
 )
-from coire_api.nodes_client import NodeClient
+from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.run_tokens import revoke_run_token
 from coire_api.runs import run_command_id, transition
 from coire_core.models.mcp import ApplyResult, McpToolName
@@ -43,6 +43,7 @@ meter = metrics.get_meter("coire.scheduler.runs")
 transitions_total = meter.create_counter("coire_run_transitions_total", unit="1")
 queued_total = meter.create_counter("coire_run_capacity_waits_total", unit="1")
 last_transition = meter.create_gauge("coire_run_last_transition_timestamp_seconds", unit="s")
+placement_skips = meter.create_counter("coire_run_placement_skips_total", unit="1")
 
 
 def rank_studio_candidates(
@@ -69,8 +70,22 @@ def rank_studio_candidates(
     return candidates
 
 
+async def first_run_ready_studio(candidates: list[NodeRow], client: NodeClient) -> uuid.UUID | None:
+    """Use the node's authenticated capability, never its registry role alone."""
+    for candidate in candidates:
+        try:
+            status = await client.health(candidate.name)
+        except NodeError:
+            placement_skips.add(1, {"node": candidate.name, "reason": "health_failed"})
+            continue
+        if getattr(status, "run_images_configured", False):
+            return candidate.id
+        placement_skips.add(1, {"node": candidate.name, "reason": "images_unconfigured"})
+    return None
+
+
 async def choose_studio(run_id: uuid.UUID) -> uuid.UUID | None:
-    """Choose only a healthy Studio, preferring a verified local primary-model copy."""
+    """Choose a healthy Studio with trusted run images, preferring a local model copy."""
     settings = get_settings()
     if settings.placement_sandbox_bytes <= 0:
         return None
@@ -128,7 +143,10 @@ async def choose_studio(run_id: uuid.UUID) -> uuid.UUID | None:
             ).all()
         )
         candidates = rank_studio_candidates(nodes, counts, copies, cap=settings.run_concurrency_cap)
-        return candidates[0].id if candidates else None
+    # Health probes happen outside the database transaction. Older nodes report no
+    # capability and cannot receive a run they would refuse indefinitely.
+    async with NodeClient(settings) as client:
+        return await first_run_ready_studio(candidates, client)
 
 
 async def _advance(run_id: uuid.UUID, state: AgentRunState, reason: str) -> None:
@@ -189,6 +207,13 @@ async def place_run(run_id_text: str) -> None:
     run_id = uuid.UUID(run_id_text)
     await _advance(run_id, AgentRunState.PLACING, "Studio placement started")
     while True:
+        async with session_scope() as session:
+            pending = await session.get(AgentRunRow, run_id)
+            if pending is None or pending.state in {
+                AgentRunState.KILL_REQUESTED,
+                AgentRunState.KILLED,
+            }:
+                return
         node_id = await choose_studio(run_id)
         if node_id is not None:
             async with session_scope() as session:
@@ -315,6 +340,37 @@ async def execute_run(run_id_text: str) -> str | None:
 async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> None:
     run_id = uuid.UUID(run_id_text)
     async with session_scope() as session:
+        staged = await session.get(AgentRunRow, run_id)
+        node = (
+            await session.get(NodeRow, staged.node_id)
+            if staged is not None and staged.node_id is not None
+            else None
+        )
+        node_name = node.name if node is not None else None
+    if node_name is not None:
+        from coire_api.chat.activity import collect_run_activity
+
+        try:
+            with tracer.start_as_current_span(
+                "coire.scheduler.chat.activity",
+                attributes={"run_id": str(run_id)},
+                record_exception=False,
+                set_status_on_exception=False,
+            ):
+                await collect_run_activity(run_id, node_name, get_settings(), final=True)
+        except NodeError as exc:
+            if exc.retryable:
+                raise
+            logger.error(
+                "chat final activity unavailable run_id=%s error_type=%s",
+                run_id,
+                type(exc).__name__,
+            )
+        except ValueError as exc:
+            logger.error(
+                "chat final activity invalid run_id=%s error_type=%s", run_id, type(exc).__name__
+            )
+    async with session_scope() as session:
         run = await session.get(AgentRunRow, run_id, with_for_update=True)
         if run is None:
             return
@@ -343,6 +399,9 @@ async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> N
             )
             transitions_total.add(1, {"state": state.value})
             last_transition.set(time.time(), {"state": state.value})
+    from coire_api.chat.coding import reconcile_chat_coding_result
+
+    await reconcile_chat_coding_result(run_id, get_settings())
     try:
         await _submit(run_id, RunOperation.REMOVE)
     except Exception:
@@ -353,6 +412,13 @@ async def finalize_run(run_id_text: str, succeeded: bool, detail: str = "") -> N
 async def run_workflow(run_id_text: str) -> None:
     try:
         await place_run(run_id_text)
+        async with session_scope() as session:
+            placed = await session.get(AgentRunRow, uuid.UUID(run_id_text))
+            if placed is None or placed.state in {
+                AgentRunState.KILL_REQUESTED,
+                AgentRunState.KILLED,
+            }:
+                return
         detail = await execute_run(run_id_text)
     except Exception as exc:
         await finalize_run(run_id_text, False, str(exc) or type(exc).__name__.lower())
@@ -371,7 +437,25 @@ async def run_kill_workflow(run_id_text: str) -> None:
         if run is None or run.state is not AgentRunState.KILL_REQUESTED:
             return
         placed = run.node_id is not None
+        node = await session.get(NodeRow, run.node_id) if run.node_id is not None else None
     if placed:
+        if node is not None:
+            from coire_api.chat.activity import collect_run_activity
+
+            try:
+                with tracer.start_as_current_span(
+                    "coire.scheduler.chat.activity",
+                    attributes={"run_id": str(run_id)},
+                    record_exception=False,
+                    set_status_on_exception=False,
+                ):
+                    await collect_run_activity(run_id, node.name, get_settings(), final=True)
+            except (NodeError, ValueError) as exc:
+                logger.error(
+                    "chat kill activity unavailable run_id=%s error_type=%s",
+                    run_id,
+                    type(exc).__name__,
+                )
         await _submit(run_id, RunOperation.KILL)
     async with session_scope() as session:
         run = await session.get(AgentRunRow, run_id, with_for_update=True)
@@ -385,3 +469,6 @@ async def run_kill_workflow(run_id_text: str) -> None:
                 target_id=run_id_text,
                 detail={"node_id": str(run.node_id)},
             )
+    from coire_api.chat.coding import reconcile_chat_coding_result
+
+    await reconcile_chat_coding_result(run_id, get_settings())

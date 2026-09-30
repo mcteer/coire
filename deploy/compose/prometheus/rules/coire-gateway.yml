@@ -1,6 +1,12 @@
 groups:
   - name: coire-gateway
     rules:
+      - alert: CoireProviderFailures
+        expr: sum(increase(coire_gateway_failures_total{source=~"openai|anthropic"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Frontier provider request failed
       - alert: CoireGatewayEngineFailures
         expr: sum(rate(coire_gateway_failures_total{failure_code=~"engine.*"}[5m])) > 0.05
         for: 10m

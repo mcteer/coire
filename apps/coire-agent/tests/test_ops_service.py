@@ -7,11 +7,17 @@ from typing import cast
 
 import httpx
 import pytest
-from coire_ops.model import OPS_TOOL_NAMES, OpsModel, OpsModelTurn
+from coire_ops.model import (
+    OPS_ANTHROPIC_MODEL,
+    OPS_TOOL_NAMES,
+    OpsModel,
+    OpsModelTurn,
+    compact_snapshot,
+)
 from coire_ops.service import OpsService
 
 from coire_core.models.console import ConsoleCapabilities, ConsoleSnapshot
-from coire_core.models.instance import ClusterState
+from coire_core.models.instance import ClusterState, InstanceState, ModelInstance
 from coire_core.models.ops import OpsProposalIssued, OpsSession, OpsSessionState
 
 
@@ -90,6 +96,67 @@ def test_model_toolset_is_exactly_bounded_read_and_propose() -> None:
     forbidden = {"confirm", "shell", "filesystem", "git", "docker", "delete", "retire"}
     assert not any(fragment in tool for fragment in forbidden for tool in OPS_TOOL_NAMES)
     assert not hasattr(OpsModel, "confirm")
+
+
+def test_ops_snapshot_keeps_current_instances_without_historical_payload() -> None:
+    snapshot = _snapshot()
+    now = datetime.now(UTC)
+    instances = [
+        ModelInstance(
+            id=uuid.uuid4(),
+            model_id=uuid.uuid4(),
+            variant_id=uuid.uuid4(),
+            policy="single:auto",
+            state=state,
+            effective_state=state,
+            in_flight=0,
+            created_at=now,
+            updated_at=now,
+            transitioned_at=now,
+            failure_detail="historical details " * 100 if state is InstanceState.FAILED else None,
+        )
+        for state in [InstanceState.FAILED] * 50 + [InstanceState.READY, InstanceState.WARMING]
+    ]
+    snapshot.cluster.instances = instances
+    result = compact_snapshot(snapshot)
+    assert result["instance_counts"] == {"failed": 50, "ready": 1, "warming": 1}
+    active = cast(list[dict[str, object]], result["active_instances"])
+    assert len(active) == 2
+    assert {row["id"] for row in active} == {str(instances[-1].id), str(instances[-2].id)}
+    assert len(str(result).encode()) < 3_000
+
+
+@pytest.mark.asyncio
+async def test_pinned_sonnet_ops_model_health_uses_only_scoped_api_relay() -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"id": OPS_ANTHROPIC_MODEL})
+
+    model = OpsModel(
+        gateway_url="http://coire-api:8000/v1",
+        token="ops-service",
+        model_id=OPS_ANTHROPIC_MODEL,
+        model_source="anthropic",
+        ops_api_url="http://coire-api:8000",
+        transport=httpx.MockTransport(respond),
+    )
+    assert model.tool_names == OPS_TOOL_NAMES
+    assert await model.healthy()
+    assert len(requests) == 1
+    assert (
+        str(requests[0].url)
+        == f"http://coire-api:8000/api/v1/internal/ops/anthropic/v1/models/{OPS_ANTHROPIC_MODEL}"
+    )
+    assert requests[0].headers["x-api-key"] == "ops-service"
+    with pytest.raises(ValueError, match="pinned Sonnet"):
+        OpsModel(
+            gateway_url="http://coire-api:8000/v1",
+            token="ops-service",
+            model_id="claude-other",
+            model_source="anthropic",
+        )
 
 
 @pytest.mark.asyncio

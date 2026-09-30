@@ -37,6 +37,15 @@
       "title": "Engine admission queue p95",
       "targets": [{"expr": "histogram_quantile(0.95, sum by (le, outcome) (rate(coire_gateway_queue_duration_ms_bucket[5m])))", "legendFormat": "{{outcome}}"}],
       "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+    },
+    {
+      "type": "timeseries",
+      "title": "Frontier provider requests and token use",
+      "targets": [
+        {"expr": "sum by (source, outcome) (rate(coire_gateway_requests_total{source=~\"openai|anthropic\"}[5m]))", "legendFormat": "{{source}} {{outcome}} /s"},
+        {"expr": "sum by (source) (rate(coire_gateway_tokens_total{source=~\"openai|anthropic\"}[5m]))", "legendFormat": "{{source}} tokens/s"}
+      ],
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
     }
   ]
 }

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import io
+import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +14,9 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
+from coire_core.models.conversation import ImagePart
 from coire_core.models.harness import HarnessRunRequest, ProfileName, TaskClass
 from coire_core.models.node import (
     WorkspaceCleanupRequest,
@@ -160,8 +166,16 @@ async def test_preparation_is_idempotent_and_cleanup_removes_only_this_run(tmp_p
     command = WorkspacePrepareRequest.model_validate(_command(run_id))
     first = await manager.prepare(command)
     assert (tmp_path / first.workspace_ref / ".coire" / "request.json").is_file()
+    assert (tmp_path / first.workspace_ref / ".coire" / "request.json").stat().st_mode & 0o222 == 0
+    control_input = json.loads(
+        (tmp_path / first.workspace_ref / ".coire" / "request.json").read_text()
+    )
+    assert "visual_inputs" not in control_input
+    assert "visual_input" not in control_input["capability_profile"]
     assert (tmp_path / first.workspace_ref / "README.md").read_text() == "sample\n"
     assert (tmp_path / first.output_ref).is_dir()
+    activity = tmp_path / first.output_ref / f"activity-{run_id}.jsonl"
+    activity.write_text('{"safe":"receipt"}\n')
     assert await manager.prepare(command) == first
     changed = command.model_copy(update={"timeout_seconds": command.timeout_seconds + 1})
     with pytest.raises(WorkspaceError, match="another workspace request"):
@@ -169,6 +183,56 @@ async def test_preparation_is_idempotent_and_cleanup_removes_only_this_run(tmp_p
     await manager.cleanup(WorkspaceCleanupRequest(run_id=run_id))
     assert not (tmp_path / first.workspace_ref).exists()
     assert not (tmp_path / first.output_ref).exists()
+    assert not activity.exists()
+
+
+@pytest.mark.asyncio
+async def test_visual_control_input_is_verified_and_staged_read_only(tmp_path: Path) -> None:
+    manager = LocalWorkspaces(
+        Settings(_secrets_dir="/nonexistent", run_workspace_root=str(tmp_path))  # type: ignore[call-arg]
+    )
+    output = io.BytesIO()
+    Image.new("RGB", (16, 16), (240, 32, 16)).save(output, format="PNG")
+    image = output.getvalue()
+    asset_id = uuid.uuid4()
+    payload = _command(uuid.uuid4())
+    payload["harness_request"]["visual_inputs"] = [
+        ImagePart(asset_id=asset_id, media_type="image/png", width=16, height=16).model_dump(
+            mode="json"
+        )
+    ]
+    payload["visual_inputs"] = [
+        {
+            "asset_id": str(asset_id),
+            "sha256": hashlib.sha256(image).hexdigest(),
+            "width": 16,
+            "height": 16,
+            "data_base64": base64.b64encode(image).decode("ascii"),
+        }
+    ]
+    command = WorkspacePrepareRequest.model_validate(payload)
+    prepared = await manager.prepare(command)
+    staged = tmp_path / prepared.workspace_ref / ".coire" / "inputs" / f"{asset_id}.png"
+    assert (
+        len(
+            json.loads((tmp_path / prepared.workspace_ref / ".coire" / "request.json").read_text())[
+                "visual_inputs"
+            ]
+        )
+        == 1
+    )
+    assert staged.read_bytes() == image
+    assert staged.stat().st_mode & 0o222 == 0
+    assert await manager.prepare(command) == prepared
+    payload["visual_inputs"][0]["sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="manifest") as invalid:
+        WorkspacePrepareRequest.model_validate(payload)
+    assert payload["visual_inputs"][0]["data_base64"] not in str(invalid.value)
+    payload["visual_inputs"] = []
+    with pytest.raises(ValueError, match="do not match"):
+        WorkspacePrepareRequest.model_validate(payload)
+    await manager.cleanup(WorkspaceCleanupRequest(run_id=command.run_id))
+    assert not staged.exists()
 
 
 async def test_silent_git_process_is_killed_at_prepare_timeout(

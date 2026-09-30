@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import AsyncGenerator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import (
@@ -27,24 +27,38 @@ from fastapi import (
 from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
-from coire_api.db import DownloadJobRow, EngineProcessRow, ModelCopyRow, ModelRow, NodeRow
+from coire_api.db import (
+    DownloadJobRow,
+    EngineProcessRow,
+    ModelCopyRow,
+    ModelRow,
+    ModelStateTransitionRow,
+    NodeRow,
+)
 from coire_api.deps import SessionDep, SettingsDep
+from coire_api.gateway.providers import credential_present
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.preconditions import require_current
 from coire_api.registry import service
 from coire_api.registry.placement import NoCandidate, choose_load_node
+from coire_api.registry.visual_memory import reservation_bytes
 from coire_core.models.audit import AuditAction
 from coire_core.models.engine import EngineProcess, EngineState
 from coire_core.models.jobs import DownloadJob
 from coire_core.models.registry import (
+    EngineBackend,
     LoadRefusalReason,
     LoadRefused,
     Model,
     ModelAddRequest,
     ModelCopy,
+    ModelSource,
     ModelState,
     ModelUpdateRequest,
+    ProviderModelAddRequest,
+    Visibility,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,6 +155,7 @@ def _engine(row: EngineProcessRow, nodes: dict[uuid.UUID, str]) -> dict[str, obj
         id=row.id,
         model_id=row.model_id,
         node=nodes.get(row.node_id, str(row.node_id)),
+        backend=EngineBackend(row.backend),
         port=row.port,
         pid=row.pid,
         state=row.state,
@@ -164,6 +179,65 @@ async def _get(session: AsyncSession, model_id: uuid.UUID) -> ModelRow:
 
 
 # --------------------------------------------------------------------------- routes
+
+
+@router.post("/provider-models", response_model=Model, status_code=status.HTTP_201_CREATED)
+async def add_provider_model(
+    request: ProviderModelAddRequest,
+    principal: CurrentAdmin,
+    session: SessionDep,
+) -> ModelRow:
+    """Register a fixed-provider target; publication is a separate audited edit."""
+    slug = f"{request.source.value}--{request.provider_model_id}"
+    if await session.scalar(select(ModelRow.id).where(ModelRow.slug == slug)) is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "provider model already registered")
+    now = datetime.now(UTC)
+    model = ModelRow(
+        id=uuid.uuid4(),
+        repo_id=f"provider/{request.source.value}/{request.provider_model_id}",
+        slug=slug,
+        display_name=request.display_name,
+        description=request.description,
+        state=ModelState.READY,
+        visibility=Visibility.ADMIN_ONLY,
+        entitlement=[],
+        tags=[tag.value for tag in request.tags],
+        placement_policy="single:auto",
+        precision="remote",
+        weight_bytes=0,
+        total_bytes=0,
+        file_count=0,
+        memory_estimate_bytes=0,
+        context_window=request.context_window,
+        capability_profile={"context_window": request.context_window},
+        source=request.source.value,
+        provider_model_id=request.provider_model_id,
+        max_output_tokens=request.max_output_tokens,
+        daily_token_budget=request.daily_token_budget,
+        created_at=now,
+        updated_at=now,
+        ready_at=now,
+    )
+    session.add(model)
+    await session.flush()
+    session.add(
+        ModelStateTransitionRow(
+            model_id=model.id,
+            from_state=None,
+            to_state=ModelState.READY,
+            reason="admin registered external provider target",
+        )
+    )
+    await write_principal_audit(
+        session,
+        principal=principal,
+        action=AuditAction.PROVIDER_MODEL_ADD,
+        target_type="model",
+        target_id=str(model.id),
+        detail={"source": request.source.value, "provider_model_id": request.provider_model_id},
+    )
+    await session.commit()
+    return model
 
 
 @router.post("/models", status_code=status.HTTP_202_ACCEPTED)
@@ -232,12 +306,24 @@ async def update_model(
     request: ModelUpdateRequest,
     principal: CurrentAdmin,
     session: SessionDep,
+    settings: SettingsDep,
     if_match: Annotated[str | None, Header(alias="If-Match")] = None,
 ) -> dict[str, object]:
     model = await _get(session, model_id)
     require_current(if_match, model.updated_at)
     try:
-        await service.update_model(session, model, request, actor=principal.subject or "admin")
+        provider_ready = (
+            settings.provider_chat_enabled
+            and (model.source or "studio") != "studio"
+            and credential_present(ModelSource(model.source), settings)
+        )
+        await service.update_model(
+            session,
+            model,
+            request,
+            actor=principal.subject or "admin",
+            provider_ready=provider_ready,
+        )
     except service.RegistryError as exc:
         raise HTTPException(exc.status_code, exc.detail) from exc
     await session.commit()
@@ -335,6 +421,10 @@ async def load_model(
 ) -> dict[str, object]:
     """Load a model on a node. Exercised by tests and the console; user traffic is feature 003."""
     model = await _get(session, model_id)
+    if (model.source or "studio") != "studio":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "external provider model has no Studio engine"
+        )
     if model.state is not ModelState.READY:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
@@ -344,11 +434,12 @@ async def load_model(
             ).model_dump(mode="json"),
         )
 
+    required_bytes = reservation_bytes(model.memory_estimate_bytes, model.visual_capability)
     views = await service.node_views(session, _statuses(http_request))
     try:
         target = choose_load_node(
             model.placement_policy,
-            model.memory_estimate_bytes,
+            required_bytes,
             views,
             override=(body or {}).get("node"),
         )
@@ -390,7 +481,8 @@ async def load_model(
         node_id=node.id,
         port=0,
         state=EngineState.STARTING,
-        estimate_bytes=model.memory_estimate_bytes,
+        estimate_bytes=required_bytes,
+        backend=model.backend,
     )
     session.add(row)
 
@@ -399,12 +491,14 @@ async def load_model(
             node.name,
             engine_id=engine_id,
             slug=model.slug,
-            estimate_bytes=model.memory_estimate_bytes,
-            chat_template=model.chat_template,
+            estimate_bytes=required_bytes,
+            chat_template=(model.chat_template if model.backend == EngineBackend.MLX_LM else None),
+            backend=EngineBackend(model.backend),
         )
     except NodeError as exc:
-        await session.delete(row)
-        await session.commit()
+        # The row has only been added to this session; DELETE requires a
+        # persisted row and masks the node refusal with an HTTP 500.
+        await session.rollback()
         if exc.kind.value == "conflict":
             body_out = exc.body or {}
             raise HTTPException(
@@ -431,6 +525,7 @@ async def load_model(
     row.pid = engine_status.pid
     row.process_create_time = engine_status.process_create_time
     row.state = engine_status.state
+    row.backend = engine_status.backend.value
     row.chat_template_sha256 = engine_status.chat_template_sha256
     from coire_api.audit import write_principal_audit
 

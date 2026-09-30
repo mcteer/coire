@@ -1,0 +1,51 @@
+groups:
+  - name: coire-chat
+    rules:
+      - alert: CoireChatApiFailures
+        expr: sum(increase(coire_chat_requests_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Native Chat API request failed
+      - alert: CoireChatFailuresHigh
+        expr: >-
+          sum(increase(coire_chat_turns_total{outcome="failed"}[10m]))
+          / clamp_min(sum(increase(coire_chat_turns_total{outcome=~"completed|failed"}[10m])), 1) > 0.1
+          and sum(increase(coire_chat_turns_total{outcome=~"completed|failed"}[10m])) >= 20
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: More than ten percent of eligible Chat turns failed
+      - alert: CoireChatPurgeOverdue
+        expr: max(coire_chat_purge_oldest_seconds) > 86400
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Deleted Chat content is past its 24-hour purge deadline
+      - alert: CoireChatParserFailures
+        expr: sum(increase(coire_chat_parser_failures_total[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Native Chat received malformed or incomplete engine stream frames
+      - alert: CoireFileProcessingFailuresHigh
+        expr: >-
+          sum(increase(coire_file_processing_total{outcome="internal_failure"}[10m]))
+          / clamp_min(sum(increase(coire_file_processing_total{outcome=~"processed|internal_failure"}[10m])), 1) > 0.25
+          and sum(increase(coire_file_processing_total{outcome=~"processed|internal_failure"}[10m])) >= 10
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: More than twenty-five percent of eligible private file jobs failed internally
+      - alert: CoireChatStopSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(coire_chat_stop_seconds_bucket[5m]))) > 5
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Native Chat Stop acknowledgement exceeded five seconds
+      - alert: CoireVisionRequestsFailed
+        expr: sum(increase(coire_vision_requests_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A resolved bare VLM request failed

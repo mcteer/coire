@@ -22,6 +22,7 @@ from coire_api.db import (
 )
 from coire_api.instance import service as instance_service
 from coire_api.placement import service as placement_service
+from coire_api.registry.visual_memory import require_supported_placement, reservation_bytes
 from coire_api.run_tokens import revoke_run_token
 from coire_core.models.instance import InstanceState
 from coire_core.models.ops import (
@@ -231,11 +232,16 @@ async def _load_instance(
         raise OpsActionError(
             "variant_unverified", "variant is not verified for this model", stale=True
         )
+    policy = action.parameters.policy or model.placement_policy
+    try:
+        require_supported_placement(variant.backend, policy)
+    except ValueError as exc:
+        raise OpsActionError("unsupported_placement", str(exc), stale=True) from exc
     decision = PlacementDecisionRow(
         model_id=model.id,
         variant_id=variant.id,
-        policy=action.parameters.policy or model.placement_policy,
-        required_bytes=max(1, variant.memory_estimate_bytes),
+        policy=policy,
+        required_bytes=reservation_bytes(variant.memory_estimate_bytes, variant.visual_capability),
         state=PlacementState.REQUESTED,
     )
     session.add(decision)

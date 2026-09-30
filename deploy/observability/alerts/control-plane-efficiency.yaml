@@ -30,3 +30,10 @@ groups:
         annotations:
           summary: Admin console projections are refreshing more than once per second
           runbook_url: /docs/runbooks/control-plane-efficiency#console-refresh
+      - alert: CoireModelMemoryDrift
+        expr: abs(coire_placement_ledger_drift_ratio) > 0.10
+        for: 5m
+        labels: {severity: warning, subject: placement}
+        annotations:
+          summary: Measured Studio model residency differs from model reservations by over ten percent
+          runbook_url: /docs/runbooks/placement#inspect

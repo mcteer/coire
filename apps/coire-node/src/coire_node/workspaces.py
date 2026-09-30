@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import ipaddress
 import json
@@ -186,15 +187,25 @@ class WorkspaceManager:
     @staticmethod
     def _allow_container_write(path: Path) -> None:
         for base, directories, files in os.walk(path, followlinks=False):
+            if Path(base) == path / ".coire":
+                directories[:] = []
+                continue
             for name in directories:
                 target = Path(base) / name
-                if not target.is_symlink():
+                if target != path / ".coire" and not target.is_symlink():
                     target.chmod(target.stat().st_mode | stat.S_IRWXO)
             for name in files:
                 target = Path(base) / name
                 if not target.is_symlink():
                     target.chmod(target.stat().st_mode | stat.S_IROTH | stat.S_IWOTH)
         path.chmod(path.stat().st_mode | stat.S_IRWXO)
+
+    @staticmethod
+    def _remove_workspace(path: Path) -> None:
+        images = path / ".coire" / "inputs"
+        if images.is_dir() and not images.is_symlink():
+            images.chmod(0o700)
+        shutil.rmtree(path)
 
     async def prepare(self, command: WorkspacePrepareRequest) -> WorkspacePrepareResult:
         lock = self._locks.setdefault(command.run_id, asyncio.Lock())
@@ -272,8 +283,29 @@ class WorkspaceManager:
                 raise WorkspaceError("workspace_revision_invalid", "fetched revision is invalid")
             control = workspace / ".coire"
             control.mkdir(mode=0o755)
+            if command.visual_inputs:
+                images = control / "inputs"
+                images.mkdir(mode=0o755)
+                for visual in command.visual_inputs:
+                    image_path = images / f"{visual.asset_id}.png"
+                    image_path.write_bytes(base64.b64decode(visual.data_base64, validate=True))
+                    image_path.chmod(0o444)
+                images.chmod(0o555)
             request_path = control / "request.json"
-            request_path.write_text(command.harness_request.model_dump_json(), encoding="utf-8")
+            # Empty visual fields carry no input. Omit them at every nested level so
+            # an already deployed strict text-only harness can execute text Code runs.
+            harness = command.harness_request
+            payload = harness.model_dump(mode="json")
+            if not harness.visual_inputs and not any(
+                item.visual_inputs for item in harness.history
+            ):
+                payload.pop("visual_inputs", None)
+                profile = payload["capability_profile"]
+                if isinstance(profile, dict):
+                    profile.pop("visual_input", None)
+                for item in payload["history"]:
+                    item.pop("visual_inputs", None)
+            request_path.write_text(json.dumps(payload), encoding="utf-8")
             request_path.chmod(0o444)
             result = WorkspacePrepareResult(
                 run_id=command.run_id,
@@ -291,7 +323,7 @@ class WorkspaceManager:
             self._allow_container_write(workspace)
             return result
         except BaseException:
-            await asyncio.to_thread(shutil.rmtree, workspace)
+            await asyncio.to_thread(self._remove_workspace, workspace)
             await asyncio.to_thread(shutil.rmtree, output)
             raise
 
@@ -312,7 +344,7 @@ class WorkspaceManager:
                             "workspace_cleanup_conflict", "workspace path is a symlink"
                         )
                     if target.is_dir():
-                        await asyncio.to_thread(shutil.rmtree, target)
+                        await asyncio.to_thread(self._remove_workspace, target)
                 workspace_operations.add(1, {"operation": "cleanup", "outcome": "succeeded"})
                 logger.info("MCP workspace removed run_id=%s", command.run_id)
 

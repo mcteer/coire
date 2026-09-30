@@ -11,6 +11,7 @@ Sampling happens on a background thread so a slow `ioreg` never blocks the event
 from __future__ import annotations
 
 import importlib.metadata
+import importlib.util
 import logging
 import platform
 import re
@@ -28,6 +29,7 @@ from coire_core.models.engine import EngineStatus
 from coire_core.models.jobs import JobStatus
 from coire_core.models.link import LinkState, RdmaState, StudioDataLinkStatus
 from coire_core.models.node import NodePath, NodeStatus, ThermalState
+from coire_core.models.registry import EngineBackend
 
 logger = logging.getLogger(__name__)
 _meter = otel_metrics.get_meter("coire.node.network")
@@ -190,6 +192,11 @@ class MetricsCollector:
             memory_budget_bytes=self._budget(),
             memory_committed_bytes=self._committed(),
             store_free_bytes=self._store_free(),
+            supported_backends=(
+                [EngineBackend.MLX_LM, EngineBackend.MLX_VLM]
+                if importlib.util.find_spec("mlx_vlm") is not None
+                else [EngineBackend.MLX_LM]
+            ),
         )
 
         elapsed = time.perf_counter() - started

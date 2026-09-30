@@ -5,8 +5,10 @@ from __future__ import annotations
 import re
 
 from coire_api.registry.placement import NodeView
-from coire_core.models.acquisition import FitDecision, InspectionResult, Precision
+from coire_core.memory import runtime_reservation_bytes
+from coire_core.models.acquisition import FitDecision, InspectionResult, Precision, VariantRecipe
 from coire_core.models.jobs import RepoInspection
+from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
 
 # These are architecture families supported by the pinned mlx-lm release. Matching is
@@ -27,6 +29,16 @@ SUPPORTED_ARCHITECTURE_FAMILIES = frozenset(
         "qwen35",
     }
 )
+SUPPORTED_VISUAL_ARCHITECTURE_FAMILIES = frozenset({"idefics3"})
+VISUAL_PROCESSOR_FILES = frozenset(
+    {
+        "config.json",
+        "processor_config.json",
+        "preprocessor_config.json",
+        "tokenizer_config.json",
+        "tokenizer.json",
+    }
+)
 
 
 def _family(architecture: str | None) -> str:
@@ -43,6 +55,31 @@ def architecture_supported(architecture: str | None) -> bool:
     )
 
 
+def visual_recipe_rejection(repo: RepoInspection, recipe: VariantRecipe) -> str | None:
+    """An already-converted visual source cannot silently change precision on pull."""
+    if recipe.precision is Precision.MIXED or recipe.mode is not None:
+        return "visual conversion recipes are unsupported"
+    quantization = repo.quantization
+    if quantization is not None and quantization.bits in (4, 6, 8):
+        expected = {4: Precision.BIT4, 6: Precision.BIT6, 8: Precision.BIT8}[quantization.bits]
+        if recipe.precision is not expected:
+            return "requested visual precision differs from the preconverted source"
+        if recipe.bits is not None and recipe.bits != quantization.bits:
+            return "requested visual bits differ from the preconverted source"
+        if (
+            recipe.group_size is not None
+            and quantization.group_size is not None
+            and recipe.group_size != quantization.group_size
+        ):
+            return "requested visual group size differs from the preconverted source"
+        return None
+    if repo.torch_dtype in ("float16", "bfloat16"):
+        expected = Precision.FP16 if repo.torch_dtype == "float16" else Precision.BF16
+        if recipe.precision is expected:
+            return None
+    return "visual source precision cannot be verified from metadata"
+
+
 def estimate_weight_bytes(source_bytes: int, precision: Precision) -> int:
     """Conservative serialized weight estimate from an fp16/bf16 source."""
     ratios = {
@@ -56,6 +93,24 @@ def estimate_weight_bytes(source_bytes: int, precision: Precision) -> int:
     return int(source_bytes * ratios[precision])
 
 
+def estimate_variant_memory_bytes(
+    metadata: RepoInspection,
+    precision: Precision,
+    backend: EngineBackend,
+    settings: Settings,
+) -> int:
+    """Reserve actual preconverted weights once, plus the measured MLX runtime floor."""
+    estimated = (
+        metadata.weight_bytes
+        if metadata.is_mlx_format or backend is EngineBackend.MLX_VLM
+        else estimate_weight_bytes(metadata.weight_bytes, precision)
+    )
+    return runtime_reservation_bytes(
+        int(estimated * settings.overhead_for(precision.value)),
+        metadata.total_bytes if metadata.is_mlx_format else estimated,
+    )
+
+
 def classify_inspection(
     repo: RepoInspection,
     nodes: list[NodeView],
@@ -63,12 +118,21 @@ def classify_inspection(
 ) -> InspectionResult:
     """Turn node metadata into an actionable pre-transfer decision."""
     source_format = "gguf" if repo.has_gguf_only else "mlx" if repo.is_mlx_format else "safetensors"
+    family = _family(repo.architecture)
+    visual = family in SUPPORTED_VISUAL_ARCHITECTURE_FAMILIES
+    visual_architecture = bool(
+        repo.architecture
+        and (
+            repo.architecture.endswith("ForConditionalGeneration")
+            or repo.architecture.endswith("ForVision2Seq")
+        )
+    )
+    backend = EngineBackend.MLX_VLM if visual else EngineBackend.MLX_LM
     metadata_bytes = max(0, repo.total_bytes - repo.weight_bytes)
     candidates = list(Precision)
     fit: list[FitDecision] = []
     for precision in candidates:
-        weight = estimate_weight_bytes(repo.weight_bytes, precision)
-        required = int(weight * settings.overhead_for(precision.value))
+        required = estimate_variant_memory_bytes(repo, precision, backend, settings)
         fit.extend(
             FitDecision(
                 node=node.name,
@@ -90,9 +154,24 @@ def classify_inspection(
         rejection_code = "gguf_only"
         rejection_detail = "GGUF is not an MLX source format"
         guidance = "use the original safetensors repository or a pre-quantized MLX repository"
+    elif visual_architecture and not visual:
+        rejection_code = "unsupported_visual_architecture"
+        rejection_detail = "the pinned visual engine does not support this architecture"
+    elif visual and not repo.is_mlx_format:
+        rejection_code = "vision_requires_preconverted_mlx"
+        rejection_detail = "visual acquisition requires an already-converted MLX repository"
+    elif visual and not VISUAL_PROCESSOR_FILES.issubset({item.path for item in repo.files}):
+        rejection_code = "incomplete_visual_processor"
+        rejection_detail = "visual repository is missing local processor or tokenizer files"
+    elif visual and not any(item.path.endswith(".safetensors") for item in repo.files):
+        rejection_code = "missing_visual_weights"
+        rejection_detail = "visual repository has no safetensors weights"
     elif not architecture_supported(repo.architecture):
-        rejection_code = "unsupported_architecture"
-        rejection_detail = f"mlx-lm does not support architecture {repo.architecture or 'unknown'}"
+        if not visual:
+            rejection_code = "unsupported_architecture"
+            rejection_detail = (
+                f"no pinned bare engine supports architecture {repo.architecture or 'unknown'}"
+            )
     elif not any(decision.fits for decision in fit):
         rejection_code = "no_fit_memory"
         rejection_detail = "no candidate precision fits a supported node memory budget"
@@ -102,6 +181,7 @@ def classify_inspection(
         revision=repo.revision,
         architecture=repo.architecture,
         source_format=source_format,
+        backend=backend,
         gated=repo.gated,
         chat_template_present=repo.chat_template_present,
         metadata_bytes=metadata_bytes,

@@ -22,6 +22,7 @@ from coire_core.models.harness import (
 from coire_core.models.mcp import FileCitation, McpToolName
 from coire_core.models.mcp import TestStatus as CodingTestStatus
 from coire_core.models.registry import CapabilityProfile, StructuredOutput, ToolCalling
+from coire_core.models.runs import RunActivity
 
 
 class DraftHarness:
@@ -150,6 +151,22 @@ async def test_apply_commits_branch_even_when_tests_fail(tmp_path: Path) -> None
     assert result.output["tests"]["status"] == CodingTestStatus.FAILED
     assert "VALUE = 2" in result.output["diff_excerpt"]
     assert (workspace.output / "branch.bundle").stat().st_size > 0
+    activity = [
+        RunActivity.model_validate_json(line)
+        for line in (workspace.output / f"activity-{result.run_id}.jsonl").read_bytes().splitlines()
+    ]
+    assert [(item.tool_name, item.state) for item in activity] == [
+        ("read_file", "started"),
+        ("read_file", "completed"),
+        ("model_generation", "started"),
+        ("model_generation", "completed"),
+        ("apply_patch", "started"),
+        ("apply_patch", "completed"),
+        ("run_tests", "started"),
+        ("run_tests", "completed"),
+        ("branch_bundle", "started"),
+        ("branch_bundle", "completed"),
+    ]
     assert result.output["base_revision"] != result.output["head_revision"]
     imported_head = _imported_head(workspace, str(result.output["branch"]), tmp_path / "imported")
     assert imported_head == result.output["head_revision"]

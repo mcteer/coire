@@ -30,6 +30,22 @@ from pathlib import Path
 _state: dict[str, object] = {"ready_at": 0.0, "model": "", "ballast": None}
 
 
+def _ready_ops_instance(snapshot: dict[str, object]) -> dict[str, object] | None:
+    """Find a ready instance in either the compact ops snapshot or the legacy cluster shape."""
+
+    active = snapshot.get("active_instances")
+    candidates = active if isinstance(active, list) else None
+    if candidates is None:
+        cluster = snapshot.get("cluster")
+        raw = cluster.get("instances") if isinstance(cluster, dict) else None
+        candidates = raw if isinstance(raw, list) else []
+    ready = next(
+        (item for item in candidates if isinstance(item, dict) and item.get("state") == "ready"),
+        None,
+    )
+    return ready if isinstance(ready, dict) else None
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -88,8 +104,11 @@ class Handler(BaseHTTPRequestHandler):
             for tool in tools
             if isinstance(tool, dict) and isinstance(tool.get("function"), dict)
         }
-        if {"read_snapshot", "propose_reversible_action", "final_result"} <= tool_names:
-            self._send(200, self._ops_completion(request))
+        if {"read_snapshot", "propose_reversible_action"} <= tool_names:
+            self._send(
+                200,
+                self._ops_completion(request, prompted="final_result" not in tool_names),
+            )
             return
         content = "ok"
         if "coire-harness-json" in str(request.get("messages", "")):
@@ -197,7 +216,9 @@ class Handler(BaseHTTPRequestHandler):
             completion,
         )
 
-    def _ops_completion(self, request: dict[str, object]) -> dict[str, object]:
+    def _ops_completion(
+        self, request: dict[str, object], *, prompted: bool = False
+    ) -> dict[str, object]:
         """Deterministically exercise the ops agent's real read/propose tool loop in CI."""
 
         messages = request.get("messages", [])
@@ -220,16 +241,7 @@ class Handler(BaseHTTPRequestHandler):
                 snapshot = parsed if isinstance(parsed, dict) else {}
             except json.JSONDecodeError:
                 pass
-            cluster = snapshot.get("cluster", {})
-            instances = cluster.get("instances", []) if isinstance(cluster, dict) else []
-            ready = next(
-                (
-                    item
-                    for item in instances
-                    if isinstance(item, dict) and item.get("state") == "ready"
-                ),
-                None,
-            )
+            ready = _ready_ops_instance(snapshot)
             if ready is None:
                 name = "final_result"
                 arguments = {"answer": "No ready instance is available to unload."}
@@ -248,6 +260,26 @@ class Handler(BaseHTTPRequestHandler):
                     },
                     "rationale": "The selected integration instance is ready and idle.",
                 }
+        message: dict[str, object]
+        finish_reason = "tool_calls"
+        if prompted and name == "final_result":
+            message = {"role": "assistant", "content": json.dumps(arguments)}
+            finish_reason = "stop"
+        else:
+            message = {
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"fake-ops-call-{len(tool_results) + 1}",
+                        "type": "function",
+                        "function": {
+                            "name": name,
+                            "arguments": json.dumps(arguments),
+                        },
+                    }
+                ],
+            }
         return {
             "id": f"fake-ops-{len(tool_results) + 1}",
             "object": "chat.completion",
@@ -255,21 +287,8 @@ class Handler(BaseHTTPRequestHandler):
             "choices": [
                 {
                     "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": None,
-                        "tool_calls": [
-                            {
-                                "id": f"fake-ops-call-{len(tool_results) + 1}",
-                                "type": "function",
-                                "function": {
-                                    "name": name,
-                                    "arguments": json.dumps(arguments),
-                                },
-                            }
-                        ],
-                    },
-                    "finish_reason": "tool_calls",
+                    "message": message,
+                    "finish_reason": finish_reason,
                 }
             ],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},

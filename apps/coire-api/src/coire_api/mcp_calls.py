@@ -78,19 +78,15 @@ async def create_call(
         raise McpCallConflict("tool input and source do not match call")
     if not task or len(task) > 100_000:
         raise McpCallConflict("MCP task must contain 1 to 100000 characters")
-    row = McpCallRow(
-        tool=tool,
+    from coire_api.coding_calls import CodingRequest, create_coding_call
+
+    return await create_coding_call(
+        session,
         owner_user_id=owner_id,
         credential_id=principal.api_key_id,
-        source=source.model_dump(mode="json"),
-        input=input.model_dump(mode="json"),
-        task=task,
+        request=CodingRequest(tool, input, task),
         model_id=model_id,
-        state=McpCallState.ACCEPTED,
     )
-    session.add(row)
-    await session.flush()
-    return row
 
 
 async def get_owned_call(
@@ -138,6 +134,8 @@ async def store_result(
     if row.tool is not result_tool:
         raise McpCallConflict("result type does not match tool")
     row.result = result.model_dump(mode="json")
+    if isinstance(row.input, dict) and "coire_visual_inputs" in row.input:
+        row.input = {key: value for key, value in row.input.items() if key != "coire_visual_inputs"}
     row.state = McpCallState.SUCCEEDED
     row.finished_at = datetime.now(UTC)
     await session.flush()
@@ -151,6 +149,8 @@ async def fail_call(
     if row.state is McpCallState.SUCCEEDED:
         raise McpCallConflict("successful call cannot fail")
     row.state = state
+    if isinstance(row.input, dict) and "coire_visual_inputs" in row.input:
+        row.input = {key: value for key, value in row.input.items() if key != "coire_visual_inputs"}
     row.failure_code = code[:64]
     row.finished_at = datetime.now(UTC)
     await session.flush()

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import uuid
 from collections.abc import AsyncIterator
+from types import SimpleNamespace
 
 import httpx
 import pytest
 from fastapi import FastAPI
+from PIL import Image
 from pydantic import SecretStr
 
 from coire_api.app import create_app
@@ -15,8 +19,9 @@ from coire_api.db import get_session
 from coire_api.gateway.proxy import EngineProxyError
 from coire_api.gateway.resolution import ModelNotFoundError, ResolvedModel
 from coire_api.gateway.usage import UsageTracker
-from coire_api.routes.v1 import _tracked_stream
+from coire_api.routes.v1 import _tracked_stream  # type: ignore[attr-defined]
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
+from coire_core.models.registry import EngineBackend, ModelSource, VisualCapability
 from coire_core.settings import Settings, get_settings
 
 ADMIN_TOKEN = "gateway-contract-admin"
@@ -64,6 +69,26 @@ async def test_models_has_openai_list_shape(app: FastAPI) -> None:
     assert response.json() == {"object": "list", "data": []}
 
 
+async def test_provider_is_absent_from_both_non_chat_model_lists(
+    app: FastAPI, gateway_fake_session: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = SimpleNamespace(source="anthropic", id=uuid.uuid4())
+
+    async def execute(*_: object, **__: object) -> object:
+        return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: [provider]))
+
+    monkeypatch.setattr(gateway_fake_session, "execute", execute)
+    monkeypatch.setattr("coire_api.routes.v1.visible_to", lambda **_: True)
+    monkeypatch.setattr("coire_api.routes.models.service.visible_to", lambda **_: True)
+    for path, expected in (
+        ("/v1/models", {"object": "list", "data": []}),
+        ("/api/v1/models", []),
+    ):
+        response = await request(app, "GET", path)
+        assert response.status_code == 200
+        assert response.json() == expected
+
+
 async def test_every_compatible_route_requires_authentication(app: FastAPI) -> None:
     app.dependency_overrides[require_principal] = lambda: ANONYMOUS
     for method, path, body in (
@@ -77,7 +102,7 @@ async def test_every_compatible_route_requires_authentication(app: FastAPI) -> N
 
 
 async def test_openai_nonstream_replaces_model_with_resolved_path(
-    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+    app: FastAPI, gateway_fake_session: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     model_id = uuid.uuid4()
     seen: dict[str, object] = {}
@@ -94,6 +119,7 @@ async def test_openai_nonstream_replaces_model_with_resolved_path(
         )
 
     async def complete(_: str, payload: dict[str, object], __: Settings) -> dict[str, object]:
+        assert vars(gateway_fake_session)["rolled_back"] is True
         seen.update(payload)
         return {
             "id": "chatcmpl_1",
@@ -116,6 +142,281 @@ async def test_openai_nonstream_replaces_model_with_resolved_path(
     assert str(model_id) not in str(seen)
     assert response.json()["model"] == str(model_id)
     assert "/opt/coire/models" not in response.text
+
+
+@pytest.mark.parametrize("route", ["/v1/chat/completions", "/v1/messages"])
+async def test_provider_target_is_private_to_native_chat(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    model_id = uuid.uuid4()
+    app.state.settings.provider_chat_enabled = True
+    app.state.settings.anthropic_api_key = SecretStr("test-provider-key")
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id,
+            "anthropic--example",
+            4096,
+            None,
+            None,
+            None,
+            None,
+            source=ModelSource.ANTHROPIC,
+            provider_model_id="claude-example",
+            max_output_tokens=64,
+            daily_token_budget=1000,
+        )
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    body: dict[str, object] = {
+        "model": str(model_id),
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 32,
+    }
+    response = await request(app, "POST", route, json=body)
+    assert response.status_code == 404
+    assert response.json()["detail"] == "model not found"
+    assert "claude-example" not in response.text
+
+
+async def test_inline_image_is_refused_before_engine_or_spend(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_id = uuid.uuid4()
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id, "safe", 4096, "/opt/coire/models/safe", uuid.uuid4(), "edge", "http://engine"
+        )
+
+    async def complete(*_: object) -> object:
+        pytest.fail("inline image must not reach the text engine")
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.v1.complete", complete)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": str(model_id),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,YQ=="},
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 400
+    assert "inline image processing is not available" in response.text
+
+
+async def test_verified_visual_request_reaches_registry_selected_engine(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model_id = uuid.uuid4()
+    image = io.BytesIO()
+    Image.new("RGB", (16, 16), (255, 0, 0)).save(image, format="PNG")
+    encoded = base64.b64encode(image.getvalue()).decode()
+    seen: dict[str, object] = {}
+    app.dependency_overrides[get_settings]().gateway_inline_visual_enabled = True
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id,
+            "vision",
+            4096,
+            "/opt/coire/models/vision",
+            uuid.uuid4(),
+            "coire-edge-b",
+            "http://engine",
+            EngineBackend.MLX_VLM,
+            VisualCapability(
+                verified=True,
+                max_images=1,
+                max_image_pixels=256,
+                max_encoded_bytes=len(image.getvalue()),
+            ),
+        )
+
+    async def complete(_: str, payload: dict[str, object], __: Settings) -> dict[str, object]:
+        seen.update(payload)
+        return {
+            "id": "chatcmpl_v",
+            "object": "chat.completion",
+            "model": seen["model"],
+            "choices": [],
+            "usage": {"prompt_tokens": 280, "completion_tokens": 2},
+        }
+
+    async def normalized(messages: list[object], *_args: object) -> list[object]:
+        seen["worker_normalized"] = True
+        return messages
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.v1.complete", complete)
+    monkeypatch.setattr("coire_api.routes.v1.normalize_inline_images", normalized)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": str(model_id),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "Name the color."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{encoded}"},
+                        },
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert seen["model"] == "/opt/coire/models/vision"
+    assert seen["worker_normalized"] is True
+    assert encoded in str(seen["messages"])
+    assert response.json()["model"] == str(model_id)
+
+
+@pytest.mark.parametrize("quota_exhausted", [False, True])
+async def test_visual_worker_failure_refuses_before_engine_io(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch, quota_exhausted: bool
+) -> None:
+    from coire_api.gateway.temporary import (
+        TemporaryVisualQuotaExceeded,
+        TemporaryVisualUnavailable,
+    )
+
+    model_id = uuid.uuid4()
+    image = io.BytesIO()
+    Image.new("RGB", (16, 16), (255, 0, 0)).save(image, format="PNG")
+    app.dependency_overrides[get_settings]().gateway_inline_visual_enabled = True
+
+    async def resolve(*_: object) -> ResolvedModel:
+        return ResolvedModel(
+            model_id,
+            "vision",
+            4096,
+            "/opt/coire/models/vision",
+            uuid.uuid4(),
+            "coire-edge-b",
+            "http://engine",
+            EngineBackend.MLX_VLM,
+            VisualCapability(
+                verified=True,
+                max_images=1,
+                max_image_pixels=256,
+                max_encoded_bytes=len(image.getvalue()),
+            ),
+        )
+
+    async def unavailable(*_args: object) -> None:
+        if quota_exhausted:
+            raise TemporaryVisualQuotaExceeded("temporary image quota exceeded")
+        raise TemporaryVisualUnavailable("image processing unavailable")
+
+    async def complete(*_args: object) -> None:
+        pytest.fail("unprocessed image must not reach the engine")
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    monkeypatch.setattr("coire_api.routes.v1.normalize_inline_images", unavailable)
+    monkeypatch.setattr("coire_api.routes.v1.complete", complete)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": str(model_id),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": "data:image/png;base64,"
+                                + base64.b64encode(image.getvalue()).decode()
+                            },
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == (429 if quota_exhausted else 503)
+    assert (
+        "temporary image quota exceeded" if quota_exhausted else "image processing unavailable"
+    ) in response.text
+
+
+async def test_anthropic_image_block_is_refused_before_model_resolution(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def resolve(*_: object) -> ResolvedModel:
+        pytest.fail("unsupported Anthropic content must not resolve a model")
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    response = await request(
+        app,
+        "POST",
+        "/v1/messages",
+        json={
+            "model": str(uuid.uuid4()),
+            "max_tokens": 8,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {"type": "base64", "media_type": "image/png", "data": "YQ=="},
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 400
+    assert "other than text" in response.text
+
+
+@pytest.mark.parametrize(
+    "image_url",
+    ["https://example.test/image.png", "file:///private/image.png", "data:image/png;base64,abc"],
+)
+async def test_openai_compatible_route_refuses_unsafe_image_url_before_resolution(
+    app: FastAPI, monkeypatch: pytest.MonkeyPatch, image_url: str
+) -> None:
+    async def resolve(*_: object) -> ResolvedModel:
+        pytest.fail("invalid image URL must not resolve a model")
+
+    monkeypatch.setattr("coire_api.routes.v1.resolve_model", resolve)
+    response = await request(
+        app,
+        "POST",
+        "/v1/chat/completions",
+        json={
+            "model": str(uuid.uuid4()),
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"type": "image_url", "image_url": {"url": image_url}}],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 422
 
 
 async def test_unknown_model_is_rfc9457_problem(

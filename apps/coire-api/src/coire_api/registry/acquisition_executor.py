@@ -15,6 +15,7 @@ from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_api.polling import PollBackoff, wait_or_stop
 from coire_core.models.acquisition import AcquisitionState, ReservationRequest, VariantRecipe
 from coire_core.models.jobs import JobStage, JobStatus
+from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -181,6 +182,7 @@ class AcquisitionCommandExecutor:
                         else None
                     ),
                     reference_variant_id=uuid.UUID(str(reference_id)) if reference_id else None,
+                    backend=EngineBackend(str(payload.get("backend", EngineBackend.MLX_LM.value))),
                 )
                 return await self._wait(client, node_name, status.job_id)
             if operation == "replicate":

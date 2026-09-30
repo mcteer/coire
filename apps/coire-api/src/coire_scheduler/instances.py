@@ -25,6 +25,7 @@ from coire_api.db import (
     session_scope,
 )
 from coire_api.instance.service import transition
+from coire_api.registry.visual_memory import reservation_bytes
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import (
@@ -133,7 +134,9 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                         model_id=instance.model_id,
                         variant_id=instance.variant_id,
                         policy=instance.policy,
-                        required_bytes=max(1, variant.memory_estimate_bytes),
+                        required_bytes=reservation_bytes(
+                            variant.memory_estimate_bytes, variant.visual_capability
+                        ),
                         state=PlacementState.REQUESTED,
                     )
                     session.add(decision)

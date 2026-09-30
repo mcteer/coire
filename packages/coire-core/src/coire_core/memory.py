@@ -18,6 +18,15 @@ FP16_BYTES = 2
 """KV cache element size. mlx-lm's cache is fp16 unless quantised, which this feature does not
 configure."""
 
+# The fixed MLX process/runtime footprint is material for tiny models. Live 014 samples
+# measured roughly 0.4 GiB above serialized weights for 135M and 1.5B models.
+ENGINE_RUNTIME_BASELINE_BYTES = 384 * 1024**2
+
+
+def runtime_reservation_bytes(estimated_bytes: int, actual_variant_bytes: int) -> int:
+    """Never reserve less than the verified variant on disk plus runtime headroom."""
+    return max(estimated_bytes, actual_variant_bytes + ENGINE_RUNTIME_BASELINE_BYTES)
+
 
 def precision_label(inspection: RepoInspection) -> str:
     """A short, stable name for the weights' numeric format.

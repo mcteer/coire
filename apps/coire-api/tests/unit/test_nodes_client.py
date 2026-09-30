@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -14,12 +15,43 @@ from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_core.models.engine import ReconcileRequest
 from coire_core.models.harness import ProfileName
 from coire_core.models.jobs import ChecksumManifest
-from coire_core.models.runs import RunContainerCreate, RunLimits
+from coire_core.models.registry import EngineBackend
+from coire_core.models.runs import (
+    RunActivity,
+    RunActivityPage,
+    RunActivityTool,
+    RunContainerCreate,
+    RunLimits,
+)
 from coire_core.net import ControlClient
 from coire_core.settings import Settings
 
 JOB_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 NOW = datetime.now(UTC).isoformat()
+
+
+async def test_run_activity_client_validates_run_and_cursor() -> None:
+    run_id = uuid.uuid4()
+    record = RunActivity(
+        run_id=run_id,
+        sequence=1,
+        tool_name=RunActivityTool.READ_FILE,
+        state="started",
+        created_at=datetime.now(UTC),
+    )
+    good = RunActivityPage(run_id=run_id, data=[record]).model_dump(mode="json")
+    client, seen = _client(lambda _request: _json(good))
+    page = await client.run_activity("coire-edge-a", run_id)
+    await client.aclose()
+    assert page.data == [record]
+    assert str(seen[0].url).endswith(f"/node/runs/{run_id}/activity?after_sequence=0&limit=100")
+
+    bad = {**good, "next_sequence": 2}
+    client, _ = _client(lambda _request: _json(bad))
+    with pytest.raises(NodeError) as exc:
+        await client.run_activity("coire-edge-a", run_id)
+    await client.aclose()
+    assert exc.value.kind is NodeErrorKind.PROTOCOL
 
 
 def _client(
@@ -204,6 +236,72 @@ class TestVerbs:
         )
         await client.aclose()
         assert existing is True
+
+    async def test_vision_start_sends_registry_backend_and_bounded_options(self) -> None:
+        body = {
+            "engine_id": str(JOB_ID),
+            "slug": "verified-vision",
+            "backend": "mlx_vlm",
+            "port": 9500,
+            "state": "starting",
+            "estimate_bytes": 4096,
+            "started_at": NOW,
+        }
+        health = {
+            "name": "coire-edge-a",
+            "agent_version": "0.2.0",
+            "uptime_seconds": 1,
+            "cpu_percent": 1,
+            "memory_total_bytes": 1024,
+            "memory_free_bytes": 1024,
+            "disk_total_bytes": 1024,
+            "disk_free_bytes": 1024,
+            "agent_cpu_percent": 1,
+            "agent_rss_bytes": 1,
+            "collection_budget_ok": True,
+            "sampled_at": NOW,
+            "path": "control",
+            "supported_backends": ["mlx_lm", "mlx_vlm"],
+        }
+        client, seen = _client(
+            lambda request: (
+                _json(health) if request.url.path == "/node/health" else _json(body, 202)
+            )
+        )
+        created, status = await client.start_engine(
+            "coire-edge-a",
+            engine_id=JOB_ID,
+            slug="verified-vision",
+            estimate_bytes=4096,
+            backend=EngineBackend.MLX_VLM,
+            vision_cache_size=2,
+            max_num_seqs=1,
+        )
+        await client.aclose()
+        assert not created and status.backend is EngineBackend.MLX_VLM
+        assert [request.url.path for request in seen] == ["/node/health", "/node/engines"]
+        sent = json.loads(seen[1].read())
+        assert sent["backend"] == "mlx_vlm"
+        assert sent["vision_cache_size"] == 2
+        assert sent["max_num_seqs"] == 1
+        assert sent["chat_template"] is None
+
+        client, seen = _client(
+            lambda _request: _json(
+                {key: value for key, value in health.items() if key != "supported_backends"}
+            )
+        )
+        with pytest.raises(NodeError) as unsupported:
+            await client.start_engine(
+                "coire-edge-a",
+                engine_id=JOB_ID,
+                slug="verified-vision",
+                estimate_bytes=4096,
+                backend=EngineBackend.MLX_VLM,
+            )
+        await client.aclose()
+        assert unsupported.value.kind is NodeErrorKind.PROTOCOL
+        assert [request.url.path for request in seen] == ["/node/health"]
 
     async def test_start_import_sends_the_manifest_and_grant(self) -> None:
         manifest = ChecksumManifest(

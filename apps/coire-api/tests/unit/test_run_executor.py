@@ -101,3 +101,28 @@ async def test_per_node_kill_lane_obeys_admission_cap(monkeypatch: pytest.Monkey
         release.set()
         await loop
         await asyncio.gather(*executor._kills.values(), return_exceptions=True)
+
+
+async def test_live_activity_poller_stops_with_wait_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    from coire_api.chat import activity
+
+    run_id = uuid.uuid4()
+    collected = asyncio.Event()
+
+    async def cursor(_run_id: uuid.UUID) -> int:
+        return 0
+
+    async def collect(*_args: object, **_kwargs: object) -> int:
+        collected.set()
+        return 1
+
+    monkeypatch.setattr(activity, "activity_cursor", cursor)
+    monkeypatch.setattr(activity, "collect_run_activity", collect)
+    executor = RunCommandExecutor(Settings(_secrets_dir="/none"))  # type: ignore[call-arg]
+    task = asyncio.create_task(executor._poll_chat_activity(run_id, "edge-a"))
+    try:
+        await asyncio.wait_for(collected.wait(), timeout=1)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task

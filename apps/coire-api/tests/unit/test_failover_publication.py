@@ -64,8 +64,12 @@ async def test_publisher_signs_a_fresh_registry_snapshot(
                 display_name="Tiny Model",
                 entitlement=[],
                 context_window=2048,
+                source="studio",
+                backend="mlx_lm",
             )
-            return SimpleNamespace(all=lambda: [row])
+            visual = SimpleNamespace(**{**vars(row), "id": uuid4(), "backend": "mlx_vlm"})
+            provider = SimpleNamespace(**{**vars(row), "id": uuid4(), "source": "openai"})
+            return SimpleNamespace(all=lambda: [row, visual, provider])
 
     @asynccontextmanager
     async def _session() -> AsyncIterator[_Session]:

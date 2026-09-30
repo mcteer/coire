@@ -7,6 +7,9 @@ not something to accept quietly (spec FR-013a, ADR-0002).
 
 from __future__ import annotations
 
+import base64
+import binascii
+import hashlib
 import uuid
 from datetime import datetime
 from enum import StrEnum
@@ -19,20 +22,52 @@ from coire_core.models.engine import EngineStatus
 from coire_core.models.harness import HarnessRunRequest, TaskClass
 from coire_core.models.jobs import JobStatus
 from coire_core.models.mcp import WorkspaceSource
+from coire_core.models.registry import EngineBackend
 
 MESH_SUBNET = IPv4Network("192.168.100.0/24")
 """The unrouted Thunderbolt mesh. See docs/adr/0002 and ARCHITECTURE.md 2.1."""
 
 
+class WorkspaceVisualInput(BaseModel):
+    """API-verified PNG bytes staged under a generated asset ID on one Studio."""
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+    asset_id: uuid.UUID
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    width: int = Field(ge=1, le=2048)
+    height: int = Field(ge=1, le=2048)
+    data_base64: str = Field(min_length=1, max_length=13_981_016, repr=False)
+
+    @model_validator(mode="after")
+    def verified_png(self) -> WorkspaceVisualInput:
+        try:
+            data = base64.b64decode(self.data_base64, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError("visual input encoding is invalid") from exc
+        if (
+            len(data) > 10 * 1024 * 1024
+            or len(data) < 24
+            or data[:8] != b"\x89PNG\r\n\x1a\n"
+            or data[12:16] != b"IHDR"
+            or int.from_bytes(data[16:20], "big") != self.width
+            or int.from_bytes(data[20:24], "big") != self.height
+            or hashlib.sha256(data).hexdigest() != self.sha256
+        ):
+            raise ValueError("visual input manifest does not match PNG bytes")
+        return self
+
+
 class WorkspacePrepareRequest(BaseModel):
     """Scheduler-authored, bounded Studio workspace preparation command."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
     run_id: uuid.UUID
     source: WorkspaceSource
     task_class: TaskClass
     harness_request: HarnessRunRequest
+    visual_inputs: list[WorkspaceVisualInput] = Field(default_factory=list, max_length=10)
     max_bytes: int = Field(default=512 * 1024 * 1024, ge=1024, le=8 * 1024**3)
     timeout_seconds: int = Field(default=120, ge=1, le=900)
 
@@ -40,6 +75,23 @@ class WorkspacePrepareRequest(BaseModel):
     def task_class_matches(self) -> WorkspacePrepareRequest:
         if self.task_class is not self.harness_request.task_class:
             raise ValueError("task class does not match harness request")
+        referenced = [
+            image for message in self.harness_request.history for image in message.visual_inputs
+        ] + self.harness_request.visual_inputs
+        references = {image.asset_id: image for image in referenced}
+        staged = {image.asset_id: image for image in self.visual_inputs}
+        if len(staged) != len(self.visual_inputs) or set(references) != set(staged):
+            raise ValueError("staged visual inputs do not match harness references")
+        if sum(len(image.data_base64) for image in self.visual_inputs) > 44_739_240:
+            raise ValueError("visual control inputs exceed the run bound")
+        for image in referenced:
+            supplied = staged[image.asset_id]
+            if (
+                image.media_type != "image/png"
+                or image.width != supplied.width
+                or image.height != supplied.height
+            ):
+                raise ValueError("visual control input metadata changed")
         return self
 
 
@@ -242,6 +294,7 @@ class NodeStatus(BaseModel):
     """Sum of the *estimates* of live engines, not their measured footprints. Admission on a
     number that moves under load is not reproducible (spec FR-020, research R6)."""
     store_free_bytes: int = 0
+    supported_backends: list[EngineBackend] = Field(default_factory=lambda: [EngineBackend.MLX_LM])
 
 
 class NodeStatusV2(BaseModel):
@@ -271,3 +324,5 @@ class NodeStatusV2(BaseModel):
     memory_budget_bytes: int = Field(default=0, ge=0)
     memory_committed_bytes: int = Field(default=0, ge=0)
     store_free_bytes: int = Field(default=0, ge=0)
+    supported_backends: list[EngineBackend] = Field(default_factory=lambda: [EngineBackend.MLX_LM])
+    run_images_configured: bool = False

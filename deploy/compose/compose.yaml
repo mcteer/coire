@@ -76,6 +76,23 @@ services:
       MCP_SOURCE_HOSTS: ${COIRE_MCP_SOURCE_HOSTS:-github.com}
       OPS_ENABLED: ${COIRE_OPS_ENABLED:-false}
       DIAGNOSTICS_ENABLED: ${COIRE_DIAGNOSTICS_ENABLED:-false}
+      CHAT_ENABLED: ${COIRE_CHAT_ENABLED:-false}
+      CHAT_DEFAULT_MODEL_ID: ${COIRE_CHAT_DEFAULT_MODEL_ID:-}
+      GATEWAY_INLINE_VISUAL_ENABLED: ${COIRE_GATEWAY_INLINE_VISUAL_ENABLED:-false}
+      PROVIDER_CHAT_ENABLED: ${COIRE_PROVIDER_CHAT_ENABLED:-false}
+      CHAT_BROWSER_ORIGIN: ${COIRE_CHAT_PUBLIC_ORIGIN:-}
+      CHAT_OUTPUT_TOKENS: ${COIRE_CHAT_OUTPUT_TOKENS:-1024}
+      CHAT_EVENT_RETENTION_HOURS: ${COIRE_CHAT_EVENT_RETENTION_HOURS:-24}
+      CHAT_UPLOAD_MAX_BYTES: ${COIRE_CHAT_UPLOAD_MAX_BYTES:-10485760}
+      CHAT_CONVERSATION_QUOTA_BYTES: ${COIRE_CHAT_CONVERSATION_QUOTA_BYTES:-52428800}
+      CHAT_OWNER_QUOTA_BYTES: ${COIRE_CHAT_OWNER_QUOTA_BYTES:-524288000}
+      CHAT_DERIVED_JOB_MAX_BYTES: ${COIRE_CHAT_DERIVED_JOB_MAX_BYTES:-33554432}
+      CHAT_EXTRACTED_TEXT_MAX_BYTES: ${COIRE_CHAT_EXTRACTED_TEXT_MAX_BYTES:-1048576}
+      CHAT_PDF_MAX_PAGES: ${COIRE_CHAT_PDF_MAX_PAGES:-50}
+      CHAT_UPLOAD_MAX_PIXELS: ${COIRE_CHAT_UPLOAD_MAX_PIXELS:-20000000}
+      CHAT_NORMALIZED_MAX_PIXELS: ${COIRE_CHAT_NORMALIZED_MAX_PIXELS:-4000000}
+      CHAT_NORMALIZED_MAX_SIDE: ${COIRE_CHAT_NORMALIZED_MAX_SIDE:-2048}
+      CHAT_PURGE_DEADLINE_HOURS: ${COIRE_CHAT_PURGE_DEADLINE_HOURS:-24}
       CLOUDFLARE_ACCESS_ISSUER: ${CLOUDFLARE_ACCESS_ISSUER:-}
       CLOUDFLARE_ACCESS_AUDIENCE: ${CLOUDFLARE_ACCESS_AUDIENCE:-}
       NODE_INVENTORY_FILE: /app/nodes.yaml
@@ -84,13 +101,18 @@ services:
       RUN_AGENT_IMAGE: ${COIRE_RUN_AGENT_IMAGE:-}
       RUN_RELAY_IMAGE: ${COIRE_RUN_RELAY_IMAGE:-}
       OPS_SERVICE_URL: http://coire-ops:8003
+      OPS_MODEL_SOURCE: ${COIRE_OPS_MODEL_SOURCE:-studio}
+      OPS_MODEL_ID: ${COIRE_OPS_MODEL_ID:-}
       OPS_SESSION_STALE_S: ${OPS_SESSION_STALE_S:-30}
       FAILOVER_MEMBER_NAME: ${COIRE_FAILOVER_MEMBER_NAME:-}
       FAILOVER_CORE_PUBLIC_KEY: ${COIRE_FAILOVER_CORE_PUBLIC_KEY:-}
       FAILOVER_EDGE_A_PUBLIC_KEY: ${COIRE_FAILOVER_EDGE_A_PUBLIC_KEY:-}
       FAILOVER_EDGE_B_PUBLIC_KEY: ${COIRE_FAILOVER_EDGE_B_PUBLIC_KEY:-}
-    volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
-    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key]
+    volumes:
+      - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
+      - coire-chat-originals:/opt/coire/chat/originals
+      - coire-chat-derived:/opt/coire/chat/derived:ro
+    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key, openai_api_key, anthropic_api_key]
     depends_on:
       postgres: {condition: service_healthy}
       coire-migrate: {condition: service_completed_successfully}
@@ -146,6 +168,7 @@ services:
       OPS_API_URL: http://coire-api:8000
       OPS_GATEWAY_URL: http://coire-api:8000/v1
       OPS_MODEL_ID: ${COIRE_OPS_MODEL_ID:-}
+      OPS_MODEL_SOURCE: ${COIRE_OPS_MODEL_SOURCE:-studio}
       OPS_SERVICE_INSTANCE: coire-ops
     secrets: [ops_service_token]
     depends_on:
@@ -191,7 +214,7 @@ services:
       context: ../..
       dockerfile: apps/coire-api/docker/scheduler.Dockerfile
     # The only service on coire-docker, and it reaches the socket solely through the proxy.
-    networks: [coire-edge, coire-db, coire-internal, coire-docker, coire-telemetry]
+    networks: [coire-edge, coire-db, coire-internal, coire-docker, coire-telemetry, coire-file-processing]
     environment:
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
@@ -203,8 +226,10 @@ services:
       RUN_GATEWAY_URL: ${RUN_GATEWAY_URL:-http://coire-core.lab:8180/v1}
       MCP_SOURCE_HOSTS: ${COIRE_MCP_SOURCE_HOSTS:-github.com}
       MCP_ARTIFACT_RETENTION_HOURS: ${COIRE_MCP_ARTIFACT_RETENTION_HOURS:-168}
+      FILE_WORKER_URL: http://coire-file-worker:8010
+      FILE_WORKER_PROCESS_TIMEOUT_S: ${COIRE_FILE_WORKER_TIMEOUT_SECONDS:-30}
     volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
-    secrets: [postgres_password, node_tokens]
+    secrets: [postgres_password, node_tokens, file_worker_service_token]
     depends_on:
       postgres: {condition: service_healthy}
     <<: *hardening
@@ -214,6 +239,33 @@ services:
     cpus: "2.0"
     healthcheck:
       test: ["CMD", "/healthcheck", "http://127.0.0.1:8002/ready"]
+      <<: *python-health
+
+  # Opt-in until native Chat file admission, publication and purge are release-ready.
+  coire-file-worker:
+    profiles: ["chat-files"]
+    image: ${COIRE_REGISTRY:-}coire-file-worker:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-file-worker/Dockerfile
+    networks: [coire-file-processing, coire-telemetry]
+    environment:
+      FILE_WORKER_INPUT_ROOT: /opt/coire/chat/originals
+      FILE_WORKER_OUTPUT_ROOT: /opt/coire/chat/derived
+      FILE_WORKER_PROCESS_TIMEOUT_S: ${COIRE_FILE_WORKER_TIMEOUT_SECONDS:-30}
+      FILE_WORKER_MAX_ACTIVE: 1
+      OTLP_ENDPOINT: http://otel-collector:4317
+    volumes:
+      - coire-chat-originals:/opt/coire/chat/originals:ro
+      - coire-chat-derived:/opt/coire/chat/derived
+    secrets: [file_worker_service_token]
+    <<: *hardening
+    user: "65532:65532"
+    pids_limit: 64
+    mem_limit: 512m
+    cpus: "1.0"
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python3", "-m", "coire_file_worker", "--healthcheck"]
       <<: *python-health
 
   coire-migrate:
@@ -470,6 +522,8 @@ networks:
     internal: true
   coire-node-ingress:
     internal: false
+  coire-file-processing:
+    internal: true
 
 volumes:
   coire-pgdata:
@@ -478,6 +532,8 @@ volumes:
   coire-loki:
   coire-tempo:
   coire-grafana:
+  coire-chat-originals:
+  coire-chat-derived:
 
 secrets:
   # File-sourced from a 0700 directory outside the repository, written by coire-up from the
@@ -508,7 +564,13 @@ secrets:
     file: ${COIRE_SECRETS_DIR}/bootstrap_admin_email
   ops_service_token:
     file: ${COIRE_SECRETS_DIR}/ops_service_token
+  file_worker_service_token:
+    file: ${COIRE_SECRETS_DIR}/file_worker_service_token
   failover_relay_token:
     file: ${COIRE_SECRETS_DIR}/failover_relay_token
   failover_peer_key:
     file: ${COIRE_SECRETS_DIR}/failover_peer_key
+  openai_api_key:
+    file: ${COIRE_SECRETS_DIR}/openai_api_key
+  anthropic_api_key:
+    file: ${COIRE_SECRETS_DIR}/anthropic_api_key

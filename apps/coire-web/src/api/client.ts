@@ -33,6 +33,10 @@ function problemMessage(problem: unknown, status: number): string {
   if (typeof value.title === "string") return value.title;
   return `Request failed (${status})`;
 }
+export async function apiError(response: Response): Promise<ApiError> {
+  const problem: unknown = await response.json().catch(() => null);
+  return new ApiError(response.status, problemMessage(problem, response.status), problem);
+}
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     credentials: "same-origin",
@@ -40,8 +44,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!response.ok) {
-    const problem: unknown = await response.json().catch(() => null);
-    throw new ApiError(response.status, problemMessage(problem, response.status), problem);
+    throw await apiError(response);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;

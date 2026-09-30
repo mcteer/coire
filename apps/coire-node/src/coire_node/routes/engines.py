@@ -19,7 +19,7 @@ from coire_core.models.engine import (
 )
 from coire_core.models.gateway import EngineChatRequest
 from coire_node.deps import EngineDep, StoreDep
-from coire_node.engines import BudgetExceeded, CopyMissing, NoFreePort
+from coire_node.engines import BackendMismatch, BudgetExceeded, CopyMissing, NoFreePort
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/node/engines", tags=["engines"])
@@ -58,9 +58,15 @@ async def start_engine(
             slug=request.slug,
             estimate_bytes=request.estimate_bytes,
             chat_template=request.chat_template,
+            backend=request.backend,
+            vision_cache_size=request.vision_cache_size,
+            max_num_seqs=request.max_num_seqs,
+            max_kv_size=request.max_kv_size,
         )
     except CopyMissing as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except BackendMismatch as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except BudgetExceeded as exc:
         # The figures travel with the refusal: "no" without them is not actionable.
         raise HTTPException(status.HTTP_409_CONFLICT, exc.refusal.model_dump(mode="json")) from exc

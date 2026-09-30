@@ -19,7 +19,7 @@ from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
 workers_running = metrics.get_meter("coire.scheduler.workers").create_gauge(
-    "coire_scheduler_workers_running", unit="1"
+    "coire_scheduler_workers_running"
 )
 tracer = trace.get_tracer("coire.scheduler.workers")
 

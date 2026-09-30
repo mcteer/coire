@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from coire_core.models.conversation import ImagePart
 from coire_core.models.mcp import McpToolName
 from coire_core.models.registry import (
     CapabilityProfile,
@@ -63,6 +64,7 @@ class HarnessMessage(BaseModel):
 
     role: str = Field(pattern=r"^(system|user|assistant|tool|summary)$")
     content: str = Field(max_length=2_000_000)
+    visual_inputs: list[ImagePart] = Field(default_factory=list, max_length=10)
     tool_name: str | None = Field(default=None, max_length=64)
     truncated: bool = False
 
@@ -103,6 +105,7 @@ class HarnessRunRequest(BaseModel):
     coding_mode: McpToolName | None = None
     coding_call_id: uuid.UUID | None = None
     task: str = Field(min_length=1, max_length=100_000)
+    visual_inputs: list[ImagePart] = Field(default_factory=list, max_length=10)
     history: list[HarnessMessage] = Field(default_factory=list, max_length=4096)
     capability_profile: CapabilityProfile
     context_window: int = Field(ge=256)

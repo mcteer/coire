@@ -690,6 +690,7 @@ class RegistryReconciler:
             pid=pid,
             process_create_time=getattr(orphan, "process_create_time", None),
             state=EngineState.ORPHAN,
+            backend=getattr(orphan, "backend", "mlx_lm"),
             state_reason="running but not started by this control plane",
             resident_bytes=getattr(orphan, "resident_bytes", None),
         )

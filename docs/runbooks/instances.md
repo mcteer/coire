@@ -8,6 +8,10 @@ leases, and stops by `INSTANCE_DRAIN_TIMEOUT_S`. Do not stop engines directly ex
 
 For a stalled launch, inspect the instance, placement decision, `placement_commands`, scheduler logs
 with `instance_id`, and node health. Restarting only the scheduler is safe because DBOS reattaches.
+For a visual launch refused as an incomplete or mismatched local copy, inspect the node's local
+processor inventory and manifest verification result. Retry only through the audited admin
+acquisition path; do not repair weights or processor files by hand. The node checks the visual
+manifest again before process spawn and strips Hub credentials from the engine environment.
 
 The admin API returns a node registration token once. Store it as `coire-node-registration-token`
 in the Studio System Keychain, separately from `coire-node-token`, which authenticates core-to-node
@@ -26,3 +30,26 @@ revocation are audited. A replacement token changes the fingerprint and register
 
 Rollback drains instances, rolls API/scheduler images together, then downgrades `0007` only after
 confirming no multi-instance reservations would collapse onto one legacy model holder.
+
+## Locked native node environment
+
+On the operator build Mac, run `scripts/build-node-wheel.sh --local-only` to stage the exact
+`uv.lock` native node graph in `dist/node-wheels` without contacting a Studio. The normal
+`scripts/build-node-wheel.sh <node-name>` command copies that wheelhouse and the installer to
+the named Studio over the control network. Run the staged `install.sh --wheel-dir
+~/coire-stage/dist` there after creating the `/opt/coire` prefix as described by `install.sh
+--help`. The installer provisions pinned CPython, installs the hash-checked dependency wheels
+without an index, then installs the local core and node wheels. It imports both engines and runs
+their `--help` commands before changing `/opt/coire/envs/current`; this smoke does not load a
+model or start a server. The environment name includes a digest of the locked requirements and
+local wheels, so an existing active environment is never modified.
+
+If install or smoke fails, inspect the installer output and the staged wheelhouse. The prior
+`envs/current` link remains active. To roll back a later activated environment, drain instances,
+stop `com.coire.node`, and atomically replace `envs/current` with a symlink to the prior known-good
+versioned directory. For example, run `python3 -c 'import os; os.symlink("/opt/coire/envs/<prior>", "/opt/coire/envs/.rollback"); os.replace("/opt/coire/envs/.rollback", "/opt/coire/envs/current")'`
+after substituting the actual prior directory. Restart the service and inspect node health/engine
+ownership.
+Keep the prior directory until that check passes. The installer does not prove tiny-model
+generation, visual token usage, cancellation or cluster placement; run the feature 014 acceptance
+checks before enabling visual Chat.

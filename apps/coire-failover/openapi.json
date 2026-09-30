@@ -103,6 +103,10 @@
             "title": "Coire Load State",
             "type": "string"
           },
+          "coire_source": {
+            "$ref": "#/components/schemas/ModelSource",
+            "default": "studio"
+          },
           "coire_tags": {
             "items": {
               "type": "string"
@@ -175,6 +179,15 @@
         },
         "title": "HTTPValidationError",
         "type": "object"
+      },
+      "ModelSource": {
+        "enum": [
+          "studio",
+          "openai",
+          "anthropic"
+        ],
+        "title": "ModelSource",
+        "type": "string"
       },
       "ValidationError": {
         "properties": {

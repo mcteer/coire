@@ -11,6 +11,7 @@ from coire_api.auth import CurrentAdmin
 from coire_api.db import ModelRow, ModelVariantRow, PlacementDecisionRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.placement import service
+from coire_api.registry.visual_memory import require_supported_placement, reservation_bytes
 from coire_core.models.audit import AuditAction
 from coire_core.models.placement import (
     LedgerUpdate,
@@ -105,11 +106,16 @@ async def submit_placement(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such model")
     if variant is None or variant.model_id != model_id or not variant.validated:
         raise HTTPException(status.HTTP_409_CONFLICT, "variant is not verified for this model")
+    policy = body.policy or model.placement_policy
+    try:
+        require_supported_placement(variant.backend, policy)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     row = PlacementDecisionRow(
         model_id=model_id,
         variant_id=variant.id,
-        policy=body.policy or model.placement_policy,
-        required_bytes=max(1, variant.memory_estimate_bytes),
+        policy=policy,
+        required_bytes=reservation_bytes(variant.memory_estimate_bytes, variant.visual_capability),
         state=PlacementState.REQUESTED,
     )
     session.add(row)

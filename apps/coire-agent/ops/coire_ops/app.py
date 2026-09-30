@@ -13,7 +13,7 @@ from coire_core.models.health import HealthResponse, HealthStatus, ReadyResponse
 from coire_core.models.ops import OpsServiceTurnRequest, OpsTurnResponse
 from coire_core.settings import get_settings
 from coire_ops.admin_client import AdminClient
-from coire_ops.model import OpsModel
+from coire_ops.model import OPS_ANTHROPIC_MODEL, OpsModel
 from coire_ops.service import OpsService
 
 
@@ -29,7 +29,13 @@ def _default_service() -> OpsService:
         model=OpsModel(
             gateway_url=settings.ops_gateway_url,
             token=token,
-            model_id=settings.ops_model_id,
+            model_id=(
+                OPS_ANTHROPIC_MODEL
+                if settings.ops_model_source == "anthropic"
+                else settings.ops_model_id
+            ),
+            model_source=settings.ops_model_source,
+            ops_api_url=settings.ops_api_url,
             timeout_s=settings.ops_request_timeout_s,
         ),
         service_instance=settings.ops_service_instance,

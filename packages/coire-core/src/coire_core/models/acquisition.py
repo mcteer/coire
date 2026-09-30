@@ -8,6 +8,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from coire_core.models.registry import EngineBackend, VisualCapability
+
 
 class AcquisitionStage(StrEnum):
     INSPECT = "inspect"
@@ -140,6 +142,7 @@ class InspectionResult(BaseModel):
     revision: str
     architecture: str | None = None
     source_format: str
+    backend: EngineBackend = EngineBackend.MLX_LM
     gated: bool = False
     chat_template_present: bool = False
     metadata_bytes: int = Field(ge=0)
@@ -156,6 +159,8 @@ class ValidationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     validator_version: str
+    backend: EngineBackend = EngineBackend.MLX_LM
+    visual_input: VisualCapability | None = None
     smoke: ValidationOutcome
     smoke_failure: str | None = None
     perplexity: float | None = Field(default=None, ge=0.0)
@@ -167,6 +172,21 @@ class ValidationResult(BaseModel):
     template_failure: str | None = None
     validated: bool
     created_at: datetime
+
+
+class NodeValidateRequest(BaseModel):
+    """Authenticated node command; the backend comes from the registry inspection."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: uuid.UUID
+    slug: str
+    backend: EngineBackend = EngineBackend.MLX_LM
+    tolerance: float = Field(default=0.1, ge=0.0, le=1.0)
+    validator_version: str = "v1"
+    chat_template_present: bool = False
+    reference_perplexity: float | None = Field(default=None, ge=0.0)
+    reference_variant_id: uuid.UUID | None = None
 
 
 class StageResult(BaseModel):
@@ -194,6 +214,8 @@ class ModelVariant(BaseModel):
     estimate_delta_bytes: int | None = None
     validated: bool
     harness_verified: bool = False
+    backend: EngineBackend = EngineBackend.MLX_LM
+    visual_input: VisualCapability | None = None
     harness_verified_at: datetime | None = None
     published: bool
     is_default: bool

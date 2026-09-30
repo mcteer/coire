@@ -17,6 +17,15 @@ differs, `coire-up --recover-db-role` writes a private `pg_dump` under the proje
 changes only that database role, then repeats the network check. `--build` explicitly builds
 source images; normal startup uses existing images without building. `coire-down` removes
 project credentials after the stack stops and preserves volumes unless `--purge` is confirmed.
+
+Optional `coire-openai-api-key` and `coire-anthropic-api-key` Keychain items are mounted only
+into coire-api; absent items stage empty files. `COIRE_PROVIDER_CHAT_ENABLED` defaults false.
+`COIRE_CHAT_DEFAULT_MODEL_ID` may name an administrator-registered model UUID to place first
+in the plain Chat picker. It is considered only while published and entitled; Code mode and
+saved conversation selections retain their own model choice. Keep the provider key in Keychain,
+not `.env.local` or Compose environment variables.
+See [the frontier Chat runbook](../../docs/runbooks/frontier-chat.md) for bounded acceptance,
+publication and rollback.
 The integration override creates a shared control network and an
 internal Studio-only data network; core is deliberately absent from the latter.
 
@@ -32,10 +41,53 @@ trace retention use `COIRE_LOG_RETENTION` and `COIRE_TRACE_RETENTION` (48 hours 
 `COIRE_STATE_ROOT` and `COIRE_SECRETS_BASE` change the per-project state location for isolated
 test deployments. `COMPOSE_PROJECT_NAME` must be a single validated project component.
 
+`COMPOSE_PROFILES=chat-files` starts the private CPU file worker. It requires the
+`coire-file-worker-service-token` Keychain item created by `scripts/coire-secrets-init.sh`;
+the generated `file_worker_service_token` secret is mounted only in the scheduler and worker.
+Only those services join the internal `coire-file-processing` network. The worker has no
+published port, database mount, model weights, or harness. It reads `coire-chat-originals`
+read-only and writes `coire-chat-derived`; both are private named volumes. The image seeds
+non-root ownership for its writable volume. `COIRE_FILE_WORKER_TIMEOUT_SECONDS` defaults to
+30 and is capped at 30 seconds; one conversion runs per worker process under 512 MiB/1 CPU.
+The profile remains opt-in while durable dispatch, blob cleanup and visual serving
+are unfinished. `COIRE_CHAT_ENABLED` remains `false` during this stage.
+The API also mounts `coire-chat-originals` for generated-key upload and owner-scoped download;
+the worker sees that same volume read-only. Original admission limits individual files to
+10 MiB and reserves worst-case derived bytes against 50 MiB/conversation and 500 MiB/owner.
+Nginx permits an 11 MiB multipart envelope only on the native Chat upload route. Queued jobs
+remain pending until the scheduler dispatcher and result publication path are connected.
+The API accepts bounded `COIRE_CHAT_UPLOAD_MAX_BYTES` (10 MiB),
+`COIRE_CHAT_CONVERSATION_QUOTA_BYTES` (50 MiB), `COIRE_CHAT_OWNER_QUOTA_BYTES`
+(500 MiB), `COIRE_CHAT_DERIVED_JOB_MAX_BYTES` (32 MiB),
+`COIRE_CHAT_EXTRACTED_TEXT_MAX_BYTES` (1 MiB), `COIRE_CHAT_PDF_MAX_PAGES` (50),
+`COIRE_CHAT_UPLOAD_MAX_PIXELS` (20 million), `COIRE_CHAT_NORMALIZED_MAX_PIXELS`
+(4 million), and `COIRE_CHAT_NORMALIZED_MAX_SIDE` (2048). These settings can lower
+the API admission limits; the CPU worker retains the same fixed upper bounds.
+`COIRE_CHAT_PURGE_DEADLINE_HOURS` and `COIRE_CHAT_EVENT_RETENTION_HOURS` are capped
+at 24 hours. The worker and scheduler share `COIRE_FILE_WORKER_TIMEOUT_SECONDS`
+(1–30 seconds); the worker stays at one active conversion, 512 MiB, one CPU and
+64 processes. Larger uploads remain blocked by nginx even if an API setting is
+misconfigured.
+
 Runtime configuration is supplied through `COIRE_` environment variables and Keychain-sourced
 compose secrets. Gateway tuning variables and operational procedures are documented in
 [`docs/runbooks/gateway.md`](../../docs/runbooks/gateway.md). Do not put credentials in this file,
 `.env`, an image, or a compose environment block.
+
+Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 is incomplete).
+See [native Chat operations](../../docs/runbooks/chat-web-ui.md) for turn inspection,
+Stop, parser alerts, private-file purge, diagnostics and visual rollback.
+The experimental inline PNG/JPEG/WebP `/v1` visual route is separately gated by
+`COIRE_GATEWAY_INLINE_VISUAL_ENABLED` (default `false`). It requires the `chat-files` Compose
+profile and its Keychain-sourced worker token: the API stages generated-key originals, the
+private CPU worker normalizes them, and expiry erases worker outputs before originals. Keep the
+flag disabled until temporary-job integration and visual gateway acceptance in feature 014 pass.
+Before enabling it, set `COIRE_CHAT_PUBLIC_ORIGIN` to the exact HTTPS browser origin; local
+development may use `http://localhost` or `http://127.0.0.1` with an optional port. A missing
+origin refuses browser writes. See [`docs/runbooks/chat-web-ui.md`](../../docs/runbooks/chat-web-ui.md).
+`COIRE_CHAT_OUTPUT_TOKENS` (default 1024, maximum 4096) bounds each text generation and is
+reduced to at most one quarter of a selected model's context window. Persisted native event
+retention uses `COIRE_CHAT_EVENT_RETENTION_HOURS` (default and maximum 24).
 
 Identity requires `CLOUDFLARE_ACCESS_ISSUER` (the exact team issuer) and
 `CLOUDFLARE_ACCESS_AUDIENCE`. Seed `coire-bootstrap-admin-email` in Keychain by running
@@ -89,6 +141,10 @@ than five minutes). Session liveness uses `OPS_SESSION_HEARTBEAT_S` (10) and
 Set the non-secret registry UUID as `COIRE_OPS_MODEL_ID` (see `.env.example`) before bring-up, and
 provision `coire-ops-service-token` with `scripts/coire-secrets-init.sh`. Operational procedures
 are in [`docs/runbooks/coire-ops.md`](../../docs/runbooks/coire-ops.md).
+For administrator management inside Chat, set `COIRE_OPS_MODEL_SOURCE=anthropic` and use the
+curated Sonnet registry UUID as `COIRE_OPS_MODEL_ID`. Coire Ops stays on internal networks and
+uses its scoped token to call the API's bounded provider relay; the Anthropic Keychain secret
+remains mounted only in coire-api. The default source is `studio`.
 
 Studio container orchestration uses `RUN_CONCURRENCY_CAP` (3),
 `RUN_DEFAULT_MEMORY_BYTES` (4 GiB), `RUN_MAX_MEMORY_BYTES` (16 GiB),

@@ -131,17 +131,22 @@ async def test_kill_workflow_keeps_request_pending_when_node_kill_fails(
         limits={},
         resource_usage={},
     )
+    sequence: list[str] = []
 
     class Session:
-        async def get(self, model: object, identifier: uuid.UUID, **_: object) -> AgentRunRow:
-            assert model is AgentRunRow and identifier == run_id
-            return run
+        async def get(self, model: object, identifier: uuid.UUID, **_: object) -> object:
+            if model is AgentRunRow and identifier == run_id:
+                return run
+            if model is NodeRow and identifier == run.node_id:
+                return NodeRow(id=identifier, name="edge-a")
+            raise AssertionError("unexpected row lookup")
 
     @asynccontextmanager
     async def scope():  # type: ignore[no-untyped-def]
         yield cast(AsyncSession, Session())
 
     async def fail_submit(*_: object) -> None:
+        sequence.append("kill")
         raise RuntimeError("node kill failed")
 
     async def unexpected(*_: object, **__: object) -> None:
@@ -149,8 +154,52 @@ async def test_kill_workflow_keeps_request_pending_when_node_kill_fails(
 
     monkeypatch.setattr(scheduler_runs, "session_scope", scope)
     monkeypatch.setattr(scheduler_runs, "_submit", fail_submit)
+
+    async def no_activity(*_: object, **__: object) -> int:
+        sequence.append("drain")
+        return 0
+
+    monkeypatch.setattr("coire_api.chat.activity.collect_run_activity", no_activity)
     monkeypatch.setattr(scheduler_runs, "transition", unexpected)
     monkeypatch.setattr(scheduler_runs, "write_audit", unexpected)
     with pytest.raises(RuntimeError, match="node kill failed"):
         await scheduler_runs.run_kill_workflow.__wrapped__.__wrapped__(str(run_id))  # type: ignore[attr-defined]
     assert run.state is AgentRunState.KILL_REQUESTED
+    assert sequence == ["drain", "kill"]
+
+
+async def test_final_activity_drain_precedes_run_cleanup(monkeypatch: pytest.MonkeyPatch) -> None:
+    from coire_api.chat import activity, coding
+
+    run_id, node_id = uuid.uuid4(), uuid.uuid4()
+    run = AgentRunRow(id=run_id, node_id=node_id, state=AgentRunState.SUCCEEDED)
+    node = NodeRow(id=node_id, name="edge-a")
+    sequence: list[str] = []
+
+    class Session:
+        async def get(self, model: object, _id: uuid.UUID, **_: object) -> object:
+            return run if model is AgentRunRow else node
+
+    @asynccontextmanager
+    async def scope():  # type: ignore[no-untyped-def]
+        yield cast(AsyncSession, Session())
+
+    async def drain(*_args: object, **_kwargs: object) -> int:
+        sequence.append("drain")
+        return 1
+
+    async def submit(_id: uuid.UUID, operation: RunOperation) -> dict[str, object]:
+        assert operation is RunOperation.REMOVE
+        sequence.append("remove")
+        return {"removed": True}
+
+    async def reconcile(*_args: object) -> bool:
+        sequence.append("reconcile")
+        return False
+
+    monkeypatch.setattr(scheduler_runs, "session_scope", scope)
+    monkeypatch.setattr(scheduler_runs, "_submit", submit)
+    monkeypatch.setattr(activity, "collect_run_activity", drain)
+    monkeypatch.setattr(coding, "reconcile_chat_coding_result", reconcile)
+    await scheduler_runs.finalize_run.__wrapped__.__wrapped__(str(run_id), True)  # type: ignore[attr-defined]
+    assert sequence == ["drain", "reconcile", "remove"]

@@ -11,3 +11,9 @@ overhead_duration_ms = meter.create_histogram("coire_gateway_overhead_duration_m
 request_counter = meter.create_counter("coire_gateway_requests_total")
 failure_counter = meter.create_counter("coire_gateway_failures_total")
 inflight_counter = meter.create_up_down_counter("coire_gateway_inflight")
+token_counter = meter.create_counter("coire_gateway_tokens_total")
+vision_requests_total = meter.create_counter(
+    "coire_vision_requests_total",
+    unit="1",
+    description="Resolved bare VLM requests by fixed terminal outcome",
+)

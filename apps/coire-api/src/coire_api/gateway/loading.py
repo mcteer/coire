@@ -21,9 +21,11 @@ from coire_api.db import (
 from coire_api.gateway.telemetry import tracer
 from coire_api.instance.service import append_initial_transition
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.registry.visual_memory import require_supported_placement, reservation_bytes
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import Reachability
+from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
 
 
@@ -43,7 +45,7 @@ class LoadCoordinator:
                 task = asyncio.ensure_future(loader())
                 self._loads[model_id] = task
         try:
-            await task
+            await asyncio.shield(task)
         finally:
             async with self._lock:
                 if self._loads.get(model_id) is task and task.done():
@@ -71,6 +73,10 @@ async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -
         )
         if variant is None:
             return False
+        try:
+            require_supported_placement(variant.backend, model.placement_policy)
+        except ValueError as exc:
+            raise ModelLoadError(str(exc)) from exc
         ready = await session.scalar(
             select(ModelInstanceRow.id).where(
                 ModelInstanceRow.model_id == model_id,
@@ -139,6 +145,7 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             model = await session.get(ModelRow, model_id)
             if model is None:
                 raise ModelLoadError("model disappeared during load")
+            required_bytes = reservation_bytes(model.memory_estimate_bytes, model.visual_capability)
             target = (
                 await session.execute(
                     select(ModelCopyRow, NodeRow)
@@ -161,7 +168,8 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
                 node_id=node.id,
                 port=0,
                 state=EngineState.STARTING,
-                estimate_bytes=model.memory_estimate_bytes,
+                estimate_bytes=required_bytes,
+                backend=model.backend,
             )
             if existing is None:
                 session.add(row)
@@ -176,8 +184,11 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
                         node.name,
                         engine_id=row.id,
                         slug=model.slug,
-                        estimate_bytes=model.memory_estimate_bytes,
-                        chat_template=model.chat_template,
+                        estimate_bytes=required_bytes,
+                        chat_template=(
+                            model.chat_template if model.backend == EngineBackend.MLX_LM else None
+                        ),
+                        backend=EngineBackend(model.backend),
                     )
                     deadline = time.monotonic() + settings.gateway_wait_ceiling_s
                     while engine.state is EngineState.STARTING and time.monotonic() < deadline:
@@ -194,6 +205,7 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             row.pid = engine.pid
             row.process_create_time = engine.process_create_time
             row.state = engine.state
+            row.backend = engine.backend.value
             row.state_reason = engine.state_reason
             row.load_seconds = engine.load_seconds
 

@@ -183,6 +183,7 @@ components:
         memory_budget_bytes: { type: integer, description: "feature 001" }
         memory_committed_bytes: { type: integer, description: "feature 001" }
         store_free_bytes: { type: integer, description: "feature 001" }
+        supported_backends: { type: array, items: { type: string, enum: [mlx_lm, mlx_vlm] }, description: "feature 014: optional; old nodes imply mlx_lm only" }
         name: { type: string }
         agent_version: { type: string }
         os_version: { type: string, description: "feature 006: automatic link-probe trigger" }

@@ -12,11 +12,13 @@ import contextlib
 import logging
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from coire_api.db import NodeMemoryLedgerRow, NodeRow, create_engine
+from coire_api.db import MemoryReservationRow, NodeMemoryLedgerRow, NodeRow, create_engine
+from coire_api.placement.service import drift_ratio, ledger_drift
 from coire_core.models.node import NodeStatus, NodeStatusV2, Reachability
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.net import ControlClient
 from coire_core.settings import Settings
 
@@ -94,6 +96,28 @@ class NodeProber:
                             if status is not None
                             else ledger.measured_resident_bytes
                         )
+                        if status is not None:
+                            model_reserved = await session.scalar(
+                                select(
+                                    func.coalesce(func.sum(MemoryReservationRow.bytes), 0)
+                                ).where(
+                                    MemoryReservationRow.node_id == row.id,
+                                    MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                                    MemoryReservationRow.state.in_(
+                                        [
+                                            MemoryReservationState.HELD,
+                                            MemoryReservationState.RELEASING,
+                                        ]
+                                    ),
+                                )
+                            )
+                            drift = drift_ratio(
+                                reserved_bytes=int(model_reserved or 0),
+                                measured_bytes=ledger.measured_resident_bytes,
+                            )
+                            ledger_drift.set(
+                                drift if drift is not None else 0.0, {"node": row.name}
+                            )
                         ledger.cpu_percent = status.cpu_percent if status is not None else None
                         ledger.thermal_state = (
                             status.thermal_state.value if status is not None else None

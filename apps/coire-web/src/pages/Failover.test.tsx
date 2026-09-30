@@ -26,6 +26,7 @@ test("warns that nothing is persisted before the composer", () => {
           owned_by: "coire",
           created: 1,
           coire_load_state: "loaded",
+          coire_source: "studio",
           coire_description: "Tiny test model",
         },
       ]}
@@ -77,6 +78,7 @@ test("sends an ephemeral message and displays the streamed answer", async () => 
           owned_by: "coire",
           created: 1,
           coire_load_state: "loaded",
+          coire_source: "studio",
         },
       ]}
     />,

@@ -19,8 +19,14 @@ class GatewayFakeResult:
 
 
 class GatewayFakeSession:
+    def __init__(self) -> None:
+        self.rolled_back = False
+
     async def execute(self, *_: object, **__: object) -> GatewayFakeResult:
         return GatewayFakeResult()
+
+    async def rollback(self) -> None:
+        self.rolled_back = True
 
 
 @pytest.fixture

@@ -21,9 +21,10 @@ from coire_api.db import (
     VariantCopyRow,
 )
 from coire_api.gateway.telemetry import tracer
+from coire_api.registry.service import published_ready_entitled
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
-from coire_core.models.registry import ModelState, Visibility
+from coire_core.models.registry import EngineBackend, ModelSource, ModelState, VisualCapability
 from coire_core.models.sharding import ShardGroupState
 
 
@@ -40,14 +41,20 @@ class ResolvedModel:
     engine_id: uuid.UUID | None
     node: str | None
     engine_url: str | None
+    backend: EngineBackend = EngineBackend.MLX_LM
+    visual_capability: VisualCapability | None = None
+    source: ModelSource = ModelSource.STUDIO
+    provider_model_id: str | None = None
+    max_output_tokens: int | None = None
+    daily_token_budget: int | None = None
 
 
 def _visible(model: ModelRow, principal: Principal) -> bool:
+    if (model.source or "studio") != "studio":
+        return published_ready_entitled(model, principal.entitlements)
     if principal.is_admin:
         return model.state is not ModelState.RETIRED
-    if model.state is not ModelState.READY or model.visibility is not Visibility.PUBLISHED:
-        return False
-    return not model.entitlement or set(model.entitlement).issubset(principal.scopes)
+    return published_ready_entitled(model, principal.entitlements)
 
 
 async def resolve_model(
@@ -68,7 +75,28 @@ async def resolve_model(
         if model is None or not _visible(model, principal):
             span.set_attribute("coire.gateway.resolution", "refused")
             raise ModelNotFoundError
+        backend = EngineBackend(model.backend)
+        visual_capability = (
+            VisualCapability.model_validate(model.visual_capability)
+            if model.visual_capability is not None
+            else None
+        )
         span.set_attribute("coire.model.id", str(model.id))
+
+    if (model.source or "studio") != "studio":
+        return ResolvedModel(
+            model_id=model.id,
+            slug=model.slug,
+            context_window=model.context_window,
+            model_path=None,
+            engine_id=None,
+            node=None,
+            engine_url=None,
+            source=ModelSource(model.source),
+            provider_model_id=model.provider_model_id,
+            max_output_tokens=model.max_output_tokens,
+            daily_token_budget=model.daily_token_budget,
+        )
 
     result = await session.execute(
         select(EngineProcessRow, NodeRow, VariantCopyRow, ModelInstanceRow)
@@ -152,6 +180,8 @@ async def resolve_model(
             None,
             node.name,
             f"http://{node.name}.lab:9400/node/shard-groups/{group.id}/proxy",
+            backend,
+            visual_capability,
         )
     if target is None:
         # Feature 001 rows have no ModelVariant and therefore cannot be represented by an
@@ -176,7 +206,17 @@ async def resolve_model(
             )
         ).one_or_none()
         if legacy is None:
-            return ResolvedModel(model.id, model.slug, model.context_window, None, None, None, None)
+            return ResolvedModel(
+                model.id,
+                model.slug,
+                model.context_window,
+                None,
+                None,
+                None,
+                None,
+                backend,
+                visual_capability,
+            )
         engine, node, copy = legacy
         return ResolvedModel(
             model.id,
@@ -186,6 +226,8 @@ async def resolve_model(
             engine.id,
             node.name,
             f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
+            backend,
+            visual_capability,
         )
     engine, node, copy, _instance = target
     return ResolvedModel(
@@ -196,6 +238,8 @@ async def resolve_model(
         engine.id,
         node.name,
         f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
+        backend,
+        visual_capability,
     )
 
 

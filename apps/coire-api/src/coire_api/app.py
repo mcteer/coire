@@ -31,6 +31,7 @@ from coire_api.routes import (
     admin_runs,
     admin_sharding,
     admin_variants,
+    chat,
     failover,
     health,
     instances,
@@ -44,6 +45,7 @@ from coire_api.routes import (
     workspaces,
 )
 from coire_api.telemetry import configure_telemetry
+from coire_core.errors import CoireError
 from coire_core.settings import Settings, get_settings
 
 logging.basicConfig(
@@ -90,6 +92,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await reconciler.start()
         app.state.reconciler = reconciler
         prober.set_reconciler(reconciler)
+        from coire_api.chat.maintenance import ChatMaintenance
+
+        chat_maintenance = ChatMaintenance(settings)
+        await chat_maintenance.start()
+        app.state.chat_maintenance = chat_maintenance
         from coire_api.failover.poller import build_poller
         from coire_api.failover.publication import CoreSnapshotService, configured_membership
 
@@ -116,6 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await failover_poller.stop()
             if snapshot_service is not None:
                 await snapshot_service.stop()
+            await chat_maintenance.stop()
             await reconciler.stop()
             await prober.stop()
             await link_probe_coordinator.stop()
@@ -140,6 +148,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(instances.router)
     app.include_router(nodes.router)
     app.include_router(models.router)
+    app.include_router(chat.router)
     app.include_router(runs.router)
     app.include_router(workspaces.router)
     app.include_router(mcp_artifacts.router)
@@ -261,6 +270,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return response
         finally:
             reset_request_id(token)
+
+    @app.exception_handler(CoireError)
+    async def chat_problem(request: Request, exc: CoireError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status,
+            media_type="application/problem+json",
+            content=exc.to_problem()
+            .model_copy(update={"instance": request.url.path})
+            .model_dump(mode="json", exclude_none=True),
+        )
 
     @app.exception_handler(HTTPException)
     async def compatible_problem(request: Request, exc: HTTPException) -> JSONResponse:

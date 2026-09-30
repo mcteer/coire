@@ -86,6 +86,8 @@ jobs:
             dockerfile: apps/coire-api/docker/mcp.Dockerfile
           - name: coire-scheduler
             dockerfile: apps/coire-api/docker/scheduler.Dockerfile
+          - name: coire-file-worker
+            dockerfile: apps/coire-file-worker/Dockerfile
           - name: coire-migrate
             dockerfile: apps/coire-api/docker/migrate.Dockerfile
           - name: coire-agent
@@ -281,7 +283,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        name: [coire-api, coire-mcp, coire-scheduler, coire-migrate, coire-agent, coire-agent-ops, coire-run-relay, coire-web, coire-otel, coire-prometheus, coire-alertmanager, coire-loki, coire-tempo, coire-grafana, coire-failover]
+        name: [coire-api, coire-mcp, coire-scheduler, coire-file-worker, coire-migrate, coire-agent, coire-agent-ops, coire-run-relay, coire-web, coire-otel, coire-prometheus, coire-alertmanager, coire-loki, coire-tempo, coire-grafana, coire-failover]
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4

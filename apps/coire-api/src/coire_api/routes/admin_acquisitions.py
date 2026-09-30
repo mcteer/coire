@@ -14,9 +14,14 @@ from coire_api.db import AcquisitionWorkflowRow, ModelRow, ModelVariantRow, Node
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.registry import acquisition, service
-from coire_api.registry.inspection import classify_inspection, estimate_weight_bytes
+from coire_api.registry.inspection import (
+    classify_inspection,
+    estimate_variant_memory_bytes,
+    visual_recipe_rejection,
+)
 from coire_api.registry.placement import NoCandidate, choose_origin, replica_for
 from coire_core.models.acquisition import AcquisitionRequest, AcquisitionWorkflow, VariantState
+from coire_core.models.registry import EngineBackend
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin: acquisitions"])
 
@@ -172,7 +177,26 @@ async def submit_acquisition(
             },
         )
 
-    estimated = estimate_weight_bytes(metadata.weight_bytes, body.variant.precision)
+    if decision.backend is EngineBackend.MLX_VLM:
+        rejection = visual_recipe_rejection(metadata, body.variant)
+        if rejection is not None:
+            await acquisition.reject(
+                session,
+                actor=actor,
+                repo_id=body.repo_id,
+                code="unsupported_visual_recipe",
+                detail=rejection,
+            )
+            await session.commit()
+            raise HTTPException(
+                422,
+                {
+                    "code": "unsupported_visual_recipe",
+                    "detail": rejection,
+                    "bytes_transferred": 0,
+                },
+            )
+
     node_rows = {
         row.name: row
         for row in (
@@ -193,8 +217,8 @@ async def submit_acquisition(
             revision=metadata.revision,
             weight_bytes=metadata.weight_bytes,
             total_bytes=metadata.total_bytes,
-            memory_estimate_bytes=int(
-                estimated * settings.overhead_for(body.variant.precision.value)
+            memory_estimate_bytes=estimate_variant_memory_bytes(
+                metadata, body.variant.precision, decision.backend, settings
             ),
             origin_node_id=node_rows[origin.name].id,
             replica_node_id=node_rows[replica.name].id,

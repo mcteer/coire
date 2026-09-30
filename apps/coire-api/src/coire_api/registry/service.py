@@ -21,12 +21,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.audit import write_audit
+from coire_api.auth import Principal
 from coire_api.db import (
     DownloadJobRow,
     EngineProcessRow,
     ModelCopyRow,
     ModelRow,
     ModelStateTransitionRow,
+    ModelVariantRow,
     NodeRow,
 )
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
@@ -43,6 +45,7 @@ from coire_core.models.engine import LIVE_ENGINE_STATES, EngineState
 from coire_core.models.jobs import DownloadStage, RepoInspection
 from coire_core.models.registry import (
     CapabilityProfile,
+    EngineBackend,
     LoadState,
     ModelAddRequest,
     ModelListing,
@@ -111,6 +114,8 @@ async def recompute_state(session: AsyncSession, model: ModelRow) -> ModelState:
     `replicating`, which is the truth, rather than staying `ready` because it once was.
     """
     if model.state in (ModelState.FAILED, ModelState.RETIRED):
+        return model.state
+    if (model.source or "studio") != "studio":
         return model.state
 
     copies = (
@@ -423,6 +428,8 @@ async def _node_rows(session: AsyncSession, *names: str) -> tuple[NodeRow, ...]:
 
 async def retry_model(session: AsyncSession, model: ModelRow, *, actor: str) -> DownloadJobRow:
     """Re-run a failed acquisition from the earliest stage that still needs doing."""
+    if (model.source or "studio") != "studio":
+        raise RegistryError(409, "external provider models have no Studio acquisition")
     if model.state is not ModelState.FAILED:
         raise RegistryError(409, f"{model.slug} is {model.state.value}, not failed")
 
@@ -516,20 +523,33 @@ def load_state_for(engines: list[EngineProcessRow]) -> tuple[LoadState, list[str
     return LoadState.COLD, []
 
 
-def visible_to(*, is_admin: bool, model: ModelRow) -> bool:
-    """Whether a caller may see a model at all.
+def published_ready_entitled(model: ModelRow, entitlements: frozenset[str]) -> bool:
+    """Shared non-admin and native Chat eligibility predicate."""
 
-    An admin sees everything. Anyone else sees only published, ready models — and, until
-    feature 007 supplies real subjects, only those with an empty entitlement list, because
-    there is nobody yet who could be on one.
-    """
-    if is_admin:
-        return True
     return (
         model.visibility is Visibility.PUBLISHED
         and model.state is ModelState.READY
-        and not model.entitlement
+        and set(model.entitlement or []).issubset(entitlements)
     )
+
+
+def chat_model_eligible(model: ModelRow, principal: Principal) -> bool:
+    """Native Chat never bypasses publication, readiness or entitlement for admins."""
+
+    return published_ready_entitled(model, principal.entitlements)
+
+
+def visible_to(
+    *, is_admin: bool, model: ModelRow, entitlements: frozenset[str] = frozenset()
+) -> bool:
+    """Whether a caller may see a model at all.
+
+    An admin sees everything. Anyone else sees only published, ready models for which the
+    verified identity holds every required entitlement.
+    """
+    if is_admin:
+        return True
+    return published_ready_entitled(model, entitlements)
 
 
 def to_listing(
@@ -556,6 +576,7 @@ def to_listing(
         loaded_on=[node_names.get(uuid.UUID(n), n) for n in node_ids],
         estimated_warmup_seconds=warmup,
         capability_profile=CapabilityProfile.model_validate(profile),
+        backend=EngineBackend(model.backend or EngineBackend.MLX_LM),
     )
 
 
@@ -563,21 +584,53 @@ def to_listing(
 
 
 async def update_model(
-    session: AsyncSession, model: ModelRow, request: ModelUpdateRequest, *, actor: str
+    session: AsyncSession,
+    model: ModelRow,
+    request: ModelUpdateRequest,
+    *,
+    actor: str,
+    provider_ready: bool = False,
 ) -> ModelRow:
     """Apply a curation change (spec US5)."""
     if model.state is ModelState.RETIRED:
         raise RegistryError(409, "a retired model cannot be edited")
 
     fields = request.model_fields_set
+    if (model.source or "studio") != "studio" and fields.intersection(
+        {"placement_policy", "idle_ttl_seconds", "chat_template", "capability_profile"}
+    ):
+        raise RegistryError(409, "external provider model has no Studio placement or template")
     changes: dict[str, Any] = {}
 
     if "visibility" in fields and request.visibility is not None:
+        if (
+            request.visibility is Visibility.PUBLISHED
+            and (model.source or "studio") != "studio"
+            and not provider_ready
+        ):
+            raise RegistryError(409, "external provider routing is not enabled")
         if request.visibility is Visibility.PUBLISHED and model.state is not ModelState.READY:
             raise RegistryError(
                 409,
                 f"{model.slug} is {model.state.value}; only a ready model can be published",
             )
+        if request.visibility is Visibility.PUBLISHED and (model.source or "studio") == "studio":
+            any_variant = await session.scalar(
+                select(ModelVariantRow.id).where(ModelVariantRow.model_id == model.id).limit(1)
+            )
+            if any_variant is not None:
+                routable = await session.scalar(
+                    select(ModelVariantRow.id)
+                    .where(
+                        ModelVariantRow.model_id == model.id,
+                        ModelVariantRow.is_default.is_(True),
+                        ModelVariantRow.published.is_(True),
+                        ModelVariantRow.validated.is_(True),
+                    )
+                    .limit(1)
+                )
+                if routable is None:
+                    raise RegistryError(409, "publish a validated default variant first")
         if request.visibility is not model.visibility:
             changes["visibility"] = request.visibility.value
             model.visibility = request.visibility

@@ -33,7 +33,9 @@ from coire_core.models.node import (
     WorkspacePrepareRequest,
     WorkspacePrepareResult,
 )
+from coire_core.models.registry import EngineBackend
 from coire_core.models.runs import (
+    RunActivityPage,
     RunCollectedResult,
     RunContainerCreate,
     RunContainerObservation,
@@ -410,6 +412,7 @@ class NodeClient:
         chat_template_present: bool,
         reference_perplexity: float | None = None,
         reference_variant_id: uuid.UUID | None = None,
+        backend: EngineBackend = EngineBackend.MLX_LM,
     ) -> JobStatus:
         _, body = await self._call(
             "POST",
@@ -418,6 +421,7 @@ class NodeClient:
             json={
                 "job_id": str(job_id),
                 "slug": slug,
+                "backend": backend.value,
                 "tolerance": tolerance,
                 "validator_version": validator_version,
                 "chat_template_present": chat_template_present,
@@ -458,6 +462,10 @@ class NodeClient:
         slug: str,
         estimate_bytes: int,
         chat_template: str | None = None,
+        backend: EngineBackend = EngineBackend.MLX_LM,
+        vision_cache_size: int | None = None,
+        max_num_seqs: int | None = None,
+        max_kv_size: int | None = None,
     ) -> tuple[bool, EngineStatus]:
         """Returns `(already_running, status)`.
 
@@ -465,6 +473,14 @@ class NodeClient:
         rather than starting a second one (spec FR-019); the caller needs to know which
         happened so it does not create a duplicate row.
         """
+        if backend is EngineBackend.MLX_VLM:
+            observed = await self.health(node)
+            if EngineBackend.MLX_VLM not in observed.supported_backends:
+                raise NodeError(
+                    NodeErrorKind.PROTOCOL,
+                    node,
+                    detail="node does not advertise the visual engine backend",
+                )
         status, body = await self._call(
             "POST",
             node,
@@ -474,6 +490,10 @@ class NodeClient:
                 "slug": slug,
                 "estimate_bytes": estimate_bytes,
                 "chat_template": chat_template,
+                "backend": backend.value,
+                "vision_cache_size": vision_cache_size,
+                "max_num_seqs": max_num_seqs,
+                "max_kv_size": max_kv_size,
             },
             expect=(200, 202),
         )
@@ -590,6 +610,32 @@ class NodeClient:
     async def collect_run(self, node: str, run_id: uuid.UUID) -> RunCollectedResult:
         _, body = await self._call("GET", node, f"/node/runs/{run_id}/result", expect=(200,))
         return RunCollectedResult.model_validate(body)
+
+    async def run_activity(
+        self, node: str, run_id: uuid.UUID, *, after_sequence: int = 0
+    ) -> RunActivityPage:
+        _, body = await self._call(
+            "GET",
+            node,
+            f"/node/runs/{run_id}/activity?after_sequence={after_sequence}&limit=100",
+            expect=(200,),
+        )
+        page = RunActivityPage.model_validate(body)
+        if page.run_id != run_id:
+            raise NodeError(NodeErrorKind.PROTOCOL, node, detail="activity run identity changed")
+        if (
+            (not page.available and (page.data or page.next_sequence is not None))
+            or any(
+                record.sequence != after_sequence + index
+                for index, record in enumerate(page.data, start=1)
+            )
+            or (
+                page.next_sequence is not None
+                and (not page.data or page.next_sequence != page.data[-1].sequence)
+            )
+        ):
+            raise NodeError(NodeErrorKind.PROTOCOL, node, detail="activity page cursor is invalid")
+        return page
 
     async def remove_run(self, node: str, run_id: uuid.UUID, *, kill: bool = False) -> None:
         suffix = "?kill=true" if kill else ""

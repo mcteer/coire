@@ -9,81 +9,15 @@ import {
   type ConsoleSnapshot,
   type ModelVariant,
   type User,
+  ApiError,
 } from "./api/client";
-import { AskCoire } from "./pages/admin/AskCoire";
 import { useEventStream } from "./hooks/useEventStream";
 import { ConfirmAction } from "./components/ConfirmAction";
+import { AppShell, type AdminTab } from "./components/AppShell";
+import { Chat } from "./pages/Chat";
+import { clearChatDrafts } from "./api/chatDrafts";
 import "./styles/app.css";
-type Tab = "overview" | "models" | "instances" | "activity" | "identity" | "audit";
-const TABS: [Tab, string][] = [
-  ["overview", "Overview"],
-  ["models", "Models"],
-  ["instances", "Instances"],
-  ["activity", "Runs & jobs"],
-  ["identity", "Users & keys"],
-  ["audit", "Audit"],
-];
 const gb = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GB`;
-function Shell({
-  tab,
-  setTab,
-  children,
-  snapshot,
-}: {
-  tab: Tab;
-  setTab: (t: Tab) => void;
-  children: React.ReactNode;
-  snapshot: ConsoleSnapshot | null;
-}) {
-  const health = snapshot?.cluster.nodes.some((n) => n.reachability !== "healthy")
-    ? "degraded"
-    : "healthy";
-  return (
-    <div className="app">
-      <header className="header">
-        <div className="brand">
-          <span className="logo">C</span>
-          <b>Coire</b>
-          <span className="muted">
-            / Admin / <b>{TABS.find(([id]) => id === tab)?.[1]}</b>
-          </span>
-        </div>
-        <div className="chips">
-          <span className="chip">
-            <i className={`dot ${health}`} />
-            {health}
-          </span>
-          <span className="chip mono">
-            {snapshot ? new Date(snapshot.observed_at).toLocaleTimeString() : "connecting"}
-          </span>
-          <span className="logo">M</span>
-        </div>
-      </header>
-      <nav className="tabs glass" aria-label="Admin sections">
-        {TABS.map(([id, label]) => (
-          <button
-            className={`tab ${tab === id ? "active" : ""}`}
-            aria-current={tab === id ? "page" : undefined}
-            onClick={() => setTab(id)}
-            key={id}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
-      {children}
-      <nav className="dock glass" aria-label="Primary">
-        <a href="#chat">Chat</a>
-        <a href="#training">Training</a>
-        <a href="#images">Images</a>
-        <a href="#settings">Settings</a>
-        <a className="active" aria-current="page" href="#admin">
-          Admin
-        </a>
-      </nav>
-    </div>
-  );
-}
 export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
   return (
     <main className="grid">
@@ -107,7 +41,8 @@ export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
             />
           </div>
           <p className="mono">
-            {gb(snapshot.core.memory_total_bytes - snapshot.core.memory_free_bytes)} / {gb(snapshot.core.memory_total_bytes)}
+            {gb(snapshot.core.memory_total_bytes - snapshot.core.memory_free_bytes)} /{" "}
+            {gb(snapshot.core.memory_total_bytes)}
           </p>
           <div className="facts">
             <span className="fact">
@@ -117,7 +52,12 @@ export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
               Disk free<b>{gb(snapshot.core.disk_free_bytes)}</b>
             </span>
             <span className="fact">
-              CPU<b>{snapshot.core.cpu_percent == null ? "Unknown" : `${snapshot.core.cpu_percent.toFixed(0)}%`}</b>
+              CPU
+              <b>
+                {snapshot.core.cpu_percent == null
+                  ? "Unknown"
+                  : `${snapshot.core.cpu_percent.toFixed(0)}%`}
+              </b>
             </span>
             <span className="fact">
               Source<b>control-plane runtime</b>
@@ -205,7 +145,6 @@ export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
           </p>
         ))}
       </section>
-      <AskCoire />
     </main>
   );
 }
@@ -1095,26 +1034,50 @@ function AuditPage() {
 export function App() {
   const [me, setMe] = useState<User | null>(null),
     [authError, setAuthError] = useState(""),
-    [tab, setTabState] = useState<Tab>(
-      () => (location.hash.replace("#admin/", "") as Tab) || "overview",
-    );
+    [authExpired, setAuthExpired] = useState(false),
+    [hash, setHash] = useState(() => location.hash);
+  const admin = hash.startsWith("#admin");
+  const requested = hash.replace("#admin/", "");
+  const tab: AdminTab = (
+    ["overview", "models", "instances", "activity", "identity", "audit"].includes(requested)
+      ? requested
+      : "overview"
+  ) as AdminTab;
   useEffect(() => {
     void api<User>("/api/v1/me")
       .then(setMe)
-      .catch((e) => setAuthError(String(e)));
+      .catch((e) => {
+        if (e instanceof ApiError && e.status === 401) {
+          setAuthExpired(true);
+          setAuthError("Your session expired. Sign in again to continue.");
+        } else setAuthError(String(e));
+      });
+  }, []);
+  useEffect(() => {
+    const changed = () => setHash(location.hash);
+    window.addEventListener("hashchange", changed);
+    return () => window.removeEventListener("hashchange", changed);
   }, []);
   const stream = useEventStream<ConsoleSnapshot>(
-    me?.role === "admin" ? "/api/v1/admin/console/events" : "",
+    me?.role === "admin" && admin ? "/api/v1/admin/console/events" : "",
     null,
   );
-  const setTab = (next: Tab) => {
+  const setTab = (next: AdminTab) => {
     history.pushState(null, "", `#admin/${next}`);
-    setTabState(next);
+    setHash(location.hash);
+  };
+  const signOut = () => {
+    if (me) clearChatDrafts(me.id);
   };
   if (authError)
     return (
       <main className="app">
         <p className="error">{authError}</p>
+        {authExpired && (
+          <a className="button" href="/">
+            Sign in again
+          </a>
+        )}
       </main>
     );
   if (!me)
@@ -1123,7 +1086,7 @@ export function App() {
         <p>Authenticating…</p>
       </main>
     );
-  if (me.role !== "admin")
+  if (admin && me.role !== "admin")
     return (
       <main className="app">
         <section className="panel glass">
@@ -1132,8 +1095,21 @@ export function App() {
         </section>
       </main>
     );
+  if (!admin)
+    return (
+      <AppShell view="chat" canAdmin={me.role === "admin"} onSignOut={signOut}>
+        <Chat ownerId={me.id} isAdmin={me.role === "admin"} />
+      </AppShell>
+    );
   return (
-    <Shell tab={tab} setTab={setTab} snapshot={stream.data}>
+    <AppShell
+      view="admin"
+      canAdmin
+      tab={tab}
+      setTab={setTab}
+      snapshot={stream.data}
+      onSignOut={signOut}
+    >
       {stream.error && !stream.data ? (
         <p className="error banner">Live state unavailable: {stream.error}</p>
       ) : null}
@@ -1152,6 +1128,6 @@ export function App() {
       ) : (
         <ActivityPage />
       )}
-    </Shell>
+    </AppShell>
   );
 }

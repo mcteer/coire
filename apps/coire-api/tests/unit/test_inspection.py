@@ -22,7 +22,7 @@ def _repo(**changes: object) -> RepoInspection:
     return RepoInspection.model_validate(values)
 
 
-def _nodes(budget: int = 10_000) -> list[NodeView]:
+def _nodes(budget: int = 1024**3) -> list[NodeView]:
     return [NodeView("coire-edge-a", Reachability.HEALTHY, memory_budget_bytes=budget)]
 
 
