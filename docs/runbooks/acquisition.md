@@ -49,6 +49,20 @@ reservations; partial conversion directories are removed and partial Hub pulls r
 Use the **Coire Acquisition Jobs** dashboard for stage duration, reservations, validation, and
 estimate drift. Alerts cover stuck stages, exhausted conversion retries, and >10% size drift.
 
+## Image asset file preflight (feature 015 staging)
+
+The Studio node has `image_asset_files` and `snapshot_image_asset` helpers for the upcoming
+admin-only image acquisition workflow. The preflight requires a resolved commit, safe unique
+paths, safetensors with upstream digests, and local configuration for base/control/upscale
+assets. The classifier is limited to the pinned Falconsai revision and weight digest in the
+feature research. Its upstream repository also contains `.pt` and `.bin` files; the snapshot
+helper selects exact inert files and never transfers those pickle weights. An unsafe path or
+changed classifier digest refuses the asset before transfer. Investigate the inspected file
+list and pinned revision, then retry only through the admin workflow once it exists. This
+helper is not yet wired into acquisition or publication; existing language acquisition remains
+unchanged. Rollback removes the image helper with the node version; no model files are acquired
+by this staging slice.
+
 ## Raw retention and rollback
 
 Raw weights are removed only after validation and two matching copies unless `keep_raw=true`. Stop

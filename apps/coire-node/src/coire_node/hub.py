@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ from huggingface_hub.errors import (
 )
 
 from coire_core.models.jobs import JobErrorKind, Quantization, RepoFile, RepoInspection
+from coire_core.models.registry import AUXILIARY_IMAGE_KINDS, ModelKind
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +37,15 @@ WEIGHT_SUFFIXES = (".safetensors",)
 GGUF_SUFFIX = ".gguf"
 CONFIG_FILE = "config.json"
 TOKENIZER_CONFIG_FILE = "tokenizer_config.json"
+
+_IMAGE_SAFE_SUFFIXES = frozenset(
+    {".safetensors", ".json", ".txt", ".model", ".tiktoken", ".md", ".yaml", ".yml"}
+)
+_IMAGE_SAFE_NAMES = frozenset({".gitattributes", "LICENSE", "LICENSE.txt"})
+_IMAGE_CLASSIFIER_REPO = "Falconsai/nsfw_image_detection"
+_IMAGE_CLASSIFIER_REVISION = "96cb0d0342c7afb80cab76ecc58b265fa44da256"
+_IMAGE_CLASSIFIER_SHA256 = "97b2ce64ec146884b37f98ee7944ca4891aa72f6827dc0cb10684a1cbecd5830"
+_IMAGE_CLASSIFIER_BYTES = 343_223_968
 
 # Sizing keys, looked up in `text_config` first for multimodal repositories.
 _SHAPE_KEYS = (
@@ -226,6 +237,87 @@ def snapshot(
             revision=revision,
             local_dir=str(local_dir),
             token=token or None,
+            max_workers=4,
+        )
+    except Exception as exc:
+        raise classify(exc) from exc
+
+
+def image_asset_files(repo: RepoInspection, kind: ModelKind) -> tuple[str, ...]:
+    """Select exact inert files for a pinned image acquisition, before any weight transfer."""
+    if kind is not ModelKind.IMAGE_MODEL and kind not in AUXILIARY_IMAGE_KINDS:
+        raise ValueError("image asset kind required")
+    if not re.fullmatch(r"[0-9a-f]{40}", repo.revision) or repo.revision == "0" * 40:
+        raise ValueError("image asset requires a resolved commit")
+    if not repo.files or len(repo.files) > 4096:
+        raise ValueError("image asset file count is invalid")
+
+    seen: set[str] = set()
+    selected: dict[str, RepoFile] = {}
+    for item in repo.files:
+        path = item.path
+        parts = path.split("/")
+        if (
+            not path
+            or path.startswith("/")
+            or "\\" in path
+            or any(part in {"", ".", ".."} for part in parts)
+            or any(char in path for char in "*?[]")
+            or any(ord(char) < 32 or ord(char) == 127 for char in path)
+            or path in seen
+        ):
+            raise ValueError("image asset has an unsafe or duplicate path")
+        seen.add(path)
+        if Path(path).suffix not in _IMAGE_SAFE_SUFFIXES and path not in _IMAGE_SAFE_NAMES:
+            continue
+        if path.endswith(".safetensors") and (
+            item.bytes <= 0
+            or item.upstream_sha256 is None
+            or not re.fullmatch(r"[0-9a-f]{64}", item.upstream_sha256)
+        ):
+            raise ValueError("image asset weight lacks an upstream digest")
+        selected[path] = item
+
+    weights = {path for path in selected if path.endswith(".safetensors")}
+    if not weights:
+        raise ValueError("image asset has no safetensors weights")
+    if (
+        kind in {ModelKind.IMAGE_MODEL, ModelKind.CONTROL_MODEL, ModelKind.UPSCALE_MODEL}
+        and "config.json" not in selected
+    ):
+        raise ValueError("image asset has no local config")
+    if kind is ModelKind.IMAGE_CLASSIFIER:
+        weight = selected.get("model.safetensors")
+        if (
+            repo.repo_id != _IMAGE_CLASSIFIER_REPO
+            or repo.revision != _IMAGE_CLASSIFIER_REVISION
+            or "config.json" not in selected
+            or "preprocessor_config.json" not in selected
+            or weights != {"model.safetensors"}
+            or weight is None
+            or weight.bytes != _IMAGE_CLASSIFIER_BYTES
+            or weight.upstream_sha256 != _IMAGE_CLASSIFIER_SHA256
+        ):
+            raise ValueError("classifier asset differs from pinned manifest")
+    return tuple(sorted(selected))
+
+
+def snapshot_image_asset(
+    repo: RepoInspection,
+    kind: ModelKind,
+    *,
+    local_dir: str | Path,
+    token: str | None = None,
+) -> str:
+    """Pull only selected image files; the admin workflow owns licence and publication checks."""
+    allowed = image_asset_files(repo, kind)
+    try:
+        return snapshot_download(
+            repo.repo_id,
+            revision=repo.revision,
+            local_dir=str(local_dir),
+            token=token or None,
+            allow_patterns=list(allowed),
             max_workers=4,
         )
     except Exception as exc:
