@@ -254,6 +254,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/image-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Preset */
+        post: operations["create_preset_api_v1_admin_image_presets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/image-presets/{preset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Retire Preset */
+        delete: operations["retire_preset_api_v1_admin_image_presets__preset_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Preset */
+        patch: operations["update_preset_api_v1_admin_image_presets__preset_id__patch"];
+        trace?: never;
+    };
     "/api/v1/admin/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -3509,10 +3544,283 @@ export interface components {
             supports_negative_prompt: boolean;
         };
         /**
+         * ImageContentMode
+         * @enum {string}
+         */
+        ImageContentMode: "standard" | "explicit";
+        /** ImageControl */
+        "ImageControl-Input": {
+            /**
+             * High Threshold
+             * @default 200
+             */
+            high_threshold: number;
+            /**
+             * Image Id
+             * Format: uuid
+             */
+            image_id: string;
+            /**
+             * Low Threshold
+             * @default 100
+             */
+            low_threshold: number;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /**
+             * Strength
+             * @default 1
+             */
+            strength: number | string;
+            /**
+             * Type
+             * @default canny
+             * @constant
+             */
+            type: "canny";
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /** ImageControl */
+        "ImageControl-Output": {
+            /**
+             * High Threshold
+             * @default 200
+             */
+            high_threshold: number;
+            /**
+             * Image Id
+             * Format: uuid
+             */
+            image_id: string;
+            /**
+             * Low Threshold
+             * @default 100
+             */
+            low_threshold: number;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /**
+             * Strength
+             * @default 1
+             */
+            strength: string;
+            /**
+             * Type
+             * @default canny
+             * @constant
+             */
+            type: "canny";
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /** ImageLora */
+        "ImageLora-Input": {
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Scale */
+            scale: number | string;
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /** ImageLora */
+        "ImageLora-Output": {
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Scale */
+            scale: string;
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /**
          * ImageMode
          * @enum {string}
          */
         ImageMode: "txt2img" | "img2img" | "fill" | "control";
+        /** ImageOutputSettings */
+        ImageOutputSettings: {
+            /**
+             * Embed Metadata
+             * @default true
+             * @constant
+             */
+            embed_metadata: true;
+            /**
+             * Format
+             * @default png
+             * @constant
+             */
+            format: "png";
+        };
+        /** ImagePreset */
+        ImagePreset: {
+            defaults: components["schemas"]["ImageSubmitRequest-Output"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Prompt Prefix
+             * @default
+             */
+            prompt_prefix: string;
+            /**
+             * Retired
+             * @default false
+             */
+            retired: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /** ImagePresetCreate */
+        ImagePresetCreate: {
+            defaults: components["schemas"]["ImageSubmitRequest-Input"];
+            /** Name */
+            name: string;
+            /**
+             * Prompt Prefix
+             * @default
+             */
+            prompt_prefix: string;
+        };
+        /** ImagePresetUpdate */
+        ImagePresetUpdate: {
+            defaults?: components["schemas"]["ImageSubmitRequest-Input"] | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Name */
+            name?: string | null;
+            /** Prompt Prefix */
+            prompt_prefix?: string | null;
+        };
+        /**
+         * ImageSubmitRequest
+         * @description Root-level overrides; preset/default resolution produces an ImageSpec later.
+         */
+        "ImageSubmitRequest-Input": {
+            content_mode?: components["schemas"]["ImageContentMode"] | null;
+            control?: components["schemas"]["ImageControl-Input"] | null;
+            /** Guidance */
+            guidance?: number | string | null;
+            /** Height */
+            height?: number | null;
+            /** Init Image Id */
+            init_image_id?: string | null;
+            /** Loras */
+            loras?: components["schemas"]["ImageLora-Input"][] | null;
+            /** Mask Id */
+            mask_id?: string | null;
+            mode?: components["schemas"]["ImageMode"] | null;
+            /** Model Id */
+            model_id?: string | null;
+            /** N */
+            n?: number | null;
+            /** Negative Prompt */
+            negative_prompt?: string | null;
+            output?: components["schemas"]["ImageOutputSettings"] | null;
+            /** Preset Id */
+            preset_id?: string | null;
+            /** Preset Revision */
+            preset_revision?: number | null;
+            /** Prompt */
+            prompt?: string | null;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Seed */
+            seed?: number | null;
+            /** Steps */
+            steps?: number | null;
+            /** Strength */
+            strength?: number | string | null;
+            upscale?: components["schemas"]["ImageUpscale"] | null;
+            /** Variant Id */
+            variant_id?: string | null;
+            /** Width */
+            width?: number | null;
+        };
+        /**
+         * ImageSubmitRequest
+         * @description Root-level overrides; preset/default resolution produces an ImageSpec later.
+         */
+        "ImageSubmitRequest-Output": {
+            content_mode?: components["schemas"]["ImageContentMode"] | null;
+            control?: components["schemas"]["ImageControl-Output"] | null;
+            /** Guidance */
+            guidance?: string | null;
+            /** Height */
+            height?: number | null;
+            /** Init Image Id */
+            init_image_id?: string | null;
+            /** Loras */
+            loras?: components["schemas"]["ImageLora-Output"][] | null;
+            /** Mask Id */
+            mask_id?: string | null;
+            mode?: components["schemas"]["ImageMode"] | null;
+            /** Model Id */
+            model_id?: string | null;
+            /** N */
+            n?: number | null;
+            /** Negative Prompt */
+            negative_prompt?: string | null;
+            output?: components["schemas"]["ImageOutputSettings"] | null;
+            /** Preset Id */
+            preset_id?: string | null;
+            /** Preset Revision */
+            preset_revision?: number | null;
+            /** Prompt */
+            prompt?: string | null;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Seed */
+            seed?: number | null;
+            /** Steps */
+            steps?: number | null;
+            /** Strength */
+            strength?: string | null;
+            upscale?: components["schemas"]["ImageUpscale"] | null;
+            /** Variant Id */
+            variant_id?: string | null;
+            /** Width */
+            width?: number | null;
+        };
+        /** ImageUpscale */
+        ImageUpscale: {
+            /**
+             * Factor
+             * @enum {integer}
+             */
+            factor: 2 | 4;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Variant Id */
+            variant_id?: string | null;
+        };
         /** InstanceCreate */
         InstanceCreate: {
             /** Affinity Node Id */
@@ -5808,6 +6116,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HarnessEvaluation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_preset_api_v1_admin_image_presets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImagePresetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePreset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_preset_api_v1_admin_image_presets__preset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                preset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_preset_api_v1_admin_image_presets__preset_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                preset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImagePresetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePreset"];
                 };
             };
             /** @description Validation Error */

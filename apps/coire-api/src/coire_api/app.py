@@ -24,6 +24,7 @@ from coire_api.routes import (
     admin_evaluations,
     admin_failover,
     admin_identity,
+    admin_images,
     admin_ledger,
     admin_models,
     admin_nodes,
@@ -158,6 +159,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_evaluations.router)
     app.include_router(admin_ledger.router)
     app.include_router(admin_identity.router)
+    app.include_router(admin_images.router)
     app.include_router(admin_variants.router)
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)

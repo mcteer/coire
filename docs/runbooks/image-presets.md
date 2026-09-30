@@ -36,6 +36,12 @@ measured base and every visible/hidden auxiliary. Update locks the pointer, requ
 the expected revision and inserts a new revision; old revisions are never edited.
 Retire changes only the pointer state, preserving job history. Each successful
 mutation writes a content-free `image.preset.*` audit row in the same transaction.
-The future route must require a live human admin, commit mutation and audit together,
-and surface stale revisions as conflicts. To stop new use, retire the pointer; do not
-delete revision rows while jobs or outputs reference them.
+`POST /api/v1/admin/image-presets`, `PATCH /api/v1/admin/image-presets/{preset_id}`
+and `DELETE /api/v1/admin/image-presets/{preset_id}` now require a live human admin
+and exact configured Origin on writes. They commit the pointer, immutable revision
+and success audit together. A refusal writes `image.preset.admin_refused` separately;
+stale revisions and duplicate names return a safe conflict. Inspect those audit
+actions and the `coire_image_requests_total{operation="preset_mutation"}` counter
+without recording prompt content. To stop new use, retire the pointer; do not delete
+revision rows while jobs or outputs reference them. The feature flag still prevents
+image admission, and ordinary eligible preset listings remain to be wired.
