@@ -1159,3 +1159,20 @@ ready reset, without replaying generation. Healthy and unavailable health
 regressions prove one refresh, no generation PUT, and no journal mutation;
 unavailable health prevents the status call. Node job/supervisor selection
 passed **32 tests**, Ruff and strict mypy passed.
+
+After the adoption/observation and input safety fixes, the full local
+non-integration/non-engine selection passed **1,762 tests**, with 2 unrelated
+skips and 160 deselections. The four dedicated local fake-worker/recovery
+integration tests passed. The complete web selection passed **134 tests**;
+eslint, TypeScript/Vite build and generated OpenAPI freshness passed. The
+actual native child adoption/active-denoise-stop test passed three additional
+independent repetitions, not just its first successful trial.
+
+Current arm64 API and scheduler images rebuilt from commit 381fd1f, each
+passed all seven image-policy checks and the core no-user-harness rule, and
+each passed CRITICAL Trivy scans. Syft produced validated SPDX-2.3 documents
+with 88 packages each under `/tmp/coire-015-{api,scheduler}-current.spdx.json`.
+Compose config validated. Builds/scans did not restart the production stack.
+T081 remains open for the complete final-source integration/CI matrix and
+immutable node rollout after the native image loader changes. No full-model
+image asset has been acquired and T083/T084 remain open.
