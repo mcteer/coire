@@ -860,3 +860,11 @@ The complete local unit/contract selection passed **1,734 tests**, with 2
 skipped and 159 deselected; changed-file strict mypy and Ruff passed. The
 cross-process PostgreSQL concurrency and live inference priority scenarios
 remain open under T065/T068/T070/T072.
+
+A disposable localhost PostgreSQL 17 container ran the image migration,
+registry-kind downgrade guard, populated chat migration, image quota
+serialization and transaction advisory-lock tests. The selection passed
+**7 integration tests**, with 15 unrelated tests deselected, in 3.35 seconds.
+The scratch database container was stopped and removed after the run. This
+adds local migration and concurrency evidence for T081; the image-build,
+scan, SBOM and complete cluster acceptance gates remain open.
