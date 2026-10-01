@@ -12,7 +12,7 @@
 # excludes it by name and `tests/integration/test_topology.py` asserts no service of the
 # production compose project uses it.
 
-FROM python:3.13-slim-bookworm@sha256:c45a22ea000adfd9cda29364bbe7edd23001ce5cc2ad15857cfbf7766943b9ca AS builder
+FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b AS builder
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -37,12 +37,12 @@ COPY packages/coire-core packages/coire-core
 COPY apps/coire-node apps/coire-node
 RUN uv sync --frozen --no-dev --no-editable --package coire-node
 
-FROM python:3.13-slim-bookworm@sha256:c45a22ea000adfd9cda29364bbe7edd23001ce5cc2ad15857cfbf7766943b9ca
+FROM python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
 
 # procps for `pkill`, which the restart test uses to kill the agent while its engines keep
 # running — the whole point of this image.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends procps curl tini git=1:2.39.5-0+deb12u3 \
+ && apt-get install -y --no-install-recommends procps curl tini git=1:2.47.3-0+deb13u1 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/.venv /app/.venv

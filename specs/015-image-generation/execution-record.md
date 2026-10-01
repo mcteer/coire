@@ -877,3 +877,11 @@ no CRITICAL findings for either image (exit 0). Syft generated SPDX JSON
 SBOMs with 88 packages each; the files are in `/tmp`, outside the repository.
 The full node/worker image matrix and production image-model checks remain
 open under T081/T083.
+
+The Linux-only `coire-node-test` CI image also built and produced an SPDX SBOM.
+Its initial local CRITICAL Trivy scan failed on the pinned Debian 12 test
+base: Perl, SQLite and zlib findings had no fixed package version in that
+base. Updating only this CI image to digest-pinned Python 3.13 on Debian 13
+and the matching pinned Git package produced a clean rebuild, CRITICAL Trivy
+scan (exit 0), SPDX SBOM and node/core import smoke. The test image still
+stays outside the production image-policy matrix and is never deployed.
