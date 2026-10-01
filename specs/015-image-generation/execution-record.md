@@ -1008,3 +1008,32 @@ stale because this workspace does not expose that console entry point. The
 web suite passed **134 tests**, eslint passed and the TypeScript/Vite
 production build passed. A current node wheelhouse build and Studio install
 check are underway.
+
+The current API, scheduler and migration images rebuilt as arm64 images and
+passed all seven production image-policy checks, CRITICAL Trivy scans and
+SPDX SBOM generation. The first migration scan saw a stale local image with
+an older package set; an explicit `coire-migrate` rebuild used the current
+lock and passed its repeat scan. The locked macOS arm64 node wheelhouse
+selected 87 hash-checked wheels. Both Studios installed immutable
+`0.2.0-d340019c6bad`; their agents restarted under launchd, `/ready` returned
+200, unauthenticated `/node/health` returned 401 and authenticated health
+returned 200. Studio B loaded its existing SmolVLM 256M copy and answered a
+synthetic 32-pixel red-image request through the authenticated node proxy
+with HTTP 200 and one choice in 1.51 seconds, then received a stop request.
+Studio A re-adopted its existing text engine PID 55229 as `starting`, but its
+loopback `/health` gave an empty response for over 20 seconds. An exact
+node-managed stop and reload produced PID 56633; the new process reached
+`ready` and answered a four-token completion with HTTP 200 and one choice
+in 0.91 seconds. The failed re-adoption is not counted as a passing gate.
+
+Investigation found that node-spawned bare engines inherited a stderr pipe
+owned by the agent process; after agent exit, engine stderr writes could lose
+their reader. The node now gives each engine a private owner-only stderr file
+whose descriptor survives agent restart, captures the final 4 KiB on startup
+failure, trims files above 8 MiB during health checks and removes them after
+confirmed stop. If TERM and KILL still cannot prove exact process death, the
+node keeps the engine `stopping` and its memory held. A fake-engine regression
+emits stderr after adoption and requires a successful completion. The focused
+engine contract selection passed **21 tests**; Ruff, strict mypy and the node
+wheel build script syntax check passed. Physical re-adoption with this fix is
+pending a new immutable node install.

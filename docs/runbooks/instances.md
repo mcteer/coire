@@ -62,7 +62,11 @@ After an agent restart, a surviving engine keeps its memory reservation and repo
 `starting` while the node proves a one-token generation again. A live PID alone does
 not establish readiness. Inspect `GET /node/engines`, the
 `coire_engine_adoption_total` outcomes, the `coire.node.engine_adopt` span and
-the `CoireEngineAdoptionRecheckFailed` alert. If an adopted engine remains
+the `CoireEngineAdoptionRecheckFailed` alert. Bare engine stderr goes to an
+owner-only file in `/opt/coire/state/engine-stderr/`; the file descriptor survives
+an agent restart, and the node trims files above 8 MiB during health checks.
+The node removes the file after a confirmed stop or captures its last 4 KiB
+on startup failure. If an adopted engine remains
 unresponsive, drain its instance through the admin API, stop the exact engine
 through the authenticated node control API, and reload it through normal
 placement. Confirm the new engine reaches `ready` and serves a short request

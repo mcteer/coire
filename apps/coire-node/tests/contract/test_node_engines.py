@@ -402,6 +402,36 @@ class TestStopAndDeath:
 
 
 class TestReconcile:
+    def test_adopted_engine_keeps_stderr_sink_and_answers_after_parent_exit(
+        self, engine_agent: Agent
+    ) -> None:
+        engine_id = uuid.uuid4()
+        engine_agent.engines.start(engine_id=engine_id, slug=SLUG, estimate_bytes=1024)
+        ready = wait_state(engine_agent, engine_id, EngineState.READY)
+        original = engine_agent.engines._engines[str(engine_id)]
+        assert original.stderr_path is not None and original.stderr_path.is_file()
+        assert original.proc is not None and original.proc.stderr is None
+        engine_agent.engines.shutdown()
+
+        fresh = EngineManager(engine_agent.settings, engine_agent.store, "127.0.0.1")
+        try:
+            assert fresh.adopt_from_state()[0].pid == ready.pid
+            assert wait_state_for_manager(fresh, engine_id, EngineState.READY).pid == ready.pid
+            with httpx.Client(timeout=5.0) as client:
+                response = client.post(
+                    f"http://127.0.0.1:{ready.port}/v1/chat/completions",
+                    json={
+                        "messages": [{"role": "user", "content": "emit-stderr-after-adoption"}],
+                        "max_tokens": 1,
+                    },
+                )
+            assert response.status_code == 200
+            fresh.stop(engine_id)
+            wait_state_for_manager(fresh, engine_id, EngineState.STOPPED)
+            assert not original.stderr_path.exists()
+        finally:
+            fresh.shutdown()
+
     def test_a_new_manager_adopts_a_running_engine(
         self, engine_agent: Agent, contract: dict[str, Any]
     ) -> None:
