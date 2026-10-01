@@ -1192,3 +1192,22 @@ passed (the private launch field does not change the public API artifact).
 The runbook records legacy defaults and drain-before-downgrade compatibility.
 Control preprocessing and actual LoRA stack replacement remain open in T060,
 T061 and T064.
+
+Both Studios now installed immutable `0.2.0-51d9370128ad` from the latest
+hash-verified 87-wheel node staging build. Their installers passed locked
+imports and text/VLM/mflux no-model smoke before flipping the symlink; each
+agent was restarted by TERM to its own PID and launchd recovery. Both control
+listeners returned readiness 200, authenticated health 200 and unauthenticated
+health 401. B's first check preceded restart completion and connection was
+refused; bounded readiness polling subsequently passed without configuration
+changes. A's exact text engine PID **56826** served HTTP 200 with one choice
+both before and after this additional agent/runtime restart. B loaded its
+existing SmolVLM 256M as PID **17184**, reached ready, served a synthetic red
+32px image with HTTP 200 and one choice, and finished its exact managed stop
+as `stopped`. No image model was acquired and no acquisition restriction was
+bypassed. Keychain credentials stayed inside the SSH-hosted Python process.
+
+The newest broad local selection passed **1,763 tests**, 2 unrelated skips,
+161 deselections. The eight-test real offline tiny-mflux selection and the
+new immutable Studio text/VLM checks are separate from production-weight
+image acceptance; they do not close T083/T084.
