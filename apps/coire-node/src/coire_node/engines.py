@@ -726,14 +726,14 @@ class EngineManager:
                 logger.error("engine %s stop remains uncertain; memory held", engine.engine_id)
                 return
         with self._lock:
+            if engine.stderr_path is not None:
+                with contextlib.suppress(OSError):
+                    engine.stderr_path.unlink(missing_ok=True)
             engine.state = EngineState.STOPPED
             engine.stopped_at = datetime.now(UTC)
             engine.resident_bytes = None
             engine.cpu_percent = None
             self._persist()
-        if engine.stderr_path is not None:
-            with contextlib.suppress(OSError):
-                engine.stderr_path.unlink(missing_ok=True)
         logger.info("engine %s stopped", engine.engine_id)
 
     # -- observation -------------------------------------------------------

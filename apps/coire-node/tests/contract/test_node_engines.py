@@ -403,13 +403,14 @@ class TestStopAndDeath:
 
 class TestReconcile:
     def test_adopted_engine_keeps_stderr_sink_and_answers_after_parent_exit(
-        self, engine_agent: Agent
+        self, engine_agent: Agent, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         engine_id = uuid.uuid4()
         engine_agent.engines.start(engine_id=engine_id, slug=SLUG, estimate_bytes=1024)
         ready = wait_state(engine_agent, engine_id, EngineState.READY)
         original = engine_agent.engines._engines[str(engine_id)]
-        assert original.stderr_path is not None and original.stderr_path.is_file()
+        stderr_path = original.stderr_path
+        assert stderr_path is not None and stderr_path.is_file()
         assert original.proc is not None and original.proc.stderr is None
         engine_agent.engines.shutdown()
 
@@ -426,9 +427,19 @@ class TestReconcile:
                     },
                 )
             assert response.status_code == 200
+            original_persist = fresh._persist
+            stopped_after_cleanup: list[bool] = []
+
+            def observe_terminal_persistence() -> None:
+                if fresh._engines[str(engine_id)].state == EngineState.STOPPED:
+                    stopped_after_cleanup.append(not stderr_path.exists())
+                original_persist()
+
+            monkeypatch.setattr(fresh, "_persist", observe_terminal_persistence)
             fresh.stop(engine_id)
             wait_state_for_manager(fresh, engine_id, EngineState.STOPPED)
-            assert not original.stderr_path.exists()
+            assert stopped_after_cleanup == [True]
+            assert not stderr_path.exists()
         finally:
             fresh.shutdown()
 

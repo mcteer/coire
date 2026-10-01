@@ -1264,3 +1264,18 @@ Broad non-integration/non-engine selection: **1,765 passed**, 2 unrelated skips,
 T065/T068 remain open for their full lease-expiry/profile/pinning/placement matrix;
 these tests do not prove a physical chat/image latency bound. T083/T084 remain
 open: no production image weights were acquired or operator evidence fabricated.
+
+## Adopted text-engine terminal cleanup ordering — 2026-10-01
+
+The next broad suite exposed a timing race in the existing adopted-engine contract:
+STOPPED could be observed while the owned stderr file still existed. A deterministic
+persistence observer then failed with `[False]`, proving this was not simply a slow
+polling test. Stderr removal now runs under the engine lock before STOPPED is made
+visible or persisted. The strengthened observer passes; the full text-engine
+contract selection passes **21 tests**. This changes cleanup ordering, not process
+identity or uncertain-death fencing. Existing OS-error handling remains unchanged;
+this evidence does not prove recovery from a filesystem unlink failure.
+
+The initial broad run is recorded as **1 failure, 1,769 passed, 2 unrelated skips,
+165 deselections**, not a successful gate. A fresh broad gate is still required
+following the retention/UI increment.
