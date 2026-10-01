@@ -86,3 +86,20 @@ def test_existing_corrupt_hold_journal_blocks_node_admission(tmp_path, payload: 
     with pytest.raises(ReservationLedgerUnavailable, match="needs recovery"):
         ReservationLedger(settings, Store(tmp_path), lambda: 0)
     assert journal.read_text() == payload
+
+
+def test_hold_journal_refuses_symlink_and_public_permissions(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    settings = Settings(node_state_dir=str(tmp_path / "state"), node_store_dir=str(tmp_path))
+    journal = tmp_path / "state" / "reservations.json"
+    journal.parent.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}")
+    journal.symlink_to(outside)
+    with pytest.raises(ReservationLedgerUnavailable):
+        ReservationLedger(settings, Store(tmp_path), lambda: 0)
+    assert outside.read_text() == "{}"
+    journal.unlink()
+    journal.write_text("{}")
+    journal.chmod(0o644)
+    with pytest.raises(ReservationLedgerUnavailable):
+        ReservationLedger(settings, Store(tmp_path), lambda: 0)

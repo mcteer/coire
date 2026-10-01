@@ -892,6 +892,9 @@ returned an empty ledger and could admit image/model memory over an uncertain
 live conversion hold. The focused persistence and shared-lock selection
 passed **6 tests**; changed-file Ruff and strict mypy passed. The corrupt
 journal remains intact for operator recovery.
+The journal reader now also rejects symlinks, hard links, public permissions,
+wrong ownership and files above 16 MiB; the expanded focused selection passed
+**7 tests**.
 
 The CI base refresh initially exposed a missing digest entry in
 `deploy/compose/images.lock` through the full unit gate. After adding the

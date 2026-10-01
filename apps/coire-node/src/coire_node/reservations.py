@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import threading
 import uuid
 from collections.abc import Callable
@@ -15,6 +17,8 @@ from coire_core.models.acquisition import (
 )
 from coire_core.settings import Settings
 from coire_node.store import Store, write_atomic
+
+_MAX_JOURNAL_BYTES = 16 * 1024 * 1024
 
 
 class ReservationRefused(RuntimeError):
@@ -47,13 +51,27 @@ class ReservationLedger:
         self._items = self._load()
 
     def _load(self) -> dict[uuid.UUID, Reservation]:
+        fd = -1
         try:
-            raw = self._path.read_text()
+            fd = os.open(self._path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
         except FileNotFoundError:
             return {}
         except OSError as exc:
             raise ReservationLedgerUnavailable("reservation journal needs recovery") from exc
         try:
+            info = os.fstat(fd)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.getuid()
+                or info.st_mode & 0o077
+                or info.st_nlink != 1
+                or info.st_size > _MAX_JOURNAL_BYTES
+            ):
+                raise ReservationLedgerUnavailable("reservation journal needs recovery")
+            with os.fdopen(fd, "r", closefd=False) as source:
+                raw = source.read(_MAX_JOURNAL_BYTES + 1)
+            if len(raw) > _MAX_JOURNAL_BYTES:
+                raise ReservationLedgerUnavailable("reservation journal needs recovery")
             values = json.loads(raw)
             if not isinstance(values, dict):
                 raise ValueError("reservation journal must be an object")
@@ -62,6 +80,8 @@ class ReservationLedger:
             }
         except (OSError, ValueError, TypeError) as exc:
             raise ReservationLedgerUnavailable("reservation journal needs recovery") from exc
+        finally:
+            os.close(fd)
 
     def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
