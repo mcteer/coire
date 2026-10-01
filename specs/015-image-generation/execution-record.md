@@ -843,3 +843,18 @@ for terminal node cleanup and reference release. The deletion and cancellation
 selection passed **15 tests**, including the referenced-input path; strict
 mypy and Ruff passed the changed files. The wider cancellation latency and
 all advanced modes are still open.
+
+Image placement and chat placement now share transaction-scoped Studio locks
+and the authoritative memory ledger. An image worker receives a pinned image
+reservation before dispatch; admission counts every active chat, sandbox and
+image reservation, permits reuse only for the exact resident image instance,
+and withholds new image work when an image hold has uncertain residency. New
+chat loads check the approved current coexistence profile against every held
+image worker and the resulting complete chat variant set. Admin unload marks
+the image hold released only after the exact node confirms its process stopped
+with zero reserved bytes; a missing reply keeps the hold and draining state.
+Focused coexistence, dispatch, placement and unload tests passed **41 tests**.
+The complete local unit/contract selection passed **1,734 tests**, with 2
+skipped and 159 deselected; changed-file strict mypy and Ruff passed. The
+cross-process PostgreSQL concurrency and live inference priority scenarios
+remain open under T065/T068/T070/T072.

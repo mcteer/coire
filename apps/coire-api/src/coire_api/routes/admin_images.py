@@ -20,6 +20,7 @@ from coire_api.db import (
     ImageExecutionLeaseRow,
     ImageJobRow,
     InstanceMemberRow,
+    MemoryReservationRow,
     ModelInstanceRow,
     NodeRow,
     UserRow,
@@ -38,6 +39,7 @@ from coire_api.images.telemetry import (
     record_image_request,
 )
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.placement.service import node_admission_lock
 from coire_core.errors import (
     CoireError,
     ImageConflict,
@@ -58,6 +60,7 @@ from coire_core.models.images import (
     ImagePresetUpdate,
 )
 from coire_core.models.instance import InstanceState
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -371,15 +374,28 @@ async def unload_admin_image_worker(
             raise ImageConflict("image worker stop proof differs from request")
 
         await session.execute(_QUOTA_LOCK)
-        locked = await session.get(
-            ModelInstanceRow, instance_id, populate_existing=True, with_for_update=True
-        )
-        if locked is None or locked.state is not InstanceState.DRAINING:
-            raise ImageConflict("image worker drain state changed")
-        locked.state = InstanceState.STOPPED
-        locked.updated_at = datetime.now(UTC)
-        locked.transitioned_at = locked.updated_at
-        await _audit_admin_job(session, principal, "image.worker.unloaded", str(instance_id))
+        async with node_admission_lock(session, node.id):
+            locked = await session.get(
+                ModelInstanceRow, instance_id, populate_existing=True, with_for_update=True
+            )
+            if locked is None or locked.state is not InstanceState.DRAINING:
+                raise ImageConflict("image worker drain state changed")
+            reservation = await session.scalar(
+                select(MemoryReservationRow)
+                .where(
+                    MemoryReservationRow.node_id == node.id,
+                    MemoryReservationRow.holder_type == ReservationHolder.IMAGE,
+                    MemoryReservationRow.holder_id == str(instance_id),
+                )
+                .with_for_update()
+            )
+            if reservation is not None:
+                reservation.state = MemoryReservationState.RELEASED
+                reservation.released_at = datetime.now(UTC)
+            locked.state = InstanceState.STOPPED
+            locked.updated_at = datetime.now(UTC)
+            locked.transitioned_at = locked.updated_at
+            await _audit_admin_job(session, principal, "image.worker.unloaded", str(instance_id))
         await session.commit()
         response.headers["Cache-Control"] = "private, no-store"
         record_image_request(ImageOperation.ADMIN_CANCEL, ImageOutcome.SUCCEEDED)

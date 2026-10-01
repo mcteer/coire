@@ -19,6 +19,7 @@ from coire_api.routes import admin_images
 from coire_core.errors import ImageConflict
 from coire_core.models.image_worker import ImageWorkerLoadResult
 from coire_core.models.instance import InstanceState
+from coire_core.models.placement import MemoryReservationState
 from coire_core.settings import Settings
 
 INSTANCE = uuid.uuid4()
@@ -40,8 +41,9 @@ class Session:
         self.unreleased_lease = unreleased_lease
         self.scalar_calls = 0
         self.commits = 0
+        self.reservation = SimpleNamespace(state=MemoryReservationState.HELD, released_at=None)
 
-    async def execute(self, statement: object) -> None:
+    async def execute(self, statement: object, parameters: object = None) -> None:
         pass
 
     async def get(self, model: type[object], identity: object, **kwargs: object) -> Any:
@@ -59,8 +61,10 @@ class Session:
             return "active" if self.active_job else None
         if self.scalar_calls == 2:
             return SimpleNamespace(instance_id=INSTANCE, node_id=NODE)
-        assert self.scalar_calls == 3
-        return "lease" if self.unreleased_lease else None
+        if self.scalar_calls == 3:
+            return "lease" if self.unreleased_lease else None
+        assert self.scalar_calls == 4
+        return self.reservation
 
     async def commit(self) -> None:
         self.commits += 1
@@ -119,6 +123,8 @@ async def test_admin_unload_drains_then_confirms_exact_node_stop(
     assert result.instance_id == INSTANCE
     assert stages == [InstanceState.DRAINING]
     assert session.instance.state is InstanceState.STOPPED
+    assert session.reservation.state is MemoryReservationState.RELEASED
+    assert session.reservation.released_at is not None
     assert session.commits == 2
     assert audits == ["image.worker.unload_requested", "image.worker.unloaded"]
     assert response.headers["cache-control"] == "private, no-store"
@@ -172,4 +178,5 @@ async def test_uncertain_node_stop_keeps_draining_instance(
             INSTANCE, _request(), ADMIN, cast(AsyncSession, session), Response()
         )
     assert session.instance.state is InstanceState.DRAINING
+    assert session.reservation.state is MemoryReservationState.HELD
     assert session.commits == 1

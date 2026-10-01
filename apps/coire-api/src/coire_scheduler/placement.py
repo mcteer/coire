@@ -38,6 +38,7 @@ from coire_core.models.placement import (
     ReservationHolder,
 )
 from coire_core.settings import get_settings
+from coire_scheduler.image_admission import new_chat_mix_allowed
 
 COMMAND_NAMESPACE = uuid.UUID("c535ef25-a75d-4b4e-9a9e-e4a91ef80d40")
 tracer = trace.get_tracer("coire.scheduler.placement")
@@ -247,6 +248,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             return
 
     last_refusal: CapacityRefused | None = None
+    profile_refused = False
     for node, _ in nodes:
         required_bytes = 0
         async with session_scope() as session:
@@ -263,6 +265,9 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             )
             target_holder_id = str(instance.id if instance is not None else model.id)
             async with node_admission_lock(session, node.id):
+                if not await new_chat_mix_allowed(session, node.id, variant.id, datetime.now(UTC)):
+                    profile_refused = True
+                    continue
                 reservations = (
                     (
                         await session.execute(
@@ -535,13 +540,17 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
         decision = await session.get(PlacementDecisionRow, decision_id)
         if decision is not None:
             decision.state = PlacementState.REFUSED
-            decision.refusal_code = "capacity"
-            decision.refusal_detail = "no eligible reservation can make enough room"
+            decision.refusal_code = "unmeasured_image_mix" if profile_refused else "capacity"
+            decision.refusal_detail = (
+                "chat/image mix lacks an approved current measurement"
+                if profile_refused
+                else "no eligible reservation can make enough room"
+            )
             decision.occupants = [
                 item.model_dump(mode="json")
                 for item in (last_refusal.occupants if last_refusal else [])
             ]
-    refusals.add(1, {"reason": "capacity"})
+    refusals.add(1, {"reason": "unmeasured_image_mix" if profile_refused else "capacity"})
 
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0)

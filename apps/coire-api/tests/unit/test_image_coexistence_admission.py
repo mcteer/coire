@@ -12,12 +12,15 @@ import pytest
 from coire_api.db import NodeRow
 from coire_core.models.images import ImageCoexistenceBounds, ImageCoexistenceReportRequest
 from coire_core.models.node import NodeRole, Reachability
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_scheduler.image_admission import (
     PINNED_RUNTIME_VERSION,
     CoexistenceReport,
     chat_mix_allowed,
     coexistence_report_hash,
+    image_available_bytes,
     image_environment_fingerprint,
+    new_chat_mix_allowed,
     node_hardware_fingerprint,
     node_runtime_fingerprint,
     node_thermal_alarm,
@@ -188,6 +191,77 @@ async def test_empty_resident_mix_is_allowed_without_a_profile() -> None:
         is True
     )
     assert session.statements == []
+
+
+async def test_shared_image_memory_counts_chat_and_reuses_only_exact_worker_hold() -> None:
+    instance_id = uuid.uuid4()
+    chat_hold = SimpleNamespace(bytes=20, holder_type=ReservationHolder.MODEL)
+    image_hold = SimpleNamespace(
+        bytes=40,
+        holder_type=ReservationHolder.IMAGE,
+        holder_id=str(instance_id),
+        state=MemoryReservationState.HELD,
+    )
+
+    class Session:
+        def __init__(self) -> None:
+            self.workers: list[uuid.UUID] = []
+            self.holds: list[object] = [chat_hold]
+
+        async def get(self, model: object, identity: object, **kwargs: object) -> object:
+            return SimpleNamespace(budget_bytes=100)
+
+        async def scalars(self, statement: object) -> _Rows:
+            if "memory_reservations" in str(statement):
+                return _Rows(self.holds)
+            return _Rows(list(self.workers))
+
+    session = Session()
+    node = SimpleNamespace(id=NODE_ID, memory_total_bytes=100)
+    assert await image_available_bytes(cast(Any, session), cast(Any, node), MODEL_ID, 40) == 80
+    session.holds.append(image_hold)
+    session.workers = [instance_id]
+    assert await image_available_bytes(cast(Any, session), cast(Any, node), MODEL_ID, 40) == 80
+    session.workers = []
+    assert await image_available_bytes(cast(Any, session), cast(Any, node), MODEL_ID, 40) == 0
+    session.workers = [instance_id]
+    session.holds.pop()
+    assert await image_available_bytes(cast(Any, session), cast(Any, node), MODEL_ID, 40) == 0
+
+
+async def test_new_chat_checks_image_profile_with_all_resident_variants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[set[str]] = []
+
+    class Session:
+        def __init__(self) -> None:
+            self.holds: list[object] = [SimpleNamespace(holder_id=str(uuid.uuid4()))]
+
+        async def get(self, model: object, identity: object) -> object:
+            return SimpleNamespace(model_id=MODEL_ID)
+
+        async def scalars(self, statement: object) -> _Rows:
+            if "memory_reservations" in str(statement):
+                return _Rows(self.holds)
+            return _Rows([OTHER_CHAT_ID])
+
+    async def approved(
+        session: object,
+        node_id: uuid.UUID,
+        model_id: uuid.UUID,
+        resident: set[str],
+        now: datetime,
+    ) -> bool:
+        seen.append(resident)
+        return resident == {str(CHAT_ID), str(OTHER_CHAT_ID)}
+
+    monkeypatch.setattr("coire_scheduler.image_admission.chat_mix_allowed", approved)
+    session = Session()
+    assert await new_chat_mix_allowed(cast(Any, session), NODE_ID, CHAT_ID, NOW)
+    assert seen == [{str(CHAT_ID), str(OTHER_CHAT_ID)}]
+    session.holds = []
+    assert await new_chat_mix_allowed(cast(Any, session), NODE_ID, CHAT_ID, NOW)
 
 
 async def test_chat_mix_allowed_requires_a_covering_current_profile() -> None:

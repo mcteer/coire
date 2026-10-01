@@ -19,14 +19,87 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.db import ImageCoexistenceProfileRow, NodeMemoryLedgerRow, NodeRow
+from coire_api.db import (
+    ImageCoexistenceProfileRow,
+    InstanceMemberRow,
+    MemoryReservationRow,
+    ModelInstanceRow,
+    NodeMemoryLedgerRow,
+    NodeRow,
+)
 from coire_core.models.images import ImageCoexistenceReportRequest
+from coire_core.models.instance import InstanceState
 from coire_core.models.node import NodeRole, Reachability
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 
 PINNED_RUNTIME_VERSION = "mflux-0.20.0"
 FIRST_TOKEN_P95_LIMIT_S = 1.5
 MIN_MEASURED_SECONDS = 15 * 60
 THERMAL_SAMPLE_MAX_AGE_S = 30
+_HELD_MEMORY = (
+    MemoryReservationState.PENDING,
+    MemoryReservationState.HELD,
+    MemoryReservationState.RELEASING,
+)
+
+
+async def image_available_bytes(
+    session: AsyncSession, node: NodeRow, model_id: uuid.UUID, estimate_bytes: int
+) -> int:
+    """Count the shared ledger once; allow reuse only of the same resident image hold."""
+    ledger = await session.get(NodeMemoryLedgerRow, node.id, populate_existing=True)
+    if ledger is None or ledger.budget_bytes < 1 or estimate_bytes < 1:
+        return 0
+    reservations = (
+        await session.scalars(
+            select(MemoryReservationRow).where(
+                MemoryReservationRow.node_id == node.id,
+                MemoryReservationRow.state.in_(_HELD_MEMORY),
+            )
+        )
+    ).all()
+    occupied = sum(item.bytes for item in reservations)
+    image_holds = [item for item in reservations if item.holder_type is ReservationHolder.IMAGE]
+    if len(image_holds) > 1:
+        return 0
+    workers = (
+        await session.scalars(
+            select(ModelInstanceRow.id)
+            .join(InstanceMemberRow, InstanceMemberRow.instance_id == ModelInstanceRow.id)
+            .where(
+                InstanceMemberRow.node_id == node.id,
+                ModelInstanceRow.model_id == model_id,
+                ModelInstanceRow.policy.like("image:%"),
+                ModelInstanceRow.state.in_(
+                    (InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY)
+                ),
+            )
+            .limit(2)
+        )
+    ).all()
+    if len(workers) > 1:
+        return 0
+    reuse = 0
+    if workers:
+        held = next(
+            (
+                item
+                for item in reservations
+                if item.holder_type is ReservationHolder.IMAGE
+                and item.holder_id == str(workers[0])
+                and item.state is MemoryReservationState.HELD
+            ),
+            None,
+        )
+        if held is None or held.bytes < estimate_bytes:
+            return 0
+        reuse = held.bytes
+    elif image_holds:
+        # A held image process without a reusable instance is uncertain; keep
+        # its bytes fenced until a node stop proof releases the reservation.
+        return 0
+    budget = min(node.memory_total_bytes, ledger.budget_bytes)
+    return max(0, budget - occupied + reuse)
 
 
 def node_hardware_fingerprint(node: NodeRow) -> str:
@@ -194,3 +267,51 @@ async def chat_mix_allowed(
         and _profile_authorizes(profile, resident_variant_ids, now)
         for profile in profiles
     )
+
+
+async def new_chat_mix_allowed(
+    session: AsyncSession, node_id: uuid.UUID, variant_id: uuid.UUID, now: datetime
+) -> bool:
+    """Check a new chat resident against every active image worker on the node."""
+    holds = (
+        await session.scalars(
+            select(MemoryReservationRow).where(
+                MemoryReservationRow.node_id == node_id,
+                MemoryReservationRow.holder_type == ReservationHolder.IMAGE,
+                MemoryReservationRow.state.in_(_HELD_MEMORY),
+            )
+        )
+    ).all()
+    image_models: set[uuid.UUID] = set()
+    for hold in holds:
+        try:
+            instance_id = uuid.UUID(hold.holder_id)
+        except ValueError:
+            return False
+        instance = await session.get(ModelInstanceRow, instance_id)
+        if instance is None:
+            return False
+        image_models.add(instance.model_id)
+    if not image_models:
+        return True
+    residents = {
+        str(item)
+        for item in (
+            await session.scalars(
+                select(ModelInstanceRow.variant_id)
+                .join(InstanceMemberRow, InstanceMemberRow.instance_id == ModelInstanceRow.id)
+                .where(
+                    InstanceMemberRow.node_id == node_id,
+                    ModelInstanceRow.state.in_(
+                        (InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY)
+                    ),
+                    ModelInstanceRow.variant_id.is_not(None),
+                )
+            )
+        ).all()
+    }
+    residents.add(str(variant_id))
+    for image_model_id in image_models:
+        if not await chat_mix_allowed(session, node_id, image_model_id, residents, now):
+            return False
+    return True

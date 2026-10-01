@@ -20,6 +20,7 @@ from coire_api.db import (
     ImageJobEventRow,
     ImageJobRow,
     InstanceMemberRow,
+    MemoryReservationRow,
     ModelInstanceRow,
     ModelRow,
     NodeRow,
@@ -51,10 +52,12 @@ from coire_core.models.images import (
 )
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import NodeRole, Reachability
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.registry import ModelKind, ModelSource, ModelState, Visibility
 from coire_core.settings import Settings
 from coire_scheduler.image_admission import (
     chat_mix_allowed,
+    image_available_bytes,
     image_environment_fingerprint,
     node_thermal_alarm,
 )
@@ -566,7 +569,9 @@ async def prepare_image_dispatch(
                 name=studio.name,
                 node_id=studio.id,
                 healthy=studio.reachability is Reachability.HEALTHY,
-                memory_total_bytes=studio.memory_total_bytes,
+                memory_total_bytes=await image_available_bytes(
+                    session, studio, model.id, reservation
+                ),
                 image_busy=await _image_busy(session, studio.id, model.id),
                 chat_unmeasured=await _chat_unmeasured(session, studio.id, model.id, current),
                 thermal_alarm=await node_thermal_alarm(session, studio.id, current),
@@ -631,6 +636,33 @@ async def prepare_image_dispatch(
             )
         )
         await session.flush()
+    existing_hold = await session.scalar(
+        select(MemoryReservationRow)
+        .where(
+            MemoryReservationRow.node_id == chosen.node_id,
+            MemoryReservationRow.holder_type == ReservationHolder.IMAGE,
+            MemoryReservationRow.holder_id == str(instance.id),
+        )
+        .with_for_update()
+    )
+    if existing_hold is None:
+        session.add(
+            MemoryReservationRow(
+                node_id=chosen.node_id,
+                holder_type=ReservationHolder.IMAGE,
+                holder_id=str(instance.id),
+                bytes=reservation,
+                pinned=True,
+                state=MemoryReservationState.HELD,
+                last_used_at=current,
+            )
+        )
+    elif (
+        existing_hold.state is not MemoryReservationState.HELD or existing_hold.bytes < reservation
+    ):
+        raise ImageConflict("image worker memory reservation differs from placement")
+    else:
+        existing_hold.last_used_at = current
     row.fence = 1
     row.selected_node_id = chosen.node_id
     row.instance_id = instance.id
