@@ -42,7 +42,15 @@ def _write_all(fd: int, data: bytes) -> None:
 def _open_root(root: Path) -> int:
     try:
         root.mkdir(mode=0o700, exist_ok=True)
-        return os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            info = os.fstat(fd)
+            if info.st_uid != os.getuid() or info.st_mode & 0o077:
+                raise ImageStorageUnavailable()
+            return fd
+        except BaseException:
+            os.close(fd)
+            raise
     except OSError as exc:
         raise ImageStorageUnavailable() from exc
 

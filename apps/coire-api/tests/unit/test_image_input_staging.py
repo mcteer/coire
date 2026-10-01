@@ -12,7 +12,12 @@ import pytest
 from fastapi import UploadFile
 
 from coire_api.images.inputs import stage_image_input
-from coire_core.errors import ImageConflict, ImageInputTooLarge, ImageValidationError
+from coire_core.errors import (
+    ImageConflict,
+    ImageInputTooLarge,
+    ImageStorageUnavailable,
+    ImageValidationError,
+)
 from coire_core.models.images import ImageInputUpload
 from coire_core.settings import Settings
 
@@ -74,6 +79,31 @@ async def test_declared_count_and_empty_upload_fail_closed(tmp_path: Path) -> No
         await stage_image_input(_upload(b"short"), root, _metadata("init", 6), settings)
     with pytest.raises(ImageValidationError):
         await stage_image_input(_upload(b""), root, _metadata("init", 1), settings)
+    assert list(root.iterdir()) == []
+
+
+@pytest.mark.parametrize("unsafe", ["public", "symlink"])
+async def test_staging_refuses_untrusted_root_before_reading_upload(
+    tmp_path: Path, unsafe: str
+) -> None:
+    root = tmp_path / "images"
+    outside = tmp_path / "outside"
+    outside.mkdir(mode=0o700)
+    if unsafe == "public":
+        root.mkdir(mode=0o755)
+        root.chmod(0o755)
+    else:
+        root.symlink_to(outside, target_is_directory=True)
+
+    class UnreadUpload:
+        async def read(self, _: int) -> bytes:
+            pytest.fail("untrusted storage root accepted upload bytes")
+
+    with pytest.raises(ImageStorageUnavailable):
+        await stage_image_input(
+            cast(UploadFile, UnreadUpload()), root, _metadata("init", 3), _settings()
+        )
+    assert list(outside.iterdir()) == []
     assert list(root.iterdir()) == []
 
 

@@ -1143,3 +1143,11 @@ early. The two lock-order regressions failed before the fix. Processing,
 refusal, concurrent deletion and cleanup selection passed **20 tests**; Ruff
 format/check and strict mypy passed. Real PostgreSQL concurrency is still a
 separate required gate, not inferred from these deterministic lock tests.
+
+Private input staging now verifies the opened directory's owner and absence
+of group/world permissions before reading any upload bytes; the same helper
+protects publication and temporary discard. A public-root regression failed
+before the fix, while symlink-root refusal already passed. Staging, parsing
+and normalization selection passed **13 tests**; Ruff format/check and strict
+mypy passed. Unsafe roots are refused, not silently chmodded. This preserves
+the configured private-volume ownership boundary.
