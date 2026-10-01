@@ -83,6 +83,17 @@ image alerts show the corresponding fenced outcomes.
 A worker marked failed can use the same unload path once its jobs and leases
 are terminal; the API still releases memory only after the node proves exact
 process death and zero reserved bytes.
+The scheduler also scans unpinned image worker reservations in bounded batches.
+After `COIRE_IMAGE_WORKER_IDLE_TTL_S` without a job or image execution lease,
+it marks the instance draining, requests the same exact node stop, and releases
+the memory hold only on the node's zero-byte stop proof. Check
+`coire_image_worker_idle_unloads_total{outcome="confirmed"}` and the
+`coire.scheduler.image.idle_unload` span. An `uncertain` outcome leaves the
+draining instance and reservation held and raises `CoireImageIdleUnloadUncertain`;
+inspect the node and retry the admin
+Unload action after reconciling process identity. Pin an active worker through
+the admin ledger reservation PATCH to exempt it from idle unload. A worker
+already draining cannot be pinned; complete its stop reconciliation first.
 If the agent restarted after the worker died, the same unload command can
 reconcile the private process record. It removes that record only when the
 recorded PID and creation time prove the child is gone. An unreadable record,

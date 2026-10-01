@@ -133,6 +133,12 @@ groups:
         labels: {severity: critical}
         annotations:
           summary: A Studio image worker could not confirm cancellation
+      - alert: CoireImageIdleUnloadUncertain
+        expr: sum(increase(coire_image_worker_idle_unloads_total{outcome="uncertain"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: An idle Studio image worker could not prove its stop; memory remains held
       - alert: CoireImageStorageFailures
         expr: sum(increase(coire_image_requests_total{reason="storage",outcome=~"failed|refused"}[5m])) > 0
         for: 0m

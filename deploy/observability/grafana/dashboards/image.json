@@ -795,6 +795,22 @@
       ],
       "title": "Image coexistence live latency monitor",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 184},
+      "id": 24,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_worker_idle_unloads_total[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Image worker idle unloads",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

@@ -656,7 +656,7 @@ async def prepare_image_dispatch(
                 holder_type=ReservationHolder.IMAGE,
                 holder_id=str(instance.id),
                 bytes=reservation,
-                pinned=True,
+                pinned=False,
                 state=MemoryReservationState.HELD,
                 last_used_at=current,
             )

@@ -14,11 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.audit import write_audit
 from coire_api.db import (
     MemoryReservationRow,
+    ModelInstanceRow,
     NodeMemoryLedgerRow,
     NodeRow,
     RequestLeaseRow,
 )
 from coire_core.models.audit import AuditAction
+from coire_core.models.instance import InstanceState
 from coire_core.models.placement import (
     LedgerUpdate,
     MemoryLedger,
@@ -275,16 +277,38 @@ async def set_pin(
     actor: str,
 ) -> MemoryReservationRow:
     row = await session.get(MemoryReservationRow, reservation_id)
-    if row is None or row.holder_type is not ReservationHolder.MODEL:
+    if row is None or row.holder_type not in {ReservationHolder.MODEL, ReservationHolder.IMAGE}:
         raise LedgerNotFoundError
-    row.pinned = update.pinned
+    image_worker = row.holder_type is ReservationHolder.IMAGE
+    if image_worker:
+        async with node_admission_lock(session, row.node_id):
+            row = await session.get(
+                MemoryReservationRow, reservation_id, populate_existing=True, with_for_update=True
+            )
+            if row is None or row.state is not MemoryReservationState.HELD:
+                raise LedgerNotFoundError
+            try:
+                instance_id = uuid.UUID(row.holder_id)
+            except ValueError as exc:
+                raise LedgerNotFoundError from exc
+            instance = await session.get(ModelInstanceRow, instance_id)
+            if instance is None or instance.state is InstanceState.DRAINING:
+                raise LedgerNotFoundError
+            row.pinned = update.pinned
+        action = "image.worker.pin" if update.pinned else "image.worker.unpin"
+    else:
+        row.pinned = update.pinned
+        action = AuditAction.MODEL_PIN if update.pinned else AuditAction.MODEL_UNPIN
     await write_audit(
         session,
         actor=actor,
-        action=AuditAction.MODEL_PIN if update.pinned else AuditAction.MODEL_UNPIN,
+        action=action,
         target_type="memory_reservation",
         target_id=str(reservation_id),
-        detail={"pinned": update.pinned, "model_id": row.holder_id},
+        detail={
+            "pinned": update.pinned,
+            "instance_id" if image_worker else "model_id": row.holder_id,
+        },
     )
     return row
 

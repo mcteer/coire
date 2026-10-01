@@ -968,3 +968,18 @@ coexistence checked only the node and profile. Updating it to return current
 variant/model rows restored the focused profile selection to **31 passed**.
 The other **1,745** local unit/contract tests had passed in that run; the
 complete selection needs one final repeat after the fixture correction.
+
+Image worker residency now has a bounded idle TTL sweep in the scheduler's
+existing placement loop. It walks unpinned held image reservations with a
+cursor so older busy workers cannot starve later idle ones, checks exact
+instance membership, jobs and execution leases under the node admission
+lock, persists `draining`, then releases the hold only after an exact node
+stop proof with zero reserved bytes. A missing or mismatched reply retains
+the hold for retry. The admin reservation endpoint now audits image worker
+pin/unpin, serializes it with the same node lock and refuses a pin after
+draining begins. The runbook documents pinning and uncertain-stop recovery.
+Focused idle sweep and admin contract checks passed **11 tests**; changed-file
+Ruff and strict mypy passed. The complete local non-engine, non-integration
+selection passed **1,753 tests**, with 2 skipped and 159 deselected. An
+uncertain idle stop now has a dedicated alert and dashboard panel. Physical
+Studio restart and TTL inventory remain open under T071.

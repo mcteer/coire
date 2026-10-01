@@ -54,6 +54,7 @@ from coire_scheduler.files import (
 )
 from coire_scheduler.image_inputs import image_normalize_workflow, image_recipe_workflow
 from coire_scheduler.image_latency import monitor_image_latency
+from coire_scheduler.image_residency import sweep_idle_image_workers
 from coire_scheduler.images import (
     image_cancel_workflow,
     image_dispatch_workflow,
@@ -406,6 +407,10 @@ async def dispatch_idle_ttl(stop: asyncio.Event) -> None:
                 DBOS.start_workflow(idle_ttl_workflow)
         except Exception:
             logger.exception("placement idle-TTL dispatcher pass failed")
+        try:
+            await sweep_idle_image_workers(settings)
+        except Exception:
+            logger.exception("image idle-TTL dispatcher pass failed")
         with suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=settings.placement_ttl_interval_s)
 

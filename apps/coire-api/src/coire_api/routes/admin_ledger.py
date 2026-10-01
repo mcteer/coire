@@ -85,7 +85,9 @@ async def patch_reservation(
     try:
         await service.set_pin(session, reservation_id, body, actor=principal.subject or "admin")
     except service.LedgerNotFoundError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such model reservation") from exc
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "no such model or image reservation"
+        ) from exc
     await session.commit()
 
 
