@@ -278,7 +278,34 @@ class ImageProcessSupervisor:
                     and self._last_stopped.instance_id == request.instance_id
                 ):
                     return self._last_stopped
-                raise ImageProcessUnavailable()
+                if not self.record_path.exists():
+                    raise ImageProcessUnavailable()
+                try:
+                    record = ImageWorkerProcessRecord.model_validate_json(
+                        _read_private(self.record_path, 32 * 1024)
+                    )
+                    config_file = record.config.token_file.parent / "launch.json"
+                    config, _ = read_process_config(config_file)
+                    if (
+                        config != record.config
+                        or record.config.token_file
+                        != self.state_root / str(request.instance_id) / "token"
+                        or record.status.instance_id != request.instance_id
+                        or _process_state(record) != "gone"
+                    ):
+                        raise ImageProcessUnavailable()
+                    _remove_private_state(self.record_path, record)
+                except (ImageWorkerBootstrapError, OSError, ValueError):
+                    raise ImageProcessUnavailable() from None
+                result = ImageWorkerLoadResult(
+                    instance_id=request.instance_id,
+                    state="failed",
+                    reserved_bytes=0,
+                    safe_error="worker_stopped",
+                )
+                self._uncertain_reserved_bytes = 0
+                self._last_stopped = result
+                return result
             if record.status.instance_id != request.instance_id:
                 raise ImageProcessUnavailable()
             state = _process_state(record)

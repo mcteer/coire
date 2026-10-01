@@ -79,6 +79,10 @@ image alerts show the corresponding fenced outcomes.
 A worker marked failed can use the same unload path once its jobs and leases
 are terminal; the API still releases memory only after the node proves exact
 process death and zero reserved bytes.
+If the agent restarted after the worker died, the same unload command can
+reconcile the private process record. It removes that record only when the
+recorded PID and creation time prove the child is gone. An unreadable record,
+uncertain PID or changed instance ID keeps the hold and needs investigation.
 Image worker memory is held in the shared placement ledger until exact node
 stop proof returns zero reserved bytes. A missing reply keeps the reservation
 held, including after a restart. If a Studio agent refuses startup because its

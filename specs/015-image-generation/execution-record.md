@@ -918,3 +918,12 @@ exact worker death and zero reserved bytes before the shared image memory
 hold is released. Ready and failed drain cases passed the focused **5-test**
 selection; changed-file Ruff and strict mypy passed. A missing node process
 record still leaves the hold for explicit reconciliation.
+
+A restarted Studio agent can now reconcile a dead image worker from its
+private process record during an exact unload request. The record is removed
+and the node returns zero reserved bytes only when the recorded process is
+provably gone; an unreadable identity or changed instance ID retains the
+record and hold. The supervisor selection passed **12 tests**, including the
+restart/dead-record case and the existing TERM/KILL five-second bound;
+changed-file Ruff and strict mypy passed. Physical restart on a Studio remains
+an acceptance gate.

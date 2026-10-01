@@ -420,6 +420,36 @@ def test_stop_never_signals_reused_or_uncertain_pid(
     assert signals == []
 
 
+def test_restart_can_confirm_dead_record_without_releasing_uncertain_live_worker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, request = _started(tmp_path, monkeypatch)
+    recovered = supervisor.ImageProcessSupervisor(
+        manager.settings, manager.store, lambda: 0, memory_total_bytes=10_000
+    )
+    FakePsutilProcess.inspection_error = True
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        recovered.adopt_from_state()
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        recovered.stop(_unload(request))
+    assert recovered.record_path.exists()
+    assert recovered.committed_bytes() > 0
+    FakePsutilProcess.inspection_error = False
+    FakePsutilProcess.alive = False
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        recovered.stop(
+            ImageWorkerUnloadRequest(
+                instance_id=uuid.uuid4(), reason="admin", requested_at=datetime.now(UTC)
+            )
+        )
+    assert recovered.record_path.exists()
+    stopped = recovered.stop(_unload(request))
+    assert stopped.safe_error == "worker_stopped" and stopped.reserved_bytes == 0
+    assert recovered.committed_bytes() == 0
+    assert not recovered.record_path.exists()
+    assert recovered.stop(_unload(request)) == stopped
+
+
 def test_stop_cleanup_failure_keeps_reservation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
