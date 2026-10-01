@@ -31,6 +31,7 @@ from coire_core.errors import (
 )
 from coire_core.models.files import ULID_PATTERN
 from coire_core.models.images import (
+    ImageGenerationLimits,
     ImageJob,
     ImageJobEvent,
     ImageJobPage,
@@ -80,11 +81,20 @@ async def list_image_models(
     request: Request, principal: CurrentImageUser, session: SessionDep, response: Response
 ) -> ImageModelList:
     settings = getattr(request.app.state, "settings", None) or get_settings()
+    limits = ImageGenerationLimits(
+        generation_input_max_bytes=settings.image_generation_input_max_bytes,
+        recipe_input_max_bytes=settings.image_recipe_input_max_bytes,
+        output_max_bytes=settings.image_output_max_bytes,
+        owner_storage_quota_bytes=settings.image_owner_storage_quota_bytes,
+        pending_per_owner=settings.image_pending_per_owner,
+        daily_outputs_per_owner=settings.image_daily_outputs_per_owner,
+        output_retention_hours=settings.image_output_retention_hours,
+    )
     with image_span(ImageOperation.MODEL_LIST):
         if not settings.image_enabled:
             response.headers["Cache-Control"] = "private, no-store"
             record_image_request(ImageOperation.MODEL_LIST, ImageOutcome.ACCEPTED)
-            return ImageModelList(items=[])
+            return ImageModelList(items=[], limits=limits)
         try:
             result = await catalog.list_eligible_image_models(session, principal)
         except ImageForbidden:
@@ -99,7 +109,7 @@ async def list_image_models(
             raise
         response.headers["Cache-Control"] = "private, no-store"
         record_image_request(ImageOperation.MODEL_LIST, ImageOutcome.SUCCEEDED)
-        return result
+        return result.model_copy(update={"limits": limits})
 
 
 @router.post("", response_model=ImageJobReceipt, status_code=202)

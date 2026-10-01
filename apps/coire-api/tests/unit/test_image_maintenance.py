@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -203,21 +204,108 @@ def test_stale_temporary_sweep_refuses_symlink(tmp_path: Path) -> None:
     assert outside.read_bytes() == b"keep"
 
 
+async def test_output_retention_is_opt_in_bounded_and_audited(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    already_deleted = now - timedelta(minutes=1)
+    rows = [
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            published_at=now - timedelta(hours=25),
+            state="published",
+            deleted_at=None,
+        ),
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            published_at=now - timedelta(hours=23),
+            state="published",
+            deleted_at=None,
+        ),
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            published_at=now - timedelta(hours=25),
+            state="published",
+            deleted_at=already_deleted,
+        ),
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            published_at=now - timedelta(hours=25),
+            state="failed",
+            deleted_at=None,
+        ),
+    ]
+    queries: list[str] = []
+    audits: list[dict[str, object]] = []
+
+    class Session:
+        async def scalars(self, query: object) -> object:
+            queries.append(str(query))
+            return SimpleNamespace(all=lambda: rows)
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[AsyncSession]:
+        yield cast(AsyncSession, Session())
+
+    async def audit(session: object, **kwargs: object) -> None:
+        del session
+        audits.append(kwargs)
+
+    monkeypatch.setattr(maintenance, "session_scope", scope)
+    monkeypatch.setattr(maintenance, "write_audit", audit, raising=False)
+    default = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    assert await maintenance.sweep_retained_outputs(default) == 0
+    assert not queries and not audits
+    settings = Settings(_secrets_dir="/nonexistent", image_output_retention_hours=24)  # type: ignore[call-arg]
+    assert await maintenance.sweep_retained_outputs(settings) == 1
+    assert rows[0].deleted_at >= now
+    assert rows[1].deleted_at is None
+    assert rows[2].deleted_at == already_deleted
+    assert rows[3].deleted_at is None
+    assert "FOR UPDATE" in queries[0] and "LIMIT" in queries[0]
+    assert audits == [
+        {
+            "actor": "system:image-retention",
+            "action": "image.output.expire",
+            "target_type": "image_output",
+            "target_id": str(rows[0].id),
+            "detail": {"retention_hours": 24},
+        }
+    ]
+
+
+@pytest.mark.parametrize("retention_failure", [False, True])
 async def test_maintenance_starts_even_when_admission_is_disabled(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    retention_failure: bool,
 ) -> None:
     finished = asyncio.Event()
     calls: list[str] = []
+    failures: list[dict[str, str]] = []
+    # Real Alembic tests reconfigure logging; isolate capture from that global state.
+    monkeypatch.setattr(maintenance.logger, "disabled", False)
+    monkeypatch.setattr(maintenance.logger, "handlers", [caplog.handler])
+    monkeypatch.setattr(maintenance.logger, "propagate", False)
+
+    def record_failure(count: int, attributes: dict[str, str]) -> None:
+        assert count == 1
+        failures.append(attributes)
+
+    monkeypatch.setattr(maintenance, "purges_total", SimpleNamespace(add=record_failure))
 
     def sweep(name: str) -> Callable[[Settings], Awaitable[int]]:
         async def run(settings: Settings) -> int:
             calls.append(name)
+            if name == "retention" and retention_failure:
+                raise RuntimeError("must-not-log-retention-detail")
             if name == "orphan_inputs":
                 finished.set()
             return 0
 
         return run
 
+    monkeypatch.setattr(maintenance, "sweep_retained_outputs", sweep("retention"), raising=False)
     monkeypatch.setattr(maintenance, "sweep_deleted_outputs", sweep("outputs"))
 
     async def terminal_sweep(
@@ -251,6 +339,7 @@ async def test_maintenance_starts_even_when_admission_is_disabled(
     await asyncio.wait_for(finished.wait(), timeout=1)
     await worker.stop()
     assert calls == [
+        "retention",
         "outputs",
         "terminal_staging",
         "orphan_staging",
@@ -259,3 +348,7 @@ async def test_maintenance_starts_even_when_admission_is_disabled(
         "failed_inputs",
         "orphan_inputs",
     ]
+    assert failures == ([{"kind": "maintenance", "outcome": "failed"}] if retention_failure else [])
+    assert "must-not-log-retention-detail" not in caplog.text
+    if retention_failure:
+        assert "error_type=RuntimeError" in caplog.text

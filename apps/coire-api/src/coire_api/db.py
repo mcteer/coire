@@ -1742,6 +1742,12 @@ class ImageOutputRow(Base):
             ondelete="RESTRICT",
         ),
         Index("ix_image_outputs_owner_created", "owner_user_id", "created_at", "id"),
+        Index(
+            "ix_image_outputs_retention",
+            "published_at",
+            "id",
+            postgresql_where=text("state = 'published' AND deleted_at IS NULL"),
+        ),
         CheckConstraint("output_index >= 0 AND output_index < 4", name="ck_image_output_index"),
         CheckConstraint("size_bytes > 0", name="ck_image_output_size"),
     )

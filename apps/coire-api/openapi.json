@@ -5507,6 +5507,71 @@
         "title": "ImageDownloadGrant",
         "type": "object"
       },
+      "ImageGenerationLimits": {
+        "additionalProperties": false,
+        "description": "Current operator policy, disclosed before accepting private image work.",
+        "properties": {
+          "daily_outputs_per_owner": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Daily Outputs Per Owner",
+            "type": "integer"
+          },
+          "generation_input_max_bytes": {
+            "maximum": 10485760.0,
+            "minimum": 1.0,
+            "title": "Generation Input Max Bytes",
+            "type": "integer"
+          },
+          "output_max_bytes": {
+            "maximum": 67108864.0,
+            "minimum": 1.0,
+            "title": "Output Max Bytes",
+            "type": "integer"
+          },
+          "output_retention_hours": {
+            "anyOf": [
+              {
+                "maximum": 8760.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Retention Hours"
+          },
+          "owner_storage_quota_bytes": {
+            "maximum": 5368709120.0,
+            "minimum": 1.0,
+            "title": "Owner Storage Quota Bytes",
+            "type": "integer"
+          },
+          "pending_per_owner": {
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Pending Per Owner",
+            "type": "integer"
+          },
+          "recipe_input_max_bytes": {
+            "maximum": 67108864.0,
+            "minimum": 1.0,
+            "title": "Recipe Input Max Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generation_input_max_bytes",
+          "recipe_input_max_bytes",
+          "output_max_bytes",
+          "owner_storage_quota_bytes",
+          "pending_per_owner",
+          "daily_outputs_per_owner"
+        ],
+        "title": "ImageGenerationLimits",
+        "type": "object"
+      },
       "ImageInput": {
         "additionalProperties": false,
         "properties": {
@@ -6100,6 +6165,16 @@
             "maxItems": 100,
             "title": "Items",
             "type": "array"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageGenerationLimits"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

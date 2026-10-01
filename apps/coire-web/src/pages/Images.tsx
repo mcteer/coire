@@ -33,11 +33,14 @@ export function Images({ canEditPresets = false }: { canEditPresets?: boolean })
   const [busyJob, setBusyJob] = useState<string | null>(null);
   const [busyOutput, setBusyOutput] = useState<string | null>(null);
   const [models, setModels] = useState<ImageModelList["items"]>([]);
+  const [limits, setLimits] = useState<ImageModelList["limits"]>(null);
   const [presets, setPresets] = useState<ImagePresetList["items"]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [tag, setTag] = useState<ImageOutput["tag"] | "">("");
-  const [reuse, setReuse] = useState<{ request: ImageSubmitRequest; revision: number } | null>(null);
+  const [reuse, setReuse] = useState<{ request: ImageSubmitRequest; revision: number } | null>(
+    null,
+  );
   const active = useImageJob(activeJobId);
   const refreshedTerminalJob = useRef<string | null>(null);
 
@@ -62,10 +65,12 @@ export function Images({ canEditPresets = false }: { canEditPresets?: boolean })
       setJobs(jobPage.items);
       setOutputs(outputPage.items);
       setModels(modelPage.items);
+      setLimits(modelPage.limits ?? null);
       setPresets(presetPage.items);
       setNextCursor(outputPage.next_cursor ?? null);
       setAuthExpired(false);
     } catch (cause) {
+      setLimits(null);
       noteFailure(cause);
     } finally {
       setLoading(false);
@@ -174,6 +179,7 @@ export function Images({ canEditPresets = false }: { canEditPresets?: boolean })
         ) : (
           <ImageForm
             models={models}
+            limits={limits}
             presets={presets}
             disabled={submitting}
             onSubmit={generate}

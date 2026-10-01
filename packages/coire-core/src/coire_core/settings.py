@@ -182,6 +182,7 @@ class Settings(BaseSettings):
     image_disk_safety_floor_bytes: int = Field(default=2 * 1024**3, ge=2 * 1024**3)
     image_worker_idle_ttl_s: int = Field(default=900, ge=60, le=86_400)
     image_event_retention_hours: int = Field(default=24, ge=1, le=24)
+    image_output_retention_hours: int | None = Field(default=None, ge=1, le=8760)
     image_compatible_wait_s: int = Field(default=90, ge=1, le=90)
     image_cancel_grace_s: int = Field(default=5, ge=1, le=5)
     image_prompt_cache_max_bytes: int = Field(default=256 * 1024**2, ge=0, le=256 * 1024**2)
@@ -190,6 +191,11 @@ class Settings(BaseSettings):
     image_transfer_api_url: str = "http://coire-core.lab:8180"
     image_input_original_root: str = "/opt/coire/chat/originals/images"
     image_input_derived_root: str = "/opt/coire/chat/derived/images"
+
+    @field_validator("image_output_retention_hours", mode="before")
+    @classmethod
+    def blank_image_retention(cls, value: object) -> object:
+        return None if value == "" else value
 
     @field_validator("chat_default_model_id", mode="before")
     @classmethod

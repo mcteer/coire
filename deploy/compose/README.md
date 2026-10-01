@@ -106,10 +106,23 @@ pipeline and operator gates pass.
 | `COIRE_IMAGE_DISK_SAFETY_FLOOR_BYTES` | 2 GiB | Cannot be lowered |
 | `COIRE_IMAGE_WORKER_IDLE_TTL_S` | 900 s | 86,400 s |
 | `COIRE_IMAGE_EVENT_RETENTION_HOURS` | 24 h | 24 h |
+| `COIRE_IMAGE_OUTPUT_RETENTION_HOURS` | Unset: owner deletion only | Optional 1–8,760 h |
 | `COIRE_IMAGE_COMPATIBLE_WAIT_S` | 90 s | 90 s |
 | `COIRE_IMAGE_CANCEL_GRACE_S` | 5 s | 5 s |
 | `COIRE_IMAGE_PROMPT_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
 | `COIRE_IMAGE_CONTROL_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
+
+The API exposes current input/output ceilings, owner quota, pending/daily limits and
+output-retention policy through authenticated `GET /api/v1/images/models`, even
+when generation is disabled. The Images form displays them before submission and
+refuses generation when the policy is unavailable. Event retention is separate
+from image retention. Setting `COIRE_IMAGE_OUTPUT_RETENTION_HOURS` opts into
+expiry from successful publication time, including already stored outputs: review
+the policy before restarting the API. Blank/unset preserves owner-deletion-only
+retention. Every maintenance pass tombstones at most 25 expired outputs, with a
+required `image.output.expire` audit; existing purge work removes bytes and only
+then releases quota. Database/audit failures roll back that tombstone batch and
+raise the existing image-purge failure signal. Inputs never inherit output expiry.
 
 Studio agents push completed PNGs to `COIRE_IMAGE_TRANSFER_API_URL` (default
 `http://coire-core.lab:8180`). Keep that setting on the node pointed at the

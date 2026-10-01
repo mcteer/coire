@@ -136,6 +136,33 @@ require a live human admin and are audited. If an owner or key loses access whil
 a job runs, inspect the cancellation intent and wait for a terminal node proof
 before releasing the reservation.
 
+## Output retention policy
+
+By default, published outputs remain until the owner deletes them; storage quota
+still applies. Before generating, the Images form displays the API's current
+owner quota, pending/daily output caps, upload/output byte ceilings and retention
+policy. Missing policy blocks submission rather than guessing. Authenticated
+`GET /api/v1/images/models` returns the same `limits` when admission is disabled.
+
+An operator can opt into `COIRE_IMAGE_OUTPUT_RETENTION_HOURS` (1–8,760 hours).
+Blank/unset means no automatic output expiry. The period starts at successful
+publication, not upload/staging; enabling or shortening it also applies to
+existing outputs. Review the deletion consequences before restarting the API.
+Apply migration `0030_image_output_retention` before enabling this policy. Its
+partial publication-time index keeps the ordered sweep off unrelated history;
+as with other transactional schema changes, drain image writes for migration.
+The 30-second maintenance loop locks and tombstones at most 25 expired published
+outputs per pass, skipping locked rows. Each tombstone requires the system audit
+`image.output.expire`; an audit/database failure rolls back the batch. Tombstones
+immediately deny new reads/grants, while the existing physical purge releases
+owner/global stored-byte quota only after removal is proven. Inputs and SSE event
+retention are independent and unchanged. Maintenance remains active with image
+admission disabled. Inspect `coire_image_purges` failure counters and the existing
+purge alert; bounded maintenance spans contain sweep names, never image content.
+
+Local PostgreSQL tests prove row-lock skipping, audit rollback and repeat-pass
+idempotence. They are not evidence of full-model/operator retention acceptance.
+
 ## Access and stored data
 
 Use the owner gallery to inspect or delete published outputs. Downloads request a short

@@ -16,6 +16,7 @@ from pathlib import Path
 from opentelemetry import trace
 from sqlalchemy import func, select
 
+from coire_api.audit import write_audit
 from coire_api.db import ImageJobRow, ImageOutputRow, session_scope
 from coire_api.images.deletion import purge_output_blob
 from coire_api.images.input_cleanup import (
@@ -61,6 +62,51 @@ async def purge_deleted_output(settings: Settings, output_id: uuid.UUID) -> bool
             global_quota,
         )
         return True
+
+
+async def sweep_retained_outputs(settings: Settings) -> int:
+    """Opt-in expiry tombstones; physical deletion and quota settlement stay separate."""
+    hours = settings.image_output_retention_hours
+    if hours is None:
+        return 0
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(hours=hours)
+    expired = 0
+    async with session_scope() as session:
+        rows = (
+            await session.scalars(
+                select(ImageOutputRow)
+                .where(
+                    ImageOutputRow.state == "published",
+                    ImageOutputRow.deleted_at.is_(None),
+                    ImageOutputRow.published_at <= cutoff,
+                )
+                .order_by(ImageOutputRow.published_at, ImageOutputRow.id)
+                .limit(_BATCH_SIZE)
+                .with_for_update(skip_locked=True)
+            )
+        ).all()
+        for row in rows:
+            if (
+                row.state != "published"
+                or row.deleted_at is not None
+                or row.published_at is None
+                or row.published_at > cutoff
+            ):
+                continue
+            await write_audit(
+                session,
+                actor="system:image-retention",
+                action="image.output.expire",
+                target_type="image_output",
+                target_id=str(row.id),
+                detail={"retention_hours": hours},
+            )
+            row.deleted_at = now
+            expired += 1
+    if expired:
+        purges_total.add(expired, {"kind": "retention", "outcome": "succeeded"})
+    return expired
 
 
 async def sweep_deleted_outputs(settings: Settings) -> int:
@@ -445,6 +491,7 @@ class ImageOutputMaintenance:
     async def _run(self) -> None:
         while not self._stop.is_set():
             for sweep in (
+                sweep_retained_outputs,
                 sweep_deleted_outputs,
                 self._sweep_terminal_staging,
                 self._sweep_orphan_staging,
@@ -454,8 +501,11 @@ class ImageOutputMaintenance:
                 sweep_orphan_inputs,
             ):
                 try:
-                    await sweep(self.settings)
+                    with tracer.start_as_current_span("coire.api.image.maintenance") as span:
+                        span.set_attribute("coire.image.sweep", sweep.__name__)
+                        await sweep(self.settings)
                 except Exception as exc:
+                    purges_total.add(1, {"kind": "maintenance", "outcome": "failed"})
                     logger.error(
                         "image maintenance pass failed sweep=%s error_type=%s",
                         sweep.__name__,

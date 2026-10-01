@@ -3,6 +3,15 @@ import { afterEach, expect, test, vi } from "vitest";
 import { Images } from "./Images";
 
 const JOB = "01J00000000000000000000000";
+const LIMITS = {
+  generation_input_max_bytes: 10 * 1024 ** 2,
+  recipe_input_max_bytes: 64 * 1024 ** 2,
+  output_max_bytes: 64 * 1024 ** 2,
+  owner_storage_quota_bytes: 5 * 1024 ** 3,
+  pending_per_owner: 4,
+  daily_outputs_per_owner: 100,
+  output_retention_hours: null,
+};
 
 vi.mock("../hooks/useImageJob", () => ({
   useImageJob: () => ({
@@ -18,8 +27,18 @@ vi.mock("../hooks/useImageJob", () => ({
 }));
 
 vi.mock("../components/images/ImageForm", () => ({
-  ImageForm: ({ onSubmit }: { onSubmit: (request: object) => void }) => (
-    <button type="button" onClick={() => onSubmit({ model_id: "model", prompt: "test" })}>
+  ImageForm: ({
+    onSubmit,
+    limits,
+  }: {
+    onSubmit: (request: object) => void;
+    limits?: object | null;
+  }) => (
+    <button
+      type="button"
+      disabled={!limits}
+      onClick={() => onSubmit({ model_id: "model", prompt: "test" })}
+    >
       Generate test
     </button>
   ),
@@ -46,7 +65,7 @@ test("refreshes committed jobs and gallery once after a selected terminal event"
         method === "POST" && path === "/api/v1/images"
           ? { job_id: JOB, state: "queued" }
           : path === "/api/v1/images/models"
-            ? { items: [{}] }
+            ? { items: [{}], limits: LIMITS }
             : { items: [], next_cursor: null };
       return new Response(JSON.stringify(body), {
         status: 200,
@@ -74,7 +93,7 @@ test("shows the durable job receipt and progress after submit", async () => {
         init?.method === "POST" && path === "/api/v1/images"
           ? { job_id: JOB, state: "queued" }
           : path === "/api/v1/images/models"
-            ? { items: [{}] }
+            ? { items: [{}], limits: LIMITS }
             : { items: [], next_cursor: null };
       return new Response(JSON.stringify(body), {
         status: 200,
@@ -86,6 +105,26 @@ test("shows the durable job receipt and progress after submit", async () => {
   fireEvent.click(await screen.findByRole("button", { name: "Generate test" }));
   expect(await screen.findByText(/4 of 4/)).toBeInTheDocument();
   expect(screen.getByText(JOB)).toBeInTheDocument();
+});
+
+test("clears stale policy after a failed refresh", async () => {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const body =
+      String(input) === "/api/v1/images/models"
+        ? { items: [{}], limits: LIMITS }
+        : { items: [], next_cursor: null };
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Images />);
+  const generate = await screen.findByRole("button", { name: "Generate test" });
+  expect(generate).toBeEnabled();
+  fetchMock.mockImplementation(async () => new Response(null, { status: 503 }));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() => expect(generate).toBeDisabled());
 });
 
 test("offers sign-in recovery on an expired image session", async () => {

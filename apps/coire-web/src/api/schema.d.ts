@@ -4207,6 +4207,26 @@ export interface components {
             /** Url */
             url: string;
         };
+        /**
+         * ImageGenerationLimits
+         * @description Current operator policy, disclosed before accepting private image work.
+         */
+        ImageGenerationLimits: {
+            /** Daily Outputs Per Owner */
+            daily_outputs_per_owner: number;
+            /** Generation Input Max Bytes */
+            generation_input_max_bytes: number;
+            /** Output Max Bytes */
+            output_max_bytes: number;
+            /** Output Retention Hours */
+            output_retention_hours?: number | null;
+            /** Owner Storage Quota Bytes */
+            owner_storage_quota_bytes: number;
+            /** Pending Per Owner */
+            pending_per_owner: number;
+            /** Recipe Input Max Bytes */
+            recipe_input_max_bytes: number;
+        };
         /** ImageInput */
         ImageInput: {
             /** Byte Count */
@@ -4387,6 +4407,7 @@ export interface components {
         ImageModelList: {
             /** Items */
             items: components["schemas"]["ImageModelOption"][];
+            limits?: components["schemas"]["ImageGenerationLimits"] | null;
         };
         /** ImageModelOption */
         ImageModelOption: {

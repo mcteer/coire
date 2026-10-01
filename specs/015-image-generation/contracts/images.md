@@ -15,6 +15,18 @@ input, output, recipe and download; unknown/cross-owner resources return 404. No
 ownership bypass. Revoked credentials terminate event access on the next heartbeat/recheck.
 Audit admission/refusal for explicit requests and every admin mutation; do not log user content.
 
+## Current limits and retention disclosure
+
+`ImageModelList.limits` carries `ImageGenerationLimits`: generation/recipe input
+and output byte ceilings, owner stored-byte quota, pending-job cap, accepted daily
+output cap and nullable `output_retention_hours`. The API supplies it even with
+admission disabled and uses private/no-store responses. Null retention means
+owner deletion only; an integer means automatic tombstoning that many hours after
+successful publication. Inputs and replayable events have independent lifetimes.
+The browser must disclose the current policy before generating and refuse
+submission if the entire limits object is unavailable. These fields convey
+policy, not additional authority or permission to exceed server-enforced bounds.
+
 ## Native user routes
 
 | Method / path | Request -> response | Behavior |

@@ -6,6 +6,8 @@ import asyncio
 import os
 import runpy
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -16,11 +18,19 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import CheckConstraint, ForeignKey, ForeignKeyConstraint, UniqueConstraint, select
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from coire_api.audit import write_audit
 from coire_api.auth import Principal, PrincipalKind
-from coire_api.db import Base, ImageJobEventRow, ImageJobRow, ImageQuotaRow
-from coire_api.images import cancellation, job_capacity, storage
+from coire_api.db import (
+    AuditRow,
+    Base,
+    ImageJobEventRow,
+    ImageJobRow,
+    ImageOutputRow,
+    ImageQuotaRow,
+)
+from coire_api.images import cancellation, job_capacity, maintenance, storage
 from coire_core.errors import ImageConflict, ImageQuotaExceeded
 from coire_core.models.images import ImageJobSettingsSnapshot, ImageSpec
 from coire_core.settings import Settings
@@ -61,6 +71,15 @@ def test_image_job_identity_and_publication_evidence_are_durable() -> None:
         and {fk.target_fullname for fk in c.elements}
         == {"image_preset_revisions.preset_id", "image_preset_revisions.revision"}
         for c in table.constraints
+    )
+
+
+def test_output_retention_has_a_partial_publication_order_index() -> None:
+    indices = {str(index.name): index for index in Base.metadata.tables["image_outputs"].indexes}
+    index = indices["ix_image_outputs_retention"]
+    assert list(index.columns.keys()) == ["published_at", "id"]
+    assert str(index.dialect_options["postgresql"]["where"]) == (
+        "state = 'published' AND deleted_at IS NULL"
     )
 
 
@@ -266,6 +285,98 @@ def test_postgres_image_quota_serializes_independent_admissions(
                 row = await session.get(ImageJobRow, job_id)
             assert row is not None and row.state == "cancelling"
             assert row.cancel_requested_at is not None
+
+            # Retention runs against the real migrated schema and independent transactions.
+            retained_job_id = "01ARZ3NDEKTSV4RRFFQ69G5FAX"
+            output_ids = [uuid.uuid4() for _ in range(3)]
+            async with sessions() as session, session.begin():
+                session.add(
+                    ImageJobRow(
+                        id=retained_job_id,
+                        owner_user_id=owner_id,
+                        idempotency_key="retention-transaction",
+                        intent_sha256="b" * 64,
+                        submitted_spec=spec.model_dump(mode="json"),
+                        resolved_spec=ImageJobSettingsSnapshot(effective_spec=spec).model_dump(
+                            mode="json"
+                        ),
+                        state="succeeded",
+                        deadline_at=now + timedelta(hours=1),
+                        authorization_snapshot={},
+                        receipt_state="committed",
+                        cleanup_state="complete",
+                        finished_at=now,
+                    )
+                )
+                await session.flush()
+                for index, output_id in enumerate(output_ids):
+                    session.add(
+                        ImageOutputRow(
+                            id=output_id,
+                            job_id=retained_job_id,
+                            owner_user_id=owner_id,
+                            output_index=index,
+                            blob_key=output_id.hex,
+                            size_bytes=30,
+                            file_sha256="c" * 64,
+                            pixel_sha256="d" * 64,
+                            recipe={},
+                            content_tag="unknown",
+                            classifier_provenance={},
+                            entitlement_snapshot={},
+                            state="staged" if index == 2 else "published",
+                            created_at=now - timedelta(hours=26),
+                            published_at=now - timedelta(hours=25 if index != 1 else 1),
+                        )
+                    )
+                for quota in (await session.scalars(select(ImageQuotaRow))).all():
+                    quota.stored_bytes = 90
+
+            @asynccontextmanager
+            async def retention_session() -> AsyncIterator[AsyncSession]:
+                async with sessions() as session, session.begin():
+                    yield session
+
+            monkeypatch.setattr(maintenance, "session_scope", retention_session)
+            assert await maintenance.sweep_retained_outputs(settings) == 0
+            settings.image_output_retention_hours = 24
+            async with sessions() as locked, locked.begin():
+                await locked.scalar(
+                    select(ImageOutputRow)
+                    .where(ImageOutputRow.id == output_ids[0])
+                    .with_for_update()
+                )
+                assert await asyncio.wait_for(maintenance.sweep_retained_outputs(settings), 2) == 0
+
+            original_emit = write_audit
+
+            async def reject_audit(*args: object, **kwargs: object) -> None:
+                raise RuntimeError("retention audit failure")
+
+            monkeypatch.setattr(maintenance, "write_audit", reject_audit)
+            with pytest.raises(RuntimeError, match="retention audit failure"):
+                await maintenance.sweep_retained_outputs(settings)
+            async with sessions() as session:
+                unchanged = await session.get(ImageOutputRow, output_ids[0])
+                assert unchanged is not None and unchanged.deleted_at is None
+            monkeypatch.setattr(maintenance, "write_audit", original_emit)
+            assert await maintenance.sweep_retained_outputs(settings) == 1
+            assert await maintenance.sweep_retained_outputs(settings) == 0
+            async with sessions() as session:
+                outputs = [await session.get(ImageOutputRow, identity) for identity in output_ids]
+                audits = (
+                    await session.scalars(
+                        select(AuditRow).where(AuditRow.action == "image.output.expire")
+                    )
+                ).all()
+                retained_quota = (await session.scalars(select(ImageQuotaRow))).all()
+            assert len(retained_quota) == 2 and all(
+                quota.stored_bytes == 90 for quota in retained_quota
+            )
+            assert all(output is not None and output.purged_at is None for output in outputs)
+            assert outputs[0] is not None and outputs[0].deleted_at is not None
+            assert all(output is not None and output.deleted_at is None for output in outputs[1:])
+            assert len(audits) == 1 and audits[0].actor == "system:image-retention"
         finally:
             await engine.dispose()
 
@@ -281,3 +392,121 @@ def test_postgres_image_quota_serializes_independent_admissions(
         asyncio.run(exercise())
     finally:
         asyncio.run(drop_database())
+
+
+@pytest.mark.integration
+def test_postgres_image_migration_roundtrip_preserves_text_vlm_and_refuses_live_assets(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    admin_dsn = os.environ.get("COIRE_TEST_POSTGRES_DSN")
+    if not admin_dsn:
+        pytest.skip("set COIRE_TEST_POSTGRES_DSN for disposable local PostgreSQL")
+    parsed = urlparse(admin_dsn)
+    if parsed.scheme not in {"postgresql", "postgres"} or parsed.hostname not in {
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }:
+        pytest.fail("migration roundtrip requires an explicit localhost PostgreSQL server")
+    database = "coire_image_migration_" + uuid.uuid4().hex[:12]
+    dsn = urlunparse(parsed._replace(path="/" + database))
+    text_id, vlm_id, image_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+
+    async def database_command(create: bool) -> None:
+        connection = await asyncpg.connect(admin_dsn)
+        try:
+            if create:
+                await connection.execute(f"CREATE DATABASE {database}")
+            else:
+                await connection.execute(
+                    "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1",
+                    database,
+                )
+                await connection.execute(f"DROP DATABASE IF EXISTS {database}")
+        finally:
+            await connection.close()
+
+    async def insert_models(image: bool = False) -> None:
+        connection = await asyncpg.connect(dsn)
+        try:
+            for identity, backend, suffix in (
+                [(image_id, "mflux", "image")]
+                if image
+                else [(text_id, "mlx_lm", "text"), (vlm_id, "mlx_vlm", "vlm")]
+            ):
+                columns = ", kind" if image else ""
+                value = ", 'image_model'" if image else ""
+                await connection.execute(
+                    "INSERT INTO models (id, repo_id, slug, display_name, state, visibility, "
+                    "entitlement, tags, placement_policy, precision, weight_bytes, total_bytes, "
+                    f"file_count, memory_estimate_bytes, capability_profile, backend, source{columns}) "
+                    "VALUES ($1, $2, $3, $4, 'downloading', 'admin_only', '[]', '[]', "
+                    f"'single:auto', 'bf16', 1, 1, 1, 1, '{{}}', $5, 'studio'{value})",
+                    identity,
+                    f"fixture/{suffix}",
+                    f"fixture--{suffix}",
+                    suffix,
+                    backend,
+                )
+        finally:
+            await connection.close()
+
+    async def check_models(*, upgraded: bool, image: bool = False) -> None:
+        connection = await asyncpg.connect(dsn)
+        try:
+            rows = await connection.fetch(
+                "SELECT id, backend, repo_id FROM models ORDER BY repo_id"
+            )
+            expected = [(text_id, "mlx_lm", "fixture/text"), (vlm_id, "mlx_vlm", "fixture/vlm")]
+            if image:
+                expected.insert(0, (image_id, "mflux", "fixture/image"))
+            assert [tuple(row) for row in rows] == expected
+            columns = await connection.fetch(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = 'models'"
+            )
+            assert ("kind" in {row[0] for row in columns}) is upgraded
+            assert ("image_capability_profile" in {row[0] for row in columns}) is upgraded
+            assert (
+                await connection.fetchval("SELECT to_regclass('image_jobs')") is not None
+            ) is upgraded
+            assert (
+                await connection.fetchval("SELECT to_regclass('ix_image_outputs_retention')")
+                is not None
+            ) is upgraded
+        finally:
+            await connection.close()
+
+    async def remove_image() -> None:
+        connection = await asyncpg.connect(dsn)
+        try:
+            await connection.execute("DELETE FROM models WHERE id = $1", image_id)
+        finally:
+            await connection.close()
+
+    for name, value in {
+        "POSTGRES_HOST": parsed.hostname or "localhost",
+        "POSTGRES_PORT": str(parsed.port or 5432),
+        "POSTGRES_USER": unquote(parsed.username or ""),
+        "POSTGRES_PASSWORD": unquote(parsed.password or ""),
+        "POSTGRES_DB": database,
+    }.items():
+        monkeypatch.setenv(name, value)
+    config = Config(str(Path(__file__).resolve().parents[2] / "alembic.ini"))
+    asyncio.run(database_command(True))
+    try:
+        command.upgrade(config, "0022_stopped_usage_outcome")
+        asyncio.run(insert_models())
+        asyncio.run(check_models(upgraded=False))
+        command.upgrade(config, "head")
+        asyncio.run(check_models(upgraded=True))
+        asyncio.run(insert_models(image=True))
+        with pytest.raises(RuntimeError, match="remove image assets"):
+            command.downgrade(config, "0022_stopped_usage_outcome")
+        asyncio.run(check_models(upgraded=True, image=True))
+        asyncio.run(remove_image())
+        command.downgrade(config, "0022_stopped_usage_outcome")
+        asyncio.run(check_models(upgraded=False))
+        command.upgrade(config, "head")
+        asyncio.run(check_models(upgraded=True))
+    finally:
+        asyncio.run(database_command(False))

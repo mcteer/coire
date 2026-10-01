@@ -79,7 +79,18 @@ test("submits a basic image job with one idempotency key", async () => {
       path === "/api/v1/me"
         ? { ...user, role: "user" }
         : path.startsWith("/api/v1/images/models")
-          ? { items: [{ id: modelId, display_name: "Flux" }] }
+          ? {
+              items: [{ id: modelId, display_name: "Flux" }],
+              limits: {
+                generation_input_max_bytes: 10 * 1024 ** 2,
+                recipe_input_max_bytes: 64 * 1024 ** 2,
+                output_max_bytes: 64 * 1024 ** 2,
+                owner_storage_quota_bytes: 5 * 1024 ** 3,
+                pending_per_owner: 4,
+                daily_outputs_per_owner: 100,
+                output_retention_hours: null,
+              },
+            }
           : path.startsWith("/api/v1/images/presets")
             ? { items: [] }
             : path === "/api/v1/images" && init?.method === "POST"

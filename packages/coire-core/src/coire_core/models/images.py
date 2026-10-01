@@ -308,10 +308,25 @@ class ImageModelOption(BaseModel):
     residency: Literal["unknown"] = "unknown"
 
 
+class ImageGenerationLimits(BaseModel):
+    """Current operator policy, disclosed before accepting private image work."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    generation_input_max_bytes: int = Field(ge=1, le=10 * 1024**2)
+    recipe_input_max_bytes: int = Field(ge=1, le=64 * 1024**2)
+    output_max_bytes: int = Field(ge=1, le=64 * 1024**2)
+    owner_storage_quota_bytes: int = Field(ge=1, le=5 * 1024**3)
+    pending_per_owner: int = Field(ge=1, le=4)
+    daily_outputs_per_owner: int = Field(ge=1, le=100)
+    output_retention_hours: int | None = Field(default=None, ge=1, le=8760)
+
+
 class ImageModelList(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     items: list[ImageModelOption] = Field(max_length=100)
+    limits: ImageGenerationLimits | None = None
 
 
 class ImageCoexistenceBounds(BaseModel):

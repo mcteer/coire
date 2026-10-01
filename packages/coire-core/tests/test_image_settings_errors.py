@@ -38,6 +38,7 @@ def test_image_defaults_are_disabled_and_bounded() -> None:
     assert settings.image_pending_global == 32
     assert settings.image_daily_outputs_per_owner == 100
     assert settings.image_worker_idle_ttl_s == 900
+    assert settings.image_output_retention_hours is None
 
 
 @pytest.mark.parametrize(
@@ -52,11 +53,23 @@ def test_image_defaults_are_disabled_and_bounded() -> None:
         ("image_pending_global", 33),
         ("image_daily_outputs_per_owner", 101),
         ("image_worker_idle_ttl_s", 86_401),
+        ("image_output_retention_hours", 0),
+        ("image_output_retention_hours", -1),
+        ("image_output_retention_hours", 8761),
     ],
 )
 def test_image_upper_bounds_cannot_be_raised(field: str, value: int) -> None:
     with pytest.raises(ValidationError, match=field):
         _settings(**{field: value})
+
+
+def test_blank_compose_image_retention_is_until_owner_deletion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMAGE_OUTPUT_RETENTION_HOURS", "")
+    assert _settings().image_output_retention_hours is None
+    monkeypatch.setenv("IMAGE_OUTPUT_RETENTION_HOURS", "12")
+    assert _settings().image_output_retention_hours == 12
 
 
 @pytest.mark.parametrize(

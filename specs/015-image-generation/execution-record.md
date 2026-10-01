@@ -1279,3 +1279,62 @@ this evidence does not prove recovery from a filesystem unlink failure.
 The initial broad run is recorded as **1 failure, 1,769 passed, 2 unrelated skips,
 165 deselections**, not a successful gate. A fresh broad gate is still required
 following the retention/UI increment.
+
+## Current storage policy, audited expiry and real migration rollback — 2026-10-01
+
+Added the shared `ImageGenerationLimits` contract and generated OpenAPI/browser
+schema. Authenticated model listings disclose current operator upload/output byte
+ceilings, owner storage quota, pending/daily caps and nullable output-retention
+hours, including when generation is disabled. The Images form shows this policy
+before generation, refuses both click and direct form submission without it, and
+clears stale policy after a failed refresh. Failing-first disclosure/unavailable
+policy tests now pass. Existing unsupported/missing input guards also apply to
+programmatic form submission rather than only the disabled button.
+
+`COIRE_IMAGE_OUTPUT_RETENTION_HOURS` is opt-in (1–8,760 hours); blank/unset preserves
+owner-deletion-only retention. Blank Compose input first failed settings validation
+and now has a field-specific normalizer, without loosening unrelated settings.
+Expiry is measured from successful publication, never staging creation. A bounded
+25-row `FOR UPDATE SKIP LOCKED` sweep atomically audits and tombstones expired
+published outputs. Tombstones deny reads immediately; the existing physical purge
+alone releases stored-byte quota. Maintenance runs with admission disabled, emits
+bounded content-free spans and failure counters, and continues later sweeps after
+an expiry failure. Unit tests verify that logs contain error types, not arbitrary
+exception detail. Compose, contract documentation and the operator runbook are
+updated; enabling/shortening the policy also affects existing outputs.
+
+Migration `0030_image_output_retention` adds the partial `(published_at, id)` index
+for live published outputs. Its failing-first metadata test passes. The real local
+PostgreSQL matrix exercises the migrated schema: a separately held output lock
+is skipped without blocking, required-audit failure rolls back the tombstone,
+retry expires exactly once, recent publication survives despite old creation,
+staged output survives, and both quota rows retain their 90 stored bytes until
+physical removal. These rows are synthetic database fixtures, not generated PNGs
+or full publication/operator acceptance.
+
+A separate real Alembic roundtrip starts at `0022_stopped_usage_outcome`, inserts
+text/VLM registry rows, upgrades through head, and proves their identities/backends
+survive. A live image asset blocks downgrade; the transaction preserves the asset,
+image schema and new retention index. Removing only that fixture permits downgrade
+and re-upgrade, still preserving text/VLM rows. Every test uses its own database in
+the disposable localhost PostgreSQL container and drops it afterward. The
+`--rm` container was stopped and removed after the fresh gates; no acceptance
+database or production infrastructure was left running.
+
+Fresh gates after these source changes:
+
+- PostgreSQL/admission/persistence/maintenance/model-list/settings selection:
+  **47 passed**, no skips, using `COIRE_TEST_POSTGRES_DSN` on the isolated container.
+- `uv run pytest -q -rs -m 'not integration and not engine'`:
+  **1,772 passed, 2 skipped, 165 deselected**. Skips are the non-Darwin footprint
+  fallback and third-party topology image without a healthcheck.
+- Offline actual tiny native child gate: **9 passed**, no skips.
+- Browser unit suite: **137 passed**; lint and TypeScript/Vite build pass.
+- Ruff format (**695 files**)/check, strict mypy (**644 files**), generated OpenAPI
+  freshness and whitespace diff checks pass.
+
+This is partial T039/T057 and migration/rollback evidence, not completion of their
+full acceptance scope. All **24 unchecked parent tasks remain unchecked**, including
+native auxiliary adapters/validation, complete coexistence/failure/browser/release
+matrices and T083/T084 full-model/operator acceptance. No production image weights
+were acquired, admission was not enabled and no physical evidence was fabricated.

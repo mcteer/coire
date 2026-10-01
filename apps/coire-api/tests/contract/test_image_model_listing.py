@@ -189,7 +189,19 @@ async def test_model_picker_route_is_typed_and_disabled_until_admission(
     assert "get" in app.openapi()["paths"]["/api/v1/images/models"]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/images/models")
-    assert response.status_code == 200 and response.json() == {"items": []}
+    assert response.status_code == 200
+    assert response.json() == {
+        "items": [],
+        "limits": {
+            "generation_input_max_bytes": 10 * 1024**2,
+            "recipe_input_max_bytes": 64 * 1024**2,
+            "output_max_bytes": 64 * 1024**2,
+            "owner_storage_quota_bytes": 5 * 1024**3,
+            "pending_per_owner": 4,
+            "daily_outputs_per_owner": 100,
+            "output_retention_hours": None,
+        },
+    }
     assert response.headers["cache-control"] == "private, no-store"
 
     async def enabled(db: object, actor: Principal) -> ImageModelList:
@@ -199,4 +211,17 @@ async def test_model_picker_route_is_typed_and_disabled_until_admission(
     monkeypatch.setattr(catalog, "list_eligible_image_models", enabled)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/images/models")
-    assert response.status_code == 200 and response.json() == {"items": []}
+    assert response.status_code == 200 and response.json()["items"] == []
+    assert response.json()["limits"]["output_retention_hours"] is None
+
+    app.state.settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent",
+        image_enabled=True,
+        image_output_retention_hours=12,
+        image_owner_storage_quota_bytes=1024**3,
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/images/models")
+    assert response.status_code == 200
+    assert response.json()["limits"]["output_retention_hours"] == 12
+    assert response.json()["limits"]["owner_storage_quota_bytes"] == 1024**3

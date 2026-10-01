@@ -10,18 +10,26 @@ function capabilityOf(model: Model | undefined): Model["capability"] | null {
   return model.capability;
 }
 
+function storageSize(bytes: number): string {
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toLocaleString()} GiB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toLocaleString()} MiB`;
+  return `${bytes.toLocaleString()} bytes`;
+}
+
 export function ImageForm({
   models,
   presets,
   disabled,
   onSubmit,
   reuse,
+  limits = null,
 }: {
   models: ImageModelList["items"];
   presets: ImagePresetList["items"];
   disabled: boolean;
   onSubmit: (request: ImageSubmitRequest) => Promise<void>;
   reuse?: { request: ImageSubmitRequest; revision: number } | null;
+  limits?: ImageModelList["limits"];
 }) {
   const [modelId, setModelId] = useState(models[0]?.id ?? "");
   const [presetId, setPresetId] = useState<string | null>(null);
@@ -77,9 +85,22 @@ export function ImageForm({
       (mode === "fill" && !maskId) ||
       (mode === "control" && (!controlImageId || !reusedRequest?.control)));
 
+  const cannotSubmit =
+    disabled ||
+    !limits ||
+    prompt.trim() === "" ||
+    missingModel ||
+    unsupportedMode ||
+    missingInput ||
+    Boolean(
+      reusedRequest?.loras?.length &&
+      capability &&
+      reusedRequest.loras.length > capability.max_loras,
+    );
+
   const submit = async () => {
     const text = prompt.trim();
-    if (!text) return;
+    if (cannotSubmit) return;
     const overrides: Pick<ImageSubmitRequest, "width" | "height" | "steps" | "seed" | "n"> = {};
     if (width != null) overrides.width = width;
     if (height != null) overrides.height = height;
@@ -332,6 +353,27 @@ export function ImageForm({
           onChange={(event) => setPrompt(event.target.value)}
         />
       </label>
+      {limits ? (
+        <aside aria-label="Image storage and retention">
+          <p>
+            {limits.output_retention_hours == null
+              ? "Images are retained until you delete them, subject to your storage quota."
+              : `Images are automatically deleted after ${limits.output_retention_hours} hours.`}
+          </p>
+          <p>
+            Your storage quota: {storageSize(limits.owner_storage_quota_bytes)}. Up to{" "}
+            {limits.pending_per_owner} pending jobs and {limits.daily_outputs_per_owner} accepted
+            images per UTC day.
+          </p>
+          <p>
+            Generation inputs: {storageSize(limits.generation_input_max_bytes)}; recipe PNGs:{" "}
+            {storageSize(limits.recipe_input_max_bytes)}; outputs:{" "}
+            {storageSize(limits.output_max_bytes)}.
+          </p>
+        </aside>
+      ) : (
+        <p role="alert">Storage and retention policy is unavailable. Refresh before generating.</p>
+      )}
       {missingModel && <p role="alert">The source image model is no longer available.</p>}
       {unsupportedMode && <p role="alert">This model does not support the restored image mode.</p>}
       {mode === "img2img" && !strength && <p role="alert">Image strength is required.</p>}
@@ -343,22 +385,7 @@ export function ImageForm({
         reusedRequest.loras.length > capability.max_loras && (
           <p role="alert">This model no longer supports the restored LoRA stack.</p>
         )}
-      <button
-        className="button"
-        type="submit"
-        disabled={
-          disabled ||
-          prompt.trim() === "" ||
-          missingModel ||
-          unsupportedMode ||
-          missingInput ||
-          Boolean(
-            reusedRequest?.loras?.length &&
-            capability &&
-            reusedRequest.loras.length > capability.max_loras,
-          )
-        }
-      >
+      <button className="button" type="submit" disabled={cannotSubmit}>
         {disabled ? "Submitting…" : "Generate"}
       </button>
     </form>
