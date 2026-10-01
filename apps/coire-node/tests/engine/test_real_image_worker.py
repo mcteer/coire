@@ -6,11 +6,14 @@ from build_tiny_image_fixture.py. It does not contact either production Studio.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import importlib
 import os
 import runpy
+import socket
 import sys
+import time
 import uuid
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
@@ -31,6 +34,7 @@ from coire_core.models.image_worker import (
     ImageWorkerLoadRequest,
     ImageWorkerOutputManifest,
     ImageWorkerRunRequest,
+    ImageWorkerUnloadRequest,
     NodeImageCleanupRequest,
     NodeImageInputManifest,
     NodeImageStartRequest,
@@ -47,8 +51,9 @@ from coire_core.models.images import (
 )
 from coire_core.models.registry import ModelKind
 from coire_core.settings import Settings
-from coire_node.image_cleanup import cleanup_image_outputs
+from coire_node.image_cleanup import cleanup_image_outputs, discard_cancelled_image_scratch
 from coire_node.image_jobs import ImageJobJournal
+from coire_node.image_runtime import supervisor
 from coire_node.image_runtime.pipeline import MfluxTxt2ImgPipeline
 from coire_node.image_transfer import push_image_outputs
 from coire_node.image_validation import validate_image_asset
@@ -316,14 +321,22 @@ def test_real_encoder_cache_twenty_warm_trials_and_changed_prompt_miss(
     changed = base.spec.model_copy(update={"prompt": "a green square for cache evidence"})
     resolved = base.model_copy(update={"spec": changed, "spec_hash": canonical_spec_hash(changed)})
     digests: list[str] = []
-    for _ in range(21):
-        images = pipeline.generate(resolved, lambda *_: None)
+    for trial in range(21):
+        iteration_spec = resolved.spec.model_copy(update={"seed": trial, "steps": 1 + trial % 2})
+        iteration = resolved.model_copy(
+            update={
+                "spec": iteration_spec,
+                "seeds": (trial,),
+                "spec_hash": canonical_spec_hash(iteration_spec),
+            }
+        )
+        images = pipeline.generate(iteration, lambda *_: None)
         try:
             digests.append(pixel_digest(images[0].tobytes(), width=64, height=64, channels=3))
         finally:
             for image in images:
                 image.close()
-    assert len(set(digests)) == 1
+    assert len(digests) == 21 and len(set(digests)) > 1
     assert calls == 1
     assert cache_events.count(("prompt", "hit")) == 20
     assert cache_events.count(("prompt", "miss")) == 1
@@ -342,6 +355,184 @@ def test_real_encoder_cache_twenty_warm_trials_and_changed_prompt_miss(
         image.close()
     assert calls == 3
     assert cache_events.count(("prompt", "miss")) == 3
+
+
+async def test_real_child_survives_supervisor_restart_and_serves_same_pid(
+    tiny_pipeline: tuple[MfluxTxt2ImgPipeline, ImageWorkerLoadRequest],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, load = tiny_pipeline
+    target = await asyncio.to_thread(Path(os.environ["COIRE_TEST_MODEL"]).resolve)
+    # Only this test child uses startup injection to resize native components.
+    # Production bootstrap and pipeline have no tiny-model selection switch.
+    injection = tmp_path / "test-startup"
+    injection.mkdir()
+    builder = Path(__file__).with_name("build_tiny_image_fixture.py").resolve()
+    (injection / "sitecustomize.py").write_text(
+        "import runpy\n"
+        f"factory = runpy.run_path({str(builder)!r})['tiny_models']\n"
+        "from mflux.models.z_image.z_image_initializer import ZImageInitializer\n"
+        "def initialize(model):\n"
+        "    model.vae, model.transformer, model.text_encoder = factory()\n"
+        "ZImageInitializer._init_models = staticmethod(initialize)\n"
+        "def deny_fetch(*args, **kwargs):\n"
+        "    raise RuntimeError('test child denied model fetch')\n"
+        "import mflux.models.common.tokenizer.tokenizer_loader as tokenizer\n"
+        "import mflux.models.common.resolution.path_resolution as resolution\n"
+        "tokenizer.snapshot_download = deny_fetch\n"
+        "resolution.snapshot_download = deny_fetch\n"
+    )
+    original_environment = supervisor._child_environment
+
+    def child_environment() -> dict[str, str]:
+        environment = original_environment()
+        environment["PYTHONPATH"] = str(injection)
+        return environment
+
+    monkeypatch.setattr(supervisor, "_child_environment", child_environment)
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent",
+        node_store_dir=str(target.parent),
+        node_state_dir=str(tmp_path / "state"),
+        node_image_worker_port=port,
+    )
+    store = Store(target.parent)
+    manager = supervisor.ImageProcessSupervisor(settings, store, lambda: 0)
+    starting = manager.start(load)
+    assert starting.pid is not None
+    active_manager = manager
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            deadline = time.monotonic() + 45
+            while True:
+                ready = await manager.refresh_ready(client)
+                if ready.state == "ready":
+                    break
+                assert time.monotonic() < deadline, "real child never became ready"
+                await asyncio.sleep(0.1)
+            _, _, token = manager.private_control(load.instance_id)
+            headers = {"Authorization": f"Bearer {token}"}
+            url = f"http://127.0.0.1:{port}"
+            assert (await client.get(url + "/health")).status_code == 401
+
+            async def generate(fence: int) -> str:
+                command = ImageWorkerRunRequest(
+                    job_id=JOB,
+                    attempt=1,
+                    fence=fence,
+                    instance_id=load.instance_id,
+                    resolved=_resolved(load),
+                    deadline_at=datetime.now(UTC) + timedelta(minutes=2),
+                )
+                response = await client.put(
+                    url + "/job", headers=headers, json=command.model_dump(mode="json")
+                )
+                assert response.status_code == 202
+                until = time.monotonic() + 30
+                while True:
+                    response = await client.post(
+                        url + "/status",
+                        headers=headers,
+                        json={"job_id": JOB, "attempt": 1, "fence": fence},
+                    )
+                    response.raise_for_status()
+                    state = response.json()
+                    if state["state"] == "generated":
+                        break
+                    assert state["state"] == "running", state.get("safe_error")
+                    assert time.monotonic() < until
+                    await asyncio.sleep(0.05)
+                path = (
+                    Path(settings.node_state_dir) / "image-scratch" / f"{JOB}-1-{fence}" / "0.png"
+                )
+                recipe = parse_recipe_png(path)
+                return recipe.pixel_sha256
+
+            before = await generate(1)
+            restarted = supervisor.ImageProcessSupervisor(settings, store, lambda: 0)
+            active_manager = restarted
+            adopted = restarted.adopt_from_state()
+            assert adopted is not None and adopted.pid == starting.pid
+            assert adopted.state == "starting"
+            with pytest.raises(supervisor.ImageProcessUnavailable):
+                restarted.private_control(load.instance_id)
+            ready_again = await restarted.refresh_ready(client)
+            assert ready_again.state == "ready" and ready_again.pid == starting.pid
+            assert await generate(2) == before
+            assert restarted.committed_bytes() == load.reservation_bytes
+            # Start actual long native denoising, then exercise node-owned hard
+            # termination rather than waiting for a cooperative step cancel.
+            base = _resolved(load)
+            long_spec = base.spec.model_copy(update={"width": 256, "height": 256, "steps": 100})
+            long_resolved = base.model_copy(
+                update={"spec": long_spec, "spec_hash": canonical_spec_hash(long_spec)}
+            )
+            deadline_at = datetime.now(UTC) + timedelta(minutes=2)
+            journal = ImageJobJournal(settings.node_state_dir, "coire-edge-b")
+            queued = journal.begin(
+                NodeImageStartRequest(
+                    job_id=JOB,
+                    attempt=1,
+                    fence=3,
+                    node="coire-edge-b",
+                    model_id=load.model_id,
+                    instance_id=load.instance_id,
+                    resolved=long_resolved,
+                    deadline_at=deadline_at,
+                    reservation_bytes=load.reservation_bytes,
+                )
+            )
+            response = await client.put(
+                url + "/job",
+                headers=headers,
+                json=ImageWorkerRunRequest(
+                    job_id=JOB,
+                    attempt=1,
+                    fence=3,
+                    instance_id=load.instance_id,
+                    resolved=long_resolved,
+                    deadline_at=deadline_at,
+                ).model_dump(mode="json"),
+            )
+            assert response.status_code == 202
+            until = time.monotonic() + 30
+            while True:
+                response = await client.post(
+                    url + "/status",
+                    headers=headers,
+                    json={"job_id": JOB, "attempt": 1, "fence": 3},
+                )
+                response.raise_for_status()
+                state = response.json()
+                assert state["state"] == "running"
+                if (state.get("step") or 0) > 0:
+                    break
+                assert time.monotonic() < until
+                await asyncio.sleep(0.01)
+    finally:
+        began = time.monotonic()
+        stopped = active_manager.stop(
+            ImageWorkerUnloadRequest(
+                instance_id=load.instance_id, reason="shutdown", requested_at=datetime.now(UTC)
+            )
+        )
+        assert time.monotonic() - began < 5
+        assert stopped.reserved_bytes == 0
+        assert active_manager.committed_bytes() == 0
+        assert not active_manager.record_path.exists()
+    # Only after exact process death may the node discard killed-attempt bytes.
+    discard_cancelled_image_scratch(journal, settings.node_state_dir, queued)
+    assert not (Path(settings.node_state_dir) / "image-scratch" / f"{JOB}-1-3").exists()
+    cancelled = journal.advance(
+        queued.model_copy(
+            update={"state": "cancelled", "scratch_cleaned": True, "updated_at": datetime.now(UTC)}
+        )
+    )
+    assert journal.begin(journal.request(JOB)) == cancelled  # type: ignore[arg-type]
 
 
 async def test_real_png_transfer_receipt_allows_node_scratch_cleanup(

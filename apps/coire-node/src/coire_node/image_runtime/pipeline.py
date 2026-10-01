@@ -73,7 +73,12 @@ def _load_native(path: Path) -> _NativeModel:
     config = config_module.ModelConfig.z_image_turbo()
     if config.supports_guidance:
         raise ImagePipelineUnavailable()
-    return cast("_NativeModel", model_module.ZImage(model_path=str(path), model_config=config))
+    model = model_module.ZImage(model_path=str(path), model_config=config)
+    # Materialize lazy weights on their creating thread before execution moves
+    # to the worker thread. MLX streams cannot be evaluated across threads.
+    mlx = importlib.import_module("mlx.core")
+    mlx.eval(model.parameters())
+    return cast("_NativeModel", model)
 
 
 def _sync_latents(latents: object) -> None:

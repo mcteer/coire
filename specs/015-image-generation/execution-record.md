@@ -1084,3 +1084,42 @@ recovery integration tests passed; Ruff check/format passed. This covers the
 node receipt-ack-loss boundary, not API/scheduler publication or reboot of a
 physical Studio. OpenAPI freshness and the complete web selection (**134
 passed**), lint and TypeScript/Vite build also passed after the journal fix.
+
+## Actual local native child lifecycle — 2026-10-01
+
+T077 is complete for the local tiny-engine boundary. A new test launches the
+real production bootstrap child via ImageProcessSupervisor, injecting tiny
+native component dimensions only through a temporary test-only sitecustomize
+file. Production has no fixture-selection switch. The actual authenticated
+loopback worker serves a generation, denies unauthenticated health, survives
+supervisor reconstruction with the exact PID/create-time, rechecks health and
+serves a second generation with identical pixels. It then begins 100-step
+256px real MLX denoising; after observed native progress the node's actual
+TERM/KILL stop proves death and releases the reservation in under five seconds.
+Only after that proof does the test clean killed-attempt scratch and persist
+cancelled/cleaned replay without regeneration. The existing real transfer test
+separately proves receipt-bound normal PNG removal.
+
+This physical local test uncovered a real thread-ownership bug: lazy model
+weights created on bootstrap's main thread were evaluated during generation
+on a different thread, producing `There is no Stream(cpu, 0) in current
+thread`. The native loader now materializes all model parameters before they
+cross that boundary. It also exposed transient identity-inspection failure
+during macOS process exit; the death waiter now observes until confirmed gone
+or its bounded deadline, retaining memory and never signalling an unknown PID.
+Adoption now durably resets historical ready to starting and refuses private
+job control until a fresh authenticated identity/byte-matched health result.
+The new readiness expectation failed before that fix.
+
+The warm-cache trial now actually changes seed and alternates step count for
+20 warm iterations after one cold run. Native encoder calls remain exactly
+one, with 20 hits, distinct changed-prompt/environment misses and bounded
+occupancy. Actual outputs vary, rather than repeatedly testing an unchanged
+seed. The complete offline local engine selection passed **7 tests** in
+6.96 seconds. Focused supervisor/pipeline/bootstrap tests passed **29**;
+Ruff format/check and strict mypy (**642 source files**) passed. The broad
+local unit/contract gate passed **1,758**, 2 unrelated skips, 160 deselections
+before the final long-denoise test extension. Runbook documents thread
+materialization and adoption readiness. Full-model T083/T084 and advanced
+control/LoRA cache acceptance remain open; local tiny evidence does not
+establish production image quality, licences, or chat coexistence.

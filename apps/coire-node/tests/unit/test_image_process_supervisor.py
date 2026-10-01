@@ -233,8 +233,12 @@ async def test_authenticated_health_proves_ready_and_restart_adopts_exact_pid(
         settings, store, lambda: 0, memory_total_bytes=10_000
     )
     assert restarted.committed_bytes() == 9000
-    assert restarted.adopt_from_state() == ready
+    adopted = restarted.adopt_from_state()
+    assert adopted is not None
+    assert adopted == ready.model_copy(update={"state": "starting"})
     assert restarted.committed_bytes() == 1000
+    async with httpx.AsyncClient(transport=httpx.MockTransport(health)) as client:
+        assert await restarted.refresh_ready(client) == ready
 
 
 async def test_forged_health_or_changed_process_never_marks_ready(

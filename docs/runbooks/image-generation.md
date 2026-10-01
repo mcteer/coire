@@ -36,6 +36,24 @@ Inspect the model and acquisition job through the admin registry API and the
 `CoireImageValidationFailures` alert. Never repair a missing component by asking
 the generation worker to fetch it.
 
+## Native worker readiness after restart
+
+The node re-adopts an image child only by its exact PID, creation time, private
+launch configuration and verified model manifest. It resets historical `ready`
+to `starting` while retaining the full resident hold. Authenticated loopback
+health must prove the same identity, port and reserved bytes before dispatch
+can resume. A missing or mismatched reply is not permission to clear a hold or
+start another child. During termination, transient identity-inspection failure
+keeps the hold while the node continues waiting for death within its bounded
+stop window; an unknown identity is never signalled.
+
+The native loader evaluates all model parameters on their creating thread
+before background generation. MLX stream ownership is thread-local: unevaluated
+weights must not cross into the generation thread. The local tiny-engine gate
+exercises the actual bootstrap child, authenticated generation before and after
+supervisor reconstruction, identical PID and pixels, and confirmed bounded stop.
+This is local mechanical evidence, not full-model Studio acceptance.
+
 ## Inspect and stop current work
 
 An authenticated owner can use the Images page to see job state, progress and private

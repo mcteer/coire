@@ -197,6 +197,14 @@ class ImageProcessSupervisor:
                 if config != record.config or not _identity_alive(record):
                     raise ImageProcessUnavailable()
                 verify_image_copy(self.store, record.config.load)
+                # A persisted ready state is historical evidence, not current health.
+                # Keep the exact process and its hold, but fence dispatch until its
+                # authenticated control endpoint proves readiness after adoption.
+                record = ImageWorkerProcessRecord(
+                    config=record.config,
+                    status=record.status.model_copy(update={"state": "starting"}),
+                )
+                write_atomic(self.record_path, record.model_dump_json().encode("utf-8"))
             except Exception:
                 raise ImageProcessUnavailable() from None
             self._record = record
@@ -338,7 +346,10 @@ class ImageProcessSupervisor:
     def _await_death(record: ImageWorkerProcessRecord, deadline: float) -> _ProcessState:
         while True:
             state = _process_state(record)
-            if state != "same" or time.monotonic() >= deadline:
+            # During macOS process exit, identity inspection can briefly fail
+            # before the kernel reports death. Keep the hold and keep observing;
+            # never signal an unknown identity, but do not abort proof early.
+            if state == "gone" or time.monotonic() >= deadline:
                 return state
             time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
 
