@@ -892,3 +892,10 @@ returned an empty ledger and could admit image/model memory over an uncertain
 live conversion hold. The focused persistence and shared-lock selection
 passed **6 tests**; changed-file Ruff and strict mypy passed. The corrupt
 journal remains intact for operator recovery.
+
+The CI base refresh initially exposed a missing digest entry in
+`deploy/compose/images.lock` through the full unit gate. After adding the
+pin, `scripts/pin-images.sh --check` and all four pin tests passed. The full
+local non-engine, non-integration suite then passed **1,737 tests**, with 2
+skipped and 159 deselected. The image runbook now describes shared holds and
+corrupt-journal recovery.

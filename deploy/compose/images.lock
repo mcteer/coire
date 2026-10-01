@@ -21,5 +21,5 @@ docker-socket-proxy      docker.io/tecnativa/docker-socket-proxy:latest@sha256:1
 # deployed — tests/integration/test_topology.py asserts no production service uses it — but its
 # bases are recorded here so they are pinned, tracked, and updated with everything else.
 # Resolved 2026-08-30 on coire-core (linux/arm64).
-ci-node-test-base        docker.io/library/python:3.13-slim-bookworm@sha256:c45a22ea000adfd9cda29364bbe7edd23001ce5cc2ad15857cfbf7766943b9ca
+ci-node-test-base        docker.io/library/python:3.13-slim-trixie@sha256:7c61056e61ac89e852de05f3dc6fa51a6dd2181797bceed46aa725dd7cb2cd3b
 ci-uv                    ghcr.io/astral-sh/uv:0.12.7@sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945

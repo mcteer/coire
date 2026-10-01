@@ -76,6 +76,13 @@ same admin command after reconciling node health. New image placement on that
 Studio waits while an image worker is draining. Use node and scheduler logs,
 image metrics and job/lease records for investigation. The Images dashboard and
 image alerts show the corresponding fenced outcomes.
+Image worker memory is held in the shared placement ledger until exact node
+stop proof returns zero reserved bytes. A missing reply keeps the reservation
+held, including after a restart. If a Studio agent refuses startup because its
+`reservations.json` journal is malformed or unreadable, preserve that file,
+inspect running engine and image worker identities, and restore the journal
+from a verified backup before restarting the agent. An empty replacement could
+erase a live conversion hold and over-admit memory.
 
 Personal API keys need `images` for standard generation and reads, plus
 `images:explicit` for explicit work. The owning human also needs live entitlement;
