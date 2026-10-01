@@ -1038,7 +1038,7 @@ engine contract selection passed **21 tests**; Ruff, strict mypy and the node
 wheel build script syntax check passed. Physical re-adoption with this fix is
 pending a new immutable node install.
 
-## Physical stderr-survival regression — 2026-10-02
+## Physical stderr-survival regression — 2026-10-01
 
 Reconciled Studio A's interrupted readiness poll before any mutation: exact
 engine PID 56826 was `ready` and returned HTTP 200 with one choice for a
@@ -1074,3 +1074,13 @@ contracts passed **24 tests**. Repository Ruff format/check and strict mypy
 tests** in 4.69 seconds. The full local non-integration/non-engine selection
 passed **1,758 tests**, with 2 unrelated skips and 159 deselections. These
 results do not close the advanced-mode or physical image acceptance gates.
+
+Extended the local receipt/fence recovery integration scenario to inject lost
+cleanup acknowledgment: after PNG removal and terminal journal persistence,
+reconstruct the agent and retry the exact cleanup command. The returned
+receipt is identical, the journal remains succeeded/cleaned, original start
+replay cannot regenerate, and changed receipt digests are refused. Both local
+recovery integration tests passed; Ruff check/format passed. This covers the
+node receipt-ack-loss boundary, not API/scheduler publication or reboot of a
+physical Studio. OpenAPI freshness and the complete web selection (**134
+passed**), lint and TypeScript/Vite build also passed after the journal fix.

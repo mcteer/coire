@@ -174,5 +174,24 @@ def test_fenced_receipt_cannot_clean_or_publish_a_different_attempt(tmp_path: Pa
     assert output.path.exists()
     assert journal.get(JOB) == transferring
     valid = NodeImageCleanupRequest(job_id=JOB, attempt=1, fence=1, node=NODE, receipts=(receipt,))
-    assert cleanup_image_outputs(journal, tmp_path, valid).state == "cleaned"
+    cleaned = cleanup_image_outputs(journal, tmp_path, valid)
+    assert cleaned.state == "cleaned"
+    assert not output.path.exists()
+    # Lose the first cleanup response and reconstruct the node agent. The durable
+    # receipt must answer an identical retry without regenerating or restoring PNGs.
+    restarted = ImageJobJournal(tmp_path, NODE)
+    replayed = cleanup_image_outputs(restarted, tmp_path, valid)
+    assert replayed == cleaned
+    terminal = restarted.get(JOB)
+    assert terminal is not None and terminal.state == "succeeded"
+    assert terminal.scratch_cleaned
+    assert restarted.begin(start) == terminal
+    with pytest.raises(ImageJournalConflict):
+        cleanup_image_outputs(
+            restarted,
+            tmp_path,
+            valid.model_copy(
+                update={"receipts": (receipt.model_copy(update={"sha256": "c" * 64}),)}
+            ),
+        )
     assert not output.path.exists()
