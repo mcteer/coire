@@ -630,6 +630,60 @@ async def test_successful_transfer_discards_staged_inputs_before_cleanup(
     assert events == ["inputs", "outputs"]
 
 
+@pytest.mark.parametrize("healthy", [True, False])
+async def test_adopted_starting_worker_rechecks_health_before_observation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, healthy: bool
+) -> None:
+    observations = 0
+    health_checks = 0
+    revalidated = False
+
+    def observe(request: httpx.Request) -> httpx.Response:
+        nonlocal observations
+        assert request.method == "POST" and request.url.path == "/status"
+        observations += 1
+        return httpx.Response(
+            200,
+            json=ImageWorkerStatus(
+                job_id=JOB, attempt=1, fence=4, state="running", updated_at=datetime.now(UTC)
+            ).model_dump(mode="json"),
+        )
+
+    _, dispatcher = _setup(tmp_path, monkeypatch, httpx.MockTransport(observe))
+    load, port, token = dispatcher.worker.private_control(INSTANCE)
+    ready = dispatcher.worker.current_status()
+    assert ready is not None
+    starting = ready.model_copy(update={"state": "starting"})
+    monkeypatch.setattr(dispatcher.worker, "current_status", lambda: starting)
+
+    async def refresh(client: httpx.AsyncClient) -> ImageWorkerLoadResult:
+        nonlocal health_checks, revalidated
+        assert isinstance(client, httpx.AsyncClient)
+        health_checks += 1
+        revalidated = healthy
+        return ready if healthy else starting
+
+    def private(instance_id: uuid.UUID) -> tuple[ImageWorkerLoadRequest, int, str]:
+        assert instance_id == INSTANCE
+        if not revalidated:
+            raise ImageProcessUnavailable()
+        return load, port, token
+
+    monkeypatch.setattr(dispatcher.worker, "refresh_ready", refresh)
+    monkeypatch.setattr(dispatcher.worker, "private_control", private)
+    current = dispatcher.journal.begin(_request())
+    if healthy:
+        observed = await dispatcher._worker_status(current)
+        assert observed is not None and observed.state == "running"
+        assert observations == 1
+    else:
+        with pytest.raises(image_dispatch.ImageDispatchUnavailable):
+            await dispatcher._worker_status(current)
+        assert observations == 0
+    assert health_checks == 1
+    assert dispatcher.journal.get(JOB) == current
+
+
 async def test_status_reconciles_after_restart_without_generation_replay(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

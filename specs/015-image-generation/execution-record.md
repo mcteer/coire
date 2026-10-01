@@ -1151,3 +1151,11 @@ before the fix, while symlink-root refusal already passed. Staging, parsing
 and normalization selection passed **13 tests**; Ruff format/check and strict
 mypy passed. Unsafe roots are refused, not silently chmodded. This preserves
 the configured private-volume ownership boundary.
+
+Post-adoption job observation now refreshes authenticated worker readiness
+when the resident exact instance is starting, then queries only its existing
+attempt. This prevents running jobs from being stranded by the new historical
+ready reset, without replaying generation. Healthy and unavailable health
+regressions prove one refresh, no generation PUT, and no journal mutation;
+unavailable health prevents the status call. Node job/supervisor selection
+passed **32 tests**, Ruff and strict mypy passed.

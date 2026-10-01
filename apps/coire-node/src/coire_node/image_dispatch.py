@@ -135,6 +135,19 @@ class ImageNodeDispatcher:
     async def _worker_status(self, current: NodeImageJob) -> ImageWorkerStatus | None:
         """Return the worker attempt. None means the worker is up and has never accepted it."""
         try:
+            resident = self.worker.current_status()
+            if (
+                resident is not None
+                and resident.instance_id == current.instance_id
+                and resident.state == "starting"
+            ):
+                # Observation after agent adoption must restore health without
+                # replaying generation. Keep the journal and memory hold fenced
+                # until the same authenticated child proves readiness.
+                async with httpx.AsyncClient(
+                    transport=self.transport, trust_env=False, timeout=2.0
+                ) as client:
+                    await self.worker.refresh_ready(client)
             _, port, token = self.worker.private_control(current.instance_id)
         except ImageProcessUnavailable:
             raise ImageDispatchUnavailable() from None
