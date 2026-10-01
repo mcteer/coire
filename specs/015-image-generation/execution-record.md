@@ -763,3 +763,14 @@ The complete non-integration, non-engine Python selection passed **1,722
 tests**, with 2 skipped and 157 deselected. Strict mypy passed 638 source
 files. Repository Ruff format/check, generated OpenAPI freshness and
 `git diff --check` passed after formatting an existing image-agent line.
+
+A populated-gallery Chromium pass exposed action buttons clipped by the
+200-pixel card width. The gallery now uses 270-pixel minimum cards and a
+two-column action grid with wrapping text. Synthetic thumbnail and all five
+actions render inside the card at 1024 and 1440 pixels in both themes;
+document width equals viewport width in all four cases. The full-page
+screenshots and structured report remain outside the repository as
+`/tmp/coire-015-gallery-*.png` and
+`/tmp/coire-015-browser-gallery-report.json`. The web test suite passed
+**134 tests**; lint and TypeScript/Vite build passed. T082 remains open for
+a complete screen-reader and real-service journey.
