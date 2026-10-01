@@ -835,3 +835,11 @@ image-to-image generation and the dual-mode acquisition smoke. Local scheduler
 transfer-order, admission/reference, node contract and validation selections
 passed. Fill, control, LoRA, upscale, owner active-reference cancellation and
 full production-mode validation remain open under T033/T054/T056.
+
+Owner deletion of an input with active references now takes the same quota
+lock as admission, requests cancellation of each exact referencing job in
+the deletion transaction and tombstones the input. Physical purge still waits
+for terminal node cleanup and reference release. The deletion and cancellation
+selection passed **15 tests**, including the referenced-input path; strict
+mypy and Ruff passed the changed files. The wider cancellation latency and
+all advanced modes are still open.

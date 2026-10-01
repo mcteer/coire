@@ -76,8 +76,8 @@ export function ImageInputField({
         </p>
       )}
       <p>
-        Private inputs count toward your storage quota until deleted. Active job inputs can be
-        deleted after the job ends.
+        Private inputs count toward your storage quota until deleted. Deleting an input used by an
+        active job requests cancellation; bytes are removed after that job stops.
       </p>
     </div>
   );

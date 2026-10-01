@@ -130,8 +130,9 @@ dimensions and stores them under private `image-input-scratch`; queued cancellat
 removes that scratch. Image-to-image dispatch retains the owner's ready init
 input, reserves the exact node attempt, transfers the normalized PNG and
 verifies its digest again inside the worker. Terminal publication, cancellation
-and clean worker failure release the active input reference. Delete a referenced
-input after its job reaches a terminal state. Fill, control, LoRA and upscale
+and clean worker failure release the active input reference. Deleting an input
+used by an active job requests fenced cancellation and tombstones the input;
+the purge waits for the node's stop and cleanup acknowledgment. Fill, control, LoRA and upscale
 execution remain under T054/T056.
 
 The `coire-blobs` volume is API-only. Back up and restore it together with the Postgres

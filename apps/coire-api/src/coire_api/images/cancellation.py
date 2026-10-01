@@ -23,10 +23,10 @@ _TERMINAL = frozenset({ImageJobState.SUCCEEDED, ImageJobState.FAILED, ImageJobSt
 
 
 async def request_image_job_cancel(
-    session: AsyncSession, principal: Principal, job_id: str
+    session: AsyncSession, principal: Principal, job_id: str, *, commit: bool = True
 ) -> tuple[ImageJob, bool]:
     """Commit cancel intent and audit; return whether termination is already proved."""
-    return await _request_cancel(session, principal, job_id, admin=False)
+    return await _request_cancel(session, principal, job_id, admin=False, commit=commit)
 
 
 async def request_admin_image_job_cancel(
@@ -43,7 +43,7 @@ async def request_admin_image_job_cancel(
 
 
 async def _request_cancel(
-    session: AsyncSession, principal: Principal, job_id: str, *, admin: bool
+    session: AsyncSession, principal: Principal, job_id: str, *, admin: bool, commit: bool = True
 ) -> tuple[ImageJob, bool]:
     # Admission takes this advisory lock before a job lock. Keep the same order.
     await session.execute(_QUOTA_LOCK)
@@ -149,5 +149,6 @@ async def _request_cancel(
         created_at=row.created_at,
         updated_at=now,
     )
-    await session.commit()
+    if commit:
+        await session.commit()
     return result, queued_without_node
