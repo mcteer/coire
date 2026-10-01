@@ -26,6 +26,10 @@ class ReservationRefused(RuntimeError):
         super().__init__(f"needs {required} bytes; {committed} of {budget} already committed")
 
 
+class ReservationLedgerUnavailable(RuntimeError):
+    """An existing hold journal cannot be trusted for memory admission."""
+
+
 class ReservationLedger:
     def __init__(
         self,
@@ -44,12 +48,20 @@ class ReservationLedger:
 
     def _load(self) -> dict[uuid.UUID, Reservation]:
         try:
-            values = json.loads(self._path.read_text())
+            raw = self._path.read_text()
+        except FileNotFoundError:
+            return {}
+        except OSError as exc:
+            raise ReservationLedgerUnavailable("reservation journal needs recovery") from exc
+        try:
+            values = json.loads(raw)
+            if not isinstance(values, dict):
+                raise ValueError("reservation journal must be an object")
             return {
                 uuid.UUID(key): Reservation.model_validate(value) for key, value in values.items()
             }
-        except (OSError, ValueError, TypeError):
-            return {}
+        except (OSError, ValueError, TypeError) as exc:
+            raise ReservationLedgerUnavailable("reservation journal needs recovery") from exc
 
     def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)

@@ -885,3 +885,10 @@ base. Updating only this CI image to digest-pinned Python 3.13 on Debian 13
 and the matching pinned Git package produced a clean rebuild, CRITICAL Trivy
 scan (exit 0), SPDX SBOM and node/core import smoke. The test image still
 stays outside the production image-policy matrix and is never deployed.
+
+The node acquisition reservation journal now fails closed if its existing
+file is malformed or unreadable. Previously a parse failure silently
+returned an empty ledger and could admit image/model memory over an uncertain
+live conversion hold. The focused persistence and shared-lock selection
+passed **6 tests**; changed-file Ruff and strict mypy passed. The corrupt
+journal remains intact for operator recovery.
