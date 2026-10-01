@@ -75,9 +75,16 @@ def _result(request: ImageRecipeParseRequest) -> ImageRecipeParseResult:
 class FakeSession:
     def __init__(self, row: ImageInputRow) -> None:
         self.row = row
+        self.lock_order: list[str] = []
 
-    async def get(self, model: type[object], identity: object, **_: object) -> object | None:
+    async def execute(self, statement: object) -> None:
+        assert "pg_advisory_xact_lock" in str(statement)
+        self.lock_order.append("quota")
+
+    async def get(self, model: type[object], identity: object, **kwargs: object) -> object | None:
         assert model is ImageInputRow and identity == self.row.id
+        if kwargs.get("with_for_update"):
+            self.lock_order.append("input")
         return self.row
 
 
@@ -121,6 +128,7 @@ async def test_recipe_workflow_persists_and_settles_once(
     await workflow.drive_recipe_input(row.id)
     assert row.state == "ready" and row.recipe is not None and row.held_bytes == 0
     assert calls == [7, 99]
+    assert session.lock_order == ["quota", "input"]
     await workflow.drive_recipe_input(row.id)
     assert calls == [7, 99]
 

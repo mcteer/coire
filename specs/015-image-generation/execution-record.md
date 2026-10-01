@@ -1133,3 +1133,13 @@ cancel-before-tombstone path; bytes still wait for reference release and
 cleanup proof. Input deletion/reference/cleanup selection passed **15 tests**,
 Ruff format/check and strict mypy passed. T054 stays open for complete
 cross-boundary processing/transfer acceptance rather than closing on this fix.
+
+Input processing review also found a lock-order inversion: recipe and
+normalization completion locked the input row before obtaining quota locks,
+while owner deletion and maintenance used quota-before-input. Both completion
+transactions now take the shared quota advisory lock before their input row,
+preventing cross-process deletion/settlement deadlock without releasing holds
+early. The two lock-order regressions failed before the fix. Processing,
+refusal, concurrent deletion and cleanup selection passed **20 tests**; Ruff
+format/check and strict mypy passed. Real PostgreSQL concurrency is still a
+separate required gate, not inferred from these deterministic lock tests.

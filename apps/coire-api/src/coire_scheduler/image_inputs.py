@@ -16,7 +16,7 @@ from opentelemetry import metrics, trace
 
 from coire_api.db import ImageInputRow, session_scope
 from coire_api.file_worker_client import FileWorkerClient, FileWorkerParseRefused
-from coire_api.images.quota import settle_storage_hold
+from coire_api.images.quota import _QUOTA_LOCK, settle_storage_hold
 from coire_core.errors import ImageConflict
 from coire_core.models.files import ImageFileProcessRequest, ImageFileProcessResult
 from coire_core.models.image_worker import ImageRecipeParseRequest
@@ -105,6 +105,8 @@ async def drive_recipe_input(input_id: uuid.UUID) -> None:
             return
 
     async with session_scope() as session:
+        # Match deletion/maintenance: quota lock before the input row.
+        await session.execute(_QUOTA_LOCK)
         row = await session.get(ImageInputRow, input_id, with_for_update=True)
         if row is None or row.state != "processing":
             return
@@ -192,6 +194,8 @@ async def drive_normalized_input(input_id: uuid.UUID) -> None:
     ):
         raise ImageConflict("normalized image input is unavailable")
     async with session_scope() as session:
+        # Settlement must not invert deletion/maintenance lock order.
+        await session.execute(_QUOTA_LOCK)
         row = await session.get(ImageInputRow, input_id, with_for_update=True)
         if row is None or row.state != "processing":
             return

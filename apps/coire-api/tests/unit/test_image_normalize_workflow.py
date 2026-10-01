@@ -38,9 +38,16 @@ def _row() -> ImageInputRow:
 class FakeSession:
     def __init__(self, row: ImageInputRow) -> None:
         self.row = row
+        self.lock_order: list[str] = []
 
-    async def get(self, model: type[object], identity: object, **_: object) -> object | None:
+    async def execute(self, statement: object) -> None:
+        assert "pg_advisory_xact_lock" in str(statement)
+        self.lock_order.append("quota")
+
+    async def get(self, model: type[object], identity: object, **kwargs: object) -> object | None:
         assert model is ImageInputRow and identity == self.row.id
+        if kwargs.get("with_for_update"):
+            self.lock_order.append("input")
         return self.row
 
 
@@ -48,10 +55,11 @@ async def test_normalize_workflow_binds_result_verifies_bytes_and_settles_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     row = _row()
+    session = FakeSession(row)
 
     @asynccontextmanager
     async def scope() -> AsyncIterator[FakeSession]:
-        yield FakeSession(row)
+        yield session
 
     commands: list[ImageFileProcessRequest] = []
     settlements: list[tuple[int, int]] = []
@@ -106,6 +114,7 @@ async def test_normalize_workflow_binds_result_verifies_bytes_and_settles_once(
         512,
     )
     assert settlements == [(7 + 10 * 1024 * 1024, 130)]
+    assert session.lock_order == ["quota", "input"]
     await workflow.drive_normalized_input(row.id)
     assert len(commands) == len(settlements) == 1
 
