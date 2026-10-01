@@ -79,6 +79,7 @@ def _read(path: Path) -> _Record | None:
             not stat.S_ISREG(info.st_mode)
             or info.st_uid != os.getuid()
             or info.st_mode & 0o077
+            or info.st_nlink != 1
             or info.st_size > _MAX_RECORD_BYTES
         ):
             raise ImageJournalUnavailable()

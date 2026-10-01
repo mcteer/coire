@@ -1062,3 +1062,15 @@ remote Python process from Keychain and never printed or passed in argv.
 Neither Studio has acquired image weights. T083/T084 remain unproven, as do
 all other unchecked parent acceptance items. No task was checked solely on
 the basis of this text-engine regression.
+
+Continued recovery-boundary review found that image attempt journals rejected
+symlinks and public files but accepted multiply linked private files. Added a
+regression first: restart/get/request/replay must refuse a hardlinked journal
+without modifying either alias. It failed before the fix. The reader now
+requires one filesystem link, retaining uncertain state rather than treating
+it as safe generation authority. Focused journal and authenticated node-job
+contracts passed **24 tests**. Repository Ruff format/check and strict mypy
+(**642 files**) passed. The offline real tiny-mflux selection passed **6
+tests** in 4.69 seconds. The full local non-integration/non-engine selection
+passed **1,758 tests**, with 2 unrelated skips and 159 deselections. These
+results do not close the advanced-mode or physical image acceptance gates.

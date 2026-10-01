@@ -138,6 +138,25 @@ def test_journal_refuses_unsafe_path_or_public_file(tmp_path: Path) -> None:
         journal.get(JOB)
 
 
+def test_journal_refuses_hardlinked_record_without_mutating_it(tmp_path: Path) -> None:
+    journal = ImageJobJournal(tmp_path, NODE)
+    request = _request()
+    journal.begin(request)
+    path = tmp_path / "image-jobs" / f"{JOB}.json"
+    alias = tmp_path / "journal-alias"
+    os.link(path, alias)
+    original = alias.read_bytes()
+    restarted = ImageJobJournal(tmp_path, NODE)
+    for operation in (
+        lambda: restarted.get(JOB),
+        lambda: restarted.request(JOB),
+        lambda: restarted.begin(request),
+    ):
+        with pytest.raises(ImageJournalUnavailable):
+            operation()
+    assert path.read_bytes() == alias.read_bytes() == original
+
+
 def test_journal_rejects_wrong_node_and_expired_new_request(tmp_path: Path) -> None:
     journal = ImageJobJournal(tmp_path, NODE)
     request = _request()
