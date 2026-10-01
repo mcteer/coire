@@ -161,6 +161,22 @@
       ],
       "title": "Bare VLM request outcomes",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 80},
+      "id": 11,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (backend, outcome) (rate(coire_engine_adoption_total[5m]))",
+          "legendFormat": "{{backend}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Studio engine re-adoption and generation recheck",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

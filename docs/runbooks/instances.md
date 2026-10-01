@@ -53,3 +53,14 @@ ownership.
 Keep the prior directory until that check passes. The installer does not prove tiny-model
 generation, visual token usage, cancellation or cluster placement; run the feature 014 acceptance
 checks before enabling visual Chat.
+
+After an agent restart, a surviving engine keeps its memory reservation and reports
+`starting` while the node proves a one-token generation again. A live PID alone does
+not establish readiness. Inspect `GET /node/engines`, the
+`coire_engine_adoption_total` outcomes, the `coire.node.engine_adopt` span and
+the `CoireEngineAdoptionRecheckFailed` alert. If an adopted engine remains
+unresponsive, drain its instance through the admin API, stop the exact engine
+through the authenticated node control API, and reload it through normal
+placement. Confirm the new engine reaches `ready` and serves a short request
+before restoring traffic. The old process must be dead before its reservation
+is released; keep the previous immutable environment available for rollback.

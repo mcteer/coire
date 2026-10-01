@@ -774,3 +774,39 @@ screenshots and structured report remain outside the repository as
 `/tmp/coire-015-browser-gallery-report.json`. The web test suite passed
 **134 tests**; lint and TypeScript/Vite build passed. T082 remains open for
 a complete screen-reader and real-service journey.
+
+The current branch's locked node wheelhouse selected 87 macOS arm64 wheels.
+The immutable `0.2.0-eb2ddbd382f5` environment installed on both Studios;
+the installer passed imports for coire-core/node, mlx-lm, mlx-vlm and mflux,
+both engine CLI smoke checks and the pinned Z-Image import before flipping
+`envs/current`. After one at a time agent restarts, both `/ready` endpoints
+returned 200 and unauthenticated `/node/health` returned 401. Authenticated
+health returned 200 on the control path. Edge A re-adopted its pre-existing
+text engine PID 25184, but an authenticated text completion returned 502 and
+its loopback health gave an empty response. Stopping and starting that exact
+engine via the node API produced new PID 55229; an authenticated 4-token
+text completion then returned 200 with one choice and usage in 0.615s.
+Edge B loaded the existing 256M SmolVLM through the node API, reached ready,
+returned 200 with one choice and usage in 0.585s, and was stopped with a
+confirmed terminal state. Neither Studio acquired or ran an image model in
+these checks. The transient edge A failure is recorded as a re-adoption
+readiness defect to investigate under T071/T081 rather than a passed
+re-adoption gate.
+
+The native encoder cache key now includes the variant and declared Studio
+environment fingerprint. The real tiny-engine selection again passed **4
+tests**, including 20 warm hits and distinct misses for changed prompt and
+environment, with byte occupancy within its configured bound. Ruff and mypy
+passed the changed runtime/test files. Adapter and control-stage execution
+remain open under T056/T060/T061/T064.
+
+The observed edge A re-adoption defect led to a node change: a surviving
+process is now held as `starting` until a fresh one-token completion proves
+it can serve. A dead adopted process fails without releasing a live hold,
+and a concurrent stop cannot be overwritten by a late readiness response.
+The adoption counter, span, chat dashboard panel, alert and instance
+runbook were updated with this path. The fake text/VLM lifecycle and image
+observability selection passed **30 tests**; Ruff, strict mypy, alert YAML
+and dashboard JSON checks passed. This fix has not yet been rolled out to
+the Studios, so the physical re-adoption regression still needs a repeat
+after a subsequent versioned node install.

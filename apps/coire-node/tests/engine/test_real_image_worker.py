@@ -234,6 +234,11 @@ def test_real_encoder_cache_twenty_warm_trials_and_changed_prompt_miss(
         image.close()
     assert calls == 2
     assert cache_events.count(("prompt", "miss")) == 2
+    changed_environment = other_resolved.model_copy(update={"environment_fingerprint": "b" * 64})
+    for image in pipeline.generate(changed_environment, lambda *_: None):
+        image.close()
+    assert calls == 3
+    assert cache_events.count(("prompt", "miss")) == 3
 
 
 async def test_real_png_transfer_receipt_allows_node_scratch_cleanup(

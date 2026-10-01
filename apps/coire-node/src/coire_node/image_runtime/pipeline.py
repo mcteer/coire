@@ -239,6 +239,8 @@ class MfluxTxt2ImgPipeline:
                 self._active_prompt_identity = stage_identity(
                     self._request.runtime_version,
                     self._request.manifest_sha256,
+                    str(self._request.variant_id),
+                    resolved.environment_fingerprint,
                     self._adapter_id or "",
                     *(dependency.sha256 for dependency in resolved.dependencies),
                 )

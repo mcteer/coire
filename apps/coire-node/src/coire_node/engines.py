@@ -64,6 +64,11 @@ _load_seconds = _meter.create_histogram(
 _engine_resident = _meter.create_gauge(
     "coire_engine_resident_bytes", unit="By", description="Measured engine footprint."
 )
+_adoption_total = _meter.create_counter(
+    "coire_engine_adoption_total",
+    unit="1",
+    description="Exact-process engine re-adoption and generation recheck outcomes.",
+)
 
 ENGINES_FILE = "engines.json"
 CREATE_TIME_TOLERANCE_S = 1.0
@@ -288,6 +293,11 @@ def _alive(pid: int | None, create_time: float | None, *, needle: str | None = N
         return False
 
 
+def _still_starting(engine: _Engine) -> bool:
+    """Read mutable engine state again after a blocking network call."""
+    return engine.state is EngineState.STARTING
+
+
 class EngineManager:
     """Spawns, watches, adopts and stops engines."""
 
@@ -496,8 +506,24 @@ class EngineManager:
 
         with httpx.Client(timeout=10.0) as client:
             while time.monotonic() < deadline:
+                with self._lock:
+                    if not _still_starting(engine):
+                        return
                 if engine.proc is not None and engine.proc.poll() is not None:
                     self._mark_start_failure(engine)
+                    return
+                if (
+                    engine.proc is None
+                    and engine.pid is not None
+                    and not _alive(engine.pid, engine.create_time)
+                ):
+                    with self._lock:
+                        engine.state = EngineState.FAILED
+                        engine.state_reason = "the re-adopted engine process exited"
+                        engine.stopped_at = datetime.now(UTC)
+                        engine.resident_bytes = None
+                        self._persist()
+                    _adoption_total.add(1, {"backend": engine.backend.value, "outcome": "failed"})
                     return
                 if self._stop.is_set():
                     return
@@ -527,6 +553,8 @@ class EngineManager:
                     continue
                 if resp.status_code == 200:
                     with self._lock:
+                        if not _still_starting(engine):
+                            return
                         engine.state = EngineState.READY
                         engine.load_seconds = time.monotonic() - started
                         engine.last_health_at = datetime.now(UTC)
@@ -543,10 +571,16 @@ class EngineManager:
                         engine.resident_bytes,
                         engine.estimate_bytes,
                     )
+                    if engine.proc is None:
+                        _adoption_total.add(
+                            1, {"backend": engine.backend.value, "outcome": "ready"}
+                        )
                     return
                 time.sleep(1.0)
 
         with self._lock:
+            if not _still_starting(engine):
+                return
             engine.state = EngineState.FAILED
             engine.state_reason = (
                 f"did not answer a generation request within "
@@ -555,6 +589,8 @@ class EngineManager:
             engine.stopped_at = datetime.now(UTC)
             self._persist()
         self._terminate(engine)
+        if engine.proc is None:
+            _adoption_total.add(1, {"backend": engine.backend.value, "outcome": "failed"})
 
     def _mark_start_failure(self, engine: _Engine) -> None:
         """Record why an engine died during startup, with its own account of it."""
@@ -723,17 +759,22 @@ class EngineManager:
                 estimate_bytes=record.get("estimate_bytes", 0),
                 pid=pid,
                 create_time=create_time,
-                state=EngineState.READY,
+                state=EngineState.STARTING,
                 started_at=datetime.fromisoformat(record["started_at"]),
                 chat_template_sha256=record.get("chat_template_sha256"),
                 backend=EngineBackend(record.get("backend", "mlx_lm")),
             )
-            engine.state_reason = "re-adopted after an agent restart"
+            engine.state_reason = "rechecking generation after an agent restart"
             self._sample(engine)
             key = str(engine.engine_id) if engine.engine_id else f"orphan-{engine.port}"
             self._engines[key] = engine
             adopted.append(engine.status())
+            with _tracer.start_as_current_span("coire.node.engine_adopt") as span:
+                span.set_attribute("coire.backend", engine.backend.value)
+                span.set_attribute("coire.engine_id", str(engine.engine_id))
+                _adoption_total.add(1, {"backend": engine.backend.value, "outcome": "rechecking"})
             logger.info("adopted engine %s (pid %s) for %s", engine.engine_id, pid, slug)
+            threading.Thread(target=self._probe_until_ready, args=(engine,), daemon=True).start()
 
         self._persist()
         return adopted

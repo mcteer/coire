@@ -7,6 +7,12 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: Native Chat API request failed
+      - alert: CoireEngineAdoptionRecheckFailed
+        expr: sum(increase(coire_engine_adoption_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A Studio engine survived agent restart but did not pass generation recheck
       - alert: CoireChatFailuresHigh
         expr: >-
           sum(increase(coire_chat_turns_total{outcome="failed"}[10m]))
