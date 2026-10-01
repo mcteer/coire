@@ -10,11 +10,13 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from coire_api.db import ImageJobRow, ModelInstanceRow
 from coire_api.nodes_client import NodeError, NodeErrorKind
 from coire_core.errors import ImageConflict
 from coire_core.models.image_worker import (
@@ -33,6 +35,8 @@ from coire_core.models.images import (
     canonical_spec_hash,
     expand_image_seeds,
 )
+from coire_core.models.instance import InstanceState
+from coire_core.models.placement import MemoryReservationState
 from coire_core.settings import Settings
 from coire_scheduler import image_dispatch, images
 from coire_scheduler.image_dispatch import (
@@ -240,6 +244,11 @@ async def test_dispatch_retains_placed_holds_when_a_worker_reply_is_missing(
         yield object()
 
     monkeypatch.setattr(images, "prepare_image_dispatch", prepare)
+
+    async def record_ready(*_: object) -> None:
+        pass
+
+    monkeypatch.setattr(images, "_record_image_worker_ready", record_ready)
     monkeypatch.setattr(images, "NodeClient", Client)
     monkeypatch.setattr(images, "session_scope", scope)
     monkeypatch.setattr(images, "get_settings", lambda: Settings(_secrets_dir="/nonexistent"))  # type: ignore[call-arg]
@@ -377,6 +386,11 @@ async def test_img2img_dispatch_reserves_and_stages_exact_owner_input_before_sta
             )
 
     monkeypatch.setattr(images, "prepare_image_dispatch", prepare)
+
+    async def record_ready(*_: object) -> None:
+        pass
+
+    monkeypatch.setattr(images, "_record_image_worker_ready", record_ready)
     monkeypatch.setattr(images, "NodeClient", Client)
     monkeypatch.setattr(images, "session_scope", scope)
     monkeypatch.setattr(
@@ -388,3 +402,38 @@ async def test_img2img_dispatch_reserves_and_stages_exact_owner_input_before_sta
     )
     assert await images.drive_image_dispatch(JOB)
     assert calls == ["reserve", "load", "ready", "stage", "start"]
+
+
+async def test_ready_record_requires_exact_held_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    node_id = uuid.uuid4()
+    instance = SimpleNamespace(
+        policy=f"image:{NODE}", state=InstanceState.LAUNCHING, updated_at=None, transitioned_at=None
+    )
+    reservation = SimpleNamespace(state=MemoryReservationState.HELD, bytes=1024)
+    member = SimpleNamespace(rank_healthy=False)
+
+    class Session:
+        async def get(self, model: object, identity: object, **kwargs: object) -> object:
+            if model is ImageJobRow:
+                return SimpleNamespace(instance_id=INSTANCE, selected_node_id=node_id)
+            assert model is ModelInstanceRow and identity == INSTANCE
+            return instance
+
+        async def scalar(self, statement: object) -> object:
+            selected = str(statement.selected_columns)  # type: ignore[attr-defined]
+            return reservation if "memory_reservations" in selected else member
+
+        async def execute(self, statement: object, parameters: object = None) -> None:
+            pass
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[AsyncSession]:
+        yield cast(AsyncSession, Session())
+
+    monkeypatch.setattr(images, "session_scope", scope)
+    await images._record_image_worker_ready(JOB, INSTANCE, 1024)
+    assert instance.state is InstanceState.READY
+    assert member.rank_healthy is True
+    reservation.bytes = 2048
+    with pytest.raises(ImageConflict, match="reservation changed"):
+        await images._record_image_worker_ready(JOB, INSTANCE, 1024)

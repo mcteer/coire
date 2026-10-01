@@ -20,6 +20,9 @@ from coire_api.db import (
     ImageJobRow,
     ImageOutputRow,
     ImageTransferRow,
+    InstanceMemberRow,
+    MemoryReservationRow,
+    ModelInstanceRow,
     NodeRow,
     session_scope,
 )
@@ -37,6 +40,7 @@ from coire_api.images.storage import (
 )
 from coire_api.images.transfer import mint_transfer_grant, require_bound_image_spec
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
+from coire_api.placement.service import node_admission_lock
 from coire_core.errors import ImageConflict, ImageForbidden
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.image_worker import (
@@ -49,6 +53,8 @@ from coire_core.models.image_worker import (
     NodeImageTransferRequest,
 )
 from coire_core.models.images import ImageJobEvent, ImageJobState
+from coire_core.models.instance import InstanceState
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import Settings, get_settings
 from coire_scheduler.image_dispatch import (
     _access_current,
@@ -621,6 +627,55 @@ async def image_transfer_workflow(job_id: str) -> None:
     await image_transfer_step(job_id)
 
 
+async def _record_image_worker_ready(
+    job_id: str, instance_id: uuid.UUID, reserved_bytes: int
+) -> None:
+    """Publish readiness only for the exact held node worker observed by dispatch."""
+    async with session_scope() as session:
+        job = await session.get(ImageJobRow, job_id)
+        if job is None or job.instance_id != instance_id or job.selected_node_id is None:
+            raise ImageConflict("image worker placement changed before readiness")
+        node_id = job.selected_node_id
+        async with node_admission_lock(session, node_id):
+            instance = await session.get(
+                ModelInstanceRow, instance_id, populate_existing=True, with_for_update=True
+            )
+            reservation = await session.scalar(
+                select(MemoryReservationRow)
+                .where(
+                    MemoryReservationRow.node_id == node_id,
+                    MemoryReservationRow.holder_type == ReservationHolder.IMAGE,
+                    MemoryReservationRow.holder_id == str(instance_id),
+                )
+                .with_for_update()
+            )
+            member = await session.scalar(
+                select(InstanceMemberRow)
+                .where(
+                    InstanceMemberRow.instance_id == instance_id,
+                    InstanceMemberRow.node_id == node_id,
+                )
+                .with_for_update()
+            )
+            if (
+                instance is None
+                or not instance.policy.startswith("image:")
+                or instance.state
+                not in {InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY}
+                or reservation is None
+                or reservation.state is not MemoryReservationState.HELD
+                or reservation.bytes != reserved_bytes
+                or member is None
+            ):
+                raise ImageConflict("image worker reservation changed before readiness")
+            if instance.state is not InstanceState.READY:
+                now = datetime.now(UTC)
+                instance.state = InstanceState.READY
+                instance.updated_at = now
+                instance.transitioned_at = now
+            member.rank_healthy = True
+
+
 async def drive_image_dispatch(job_id: str) -> bool:
     """Place a queued job, then send one idempotent worker load and start.
 
@@ -687,6 +742,9 @@ async def drive_image_dispatch(job_id: str) -> bool:
                     raise ImageConflict("image worker readiness differs from dispatch")
             if loaded.state != "ready":
                 raise ImageConflict("image worker readiness differs from dispatch")
+            await _record_image_worker_ready(
+                job_id, prepared.load.instance_id, prepared.load.reservation_bytes
+            )
             if prepared.start.inputs:
                 if reserved.state == "queued":
                     for item in prepared.start.inputs:

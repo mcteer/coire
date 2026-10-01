@@ -983,3 +983,11 @@ Ruff and strict mypy passed. The complete local non-engine, non-integration
 selection passed **1,753 tests**, with 2 skipped and 159 deselected. An
 uncertain idle stop now has a dedicated alert and dashboard panel. Physical
 Studio restart and TTL inventory remain open under T071.
+
+After the node's exact ready response, dispatch now records `ready` on the
+image instance and marks its Studio member healthy under the shared admission
+lock. It requires the matching held reservation and byte count before
+publishing that state. A changed or released hold leaves the instance
+unpromoted and dispatch refuses to start the job. The focused dispatch
+selection passed **8 tests**, including the held-reservation mismatch case;
+changed-file Ruff and strict mypy passed.
