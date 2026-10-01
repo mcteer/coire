@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from coire_api.gateway import proxy
+from coire_core.errors import ChatModelUnavailable
 from coire_core.settings import Settings
 
 
@@ -128,3 +129,26 @@ async def test_node_proxy_request_acquires_and_releases_memory_lease(
     ):
         assert calls == [("acquire", reservation_id)]
     assert calls == [("acquire", reservation_id), ("release", lease_id)]
+
+
+async def test_node_proxy_refuses_unreserved_engine_inference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Session:
+        async def get(self, model: object, identity: object) -> object:
+            return SimpleNamespace(model_id=uuid.uuid4(), instance_id=None, node_id=uuid.uuid4())
+
+        async def scalar(self, statement: object) -> None:
+            return None
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(proxy, "session_scope", sessions)
+    with pytest.raises(ChatModelUnavailable):
+        async with proxy.request_lease(
+            f"http://coire-edge-a.lab:9400/node/engines/{uuid.uuid4()}/proxy",
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        ):
+            pytest.fail("unreserved engine request reached the upstream")

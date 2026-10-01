@@ -950,3 +950,10 @@ own admission ceiling. This prevents a default ledger budget larger than a
 admission and dispatch tests passed **34 tests**; changed-file Ruff and strict
 mypy passed. The full local unit/contract suite immediately before this
 clamp passed **1,745 tests**, with 2 skipped and 159 deselected.
+
+Gateway inference now refuses a node engine or shard group whose memory
+reservation is missing, so a request cannot proceed without the lease that
+protects the resident model while image admission runs. The proxy and affected
+chat contract selection passed **37 tests**; changed-file Ruff and strict
+mypy passed. The remaining physical mixed-load benchmark and TTL inventory
+remain open under T068/T071/T072.

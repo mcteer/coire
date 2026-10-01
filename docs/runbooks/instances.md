@@ -5,6 +5,10 @@ SSE stream at `/events`. Grafana links instance metrics to `coire.scheduler.inst
 
 Stop safely with `DELETE /api/v1/instances/{id}`. It enters `draining`, rejects new work, waits for
 leases, and stops by `INSTANCE_DRAIN_TIMEOUT_S`. Do not stop engines directly except for failure tests.
+The gateway refuses a node engine request with `chat_model_unavailable` if its
+shared memory reservation is missing, rather than proxying an inference with
+no request lease. Inspect the engine ID, instance member, reservation state
+and placement command before restoring traffic; recover through placement.
 
 For a stalled launch, inspect the instance, placement decision, `placement_commands`, scheduler logs
 with `instance_id`, and node health. Restarting only the scheduler is safe because DBOS reattaches.

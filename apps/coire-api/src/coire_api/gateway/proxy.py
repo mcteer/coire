@@ -25,6 +25,7 @@ from coire_api.db import (
 )
 from coire_api.gateway.telemetry import queue_duration_ms, tracer
 from coire_api.placement.service import acquire_lease, refresh_lease, release_lease
+from coire_core.errors import ChatModelUnavailable
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import Settings
 
@@ -138,7 +139,9 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
     async with session_scope() as session:
         if len(segments) > 2 and segments[2] == "shard-groups":
             group = await session.get(ShardGroupRow, target_id)
-            instance_id = group.instance_id if group is not None else None
+            if group is None:
+                raise ChatModelUnavailable()
+            instance_id = group.instance_id
             members = (
                 list(
                     (
@@ -154,15 +157,18 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                 if instance_id is not None
                 else []
             )
+            if not members:
+                raise ChatModelUnavailable()
             for member in members:
-                if member.reservation_id is not None:
-                    lease = await acquire_lease(
-                        session,
-                        member.reservation_id,
-                        str(uuid.uuid4()),
-                        ttl_seconds=settings.placement_lease_ttl_s,
-                    )
-                    lease_ids.append(lease.id)
+                if member.reservation_id is None:
+                    raise ChatModelUnavailable()
+                lease = await acquire_lease(
+                    session,
+                    member.reservation_id,
+                    str(uuid.uuid4()),
+                    ttl_seconds=settings.placement_lease_ttl_s,
+                )
+                lease_ids.append(lease.id)
         else:
             engine = await session.get(EngineProcessRow, target_id)
             if engine is not None:
@@ -181,14 +187,17 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                     MemoryReservationRow.state == MemoryReservationState.HELD,
                 )
             )
-            if reservation is not None:
-                lease = await acquire_lease(
-                    session,
-                    reservation.id,
-                    str(uuid.uuid4()),
-                    ttl_seconds=settings.placement_lease_ttl_s,
-                )
-                lease_ids.append(lease.id)
+            if reservation is None:
+                raise ChatModelUnavailable()
+            lease = await acquire_lease(
+                session,
+                reservation.id,
+                str(uuid.uuid4()),
+                ttl_seconds=settings.placement_lease_ttl_s,
+            )
+            lease_ids.append(lease.id)
+        elif engine is None and len(segments) > 2 and segments[2] != "shard-groups":
+            raise ChatModelUnavailable()
         if instance_id is not None and lease_ids:
             instance = await session.get(ModelInstanceRow, instance_id)
             if instance is not None:
