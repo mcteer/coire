@@ -9,10 +9,12 @@ from typing import Any, cast
 
 import pytest
 
-from coire_api.db import NodeRow
+from coire_api.db import ModelRow, ModelVariantRow, NodeRow
+from coire_core.models.acquisition import VariantState
 from coire_core.models.images import ImageCoexistenceBounds, ImageCoexistenceReportRequest
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
+from coire_core.models.registry import ModelKind, ModelState
 from coire_scheduler.image_admission import (
     PINNED_RUNTIME_VERSION,
     CoexistenceReport,
@@ -69,14 +71,25 @@ class _Session:
         self._rows = rows
         self.statements: list[object] = []
         self.node = SimpleNamespace(**vars(NODE_FACTS))
+        self.variant_published = True
 
     async def scalars(self, statement: object) -> _Rows:
         self.statements.append(statement)
         return _Rows(self._rows)
 
     async def get(self, model: type[object], identity: object, **kwargs: object) -> object:
-        assert model is NodeRow and kwargs == {"populate_existing": True}
-        return self.node
+        assert kwargs == {"populate_existing": True}
+        if model is NodeRow:
+            return self.node
+        if model is ModelVariantRow:
+            return SimpleNamespace(
+                model_id=MODEL_ID,
+                state=VariantState.READY,
+                validated=True,
+                published=self.variant_published,
+            )
+        assert model is ModelRow
+        return SimpleNamespace(kind=ModelKind.LANGUAGE_MODEL, state=ModelState.READY)
 
 
 def _profile(**overrides: object) -> SimpleNamespace:
@@ -316,6 +329,9 @@ async def test_chat_mix_allowed_requires_a_covering_current_profile() -> None:
     assert "approved" in compiled.params.values()
     assert NOW in compiled.params.values()
     session.node.agent_version = "0.3.0"
+    assert not await chat_mix_allowed(session, node_id, model_id, {str(CHAT_ID)}, NOW)  # type: ignore[arg-type]
+    session.node.agent_version = NODE_FACTS.agent_version
+    session.variant_published = False
     assert not await chat_mix_allowed(session, node_id, model_id, {str(CHAT_ID)}, NOW)  # type: ignore[arg-type]
 
 

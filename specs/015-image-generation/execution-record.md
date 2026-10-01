@@ -957,3 +957,9 @@ protects the resident model while image admission runs. The proxy and affected
 chat contract selection passed **37 tests**; changed-file Ruff and strict
 mypy passed. The remaining physical mixed-load benchmark and TTL inventory
 remain open under T068/T071/T072.
+
+Measured coexistence now rechecks each resident chat variant and its model
+at admission time. Unpublished, unvalidated or non-ready variants no longer
+authorize image dispatch or a new chat load through a previously approved
+profile. The focused profile selection passed **27 tests**, including the
+post-approval unpublish case; changed-file Ruff and strict mypy passed.

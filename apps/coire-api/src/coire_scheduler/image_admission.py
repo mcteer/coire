@@ -24,13 +24,17 @@ from coire_api.db import (
     InstanceMemberRow,
     MemoryReservationRow,
     ModelInstanceRow,
+    ModelRow,
+    ModelVariantRow,
     NodeMemoryLedgerRow,
     NodeRow,
 )
+from coire_core.models.acquisition import VariantState
 from coire_core.models.images import ImageCoexistenceReportRequest
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
+from coire_core.models.registry import ModelKind, ModelState
 
 PINNED_RUNTIME_VERSION = "mflux-0.20.0"
 FIRST_TOKEN_P95_LIMIT_S = 1.5
@@ -269,6 +273,26 @@ async def chat_mix_allowed(
     """
     if not resident_variant_ids:
         return True
+    for variant_id in resident_variant_ids:
+        try:
+            parsed_id = uuid.UUID(variant_id)
+        except ValueError:
+            return False
+        variant = await session.get(ModelVariantRow, parsed_id, populate_existing=True)
+        if (
+            variant is None
+            or variant.state is not VariantState.READY
+            or not variant.validated
+            or not variant.published
+        ):
+            return False
+        model = await session.get(ModelRow, variant.model_id, populate_existing=True)
+        if (
+            model is None
+            or model.kind is not ModelKind.LANGUAGE_MODEL
+            or model.state is not ModelState.READY
+        ):
+            return False
     node = await session.get(NodeRow, node_id, populate_existing=True)
     if (
         node is None
