@@ -166,7 +166,7 @@ export function Images({ canEditPresets = false }: { canEditPresets?: boolean })
   };
 
   return (
-    <main className="grid" aria-label="Images">
+    <main className="grid image-page" aria-label="Images">
       <section className="panel glass wide">
         <h1>Images</h1>
         {models.length === 0 ? (

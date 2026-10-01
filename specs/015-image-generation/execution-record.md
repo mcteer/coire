@@ -687,3 +687,31 @@ The subsequent fail-closed monitor change passed focused tests but needs a
 new broad run. The web suite passed **134 tests** across 36 files with ESLint,
 TypeScript and production build green. The actual local no-model installer
 smoke for `mlx_lm.server`, `mlx_vlm.server` and mflux imports passed.
+
+T025 is complete: the fake worker now injects a failure after the first output
+of a two-output batch. The worker removes partial scratch, retains the failed
+fence without regeneration on replay, and accepts a later distinct job. The
+queue/replay and restart/fenced-cleanup integration selection passed **4 tests**.
+These deterministic local lifecycle tests do not substitute for the operator
+cancellation and publication gates in T083.
+
+T055 is complete at the import boundary: current owner authority, base and
+auxiliary model digests, input purpose/digest rebinding, direct settings and
+declared Studio environment are checked. Matching declarations still return
+`runtime_environment_unverified` and `exact_reproduction_available=false`;
+only T084's physical trials can establish the pixel claim. The focused recipe
+import and authorization selection passed **26 tests**.
+
+A local synthetic-data Chromium pass against the built Images page exposed a
+collapsed settings form, absent page-level dark colors and an incomplete
+select focus outline. The page now uses a responsive settings grid, full-width
+Images panels, dark theme tokens and explicit focus for selects. At 1024 and
+1440 pixels in light and dark modes, Chromium reported viewport width equal
+to document scroll width, and all 12 sampled keyboard Tab targets were
+visible. Its accessibility tree exposed the Images landmark, model, prompt,
+Generate action and image-jobs region. Four screenshots and the structured
+report are stored outside the repository as `/tmp/coire-015-images-*.png` and
+`/tmp/coire-015-browser-report.json`; they contain only synthetic model data.
+The final page still needs a VoiceOver journey and real populated-gallery
+journey before T082 can close. The web suite passed **134 tests**, lint and
+TypeScript/Vite build after the visual changes.

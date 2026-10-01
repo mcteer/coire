@@ -136,6 +136,7 @@ export function ImageForm({
 
   return (
     <form
+      className="image-generation-form"
       onSubmit={(event) => {
         event.preventDefault();
         void submit();
@@ -168,7 +169,7 @@ export function ImageForm({
         </label>
       )}
       {capability && (
-        <div>
+        <div className="image-settings-grid">
           <label>
             Mode
             <select

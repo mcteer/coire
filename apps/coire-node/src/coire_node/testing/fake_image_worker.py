@@ -13,8 +13,11 @@ from coire_node.image_worker import Progress
 class FakeImagePipeline:
     """Hold one generation at a step boundary so tests can race node commands."""
 
-    def __init__(self, *, block_at_step: int | None = None) -> None:
+    def __init__(
+        self, *, block_at_step: int | None = None, fail_at_output: int | None = None
+    ) -> None:
         self.block_at_step = block_at_step
+        self.fail_at_output = fail_at_output
         self.release = threading.Event()
         self.entered = threading.Event()
         self.calls = 0
@@ -25,6 +28,10 @@ class FakeImagePipeline:
         self.calls += 1
         result: list[Image.Image] = []
         for index, seed in enumerate(resolved.seeds):
+            if index == self.fail_at_output:
+                for image in result:
+                    image.close()
+                raise RuntimeError("injected image worker failure")
             for step in range(1, resolved.spec.steps + 1):
                 if step == self.block_at_step:
                     self.entered.set()

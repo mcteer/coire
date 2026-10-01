@@ -102,3 +102,46 @@ async def test_one_serial_worker_replays_exact_fence_without_second_generation(
         assert observed.state == "generated"
         assert len(observed.outputs) == 1
         assert pipeline.calls == 1
+
+
+async def test_partial_batch_failure_cleans_scratch_and_replay_cannot_regenerate(
+    tmp_path: Path,
+) -> None:
+    load, first = _requests()
+    spec = first.resolved.spec.model_copy(update={"n": 2})
+    resolved = first.resolved.model_copy(
+        update={"spec": spec, "seeds": (7, 8), "spec_hash": canonical_spec_hash(spec)}
+    )
+    first = first.model_copy(update={"resolved": resolved})
+    pipeline = FakeImagePipeline(fail_at_output=1)
+    scratch = tmp_path / "scratch"
+    app = create_worker_app(load, pipeline, scratch, token=TOKEN, port=39178)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://worker",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as client:
+        assert (await client.put("/job", json=first.model_dump(mode="json"))).status_code == 202
+        for _ in range(100):
+            observed = await _status(client, first)
+            if observed.state == "failed":
+                break
+            await asyncio.sleep(0.01)
+        assert observed.state == "failed"
+        assert not (scratch / f"{JOB}-1-1").exists()
+        pipeline.fail_at_output = None
+        replay = await client.put("/job", json=first.model_dump(mode="json"))
+        assert replay.status_code == 200
+        assert ImageWorkerStatus.model_validate(replay.json()).state == "failed"
+        assert pipeline.calls == 1
+
+        second = first.model_copy(update={"job_id": SECOND})
+        assert (await client.put("/job", json=second.model_dump(mode="json"))).status_code == 202
+        for _ in range(100):
+            next_status = await _status(client, second)
+            if next_status.state == "generated":
+                break
+            await asyncio.sleep(0.01)
+        assert next_status.state == "generated"
+        assert {output.index for output in next_status.outputs} == {0, 1}
+        assert pipeline.calls == 2

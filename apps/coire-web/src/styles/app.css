@@ -17,6 +17,7 @@ textarea {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
+select:focus-visible,
 textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -24,6 +25,7 @@ textarea:focus-visible {
 .app {
   min-height: 100vh;
   padding: 150px var(--shell-margin) 120px;
+  color: var(--ink);
   background:
     radial-gradient(1100px 600px at 15% 0%, var(--bg-tint-a), transparent 60%),
     radial-gradient(900px 600px at 100% 100%, var(--bg-tint-b), transparent 60%), var(--bg);
@@ -59,7 +61,7 @@ textarea:focus-visible {
   width: 34px;
   height: 34px;
   border-radius: var(--r-md);
-  color: var(--surface);
+  color: #fff;
   font-weight: 800;
   background: var(--accent-gradient);
   box-shadow: var(--shadow-accent);
@@ -222,7 +224,7 @@ td {
   border: 0;
   border-radius: var(--r-md);
   padding: 8px 14px;
-  color: var(--surface);
+  color: #fff;
   font-weight: 700;
   background: var(--accent-gradient);
   cursor: pointer;
@@ -319,5 +321,31 @@ td {
   .chip,
   .status {
     background: var(--surface);
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .app {
+    color-scheme: dark;
+    --bg: #151b28;
+    --bg-tint-a: #202a43;
+    --bg-tint-b: #1a3540;
+    --glass-bg: rgba(31, 39, 55, 0.78);
+    --glass-border: #424b5e;
+    --surface: #222938;
+    --surface-2: #2a3243;
+    --surface-3: #30394b;
+    --border: #424b5e;
+    --divider: #3a4455;
+    --ink: #f5f6fa;
+    --ink-2: #d6dae6;
+    --ink-3: #abb3c4;
+    --ink-4: #8893a8;
+    --accent: #8993f4;
+    --accent-2: #2bb6a3;
+    --accent-ink: #bfc5ff;
+    --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.24);
+    --shadow-2: 0 10px 32px rgba(0, 0, 0, 0.26);
+    --shadow-3: 0 16px 42px rgba(0, 0, 0, 0.32);
   }
 }
