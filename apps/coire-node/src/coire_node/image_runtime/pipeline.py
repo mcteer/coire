@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib
 import os
 import threading
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, cast
@@ -49,6 +50,8 @@ class _NativeModel(Protocol):
         width: int,
         guidance: float,
         negative_prompt: None,
+        image_path: Path | None = None,
+        image_strength: float | None = None,
     ) -> object: ...
 
 
@@ -93,13 +96,26 @@ class _ProgressCallback:
         self.total = 0
         self.completed = 0
         self.seed = 0
+        self.offset = 0
+        self.report_total = 0
 
-    def begin(self, *, index: int, total: int, seed: int, report: Progress) -> None:
+    def begin(
+        self,
+        *,
+        index: int,
+        total: int,
+        seed: int,
+        report: Progress,
+        offset: int = 0,
+        report_total: int | None = None,
+    ) -> None:
         self.output_index = index
         self.total = total
         self.completed = 0
         self.seed = seed
         self.report = report
+        self.offset = offset
+        self.report_total = report_total if report_total is not None else total
 
     def call_in_loop(
         self,
@@ -116,7 +132,7 @@ class _ProgressCallback:
             raise ImagePipelineUnavailable()
         _sync_latents(latents)
         self.completed += 1
-        self.report(self.output_index, self.completed, self.total)
+        self.report(self.output_index, self.offset + self.completed, self.report_total)
 
     def end(self) -> None:
         self.report = None
@@ -212,23 +228,39 @@ class MfluxTxt2ImgPipeline:
                 self.prompt_cache.put(key, "\0".join(parts).encode("utf-8"))
 
     def generate(
-        self, resolved: ResolvedImageSpec, on_progress: Progress
+        self,
+        resolved: ResolvedImageSpec,
+        on_progress: Progress,
+        *,
+        input_paths: dict[uuid.UUID, Path] | None = None,
     ) -> tuple[Image.Image, ...]:
         spec = resolved.spec
+        init_path: Path | None = None
+        if spec.mode is ImageMode.IMG2IMG:
+            if (
+                spec.init_image_id is None
+                or spec.strength is None
+                or input_paths is None
+                or set(input_paths) != {spec.init_image_id}
+                or {item.input_id for item in resolved.inputs} != {spec.init_image_id}
+            ):
+                raise ImagePipelineUnavailable()
+            init_path = input_paths[spec.init_image_id]
+        elif input_paths:
+            raise ImagePipelineUnavailable()
         if (
             resolved.pipeline_version != RUNTIME_VERSION
             or resolved.model_sha256 != self._request.manifest_sha256
             or spec.model_id != self._request.model_id
             or spec.variant_id != self._request.variant_id
-            or spec.mode is not ImageMode.TXT2IMG
+            or spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG}
             or spec.guidance != 0
             or spec.negative_prompt is not None
             or spec.loras
-            or spec.init_image_id is not None
             or spec.mask_id is not None
             or spec.control is not None
             or spec.upscale is not None
-            or resolved.inputs
+            or (spec.mode is ImageMode.TXT2IMG and resolved.inputs)
         ):
             raise ImagePipelineUnavailable()
         if not self._lock.acquire(blocking=False):
@@ -246,8 +278,21 @@ class MfluxTxt2ImgPipeline:
                 )
             else:
                 self.encode_prompt(resolved)
+            offset = (
+                max(1, int(spec.steps * float(spec.strength)))
+                if init_path is not None and spec.strength is not None
+                else 0
+            )
+            denoise_steps = spec.steps - offset
             for index, seed in enumerate(resolved.seeds):
-                self._callback.begin(index=index, total=spec.steps, seed=seed, report=on_progress)
+                self._callback.begin(
+                    index=index,
+                    total=denoise_steps,
+                    seed=seed,
+                    report=on_progress,
+                    offset=offset,
+                    report_total=spec.steps,
+                )
                 try:
                     generated = self._model.generate_image(
                         seed=seed,
@@ -257,9 +302,13 @@ class MfluxTxt2ImgPipeline:
                         width=spec.width,
                         guidance=0.0,
                         negative_prompt=None,
+                        image_path=init_path,
+                        image_strength=float(spec.strength) if spec.strength is not None else None,
                     )
-                    if self._callback.completed != spec.steps:
+                    if self._callback.completed != denoise_steps:
                         raise ImagePipelineUnavailable()
+                    if denoise_steps == 0:
+                        on_progress(index, spec.steps, spec.steps)
                     image = (
                         generated
                         if isinstance(generated, Image.Image)

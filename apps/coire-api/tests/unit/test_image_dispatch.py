@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -17,10 +20,14 @@ from coire_core.errors import ImageConflict
 from coire_core.models.image_worker import (
     ImageWorkerLoadRequest,
     ImageWorkerLoadResult,
+    NodeImageInputManifest,
+    NodeImageInputRequest,
     NodeImageJob,
     NodeImageStartRequest,
 )
 from coire_core.models.images import (
+    ImageInputDigest,
+    ImageMode,
     ImageSpec,
     ResolvedImageSpec,
     canonical_spec_hash,
@@ -210,3 +217,120 @@ async def test_dispatch_retains_placed_holds_when_a_worker_reply_is_missing(
         assert calls == ["prepare", "load", "start"]
         assert await images.drive_image_dispatch(JOB) is True
         assert calls.count("start") == 2
+
+
+async def test_img2img_dispatch_reserves_and_stages_exact_owner_input_before_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    input_id = uuid.uuid4()
+    payload = b"normalized-private-png"
+    digest = hashlib.sha256(payload).hexdigest()
+    source = tmp_path / str(input_id)
+    source.write_bytes(payload)
+    basic = _prepared()
+    spec = basic.start.resolved.spec.model_copy(
+        update={
+            "mode": ImageMode.IMG2IMG,
+            "init_image_id": input_id,
+            "strength": Decimal("0.375125"),
+        }
+    )
+    resolved = basic.start.resolved.model_copy(
+        update={
+            "spec": spec,
+            "spec_hash": canonical_spec_hash(spec),
+            "inputs": (ImageInputDigest(input_id=input_id, sha256=digest, width=64, height=64),),
+        }
+    )
+    manifest = NodeImageInputManifest(
+        input_id=input_id,
+        purpose="init",
+        sha256=digest,
+        byte_count=len(payload),
+        width=64,
+        height=64,
+    )
+    prepared = PreparedImageDispatch(
+        node=NODE,
+        load=basic.load,
+        start=basic.start.model_copy(update={"resolved": resolved, "inputs": (manifest,)}),
+    )
+    calls: list[str] = []
+
+    async def prepare(*_: object) -> PreparedImageDispatch:
+        return prepared
+
+    class Session:
+        async def get(self, model: object, identity: object) -> object:
+            assert identity == JOB
+            return type("Job", (), {"cancel_requested_at": None})()
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[object]:
+        yield Session()
+
+    class Client:
+        def __init__(self, _: object) -> None:
+            pass
+
+        async def __aenter__(self) -> Client:
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            pass
+
+        async def load_image_worker(self, *_: object) -> ImageWorkerLoadResult:
+            calls.append("load")
+            return ImageWorkerLoadResult(
+                instance_id=INSTANCE, state="starting", reserved_bytes=1024
+            )
+
+        async def reserve_image_inputs(
+            self, node: str, command: NodeImageStartRequest
+        ) -> NodeImageJob:
+            assert node == NODE and command == prepared.start
+            calls.append("reserve")
+            return NodeImageJob(
+                job_id=JOB,
+                attempt=1,
+                fence=1,
+                node=NODE,
+                instance_id=INSTANCE,
+                state="queued",
+                updated_at=datetime.now(UTC),
+            )
+
+        async def stage_image_input(
+            self, node: str, command: NodeImageInputRequest, path: Path
+        ) -> object:
+            assert node == NODE and path == source
+            assert await asyncio.to_thread(path.read_bytes) == payload
+            assert command.sha256 == digest
+            calls.append("stage")
+            return object()
+
+        async def start_image_job(self, node: str, command: NodeImageStartRequest) -> NodeImageJob:
+            assert node == NODE and command == prepared.start
+            calls.append("start")
+            return NodeImageJob(
+                job_id=JOB,
+                attempt=1,
+                fence=1,
+                node=NODE,
+                instance_id=INSTANCE,
+                state="reserving",
+                updated_at=datetime.now(UTC),
+            )
+
+    monkeypatch.setattr(images, "prepare_image_dispatch", prepare)
+    monkeypatch.setattr(images, "NodeClient", Client)
+    monkeypatch.setattr(images, "session_scope", scope)
+    monkeypatch.setattr(
+        images,
+        "get_settings",
+        lambda: Settings(  # type: ignore[call-arg]
+            _secrets_dir="/nonexistent", image_input_derived_root=str(tmp_path)
+        ),
+    )
+    assert await images.drive_image_dispatch(JOB)
+    assert calls == ["load", "reserve", "stage", "start"]

@@ -22,6 +22,7 @@ from coire_api.db import (
     NodeRow,
 )
 from coire_api.images.authorization import authorize_live_image_action
+from coire_api.images.input_references import release_image_input_references
 from coire_api.images.jobs import _policy
 from coire_api.images.maintenance import purge_cancelled_transfer_staging
 from coire_api.images.quota import _QUOTA_LOCK, release_storage_hold, settle_storage_hold
@@ -248,6 +249,7 @@ async def publish_image_batch(session: AsyncSession, job_id: str, settings: Sett
         )
         transfer.state = "published"
     await settle_storage_hold(session, row.owner_user_id, held, total_bytes)
+    await release_image_input_references(session, row)
     lease.released_at = now
     lease.release_evidence = {
         "state": "succeeded",
@@ -369,6 +371,7 @@ async def fail_revoked_image_batch(
         row.attempt,
     )
     await release_storage_hold(session, row.owner_user_id, held)
+    await release_image_input_references(session, row)
     now = datetime.now(UTC)
     for transfer in transfers:
         transfer.state = "failed"

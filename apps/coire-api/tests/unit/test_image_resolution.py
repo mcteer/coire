@@ -62,6 +62,26 @@ def test_basic_resolution_preserves_explicit_overrides() -> None:
     assert (result.width, result.steps, result.seed, result.n) == (768, 12, 0, 2)
 
 
+def test_img2img_resolution_preserves_full_precision_strength_and_bound_input() -> None:
+    input_id = uuid.uuid4()
+    request = ImageSubmitRequest(
+        model_id=MODEL,
+        prompt="portrait",
+        mode=ImageMode.IMG2IMG,
+        init_image_id=input_id,
+        strength=Decimal("0.375125"),
+        seed=0,
+    )
+    result = resolve_basic_image_spec(
+        request, _profile(modes=["txt2img", "img2img"]), random_seed=lambda: 123
+    )
+    assert result.mode is ImageMode.IMG2IMG
+    assert result.init_image_id == input_id and result.strength == Decimal("0.375125")
+    assert result.seed == 0
+    with pytest.raises(ImageValidationError, match="mode is unsupported"):
+        resolve_basic_image_spec(request, _profile(), random_seed=lambda: 123)
+
+
 @pytest.mark.parametrize(
     "submission",
     [

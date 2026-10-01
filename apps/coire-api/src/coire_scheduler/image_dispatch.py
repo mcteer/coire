@@ -16,6 +16,7 @@ from coire_api.db import (
     ApiKeyRow,
     EntitlementRow,
     ImageExecutionLeaseRow,
+    ImageInputRow,
     ImageJobEventRow,
     ImageJobRow,
     InstanceMemberRow,
@@ -24,19 +25,26 @@ from coire_api.db import (
     NodeRow,
     UserRow,
 )
+from coire_api.images.input_references import release_image_input_references
 from coire_api.images.job_capacity import mark_image_job_started, release_pending_image_job_capacity
 from coire_api.images.jobs import _policy
 from coire_api.images.quota import _QUOTA_LOCK
 from coire_api.placement.service import lock_nodes_for_admission
 from coire_core.errors import ImageConflict
 from coire_core.models.audit import AuditOutcome
-from coire_core.models.image_worker import ImageWorkerLoadRequest, NodeImageStartRequest
+from coire_core.models.image_worker import (
+    ImageWorkerLoadRequest,
+    NodeImageInputManifest,
+    NodeImageStartRequest,
+)
 from coire_core.models.images import (
     ImageCapabilityProfile,
+    ImageInputDigest,
     ImageJobEvent,
     ImageJobState,
     ImageManifestDigest,
     ImageMode,
+    ImageSpec,
     ResolvedImageSpec,
     canonical_spec_hash,
     expand_image_seeds,
@@ -138,6 +146,7 @@ async def fail_image_attempt(session: AsyncSession, job_id: str, code: str) -> b
     await release_pending_image_job_capacity(
         session, row.owner_user_id, snapshot.effective_spec.n, held
     )
+    await release_image_input_references(session, row)
     leases = (
         await session.scalars(
             select(ImageExecutionLeaseRow)
@@ -373,6 +382,41 @@ async def _image_busy(session: AsyncSession, node_id: uuid.UUID, model_id: uuid.
     return other is not None
 
 
+async def _bound_inputs(
+    session: AsyncSession, owner_id: uuid.UUID, spec: ImageSpec
+) -> tuple[NodeImageInputManifest, ...]:
+    """Translate retained owner inputs to path-free, exact node manifests."""
+    if spec.init_image_id is None:
+        return ()
+    row = await session.get(ImageInputRow, spec.init_image_id, populate_existing=True)
+    if (
+        row is None
+        or row.owner_user_id != owner_id
+        or row.purpose != "init"
+        or row.state != "ready"
+        or row.deleted_at is not None
+        or row.active_references < 1
+        or row.normalized_key != str(spec.init_image_id)
+        or row.normalized_sha256 is None
+        or _DIGEST.fullmatch(row.normalized_sha256) is None
+        or row.normalized_bytes is None
+        or not 0 < row.normalized_bytes <= 10 * 1024 * 1024
+        or row.normalized_width != spec.width
+        or row.normalized_height != spec.height
+    ):
+        raise ImageConflict("bound image input is unavailable")
+    return (
+        NodeImageInputManifest(
+            input_id=row.id,
+            purpose="init",
+            sha256=row.normalized_sha256,
+            byte_count=row.normalized_bytes,
+            width=spec.width,
+            height=spec.height,
+        ),
+    )
+
+
 def _commands(
     row: ImageJobRow,
     node_name: str,
@@ -381,6 +425,7 @@ def _commands(
     reservation_bytes: int,
     settings: Settings,
     slug: str,
+    inputs: tuple[NodeImageInputManifest, ...] = (),
 ) -> PreparedImageDispatch:
     load = ImageWorkerLoadRequest(
         slug=slug,
@@ -400,6 +445,7 @@ def _commands(
         model_id=resolved.spec.model_id,
         instance_id=instance_id,
         resolved=resolved,
+        inputs=inputs,
         deadline_at=row.deadline_at,
         reservation_bytes=reservation_bytes,
     )
@@ -429,6 +475,7 @@ async def _resume(
         reservation,
         settings,
         model.slug,
+        await _bound_inputs(session, row.owner_user_id, snapshot.resolved.spec),
     )
 
 
@@ -463,13 +510,15 @@ async def prepare_image_dispatch(
         raise ImageConflict("image queue dispatch has bound runtime")
     spec = snapshot.effective_spec
     if (
-        spec.mode is not ImageMode.TXT2IMG
+        spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG}
         or spec.guidance != 0
         or spec.negative_prompt is not None
         or spec.seed is None
         or spec.variant_id is not None
         or spec.loras
-        or spec.init_image_id is not None
+        or spec.mask_id is not None
+        or spec.control is not None
+        or spec.upscale is not None
     ):
         await fail_image_attempt(session, job_id, "unsupported_mode")
         return None
@@ -480,6 +529,11 @@ async def prepare_image_dispatch(
     profile = _ready_base(model)
     if model is None or profile is None or model.manifest_sha256 is None:
         await fail_image_attempt(session, job_id, "model_unavailable")
+        return None
+    try:
+        input_manifests = await _bound_inputs(session, row.owner_user_id, spec)
+    except ImageConflict:
+        await fail_image_attempt(session, job_id, "input_unavailable")
         return None
     dependencies: list[ImageManifestDigest] = []
     for dependency_id in profile.required_dependency_ids:
@@ -529,6 +583,15 @@ async def prepare_image_dispatch(
         environment_fingerprint=image_environment_fingerprint(studio, model.manifest_sha256),
         model_sha256=model.manifest_sha256,
         dependencies=tuple(dependencies),
+        inputs=tuple(
+            ImageInputDigest(
+                input_id=item.input_id,
+                sha256=item.sha256,
+                width=item.width,
+                height=item.height,
+            )
+            for item in input_manifests
+        ),
         preset_id=row.preset_id,
         preset_revision=row.preset_revision,
         spec_hash=canonical_spec_hash(spec),
@@ -598,4 +661,13 @@ async def prepare_image_dispatch(
         outcome=AuditOutcome.OK,
         context={"node": chosen.name, "model_id": str(model.id)},
     )
-    return _commands(row, chosen.name, instance.id, resolved, reservation, settings, model.slug)
+    return _commands(
+        row,
+        chosen.name,
+        instance.id,
+        resolved,
+        reservation,
+        settings,
+        model.slug,
+        input_manifests,
+    )

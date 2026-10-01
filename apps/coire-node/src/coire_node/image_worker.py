@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import stat
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from PIL import Image
 
@@ -42,6 +44,16 @@ class _ImagePipeline(Protocol):
     ) -> tuple[Image.Image, ...]: ...
 
 
+class _InputImagePipeline(Protocol):
+    def generate(
+        self,
+        resolved: ResolvedImageSpec,
+        on_progress: Progress,
+        *,
+        input_paths: dict[uuid.UUID, Path],
+    ) -> tuple[Image.Image, ...]: ...
+
+
 @dataclass(frozen=True)
 class GeneratedOutput:
     index: int
@@ -58,6 +70,38 @@ def _private_root(root: Path) -> None:
     info = root.lstat()
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
         raise ImageJobExecutionError()
+
+
+def _verified_input_paths(
+    scratch_root: Path, request: ImageWorkerRunRequest
+) -> dict[uuid.UUID, Path]:
+    root = scratch_root.parent / "image-input-scratch"
+    attempt = root / f"{request.job_id}-{request.attempt}-{request.fence}"
+    for directory in (root, attempt):
+        info = directory.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+            raise ImageJobExecutionError()
+    result: dict[uuid.UUID, Path] = {}
+    for item in request.inputs:
+        path = attempt / str(item.input_id)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        try:
+            info = os.fstat(fd)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.getuid()
+                or info.st_mode & 0o077
+                or info.st_nlink != 1
+                or info.st_size != item.byte_count
+            ):
+                raise ImageJobExecutionError()
+            with os.fdopen(fd, "rb", closefd=False) as source:
+                if hashlib.file_digest(source, "sha256").hexdigest() != item.sha256:
+                    raise ImageJobExecutionError()
+        finally:
+            os.close(fd)
+        result[item.input_id] = path
+    return result
 
 
 def _run_attempt(
@@ -77,8 +121,6 @@ def _run_attempt(
         or resolved.spec.variant_id != load.variant_id
         or resolved.model_sha256 != load.manifest_sha256
         or resolved.pipeline_version != load.runtime_version
-        or request.inputs
-        or resolved.inputs
         or utc_now() >= request.deadline_at
     ):
         raise ImageJobExecutionError()
@@ -100,7 +142,13 @@ def _run_attempt(
             last_reported = now
 
     try:
-        images = pipeline.generate(resolved, progress)
+        if request.inputs:
+            paths = _verified_input_paths(scratch_root, request)
+            images = cast(_InputImagePipeline, pipeline).generate(
+                resolved, progress, input_paths=paths
+            )
+        else:
+            images = pipeline.generate(resolved, progress)
         if len(images) != len(resolved.seeds) or utc_now() >= request.deadline_at:
             raise ImageJobExecutionError()
         results: list[GeneratedOutput] = []

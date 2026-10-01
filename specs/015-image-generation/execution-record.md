@@ -823,3 +823,15 @@ passed **1,727 tests**, with 2 skipped and 157 deselected; strict mypy passed
 638 source files, Ruff format/check and generated OpenAPI freshness passed.
 This closes the proved failed-worker branch of T039/T041. Orphan scratch
 sweeps, advanced input delivery and the healthy-stop latency gate remain open.
+
+The first advanced-mode slice now passes a retained, owner-bound image-to-image
+input from API admission through scheduler reservation, Studio staging and
+worker-local digest verification to mflux 0.20.0. Its native progress reports
+the actual denoise portion against the requested step total, and the recipe
+keeps the full-precision decimal strength. Base acquisition validation now
+smokes both text-to-image and image-to-image before advertising those two
+modes. Six real tiny-mflux tests passed offline in 5.20 seconds, including
+image-to-image generation and the dual-mode acquisition smoke. Local scheduler
+transfer-order, admission/reference, node contract and validation selections
+passed. Fill, control, LoRA, upscale, owner active-reference cancellation and
+full production-mode validation remain open under T033/T054/T056.

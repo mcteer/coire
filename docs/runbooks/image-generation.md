@@ -127,8 +127,12 @@ the current publication fallback stores `unknown` for standard output. See the
 On a Studio, a fenced advanced attempt reserves its input manifest before accepting
 normalized PNG bytes. The node checks the bound job, attempt, purpose, digest and
 dimensions and stores them under private `image-input-scratch`; queued cancellation
-removes that scratch. The scheduler's advanced dispatch and end-to-end transfer remain
-under T032/T054/T056, so a ready input alone does not enable an advanced job.
+removes that scratch. Image-to-image dispatch retains the owner's ready init
+input, reserves the exact node attempt, transfers the normalized PNG and
+verifies its digest again inside the worker. Terminal publication, cancellation
+and clean worker failure release the active input reference. Delete a referenced
+input after its job reaches a terminal state. Fill, control, LoRA and upscale
+execution remain under T054/T056.
 
 The `coire-blobs` volume is API-only. Back up and restore it together with the Postgres
 rows that describe image inputs, outputs, receipts and quota holds. Restoring only one

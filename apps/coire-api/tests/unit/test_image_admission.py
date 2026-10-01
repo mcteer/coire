@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import uuid
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import cast
 
@@ -16,7 +17,13 @@ from coire_api.db import ImageJobEventRow, ImageJobRow, ModelRow
 from coire_api.images import admission
 from coire_api.placement.service import lock_nodes_for_admission
 from coire_core.errors import ImageConflict, ImageForbidden, ImageValidationError
-from coire_core.models.images import ImageCapabilityProfile, ImageContentMode, ImageSubmitRequest
+from coire_core.models.images import (
+    ImageCapabilityProfile,
+    ImageContentMode,
+    ImageMode,
+    ImageSpec,
+    ImageSubmitRequest,
+)
 from coire_core.models.registry import EngineBackend, ModelKind, ModelSource, ModelState, Visibility
 from coire_core.settings import Settings
 
@@ -279,3 +286,51 @@ def test_direct_policy_checks_hidden_dependencies(monkeypatch: pytest.MonkeyPatc
     hidden.state = ModelState.FAILED
     with pytest.raises(ImageValidationError):
         asyncio.run(admission._load_policy(cast(AsyncSession, Session()), request, PRINCIPAL))
+
+
+async def test_img2img_admission_retains_only_ready_owner_input_with_exact_dimensions() -> None:
+    input_id = uuid.uuid4()
+    spec = ImageSpec(
+        model_id=MODEL,
+        mode=ImageMode.IMG2IMG,
+        prompt="portrait",
+        width=512,
+        height=512,
+        steps=9,
+        guidance=Decimal(0),
+        seed=1,
+        init_image_id=input_id,
+        strength=Decimal("0.375125"),
+    )
+    row = SimpleNamespace(
+        owner_user_id=OWNER,
+        purpose="init",
+        state="ready",
+        deleted_at=None,
+        normalized_key=str(input_id),
+        normalized_sha256="a" * 64,
+        normalized_bytes=1024,
+        normalized_width=512,
+        normalized_height=512,
+        active_references=0,
+    )
+
+    class InputSession:
+        async def get(self, model: type[object], identity: object, **kwargs: object) -> object:
+            assert identity == input_id and kwargs == {
+                "populate_existing": True,
+                "with_for_update": True,
+            }
+            return row
+
+    session = cast(AsyncSession, InputSession())
+    await admission._retain_init_input(session, OWNER, spec)
+    assert row.active_references == 1
+    row.normalized_width = 513
+    with pytest.raises(ImageValidationError, match="init image"):
+        await admission._retain_init_input(session, OWNER, spec)
+    assert row.active_references == 1
+    row.normalized_width = 512
+    row.owner_user_id = uuid.uuid4()
+    with pytest.raises(ImageValidationError, match="init image"):
+        await admission._retain_init_input(session, OWNER, spec)

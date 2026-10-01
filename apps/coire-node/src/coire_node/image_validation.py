@@ -22,6 +22,7 @@ from coire_core.models.image_worker import (
 from coire_core.models.images import (
     ImageCapabilityProfile,
     ImageContentTag,
+    ImageInputDigest,
     ImageMode,
     ImageSpec,
     ResolvedImageSpec,
@@ -142,11 +143,52 @@ def _validate_image_asset(
     finally:
         for image in images:
             image.close()
+    with TemporaryDirectory(prefix="coire-image-smoke-") as directory:
+        input_id = uuid.uuid4()
+        source = Path(directory) / f"{input_id}.png"
+        with Image.new("RGB", (_SMOKE_SIZE, _SMOKE_SIZE), (32, 96, 192)) as sample:
+            sample.save(source, format="PNG")
+        digest = hashlib.sha256(source.read_bytes()).hexdigest()
+        base = _smoke_spec(request.model_id, request.manifest_sha256)
+        spec = base.spec.model_copy(
+            update={
+                "mode": ImageMode.IMG2IMG,
+                "init_image_id": input_id,
+                "strength": Decimal("0.375125"),
+            }
+        )
+        resolved = base.model_copy(
+            update={
+                "spec": spec,
+                "spec_hash": canonical_spec_hash(spec),
+                "inputs": (
+                    ImageInputDigest(
+                        input_id=input_id,
+                        sha256=digest,
+                        width=_SMOKE_SIZE,
+                        height=_SMOKE_SIZE,
+                    ),
+                ),
+            }
+        )
+        transformed = pipeline.generate(resolved, lambda *_: None, input_paths={input_id: source})
+        try:
+            if (
+                len(transformed) != 1
+                or transformed[0].mode != "RGB"
+                or transformed[0].size != (_SMOKE_SIZE, _SMOKE_SIZE)
+                or transformed[0].getbbox() is None
+                or max(ImageStat.Stat(transformed[0]).stddev) <= 1
+            ):
+                raise ImageValidationUnavailable("img2img smoke returned degenerate pixels")
+        finally:
+            for image in transformed:
+                image.close()
     measured_rss = max(0, psutil.Process().memory_info().rss - baseline_rss)
     if measured_rss > reservation_bytes:
         raise ImageValidationUnavailable("image smoke exceeded reserved memory")
     profile = ImageCapabilityProfile(
-        modes=(ImageMode.TXT2IMG,),
+        modes=(ImageMode.TXT2IMG, ImageMode.IMG2IMG),
         min_width=_SMOKE_SIZE,
         max_width=_SMOKE_SIZE,
         min_height=_SMOKE_SIZE,

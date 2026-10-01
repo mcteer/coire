@@ -24,6 +24,7 @@ from coire_api.db import (
     session_scope,
 )
 from coire_api.images.expiry import expire_queued_image_job
+from coire_api.images.input_references import release_image_input_references
 from coire_api.images.job_capacity import release_pending_image_job_capacity
 from coire_api.images.jobs import _policy
 from coire_api.images.maintenance import purge_cancelled_transfer_staging
@@ -43,6 +44,7 @@ from coire_core.models.image_worker import (
     ImageTransferGrantRequest,
     ImageTransferReceipt,
     NodeImageCancelRequest,
+    NodeImageInputRequest,
     NodeImageJob,
     NodeImageTransferRequest,
 )
@@ -265,6 +267,7 @@ async def finalize_cancelled_image_job(
         )
     else:
         await release_storage_hold(session, row.owner_user_id, held)
+    await release_image_input_references(session, row)
     latest = await session.scalar(
         select(func.max(ImageJobEventRow.sequence)).where(ImageJobEventRow.job_id == row.id)
     )
@@ -366,6 +369,7 @@ async def finalize_failed_image_job(
         )
     else:
         await release_storage_hold(session, row.owner_user_id, held)
+    await release_image_input_references(session, row)
     latest = await session.scalar(
         select(func.max(ImageJobEventRow.sequence)).where(ImageJobEventRow.job_id == row.id)
     )
@@ -647,6 +651,37 @@ async def drive_image_dispatch(job_id: str) -> bool:
             if loaded.state == "failed" or loaded.instance_id != prepared.load.instance_id:
                 dispatches_total.add(1, {"outcome": "worker_uncertain"})
                 raise ImageConflict("image worker state differs from dispatch")
+            if prepared.start.inputs:
+                reserved = await client.reserve_image_inputs(prepared.node, prepared.start)
+                if (
+                    reserved.job_id != prepared.start.job_id
+                    or reserved.attempt != prepared.start.attempt
+                    or reserved.fence != prepared.start.fence
+                    or reserved.node != prepared.node
+                    or reserved.instance_id != prepared.start.instance_id
+                ):
+                    raise ImageConflict("node image input reservation differs from core")
+                if reserved.state == "queued":
+                    for item in prepared.start.inputs:
+                        command = NodeImageInputRequest(
+                            job_id=prepared.start.job_id,
+                            attempt=prepared.start.attempt,
+                            fence=prepared.start.fence,
+                            node=prepared.node,
+                            input_id=item.input_id,
+                            purpose=item.purpose,
+                            sha256=item.sha256,
+                            byte_count=item.byte_count,
+                        )
+                        await client.stage_image_input(
+                            prepared.node,
+                            command,
+                            Path(settings.image_input_derived_root) / str(item.input_id),
+                        )
+                async with session_scope() as session:
+                    current = await session.get(ImageJobRow, job_id)
+                    if current is None or current.cancel_requested_at is not None:
+                        return True
             try:
                 started = await client.start_image_job(prepared.node, prepared.start)
             except NodeError as exc:

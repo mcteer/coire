@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.audit import write_audit
 from coire_api.auth import Principal, audit_actor
 from coire_api.chat.files import new_job_id
-from coire_api.db import ImageJobEventRow, ImageJobRow, ModelRow
+from coire_api.db import ImageInputRow, ImageJobEventRow, ImageJobRow, ModelRow
 from coire_api.images.authorization import authorize_live_image_action, preflight_image_action
 from coire_api.images.job_capacity import reserve_image_job_capacity
 from coire_api.images.presets import load_resolved_image_preset
@@ -25,12 +25,14 @@ from coire_api.images.telemetry import ImageOperation, image_span
 from coire_core.errors import ImageConflict, ImageForbidden, ImageValidationError
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.images import (
+    GENERATION_INPUT_MAX_BYTES,
     ImageCapabilityProfile,
     ImageContentMode,
     ImageJobEvent,
     ImageJobReceipt,
     ImageJobSettingsSnapshot,
     ImageJobState,
+    ImageSpec,
     ImageSubmitRequest,
     canonical_client_intent_hash,
 )
@@ -157,6 +159,30 @@ def _replay_entitlements(row: ImageJobRow) -> frozenset[str]:
         raise ImageConflict("image authorization snapshot unavailable") from exc
 
 
+async def _retain_init_input(session: AsyncSession, owner_id: uuid.UUID, spec: ImageSpec) -> None:
+    if spec.init_image_id is None:
+        return
+    row = await session.get(
+        ImageInputRow, spec.init_image_id, populate_existing=True, with_for_update=True
+    )
+    if (
+        row is None
+        or row.owner_user_id != owner_id
+        or row.purpose != "init"
+        or row.state != "ready"
+        or row.deleted_at is not None
+        or row.normalized_key != str(spec.init_image_id)
+        or row.normalized_sha256 is None
+        or _DIGEST.fullmatch(row.normalized_sha256) is None
+        or row.normalized_bytes is None
+        or not 0 < row.normalized_bytes <= GENERATION_INPUT_MAX_BYTES
+        or row.normalized_width != spec.width
+        or row.normalized_height != spec.height
+    ):
+        raise ImageValidationError("init image is unavailable or has different dimensions")
+    row.active_references += 1
+
+
 async def admit_image_job(
     session: AsyncSession,
     principal: Principal,
@@ -220,6 +246,7 @@ async def admit_image_job(
             else policy.request
         )
         spec = resolve_basic_image_spec(effective_request, policy.profile, random_seed=random_seed)
+        await _retain_init_input(session, owner_id, spec)
         held_bytes = await reserve_image_job_capacity(session, owner_id, spec.n, settings)
         now = datetime.now(UTC)
         job_id = new_job_id()

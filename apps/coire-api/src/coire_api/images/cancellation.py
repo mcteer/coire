@@ -11,6 +11,7 @@ from coire_api.audit import write_audit
 from coire_api.auth import Principal, PrincipalKind, audit_actor
 from coire_api.db import ImageJobEventRow, ImageJobRow
 from coire_api.images.authorization import authorize_live_image_action
+from coire_api.images.input_references import release_image_input_references
 from coire_api.images.job_capacity import release_pending_image_job_capacity
 from coire_api.images.jobs import _policy, get_owned_image_job
 from coire_api.images.quota import _QUOTA_LOCK
@@ -95,6 +96,7 @@ async def _request_cancel(
         await release_pending_image_job_capacity(
             session, row.owner_user_id, snapshot.effective_spec.n, held
         )
+        await release_image_input_references(session, row)
         row.state = ImageJobState.CANCELLED
         row.finished_at = now
         row.cleanup_state = "cleaned"

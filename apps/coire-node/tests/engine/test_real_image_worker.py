@@ -25,27 +25,33 @@ from pydantic import SecretStr
 
 from coire_core.image_png import parse_recipe_png
 from coire_core.models.image_worker import (
+    ImageAssetValidateRequest,
     ImageTransferGrant,
     ImageTransferReceipt,
     ImageWorkerLoadRequest,
     ImageWorkerOutputManifest,
     ImageWorkerRunRequest,
     NodeImageCleanupRequest,
+    NodeImageInputManifest,
     NodeImageStartRequest,
     NodeImageTransferRequest,
 )
 from coire_core.models.images import (
+    ImageInputDigest,
+    ImageMode,
     ImageSpec,
     ResolvedImageSpec,
     canonical_recipe_bytes,
     canonical_spec_hash,
     pixel_digest,
 )
+from coire_core.models.registry import ModelKind
 from coire_core.settings import Settings
 from coire_node.image_cleanup import cleanup_image_outputs
 from coire_node.image_jobs import ImageJobJournal
 from coire_node.image_runtime.pipeline import MfluxTxt2ImgPipeline
 from coire_node.image_transfer import push_image_outputs
+from coire_node.image_validation import validate_image_asset
 from coire_node.image_worker import ImageJobCancelled, ImageJobExecutionError, run_image_job
 from coire_node.store import Store
 
@@ -183,6 +189,103 @@ def test_real_step_cancellation_removes_partial_scratch(
     with pytest.raises(ImageJobExecutionError):
         run_image_job(pipeline, load, request, scratch, cancel)
     assert not (scratch / f"{JOB}-1-2").exists()
+
+
+def test_real_img2img_uses_bound_staged_png_and_exact_strength(
+    tiny_pipeline: tuple[MfluxTxt2ImgPipeline, ImageWorkerLoadRequest], tmp_path: Path
+) -> None:
+    pipeline, load = tiny_pipeline
+    input_id = uuid.uuid4()
+    source = tmp_path / "image-input-scratch" / f"{JOB}-1-3" / str(input_id)
+    source.parent.mkdir(parents=True, mode=0o700)
+    source.parent.parent.chmod(0o700)
+    Image.new("RGB", (64, 64), "blue").save(source, format="PNG")
+    source.chmod(0o600)
+    payload = source.read_bytes()
+    digest = hashlib.sha256(payload).hexdigest()
+    spec = _resolved(load).spec.model_copy(
+        update={
+            "mode": ImageMode.IMG2IMG,
+            "init_image_id": input_id,
+            "strength": Decimal("0.375125"),
+            "steps": 4,
+        }
+    )
+    resolved = _resolved(load).model_copy(
+        update={
+            "spec": spec,
+            "spec_hash": canonical_spec_hash(spec),
+            "inputs": (ImageInputDigest(input_id=input_id, sha256=digest, width=64, height=64),),
+        }
+    )
+    command = ImageWorkerRunRequest(
+        job_id=JOB,
+        attempt=1,
+        fence=3,
+        instance_id=load.instance_id,
+        resolved=resolved,
+        inputs=(
+            NodeImageInputManifest(
+                input_id=input_id,
+                purpose="init",
+                sha256=digest,
+                byte_count=len(payload),
+                width=64,
+                height=64,
+            ),
+        ),
+        deadline_at=datetime.now(UTC) + timedelta(minutes=2),
+    )
+    progress: list[tuple[int, int, int]] = []
+    outputs = run_image_job(
+        pipeline, load, command, tmp_path / "image-scratch", lambda *parts: progress.append(parts)
+    )
+    assert progress[0] == (0, 2, 4) and progress[-1] == (0, 4, 4)
+    assert all(index == 0 and total == 4 for index, _, total in progress)
+    assert [step for _, step, _ in progress] == sorted({step for _, step, _ in progress})
+    assert outputs[0].encoded.recipe.resolved == resolved
+    with Image.open(outputs[0].path) as image:
+        assert image.mode == "RGB" and image.size == (64, 64)
+    changed = tmp_path / "image-input-scratch" / f"{JOB}-1-4"
+    changed.mkdir(mode=0o700)
+    (changed / str(input_id)).write_bytes(payload + b"changed")
+    (changed / str(input_id)).chmod(0o600)
+    with pytest.raises(ImageJobExecutionError):
+        run_image_job(
+            pipeline,
+            load,
+            command.model_copy(update={"fence": 4}),
+            tmp_path / "image-scratch",
+            lambda *_: None,
+        )
+    assert not (tmp_path / "image-scratch" / f"{JOB}-1-4").exists()
+
+
+def test_real_acquisition_smoke_proves_txt2img_and_img2img(
+    tiny_pipeline: tuple[MfluxTxt2ImgPipeline, ImageWorkerLoadRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline, load = tiny_pipeline
+    store = Store(Path(os.environ["COIRE_TEST_MODEL"]).resolve().parent)
+    manifest = store.read_manifest(load.slug)
+    assert manifest is not None
+    monkeypatch.setattr(MfluxTxt2ImgPipeline, "load", lambda *_: pipeline)
+    result = validate_image_asset(
+        store,
+        ImageAssetValidateRequest(
+            job_id=uuid.uuid4(),
+            model_id=load.model_id,
+            slug=load.slug,
+            kind=ModelKind.IMAGE_MODEL,
+            source_revision=manifest.revision,
+            manifest_sha256=load.manifest_sha256,
+            reservation_id=uuid.uuid4(),
+        ),
+        reservation_bytes=load.reservation_bytes,
+    )
+    assert result.validated and result.thumbnail_sha256 is not None
+    assert result.image_capability_profile is not None
+    assert result.image_capability_profile.modes == (ImageMode.TXT2IMG, ImageMode.IMG2IMG)
 
 
 def test_real_encoder_cache_twenty_warm_trials_and_changed_prompt_miss(

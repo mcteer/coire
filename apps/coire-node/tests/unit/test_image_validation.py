@@ -16,6 +16,7 @@ from coire_core.models.images import (
     ImageCapabilityProfile,
     ImageClassificationResult,
     ImageContentTag,
+    ResolvedImageSpec,
 )
 from coire_core.models.jobs import JobKind, JobStage, JobStatus
 from coire_core.models.registry import ModelKind
@@ -65,7 +66,16 @@ def test_reserved_base_smoke_produces_narrow_capability_and_thumbnail_digest(
     monkeypatch.delenv("HF_TOKEN", raising=False)
 
     class FakePipeline:
-        def generate(self, resolved: object, progress: object) -> tuple[Image.Image, ...]:
+        def generate(
+            self,
+            resolved: ResolvedImageSpec,
+            progress: object,
+            *,
+            input_paths: dict[uuid.UUID, Path] | None = None,
+        ) -> tuple[Image.Image, ...]:
+            if input_paths is not None:
+                assert resolved.spec.mode == "img2img"
+                assert len(input_paths) == 1
             image = Image.new("RGB", (512, 512), "blue")
             ImageDraw.Draw(image).rectangle((128, 128, 384, 384), fill="white")
             return (image,)
@@ -79,7 +89,7 @@ def test_reserved_base_smoke_produces_narrow_capability_and_thumbnail_digest(
     assert result.validated
     assert result.thumbnail_sha256 is not None
     assert result.image_capability_profile is not None
-    assert result.image_capability_profile.modes == ("txt2img",)
+    assert result.image_capability_profile.modes == ("txt2img", "img2img")
     assert result.image_capability_profile.max_width == 512
     assert result.image_capability_profile.max_outputs == 1
 

@@ -26,11 +26,9 @@ def resolve_basic_image_spec(
     """Freeze basic txt2img settings; caller validates registry and owner first."""
     if (
         request.model_id is None
-        or request.mode not in (None, ImageMode.TXT2IMG)
+        or request.mode not in (None, ImageMode.TXT2IMG, ImageMode.IMG2IMG)
         or request.variant_id is not None
         or request.loras
-        or request.init_image_id is not None
-        or request.strength is not None
         or request.mask_id is not None
         or request.control is not None
         or request.upscale is not None
@@ -45,7 +43,7 @@ def resolve_basic_image_spec(
         raise ImageValidationError("image model defaults unavailable")
     values = {
         "model_id": request.model_id,
-        "mode": ImageMode.TXT2IMG,
+        "mode": request.mode or ImageMode.TXT2IMG,
         "prompt": request.prompt,
         "negative_prompt": request.negative_prompt,
         "width": request.width if request.width is not None else profile.default_width,
@@ -56,6 +54,8 @@ def resolve_basic_image_spec(
         if request.seed is not None
         else (random_seed or (lambda: secrets.randbits(32)))(),
         "n": request.n if request.n is not None else 1,
+        "init_image_id": request.init_image_id,
+        "strength": request.strength,
         "output": request.output,
         "content_mode": request.content_mode or ImageContentMode.STANDARD,
     }

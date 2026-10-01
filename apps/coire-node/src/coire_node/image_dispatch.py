@@ -55,16 +55,22 @@ def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> 
         and request.resolved.model_sha256 == load.manifest_sha256
         and request.resolved.pipeline_version == load.runtime_version
         and request.reservation_bytes == load.reservation_bytes
-        and spec.mode is ImageMode.TXT2IMG
+        and spec.mode in {ImageMode.TXT2IMG, ImageMode.IMG2IMG}
         and spec.guidance == 0
         and spec.negative_prompt is None
         and not spec.loras
-        and spec.init_image_id is None
         and spec.mask_id is None
         and spec.control is None
         and spec.upscale is None
-        and not request.inputs
-        and not request.resolved.inputs
+        and (
+            (spec.mode is ImageMode.TXT2IMG and not request.inputs and not request.resolved.inputs)
+            or (
+                spec.mode is ImageMode.IMG2IMG
+                and spec.init_image_id is not None
+                and len(request.inputs) == 1
+                and request.inputs[0].input_id == spec.init_image_id
+            )
+        )
     )
 
 
