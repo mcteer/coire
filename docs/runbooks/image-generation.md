@@ -185,9 +185,12 @@ SHA-256 of compact JSON `[agent_version, "mflux-0.20.0"]`. Admission recomputes
 both from the current node row, so a registered hardware or agent change
 refuses the previously measured mix. A fresh (<=30 seconds) serious or critical
 Studio thermal sample blocks new placement, including a pinned node, and
-requests audited fenced cancellation for an active image job. Inspect
+requests audited fenced cancellation for an active image job. The 15-second
+coexistence monitor also withdraws current approvals on that sample and
+requests cancellation before querying chat latency. Inspect
 `CoireImageThermalCancellation`, `coire_image_observation_total{outcome="thermal_alarm"}`
-and the `coire.scheduler.image.thermal_check` span. The scheduler also queries
+and `coire_image_latency_monitor_total{outcome="thermal_alarm"}` plus the
+`coire.scheduler.image.thermal_check` span. The scheduler also queries
 its internal Prometheus service every 15 seconds for each node with an approved
 profile. A five-minute same-node first-token p95 above 1.5 seconds
 atomically invalidates those approvals and requests audited fenced cancellation

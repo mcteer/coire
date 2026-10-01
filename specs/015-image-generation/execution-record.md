@@ -902,3 +902,12 @@ pin, `scripts/pin-images.sh --check` and all four pin tests passed. The full
 local non-engine, non-integration suite then passed **1,737 tests**, with 2
 skipped and 159 deselected. The image runbook now describes shared holds and
 corrupt-journal recovery.
+
+The coexistence monitor now treats a fresh serious or critical Studio thermal
+sample as a circuit-breaker signal: it invalidates current approved profiles
+and requests fenced cancellation for active image work before asking Prometheus
+for chat latency. The action is audited with a thermal reason and counted in
+the monitor metric. The focused monitor selection passed **10 tests**, including
+the real invalidation/cancellation state transition and the no-latency-query
+thermal branch; changed-file Ruff and strict mypy passed. A physical same-node
+regression benchmark remains open.

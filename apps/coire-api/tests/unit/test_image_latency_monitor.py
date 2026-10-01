@@ -62,8 +62,18 @@ async def test_invalid_or_nonfinite_latency_cannot_authorize_a_regression() -> N
         await image_latency.query_node_first_token_p95_ms('coire-edge-b"} or up')
 
 
-async def test_latency_regression_invalidates_profile_and_requests_fenced_cancel(
+@pytest.mark.parametrize(
+    ("p95_ms", "thermal_alarm", "audit_action"),
+    [
+        (1500.001, False, "image.coexistence.latency_invalidated"),
+        (None, True, "image.coexistence.thermal_invalidated"),
+    ],
+)
+async def test_regression_invalidates_profile_and_requests_fenced_cancel(
     monkeypatch: pytest.MonkeyPatch,
+    p95_ms: float | None,
+    thermal_alarm: bool,
+    audit_action: str,
 ) -> None:
     now = datetime.now(UTC)
     profile = SimpleNamespace(id=uuid.uuid4(), status="approved", invalidated_at=None, node_id=NODE)
@@ -106,14 +116,16 @@ async def test_latency_regression_invalidates_profile_and_requests_fenced_cancel
 
     monkeypatch.setattr(image_latency, "session_scope", scope)
     monkeypatch.setattr(image_latency, "write_audit", audit)
-    assert await image_latency.invalidate_regressed_node(NODE, p95_ms=1500.001, now=now) == (
+    assert await image_latency.invalidate_regressed_node(
+        NODE, p95_ms=p95_ms, thermal_alarm=thermal_alarm, now=now
+    ) == (
         1,
         1,
     )
     assert profile.status == "invalidated" and profile.invalidated_at == now
     assert job.state == ImageJobState.CANCELLING
     assert job.cancel_requested_at == now and job.version == 3
-    assert audits == ["image.coexistence.latency_invalidated", "image.latency_cancel"]
+    assert audits == [audit_action, "image.latency_cancel"]
 
 
 async def test_below_limit_does_not_touch_database(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,6 +149,9 @@ async def test_monitor_queries_approved_node_then_withdraws_on_live_regression(
     class Session:
         async def execute(self, statement: object) -> Rows:
             return Rows()
+
+        async def get(self, model: object, identity: object) -> None:
+            return None
 
     @asynccontextmanager
     async def scope() -> AsyncIterator[AsyncSession]:
@@ -177,6 +192,9 @@ async def test_monitor_failure_withdraws_approval_instead_of_keeping_unmeasured_
         async def execute(self, statement: object) -> Rows:
             return Rows()
 
+        async def get(self, model: object, identity: object) -> None:
+            return None
+
     @asynccontextmanager
     async def scope() -> AsyncIterator[AsyncSession]:
         yield cast(AsyncSession, Session())
@@ -192,3 +210,41 @@ async def test_monitor_failure_withdraws_approval_instead_of_keeping_unmeasured_
     monkeypatch.setattr(image_latency, "invalidate_regressed_node", invalidate)
     await image_latency.monitor_image_latency_once(transport=httpx.MockTransport(failed))
     assert called == [(NODE, None)]
+
+
+async def test_fresh_thermal_alarm_withdraws_approval_before_latency_query(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[uuid.UUID, bool]] = []
+
+    class Rows:
+        def all(self) -> list[tuple[uuid.UUID, str]]:
+            return [(NODE, "coire-edge-b")]
+
+    class Session:
+        async def execute(self, statement: object) -> Rows:
+            return Rows()
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[AsyncSession]:
+        yield cast(AsyncSession, Session())
+
+    async def thermal(session: object, node_id: uuid.UUID, now: datetime) -> bool:
+        assert node_id == NODE
+        return True
+
+    async def invalidate(
+        node_id: uuid.UUID, *, p95_ms: float | None, thermal_alarm: bool
+    ) -> tuple[int, int]:
+        assert p95_ms is None
+        calls.append((node_id, thermal_alarm))
+        return 1, 1
+
+    async def no_metrics(request: httpx.Request) -> httpx.Response:
+        pytest.fail("thermal alarm must stop mixed dispatch before querying latency")
+
+    monkeypatch.setattr(image_latency, "session_scope", scope)
+    monkeypatch.setattr(image_latency, "node_thermal_alarm", thermal)
+    monkeypatch.setattr(image_latency, "invalidate_regressed_node", invalidate)
+    await image_latency.monitor_image_latency_once(transport=httpx.MockTransport(no_metrics))
+    assert calls == [(NODE, True)]

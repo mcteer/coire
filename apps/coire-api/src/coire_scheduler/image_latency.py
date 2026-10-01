@@ -19,6 +19,7 @@ from coire_api.db import ImageCoexistenceProfileRow, ImageJobRow, NodeRow, sessi
 from coire_api.images.quota import _QUOTA_LOCK
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.images import ImageJobState, ImageLatencyQueryResponse
+from coire_scheduler.image_admission import node_thermal_alarm
 
 PROMETHEUS_URL = "http://prometheus:9090"
 _NODE = re.compile(r"coire-[a-z0-9-]{1,50}\Z")
@@ -69,12 +70,26 @@ async def query_node_first_token_p95_ms(
 
 
 async def invalidate_regressed_node(
-    node_id: uuid.UUID, *, p95_ms: float | None, now: datetime | None = None
+    node_id: uuid.UUID,
+    *,
+    p95_ms: float | None,
+    thermal_alarm: bool = False,
+    now: datetime | None = None,
 ) -> tuple[int, int]:
     """Withdraw approval on regression or an unobservable approved mix."""
-    if p95_ms is not None and (not math.isfinite(p95_ms) or p95_ms <= _P95_LIMIT_MS):
+    if (
+        not thermal_alarm
+        and p95_ms is not None
+        and (not math.isfinite(p95_ms) or p95_ms <= _P95_LIMIT_MS)
+    ):
         return 0, 0
-    reason = "chat_latency_regression" if p95_ms is not None else "latency_metrics_unavailable"
+    reason = (
+        "thermal_alarm"
+        if thermal_alarm
+        else "chat_latency_regression"
+        if p95_ms is not None
+        else "latency_metrics_unavailable"
+    )
     current = now or datetime.now(UTC)
     async with session_scope() as session:
         await session.execute(_QUOTA_LOCK)
@@ -97,7 +112,9 @@ async def invalidate_regressed_node(
                 session,
                 actor="coire-scheduler",
                 action=(
-                    "image.coexistence.latency_invalidated"
+                    "image.coexistence.thermal_invalidated"
+                    if thermal_alarm
+                    else "image.coexistence.latency_invalidated"
                     if p95_ms is not None
                     else "image.coexistence.monitor_invalidated"
                 ),
@@ -157,6 +174,18 @@ async def monitor_image_latency_once(*, transport: httpx.AsyncBaseTransport | No
     for node_id, name in nodes:
         with _tracer.start_as_current_span("coire.scheduler.image.latency_monitor") as span:
             span.set_attribute("coire.node_id", str(node_id))
+            async with session_scope() as session:
+                thermal = await node_thermal_alarm(session, node_id, now)
+            if thermal:
+                profiles, jobs = await invalidate_regressed_node(
+                    node_id, p95_ms=None, thermal_alarm=True
+                )
+                latency_monitor_total.add(1, {"outcome": "thermal_alarm"})
+                logger.warning(
+                    "image coexistence thermal alarm; approvals withdrawn and stops requested",
+                    extra={"node_id": str(node_id), "profile_count": profiles, "job_count": jobs},
+                )
+                continue
             try:
                 p95_ms = await query_node_first_token_p95_ms(name, transport=transport)
             except ImageLatencyUnavailable:
