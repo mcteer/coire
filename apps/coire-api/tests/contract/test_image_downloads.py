@@ -216,6 +216,7 @@ def _app(
     principal: Principal, session: FakeSession, root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> FastAPI:
     app = FastAPI()
+    app.state.image_refusal_audits = []
     app.state.settings = Settings(  # type: ignore[call-arg]
         _secrets_dir="/nonexistent", chat_browser_origin=ORIGIN, image_blob_root=str(root)
     )
@@ -232,6 +233,11 @@ def _app(
         yield session
 
     monkeypatch.setattr(authorization, "session_scope", fake_scope)
+
+    async def fake_audit(_session: object, **kwargs: object) -> None:
+        app.state.image_refusal_audits.append(kwargs)
+
+    monkeypatch.setattr(authorization, "write_audit", fake_audit)
 
     @app.exception_handler(CoireError)
     async def problem(request: Request, exc: CoireError) -> JSONResponse:
@@ -281,3 +287,27 @@ async def test_human_grant_requires_exact_origin(
         )
     assert denied.status_code == 403
     assert allowed.status_code == 200
+
+
+async def test_revoked_explicit_download_writes_content_free_refusal_audit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = _output(explicit=True)
+    session = FakeSession(output)
+    app = _app(_key(KEY1), session, tmp_path, monkeypatch)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=ORIGIN) as client:
+        issued = await client.post(f"/api/v1/image-outputs/{output.id}/download-grants")
+        assert issued.status_code == 200
+        session.entitlements = []
+        denied = await client.get(
+            f"/api/v1/image-outputs/{output.id}/content",
+            headers={"X-Coire-Image-Grant": _token(issued.json()["url"])},
+        )
+    assert denied.status_code == 403
+    assert len(app.state.image_refusal_audits) == 1
+    audit = app.state.image_refusal_audits[0]
+    assert audit["action"] == "image.refused"
+    assert audit["target_type"] == "image_output"
+    assert audit["target_id"] == str(output.id)
+    assert audit["context"] == {"reason": "authorization"}
+    assert "pngdata" not in str(audit)

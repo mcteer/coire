@@ -110,7 +110,7 @@ async def test_supervisor_uses_strict_child_result_and_policy_explicit(
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_spawn)
     monkeypatch.setattr(classification, "process_rss_bytes", lambda pid: 1)
-    result = await classification.classify_image(
+    result, peak_rss_bytes = await classification.classify_image_with_peak(
         Path("/local/model"),
         Path("/local/output.png"),
         reservation_bytes=1000,
@@ -118,6 +118,7 @@ async def test_supervisor_uses_strict_child_result_and_policy_explicit(
     )
     assert result.tag is ImageContentTag.EXPLICIT
     assert result.score == Decimal("0.1")
+    assert peak_rss_bytes == 1
 
 
 def test_result_contract_rejects_unbounded_or_inconsistent_fields() -> None:

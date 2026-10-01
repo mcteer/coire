@@ -94,6 +94,27 @@ async def classify_image(
     job_id: str | None = None,
 ) -> ImageClassificationResult:
     """Supervise one local CPU tagging stage and return an owner-private fallback."""
+    result, _ = await classify_image_with_peak(
+        model_dir,
+        image_path,
+        reservation_bytes=reservation_bytes,
+        policy_explicit=policy_explicit,
+        timeout_s=timeout_s,
+        job_id=job_id,
+    )
+    return result
+
+
+async def classify_image_with_peak(
+    model_dir: Path,
+    image_path: Path,
+    *,
+    reservation_bytes: int,
+    policy_explicit: bool = False,
+    timeout_s: float = CLASSIFIER_DEADLINE_S,
+    job_id: str | None = None,
+) -> tuple[ImageClassificationResult, int]:
+    """Return sampled child RSS with the bounded classification result."""
     with image_node_span(ImageNodeStage.CLASSIFY, job_id=job_id):
         return await _classify_image_stage(
             model_dir,
@@ -113,10 +134,11 @@ async def _classify_image_stage(
     policy_explicit: bool,
     timeout_s: float,
     job_id: str | None,
-) -> ImageClassificationResult:
+) -> tuple[ImageClassificationResult, int]:
     started = time.monotonic()
     outcome = ImageNodeOutcome.FAILED
     process: asyncio.subprocess.Process | None = None
+    peak_rss_bytes = 0
     try:
         if reservation_bytes <= 0 or not 0 < timeout_s <= CLASSIFIER_DEADLINE_S:
             result = _unknown("classifier_failed")
@@ -132,17 +154,20 @@ async def _classify_image_stage(
                 stderr=asyncio.subprocess.DEVNULL,
                 env=_offline_environment(),
             )
+            peak_rss_bytes = process_rss_bytes(process.pid)
             deadline = started + timeout_s
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    peak_rss_bytes = max(peak_rss_bytes, process_rss_bytes(process.pid))
                     await _kill_and_wait(process)
                     result = _unknown("classifier_timeout")
                     break
                 try:
                     exit_code = await asyncio.wait_for(process.wait(), timeout=min(remaining, 0.05))
                 except TimeoutError:
-                    if process_rss_bytes(process.pid) > reservation_bytes:
+                    peak_rss_bytes = max(peak_rss_bytes, process_rss_bytes(process.pid))
+                    if peak_rss_bytes > reservation_bytes:
                         await _kill_and_wait(process)
                         result = _unknown("classifier_memory")
                         break
@@ -185,7 +210,7 @@ async def _classify_image_stage(
         duration_s=time.monotonic() - started,
         job_id=job_id,
     )
-    return result
+    return result, peak_rss_bytes
 
 
 def _digest(path: Path) -> str:

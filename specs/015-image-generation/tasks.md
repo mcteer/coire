@@ -42,7 +42,7 @@ Classification tags never grant permission or filter an entitled prompt.
 - [X] T019 [US4] Implement immutable preset resolution/precedence/once-only prefix and filtered listings in `apps/coire-api/src/coire_api/images/presets.py`; registry dependency requirements cannot be removed by overrides (FR-003, FR-019, FR-027).
 - [X] T020 [US4] Add audited human-admin preset create/update/retire routes in `apps/coire-api/src/coire_api/routes/admin_images.py` and admin-imported templates under `recipes/images/`, with optimistic revisions and no acquisition side effects (FR-003, FR-036).
 - [x] T021 [US4] Implement direct Studio-CPU local-only safetensors tagging in `apps/coire-node/src/coire_node/image_runtime/classification.py`, with the pinned admin asset, measured reservation,10s deadline, recorded threshold/version, explicit-policy override and unknown fallback (FR-020, FR-021, FR-032).
-- [ ] T022 [US4] Add reusable output-access/tag filtering and explicit download rechecks in `apps/coire-api/src/coire_api/images/authorization.py`; verify runtime audits, prompt preservation, unknown exclusion and no ordinary admin bypass with `test_image_authorization.py` (FR-018, FR-019, FR-020, FR-021, FR-024, FR-032, SC-004, SC-005, SC-009).
+- [x] T022 [US4] Add reusable output-access/tag filtering and explicit download rechecks in `apps/coire-api/src/coire_api/images/authorization.py`; verify runtime audits, prompt preservation, unknown exclusion and no ordinary admin bypass with `test_image_authorization.py` (FR-018, FR-019, FR-020, FR-021, FR-024, FR-032, SC-004, SC-005, SC-009).
 
 ## Phase 4: US1 — Private generation, progress and cancel (P1)
 

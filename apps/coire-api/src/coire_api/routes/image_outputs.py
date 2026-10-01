@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 
 from coire_api.deps import SessionDep
 from coire_api.images import deletion, downloads, outputs
-from coire_api.images.authorization import CurrentImageUser
+from coire_api.images.authorization import CurrentImageUser, audit_image_refusal
 from coire_api.images.telemetry import (
     ImageOperation,
     ImageOutcome,
@@ -50,6 +50,12 @@ async def delete_output(
             receipt = await deletion.tombstone_owned_output(session, principal, output_id)
             await session.commit()
         except ImageNotFound:
+            await audit_image_refusal(
+                principal,
+                action="image.refused",
+                target_type="image_output",
+                target_id=str(output_id),
+            )
             record_image_request(
                 ImageOperation.DELETE, ImageOutcome.REFUSED, reason=ImageReason.AUTH
             )
@@ -79,6 +85,9 @@ async def list_outputs(
                 session, principal, limit=limit, cursor=cursor, tag=tag
             )
         except (ImageForbidden, ImageNotFound):
+            await audit_image_refusal(
+                principal, action="image.refused", target_type="image_gallery", target_id="owner"
+            )
             record_image_request(
                 ImageOperation.GALLERY, ImageOutcome.REFUSED, reason=ImageReason.AUTH
             )
@@ -101,6 +110,12 @@ async def get_output(
         try:
             result = await outputs.get_owned_output(session, principal, output_id)
         except (ImageForbidden, ImageNotFound):
+            await audit_image_refusal(
+                principal,
+                action="image.refused",
+                target_type="image_output",
+                target_id=str(output_id),
+            )
             record_image_request(
                 ImageOperation.GALLERY, ImageOutcome.REFUSED, reason=ImageReason.AUTH
             )
@@ -122,6 +137,12 @@ async def create_download_grant(
             grant = await downloads.issue_download_grant(session, principal, output_id)
             await session.commit()
         except (ImageForbidden, ImageNotFound):
+            await audit_image_refusal(
+                principal,
+                action="image.refused",
+                target_type="image_output",
+                target_id=str(output_id),
+            )
             record_image_request(
                 ImageOperation.DOWNLOAD, ImageOutcome.REFUSED, reason=ImageReason.AUTH
             )
@@ -155,6 +176,12 @@ async def download_content(
             row = await downloads.redeem_download_grant(session, principal, output_id, grant)
             fd = downloads.open_verified_blob(Path(settings.image_blob_root), row)
         except (ImageForbidden, ImageNotFound):
+            await audit_image_refusal(
+                principal,
+                action="image.refused",
+                target_type="image_output",
+                target_id=str(output_id),
+            )
             record_image_request(
                 ImageOperation.DOWNLOAD, ImageOutcome.REFUSED, reason=ImageReason.AUTH
             )

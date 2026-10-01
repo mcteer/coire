@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import io
 import uuid
 from decimal import Decimal
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import psutil
 from opentelemetry import metrics, trace
@@ -18,12 +21,17 @@ from coire_core.models.image_worker import (
 )
 from coire_core.models.images import (
     ImageCapabilityProfile,
+    ImageContentTag,
     ImageMode,
     ImageSpec,
     ResolvedImageSpec,
     canonical_spec_hash,
 )
 from coire_core.models.registry import ModelKind
+from coire_node.image_runtime.classification import (
+    CLASSIFIER_REVISION,
+    classify_image_with_peak,
+)
 from coire_node.image_runtime.pipeline import MfluxTxt2ImgPipeline
 from coire_node.image_runtime.preflight import RUNTIME_VERSION, verify_image_copy
 from coire_node.store import Store
@@ -113,7 +121,9 @@ def _validate_image_asset(
         reservation_bytes=reservation_bytes,
         runtime_version=RUNTIME_VERSION,
     )
-    verify_image_copy(store, load)
+    path = verify_image_copy(store, load)
+    if request.kind is ModelKind.IMAGE_CLASSIFIER:
+        return _validate_classifier(path, request, reservation_bytes=reservation_bytes)
     if request.kind is not ModelKind.IMAGE_MODEL:
         raise ImageValidationUnavailable("auxiliary execution validation is unavailable")
     baseline_rss = psutil.Process().memory_info().rss
@@ -160,4 +170,41 @@ def _validate_image_asset(
         peak_rss_bytes=measured_rss,
         thumbnail_sha256=thumbnail_sha256,
         image_capability_profile=profile,
+    )
+
+
+def _validate_classifier(
+    path: Path, request: ImageAssetValidateRequest, *, reservation_bytes: int
+) -> ImageAssetValidationResult:
+    """Exercise the pinned classifier on a synthetic local image before publication."""
+    if request.source_revision != CLASSIFIER_REVISION:
+        raise ImageValidationUnavailable("classifier revision differs from pinned policy")
+    with TemporaryDirectory(prefix="coire-classifier-smoke-") as directory:
+        sample = Path(directory) / "smoke.png"
+        with Image.new("RGB", (64, 64), (32, 96, 192)) as image:
+            image.save(sample, format="PNG")
+        result, measured_rss = asyncio.run(
+            classify_image_with_peak(
+                path,
+                sample,
+                reservation_bytes=reservation_bytes,
+                job_id=str(request.job_id),
+            )
+        )
+    if (
+        result.tag not in {ImageContentTag.NORMAL, ImageContentTag.EXPLICIT}
+        or result.score is None
+        or result.safe_error is not None
+        or result.classifier_revision != CLASSIFIER_REVISION
+        or result.processor_sha256 is None
+    ):
+        raise ImageValidationUnavailable("classifier smoke returned invalid evidence")
+    if measured_rss > reservation_bytes:
+        raise ImageValidationUnavailable("classifier smoke exceeded reserved memory")
+    return ImageAssetValidationResult(
+        validated=True,
+        kind=request.kind,
+        manifest_sha256=request.manifest_sha256,
+        source_revision=request.source_revision,
+        peak_rss_bytes=measured_rss,
     )

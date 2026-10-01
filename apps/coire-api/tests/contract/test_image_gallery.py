@@ -169,6 +169,7 @@ async def test_invalid_or_other_owner_cursor_is_hidden() -> None:
 
 def _app(principal: Principal, monkeypatch: pytest.MonkeyPatch, session: FakeSession) -> FastAPI:
     app = FastAPI()
+    app.state.image_refusal_audits = []
     app.state.settings = Settings(
         _secrets_dir="/nonexistent", chat_browser_origin="https://coire.test"
     )  # type: ignore[call-arg]
@@ -189,6 +190,11 @@ def _app(principal: Principal, monkeypatch: pytest.MonkeyPatch, session: FakeSes
 
     monkeypatch.setattr(authorization, "session_scope", fake_scope)
     monkeypatch.setattr(authorization, "authorize_live_image_action", fake_live)
+
+    async def fake_audit(_session: object, **kwargs: object) -> None:
+        app.state.image_refusal_audits.append(kwargs)
+
+    monkeypatch.setattr(authorization, "write_audit", fake_audit)
 
     @app.exception_handler(CoireError)
     async def problem(request: Request, exc: CoireError) -> JSONResponse:
@@ -221,6 +227,12 @@ async def test_gallery_routes_return_private_recipe_and_hide_other_owner(
     assert "blob_key" not in str(detail.json())
     assert missing.status_code == 404
     assert invalid_cursor.status_code == 404
+    assert len(app.state.image_refusal_audits) == 2
+    assert {item["target_type"] for item in app.state.image_refusal_audits} == {
+        "image_output",
+        "image_gallery",
+    }
+    assert "private prompt" not in str(app.state.image_refusal_audits)
 
 
 async def test_admin_cannot_read_another_users_output(
@@ -237,6 +249,8 @@ async def test_admin_cannot_read_another_users_output(
     ) as client:
         response = await client.get(f"/api/v1/image-outputs/{other.id}")
     assert response.status_code == 404
+    assert len(app.state.image_refusal_audits) == 1
+    assert app.state.image_refusal_audits[0]["target_id"] == str(other.id)
 
 
 async def test_gallery_detail_refuses_explicit_recipe_without_live_entitlement(

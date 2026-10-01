@@ -312,8 +312,7 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     image_workers = ImageProcessSupervisor(
         settings,
         store,
-        lambda: engines.committed_bytes()
-        + (reservations.held_bytes() if reservations else 0),
+        lambda: engines.committed_bytes() + (reservations.held_bytes() if reservations else 0),
         memory_lock=memory_lock,
     )
     image_journal = ImageJobJournal(settings.node_state_dir, hostname)

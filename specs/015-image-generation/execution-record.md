@@ -715,3 +715,51 @@ report are stored outside the repository as `/tmp/coire-015-images-*.png` and
 The final page still needs a VoiceOver journey and real populated-gallery
 journey before T082 can close. The web suite passed **134 tests**, lint and
 TypeScript/Vite build after the visual changes.
+
+T022 is complete at the output-access boundary. Initial image route refusals
+and later gallery, detail, deletion and download refusals now write separate
+content-free audit rows. Owner scope, current explicit entitlement/key scope,
+unknown exclusion from sharing, defensive normal-tag provenance and recipe
+prompt preservation are covered by the gallery/download/authorization contract
+selection (**31 passed**). This does not claim that a classifier is connected:
+newly generated standard outputs still publish as private `unknown` until T033
+and the node-to-core classification path are completed.
+
+T033 now includes reserved offline classifier validation: the node verifies the
+exact local manifest and pinned revision, then runs the CPU classifier against
+a synthetic local PNG. A failed or `unknown` smoke cannot produce validated
+acquisition evidence. The focused image-validation selection passed **6
+tests**, and strict mypy passed the changed modules. LoRA, control and upscale
+kind-specific execution validation and node-to-core tagging remain open.
+
+## Physical baseline and native fixture — 2026-10-01
+
+The development Mac is Apple Silicon (`arm64`, macOS 27.0.1). Its existing
+ignored `models/test--image-tiny` fixture is 341,441,216 bytes, generated with
+seed 15015 for mflux 0.20.0; its Store manifest digest is
+`d800d5234f5f08708bc237f8a81beab4beb39c5c0f318ea43331d0cea07df9be`.
+With Hub access disabled, the real tiny-mflux encoder, MLX denoiser, VAE,
+recipe/pixel round trip, cancellation, 20 encoder-cache reuse trials,
+changed-prompt miss and PNG transfer/Studio-scratch cleanup selection passed
+**4 tests** in 3.07 seconds. This is local test-model evidence, not a
+production-weight image-quality or same-node chat benchmark.
+
+Both real Studios were reached over authenticated `mcteer@` SSH after the user
+explicitly authorized these checks. Each is `arm64`, macOS 27.0, hardware
+`Mac15,14`, with 274,877,906,944 bytes of RAM and a running coire-node 0.2.0
+agent. Edge A has six existing model manifests, 171 GiB of text/VLM model
+data and an active 1.5B text engine; edge B has six model manifests, 1.9 GiB
+of text/VLM data and no active engine. Neither current node environment has
+`mflux` installed, and neither Store contains an image asset. No image model
+was acquired by these read-only inventory checks. The production-weight
+validation, replication, tagging, ten-trial reproduction and 15-minute
+coexistence gates in T083/T084 therefore remain open pending the audited
+image acquisition and current node runtime installation.
+
+The classifier validation smoke was moved under the existing 10-second
+kill-supervised child and records sampled child RSS. The focused classifier
+and validation selection passed **14 tests**, with Ruff and mypy green.
+The complete non-integration, non-engine Python selection passed **1,722
+tests**, with 2 skipped and 157 deselected. Strict mypy passed 638 source
+files. Repository Ruff format/check, generated OpenAPI freshness and
+`git diff --check` passed after formatting an existing image-agent line.

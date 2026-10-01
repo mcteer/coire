@@ -144,6 +144,28 @@ async def require_image_principal(request: Request, principal: CurrentPrincipal)
 CurrentImageUser = Annotated[Principal, Depends(require_image_principal)]
 
 
+async def audit_image_refusal(
+    principal: Principal, *, action: str, target_type: str, target_id: str
+) -> None:
+    """Commit a content-free denial after a route's live owner/policy recheck."""
+    actor, actor_type, actor_user_id = audit_actor(principal)
+    try:
+        async with session_scope() as audit_session:
+            await write_audit(
+                audit_session,
+                actor=actor,
+                actor_type=actor_type,
+                actor_user_id=actor_user_id,
+                action=action,
+                target_type=target_type,
+                target_id=target_id,
+                outcome=AuditOutcome.REFUSED,
+                context={"reason": "authorization"},
+            )
+    except Exception:
+        logger.exception("image refusal audit failed")
+
+
 async def require_owned_image_job(
     session: AsyncSession, job_id: str, principal: Principal
 ) -> ImageJobRow:
