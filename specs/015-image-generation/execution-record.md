@@ -927,3 +927,13 @@ record and hold. The supervisor selection passed **12 tests**, including the
 restart/dead-record case and the existing TERM/KILL five-second bound;
 changed-file Ruff and strict mypy passed. Physical restart on a Studio remains
 an acceptance gate.
+
+Dispatch now polls the authenticated node worker status after a `starting`
+load response, allowing the node's private health proof to promote the exact
+instance to `ready` before job start. The scheduler checks the instance ID
+and reserved bytes on both responses, retries transient unavailable status
+within a 90-second bound, and keeps the durable holds if readiness remains
+uncertain. The focused dispatch selection passed **6 tests**, including a
+mismatched-ready-reservation refusal; Ruff and strict
+mypy passed. Cancellation before the node journal exists still needs the
+reserve-first handshake in T041.

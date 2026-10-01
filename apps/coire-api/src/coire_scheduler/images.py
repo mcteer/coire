@@ -648,9 +648,34 @@ async def drive_image_dispatch(job_id: str) -> bool:
                     dispatches_total.add(1, {"outcome": "worker_missing"})
                     raise ImageConflict("image worker state is unavailable") from exc
                 raise
-            if loaded.state == "failed" or loaded.instance_id != prepared.load.instance_id:
+            if (
+                loaded.state == "failed"
+                or loaded.instance_id != prepared.load.instance_id
+                or loaded.reserved_bytes != prepared.load.reservation_bytes
+            ):
                 dispatches_total.add(1, {"outcome": "worker_uncertain"})
                 raise ImageConflict("image worker state differs from dispatch")
+            ready_deadline = asyncio.get_running_loop().time() + 90.0
+            while loaded.state == "starting":
+                if asyncio.get_running_loop().time() >= ready_deadline:
+                    raise ImageConflict("image worker readiness needs reconciliation")
+                await asyncio.sleep(0.25)
+                try:
+                    loaded = await client.image_worker_status(
+                        prepared.node, prepared.load.instance_id
+                    )
+                except NodeError as exc:
+                    if exc.kind is NodeErrorKind.UNAVAILABLE:
+                        continue
+                    raise ImageConflict("image worker readiness needs reconciliation") from exc
+                if (
+                    loaded.instance_id != prepared.load.instance_id
+                    or loaded.reserved_bytes != prepared.load.reservation_bytes
+                    or loaded.state == "failed"
+                ):
+                    raise ImageConflict("image worker readiness differs from dispatch")
+            if loaded.state != "ready":
+                raise ImageConflict("image worker readiness differs from dispatch")
             if prepared.start.inputs:
                 reserved = await client.reserve_image_inputs(prepared.node, prepared.start)
                 if (

@@ -153,9 +153,9 @@ def _prepared() -> PreparedImageDispatch:
     return PreparedImageDispatch(node=NODE, load=load, start=start)
 
 
-@pytest.mark.parametrize("missing", [False, True])
+@pytest.mark.parametrize(("missing", "bad_ready"), [(False, False), (True, False), (False, True)])
 async def test_dispatch_retains_placed_holds_when_a_worker_reply_is_missing(
-    monkeypatch: pytest.MonkeyPatch, missing: bool
+    monkeypatch: pytest.MonkeyPatch, missing: bool, bad_ready: bool
 ) -> None:
     prepared = _prepared()
     calls: list[str] = []
@@ -185,6 +185,20 @@ async def test_dispatch_retains_placed_holds_when_a_worker_reply_is_missing(
                 instance_id=INSTANCE, state="starting", reserved_bytes=1024
             )
 
+        async def image_worker_status(
+            self, node: str, instance_id: uuid.UUID
+        ) -> ImageWorkerLoadResult:
+            assert node == NODE and instance_id == INSTANCE
+            calls.append("ready")
+            return ImageWorkerLoadResult(
+                instance_id=INSTANCE,
+                state="ready",
+                reserved_bytes=1025 if bad_ready else 1024,
+                pid=123,
+                process_create_time=100.0,
+                port=9600,
+            )
+
         async def start_image_job(self, node: str, command: NodeImageStartRequest) -> NodeImageJob:
             calls.append("start")
             if missing:
@@ -208,13 +222,17 @@ async def test_dispatch_retains_placed_holds_when_a_worker_reply_is_missing(
     monkeypatch.setattr(images, "session_scope", scope)
     monkeypatch.setattr(images, "get_settings", lambda: Settings(_secrets_dir="/nonexistent"))  # type: ignore[call-arg]
 
-    if missing:
+    if bad_ready:
+        with pytest.raises(ImageConflict, match="readiness differs"):
+            await images.drive_image_dispatch(JOB)
+        assert calls == ["prepare", "load", "ready"]
+    elif missing:
         with pytest.raises(ImageConflict, match="journal is unavailable"):
             await images.drive_image_dispatch(JOB)
-        assert calls == ["prepare", "load", "start"]
+        assert calls == ["prepare", "load", "ready", "start"]
     else:
         assert await images.drive_image_dispatch(JOB) is True
-        assert calls == ["prepare", "load", "start"]
+        assert calls == ["prepare", "load", "ready", "start"]
         assert await images.drive_image_dispatch(JOB) is True
         assert calls.count("start") == 2
 
@@ -285,6 +303,17 @@ async def test_img2img_dispatch_reserves_and_stages_exact_owner_input_before_sta
                 instance_id=INSTANCE, state="starting", reserved_bytes=1024
             )
 
+        async def image_worker_status(self, *_: object) -> ImageWorkerLoadResult:
+            calls.append("ready")
+            return ImageWorkerLoadResult(
+                instance_id=INSTANCE,
+                state="ready",
+                reserved_bytes=1024,
+                pid=123,
+                process_create_time=100.0,
+                port=9600,
+            )
+
         async def reserve_image_inputs(
             self, node: str, command: NodeImageStartRequest
         ) -> NodeImageJob:
@@ -333,4 +362,4 @@ async def test_img2img_dispatch_reserves_and_stages_exact_owner_input_before_sta
         ),
     )
     assert await images.drive_image_dispatch(JOB)
-    assert calls == ["load", "reserve", "stage", "start"]
+    assert calls == ["load", "ready", "reserve", "stage", "start"]
