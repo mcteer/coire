@@ -1211,3 +1211,15 @@ The newest broad local selection passed **1,763 tests**, 2 unrelated skips,
 161 deselections. The eight-test real offline tiny-mflux selection and the
 new immutable Studio text/VLM checks are separate from production-weight
 image acceptance; they do not close T083/T084.
+
+Extended the actual local child lifecycle gate to exercise both hard process
+stop and the complete node dispatcher cancellation path during observed
+100-step native denoising. The cancellation test binds the real PID/create-time
+in the durable journal, requests user cancellation through ImageNodeDispatcher,
+and requires cancelled/cleaned plus absent attempt PNGs in under five seconds.
+Exact original-start replay stays cancelled; resident release still follows
+confirmed process death. This is node-boundary latency evidence, not a claim
+that core scheduler-to-publication cancellation has been measured. The
+complete offline tiny-engine selection passed **9 tests** in 9.80 seconds;
+Ruff format/check, strict mypy and OpenAPI freshness passed. T041 remains open
+for its core workflow, partition and publication-race acceptance.

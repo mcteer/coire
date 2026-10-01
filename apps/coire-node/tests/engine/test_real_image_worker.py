@@ -35,6 +35,7 @@ from coire_core.models.image_worker import (
     ImageWorkerOutputManifest,
     ImageWorkerRunRequest,
     ImageWorkerUnloadRequest,
+    NodeImageCancelRequest,
     NodeImageCleanupRequest,
     NodeImageInputManifest,
     NodeImageStartRequest,
@@ -52,6 +53,7 @@ from coire_core.models.images import (
 from coire_core.models.registry import ModelKind
 from coire_core.settings import Settings
 from coire_node.image_cleanup import cleanup_image_outputs, discard_cancelled_image_scratch
+from coire_node.image_dispatch import ImageNodeDispatcher
 from coire_node.image_jobs import ImageJobJournal
 from coire_node.image_runtime import supervisor
 from coire_node.image_runtime.pipeline import MfluxTxt2ImgPipeline
@@ -388,10 +390,12 @@ def test_real_zero_encoder_cache_budget_reencodes_without_retained_arrays(
     assert uncached.encoder_cache.used_bytes == uncached.prompt_cache.occupancy("prompt") == 0
 
 
+@pytest.mark.parametrize("cancellation", ["hard_stop", "node_cancel"])
 async def test_real_child_survives_supervisor_restart_and_serves_same_pid(
     tiny_pipeline: tuple[MfluxTxt2ImgPipeline, ImageWorkerLoadRequest],
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    cancellation: str,
 ) -> None:
     _, load = tiny_pipeline
     target = await asyncio.to_thread(Path(os.environ["COIRE_TEST_MODEL"]).resolve)
@@ -544,6 +548,36 @@ async def test_real_child_survives_supervisor_restart_and_serves_same_pid(
                     break
                 assert time.monotonic() < until
                 await asyncio.sleep(0.01)
+            if cancellation == "node_cancel":
+                reserving = journal.advance(
+                    queued.model_copy(
+                        update={
+                            "state": "reserving",
+                            "pid": ready_again.pid,
+                            "process_create_time": ready_again.process_create_time,
+                            "updated_at": datetime.now(UTC),
+                        }
+                    )
+                )
+                journal.advance(
+                    reserving.model_copy(
+                        update={"state": "running", "updated_at": datetime.now(UTC)}
+                    )
+                )
+                dispatcher = ImageNodeDispatcher(journal, restarted)
+                began = time.monotonic()
+                cancelled_job = await dispatcher.cancel(
+                    NodeImageCancelRequest(
+                        job_id=JOB,
+                        attempt=1,
+                        fence=3,
+                        reason="user",
+                        requested_at=datetime.now(UTC),
+                    )
+                )
+                assert time.monotonic() - began < 5
+                assert cancelled_job is not None
+                assert cancelled_job.state == "cancelled" and cancelled_job.scratch_cleaned
     finally:
         began = time.monotonic()
         stopped = active_manager.stop(
@@ -556,14 +590,22 @@ async def test_real_child_survives_supervisor_restart_and_serves_same_pid(
         assert active_manager.committed_bytes() == 0
         assert not active_manager.record_path.exists()
     # Only after exact process death may the node discard killed-attempt bytes.
-    discard_cancelled_image_scratch(journal, settings.node_state_dir, queued)
-    assert not (Path(settings.node_state_dir) / "image-scratch" / f"{JOB}-1-3").exists()
-    cancelled = journal.advance(
-        queued.model_copy(
-            update={"state": "cancelled", "scratch_cleaned": True, "updated_at": datetime.now(UTC)}
+    if cancellation == "hard_stop":
+        discard_cancelled_image_scratch(journal, settings.node_state_dir, queued)
+        journal.advance(
+            queued.model_copy(
+                update={
+                    "state": "cancelled",
+                    "scratch_cleaned": True,
+                    "updated_at": datetime.now(UTC),
+                }
+            )
         )
-    )
-    assert journal.begin(journal.request(JOB)) == cancelled  # type: ignore[arg-type]
+    assert not (Path(settings.node_state_dir) / "image-scratch" / f"{JOB}-1-3").exists()
+    cancelled = journal.get(JOB)
+    assert cancelled is not None and cancelled.state == "cancelled" and cancelled.scratch_cleaned
+    original = journal.request(JOB)
+    assert original is not None and journal.begin(original) == cancelled
 
 
 async def test_real_png_transfer_receipt_allows_node_scratch_cleanup(
