@@ -1037,3 +1037,28 @@ emits stderr after adoption and requires a successful completion. The focused
 engine contract selection passed **21 tests**; Ruff, strict mypy and the node
 wheel build script syntax check passed. Physical re-adoption with this fix is
 pending a new immutable node install.
+
+## Physical stderr-survival regression — 2026-10-02
+
+Reconciled Studio A's interrupted readiness poll before any mutation: exact
+engine PID 56826 was `ready` and returned HTTP 200 with one choice for a
+four-token synthetic completion through the authenticated node proxy. Sent
+TERM to its agent PID 56795 and allowed launchd to restart it. The restarted
+agent reported `/ready` 200 and authenticated health 200, re-adopted the
+**same engine PID 56826** as ready, and served another HTTP 200 completion
+with one choice. This physically proves the stderr-file fix for this text
+engine/runtime; it does not prove image-worker re-adoption.
+
+Studio B installed the staged locked wheels into immutable
+`/opt/coire/envs/0.2.0-7dc3d1043a3c`, passing installer imports and smoke
+before the symlink flip. Its old agent PID 16245 received TERM and launchd
+restarted it. Checks using its resolvable control hostname
+`coire-edge-b.local` returned `/ready` 200, authenticated `/node/health` 200,
+and unauthenticated health 401. Its engine inventory was empty, confirming
+that the previous SmolVLM stop completed. Bare `coire-edge-b` did not resolve
+from B itself; no network policy was changed. Secrets were read within the
+remote Python process from Keychain and never printed or passed in argv.
+
+Neither Studio has acquired image weights. T083/T084 remain unproven, as do
+all other unchecked parent acceptance items. No task was checked solely on
+the basis of this text-engine regression.
