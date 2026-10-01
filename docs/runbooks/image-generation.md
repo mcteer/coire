@@ -48,7 +48,12 @@ keeps the hold while the node continues waiting for death within its bounded
 stop window; an unknown identity is never signalled.
 
 The native loader evaluates all model parameters on their creating thread
-before background generation. MLX stream ownership is thread-local: unevaluated
+before background generation. `COIRE_IMAGE_PROMPT_CACHE_MAX_BYTES` is carried
+in the node's private launch configuration and enforced by the native encoder
+LRU; setting it to zero disables retention without disabling generation. Older
+private launch records default to 256 MiB when read by the new node revision.
+Drain workers before rolling back to a revision that rejects this additional
+private configuration field. MLX stream ownership is thread-local: unevaluated
 weights must not cross into the generation thread. The local tiny-engine gate
 exercises the actual bootstrap child, authenticated generation before and after
 supervisor reconstruction, identical PID and pixels, and confirmed bounded stop.

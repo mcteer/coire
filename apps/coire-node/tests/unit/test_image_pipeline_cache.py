@@ -212,6 +212,21 @@ def test_changed_prompt_stage_identity_misses(
     assert loaded.prompt_cache.get(_key(request, original, original.seeds[0])) is not None
 
 
+def test_zero_cache_budget_disables_retention_without_blocking_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loaded, model, request = _pipeline(max_bytes=0)
+    monkeypatch.setattr(pipeline, "_sync_latents", lambda value: None)
+    resolved = _resolved(request)
+    for _ in range(2):
+        images = loaded.generate(resolved, lambda *_: None)
+        for image in images:
+            image.close()
+    assert len(model.calls) == 2
+    assert loaded.prompt_cache.occupancy("prompt") == 0
+    assert loaded.encoder_cache.used_bytes == 0
+
+
 def test_generate_encodes_before_denoising_and_still_calls_the_model(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

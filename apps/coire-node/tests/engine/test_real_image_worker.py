@@ -357,6 +357,37 @@ def test_real_encoder_cache_twenty_warm_trials_and_changed_prompt_miss(
     assert cache_events.count(("prompt", "miss")) == 3
 
 
+def test_real_zero_encoder_cache_budget_reencodes_without_retained_arrays(
+    tiny_pipeline: tuple[MfluxTxt2ImgPipeline, ImageWorkerLoadRequest],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, load = tiny_pipeline
+    target = Path(os.environ["COIRE_TEST_MODEL"]).resolve()
+    uncached = MfluxTxt2ImgPipeline.load(Store(target.parent), load, prompt_cache_max_bytes=0)
+    encoder_module = importlib.import_module(
+        "mflux.models.z_image.model.z_image_text_encoder.prompt_encoder"
+    )
+    original = encoder_module.PromptEncoder.encode_prompt
+    calls = 0
+
+    def count(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(encoder_module.PromptEncoder, "encode_prompt", staticmethod(count))
+    pixels: list[str] = []
+    for _ in range(2):
+        images = uncached.generate(_resolved(load), lambda *_: None)
+        try:
+            pixels.append(pixel_digest(images[0].tobytes(), width=64, height=64, channels=3))
+        finally:
+            for image in images:
+                image.close()
+    assert calls == 2 and pixels[0] == pixels[1]
+    assert uncached.encoder_cache.used_bytes == uncached.prompt_cache.occupancy("prompt") == 0
+
+
 async def test_real_child_survives_supervisor_restart_and_serves_same_pid(
     tiny_pipeline: tuple[MfluxTxt2ImgPipeline, ImageWorkerLoadRequest],
     tmp_path: Path,

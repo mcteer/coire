@@ -153,6 +153,7 @@ class ImageWorkerProcessConfig(BaseModel):
 
     schema_version: Literal[1] = 1
     load: ImageWorkerLoadRequest
+    prompt_cache_max_bytes: int = Field(default=256 * 1024**2, ge=0, le=256 * 1024**2)
     store_dir: Path
     scratch_dir: Path
     token_file: Path

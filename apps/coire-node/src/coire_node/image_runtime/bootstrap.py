@@ -76,7 +76,9 @@ async def run_process(path: Path) -> None:
     pipeline_module = importlib.import_module("coire_node.image_runtime.pipeline")
     control_module = importlib.import_module("coire_node.image_runtime.control")
     store = store_module.Store(config.store_dir)
-    pipeline = pipeline_module.MfluxTxt2ImgPipeline.load(store, config.load)
+    pipeline = pipeline_module.MfluxTxt2ImgPipeline.load(
+        store, config.load, prompt_cache_max_bytes=config.prompt_cache_max_bytes
+    )
     app = control_module.create_worker_app(
         config.load, pipeline, config.scratch_dir, token=token, port=config.port
     )

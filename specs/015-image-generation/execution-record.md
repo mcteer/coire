@@ -1176,3 +1176,19 @@ Compose config validated. Builds/scans did not restart the production stack.
 T081 remains open for the complete final-source integration/CI matrix and
 immutable node rollout after the native image loader changes. No full-model
 image asset has been acquired and T083/T084 remain open.
+
+T060 cache-bound review found that the configured prompt-cache cap was not
+propagated to native children, and its valid zero value could not be used by
+the runtime caches. The private shared launch contract now carries a bounded
+`prompt_cache_max_bytes` (old records default to 256 MiB); the supervisor
+persists the node setting and bootstrap passes it into the native loader.
+Zero permits generation but retains no identity payloads or native arrays.
+Launch, bootstrap and disabled-cache regressions failed before implementation.
+Focused shared-contract/cache/bootstrap/supervisor selection passed **44**;
+the real offline tiny-engine selection passed **8** tests, including two
+uncached generations that re-encode twice, retain zero bytes and reproduce the
+same pixels. Ruff format/check, strict mypy and regeneration of OpenAPI/TS
+passed (the private launch field does not change the public API artifact).
+The runbook records legacy defaults and drain-before-downgrade compatibility.
+Control preprocessing and actual LoRA stack replacement remain open in T060,
+T061 and T064.

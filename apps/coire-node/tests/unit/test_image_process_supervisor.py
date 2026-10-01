@@ -97,6 +97,7 @@ def test_launch_is_offline_private_and_durable_before_return(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     settings, store, request = _setup(tmp_path)
+    settings.image_prompt_cache_max_bytes = 4096
     process = FakeProcess()
     captured: dict[str, Any] = {}
 
@@ -127,6 +128,7 @@ def test_launch_is_offline_private_and_durable_before_return(
     record = ImageWorkerProcessRecord.model_validate_json(manager.record_path.read_bytes())
     assert record.status == status
     assert record.config.load == request
+    assert record.config.prompt_cache_max_bytes == 4096
     assert record.config.token_file.stat().st_mode & 0o777 == 0o600
     assert record.config.token_file.parent.stat().st_mode & 0o777 == 0o700
     assert (record.config.token_file.parent / "launch.json").stat().st_mode & 0o777 == 0o600

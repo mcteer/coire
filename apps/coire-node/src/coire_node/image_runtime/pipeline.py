@@ -196,10 +196,16 @@ class MfluxTxt2ImgPipeline:
             self._native_encoder_hook = True
 
     @classmethod
-    def load(cls, store: Store, request: ImageWorkerLoadRequest) -> MfluxTxt2ImgPipeline:
+    def load(
+        cls,
+        store: Store,
+        request: ImageWorkerLoadRequest,
+        *,
+        prompt_cache_max_bytes: int = _DEFAULT_PROMPT_CACHE_BYTES,
+    ) -> MfluxTxt2ImgPipeline:
         _require_offline()
         path = verify_image_copy(store, request)
-        return cls(_load_native(path), request)
+        return cls(_load_native(path), request, prompt_cache_max_bytes=prompt_cache_max_bytes)
 
     @property
     def adapter_id(self) -> str | None:
@@ -217,6 +223,8 @@ class MfluxTxt2ImgPipeline:
 
     def encode_prompt(self, resolved: ResolvedImageSpec) -> None:
         """Remember the prompt stage for each seed. Callers still run the denoiser."""
+        if self.prompt_cache.max_bytes == 0:
+            return
         spec = resolved.spec
         for seed in resolved.seeds:
             parts = (

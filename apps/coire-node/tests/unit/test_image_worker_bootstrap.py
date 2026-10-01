@@ -28,6 +28,7 @@ def _files(tmp_path: Path) -> tuple[Path, ImageWorkerProcessConfig]:
         scratch_dir=tmp_path / "scratch",
         token_file=tmp_path / "secret",
         port=39177,
+        prompt_cache_max_bytes=4096,
     )
     config.token_file.write_text("t" * 64)
     config.token_file.chmod(0o600)
@@ -78,8 +79,11 @@ async def test_bootstrap_strips_credentials_and_imports_native_modules_lazily(
 
     class FakePipeline:
         @classmethod
-        def load(cls, store: FakeStore, request: ImageWorkerLoadRequest) -> object:
+        def load(
+            cls, store: FakeStore, request: ImageWorkerLoadRequest, *, prompt_cache_max_bytes: int
+        ) -> object:
             assert request == config.load
+            assert prompt_cache_max_bytes == config.prompt_cache_max_bytes == 4096
             assert os.environ["HF_HUB_OFFLINE"] == "1"
             assert os.environ["TRANSFORMERS_OFFLINE"] == "1"
             assert "HF_TOKEN" not in os.environ

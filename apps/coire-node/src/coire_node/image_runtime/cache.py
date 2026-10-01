@@ -41,8 +41,8 @@ class StageCache:
     """Byte-capped LRU. A control entry is invisible to every other owner."""
 
     def __init__(self, max_bytes: int) -> None:
-        if max_bytes < 1:
-            raise ValueError("image cache limit must be positive")
+        if max_bytes < 0:
+            raise ValueError("image cache limit must be nonnegative")
         self.max_bytes = max_bytes
         self._items: OrderedDict[StageCacheKey, bytes] = OrderedDict()
 
@@ -73,8 +73,8 @@ class NativeStageCache:
     """Byte-bound resident values for evaluated native encoder results."""
 
     def __init__(self, max_bytes: int) -> None:
-        if max_bytes < 1:
-            raise ValueError("image cache limit must be positive")
+        if max_bytes < 0:
+            raise ValueError("image cache limit must be nonnegative")
         self.max_bytes = max_bytes
         self._items: OrderedDict[StageCacheKey, tuple[object, int]] = OrderedDict()
         self.used_bytes = 0
