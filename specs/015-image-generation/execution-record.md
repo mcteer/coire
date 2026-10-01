@@ -1223,3 +1223,14 @@ that core scheduler-to-publication cancellation has been measured. The
 complete offline tiny-engine selection passed **9 tests** in 9.80 seconds;
 Ruff format/check, strict mypy and OpenAPI freshness passed. T041 remains open
 for its core workflow, partition and publication-race acceptance.
+
+The model picker still stripped the now-implemented img2img mode even after
+both-copy validation advertised it, making the private source controls
+unreachable from normal model selection. Picker capabilities now intersect
+measured registry modes with the two implemented native modes (txt2img,
+img2img), rather than hardcoding txt2img. Fill/control remain absent, LoRA
+count remains zero and nonzero guidance/negative prompts remain unavailable
+until their real adapters exist. The authority-filtered listing regression
+failed before this fix; listing/resolution selection passed **17 tests**,
+Ruff format/check and strict mypy passed. This exposes existing validated
+img2img, not unsupported advanced modes or unacquired assets.

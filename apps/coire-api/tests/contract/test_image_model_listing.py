@@ -127,12 +127,29 @@ async def test_model_picker_filters_hidden_dependencies_and_live_authority(
     monkeypatch.setattr(catalog, "authorize_live_image_action", live)
     listing = await catalog.list_eligible_image_models(cast(AsyncSession, Session()), principal)
     assert {item.id for item in listing.items} == expected
-    assert all(item.capability.modes == ("txt2img",) for item in listing.items)
+    assert all(item.capability.modes == ("txt2img", "img2img") for item in listing.items)
     assert all(not item.capability.required_dependency_ids for item in listing.items)
     assert all(item.capability.max_guidance == 0 for item in listing.items)
     assert all(item.capability.max_loras == 0 for item in listing.items)
     assert all(not item.capability.supports_negative_prompt for item in listing.items)
     assert all(item.residency == "unknown" for item in listing.items)
+
+
+async def test_model_picker_never_advertises_unimplemented_native_modes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Session()
+    session.rows[BASE].image_capability_profile["modes"] = ["txt2img", "fill", "control"]
+
+    async def live(db: object, actor: Principal, **kwargs: object) -> uuid.UUID:
+        return OWNER
+
+    monkeypatch.setattr(catalog, "authorize_live_image_action", live)
+    listing = await catalog.list_eligible_image_models(
+        cast(AsyncSession, session), Principal(kind=PrincipalKind.USER, user_id=OWNER)
+    )
+    selected = next(item for item in listing.items if item.id == BASE)
+    assert selected.capability.modes == ("txt2img",)
 
 
 async def test_model_picker_omits_base_with_unsupported_default(

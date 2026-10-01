@@ -68,7 +68,11 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
         basic = ImageCapabilityProfile.model_validate(
             {
                 **policy.profile.model_dump(),
-                "modes": (ImageMode.TXT2IMG,),
+                "modes": tuple(
+                    mode
+                    for mode in (ImageMode.TXT2IMG, ImageMode.IMG2IMG)
+                    if mode in policy.profile.modes
+                ),
                 "min_guidance": 0,
                 "max_guidance": 0,
                 "max_loras": 0,
