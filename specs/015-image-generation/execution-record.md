@@ -911,3 +911,10 @@ the monitor metric. The focused monitor selection passed **10 tests**, including
 the real invalidation/cancellation state transition and the no-latency-query
 thermal branch; changed-file Ruff and strict mypy passed. A physical same-node
 regression benchmark remains open.
+
+An image instance marked failed may now enter the audited admin drain path
+once no active job or execution lease remains. The node must still prove
+exact worker death and zero reserved bytes before the shared image memory
+hold is released. Ready and failed drain cases passed the focused **5-test**
+selection; changed-file Ruff and strict mypy passed. A missing node process
+record still leaves the hold for explicit reconciliation.

@@ -76,6 +76,9 @@ same admin command after reconciling node health. New image placement on that
 Studio waits while an image worker is draining. Use node and scheduler logs,
 image metrics and job/lease records for investigation. The Images dashboard and
 image alerts show the corresponding fenced outcomes.
+A worker marked failed can use the same unload path once its jobs and leases
+are terminal; the API still releases memory only after the node proves exact
+process death and zero reserved bytes.
 Image worker memory is held in the shared placement ledger until exact node
 stop proof returns zero reserved bytes. A missing reply keeps the reservation
 held, including after a restart. If a Studio agent refuses startup because its

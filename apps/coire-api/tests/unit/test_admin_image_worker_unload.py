@@ -28,12 +28,18 @@ ADMIN = Principal(kind=PrincipalKind.ADMIN, user_id=uuid.uuid4())
 
 
 class Session:
-    def __init__(self, *, active_job: bool = False, unreleased_lease: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        active_job: bool = False,
+        unreleased_lease: bool = False,
+        initial_state: InstanceState = InstanceState.READY,
+    ) -> None:
         now = datetime.now(UTC)
         self.instance = SimpleNamespace(
             id=INSTANCE,
             policy="image:coire-edge-b",
-            state=InstanceState.READY,
+            state=initial_state,
             updated_at=now,
             transitioned_at=now,
         )
@@ -84,10 +90,12 @@ def _request() -> Request:
     )
 
 
+@pytest.mark.parametrize("initial_state", [InstanceState.READY, InstanceState.FAILED])
 async def test_admin_unload_drains_then_confirms_exact_node_stop(
     monkeypatch: pytest.MonkeyPatch,
+    initial_state: InstanceState,
 ) -> None:
-    session = Session()
+    session = Session(initial_state=initial_state)
     audits: list[str] = []
     stages: list[InstanceState] = []
 

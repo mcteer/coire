@@ -320,7 +320,7 @@ async def unload_admin_image_worker(
         )
         if instance is None or not instance.policy.startswith("image:"):
             raise ImageNotFound()
-        if instance.state in {InstanceState.STOPPED, InstanceState.FAILED}:
+        if instance.state is InstanceState.STOPPED:
             raise ImageConflict("image worker is already stopped")
         active = await session.scalar(
             select(ImageJobRow.id)
