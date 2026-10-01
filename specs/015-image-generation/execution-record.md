@@ -991,3 +991,10 @@ publishing that state. A changed or released hold leaves the instance
 unpromoted and dispatch refuses to start the job. The focused dispatch
 selection passed **8 tests**, including the held-reservation mismatch case;
 changed-file Ruff and strict mypy passed.
+
+The admin ledger image-worker pin path now applies the same live human-admin
+guard as other image mutations before changing a reservation. An admin-scoped
+service principal cannot reach that mutation. The direct route refusal and
+admin ledger contract selection passed **8 tests**; changed-file Ruff and
+strict mypy passed. The idle sweep cursor regression also passed **5 tests**,
+including 26 workers across a 25-reservation page and wraparound.

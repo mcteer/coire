@@ -6,11 +6,15 @@ from typing import cast
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.requests import Request
 
 from coire_api.app import create_app
+from coire_api.auth import Principal, PrincipalKind
 from coire_api.db import MemoryReservationRow, ModelInstanceRow
 from coire_api.placement import service
 from coire_api.placement.service import LedgerNotFoundError
+from coire_api.routes import admin_ledger
+from coire_core.errors import ImageForbidden
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, PinUpdate, ReservationHolder
 from coire_core.settings import Settings
@@ -114,3 +118,34 @@ async def test_draining_image_worker_cannot_be_pinned(monkeypatch: pytest.Monkey
             actor="operator",
         )
     assert reservation.pinned is False
+
+
+async def test_image_pin_route_requires_live_human_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    guard_calls: list[str] = []
+
+    class Session:
+        async def get(self, model: object, identity: object) -> object:
+            assert model is MemoryReservationRow
+            return SimpleNamespace(holder_type=ReservationHolder.IMAGE)
+
+    async def deny(request: Request, principal: Principal) -> Principal:
+        guard_calls.append(principal.kind.value)
+        raise ImageForbidden()
+
+    async def pin(*args: object, **kwargs: object) -> None:
+        pytest.fail("unauthorized image pin reached ledger mutation")
+
+    monkeypatch.setattr(admin_ledger, "require_human_image_admin", deny)
+    monkeypatch.setattr(service, "set_pin", pin)
+    request = Request({"type": "http", "method": "PATCH", "path": "/", "headers": []})
+    with pytest.raises(ImageForbidden):
+        await admin_ledger.patch_reservation(
+            uuid.uuid4(),
+            PinUpdate(pinned=True),
+            request,
+            Principal(kind=PrincipalKind.SERVICE, scopes=frozenset({"admin"})),
+            cast(AsyncSession, Session()),
+        )
+    assert guard_calls == ["service"]

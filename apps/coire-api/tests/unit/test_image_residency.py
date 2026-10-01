@@ -154,3 +154,43 @@ async def test_idle_sweep_releases_only_after_exact_node_stop_proof(
     )
     assert result == int(proof)
     assert calls == (["drain", "node", "release"] if proof else ["drain", "node"])
+
+
+async def test_idle_sweep_advances_past_busy_first_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ids = [uuid.UUID(int=value) for value in range(1, 27)]
+    visited: list[uuid.UUID] = []
+
+    class Rows:
+        def __init__(self, values: list[uuid.UUID]) -> None:
+            self.values = values
+
+        def all(self) -> list[uuid.UUID]:
+            return self.values
+
+    class Session:
+        async def scalars(self, statement: object) -> Rows:
+            parameters = statement.compile().params  # type: ignore[attr-defined]
+            after = next(
+                (value for value in parameters.values() if isinstance(value, uuid.UUID)), None
+            )
+            return Rows([item for item in ids if after is None or item > after][:25])
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[AsyncSession]:
+        yield cast(AsyncSession, Session())
+
+    async def prepare(reservation_id: uuid.UUID, settings: Settings, now: datetime) -> None:
+        visited.append(reservation_id)
+
+    monkeypatch.setattr(image_residency, "session_scope", scope)
+    monkeypatch.setattr(image_residency, "_prepare_idle_unload", prepare)
+    monkeypatch.setattr(image_residency, "_scan_after", None)
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    assert await image_residency.sweep_idle_image_workers(settings) == 0
+    assert visited == ids[:25]
+    assert await image_residency.sweep_idle_image_workers(settings) == 0
+    assert visited[-1] == ids[25]
+    assert await image_residency.sweep_idle_image_workers(settings) == 0
+    assert visited[-25:] == ids[:25]
