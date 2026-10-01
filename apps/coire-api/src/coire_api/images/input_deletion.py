@@ -37,7 +37,9 @@ async def tombstone_owned_input(
                 select(ImageJobRow.id)
                 .where(
                     ImageJobRow.owner_user_id == row.owner_user_id,
-                    ImageJobRow.state.in_(("queued", "reserving", "running", "cancelling")),
+                    ImageJobRow.state.in_(
+                        ("queued", "reserving", "running", "transferring", "cancelling")
+                    ),
                     or_(
                         ImageJobRow.resolved_spec["effective_spec"]["init_image_id"].astext
                         == wanted,

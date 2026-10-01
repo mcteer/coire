@@ -1123,3 +1123,13 @@ before the final long-denoise test extension. Runbook documents thread
 materialization and adoption readiness. Full-model T083/T084 and advanced
 control/LoRA cache acceptance remain open; local tiny evidence does not
 establish production image quality, licences, or chat coexistence.
+
+T054 active-reference review found that owner input deletion omitted jobs in
+`transferring` from its locked cancellation query. A source could therefore
+remain referenced but fail reconciliation instead of requesting the required
+fenced stop. The compiled-query regression failed before adding transferring
+to the nonterminal states. Referenced transfer jobs now enter the same audited
+cancel-before-tombstone path; bytes still wait for reference release and
+cleanup proof. Input deletion/reference/cleanup selection passed **15 tests**,
+Ruff format/check and strict mypy passed. T054 stays open for complete
+cross-boundary processing/transfer acceptance rather than closing on this fix.

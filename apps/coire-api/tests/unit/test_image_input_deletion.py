@@ -43,7 +43,8 @@ class FakeSession:
         assert statement is not None
 
     async def scalars(self, statement: object) -> SimpleNamespace:
-        query = str(statement)
+        query = str(statement.compile(compile_kwargs={"literal_binds": True}))  # type: ignore[attr-defined]
+        assert "'transferring'" in query
         assert "image_jobs.owner_user_id" in query
         assert "image_jobs.resolved_spec" in query
         return SimpleNamespace(all=lambda: self.job_ids)
