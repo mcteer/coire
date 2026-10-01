@@ -320,6 +320,17 @@ async def acquire_lease(
     *,
     ttl_seconds: float,
 ) -> RequestLeaseRow:
+    reservation = await session.get(MemoryReservationRow, reservation_id)
+    if reservation is None:
+        raise LedgerNotFoundError
+    # Share the transaction-scoped node lock with image dispatch and eviction.
+    # No lease may be inserted from a pre-lock (possibly stale) reservation.
+    await lock_nodes_for_admission(session, [reservation.node_id])
+    reservation = await session.get(
+        MemoryReservationRow, reservation_id, populate_existing=True, with_for_update=True
+    )
+    if reservation is None or reservation.state is not MemoryReservationState.HELD:
+        raise LedgerNotFoundError
     now = datetime.now(UTC)
     row = RequestLeaseRow(
         reservation_id=reservation_id,
@@ -327,9 +338,6 @@ async def acquire_lease(
         expires_at=now + timedelta(seconds=ttl_seconds),
     )
     session.add(row)
-    reservation = await session.get(MemoryReservationRow, reservation_id)
-    if reservation is None or reservation.state is not MemoryReservationState.HELD:
-        raise LedgerNotFoundError
     reservation.last_used_at = now
     await session.flush()
     return row

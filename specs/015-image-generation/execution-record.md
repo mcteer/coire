@@ -1234,3 +1234,33 @@ until their real adapters exist. The authority-filtered listing regression
 failed before this fix; listing/resolution selection passed **17 tests**,
 Ruff format/check and strict mypy passed. This exposes existing validated
 img2img, not unsupported advanced modes or unacquired assets.
+
+## Cross-process accelerator admission — 2026-10-01
+
+Used a disposable `postgres:17-alpine` container named
+`coire-015-postgres-acceptance`, with ephemeral tmpfs data and a randomly assigned
+localhost-only port. No production Compose service, database or volume was accessed.
+The existing real PostgreSQL node-lock and quota/cancel-publication arbitration
+tests both passed. Each migration/quota test creates and drops its own database.
+
+Two new independent-interpreter tests exposed that chat request leases bypassed
+the shared node admission lock: both failed before the implementation change.
+Lease insertion now takes the same transaction-scoped node lock as image dispatch
+and eviction, then refreshes and locks the reservation row before checking HELD
+and inserting anything. A competing process that releases the reservation while
+holding admission cannot leave a stale chat lease. Both real-process cases pass:
+an unchanged hold permits one lease after release of admission, while a released
+hold refuses admission and persists zero leases. This is actual PostgreSQL/process
+coordination, not an in-memory lock or a mocked session.
+
+A failing-first gateway test also found that sharded requests acquired individual
+rank leases without locking the complete node set. The gateway now takes all node
+locks in the existing canonical order before any per-rank lease, preventing opposite
+rank iteration orders from splitting admission or introducing lock-order deadlocks.
+
+Focused PostgreSQL/admission/persistence/gateway selection: **17 passed**, no skips.
+Broad non-integration/non-engine selection: **1,765 passed**, 2 unrelated skips,
+164 deselections. Ruff check, strict mypy (**643 files**) and OpenAPI freshness pass.
+T065/T068 remain open for their full lease-expiry/profile/pinning/placement matrix;
+these tests do not prove a physical chat/image latency bound. T083/T084 remain
+open: no production image weights were acquired or operator evidence fabricated.

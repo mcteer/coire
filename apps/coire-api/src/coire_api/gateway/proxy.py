@@ -24,7 +24,12 @@ from coire_api.db import (
     session_scope,
 )
 from coire_api.gateway.telemetry import queue_duration_ms, tracer
-from coire_api.placement.service import acquire_lease, refresh_lease, release_lease
+from coire_api.placement.service import (
+    acquire_lease,
+    lock_nodes_for_admission,
+    refresh_lease,
+    release_lease,
+)
 from coire_core.errors import ChatModelUnavailable
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import Settings
@@ -159,6 +164,9 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
             )
             if not members:
                 raise ChatModelUnavailable()
+            # Acquire the entire group in canonical order before any individual
+            # request lease; opposite rank orders must not deadlock admissions.
+            await lock_nodes_for_admission(session, [member.node_id for member in members])
             for member in members:
                 if member.reservation_id is None:
                     raise ChatModelUnavailable()

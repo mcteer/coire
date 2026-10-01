@@ -249,3 +249,16 @@ An admin can invalidate one approved profile with
 invalidation takes effect on the next placement check. An already running
 image job needs the normal fenced cancel path, since invalidating a profile
 does not release or kill a live worker by itself.
+
+Chat request lease insertion shares the transaction-scoped node admission lock with
+image dispatch and eviction. It refreshes and locks the reservation after admission
+before requiring a HELD hold; a reservation released while a request waits cannot
+be leased from stale session state. Sharded requests acquire the complete node set
+in canonical order before inserting any rank lease. These locks are released by
+the short database transaction, not held throughout chat decoding. Request leases
+continue to protect the ongoing request through their existing heartbeat/release
+path. For local concurrency verification, use only an explicitly disposable
+localhost PostgreSQL DSN and run `test_image_accelerator_admission.py`, the integration
+case in `test_image_admission.py`, and the migration/quota race in
+`test_image_persistence.py` under `apps/coire-api/tests/unit/`. Those tests do not
+replace the measured coexistence profile or the full operator matrix.

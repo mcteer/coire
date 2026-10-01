@@ -131,6 +131,61 @@ async def test_node_proxy_request_acquires_and_releases_memory_lease(
     assert calls == [("acquire", reservation_id), ("release", lease_id)]
 
 
+async def test_sharded_request_locks_all_nodes_before_acquiring_any_lease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    instance_id = uuid.uuid4()
+    node_ids = [uuid.UUID(int=2 << 64), uuid.UUID(int=1 << 64)]
+    reservations = [uuid.uuid4(), uuid.uuid4()]
+    calls: list[tuple[str, object]] = []
+    instance = SimpleNamespace(in_flight=0)
+
+    class Session:
+        async def get(self, model: object, identity: object) -> object:
+            del model
+            return instance if identity == instance_id else SimpleNamespace(instance_id=instance_id)
+
+        async def execute(self, query: object) -> object:
+            del query
+            members = [
+                SimpleNamespace(node_id=node, reservation_id=reservation)
+                for node, reservation in zip(node_ids, reservations, strict=True)
+            ]
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: members))
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    async def lock(session: object, nodes: list[uuid.UUID]) -> None:
+        del session
+        calls.append(("lock", nodes))
+
+    async def acquire(
+        session: object, reservation: uuid.UUID, request: str, **kwargs: object
+    ) -> object:
+        del session, request, kwargs
+        assert calls[0] == ("lock", node_ids)
+        calls.append(("acquire", reservation))
+        return SimpleNamespace(id=reservation)
+
+    async def release(session: object, lease: uuid.UUID) -> None:
+        del session
+        calls.append(("release", lease))
+
+    monkeypatch.setattr(proxy, "session_scope", sessions)
+    monkeypatch.setattr(proxy, "lock_nodes_for_admission", lock, raising=False)
+    monkeypatch.setattr(proxy, "acquire_lease", acquire)
+    monkeypatch.setattr(proxy, "release_lease", release)
+    async with proxy.request_lease(
+        f"http://coire-edge-a.lab:9400/node/shard-groups/{uuid.uuid4()}/proxy",
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    ):
+        assert calls == [("lock", node_ids), *(("acquire", item) for item in reservations)]
+        assert instance.in_flight == 1
+    assert instance.in_flight == 0
+
+
 async def test_node_proxy_refuses_unreserved_engine_inference(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
