@@ -44,11 +44,21 @@ _HELD_MEMORY = (
 
 
 async def image_available_bytes(
-    session: AsyncSession, node: NodeRow, model_id: uuid.UUID, estimate_bytes: int
+    session: AsyncSession,
+    node: NodeRow,
+    model_id: uuid.UUID,
+    estimate_bytes: int,
+    *,
+    budget_fraction: float,
 ) -> int:
     """Count the shared ledger once; allow reuse only of the same resident image hold."""
     ledger = await session.get(NodeMemoryLedgerRow, node.id, populate_existing=True)
-    if ledger is None or ledger.budget_bytes < 1 or estimate_bytes < 1:
+    if (
+        ledger is None
+        or ledger.budget_bytes < 1
+        or estimate_bytes < 1
+        or not 0 < budget_fraction <= 1
+    ):
         return 0
     reservations = (
         await session.scalars(
@@ -116,7 +126,7 @@ async def image_available_bytes(
         # A held image process without a reusable instance is uncertain; keep
         # its bytes fenced until a node stop proof releases the reservation.
         return 0
-    budget = min(node.memory_total_bytes, ledger.budget_bytes)
+    budget = min(int(node.memory_total_bytes * budget_fraction), ledger.budget_bytes)
     return max(0, budget - occupied + reuse)
 
 

@@ -942,3 +942,11 @@ return without loading or starting the worker. Node contract and scheduler
 dispatch selections passed **25 tests** with this ordering, including
 pre-load cancellation and terminal replay. The remaining healthy-stop
 latency and partition recovery gates stay open under T041.
+
+Image candidate capacity now also clamps the shared ledger budget to the
+Studio's configured physical memory fraction, matching the node supervisor's
+own admission ceiling. This prevents a default ledger budget larger than a
+128 GiB Studio from advertising the unusable final 10% of RAM. Focused
+admission and dispatch tests passed **34 tests**; changed-file Ruff and strict
+mypy passed. The full local unit/contract suite immediately before this
+clamp passed **1,745 tests**, with 2 skipped and 159 deselected.

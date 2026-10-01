@@ -570,7 +570,11 @@ async def prepare_image_dispatch(
                 node_id=studio.id,
                 healthy=studio.reachability is Reachability.HEALTHY,
                 memory_total_bytes=await image_available_bytes(
-                    session, studio, model.id, reservation
+                    session,
+                    studio,
+                    model.id,
+                    reservation,
+                    budget_fraction=settings.node_memory_budget_fraction,
                 ),
                 image_busy=await _image_busy(session, studio.id, model.id),
                 chat_unmeasured=await _chat_unmeasured(session, studio.id, model.id, current),

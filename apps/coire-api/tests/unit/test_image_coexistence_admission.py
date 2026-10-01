@@ -218,15 +218,35 @@ async def test_shared_image_memory_counts_chat_and_reuses_only_exact_worker_hold
 
     session = Session()
     node = SimpleNamespace(id=NODE_ID, memory_total_bytes=100)
-    assert await image_available_bytes(cast(Any, session), cast(Any, node), MODEL_ID, 40) == 80
+    assert (
+        await image_available_bytes(
+            cast(Any, session), cast(Any, node), MODEL_ID, 40, budget_fraction=0.9
+        )
+        == 70
+    )
     session.holds.append(image_hold)
     session.workers = [instance_id]
-    assert await image_available_bytes(cast(Any, session), cast(Any, node), MODEL_ID, 40) == 80
+    assert (
+        await image_available_bytes(
+            cast(Any, session), cast(Any, node), MODEL_ID, 40, budget_fraction=0.9
+        )
+        == 70
+    )
     session.workers = []
-    assert await image_available_bytes(cast(Any, session), cast(Any, node), MODEL_ID, 40) == 0
+    assert (
+        await image_available_bytes(
+            cast(Any, session), cast(Any, node), MODEL_ID, 40, budget_fraction=0.9
+        )
+        == 0
+    )
     session.workers = [instance_id]
     session.holds.pop()
-    assert await image_available_bytes(cast(Any, session), cast(Any, node), MODEL_ID, 40) == 0
+    assert (
+        await image_available_bytes(
+            cast(Any, session), cast(Any, node), MODEL_ID, 40, budget_fraction=0.9
+        )
+        == 0
+    )
 
 
 async def test_new_chat_checks_image_profile_with_all_resident_variants(
