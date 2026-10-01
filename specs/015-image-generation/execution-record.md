@@ -998,3 +998,13 @@ service principal cannot reach that mutation. The direct route refusal and
 admin ledger contract selection passed **8 tests**; changed-file Ruff and
 strict mypy passed. The idle sweep cursor regression also passed **5 tests**,
 including 26 workers across a 25-reservation page and wraparound.
+
+After those changes, the complete local non-engine, non-integration Python
+selection passed **1,756 tests**, with 2 skipped and 159 deselected. Repository
+Ruff format/check passed for 1,315 files; strict mypy passed 642 source files.
+The actual OpenAPI check is `uv run python -m coire_api.openapi --check` and
+passed; the AGENTS.md shortcut `uv run coire-api export-openapi --check` is
+stale because this workspace does not expose that console entry point. The
+web suite passed **134 tests**, eslint passed and the TypeScript/Vite
+production build passed. A current node wheelhouse build and Studio install
+check are underway.
