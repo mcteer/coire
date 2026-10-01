@@ -868,3 +868,12 @@ serialization and transaction advisory-lock tests. The selection passed
 The scratch database container was stopped and removed after the run. This
 adds local migration and concurrency evidence for T081; the image-build,
 scan, SBOM and complete cluster acceptance gates remain open.
+
+`docker compose -f deploy/compose/compose.yaml config --quiet` passed. Current
+API and scheduler images built as native arm64 images. Both passed all seven
+`scripts/image-policy.sh` checks, including no shell, non-root, read-only
+compatibility, digest-pinned bases and the core-hosting rule. Trivy reported
+no CRITICAL findings for either image (exit 0). Syft generated SPDX JSON
+SBOMs with 88 packages each; the files are in `/tmp`, outside the repository.
+The full node/worker image matrix and production image-model checks remain
+open under T081/T083.
