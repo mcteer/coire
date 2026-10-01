@@ -236,7 +236,9 @@ async def test_new_chat_checks_image_profile_with_all_resident_variants(
 
     class Session:
         def __init__(self) -> None:
-            self.holds: list[object] = [SimpleNamespace(holder_id=str(uuid.uuid4()))]
+            self.worker_id = uuid.uuid4()
+            self.holds: list[object] = [SimpleNamespace(holder_id=str(self.worker_id))]
+            self.workers: list[uuid.UUID] = [self.worker_id]
 
         async def get(self, model: object, identity: object) -> object:
             return SimpleNamespace(model_id=MODEL_ID)
@@ -244,6 +246,8 @@ async def test_new_chat_checks_image_profile_with_all_resident_variants(
         async def scalars(self, statement: object) -> _Rows:
             if "memory_reservations" in str(statement):
                 return _Rows(self.holds)
+            if next(iter(statement.selected_columns)).name == "id":  # type: ignore[attr-defined]
+                return _Rows(list(self.workers))
             return _Rows([OTHER_CHAT_ID])
 
     async def approved(
@@ -261,6 +265,8 @@ async def test_new_chat_checks_image_profile_with_all_resident_variants(
     assert await new_chat_mix_allowed(cast(Any, session), NODE_ID, CHAT_ID, NOW)
     assert seen == [{str(CHAT_ID), str(OTHER_CHAT_ID)}]
     session.holds = []
+    assert not await new_chat_mix_allowed(cast(Any, session), NODE_ID, CHAT_ID, NOW)
+    session.workers = []
     assert await new_chat_mix_allowed(cast(Any, session), NODE_ID, CHAT_ID, NOW)
 
 

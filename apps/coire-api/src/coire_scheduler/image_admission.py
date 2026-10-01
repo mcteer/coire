@@ -62,6 +62,24 @@ async def image_available_bytes(
     image_holds = [item for item in reservations if item.holder_type is ReservationHolder.IMAGE]
     if len(image_holds) > 1:
         return 0
+    all_workers = (
+        await session.scalars(
+            select(ModelInstanceRow.id)
+            .join(InstanceMemberRow, InstanceMemberRow.instance_id == ModelInstanceRow.id)
+            .where(
+                InstanceMemberRow.node_id == node.id,
+                ModelInstanceRow.policy.like("image:%"),
+                ModelInstanceRow.state.in_(
+                    (InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY)
+                ),
+            )
+            .limit(2)
+        )
+    ).all()
+    if len(all_workers) > 1 or any(
+        str(worker_id) not in {hold.holder_id for hold in image_holds} for worker_id in all_workers
+    ):
+        return 0
     workers = (
         await session.scalars(
             select(ModelInstanceRow.id)
@@ -282,6 +300,21 @@ async def new_chat_mix_allowed(
             )
         )
     ).all()
+    live_workers = (
+        await session.scalars(
+            select(ModelInstanceRow.id)
+            .join(InstanceMemberRow, InstanceMemberRow.instance_id == ModelInstanceRow.id)
+            .where(
+                InstanceMemberRow.node_id == node_id,
+                ModelInstanceRow.policy.like("image:%"),
+                ModelInstanceRow.state.in_(
+                    (InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY)
+                ),
+            )
+        )
+    ).all()
+    if any(str(worker_id) not in {hold.holder_id for hold in holds} for worker_id in live_workers):
+        return False
     image_models: set[uuid.UUID] = set()
     for hold in holds:
         try:

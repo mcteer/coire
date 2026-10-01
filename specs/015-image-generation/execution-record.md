@@ -853,6 +853,8 @@ chat loads check the approved current coexistence profile against every held
 image worker and the resulting complete chat variant set. Admin unload marks
 the image hold released only after the exact node confirms its process stopped
 with zero reserved bytes; a missing reply keeps the hold and draining state.
+Admission also fails closed if a live worker has no matching durable hold,
+including workers inherited from an earlier runtime version.
 Focused coexistence, dispatch, placement and unload tests passed **41 tests**.
 The complete local unit/contract selection passed **1,734 tests**, with 2
 skipped and 159 deselected; changed-file strict mypy and Ruff passed. The
