@@ -123,7 +123,9 @@ async def console_activity(
     ] + [
         ActivityItem(
             id=row.id,
-            kind=ActivityKind.INSTANCE,
+            kind=ActivityKind.IMAGE_WORKER
+            if row.policy.startswith("image:")
+            else ActivityKind.INSTANCE,
             owner="platform",
             target=models.get(row.model_id, str(row.model_id)),
             state=row.state.value,

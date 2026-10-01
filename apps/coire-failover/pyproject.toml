@@ -10,7 +10,7 @@ dependencies = [
     # MIT. Bound authenticated requests to local node relay only; pinned for release reproducibility.
     "httpx==0.28.1",
     # MIT. Validate Cloudflare Access identity against the snapshot's pinned issuer/audience.
-    "PyJWT[crypto]==2.13.0",
+    "PyJWT[crypto]==2.14.0",
 ]
 
 [build-system]

@@ -254,6 +254,150 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/image-assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Image Asset
+         * @description Admin-reviewed, pinned image acquisition through the Studio node boundary.
+         */
+        post: operations["add_image_asset_api_v1_admin_image_assets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/image-coexistence-profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve Image Coexistence Profile */
+        post: operations["approve_image_coexistence_profile_api_v1_admin_image_coexistence_profiles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/image-coexistence-profiles/{profile_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Invalidate Image Coexistence Profile */
+        delete: operations["invalidate_image_coexistence_profile_api_v1_admin_image_coexistence_profiles__profile_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/image-jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Admin Image Jobs */
+        get: operations["list_admin_image_jobs_api_v1_admin_image_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/image-jobs/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect Admin Image Job */
+        get: operations["inspect_admin_image_job_api_v1_admin_image_jobs__job_id__get"];
+        put?: never;
+        post?: never;
+        /** Kill Admin Image Job */
+        delete: operations["kill_admin_image_job_api_v1_admin_image_jobs__job_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/image-presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Preset */
+        post: operations["create_preset_api_v1_admin_image_presets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/image-presets/{preset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Retire Preset */
+        delete: operations["retire_preset_api_v1_admin_image_presets__preset_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Preset */
+        patch: operations["update_preset_api_v1_admin_image_presets__preset_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/image-workers/{instance_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Unload Admin Image Worker
+         * @description Drain an idle image instance, then unload only its exact node-owned process.
+         */
+        delete: operations["unload_admin_image_worker_api_v1_admin_image_workers__instance_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/jobs/{job_id}": {
         parameters: {
             query?: never;
@@ -1187,6 +1331,223 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/image-inputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Image Input */
+        post: operations["upload_image_input_api_v1_image_inputs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-inputs/{input_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Image Input */
+        get: operations["get_image_input_api_v1_image_inputs__input_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Image Input */
+        delete: operations["delete_image_input_api_v1_image_inputs__input_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-inputs/{input_id}/recipe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import Recipe Settings */
+        post: operations["import_recipe_settings_api_v1_image_inputs__input_id__recipe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-outputs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Outputs */
+        get: operations["list_outputs_api_v1_image_outputs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-outputs/{output_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Output */
+        get: operations["get_output_api_v1_image_outputs__output_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Output */
+        delete: operations["delete_output_api_v1_image_outputs__output_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-outputs/{output_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download Content */
+        get: operations["download_content_api_v1_image_outputs__output_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/image-outputs/{output_id}/download-grants": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Download Grant */
+        post: operations["create_download_grant_api_v1_image_outputs__output_id__download_grants_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Image Jobs */
+        get: operations["list_image_jobs_api_v1_images_get"];
+        put?: never;
+        /**
+         * Submit Image Job
+         * @description Persist the job before returning its receipt. Retries with the same key replay it.
+         */
+        post: operations["submit_image_job_api_v1_images_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/images/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Image Models */
+        get: operations["list_image_models_api_v1_images_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/images/presets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Presets
+         * @description Show only currently usable published presets; no job is admitted here.
+         */
+        get: operations["list_presets_api_v1_images_presets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/images/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Image Job */
+        get: operations["get_image_job_api_v1_images__job_id__get"];
+        put?: never;
+        post?: never;
+        /** Cancel Image Job */
+        delete: operations["cancel_image_job_api_v1_images__job_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/images/{job_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Image Job Events
+         * @description Replay durable events; recheck owner and entitlements at every poll.
+         */
+        get: operations["image_job_events_api_v1_images__job_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/instances": {
         parameters: {
             query?: never;
@@ -1233,6 +1594,26 @@ export interface paths {
         /** Instance Events */
         get: operations["instance_events_api_v1_instances__instance_id__events_get"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/images/{job_id}/outputs/{index}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Upload Image Output
+         * @description Stream a bounded PNG and issue a receipt after private storage is durable.
+         */
+        put: operations["upload_image_output_api_v1_internal_images__job_id__outputs__index__put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -1629,6 +2010,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/images/generations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Image
+         * @description Wait for the native job. A timeout keeps the accepted job and returns its id.
+         */
+        post: operations["generate_image_v1_images_generations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/messages": {
         parameters: {
             query?: never;
@@ -1768,7 +2169,7 @@ export interface components {
          * ActivityKind
          * @enum {string}
          */
-        ActivityKind: "job" | "instance";
+        ActivityKind: "job" | "instance" | "image_worker";
         /**
          * ActorType
          * @enum {string}
@@ -2283,6 +2684,17 @@ export interface components {
             file: string;
             /** Filename */
             filename: string;
+        };
+        /** Body_upload_image_input_api_v1_image_inputs_post */
+        Body_upload_image_input_api_v1_image_inputs_post: {
+            /** Byte Count */
+            byte_count: number;
+            /** File */
+            file: string;
+            /** Filename */
+            filename: string;
+            /** Purpose */
+            purpose: string;
         };
         /** BranchArtifact */
         BranchArtifact: {
@@ -3185,6 +3597,13 @@ export interface components {
             /** Next Cursor */
             next_cursor?: string | null;
         };
+        /** CursorPage[ImageActivityItem] */
+        CursorPage_ImageActivityItem_: {
+            /** Items */
+            items: components["schemas"]["ImageActivityItem"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
         /** ElectionVoteGrant */
         ElectionVoteGrant: {
             /** Candidate */
@@ -3209,7 +3628,7 @@ export interface components {
          * EngineBackend
          * @enum {string}
          */
-        EngineBackend: "mlx_lm" | "mlx_vlm";
+        EngineBackend: "mlx_lm" | "mlx_vlm" | "mflux" | "auxiliary";
         /**
          * EvaluationVerdict
          * @enum {string}
@@ -3468,6 +3887,898 @@ export interface components {
          * @enum {string}
          */
         HealthStatus: "healthy" | "degraded" | "unhealthy";
+        /**
+         * ImageActivityItem
+         * @description Separate ULID image-job projection; no prompt or storage path is exposed.
+         */
+        ImageActivityItem: {
+            /** Can Stop */
+            can_stop: boolean;
+            /**
+             * Elapsed Seconds
+             * @default 0
+             */
+            elapsed_seconds: number;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /**
+             * Owner Id
+             * Format: uuid
+             */
+            owner_id: string;
+            /** Progress Step */
+            progress_step?: number | null;
+            /** Progress Total */
+            progress_total?: number | null;
+            /** Safe Failure Code */
+            safe_failure_code?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "reserving" | "running" | "transferring" | "cancelling" | "cancelled" | "failed" | "succeeded";
+        };
+        /**
+         * ImageAssetAcquireRequest
+         * @description An admin's explicit image-asset and model-licence acquisition decision.
+         */
+        ImageAssetAcquireRequest: {
+            /** Accepted License Id */
+            accepted_license_id: string;
+            /** Description */
+            description?: string | null;
+            /** Display Name */
+            display_name?: string | null;
+            kind: components["schemas"]["ModelKind"];
+            /**
+             * Placement Policy
+             * @default single:auto
+             */
+            placement_policy: string;
+            /** Repo Id */
+            repo_id: string;
+        };
+        /**
+         * ImageCapabilityProfile
+         * @description Measured base-model bounds; checked after request and preset resolution.
+         */
+        ImageCapabilityProfile: {
+            /** Default Guidance */
+            default_guidance?: string | null;
+            /** Default Height */
+            default_height?: number | null;
+            /** Default Steps */
+            default_steps?: number | null;
+            /** Default Width */
+            default_width?: number | null;
+            /** Max Guidance */
+            max_guidance: string;
+            /** Max Height */
+            max_height: number;
+            /**
+             * Max Loras
+             * @default 0
+             */
+            max_loras: number;
+            /** Max Outputs */
+            max_outputs: number;
+            /** Max Pixels */
+            max_pixels: number;
+            /** Max Steps */
+            max_steps: number;
+            /** Max Width */
+            max_width: number;
+            /** Min Guidance */
+            min_guidance: string;
+            /** Min Height */
+            min_height: number;
+            /** Min Steps */
+            min_steps: number;
+            /** Min Width */
+            min_width: number;
+            /** Modes */
+            modes: components["schemas"]["ImageMode"][];
+            /** Required Dependency Ids */
+            required_dependency_ids?: string[];
+            /**
+             * Supports Negative Prompt
+             * @default false
+             */
+            supports_negative_prompt: boolean;
+        };
+        /**
+         * ImageCoexistenceBounds
+         * @description Maximum image workload measured alongside the listed resident chat variants.
+         */
+        ImageCoexistenceBounds: {
+            /** Max Height */
+            max_height: number;
+            /** Max Outputs */
+            max_outputs: number;
+            /** Max Steps */
+            max_steps: number;
+            /** Max Width */
+            max_width: number;
+        };
+        /** ImageCoexistenceProfile */
+        ImageCoexistenceProfile: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Invalidated At */
+            invalidated_at?: string | null;
+            /** Profile Hash */
+            profile_hash: string;
+            report: components["schemas"]["ImageCoexistenceReportRequest"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "approved" | "invalidated";
+        };
+        /**
+         * ImageCoexistenceReportRequest
+         * @description Human-admin attested, same-node mixed-workload benchmark evidence.
+         */
+        ImageCoexistenceReportRequest: {
+            /** Chat Variant Ids */
+            chat_variant_ids: string[];
+            /** Duration Seconds */
+            duration_seconds: number;
+            /** First Token P95 Ms */
+            first_token_p95_ms: number;
+            /** Gateway Overhead P95 Ms */
+            gateway_overhead_p95_ms: number;
+            /** Hardware Fingerprint */
+            hardware_fingerprint: string;
+            /** Image Completed Count */
+            image_completed_count: number;
+            /**
+             * Image Mode
+             * @default txt2img
+             * @constant
+             */
+            image_mode: "txt2img";
+            /**
+             * Image Model Id
+             * Format: uuid
+             */
+            image_model_id: string;
+            /**
+             * Image Progress Observed
+             * @constant
+             */
+            image_progress_observed: true;
+            /**
+             * Measured At
+             * Format: date-time
+             */
+            measured_at: string;
+            measured_bounds: components["schemas"]["ImageCoexistenceBounds"];
+            /**
+             * Node Id
+             * Format: uuid
+             */
+            node_id: string;
+            /** Prompt Tokens Max */
+            prompt_tokens_max: number;
+            /** Runtime Fingerprint */
+            runtime_fingerprint: string;
+            /**
+             * Runtime Version
+             * @constant
+             */
+            runtime_version: "mflux-0.20.0";
+            /**
+             * Swap Observed
+             * @constant
+             */
+            swap_observed: false;
+            /**
+             * Thermal Alarm
+             * @constant
+             */
+            thermal_alarm: false;
+            /**
+             * Valid Until
+             * Format: date-time
+             */
+            valid_until: string;
+        };
+        /**
+         * ImageContentMode
+         * @enum {string}
+         */
+        ImageContentMode: "standard" | "explicit";
+        /**
+         * ImageContentTag
+         * @enum {string}
+         */
+        ImageContentTag: "normal" | "explicit" | "unknown";
+        /** ImageControl */
+        "ImageControl-Input": {
+            /**
+             * High Threshold
+             * @default 200
+             */
+            high_threshold: number;
+            /**
+             * Image Id
+             * Format: uuid
+             */
+            image_id: string;
+            /**
+             * Low Threshold
+             * @default 100
+             */
+            low_threshold: number;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /**
+             * Strength
+             * @default 1
+             */
+            strength: number | string;
+            /**
+             * Type
+             * @default canny
+             * @constant
+             */
+            type: "canny";
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /** ImageControl */
+        "ImageControl-Output": {
+            /**
+             * High Threshold
+             * @default 200
+             */
+            high_threshold: number;
+            /**
+             * Image Id
+             * Format: uuid
+             */
+            image_id: string;
+            /**
+             * Low Threshold
+             * @default 100
+             */
+            low_threshold: number;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /**
+             * Strength
+             * @default 1
+             */
+            strength: string;
+            /**
+             * Type
+             * @default canny
+             * @constant
+             */
+            type: "canny";
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /** ImageDeletionReceipt */
+        ImageDeletionReceipt: {
+            /**
+             * Output Id
+             * Format: uuid
+             */
+            output_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "tombstoned" | "purged";
+        };
+        /** ImageDownloadGrant */
+        ImageDownloadGrant: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /**
+             * Output Id
+             * Format: uuid
+             */
+            output_id: string;
+            /** Url */
+            url: string;
+        };
+        /** ImageInput */
+        ImageInput: {
+            /** Byte Count */
+            byte_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Height */
+            height?: number | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "init" | "mask" | "control" | "recipe";
+            /** Safe Error */
+            safe_error?: string | null;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "uploading" | "processing" | "ready" | "failed" | "deleting" | "purged";
+            /** Width */
+            width?: number | null;
+        };
+        /** ImageInputDigest */
+        ImageInputDigest: {
+            /** Height */
+            height: number;
+            /**
+             * Input Id
+             * Format: uuid
+             */
+            input_id: string;
+            /** Sha256 */
+            sha256: string;
+            /** Width */
+            width: number;
+        };
+        /** ImageJob */
+        ImageJob: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            effective_spec: components["schemas"]["ImageSpec"];
+            /** Failure Code */
+            failure_code?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Latest Event Sequence
+             * @default 0
+             */
+            latest_event_sequence: number;
+            /** Outputs */
+            outputs?: components["schemas"]["ImageOutput"][];
+            /** Progress Step */
+            progress_step?: number | null;
+            /** Queue Position */
+            queue_position?: number | null;
+            resolved: components["schemas"]["ResolvedImageSpec"] | null;
+            state: components["schemas"]["ImageJobState"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /** ImageJobEvent */
+        ImageJobEvent: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /** Job Id */
+            job_id: string;
+            /** Output Index */
+            output_index?: number | null;
+            /** Outputs */
+            outputs?: components["schemas"]["ImageOutput"][] | null;
+            /** Queue Position */
+            queue_position?: number | null;
+            /** Safe Code */
+            safe_code?: string | null;
+            /** Sequence */
+            sequence: number;
+            snapshot?: components["schemas"]["ImageJob"] | null;
+            /** Stage */
+            stage?: string | null;
+            state: components["schemas"]["ImageJobState"];
+            /** Step */
+            step?: number | null;
+            /** Total Steps */
+            total_steps?: number | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "queued" | "started" | "progress" | "done" | "error" | "cancelled" | "reset";
+        };
+        /** ImageJobPage */
+        ImageJobPage: {
+            /** Items */
+            items: components["schemas"]["ImageJob"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** ImageJobReceipt */
+        ImageJobReceipt: {
+            /** Event Cursor */
+            event_cursor?: string | null;
+            /** Job Id */
+            job_id: string;
+            /** Queue Position */
+            queue_position?: number | null;
+            state: components["schemas"]["ImageJobState"];
+        };
+        /**
+         * ImageJobState
+         * @enum {string}
+         */
+        ImageJobState: "queued" | "reserving" | "running" | "transferring" | "cancelling" | "succeeded" | "failed" | "cancelled";
+        /** ImageLora */
+        "ImageLora-Input": {
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Scale */
+            scale: number | string;
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /** ImageLora */
+        "ImageLora-Output": {
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Scale */
+            scale: string;
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /** ImageManifestDigest */
+        ImageManifestDigest: {
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Revision */
+            revision: string;
+            /** Sha256 */
+            sha256: string;
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /**
+         * ImageMode
+         * @enum {string}
+         */
+        ImageMode: "txt2img" | "img2img" | "fill" | "control";
+        /** ImageModelList */
+        ImageModelList: {
+            /** Items */
+            items: components["schemas"]["ImageModelOption"][];
+        };
+        /** ImageModelOption */
+        ImageModelOption: {
+            capability: components["schemas"]["ImageCapabilityProfile"];
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Required Dependency Count */
+            required_dependency_count: number;
+            /**
+             * Residency
+             * @default unknown
+             * @constant
+             */
+            residency: "unknown";
+            /** Slug */
+            slug: string;
+        };
+        /** ImageOutput */
+        ImageOutput: {
+            /** Byte Count */
+            byte_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** File Sha256 */
+            file_sha256: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Index */
+            index: number;
+            /** Job Id */
+            job_id: string;
+            recipe: components["schemas"]["ImageRecipe"];
+            tag: components["schemas"]["ImageContentTag"];
+        };
+        /** ImageOutputPage */
+        ImageOutputPage: {
+            /** Items */
+            items: components["schemas"]["ImageOutput"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** ImageOutputSettings */
+        ImageOutputSettings: {
+            /**
+             * Embed Metadata
+             * @default true
+             * @constant
+             */
+            embed_metadata: true;
+            /**
+             * Format
+             * @default png
+             * @constant
+             */
+            format: "png";
+        };
+        /** ImagePreset */
+        ImagePreset: {
+            defaults: components["schemas"]["ImageSubmitRequest-Output"];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /**
+             * Prompt Prefix
+             * @default
+             */
+            prompt_prefix: string;
+            /**
+             * Retired
+             * @default false
+             */
+            retired: boolean;
+            /** Revision */
+            revision: number;
+        };
+        /** ImagePresetCreate */
+        ImagePresetCreate: {
+            defaults: components["schemas"]["ImageSubmitRequest-Input"];
+            /** Name */
+            name: string;
+            /**
+             * Prompt Prefix
+             * @default
+             */
+            prompt_prefix: string;
+        };
+        /** ImagePresetList */
+        ImagePresetList: {
+            /** Items */
+            items: components["schemas"]["ImagePreset"][];
+        };
+        /** ImagePresetUpdate */
+        ImagePresetUpdate: {
+            defaults?: components["schemas"]["ImageSubmitRequest-Input"] | null;
+            /** Expected Revision */
+            expected_revision: number;
+            /** Name */
+            name?: string | null;
+            /** Prompt Prefix */
+            prompt_prefix?: string | null;
+        };
+        /** ImageRecipe */
+        ImageRecipe: {
+            /** Height */
+            height: number;
+            /** Output Index */
+            output_index: number;
+            /** Pixel Sha256 */
+            pixel_sha256: string;
+            resolved: components["schemas"]["ResolvedImageSpec"];
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Seed */
+            seed: number;
+            /** Width */
+            width: number;
+        };
+        /** ImageRecipeImport */
+        ImageRecipeImport: {
+            /** Exact Reproduction Available */
+            exact_reproduction_available: boolean;
+            /** Missing Dependency Sha256 */
+            missing_dependency_sha256?: string[];
+            /** Missing Input Sha256 */
+            missing_input_sha256?: string[];
+            recipe: components["schemas"]["ImageRecipe"];
+            settings: components["schemas"]["ImageSubmitRequest-Output"];
+            /** Unavailable Reason */
+            unavailable_reason?: string | null;
+        };
+        /** ImageRecipeImportRequest */
+        ImageRecipeImportRequest: {
+            /** Replacement Inputs */
+            replacement_inputs?: {
+                [key: string]: string;
+            };
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+        };
+        /**
+         * ImageSpec
+         * @description Fully specified client-side values before model-capability validation.
+         */
+        ImageSpec: {
+            /** @default standard */
+            content_mode: components["schemas"]["ImageContentMode"];
+            control?: components["schemas"]["ImageControl-Output"] | null;
+            /** Guidance */
+            guidance: string;
+            /** Height */
+            height: number;
+            /** Init Image Id */
+            init_image_id?: string | null;
+            /** Loras */
+            loras?: components["schemas"]["ImageLora-Output"][];
+            /** Mask Id */
+            mask_id?: string | null;
+            /** @default txt2img */
+            mode: components["schemas"]["ImageMode"];
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /**
+             * N
+             * @default 1
+             */
+            n: number;
+            /** Negative Prompt */
+            negative_prompt?: string | null;
+            output?: components["schemas"]["ImageOutputSettings"];
+            /** Prompt */
+            prompt: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Seed */
+            seed?: number | null;
+            /** Steps */
+            steps: number;
+            /** Strength */
+            strength?: string | null;
+            upscale?: components["schemas"]["ImageUpscale"] | null;
+            /** Variant Id */
+            variant_id?: string | null;
+            /** Width */
+            width: number;
+        };
+        /**
+         * ImageSubmitRequest
+         * @description Root-level overrides; preset/default resolution produces an ImageSpec later.
+         */
+        "ImageSubmitRequest-Input": {
+            content_mode?: components["schemas"]["ImageContentMode"] | null;
+            control?: components["schemas"]["ImageControl-Input"] | null;
+            /** Guidance */
+            guidance?: number | string | null;
+            /** Height */
+            height?: number | null;
+            /** Init Image Id */
+            init_image_id?: string | null;
+            /** Loras */
+            loras?: components["schemas"]["ImageLora-Input"][] | null;
+            /** Mask Id */
+            mask_id?: string | null;
+            mode?: components["schemas"]["ImageMode"] | null;
+            /** Model Id */
+            model_id?: string | null;
+            /** N */
+            n?: number | null;
+            /** Negative Prompt */
+            negative_prompt?: string | null;
+            output?: components["schemas"]["ImageOutputSettings"] | null;
+            /** Preset Id */
+            preset_id?: string | null;
+            /** Preset Revision */
+            preset_revision?: number | null;
+            /** Prompt */
+            prompt?: string | null;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Seed */
+            seed?: number | null;
+            /** Steps */
+            steps?: number | null;
+            /** Strength */
+            strength?: number | string | null;
+            upscale?: components["schemas"]["ImageUpscale"] | null;
+            /** Variant Id */
+            variant_id?: string | null;
+            /** Width */
+            width?: number | null;
+        };
+        /**
+         * ImageSubmitRequest
+         * @description Root-level overrides; preset/default resolution produces an ImageSpec later.
+         */
+        "ImageSubmitRequest-Output": {
+            content_mode?: components["schemas"]["ImageContentMode"] | null;
+            control?: components["schemas"]["ImageControl-Output"] | null;
+            /** Guidance */
+            guidance?: string | null;
+            /** Height */
+            height?: number | null;
+            /** Init Image Id */
+            init_image_id?: string | null;
+            /** Loras */
+            loras?: components["schemas"]["ImageLora-Output"][] | null;
+            /** Mask Id */
+            mask_id?: string | null;
+            mode?: components["schemas"]["ImageMode"] | null;
+            /** Model Id */
+            model_id?: string | null;
+            /** N */
+            n?: number | null;
+            /** Negative Prompt */
+            negative_prompt?: string | null;
+            output?: components["schemas"]["ImageOutputSettings"] | null;
+            /** Preset Id */
+            preset_id?: string | null;
+            /** Preset Revision */
+            preset_revision?: number | null;
+            /** Prompt */
+            prompt?: string | null;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Seed */
+            seed?: number | null;
+            /** Steps */
+            steps?: number | null;
+            /** Strength */
+            strength?: string | null;
+            upscale?: components["schemas"]["ImageUpscale"] | null;
+            /** Variant Id */
+            variant_id?: string | null;
+            /** Width */
+            width?: number | null;
+        };
+        /** ImageTransferReceipt */
+        ImageTransferReceipt: {
+            /** Attempt */
+            attempt: number;
+            /** Byte Count */
+            byte_count: number;
+            /** Fence */
+            fence: number;
+            /** Index */
+            index: number;
+            /** Job Id */
+            job_id: string;
+            /** Node */
+            node: string;
+            /**
+             * Output Id
+             * Format: uuid
+             */
+            output_id: string;
+            /** Recipe Sha256 */
+            recipe_sha256: string;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Verified At
+             * Format: date-time
+             */
+            verified_at: string;
+        };
+        /** ImageUpscale */
+        ImageUpscale: {
+            /**
+             * Factor
+             * @enum {integer}
+             */
+            factor: 2 | 4;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Variant Id */
+            variant_id?: string | null;
+        };
+        /** ImageWorkerLoadResult */
+        ImageWorkerLoadResult: {
+            /**
+             * Backend
+             * @default mflux
+             * @constant
+             */
+            backend: "mflux";
+            /**
+             * Instance Id
+             * Format: uuid
+             */
+            instance_id: string;
+            /** Pid */
+            pid?: number | null;
+            /** Port */
+            port?: number | null;
+            /** Process Create Time */
+            process_create_time?: number | null;
+            /** Reserved Bytes */
+            reserved_bytes: number;
+            /** Safe Error */
+            safe_error?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "starting" | "ready" | "failed";
+        };
         /** InstanceCreate */
         InstanceCreate: {
             /** Affinity Node Id */
@@ -3740,6 +5051,9 @@ export interface components {
             id: string;
             /** Idle Ttl Seconds */
             idle_ttl_seconds?: number | null;
+            image_capability_profile?: components["schemas"]["ImageCapabilityProfile"] | null;
+            /** @default language_model */
+            kind: components["schemas"]["ModelKind"];
             /** Manifest Sha256 */
             manifest_sha256?: string | null;
             /** Max Output Tokens */
@@ -3785,6 +5099,8 @@ export interface components {
             display_name?: string | null;
             /** Idle Ttl Seconds */
             idle_ttl_seconds?: number | null;
+            /** @default language_model */
+            kind: components["schemas"]["ModelKind"];
             /**
              * Placement Policy
              * @default single:auto
@@ -3854,6 +5170,11 @@ export interface components {
             variant_id: string;
         };
         /**
+         * ModelKind
+         * @enum {string}
+         */
+        ModelKind: "language_model" | "image_model" | "image_lora" | "control_model" | "upscale_model" | "image_classifier";
+        /**
          * ModelListing
          * @description The user-facing shape.
          *
@@ -3877,6 +5198,9 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            image_capability_profile?: components["schemas"]["ImageCapabilityProfile"] | null;
+            /** @default language_model */
+            kind: components["schemas"]["ModelKind"];
             load_state: components["schemas"]["LoadState"];
             /** Loaded On */
             loaded_on?: string[];
@@ -4199,6 +5523,71 @@ export interface components {
          * @enum {string}
          */
         OccupantReason: "pinned" | "in_use" | "eligible";
+        /** OpenAIImageData */
+        OpenAIImageData: {
+            /** B64 Json */
+            b64_json?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * OpenAIImageGenerationRequest
+         * @description Standard image fields plus prefixed Coire extensions.
+         */
+        OpenAIImageGenerationRequest: {
+            coire_content_mode?: components["schemas"]["ImageContentMode"] | null;
+            /** Coire Preset Id */
+            coire_preset_id?: string | null;
+            /** Coire Preset Revision */
+            coire_preset_revision?: number | null;
+            /** Coire Seed */
+            coire_seed?: number | null;
+            /**
+             * Model
+             * Format: uuid
+             */
+            model: string;
+            /**
+             * N
+             * @default 1
+             */
+            n: number;
+            /**
+             * Output Format
+             * @default png
+             * @constant
+             */
+            output_format: "png";
+            /** Prompt */
+            prompt: string;
+            /** Quality */
+            quality?: ("auto" | "standard" | "hd" | "low" | "medium" | "high") | null;
+            /**
+             * Response Format
+             * @default url
+             * @enum {string}
+             */
+            response_format: "url" | "b64_json";
+            /** Size */
+            size?: string | null;
+            /**
+             * Stream
+             * @default false
+             * @constant
+             */
+            stream: false;
+            /** User */
+            user?: string | null;
+        };
+        /** OpenAIImageGenerationResponse */
+        OpenAIImageGenerationResponse: {
+            /** Coire Job Id */
+            coire_job_id: string;
+            /** Created */
+            created: number;
+            /** Data */
+            data: components["schemas"]["OpenAIImageData"][];
+        };
         /** OpenAIImagePart */
         OpenAIImagePart: {
             image_url: components["schemas"]["OpenAIImageURL"];
@@ -4760,6 +6149,37 @@ export interface components {
          */
         ReservationHolder: "sandbox" | "model" | "conversion" | "training" | "image" | "run";
         /**
+         * ResolvedImageSpec
+         * @description Immutable execution facts; no owner, path, URL or secret field exists.
+         */
+        ResolvedImageSpec: {
+            /** Dependencies */
+            dependencies?: components["schemas"]["ImageManifestDigest"][];
+            /** Environment Fingerprint */
+            environment_fingerprint: string;
+            /** Inputs */
+            inputs?: components["schemas"]["ImageInputDigest"][];
+            /** Model Sha256 */
+            model_sha256: string;
+            /** Pipeline Version */
+            pipeline_version: string;
+            /** Preset Id */
+            preset_id?: string | null;
+            /** Preset Revision */
+            preset_revision?: number | null;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Seeds */
+            seeds: number[];
+            spec: components["schemas"]["ImageSpec"];
+            /** Spec Hash */
+            spec_hash: string;
+        };
+        /**
          * RunActivity
          * @description Bounded content-free tool lifecycle receipt from one user run.
          */
@@ -5094,6 +6514,9 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            image_capability_profile?: components["schemas"]["ImageCapabilityProfile"] | null;
+            /** @default language_model */
+            kind: components["schemas"]["ModelKind"];
             /** Perplexity */
             perplexity?: number | null;
             perplexity_outcome: components["schemas"]["ValidationOutcome"];
@@ -5747,6 +7170,348 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HarnessEvaluation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_image_asset_api_v1_admin_image_assets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageAssetAcquireRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_image_coexistence_profile_api_v1_admin_image_coexistence_profiles_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageCoexistenceReportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageCoexistenceProfile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    invalidate_image_coexistence_profile_api_v1_admin_image_coexistence_profiles__profile_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                profile_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageCoexistenceProfile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_admin_image_jobs_api_v1_admin_image_jobs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                before?: string | null;
+                before_id?: string | null;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CursorPage_ImageActivityItem_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_admin_image_job_api_v1_admin_image_jobs__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageActivityItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    kill_admin_image_job_api_v1_admin_image_jobs__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageActivityItem"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_preset_api_v1_admin_image_presets_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImagePresetCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePreset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    retire_preset_api_v1_admin_image_presets__preset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                preset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_preset_api_v1_admin_image_presets__preset_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                preset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImagePresetUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePreset"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unload_admin_image_worker_api_v1_admin_image_workers__instance_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                instance_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageWorkerLoadResult"];
                 };
             };
             /** @description Validation Error */
@@ -8061,6 +9826,545 @@ export interface operations {
             };
         };
     };
+    upload_image_input_api_v1_image_inputs_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_image_input_api_v1_image_inputs_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageInput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_input_api_v1_image_inputs__input_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                input_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageInput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_image_input_api_v1_image_inputs__input_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                input_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageInput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    import_recipe_settings_api_v1_image_inputs__input_id__recipe_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                input_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageRecipeImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageRecipeImport"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_outputs_api_v1_image_outputs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                tag?: components["schemas"]["ImageContentTag"] | null;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageOutputPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_output_api_v1_image_outputs__output_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                output_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageOutput"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_output_api_v1_image_outputs__output_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                output_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageDeletionReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    download_content_api_v1_image_outputs__output_id__content_get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Coire-Image-Grant": string;
+                "x-api-key"?: string | null;
+            };
+            path: {
+                output_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_download_grant_api_v1_image_outputs__output_id__download_grants_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                output_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageDownloadGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_image_jobs_api_v1_images_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string | null;
+                state?: components["schemas"]["ImageJobState"] | null;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageJobPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_image_job_api_v1_images_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageSubmitRequest-Input"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageJobReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_image_models_api_v1_images_models_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageModelList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_presets_api_v1_images_presets_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImagePresetList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_job_api_v1_images__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_image_job_api_v1_images__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageJob"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    image_job_events_api_v1_images__job_id__events_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Last-Event-ID"?: string | null;
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE frames; each data payload is an ImageJobEvent */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_instances_api_v1_instances_get: {
         parameters: {
             query?: never;
@@ -8213,6 +10517,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_image_output_api_v1_internal_images__job_id__outputs__index__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: string | null;
+                "x-coire-attempt"?: number | null;
+                "x-coire-fence"?: number | null;
+                "x-coire-transfer-grant"?: string | null;
+                authorization?: string | null;
+            };
+            path: {
+                job_id: string;
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageTransferReceipt"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -8943,6 +11285,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_image_v1_images_generations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string | null;
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OpenAIImageGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OpenAIImageGenerationResponse"];
                 };
             };
             /** @description Validation Error */

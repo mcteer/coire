@@ -1,19 +1,33 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { openChatEvents, sendChatTurn, type ChatEvent, type ChatTurnCreate } from "../api/chat";
-import { openEventStream, readEventStream } from "../api/eventStream";
+import { openEventStream, readEventStream, type SseFrame } from "../api/eventStream";
 
 type State<T> = { data: T | null; connected: boolean; error: string | null };
+type StreamOptions<T> = {
+  decode?: (frame: SseFrame) => T | undefined;
+  isTerminal?: (data: T) => boolean;
+};
 
-export function useEventStream<T>(url: string, initial: T | null = null): State<T> {
+export function useEventStream<T>(
+  url: string,
+  initial: T | null = null,
+  options?: StreamOptions<T>,
+): State<T> {
   const [state, setState] = useState<State<T>>({ data: initial, connected: false, error: null });
   const lastId = useRef<string | null>(null);
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   useEffect(() => {
+    lastId.current = null;
+    setState({ data: initial, connected: false, error: null });
     if (url === "") return;
     let disposed = false;
     let controller: AbortController | null = null;
     let retry: number | undefined;
     let failures = 0;
+    let terminal = false;
+    let permanent = false;
 
     const clearRetry = () => {
       if (retry !== undefined) window.clearTimeout(retry);
@@ -26,13 +40,21 @@ export function useEventStream<T>(url: string, initial: T | null = null): State<
       controller = active;
       try {
         const response = await openEventStream(url, lastId.current, active.signal);
+        if ([401, 403, 404].includes(response.status)) permanent = true;
         if (!response.ok || !response.body) throw new Error(`stream refused (${response.status})`);
         setState((value) => ({ ...value, connected: true, error: null }));
         await readEventStream(response, active.signal, (frame) => {
-          const event = JSON.parse(frame.data) as { snapshot: T };
+          const next = optionsRef.current?.decode
+            ? optionsRef.current.decode(frame)
+            : (JSON.parse(frame.data) as { snapshot: T }).snapshot;
+          if (next === undefined) return;
           if (frame.id) lastId.current = frame.id;
           failures = 0;
-          setState({ data: event.snapshot, connected: true, error: null });
+          setState({ data: next, connected: true, error: null });
+          if (optionsRef.current?.isTerminal?.(next)) {
+            terminal = true;
+            active.abort();
+          }
         });
         if (!active.signal.aborted) throw new Error("stream ended");
       } catch (error) {
@@ -41,7 +63,7 @@ export function useEventStream<T>(url: string, initial: T | null = null): State<
         }
       } finally {
         if (controller === active) controller = null;
-        if (!disposed && canConnect()) {
+        if (!disposed && !terminal && !permanent && canConnect()) {
           const delay = Math.min(10_000, 500 * 2 ** Math.min(failures++, 5));
           retry = window.setTimeout(() => void connect(), delay * (0.8 + Math.random() * 0.4));
         }

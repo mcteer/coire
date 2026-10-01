@@ -28,13 +28,18 @@ class ReservationRefused(RuntimeError):
 
 class ReservationLedger:
     def __init__(
-        self, settings: Settings, store: Store, committed_engine_bytes: Callable[[], int]
+        self,
+        settings: Settings,
+        store: Store,
+        committed_engine_bytes: Callable[[], int],
+        *,
+        memory_lock: threading.RLock | None = None,
     ) -> None:
         self.settings = settings
         self.store = store
         self._committed_engine_bytes = committed_engine_bytes
         self._path = Path(settings.node_state_dir) / "reservations.json"
-        self._lock = threading.RLock()
+        self._lock = memory_lock or threading.RLock()
         self._items = self._load()
 
     def _load(self) -> dict[uuid.UUID, Reservation]:
@@ -57,11 +62,12 @@ class ReservationLedger:
         )
 
     def held_bytes(self) -> int:
-        return sum(
-            item.memory_bytes
-            for item in self._items.values()
-            if item.state is ReservationState.HELD
-        )
+        with self._lock:
+            return sum(
+                item.memory_bytes
+                for item in self._items.values()
+                if item.state is ReservationState.HELD
+            )
 
     def hold(self, request: ReservationRequest) -> tuple[Reservation, bool]:
         with self._lock:

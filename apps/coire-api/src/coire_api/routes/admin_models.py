@@ -41,7 +41,7 @@ from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.providers import credential_present
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.preconditions import require_current
-from coire_api.registry import service
+from coire_api.registry import image_acquisition, service
 from coire_api.registry.placement import NoCandidate, choose_load_node
 from coire_api.registry.visual_memory import reservation_bytes
 from coire_core.models.audit import AuditAction
@@ -49,6 +49,7 @@ from coire_core.models.engine import EngineProcess, EngineState
 from coire_core.models.jobs import DownloadJob
 from coire_core.models.registry import (
     EngineBackend,
+    ImageAssetAcquireRequest,
     LoadRefusalReason,
     LoadRefused,
     Model,
@@ -265,6 +266,36 @@ async def add_model(
         raise HTTPException(exc.status_code, exc.detail) from exc
     await session.commit()
     # Wake the reconciler so the pull starts now rather than at the next tick.
+    reconciler = getattr(http_request.app.state, "reconciler", None)
+    if reconciler is not None:
+        reconciler._wake.set()
+    return await _detail(session, model)
+
+
+@router.post("/image-assets", status_code=status.HTTP_202_ACCEPTED)
+async def add_image_asset(
+    request: ImageAssetAcquireRequest,
+    http_request: Request,
+    principal: CurrentAdmin,
+    session: SessionDep,
+    settings: SettingsDep,
+    client: ClientDep,
+) -> dict[str, object]:
+    """Admin-reviewed, pinned image acquisition through the Studio node boundary."""
+    views = await service.node_views(session, _statuses(http_request))
+    try:
+        model, _job = await image_acquisition.submit_image_asset(
+            session,
+            request,
+            client=client,
+            settings=settings,
+            views=views,
+            actor=principal.subject or "admin",
+        )
+    except service.RegistryError as exc:
+        await session.commit()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+    await session.commit()
     reconciler = getattr(http_request.app.state, "reconciler", None)
     if reconciler is not None:
         reconciler._wake.set()

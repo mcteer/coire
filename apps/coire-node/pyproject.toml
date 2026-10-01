@@ -9,6 +9,8 @@ dependencies = [
     "uvicorn>=0.34",
     "psutil>=6.1",
     "httpx>=0.28",
+    # HPND. Decode bounded owner image inputs in the node journal on Linux CI and Studios.
+    "pillow==12.3.0",
     "opentelemetry-sdk>=1.29",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
     # Feature 001 (research R1, R10): the engine and the Hugging Face client. mlx is
@@ -18,6 +20,8 @@ dependencies = [
     "mlx-lm>=0.31.3; platform_system=='Darwin'",
     # MIT. Bare visual serving on Studios only; node installer stages the locked graph.
     "mlx-vlm==0.7.3; platform_system=='Darwin'",
+    # MIT. Bare image generation on Studios; model assets require separate admin licence review.
+    "mflux==0.20.0; platform_system=='Darwin'",
     # BSD-3-Clause. Transformers 5's Idefics3 AutoProcessor needs the Torchvision backend
     # even when its local PIL processor exists; keep this off core and Linux CI.
     "torchvision; platform_system=='Darwin'",

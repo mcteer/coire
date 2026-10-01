@@ -75,6 +75,60 @@ compose secrets. Gateway tuning variables and operational procedures are documen
 `.env`, an image, or a compose environment block.
 
 Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 is incomplete).
+
+Image admission is reserved behind `COIRE_IMAGE_ENABLED` (default `false`). These values
+are wired into the API and applicable scheduler settings. The `coire-blobs` volume is mounted
+only by the API; the isolated file worker uses dedicated `images` subpaths of its existing
+original/derived mounts. Basic job, owner input, and output routes now exist, but advanced
+generation modes, measured chat coexistence and required operator gates remain incomplete.
+Keep admission disabled until the parent feature acceptance gates pass; see
+[`docs/runbooks/image-generation.md`](../../docs/runbooks/image-generation.md).
+The file worker reads image inputs from `FILE_WORKER_IMAGE_INPUT_ROOT`
+(`/opt/coire/chat/originals/images`), a read-only namespace containing generated UUID
+names. Its authenticated internal routes accept an ID, size and SHA-256, never a path.
+Recipe imports parse metadata only; generation inputs normalize to private PNGs under
+`FILE_WORKER_IMAGE_OUTPUT_ROOT` (`/opt/coire/chat/derived/images`). The API and scheduler
+share these mounts and keep generation input admission disabled until the advanced-mode
+pipeline and operator gates pass.
+
+| Compose-facing setting | Default | Maximum |
+| --- | ---: | ---: |
+| `COIRE_IMAGE_GENERATION_INPUT_MAX_BYTES` | 10 MiB | 10 MiB |
+| `COIRE_IMAGE_RECIPE_INPUT_MAX_BYTES` | 64 MiB | 64 MiB |
+| `COIRE_IMAGE_RECIPE_METADATA_MAX_BYTES` | 64 KiB | 64 KiB |
+| `COIRE_IMAGE_OUTPUT_MAX_BYTES` | 64 MiB | 64 MiB |
+| `COIRE_IMAGE_MAX_OUTPUTS` | 4 | 4 |
+| `COIRE_IMAGE_PENDING_PER_OWNER` | 4 | 4 |
+| `COIRE_IMAGE_PENDING_GLOBAL` | 32 | 32 |
+| `COIRE_IMAGE_DAILY_OUTPUTS_PER_OWNER` | 100 | 100 |
+| `COIRE_IMAGE_OWNER_STORAGE_QUOTA_BYTES` | 5 GiB | 5 GiB |
+| `COIRE_IMAGE_GLOBAL_STORAGE_QUOTA_BYTES` | 50 GiB | 50 GiB |
+| `COIRE_IMAGE_DISK_SAFETY_FLOOR_BYTES` | 2 GiB | Cannot be lowered |
+| `COIRE_IMAGE_WORKER_IDLE_TTL_S` | 900 s | 86,400 s |
+| `COIRE_IMAGE_EVENT_RETENTION_HOURS` | 24 h | 24 h |
+| `COIRE_IMAGE_COMPATIBLE_WAIT_S` | 90 s | 90 s |
+| `COIRE_IMAGE_CANCEL_GRACE_S` | 5 s | 5 s |
+| `COIRE_IMAGE_PROMPT_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
+| `COIRE_IMAGE_CONTROL_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
+
+Studio agents push completed PNGs to `COIRE_IMAGE_TRANSFER_API_URL` (default
+`http://coire-core.lab:8180`). Keep that setting on the node pointed at the
+trusted core ingress. The API requires the Keychain-sourced node bearer and a
+five-minute grant scoped to the job, attempt, fence and output index. It stores
+verified bytes privately under `COIRE_IMAGE_BLOB_ROOT` and returns a receipt
+before the Studio may clean its scratch copy.
+
+On each native Studio node, `COIRE_NODE_IMAGE_WORKER_PORT` defaults to `9600`.
+It is reserved for the one resident image worker's authenticated loopback
+control app and must stay outside `COIRE_NODE_ENGINE_PORT_RANGE` (default
+`9500-9599`). The node refuses a collision; this setting opens no external
+listener.
+
+Nginx allows a 65 MiB multipart body only at `/api/v1/image-inputs` to fit a 64 MiB
+recipe PNG plus framing. The API enforces the purpose-specific 10 MiB generation and
+64 MiB recipe file caps. The internal raw PNG transfer path is limited to 64 MiB. Other
+API paths retain their existing body bounds.
+
 See [native Chat operations](../../docs/runbooks/chat-web-ui.md) for turn inspection,
 Stop, parser alerts, private-file purge, diagnostics and visual rollback.
 The experimental inline PNG/JPEG/WebP `/v1` visual route is separately gated by

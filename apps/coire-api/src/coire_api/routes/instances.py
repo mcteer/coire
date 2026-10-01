@@ -108,7 +108,9 @@ async def list_instances(
     rows = list(
         (
             await session.execute(
-                select(ModelInstanceRow).order_by(ModelInstanceRow.created_at.desc())
+                select(ModelInstanceRow)
+                .where(ModelInstanceRow.variant_id.is_not(None))
+                .order_by(ModelInstanceRow.created_at.desc())
             )
         )
         .scalars()
@@ -134,7 +136,15 @@ async def project_cluster_state(
         row.node_id: row
         for row in (await session.execute(select(NodeMemoryLedgerRow))).scalars().all()
     }
-    instance_rows = list((await session.execute(select(ModelInstanceRow))).scalars().all())
+    instance_rows = list(
+        (
+            await session.execute(
+                select(ModelInstanceRow).where(ModelInstanceRow.variant_id.is_not(None))
+            )
+        )
+        .scalars()
+        .all()
+    )
     nodes: list[ClusterNodeState] = []
     for ledger in ledgers:
         row = node_rows[ledger.node_id]
@@ -170,7 +180,7 @@ async def get_instance(
     instance_id: uuid.UUID, principal: CurrentAuthenticated, session: SessionDep
 ) -> ModelInstance:
     row = await session.get(ModelInstanceRow, instance_id)
-    if row is None:
+    if row is None or row.variant_id is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such instance")
     return await service.project_instance(session, row)
 
@@ -185,7 +195,7 @@ async def drain_instance(
     settings: SettingsDep,
 ) -> ModelInstance:
     row = await session.get(ModelInstanceRow, instance_id)
-    if row is None:
+    if row is None or row.variant_id is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such instance")
     if row.state is InstanceState.READY:
         row.drain_deadline = datetime.now(UTC) + timedelta(
@@ -213,7 +223,8 @@ async def instance_events(
     last_event_id: Annotated[int | None, Header(alias="Last-Event-ID", ge=0)] = None,
 ) -> StreamingResponse:
     async with session_scope() as session:
-        if await session.get(ModelInstanceRow, instance_id) is None:
+        row = await session.get(ModelInstanceRow, instance_id)
+        if row is None or row.variant_id is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "no such instance")
 
     async def stream() -> AsyncIterator[str]:

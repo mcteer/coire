@@ -1,0 +1,128 @@
+.image-gallery-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--s-4);
+  margin-bottom: var(--s-4);
+}
+
+.image-gallery-header h2 {
+  margin: 0;
+}
+
+.image-gallery-header label {
+  display: grid;
+  gap: var(--s-1);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.image-gallery-header select {
+  min-width: 130px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.image-gallery-header select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.image-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: var(--s-4);
+  padding: 0;
+  margin: 0 0 var(--s-4);
+  list-style: none;
+}
+
+.image-gallery-card {
+  min-width: 0;
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-1);
+}
+
+.image-gallery-thumb {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  color: var(--ink-3);
+  background: var(--surface-2);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.image-gallery-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.image-gallery-thumb-message {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3);
+}
+
+.image-gallery-card-body {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-3);
+}
+
+.image-gallery-meta,
+.image-gallery-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin: 0;
+}
+
+.image-gallery-tag {
+  padding: 3px 7px;
+  color: var(--ink-2);
+  background: var(--surface-2);
+  border-radius: var(--r-pill);
+  font-size: var(--text-xs);
+}
+
+.image-gallery-card time {
+  color: var(--ink-3);
+  font-size: var(--text-xs);
+}
+
+.image-gallery-actions .button {
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .image-gallery-header {
+    align-items: start;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .image-gallery {
+    --surface: #222938;
+    --surface-2: #2a3243;
+    --border: #424b5e;
+    --ink: #f5f6fa;
+    --ink-2: #d6dae6;
+    --ink-3: #abb3c4;
+    color: var(--ink);
+    background: var(--surface);
+    border-color: var(--border);
+  }
+}

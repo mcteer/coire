@@ -5,8 +5,8 @@
 # Runtime is distroless with a pinned CPython 3.13 copied from the builder. Neither
 # off-the-shelf distroless Python base satisfies the constitution's 3.13 pin:
 # gcr.io/distroless/python3-debian12 ships 3.11.2, and Chainguard's free tier is latest-only
-# at 3.14.7 (research R1, both probed). The builder is Debian bookworm and the runtime is
-# base-debian12, so the interpreter's glibc matches.
+# at 3.14.7 (research R1, both probed). The bookworm-built interpreter runs on
+# the newer Debian 13 distroless glibc; keep this compatibility covered by the image smoke.
 #
 # No shell, no package manager, non-root, read-only-root compatible (image-policy rules 1-4).
 
@@ -42,8 +42,8 @@ COPY apps/coire-api apps/coire-api
 # --no-editable: workspace packages must be copied into the venv, not linked back to /build,
 # which does not exist in the runtime stage.
 RUN uv sync --frozen --no-dev --no-editable --package coire-api \
- && mkdir -p /volume/originals /volume/derived \
- && chmod 700 /volume/originals /volume/derived \
+ && mkdir -p /volume/originals /volume/derived /volume/blobs \
+ && chmod 700 /volume/originals /volume/derived /volume/blobs \
  && cp /usr/lib/aarch64-linux-gnu/libpcre2-8.so.0.11.2 \
        /app/.venv/lib/python3.13/site-packages/psycopg_binary.libs/libpcre2-8-8701a61e.so.0.7.1
 
@@ -55,9 +55,9 @@ RUN rm -rf /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13 \
            /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
            /app/.venv/bin/pip /app/.venv/bin/pip3 /app/.venv/bin/pip3.13
 
-FROM gcr.io/distroless/base-debian12:nonroot@sha256:7f0c72cd138b442ae0deeb69c08b1acf5525439ba251a49ad93c320a061567e5
+FROM gcr.io/distroless/base-debian13:nonroot@sha256:a0d70d6a97cd697d9362bc2aae4a6560dd65817e365d0043b07325a97975dc91
 
-# distroless/base-debian12 ships glibc, libssl and libcrypto but not these. Determined by
+# distroless/base-debian13 ships glibc, libssl and libcrypto but not these. Determined by
 # diffing `ldd` over the interpreter and every extension module against the runtime's own
 # shared objects. Tcl/Tk, ncurses, readline and dbm are deliberately excluded: they back
 # GUI and interactive stdlib modules that a server never imports, and leaving them out keeps
@@ -77,6 +77,7 @@ COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder --chown=65532:65532 /volume/originals /opt/coire/chat/originals
 COPY --from=builder --chown=65532:65532 /volume/derived /opt/coire/chat/derived
+COPY --from=builder --chown=65532:65532 /volume/blobs /opt/coire/blobs
 COPY --from=probe /healthcheck /healthcheck
 COPY --from=builder /build/apps/coire-api/alembic /app/alembic
 COPY --from=builder /build/apps/coire-api/alembic.ini /app/alembic.ini

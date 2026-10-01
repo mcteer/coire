@@ -65,7 +65,7 @@ from coire_core.models.placement import (
     PlacementState,
     ReservationHolder,
 )
-from coire_core.models.registry import CopyRole, ModelState, Visibility
+from coire_core.models.registry import CopyRole, ModelKind, ModelState, Visibility
 from coire_core.models.runs import AgentRunState, RunCommandState, RunOperation
 from coire_core.models.sharding import (
     BenchmarkRunState,
@@ -200,6 +200,21 @@ class ModelRow(Base):
     """The registry record (spec FR-001)."""
 
     __tablename__ = "models"
+    __table_args__ = (
+        CheckConstraint(
+            "(kind = 'language_model' AND backend IN ('mlx_lm', 'mlx_vlm')) OR "
+            "(kind = 'image_model' AND backend = 'mflux' AND source = 'studio') OR "
+            "(kind IN ('image_lora', 'control_model', 'upscale_model', 'image_classifier') "
+            "AND backend = 'auxiliary' AND source = 'studio')",
+            name="ck_models_kind_backend",
+        ),
+        CheckConstraint(
+            "(image_capability_profile IS NULL OR kind = 'image_model') AND "
+            "(kind <> 'image_model' OR state <> 'ready' OR "
+            "image_capability_profile IS NOT NULL)",
+            name="ck_models_image_capability",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     repo_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
@@ -231,13 +246,22 @@ class ModelRow(Base):
     context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chat_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     capability_profile: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    image_capability_profile: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     backend: Mapped[str] = mapped_column(String(16), default="mlx_lm", server_default="mlx_lm")
+    kind: Mapped[str] = mapped_column(
+        String(32), default=ModelKind.LANGUAGE_MODEL, server_default="language_model"
+    )
     source: Mapped[str] = mapped_column(String(16), default="studio", server_default="studio")
     provider_model_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
     max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     daily_token_budget: Mapped[int | None] = mapped_column(Integer, nullable=True)
     visual_capability: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_revision: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    license_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    image_validated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -302,6 +326,8 @@ class DownloadJobRow(Base):
     manifest: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     """The origin's manifest, carried here so the import request can hand it to the replica
     without a second round trip to the origin."""
+    expected_files: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    image_validation: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     attempt: Mapped[int] = mapped_column(Integer, default=1)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -802,13 +828,20 @@ class PlacementCommandRow(Base):
 
 class ModelInstanceRow(Base):
     __tablename__ = "model_instances"
+    __table_args__ = (
+        CheckConstraint(
+            "variant_id IS NOT NULL OR policy LIKE 'image:%'",
+            name="ck_model_instance_variant_policy",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     model_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("models.id", ondelete="CASCADE"), index=True
     )
-    variant_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
+    # Image bases execute the registry model directly; language instances still require a variant.
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="CASCADE"), nullable=True, index=True
     )
     placement_decision_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("placement_decisions.id", ondelete="SET NULL"), nullable=True
@@ -1520,3 +1553,363 @@ class ChatQuotaReservationRow(Base):
     state: Mapped[str] = mapped_column(String(16))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# --------------------------------------------------------------------------- feature 015
+
+
+class ImagePresetRow(Base):
+    """Mutable pointer to append-only preset revisions."""
+
+    __tablename__ = "image_presets"
+    __table_args__ = (
+        CheckConstraint("current_revision >= 1", name="ck_image_preset_revision"),
+        Index("ix_image_presets_state_name", "state", "name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(120), unique=True)
+    description: Mapped[str] = mapped_column(String(500), default="")
+    current_revision: Mapped[int] = mapped_column(Integer, default=1)
+    state: Mapped[str] = mapped_column(String(16), default="draft")
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImagePresetRevisionRow(Base):
+    """Immutable revision payload; service code only inserts a new revision."""
+
+    __tablename__ = "image_preset_revisions"
+    __table_args__ = (CheckConstraint("revision >= 1", name="ck_image_preset_revision_number"),)
+
+    preset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("image_presets.id", ondelete="RESTRICT"), primary_key=True
+    )
+    revision: Mapped[int] = mapped_column(Integer, primary_key=True)
+    defaults: Mapped[dict[str, object]] = mapped_column(JSONB)
+    prefix: Mapped[str] = mapped_column(Text, default="")
+    dependency_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    entitlement_requirements: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    created_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageJobRow(Base):
+    """Authoritative image state and publication fence."""
+
+    __tablename__ = "image_jobs"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "idempotency_key", name="uq_image_job_owner_key"),
+        UniqueConstraint("id", "owner_user_id", name="uq_image_job_id_owner"),
+        ForeignKeyConstraint(
+            ["preset_id", "preset_revision"],
+            ["image_preset_revisions.preset_id", "image_preset_revisions.revision"],
+            name="fk_image_job_preset_revision",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_image_jobs_owner_created", "owner_user_id", "created_at", "id"),
+        Index("ix_image_jobs_state_deadline", "state", "deadline_at"),
+        CheckConstraint("id ~ '^[0-9A-HJKMNP-TV-Z]{26}$'", name="ck_image_job_ulid"),
+        CheckConstraint(
+            "version >= 1 AND attempt >= 1 AND fence >= 0", name="ck_image_job_versions"
+        ),
+        CheckConstraint("progress >= 0 AND progress <= 1", name="ck_image_job_progress"),
+        CheckConstraint(
+            "(preset_id IS NULL) = (preset_revision IS NULL)",
+            name="ck_image_job_preset_pair",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    originating_key_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
+    )
+    originating_key_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    browser_identity: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    intent_sha256: Mapped[str] = mapped_column(String(64))
+    submitted_spec: Mapped[dict[str, object]] = mapped_column(JSONB)
+    resolved_spec: Mapped[dict[str, object]] = mapped_column(JSONB)
+    state: Mapped[str] = mapped_column(String(16), default="queued")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    fence: Mapped[int] = mapped_column(BigInteger, default=0)
+    workflow_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    preset_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    preset_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    selected_node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True
+    )
+    instance_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_instances.id", ondelete="SET NULL"), nullable=True
+    )
+    reservation_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    progress: Mapped[float] = mapped_column(Float, default=0)
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    safe_failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    receipt_state: Mapped[str] = mapped_column(String(16), default="pending")
+    cleanup_state: Mapped[str] = mapped_column(String(16), default="pending")
+    authorization_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ImageJobEventRow(Base):
+    __tablename__ = "image_job_events"
+    __table_args__ = (
+        CheckConstraint("sequence >= 1", name="ck_image_job_event_sequence"),
+        Index("ix_image_job_events_created", "created_at"),
+    )
+
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("image_jobs.id", ondelete="CASCADE"), primary_key=True
+    )
+    sequence: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(32))
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageInputRow(Base):
+    __tablename__ = "image_inputs"
+    __table_args__ = (
+        Index("ix_image_inputs_owner_created", "owner_user_id", "created_at", "id"),
+        CheckConstraint(
+            "original_bytes >= 0 AND held_bytes >= 0 AND active_references >= 0",
+            name="ck_image_input_counts",
+        ),
+        CheckConstraint(
+            "state <> 'ready' OR (original_bytes > 0 AND original_sha256 IS NOT NULL)",
+            name="ck_image_input_ready_original",
+        ),
+        CheckConstraint(
+            "(purpose = 'recipe' AND (state <> 'ready' OR recipe IS NOT NULL) "
+            "AND normalized_key IS NULL AND normalized_bytes IS NULL "
+            "AND normalized_sha256 IS NULL AND normalized_width IS NULL "
+            "AND normalized_height IS NULL) OR "
+            "(purpose IN ('init', 'mask', 'control') AND "
+            "(state <> 'ready' OR (normalized_key IS NOT NULL "
+            "AND normalized_bytes IS NOT NULL AND normalized_bytes > 0 "
+            "AND normalized_sha256 IS NOT NULL AND normalized_width IS NOT NULL "
+            "AND normalized_width > 0 AND normalized_height IS NOT NULL "
+            "AND normalized_height > 0)))",
+            name="ck_image_input_purpose_shape",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    purpose: Mapped[str] = mapped_column(String(16))
+    original_key: Mapped[str] = mapped_column(String(128))
+    original_bytes: Mapped[int] = mapped_column(BigInteger)
+    original_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    normalized_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    normalized_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    normalized_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    normalized_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    normalized_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    state: Mapped[str] = mapped_column(String(16))
+    recipe: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    processing_job_id: Mapped[str | None] = mapped_column(String(26), nullable=True)
+    held_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    active_references: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ImageOutputRow(Base):
+    __tablename__ = "image_outputs"
+    __table_args__ = (
+        UniqueConstraint("job_id", "output_index", name="uq_image_output_job_index"),
+        UniqueConstraint("id", "owner_user_id", name="uq_image_output_id_owner"),
+        ForeignKeyConstraint(
+            ["job_id", "owner_user_id"],
+            ["image_jobs.id", "image_jobs.owner_user_id"],
+            name="fk_image_output_job_owner",
+            ondelete="RESTRICT",
+        ),
+        Index("ix_image_outputs_owner_created", "owner_user_id", "created_at", "id"),
+        CheckConstraint("output_index >= 0 AND output_index < 4", name="ck_image_output_index"),
+        CheckConstraint("size_bytes > 0", name="ck_image_output_size"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[str] = mapped_column(String(26))
+    owner_user_id: Mapped[uuid.UUID] = mapped_column()
+    output_index: Mapped[int] = mapped_column(Integer)
+    blob_key: Mapped[str] = mapped_column(String(128))
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    file_sha256: Mapped[str] = mapped_column(String(64))
+    pixel_sha256: Mapped[str] = mapped_column(String(64))
+    recipe: Mapped[dict[str, object]] = mapped_column(JSONB)
+    content_tag: Mapped[str] = mapped_column(String(16))
+    classifier_provenance: Mapped[dict[str, object]] = mapped_column(JSONB)
+    entitlement_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
+    state: Mapped[str] = mapped_column(String(16), default="staged")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ImageTransferRow(Base):
+    __tablename__ = "image_transfers"
+    __table_args__ = (
+        CheckConstraint(
+            "attempt >= 1 AND output_index >= 0 AND output_index < 4", name="ck_image_transfer_slot"
+        ),
+        CheckConstraint("expected_bytes > 0", name="ck_image_transfer_size"),
+        Index("ix_image_transfers_expiry", "lease_expires_at"),
+    )
+
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("image_jobs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    attempt: Mapped[int] = mapped_column(Integer, primary_key=True)
+    output_index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    expected_bytes: Mapped[int] = mapped_column(BigInteger)
+    expected_sha256: Mapped[str] = mapped_column(String(64))
+    staging_key: Mapped[str] = mapped_column(String(128))
+    state: Mapped[str] = mapped_column(String(16))
+    receipt: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    node_cleanup_ack_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    grant_hash: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageDownloadGrantRow(Base):
+    __tablename__ = "image_download_grants"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["output_id", "owner_user_id"],
+            ["image_outputs.id", "image_outputs.owner_user_id"],
+            name="fk_image_grant_output_owner",
+            ondelete="CASCADE",
+        ),
+        Index("ix_image_download_grants_expiry", "expires_at"),
+    )
+
+    grant_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    output_id: Mapped[uuid.UUID] = mapped_column()
+    owner_user_id: Mapped[uuid.UUID] = mapped_column()
+    access_policy_version: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageQuotaRow(Base):
+    """Row-locked owner or global capacity counters."""
+
+    __tablename__ = "image_quotas"
+    __table_args__ = (
+        Index(
+            "uq_image_quota_owner",
+            "owner_user_id",
+            unique=True,
+            postgresql_where=text("scope = 'owner'"),
+        ),
+        Index(
+            "uq_image_quota_global",
+            "scope",
+            unique=True,
+            postgresql_where=text("scope = 'global'"),
+        ),
+        CheckConstraint(
+            "(scope = 'owner' AND owner_user_id IS NOT NULL) OR "
+            "(scope = 'global' AND owner_user_id IS NULL)",
+            name="ck_image_quota_scope",
+        ),
+        CheckConstraint(
+            "held_bytes >= 0 AND stored_bytes >= 0 AND pending_jobs >= 0 "
+            "AND held_outputs >= 0 AND consumed_outputs >= 0",
+            name="ck_image_quota_nonnegative",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    scope: Mapped[str] = mapped_column(String(8))
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    held_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    stored_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    pending_jobs: Mapped[int] = mapped_column(Integer, default=0)
+    day_bucket: Mapped[date] = mapped_column(Date)
+    held_outputs: Mapped[int] = mapped_column(Integer, default=0)
+    consumed_outputs: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageExecutionLeaseRow(Base):
+    """Durable fence shared by image and inference admission on a Studio."""
+
+    __tablename__ = "image_execution_leases"
+    __table_args__ = (
+        Index("ix_image_execution_leases_node_expiry", "node_id", "expires_at"),
+        CheckConstraint(
+            "(mode = 'image' AND job_id IS NOT NULL AND request_id IS NULL) OR "
+            "(mode = 'inference' AND job_id IS NULL AND request_id IS NOT NULL)",
+            name="ck_image_execution_lease_subject",
+        ),
+        CheckConstraint("fence >= 0", name="ck_image_execution_lease_fence"),
+        CheckConstraint(
+            "released_at IS NULL OR release_evidence IS NOT NULL",
+            name="ck_image_execution_lease_release",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="RESTRICT"))
+    job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("image_jobs.id", ondelete="RESTRICT"), nullable=True
+    )
+    request_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    mode: Mapped[str] = mapped_column(String(16))
+    fence: Mapped[int] = mapped_column(BigInteger)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    release_evidence: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ImageCoexistenceProfileRow(Base):
+    __tablename__ = "image_coexistence_profiles"
+    __table_args__ = (
+        Index("ix_image_coexistence_node_status", "node_id", "status"),
+        CheckConstraint("first_token_p95_ms >= 0", name="ck_image_coexistence_latency"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    profile_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="RESTRICT"))
+    hardware_fingerprint: Mapped[str] = mapped_column(String(64))
+    runtime_fingerprint: Mapped[str] = mapped_column(String(64))
+    chat_variant_ids: Mapped[list[str]] = mapped_column(JSONB)
+    image_model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="RESTRICT"))
+    image_mode: Mapped[str] = mapped_column(String(16))
+    measured_bounds: Mapped[dict[str, object]] = mapped_column(JSONB)
+    benchmark_result: Mapped[dict[str, object]] = mapped_column(JSONB)
+    first_token_p95_ms: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(16))
+    valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

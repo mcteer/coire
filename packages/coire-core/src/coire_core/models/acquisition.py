@@ -8,7 +8,13 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from coire_core.models.registry import EngineBackend, VisualCapability
+from coire_core.models.images import ImageCapabilityProfile
+from coire_core.models.registry import (
+    AUXILIARY_IMAGE_KINDS,
+    EngineBackend,
+    ModelKind,
+    VisualCapability,
+)
 
 
 class AcquisitionStage(StrEnum):
@@ -140,10 +146,12 @@ class InspectionResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     revision: str
+    kind: ModelKind = ModelKind.LANGUAGE_MODEL
     architecture: str | None = None
     source_format: str
     backend: EngineBackend = EngineBackend.MLX_LM
     gated: bool = False
+    license_id: str | None = Field(default=None, min_length=1, max_length=120)
     chat_template_present: bool = False
     metadata_bytes: int = Field(ge=0)
     weight_bytes: int = Field(ge=0)
@@ -154,13 +162,28 @@ class InspectionResult(BaseModel):
     source_repo_guidance: str | None = None
     fit: list[FitDecision] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def kind_backend(self) -> InspectionResult:
+        if self.kind is ModelKind.IMAGE_MODEL and self.backend is not EngineBackend.MFLUX:
+            raise ValueError("image_model backend must be mflux")
+        if self.kind in AUXILIARY_IMAGE_KINDS and self.backend is not EngineBackend.AUXILIARY:
+            raise ValueError("auxiliary image kind requires auxiliary backend")
+        if self.kind is ModelKind.LANGUAGE_MODEL and self.backend in {
+            EngineBackend.MFLUX,
+            EngineBackend.AUXILIARY,
+        }:
+            raise ValueError("language_model backend cannot be image or auxiliary")
+        return self
+
 
 class ValidationResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     validator_version: str
+    kind: ModelKind = ModelKind.LANGUAGE_MODEL
     backend: EngineBackend = EngineBackend.MLX_LM
     visual_input: VisualCapability | None = None
+    image_capability_profile: ImageCapabilityProfile | None = None
     smoke: ValidationOutcome
     smoke_failure: str | None = None
     perplexity: float | None = Field(default=None, ge=0.0)
@@ -173,6 +196,24 @@ class ValidationResult(BaseModel):
     validated: bool
     created_at: datetime
 
+    @model_validator(mode="after")
+    def kind_backend(self) -> ValidationResult:
+        if self.kind is ModelKind.IMAGE_MODEL:
+            if self.backend is not EngineBackend.MFLUX:
+                raise ValueError("image_model backend must be mflux")
+            if self.validated and self.image_capability_profile is None:
+                raise ValueError("validated image_model requires image_capability_profile")
+        elif self.kind in AUXILIARY_IMAGE_KINDS:
+            if self.backend is not EngineBackend.AUXILIARY:
+                raise ValueError("auxiliary image kind requires auxiliary backend")
+            if self.image_capability_profile is not None:
+                raise ValueError("auxiliary image kind cannot carry base capability")
+        elif self.backend in {EngineBackend.MFLUX, EngineBackend.AUXILIARY}:
+            raise ValueError("language_model backend cannot be image or auxiliary")
+        elif self.image_capability_profile is not None:
+            raise ValueError("language_model cannot carry image_capability_profile")
+        return self
+
 
 class NodeValidateRequest(BaseModel):
     """Authenticated node command; the backend comes from the registry inspection."""
@@ -180,6 +221,7 @@ class NodeValidateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     job_id: uuid.UUID
+    kind: ModelKind = ModelKind.LANGUAGE_MODEL
     slug: str
     backend: EngineBackend = EngineBackend.MLX_LM
     tolerance: float = Field(default=0.1, ge=0.0, le=1.0)
@@ -187,6 +229,15 @@ class NodeValidateRequest(BaseModel):
     chat_template_present: bool = False
     reference_perplexity: float | None = Field(default=None, ge=0.0)
     reference_variant_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def text_only_until_image_validator(self) -> NodeValidateRequest:
+        if self.kind is not ModelKind.LANGUAGE_MODEL or self.backend in {
+            EngineBackend.MFLUX,
+            EngineBackend.AUXILIARY,
+        }:
+            raise ValueError("image validation requires a dedicated image command")
+        return self
 
 
 class StageResult(BaseModel):

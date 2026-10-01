@@ -58,6 +58,7 @@ def test_shared_usage_binds_only_registry_resolved_identity() -> None:
     )
     assert usage.model_id == model_id
     assert usage.engine_id == engine_id
+    assert usage.node is None
     assert usage.requested_model_id == "caller-model"
 
 
@@ -236,16 +237,16 @@ async def test_cancelled_stream_finishes_usage_once(monkeypatch: pytest.MonkeyPa
 async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyPatch) -> None:
     from coire_api.gateway import execution
 
-    recorded: list[str] = []
+    recorded: list[tuple[str, dict[str, str]]] = []
     monkeypatch.setattr(
         execution,
         "first_token_duration_ms",
-        SimpleNamespace(record=lambda _value, _attrs: recorded.append("first")),
+        SimpleNamespace(record=lambda _value, attrs: recorded.append(("first", attrs))),
     )
     monkeypatch.setattr(
         execution,
         "overhead_duration_ms",
-        SimpleNamespace(record=lambda _value, _attrs: recorded.append("overhead")),
+        SimpleNamespace(record=lambda _value, attrs: recorded.append(("overhead", attrs))),
     )
 
     async def source() -> AsyncIterator[bytes]:
@@ -259,10 +260,14 @@ async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyP
 
     monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist)
     timing = StreamTiming()
+    usage.node = "coire-edge-b"
     timing.upstream_started_at = perf_counter()
     timing.first_chunk_at = perf_counter()
     assert len([chunk async for chunk in track_stream(source(), usage, timing=timing)]) == 2
-    assert recorded == ["first", "overhead"]
+    assert recorded == [
+        ("first", {"protocol": "openai", "node": "coire-edge-b"}),
+        ("overhead", {"protocol": "openai", "node": "coire-edge-b"}),
+    ]
 
 
 async def test_disconnect_closes_upstream_before_return(monkeypatch: pytest.MonkeyPatch) -> None:

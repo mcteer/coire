@@ -15,6 +15,8 @@ import { useEventStream } from "./hooks/useEventStream";
 import { ConfirmAction } from "./components/ConfirmAction";
 import { AppShell, type AdminTab } from "./components/AppShell";
 import { Chat } from "./pages/Chat";
+import { Images } from "./pages/Images";
+import { killAdminImageJob, listAdminImageJobs, type ImageActivityItem } from "./api/images";
 import { clearChatDrafts } from "./api/chatDrafts";
 import "./styles/app.css";
 const gb = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GB`;
@@ -854,12 +856,19 @@ export function IdentityPage() {
 }
 export function ActivityPage() {
   const [items, setItems] = useState<ActivityItem[]>([]);
+  const [imageItems, setImageItems] = useState<ImageActivityItem[]>([]);
+  const [imageNextCursor, setImageNextCursor] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [error, setError] = useState("");
   const load = async () => {
     try {
-      const page = await api<ActivityPage>("/api/v1/admin/console/activity?limit=50");
+      const [page, imageJobs] = await Promise.all([
+        api<ActivityPage>("/api/v1/admin/console/activity?limit=50"),
+        listAdminImageJobs(),
+      ]);
       setItems(page.items);
+      setImageItems(imageJobs.items);
+      setImageNextCursor(imageJobs.next_cursor ?? null);
       setNextCursor(page.next_cursor ?? null);
     } catch (cause) {
       setError(String(cause));
@@ -874,16 +883,26 @@ export function ActivityPage() {
     setItems([...items, ...page.items]);
     setNextCursor(page.next_cursor ?? null);
   };
+  const loadOlderImages = async () => {
+    if (!imageNextCursor) return;
+    try {
+      const page = await listAdminImageJobs(imageNextCursor);
+      setImageItems((current) => [...current, ...page.items]);
+      setImageNextCursor(page.next_cursor ?? null);
+    } catch (cause) {
+      setError(String(cause));
+    }
+  };
   useEffect(() => void load(), []);
   return (
     <main className="panel glass">
       <h2>Runs & jobs</h2>
       {error && <p className="error">{error}</p>}
-      {items.length === 0 ? (
+      {items.length === 0 && imageItems.length === 0 ? (
         <p className="empty">
           No shipped work is running. Agent-run controls remain absent until that capability ships.
         </p>
-      ) : (
+      ) : items.length > 0 ? (
         <table>
           <thead>
             <tr>
@@ -907,7 +926,21 @@ export function ActivityPage() {
                   {item.progress_percent == null ? "" : ` · ${item.progress_percent.toFixed(0)}%`}
                 </td>
                 <td>
-                  {item.kind === "instance" && item.can_stop ? (
+                  {item.kind === "image_worker" && item.can_stop ? (
+                    <ConfirmAction
+                      target={String(item.id).slice(0, 8)}
+                      label="Unload"
+                      ariaLabel={`Unload image worker ${item.id}`}
+                      onConfirm={async () => {
+                        try {
+                          await api(`/api/v1/admin/image-workers/${item.id}`, { method: "DELETE" });
+                          await load();
+                        } catch (cause) {
+                          setError(String(cause));
+                        }
+                      }}
+                    />
+                  ) : item.kind === "instance" && item.can_stop ? (
                     <ConfirmAction
                       target={String(item.id).slice(0, 8)}
                       label="Stop"
@@ -933,11 +966,61 @@ export function ActivityPage() {
             ))}
           </tbody>
         </table>
-      )}
+      ) : null}
       {nextCursor && (
         <button className="button" onClick={() => void loadOlder()}>
           Load older activity
         </button>
+      )}
+      {imageItems.length > 0 && (
+        <section aria-label="Image jobs">
+          <h3>Image jobs</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Job</th>
+                <th>Owner</th>
+                <th>State</th>
+                <th>Elapsed</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {imageItems.map((item) => (
+                <tr key={item.job_id}>
+                  <td className="mono">{item.job_id}</td>
+                  <td className="mono">{item.owner_id}</td>
+                  <td>{item.state}</td>
+                  <td className="mono">{Math.round(item.elapsed_seconds)}s</td>
+                  <td>
+                    {item.can_stop ? (
+                      <ConfirmAction
+                        target={item.job_id.slice(0, 8)}
+                        label="Kill"
+                        ariaLabel={`Kill image job ${item.job_id}`}
+                        onConfirm={async () => {
+                          try {
+                            await killAdminImageJob(item.job_id);
+                            await load();
+                          } catch (cause) {
+                            setError(String(cause));
+                          }
+                        }}
+                      />
+                    ) : (
+                      <span className="muted">Observe only</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {imageNextCursor && (
+            <button className="button" type="button" onClick={() => void loadOlderImages()}>
+              Load older image jobs
+            </button>
+          )}
+        </section>
       )}
     </main>
   );
@@ -1037,6 +1120,7 @@ export function App() {
     [authExpired, setAuthExpired] = useState(false),
     [hash, setHash] = useState(() => location.hash);
   const admin = hash.startsWith("#admin");
+  const images = hash === "#images";
   const requested = hash.replace("#admin/", "");
   const tab: AdminTab = (
     ["overview", "models", "instances", "activity", "identity", "audit"].includes(requested)
@@ -1094,6 +1178,12 @@ export function App() {
           <p>Your current role cannot access administrative routes.</p>
         </section>
       </main>
+    );
+  if (images)
+    return (
+      <AppShell view="images" canAdmin={me.role === "admin"} onSignOut={signOut}>
+        <Images canEditPresets={me.role === "admin"} />
+      </AppShell>
     );
   if (!admin)
     return (

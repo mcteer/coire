@@ -476,6 +476,7 @@ components:
         is_mlx_format: { type: boolean, description: "config.json carries an MLX `quantization` block, or the repo is tagged `mlx` with safetensors and no PyTorch bins (research R2)." }
         has_gguf_only: { type: boolean }
         gated: { type: boolean }
+        license_id: { type: [string, "null"], description: "Declared Hub model-card licence for image-asset acquisition." }
         architecture: { type: [string, "null"], description: "config.json `architectures[0]` / `model_type`." }
         quantization:
           type: [object, "null"]
@@ -540,7 +541,7 @@ components:
       required: [job_id, kind, slug, stage, bytes_done, bytes_total, files_done, files_total, started_at, updated_at]
       properties:
         job_id: { type: string, format: uuid }
-        kind: { type: string, enum: [pull, import, verify, convert, validate, cleanup] }
+        kind: { type: string, enum: [pull, import, verify, convert, validate, image_validate, cleanup] }
         slug: { type: string }
         stage: { type: string, enum: [queued, resolving, transferring, hashing, done, failed, cancelled] }
         bytes_done: { type: integer }

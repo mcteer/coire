@@ -44,7 +44,8 @@ from coire_api.db import (
 )
 from coire_api.instance import service as instance_service
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
-from coire_api.registry import service
+from coire_api.registry import image_acquisition, service
+from coire_core.models.acquisition import ReservationRequest
 from coire_core.models.audit import AuditAction, AuditOutcome
 from coire_core.models.engine import (
     LIVE_ENGINE_STATES,
@@ -53,10 +54,11 @@ from coire_core.models.engine import (
     ReconcileExpectation,
     ReconcileRequest,
 )
+from coire_core.models.image_worker import ImageAssetValidateRequest, ImageAssetValidationResult
 from coire_core.models.instance import InstanceState
-from coire_core.models.jobs import ChecksumManifest, DownloadStage, JobStage, JobStatus
+from coire_core.models.jobs import ChecksumManifest, DownloadStage, JobKind, JobStage, JobStatus
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
-from coire_core.models.registry import CopyRole, ModelState
+from coire_core.models.registry import CopyRole, ModelKind, ModelState
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -241,6 +243,14 @@ class RegistryReconciler:
             status = await self._pull(client, job, model, origin.name)
             await self._mirror(job, status)
             if status.stage is JobStage.DONE:
+                if (
+                    model.kind != ModelKind.LANGUAGE_MODEL
+                    and not image_acquisition.copy_manifest_valid(model, job, status)
+                ):
+                    await self._fail(
+                        session, job, model, "image origin manifest differs from inspection"
+                    )
+                    return
                 await self._record_copy(session, job, model, origin, status, role=CopyRole.ORIGIN)
                 job.manifest = status.manifest.model_dump(mode="json") if status.manifest else None
                 model.manifest_sha256 = status.manifest_sha256
@@ -280,6 +290,16 @@ class RegistryReconciler:
                 status = await client.get_job(replica.name, job.id)
             await self._mirror(job, status)
             if status.stage is JobStage.DONE:
+                if (
+                    model.kind != ModelKind.LANGUAGE_MODEL
+                    and not image_acquisition.copy_manifest_valid(
+                        model, job, status, origin_digest=model.manifest_sha256
+                    )
+                ):
+                    await self._fail(
+                        session, job, model, "image replica manifest differs from origin"
+                    )
+                    return
                 await self._record_copy(session, job, model, replica, status, role=CopyRole.REPLICA)
                 await self._set_stage(session, job, model, DownloadStage.VERIFY_REPLICA)
             elif status.stage is JobStage.FAILED:
@@ -289,6 +309,10 @@ class RegistryReconciler:
 
         if job.stage is DownloadStage.VERIFY_REPLICA:
             # Pass-through: the import verified file by file as it wrote.
+            if model.kind != ModelKind.LANGUAGE_MODEL and not await self._validate_image_copies(
+                session, client, job, model, origin, replica
+            ):
+                return
             with contextlib.suppress(NodeError):
                 await client.revoke_export(origin.name, model.slug)
             job.transfer_grant = None
@@ -307,6 +331,103 @@ class RegistryReconciler:
                 )
                 logger.info("model %s is ready on both Studios", model.slug)
 
+    async def _validate_image_copies(
+        self,
+        session: AsyncSession,
+        client: NodeClient,
+        job: DownloadJobRow,
+        model: ModelRow,
+        origin: NodeRow,
+        replica: NodeRow,
+    ) -> bool:
+        """Persist two reserved offline smoke results before releasing either hold."""
+        if not model.manifest_sha256 or not model.source_revision:
+            await self._fail(session, job, model, "image source evidence is incomplete")
+            return False
+        evidence = dict(job.image_validation or {})
+        for role, node in (("origin", origin), ("replica", replica)):
+            if role in evidence:
+                continue
+            validation_id = uuid.uuid5(job.id, f"image-validation:{role}")
+            await client.hold_reservation(
+                node.name,
+                ReservationRequest(
+                    idempotency_key=validation_id,
+                    workflow_id=job.id,
+                    variant_id=model.id,
+                    memory_bytes=model.memory_estimate_bytes,
+                    disk_bytes=1,
+                ),
+            )
+            status = await client.start_image_validate(
+                node.name,
+                ImageAssetValidateRequest(
+                    job_id=validation_id,
+                    model_id=model.id,
+                    slug=model.slug,
+                    kind=ModelKind(model.kind),
+                    source_revision=model.source_revision,
+                    manifest_sha256=model.manifest_sha256,
+                    reservation_id=validation_id,
+                ),
+            )
+            if not status.is_terminal:
+                status = await client.get_job(node.name, validation_id)
+            if (
+                status.job_id != validation_id
+                or status.slug != model.slug
+                or status.kind is not JobKind.IMAGE_VALIDATE
+            ):
+                await self._fail(session, job, model, "image validation job identity differs")
+                return False
+            if status.stage is JobStage.FAILED:
+                await self._fail(session, job, model, status.error or "image validation failed")
+                for held_role, held_node in (("origin", origin), ("replica", replica)):
+                    with contextlib.suppress(NodeError):
+                        await client.release_reservation(
+                            held_node.name,
+                            uuid.uuid5(job.id, f"image-validation:{held_role}"),
+                        )
+                return False
+            if status.stage is not JobStage.DONE:
+                return False
+            try:
+                result = ImageAssetValidationResult.model_validate(status.result)
+            except ValueError:
+                await self._fail(session, job, model, "image validation evidence is invalid")
+                return False
+            if (
+                not result.validated
+                or result.kind != model.kind
+                or result.manifest_sha256 != model.manifest_sha256
+                or result.source_revision != model.source_revision
+            ):
+                await self._fail(session, job, model, "image validation differs from registry")
+                return False
+            evidence[role] = result.model_dump(mode="json")
+            job.image_validation = evidence
+            job.updated_at = datetime.now(UTC)
+            # Commit this evidence before releasing the hold on a later pass.
+            return False
+        origin_result = ImageAssetValidationResult.model_validate(evidence["origin"])
+        replica_result = ImageAssetValidationResult.model_validate(evidence["replica"])
+        if origin_result.image_capability_profile != replica_result.image_capability_profile:
+            await self._fail(session, job, model, "image capability differs between copies")
+            return False
+        if model.kind == ModelKind.IMAGE_MODEL:
+            if origin_result.image_capability_profile is None:
+                await self._fail(session, job, model, "image capability is unavailable")
+                return False
+            model.image_capability_profile = origin_result.image_capability_profile.model_dump(
+                mode="json"
+            )
+        model.image_validated_at = datetime.now(UTC)
+        for role, node in (("origin", origin), ("replica", replica)):
+            await client.release_reservation(
+                node.name, uuid.uuid5(job.id, f"image-validation:{role}")
+            )
+        return True
+
     async def _pull(
         self, client: NodeClient, job: DownloadJobRow, model: ModelRow, origin: str
     ) -> JobStatus:
@@ -316,6 +437,8 @@ class RegistryReconciler:
             job_id=job.id,
             repo_id=model.repo_id,
             slug=model.slug,
+            revision=model.source_revision or "main",
+            model_kind=ModelKind(model.kind),
             expected_total_bytes=model.total_bytes,
         )
         if not status.is_terminal:

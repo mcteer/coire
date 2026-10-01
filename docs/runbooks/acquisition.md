@@ -49,6 +49,25 @@ reservations; partial conversion directories are removed and partial Hub pulls r
 Use the **Coire Acquisition Jobs** dashboard for stage duration, reservations, validation, and
 estimate drift. Alerts cover stuck stages, exhausted conversion retries, and >10% size drift.
 
+## Image asset file preflight (feature 015 staging)
+
+`POST /api/v1/admin/image-assets` requires an image/component kind and an
+`accepted_license_id` matching the Studio's metadata-only model-card inspection. The
+admin route records the resolved commit and licence before queueing a Studio pull. The
+preflight requires a resolved commit, safe unique
+paths, safetensors with upstream digests, and local configuration for base/control/upscale
+assets. The classifier is limited to the pinned Falconsai revision and weight digest in the
+feature research. Its upstream repository also contains `.pt` and `.bin` files; the snapshot
+helper selects exact inert files and never transfers those pickle weights. An unsafe path or
+changed classifier digest refuses the asset before transfer. The reconciler verifies the
+origin and replica manifests against the inspected file list, pinned revision and upstream
+weight digests. Inspect the job and the audit row for `licence_review_mismatch`,
+`unresolved_revision`, `unverified_weight` or `image origin/replica manifest differs`.
+Image assets remain unavailable for generation pending reserved Studio validation and
+capability measurement. Keep image admission disabled while that gate is unfinished. To
+roll back, drain or remove acquired image records before downgrading the provenance
+migration; its downgrade guard refuses to discard their recorded source and licence.
+
 ## Raw retention and rollback
 
 Raw weights are removed only after validation and two matching copies unless `keep_raw=true`. Stop

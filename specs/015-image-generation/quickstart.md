@@ -52,7 +52,7 @@ The following proposed tests are created by tasks.md; these commands are not cla
 files or results already exist:
 
 ```sh
-COIRE_INTEGRATION=1 uv run pytest -q -m integration tests/integration/test_image_jobs.py tests/integration/test_image_recovery.py tests/integration/test_image_isolation.py
+COIRE_INTEGRATION=1 uv run pytest -q -m integration tests/integration/test_015_image_jobs.py tests/integration/test_image_recovery.py tests/integration/test_image_isolation.py
 ```
 
 Prove receipt latency; ordered queued/started/progress/done events; same-key deduplication; key
@@ -78,8 +78,8 @@ No automatic Hub download is permitted. The small fixture demonstrates mechanics
 After that builder and fixture are implemented:
 
 ```sh
-COIRE_TEST_MODEL="$PWD/models/test-image-tiny" uv run python apps/coire-node/tests/engine/build_tiny_image_fixture.py
-COIRE_ENGINE=1 COIRE_TEST_MODEL="$PWD/models/test-image-tiny" uv run pytest -q -m engine apps/coire-node/tests/engine/test_real_image_worker.py
+COIRE_TEST_MODEL="$PWD/models/test--image-tiny" uv run python apps/coire-node/tests/engine/build_tiny_image_fixture.py
+COIRE_ENGINE=1 COIRE_TEST_MODEL="$PWD/models/test--image-tiny" uv run pytest -q -m engine apps/coire-node/tests/engine/test_real_image_worker.py
 ```
 
 Exercise the real worker/encoder/MLX denoiser/VAE decoder, progress synchronization, same-pixel

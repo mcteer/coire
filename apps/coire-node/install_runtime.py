@@ -11,7 +11,7 @@ from pathlib import Path
 
 def smoke(python: Path) -> None:
     subprocess.run(
-        [str(python), "-c", "import coire_core, coire_node, mlx_lm, mlx_vlm"],
+        [str(python), "-c", "import coire_core, coire_node, mlx_lm, mlx_vlm, mflux"],
         check=True,
         timeout=30,
         stdout=subprocess.DEVNULL,
@@ -23,6 +23,13 @@ def smoke(python: Path) -> None:
             timeout=30,
             stdout=subprocess.DEVNULL,
         )
+    # Import the pinned native entry point without loading weights or contacting the Hub.
+    subprocess.run(
+        [str(python), "-c", "from mflux.models.z_image.variants.z_image import ZImage"],
+        check=True,
+        timeout=30,
+        stdout=subprocess.DEVNULL,
+    )
 
 
 def publish_environment(

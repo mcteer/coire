@@ -4,11 +4,11 @@
 # sha256 digest. `scripts/pin-images.sh --check` enforces it, and CI fails on a bare tag
 # (contracts/image-policy.md rule 7).
 #
-# Resolved 2026-08-29 on coire-core (linux/arm64).
+# Runtime base refreshed 2026-10-01 on a local linux/arm64 build and scan.
 #
 # name                   reference
 builder-python           ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca
-runtime-base             gcr.io/distroless/base-debian12:nonroot@sha256:7f0c72cd138b442ae0deeb69c08b1acf5525439ba251a49ad93c320a061567e5
+runtime-base             gcr.io/distroless/base-debian13:nonroot@sha256:a0d70d6a97cd697d9362bc2aae4a6560dd65817e365d0043b07325a97975dc91
 runtime-nginx            cgr.dev/chainguard/nginx:latest@sha256:f801aa4ac908f6c3847efe81b577e4f34e1f237b5556dfbe698127ad464db269
 builder-node             docker.io/library/node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
 builder-go               docker.io/library/golang:1.26-bookworm@sha256:e8c859f5632dcfde7b32d2012b4351728f6437930887c2f6a91ea242459e5514

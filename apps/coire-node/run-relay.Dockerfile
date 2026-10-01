@@ -14,7 +14,7 @@ COPY apps/coire-node apps/coire-node
 RUN uv sync --frozen --no-dev --no-editable --package coire-node \
  && rm -rf /usr/local/bin/pip* /usr/local/lib/python3.13/site-packages/pip* /app/.venv/bin/pip*
 
-FROM gcr.io/distroless/base-debian12:nonroot@sha256:7f0c72cd138b442ae0deeb69c08b1acf5525439ba251a49ad93c320a061567e5
+FROM gcr.io/distroless/base-debian13:nonroot@sha256:a0d70d6a97cd697d9362bc2aae4a6560dd65817e365d0043b07325a97975dc91
 COPY --from=builder /usr/lib/aarch64-linux-gnu/libz.so.1 /usr/lib/aarch64-linux-gnu/libffi.so.8 /usr/lib/aarch64-linux-gnu/libgcc_s.so.1 /usr/lib/aarch64-linux-gnu/libstdc++.so.6 /usr/lib/aarch64-linux-gnu/libuuid.so.1 /usr/lib/aarch64-linux-gnu/liblzma.so.5 /usr/lib/aarch64-linux-gnu/libbz2.so.1.0 /usr/lib/aarch64-linux-gnu/libsqlite3.so.0 /usr/lib/aarch64-linux-gnu/
 COPY --from=builder /usr/local /usr/local
 COPY --from=builder /app/.venv /app/.venv

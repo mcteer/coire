@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -14,6 +14,12 @@ import pytest
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_core.models.engine import ReconcileRequest
 from coire_core.models.harness import ProfileName
+from coire_core.models.image_worker import (
+    ImageJobBinding,
+    ImageTransferGrant,
+    NodeImageJob,
+    NodeImageTransferRequest,
+)
 from coire_core.models.jobs import ChecksumManifest
 from coire_core.models.registry import EngineBackend
 from coire_core.models.runs import (
@@ -28,6 +34,50 @@ from coire_core.settings import Settings
 
 JOB_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 NOW = datetime.now(UTC).isoformat()
+
+
+async def test_image_transfer_client_uses_exact_node_command_and_typed_result() -> None:
+    job_id = "01J00000000000000000000000"
+    node = "coire-edge-a"
+    current = NodeImageJob(
+        job_id=job_id,
+        attempt=1,
+        fence=4,
+        node=node,
+        instance_id=uuid.uuid4(),
+        state="transferring",
+        updated_at=datetime.now(UTC),
+    )
+    client, seen = _client(lambda _: _json(current.model_dump(mode="json")))
+    observed = await client.image_job_status(
+        node, ImageJobBinding(job_id=job_id, attempt=1, fence=4)
+    )
+    now = datetime.now(UTC)
+    grant = ImageTransferGrant(
+        job_id=job_id,
+        attempt=1,
+        fence=4,
+        node=node,
+        index=0,
+        expected_bytes=100,
+        expected_sha256="a" * 64,
+        token="secret-grant",
+        issued_at=now,
+        expires_at=now + timedelta(minutes=1),
+    )
+    command = NodeImageTransferRequest(
+        job_id=job_id, attempt=1, fence=4, node=node, grants=(grant,)
+    )
+    transferred = await client.transfer_image_job(node, command)
+    with pytest.raises(ValueError):
+        await client.transfer_image_job("coire-edge-b", command)
+    await client.aclose()
+    assert observed == current and transferred == current
+    assert seen[0].url.path == f"/node/images/jobs/{job_id}"
+    assert seen[0].url.query == b"attempt=1&fence=4"
+    assert seen[1].url.path == f"/node/images/jobs/{job_id}/transfer"
+    assert NodeImageTransferRequest.model_validate_json(seen[1].content) == command
+    assert len(seen) == 2
 
 
 async def test_run_activity_client_validates_run_and_cursor() -> None:

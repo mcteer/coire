@@ -51,9 +51,19 @@ def drift_ratio(*, reserved_bytes: int, measured_bytes: int | None) -> float | N
 @asynccontextmanager
 async def node_admission_lock(session: AsyncSession, node_id: uuid.UUID) -> AsyncIterator[None]:
     """Serialize admissions for one node for the lifetime of the transaction."""
-    key = int.from_bytes(node_id.bytes[:8], "big", signed=False) & ((1 << 63) - 1)
-    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+    await lock_nodes_for_admission(session, [node_id])
     yield
+
+
+async def lock_nodes_for_admission(session: AsyncSession, node_ids: list[uuid.UUID]) -> None:
+    """Take transaction-scoped node locks before reading competing placement state."""
+    keys = [
+        int.from_bytes(item.bytes[:8], "big", signed=False) & ((1 << 63) - 1) for item in node_ids
+    ]
+    if len(set(node_ids)) != len(node_ids) or len(set(keys)) != len(keys):
+        raise ValueError("admission group contains duplicate node lock keys")
+    for key in sorted(keys):
+        await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
 
 
 @asynccontextmanager
@@ -61,16 +71,7 @@ async def node_admission_locks(
     session: AsyncSession, node_ids: list[uuid.UUID]
 ) -> AsyncIterator[None]:
     """Lock a group in stable order so competing sharded admissions cannot split or deadlock."""
-
-    def lock_key(item: uuid.UUID) -> int:
-        return int.from_bytes(item.bytes[:8], "big", signed=False) & ((1 << 63) - 1)
-
-    unique = sorted(set(node_ids), key=lock_key)
-    if len(unique) != len(node_ids):
-        raise ValueError("admission group contains duplicate nodes")
-    for node_id in unique:
-        key = lock_key(node_id)
-        await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+    await lock_nodes_for_admission(session, node_ids)
     yield
 
 

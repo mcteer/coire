@@ -3,8 +3,17 @@
 The parent specification is the acceptance contract. The child rows and draft PR links below
 record the original delivery history; they are not instructions to open another PR for each
 small slice. On 2026-09-30 the user asked for fewer PRs and notifications. Remaining work is
-being assembled as local commits on `feat/015e20-image-node-cancel`, with the parent spec and
-plan merged into that branch. Open a small number of coherent PRs only after local checks pass.
+being assembled in the writable `feat/015-image-generation` checkout. Open a small number of
+coherent PRs only after local checks pass.
+The earlier native-runtime pin was absent from this consolidated checkout despite T003 being
+checked. It is now copied forward with a Z-Image import smoke matching the resident worker;
+the frozen lock and local no-model smoke were verified on 2026-10-01.
+The 2026-09-30 restricted session copied that consolidated branch's file changes into the
+writable `feat/015-image-generation` checkout and added the native job observation batch there.
+The sandbox denies writes to `.git`, so this checkout has substantial **uncommitted** tracked
+and new files. Preserve that working tree and read `execution-record.md` before moving branches.
+Do not open or push slice PRs when Git access returns; commit the coherent batch locally and
+review the combined diff first.
 Leave the existing draft stack untouched until consolidation is reviewable so closing drafts
 does not send another wave of notifications. No image admission is enabled until authorization,
 persistence, publication, and cancellation paths are complete. Parent tasks are checked only
