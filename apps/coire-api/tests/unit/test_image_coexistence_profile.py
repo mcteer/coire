@@ -113,7 +113,7 @@ class _Session:
         self.chat_model = SimpleNamespace(kind=ModelKind.LANGUAGE_MODEL, state=ModelState.READY)
         self.row: ImageCoexistenceProfileRow | None = None
 
-    async def get(self, model: type[object], identity: object, **kwargs: object) -> object:
+    async def get(self, model: type[object], identity: object, **kwargs: object) -> object | None:
         if model is ImageCoexistenceProfileRow:
             assert self.row is not None and identity == self.row.id
             return self.row
@@ -121,8 +121,8 @@ class _Session:
             assert identity == NODE and kwargs.get("populate_existing") is True
             return self.node
         if model is ModelVariantRow:
-            assert identity == CHAT and kwargs.get("with_for_update") is True
-            return self.variant
+            assert kwargs.get("with_for_update") is True or kwargs.get("populate_existing") is True
+            return self.variant if identity == CHAT else None
         assert model is ModelRow
         return self.image if identity == IMAGE else self.chat_model
 

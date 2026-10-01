@@ -963,3 +963,8 @@ at admission time. Unpublished, unvalidated or non-ready variants no longer
 authorize image dispatch or a new chat load through a previously approved
 profile. The focused profile selection passed **27 tests**, including the
 post-approval unpublish case; changed-file Ruff and strict mypy passed.
+The subsequent full local suite found one stale test fixture that assumed
+coexistence checked only the node and profile. Updating it to return current
+variant/model rows restored the focused profile selection to **31 passed**.
+The other **1,745** local unit/contract tests had passed in that run; the
+complete selection needs one final repeat after the fixture correction.
