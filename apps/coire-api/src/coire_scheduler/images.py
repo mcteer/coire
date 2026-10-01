@@ -13,6 +13,7 @@ from opentelemetry import metrics, trace
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from coire_api.audit import write_audit
 from coire_api.db import (
     ImageExecutionLeaseRow,
     ImageJobEventRow,
@@ -36,6 +37,7 @@ from coire_api.images.storage import (
 from coire_api.images.transfer import mint_transfer_grant, require_bound_image_spec
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_core.errors import ImageConflict, ImageForbidden
+from coire_core.models.audit import AuditOutcome
 from coire_core.models.image_worker import (
     ImageJobBinding,
     ImageTransferGrantRequest,
@@ -304,6 +306,115 @@ async def finalize_cancelled_image_job(
     return True
 
 
+async def finalize_failed_image_job(
+    session: AsyncSession,
+    status: NodeImageJob,
+    selected_node_id: uuid.UUID,
+    settings: Settings,
+) -> bool:
+    """Release a failed attempt only after its exact node journal proves cleanup."""
+    if status.state != "failed" or not status.scratch_cleaned:
+        raise ImageConflict("node failure cleanup is incomplete")
+    await session.execute(_QUOTA_LOCK)
+    row = await session.get(
+        ImageJobRow, status.job_id, populate_existing=True, with_for_update=True
+    )
+    if row is None or row.state == "failed":
+        return False
+    if (
+        row.state not in {"reserving", "running"}
+        or row.cancel_requested_at is not None
+        or row.selected_node_id != selected_node_id
+        or not _same_attempt(row, status, status.node)
+    ):
+        raise ImageConflict("image failure attempt changed")
+    published = await session.scalar(
+        select(ImageOutputRow.id)
+        .where(ImageOutputRow.job_id == row.id, ImageOutputRow.state == "published")
+        .limit(1)
+    )
+    if published is not None:
+        raise ImageConflict("image publication already won")
+    leases = (
+        await session.scalars(
+            select(ImageExecutionLeaseRow)
+            .where(
+                ImageExecutionLeaseRow.job_id == row.id,
+                ImageExecutionLeaseRow.released_at.is_(None),
+            )
+            .with_for_update()
+        )
+    ).all()
+    if len(leases) != 1:
+        raise ImageConflict("image execution lease is unavailable")
+    lease = leases[0]
+    if lease.mode != "image" or lease.node_id != selected_node_id or lease.fence != row.fence:
+        raise ImageConflict("image execution lease differs from attempt")
+    snapshot, _, _ = _policy(row)
+    held = row.authorization_snapshot.get("output_hold_bytes")
+    if not isinstance(held, int) or isinstance(held, bool) or held <= 0:
+        raise ImageConflict("image capacity hold unavailable")
+    await asyncio.to_thread(
+        purge_cancelled_transfer_staging,
+        Path(settings.image_blob_root),
+        row.id,
+        row.attempt,
+    )
+    if snapshot.resolved is None:
+        await release_pending_image_job_capacity(
+            session, row.owner_user_id, snapshot.effective_spec.n, held
+        )
+    else:
+        await release_storage_hold(session, row.owner_user_id, held)
+    latest = await session.scalar(
+        select(func.max(ImageJobEventRow.sequence)).where(ImageJobEventRow.job_id == row.id)
+    )
+    if latest is None or latest < 1:
+        raise ImageConflict("image event history unavailable")
+    now = datetime.now(UTC)
+    lease.released_at = now
+    lease.release_evidence = {
+        "state": "failed",
+        "node": status.node,
+        "scratch_cleaned": True,
+        "observed_at": status.updated_at.isoformat(),
+    }
+    row.state = ImageJobState.FAILED
+    row.safe_failure_code = "generation_failed"
+    row.cleanup_state = "cleaned"
+    row.receipt_state = "none"
+    row.updated_at = now
+    row.finished_at = now
+    row.version += 1
+    event = ImageJobEvent(
+        job_id=row.id,
+        sequence=latest + 1,
+        at=now,
+        type="error",
+        state=ImageJobState.FAILED,
+        safe_code="generation_failed",
+    )
+    session.add(
+        ImageJobEventRow(
+            job_id=row.id,
+            sequence=event.sequence,
+            event_type=event.type,
+            payload=event.model_dump(mode="json"),
+            created_at=now,
+        )
+    )
+    await write_audit(
+        session,
+        actor="coire-scheduler",
+        action="image.attempt.failed",
+        target_type="image_job",
+        target_id=row.id,
+        outcome=AuditOutcome.OK,
+        context={"reason": "generation_failed"},
+    )
+    return True
+
+
 async def drive_image_cancel(job_id: str) -> None:
     """Replay the same fenced stop request until the node proves cleanup."""
     async with session_scope() as session:
@@ -389,9 +500,22 @@ async def observe_image_job(job_id: str) -> bool:
                 observations_total.add(1, {"outcome": "journal_missing"})
                 raise ImageConflict("node image journal is unavailable") from exc
         async with session_scope() as session:
-            more = await reconcile_image_observation(
-                session, job_id, selected_node_id, observed, expected_node=node
-            )
+            if observed.state == "failed":
+                if observed.node != node:
+                    raise ImageConflict("node image attempt differs from core")
+                if await finalize_failed_image_job(
+                    session, observed, selected_node_id, get_settings()
+                ):
+                    observations_total.add(1, {"outcome": "failed_cleaned"})
+                    logger.warning(
+                        "image generation failed after node cleanup",
+                        extra={"job_id": job_id, "node_id": str(selected_node_id)},
+                    )
+                more = False
+            else:
+                more = await reconcile_image_observation(
+                    session, job_id, selected_node_id, observed, expected_node=node
+                )
     observations_total.add(1, {"outcome": "active" if more else "transitioned"})
     return more
 

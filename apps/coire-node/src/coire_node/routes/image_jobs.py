@@ -86,7 +86,7 @@ async def start_image_job(
         created, item = await dispatcher.start(request)
     except (ImageJournalConflict, ImageDispatchConflict):
         raise HTTPException(status.HTTP_409_CONFLICT, "image job binding unavailable") from None
-    except (ImageJournalUnavailable, ImageDispatchUnavailable):
+    except (ImageJournalUnavailable, ImageDispatchUnavailable, ImageCleanupUnavailable):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "image job unavailable") from None
     response.status_code = status.HTTP_202_ACCEPTED if created else status.HTTP_200_OK
     return item
@@ -104,7 +104,7 @@ async def get_image_job(
         item = await dispatcher.status(binding)
     except ImageDispatchConflict:
         raise HTTPException(status.HTTP_409_CONFLICT, "image job binding unavailable") from None
-    except (ImageJournalUnavailable, ImageDispatchUnavailable):
+    except (ImageJournalUnavailable, ImageDispatchUnavailable, ImageCleanupUnavailable):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "image job unavailable") from None
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "image job unavailable")

@@ -49,6 +49,14 @@ If a placed job's Studio journal or worker reply disappears, the scheduler keeps
 execution lease and storage hold. The `CoireImageObservationFailures` alert is expected;
 inspect the node and reconcile exact process identity and scratch before terminal failure
 or release. A 404 alone does not prove that a worker process stopped.
+When the worker itself reports `failed`, the node removes its exact attempt's
+output and input scratch first. A later status request repairs an older failed
+journal with unacknowledged cleanup. Core records the terminal error and releases
+the execution lease and output hold only after `scratch_cleaned=true` and core
+transfer staging has been removed. Watch
+`coire_image_observation_total{outcome="failed_cleaned"}` and the image node stage
+failure alert. If cleanup fails, keep the lease and hold; inspect the exact
+scratch namespace for unexpected files or links before retrying observation.
 If a live user, key or entitlement is revoked, the scheduler requests fenced cancellation
 on its next observation. Watch `coire_image_observation_total{outcome="revoked"}`, the
 `CoireImageAuthorizationRevocations` alert and the job's terminal event; the alert means
@@ -66,8 +74,8 @@ and confirmed completion. If node stop is uncertain, leave the instance in
 `draining`, inspect the exact process identity on the Studio, and retry the
 same admin command after reconciling node health. New image placement on that
 Studio waits while an image worker is draining. Use node and scheduler logs,
-image metrics and job/lease records for investigation. The dashboard and alert
-coverage in T073/T074 is still incomplete.
+image metrics and job/lease records for investigation. The Images dashboard and
+image alerts show the corresponding fenced outcomes.
 
 Personal API keys need `images` for standard generation and reads, plus
 `images:explicit` for explicit work. The owning human also needs live entitlement;

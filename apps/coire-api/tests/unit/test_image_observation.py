@@ -179,6 +179,65 @@ async def test_scheduler_observes_existing_attempt_without_starting_generation(
     assert session.row.state == "transferring"
 
 
+async def test_scheduler_finalizes_clean_failed_worker_without_restarting(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Session()
+    observed = status(session, state="failed").model_copy(update={"scratch_cleaned": True})
+    calls: list[str] = []
+
+    async def get(model: type[object], identity: object, **_: object) -> Any:
+        if model is ImageJobRow:
+            return session.row
+        assert identity == session.node_id
+        return type("Node", (), {"name": NODE})()
+
+    session.get = get  # type: ignore[method-assign]
+
+    @asynccontextmanager
+    async def scope() -> Any:
+        yield cast(AsyncSession, session)
+
+    class Client:
+        def __init__(self, _: object) -> None:
+            pass
+
+        async def __aenter__(self) -> Client:
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            pass
+
+        async def image_job_status(self, node: str, binding: object) -> NodeImageJob:
+            calls.append("status")
+            assert node == NODE and binding == images._binding(session.row)
+            return observed
+
+        async def start_image_job(self, *_: object) -> None:
+            raise AssertionError("failed observation must not restart generation")
+
+    async def finalize(db: object, result: NodeImageJob, node_id: uuid.UUID, _: object) -> bool:
+        assert db is session and result == observed and node_id == session.node_id
+        calls.append("finalize")
+        return True
+
+    async def access(*_: object, **__: object) -> bool:
+        return True
+
+    async def no_thermal(*_: object, **__: object) -> bool:
+        return False
+
+    monkeypatch.setattr(images, "session_scope", scope)
+    monkeypatch.setattr(images, "NodeClient", Client)
+    monkeypatch.setattr(images, "get_settings", lambda: object())
+    monkeypatch.setattr(images, "_policy", lambda _: (None, frozenset(), False))
+    monkeypatch.setattr(images, "_access_current", access)
+    monkeypatch.setattr(images, "request_thermal_image_cancel", no_thermal)
+    monkeypatch.setattr(images, "finalize_failed_image_job", finalize)
+    assert not await images.observe_image_job(JOB)
+    assert calls == ["status", "finalize"]
+
+
 async def test_missing_node_journal_keeps_the_placed_reservation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

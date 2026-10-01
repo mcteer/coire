@@ -166,3 +166,53 @@ async def test_uncertain_node_or_lease_retains_core_staging(tmp_path: Path) -> N
             cast(AsyncSession, session), _status(), NODE_ID, settings
         )
     assert row.state == "cancelling" and session.added == []
+
+
+async def test_failed_worker_releases_hold_only_after_exact_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    row = _row()
+    row.state = "running"
+    row.cancel_requested_at = None
+    session = Session(row)
+    root = tmp_path / "blobs"
+    attempt = root / "image-staging" / JOB / "1"
+    attempt.mkdir(parents=True)
+    for directory in (root, root / "image-staging", root / "image-staging" / JOB, attempt):
+        directory.chmod(0o700)
+    output = attempt / "0.png"
+    output.write_bytes(b"private partial output")
+    output.chmod(0o600)
+    released: list[int] = []
+    audits: list[str] = []
+
+    async def release(db: object, owner: uuid.UUID, count: int, held: int) -> None:
+        assert db is session and owner == OWNER and count == 1
+        assert not output.exists()
+        released.append(held)
+
+    async def audit(db: object, **kwargs: object) -> None:
+        assert db is session
+        audits.append(cast(str, kwargs["action"]))
+
+    monkeypatch.setattr(images, "release_pending_image_job_capacity", release)
+    monkeypatch.setattr(images, "write_audit", audit)
+    settings = Settings(_secrets_dir="/nonexistent", image_blob_root=str(root))  # type: ignore[call-arg]
+    failed = _status(state="failed")
+    with pytest.raises(ImageConflict, match="cleanup is incomplete"):
+        await images.finalize_failed_image_job(
+            cast(AsyncSession, session),
+            failed.model_copy(update={"scratch_cleaned": False}),
+            NODE_ID,
+            settings,
+        )
+    assert row.state == "running" and released == []
+    assert await images.finalize_failed_image_job(
+        cast(AsyncSession, session), failed, NODE_ID, settings
+    )
+    assert row.state == "failed" and row.cleanup_state == "cleaned"
+    assert row.safe_failure_code == "generation_failed" and row.finished_at is not None
+    assert released == [64] and audits == ["image.attempt.failed"]
+    assert session.lease.released_at is not None
+    event = cast(ImageJobEventRow, session.added[0])
+    assert event.event_type == "error" and "private subject" not in str(event.payload)

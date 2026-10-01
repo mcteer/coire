@@ -267,11 +267,14 @@ class ImageNodeDispatcher:
                     )
                 return True, running
             terminal = "cancelled" if worker_status.state == "cancelled" else "failed"
+            if terminal == "failed":
+                self._discard_failed_attempt(reserving)
             return True, self.journal.advance(
                 reserving.model_copy(
                     update={
                         "state": terminal,
                         "safe_error": worker_status.safe_error or "generation_failed",
+                        "scratch_cleaned": terminal == "failed",
                         "updated_at": _later(reserving),
                     }
                 )
@@ -285,6 +288,13 @@ class ImageNodeDispatcher:
                 return None
             if (current.attempt, current.fence) != (binding.attempt, binding.fence):
                 raise ImageDispatchConflict()
+            if current.state == "failed" and not current.scratch_cleaned:
+                self._discard_failed_attempt(current)
+                return self.journal.advance(
+                    current.model_copy(
+                        update={"scratch_cleaned": True, "updated_at": _later(current)}
+                    )
+                )
             if current.state in {"cancelled", "failed", "succeeded"}:
                 return current
             request = self.journal.request(binding.job_id)
@@ -401,15 +411,23 @@ class ImageNodeDispatcher:
             pass
         elif current.state == "queued":
             raise ImageDispatchUnavailable()
+        if terminal == "failed":
+            self._discard_failed_attempt(current)
         return self.journal.advance(
             current.model_copy(
                 update={
                     "state": terminal,
                     "safe_error": None if terminal == "cancelled" else "generation_failed",
+                    "scratch_cleaned": terminal == "failed",
                     "updated_at": _later(current),
                 }
             )
         )
+
+    def _discard_failed_attempt(self, current: NodeImageJob) -> None:
+        """A terminal worker result proves generation stopped; remove both scratch trees."""
+        discard_cancelled_image_scratch(self.journal, self.worker.settings.node_state_dir, current)
+        discard_node_image_inputs(self.journal, self.worker.settings.node_state_dir, current)
 
     async def cancel(self, request: NodeImageCancelRequest) -> NodeImageJob | None:
         """Journal cancel intent, then prove worker cancellation or exact process death."""
@@ -419,7 +437,7 @@ class ImageNodeDispatcher:
                 return None
             if (current.attempt, current.fence) != (request.attempt, request.fence):
                 raise ImageDispatchConflict()
-            if current.state == "cancelled" and not current.scratch_cleaned:
+            if current.state in {"cancelled", "failed"} and not current.scratch_cleaned:
                 await asyncio.to_thread(
                     discard_cancelled_image_scratch,
                     self.journal,

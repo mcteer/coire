@@ -43,6 +43,7 @@ from coire_core.models.node import NetworkPath, NodePath, NodeStatus
 from coire_core.settings import Settings
 from coire_node import image_dispatch, image_jobs
 from coire_node.agent import create_app
+from coire_node.image_cleanup import ImageCleanupUnavailable
 from coire_node.image_dispatch import ImageNodeDispatcher
 from coire_node.image_jobs import ImageJobJournal
 from coire_node.image_runtime.supervisor import ImageProcessSupervisor, ImageProcessUnavailable
@@ -126,6 +127,81 @@ def _setup(
     monkeypatch.setattr(supervisor, "current_status", lambda: ready)
     journal = ImageJobJournal(tmp_path, NODE)
     return settings, ImageNodeDispatcher(journal, supervisor, transport=worker_handler)
+
+
+def test_failed_worker_cleans_both_scratch_trees_before_terminal_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatcher = _setup(
+        tmp_path, monkeypatch, httpx.MockTransport(lambda _: httpx.Response(503))
+    )
+    request = _request()
+    queued = dispatcher.journal.begin(request)
+    reserving = dispatcher.journal.advance(
+        queued.model_copy(
+            update={
+                "state": "reserving",
+                "pid": 123,
+                "process_create_time": 1.0,
+                "updated_at": queued.updated_at + timedelta(microseconds=1),
+            }
+        )
+    )
+    attempt = f"{JOB}-1-4"
+    output = tmp_path / "image-scratch" / attempt
+    output.mkdir(parents=True, mode=0o700)
+    output.parent.chmod(0o700)
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"keep")
+    (output / "0.png").symlink_to(outside)
+    inputs = tmp_path / "image-input-scratch" / attempt
+    inputs.mkdir(parents=True, mode=0o700)
+    inputs.parent.chmod(0o700)
+    observed = ImageWorkerStatus(
+        job_id=JOB,
+        attempt=1,
+        fence=4,
+        state="failed",
+        updated_at=datetime.now(UTC),
+    )
+    with pytest.raises(ImageCleanupUnavailable):
+        dispatcher._reconcile(reserving, request, observed)
+    assert dispatcher.journal.get(JOB) == reserving
+    assert outside.read_bytes() == b"keep"
+    (output / "0.png").unlink()
+    (output / "0.png").write_bytes(b"partial")
+    (output / "0.png").chmod(0o600)
+    failed = dispatcher._reconcile(reserving, request, observed)
+    assert failed.state == "failed" and failed.scratch_cleaned
+    assert not output.exists() and not inputs.exists()
+    assert outside.read_bytes() == b"keep"
+
+
+async def test_failed_journal_repairs_cleanup_on_status_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatcher = _setup(
+        tmp_path, monkeypatch, httpx.MockTransport(lambda _: httpx.Response(503))
+    )
+    queued = dispatcher.journal.begin(_request())
+    failed = dispatcher.journal.advance(
+        queued.model_copy(
+            update={
+                "state": "failed",
+                "safe_error": "generation_failed",
+                "updated_at": queued.updated_at + timedelta(microseconds=1),
+            }
+        )
+    )
+    scratch = tmp_path / "image-scratch" / f"{JOB}-1-4"
+    scratch.mkdir(parents=True, mode=0o700)
+    scratch.parent.chmod(0o700)
+    (scratch / "0.png").write_bytes(b"partial")
+    (scratch / "0.png").chmod(0o600)
+    repaired = await dispatcher.status(ImageJobBinding(job_id=JOB, attempt=1, fence=4))
+    assert repaired is not None and repaired.state == "failed" and repaired.scratch_cleaned
+    assert repaired.updated_at > failed.updated_at
+    assert not scratch.exists()
 
 
 async def test_dispatch_auth_replay_and_exact_fence(

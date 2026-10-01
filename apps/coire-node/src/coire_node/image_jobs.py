@@ -217,14 +217,15 @@ class ImageJobJournal:
                 raise ImageJournalConflict()
             if status == old:
                 return old
-            cancelled_cleanup_repair = (
-                old.state == status.state == "cancelled"
+            terminal_cleanup_repair = (
+                old.state == status.state
+                and old.state in {"cancelled", "failed"}
                 and not old.scratch_cleaned
                 and status.scratch_cleaned
                 and status.model_dump(exclude={"scratch_cleaned", "updated_at"})
                 == old.model_dump(exclude={"scratch_cleaned", "updated_at"})
             )
-            if (old.state in _TERMINAL and not cancelled_cleanup_repair) or (
+            if (old.state in _TERMINAL and not terminal_cleanup_repair) or (
                 status.state != old.state and status.state not in _NEXT.get(old.state, frozenset())
             ):
                 raise ImageJournalConflict()

@@ -810,3 +810,16 @@ observability selection passed **30 tests**; Ruff, strict mypy, alert YAML
 and dashboard JSON checks passed. This fix has not yet been rolled out to
 the Studios, so the physical re-adoption regression still needs a repeat
 after a subsequent versioned node install.
+
+A terminal failed image-worker result now triggers fenced node scratch removal
+for both generated PNGs and staged inputs. A pre-existing failed journal can
+repair its cleanup acknowledgment on a later status request. Core retains the
+execution lease and output hold until the exact node reports
+`scratch_cleaned=true` and core transfer staging is absent, then records a
+content-free terminal failure audit and event. A poisoned symlink leaves the
+journal nonterminal and the outside file intact. The focused recovery
+selection passed **26 tests**. The complete local unit/contract selection
+passed **1,727 tests**, with 2 skipped and 157 deselected; strict mypy passed
+638 source files, Ruff format/check and generated OpenAPI freshness passed.
+This closes the proved failed-worker branch of T039/T041. Orphan scratch
+sweeps, advanced input delivery and the healthy-stop latency gate remain open.
