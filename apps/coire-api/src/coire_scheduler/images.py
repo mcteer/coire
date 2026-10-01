@@ -641,6 +641,17 @@ async def drive_image_dispatch(job_id: str) -> bool:
         )
     with tracer.start_as_current_span("coire.scheduler.image.dispatch"):
         async with NodeClient(settings) as client:
+            reserved = await client.reserve_image_inputs(prepared.node, prepared.start)
+            if (
+                reserved.job_id != prepared.start.job_id
+                or reserved.attempt != prepared.start.attempt
+                or reserved.fence != prepared.start.fence
+                or reserved.node != prepared.node
+                or reserved.instance_id != prepared.start.instance_id
+            ):
+                raise ImageConflict("node image attempt reservation differs from core")
+            if reserved.state not in {"queued", "reserving"}:
+                return True
             try:
                 loaded = await client.load_image_worker(prepared.node, prepared.load)
             except NodeError as exc:
@@ -677,15 +688,6 @@ async def drive_image_dispatch(job_id: str) -> bool:
             if loaded.state != "ready":
                 raise ImageConflict("image worker readiness differs from dispatch")
             if prepared.start.inputs:
-                reserved = await client.reserve_image_inputs(prepared.node, prepared.start)
-                if (
-                    reserved.job_id != prepared.start.job_id
-                    or reserved.attempt != prepared.start.attempt
-                    or reserved.fence != prepared.start.fence
-                    or reserved.node != prepared.node
-                    or reserved.instance_id != prepared.start.instance_id
-                ):
-                    raise ImageConflict("node image input reservation differs from core")
                 if reserved.state == "queued":
                     for item in prepared.start.inputs:
                         command = NodeImageInputRequest(

@@ -45,6 +45,10 @@ control calls `DELETE /api/v1/images/{job_id}`. A 202 response means cancellatio
 requested; continue observing until a terminal event. If the worker or node cannot prove
 termination, the job and its reservations remain held for reconciliation. Do not remove
 its files or clear its holds by hand.
+The scheduler persists the exact node attempt journal before loading the
+worker. A cancellation arriving during model load can therefore cancel that
+queued node attempt without starting generation. A replayed terminal node
+journal prevents the scheduler from issuing another worker start.
 If a placed job's Studio journal or worker reply disappears, the scheduler keeps the
 execution lease and storage hold. The `CoireImageObservationFailures` alert is expected;
 inspect the node and reconcile exact process identity and scratch before terminal failure

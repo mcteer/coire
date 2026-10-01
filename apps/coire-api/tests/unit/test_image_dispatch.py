@@ -153,9 +153,15 @@ def _prepared() -> PreparedImageDispatch:
     return PreparedImageDispatch(node=NODE, load=load, start=start)
 
 
-@pytest.mark.parametrize(("missing", "bad_ready"), [(False, False), (True, False), (False, True)])
+@pytest.mark.parametrize(
+    ("missing", "bad_ready", "terminal_reservation"),
+    [(False, False, False), (True, False, False), (False, True, False), (False, False, True)],
+)
 async def test_dispatch_retains_placed_holds_when_a_worker_reply_is_missing(
-    monkeypatch: pytest.MonkeyPatch, missing: bool, bad_ready: bool
+    monkeypatch: pytest.MonkeyPatch,
+    missing: bool,
+    bad_ready: bool,
+    terminal_reservation: bool,
 ) -> None:
     prepared = _prepared()
     calls: list[str] = []
@@ -175,6 +181,22 @@ async def test_dispatch_retains_placed_holds_when_a_worker_reply_is_missing(
 
         async def __aexit__(self, *args: object) -> None:
             del args
+
+        async def reserve_image_inputs(
+            self, node: str, command: NodeImageStartRequest
+        ) -> NodeImageJob:
+            assert node == NODE and command.job_id == JOB
+            calls.append("reserve")
+            return NodeImageJob(
+                job_id=JOB,
+                attempt=1,
+                fence=1,
+                node=NODE,
+                instance_id=INSTANCE,
+                state="cancelled" if terminal_reservation else "queued",
+                scratch_cleaned=terminal_reservation,
+                updated_at=datetime.now(UTC),
+            )
 
         async def load_image_worker(
             self, node: str, command: ImageWorkerLoadRequest
@@ -222,17 +244,20 @@ async def test_dispatch_retains_placed_holds_when_a_worker_reply_is_missing(
     monkeypatch.setattr(images, "session_scope", scope)
     monkeypatch.setattr(images, "get_settings", lambda: Settings(_secrets_dir="/nonexistent"))  # type: ignore[call-arg]
 
-    if bad_ready:
+    if terminal_reservation:
+        assert await images.drive_image_dispatch(JOB) is True
+        assert calls == ["prepare", "reserve"]
+    elif bad_ready:
         with pytest.raises(ImageConflict, match="readiness differs"):
             await images.drive_image_dispatch(JOB)
-        assert calls == ["prepare", "load", "ready"]
+        assert calls == ["prepare", "reserve", "load", "ready"]
     elif missing:
         with pytest.raises(ImageConflict, match="journal is unavailable"):
             await images.drive_image_dispatch(JOB)
-        assert calls == ["prepare", "load", "ready", "start"]
+        assert calls == ["prepare", "reserve", "load", "ready", "start"]
     else:
         assert await images.drive_image_dispatch(JOB) is True
-        assert calls == ["prepare", "load", "ready", "start"]
+        assert calls == ["prepare", "reserve", "load", "ready", "start"]
         assert await images.drive_image_dispatch(JOB) is True
         assert calls.count("start") == 2
 
@@ -362,4 +387,4 @@ async def test_img2img_dispatch_reserves_and_stages_exact_owner_input_before_sta
         ),
     )
     assert await images.drive_image_dispatch(JOB)
-    assert calls == ["load", "ready", "reserve", "stage", "start"]
+    assert calls == ["reserve", "load", "ready", "stage", "start"]

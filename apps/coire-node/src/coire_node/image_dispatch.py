@@ -110,22 +110,12 @@ class ImageNodeDispatcher:
         self._lock = asyncio.Lock()
 
     async def reserve_inputs(self, request: NodeImageStartRequest) -> tuple[bool, NodeImageJob]:
-        """Persist a queued advanced attempt before any private input upload."""
+        """Persist every attempt before worker loading or private input upload."""
         async with self._lock:
-            if not request.inputs:
+            if request.node != self.journal.node:
                 raise ImageDispatchConflict()
-            try:
-                load, _port, _token = self.worker.private_control(request.instance_id)
-            except ImageProcessUnavailable:
-                raise ImageDispatchUnavailable() from None
-            if (
-                request.instance_id != load.instance_id
-                or request.model_id != load.model_id
-                or request.resolved.spec.variant_id != load.variant_id
-                or request.resolved.model_sha256 != load.manifest_sha256
-                or request.resolved.pipeline_version != load.runtime_version
-                or request.reservation_bytes != load.reservation_bytes
-            ):
+            resident = self.worker.current_status()
+            if resident is not None and resident.instance_id != request.instance_id:
                 raise ImageDispatchConflict()
             existing = self.journal.get(request.job_id)
             return existing is None, self.journal.begin(request)

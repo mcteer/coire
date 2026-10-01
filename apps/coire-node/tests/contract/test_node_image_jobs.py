@@ -129,6 +129,50 @@ def _setup(
     return settings, ImageNodeDispatcher(journal, supervisor, transport=worker_handler)
 
 
+async def test_attempt_can_be_reserved_and_cancelled_before_worker_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, dispatcher = _setup(
+        tmp_path, monkeypatch, httpx.MockTransport(lambda _: httpx.Response(500))
+    )
+    monkeypatch.setattr(dispatcher.worker, "current_status", lambda: None)
+    monkeypatch.setattr(
+        dispatcher.worker,
+        "private_control",
+        lambda instance_id: (_ for _ in ()).throw(ImageProcessUnavailable()),
+    )
+    app = create_app(
+        settings,
+        StubCollector(),
+        listener=NetworkPath.CONTROL,
+        store=Store(settings.node_store_dir),
+        image_dispatcher=dispatcher,
+    )
+    command = _request()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://node",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as client:
+        reserved = await client.put(
+            f"/node/images/jobs/{JOB}/reserve-inputs", json=command.model_dump(mode="json")
+        )
+        assert reserved.status_code == 202 and reserved.json()["state"] == "queued"
+        cancelled = await client.request(
+            "DELETE",
+            f"/node/images/jobs/{JOB}",
+            json=NodeImageCancelRequest(
+                job_id=JOB, attempt=1, fence=4, reason="user", requested_at=datetime.now(UTC)
+            ).model_dump(mode="json"),
+        )
+        assert cancelled.status_code == 200 and cancelled.json()["state"] == "cancelled"
+        assert cancelled.json()["scratch_cleaned"] is True
+        replay = await client.put(
+            f"/node/images/jobs/{JOB}/reserve-inputs", json=command.model_dump(mode="json")
+        )
+        assert replay.status_code == 200 and replay.json()["state"] == "cancelled"
+
+
 def test_failed_worker_cleans_both_scratch_trees_before_terminal_journal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

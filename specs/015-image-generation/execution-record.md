@@ -935,5 +935,10 @@ and reserved bytes on both responses, retries transient unavailable status
 within a 90-second bound, and keeps the durable holds if readiness remains
 uncertain. The focused dispatch selection passed **6 tests**, including a
 mismatched-ready-reservation refusal; Ruff and strict
-mypy passed. Cancellation before the node journal exists still needs the
-reserve-first handshake in T041.
+mypy passed. The scheduler now reserves every exact attempt in the node
+journal before loading the worker. A pre-load cancellation can terminate
+that queued journal; a replayed terminal reservation causes dispatch to
+return without loading or starting the worker. Node contract and scheduler
+dispatch selections passed **25 tests** with this ordering, including
+pre-load cancellation and terminal replay. The remaining healthy-stop
+latency and partition recovery gates stay open under T041.
