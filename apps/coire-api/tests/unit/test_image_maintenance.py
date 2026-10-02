@@ -59,7 +59,7 @@ def test_blob_root_refuses_symlink_and_foreign_owner(
     alias.symlink_to(root)
     with pytest.raises(ImageStorageUnavailable):
         maintenance.prepare_private_blob_root(alias)
-    monkeypatch.setattr(maintenance.os, "getuid", lambda: -1)
+    monkeypatch.setattr(os, "getuid", lambda: -1)
     with pytest.raises(ImageStorageUnavailable):
         maintenance.prepare_private_blob_root(root)
     assert root.stat().st_mode & 0o777 == 0o755
