@@ -351,7 +351,8 @@ async def release_lease(session: AsyncSession, lease_id: uuid.UUID) -> None:
 
 async def refresh_lease(session: AsyncSession, lease_id: uuid.UUID, *, ttl_seconds: float) -> bool:
     row = await session.get(RequestLeaseRow, lease_id)
-    if row is None or row.released_at is not None:
+    now = datetime.now(UTC)
+    if row is None or row.released_at is not None or row.expires_at <= now or ttl_seconds <= 0:
         return False
-    row.expires_at = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
+    row.expires_at = now + timedelta(seconds=ttl_seconds)
     return True

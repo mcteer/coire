@@ -17,7 +17,6 @@ from pathlib import Path
 
 import mlx.core as mx
 from mlx.utils import tree_flatten
-from tokenizers import Tokenizer, models, pre_tokenizers
 
 from coire_node.store import Store
 
@@ -75,10 +74,11 @@ def _save_module(root: Path, name: str, module: object) -> None:
 
 
 def _save_tokenizer(root: Path) -> None:
+    tokenizers = importlib.import_module("tokenizers")
     vocabulary = {"[UNK]": 0, "[PAD]": 1, "[BOS]": 2, "[EOS]": 3}
     vocabulary.update({f"word{i}": i for i in range(4, 256)})
-    raw = Tokenizer(models.WordLevel(vocabulary, unk_token="[UNK]"))
-    raw.pre_tokenizer = pre_tokenizers.Whitespace()
+    raw = tokenizers.Tokenizer(tokenizers.models.WordLevel(vocabulary, unk_token="[UNK]"))
+    raw.pre_tokenizer = tokenizers.pre_tokenizers.Whitespace()
     tokenizer_class = importlib.import_module("transformers").PreTrainedTokenizerFast
     tokenizer = tokenizer_class(
         tokenizer_object=raw,

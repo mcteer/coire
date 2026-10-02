@@ -7,7 +7,7 @@ import os
 import sys
 import uuid
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse, urlunparse
 
 import asyncpg
@@ -16,7 +16,12 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from coire_api.db import Base, MemoryReservationRow, NodeRow, RequestLeaseRow
-from coire_api.placement.service import LedgerNotFoundError, acquire_lease
+from coire_api.placement.service import (
+    LedgerNotFoundError,
+    _active_leases,
+    acquire_lease,
+    refresh_lease,
+)
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 
@@ -174,3 +179,21 @@ async def test_chat_lease_waits_for_independent_node_admission_and_rechecks_rese
         if child.returncode is None:
             child.kill()
         await child.wait()
+
+
+@pytest.mark.integration
+async def test_expired_chat_lease_cannot_be_revived_or_counted_for_admission(
+    admission_database: tuple[async_sessionmaker[AsyncSession], str, uuid.UUID, uuid.UUID],
+) -> None:
+    sessions, _, _, reservation_id = admission_database
+    async with sessions() as session, session.begin():
+        expired = await acquire_lease(session, reservation_id, "expired-chat", ttl_seconds=60)
+        active = await acquire_lease(session, reservation_id, "active-chat", ttl_seconds=60)
+        expired.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        expired_id, active_id = expired.id, active.id
+    async with sessions() as session, session.begin():
+        assert await _active_leases(session) == {reservation_id: 1}
+        assert not await refresh_lease(session, expired_id, ttl_seconds=60)
+        assert not await refresh_lease(session, active_id, ttl_seconds=0)
+        assert await refresh_lease(session, active_id, ttl_seconds=60)
+        assert await _active_leases(session) == {reservation_id: 1}
