@@ -34,7 +34,7 @@ from coire_node.image_runtime.classification import (
     CLASSIFIER_REVISION,
     classify_image_with_peak,
 )
-from coire_node.image_runtime.pipeline import MfluxTxt2ImgPipeline
+from coire_node.image_runtime.pipeline import MfluxTxt2ImgPipeline, _load_native
 from coire_node.image_runtime.preflight import RUNTIME_VERSION, verify_image_copy
 from coire_node.store import Store
 
@@ -126,6 +126,8 @@ def _validate_image_asset(
     path = verify_image_copy(store, load)
     if request.kind is ModelKind.IMAGE_CLASSIFIER:
         return _validate_classifier(path, request, reservation_bytes=reservation_bytes)
+    if request.kind is ModelKind.IMAGE_LORA:
+        return _validate_lora(store, path, request, reservation_bytes=reservation_bytes)
     if request.kind is not ModelKind.IMAGE_MODEL:
         raise ImageValidationUnavailable("auxiliary execution validation is unavailable")
     process = psutil.Process()
@@ -233,6 +235,89 @@ def _validate_image_asset(
         peak_physical_delta_bytes=measured_physical,
         thumbnail_sha256=thumbnail_sha256,
         image_capability_profile=profile,
+    )
+
+
+def _validate_lora(
+    store: Store,
+    path: Path,
+    request: ImageAssetValidateRequest,
+    *,
+    reservation_bytes: int,
+) -> ImageAssetValidationResult:
+    """Apply one exact local adapter to a clean verified base and run a native smoke."""
+    base = request.compatible_base
+    if base is None:
+        raise ImageValidationUnavailable("compatible base is unavailable")
+    base_manifest = store.read_manifest(base.slug)
+    adapter_manifest = store.read_manifest(request.slug)
+    if (
+        base_manifest is None
+        or base_manifest.revision != base.source_revision
+        or adapter_manifest is None
+        or adapter_manifest.revision != request.source_revision
+    ):
+        raise ImageValidationUnavailable("compatible image source differs from pinned copy")
+    base_load = ImageWorkerLoadRequest(
+        slug=base.slug,
+        model_id=base.model_id,
+        instance_id=request.job_id,
+        manifest_sha256=base.manifest_sha256,
+        reservation_bytes=reservation_bytes,
+        runtime_version=RUNTIME_VERSION,
+    )
+    base_path = verify_image_copy(store, base_load)
+    adapters = [
+        entry.path for entry in adapter_manifest.files if entry.path.endswith(".safetensors")
+    ]
+    if len(adapters) != 1:
+        raise ImageValidationUnavailable("LoRA asset must contain one safetensors adapter")
+    process = psutil.Process()
+    baseline_physical = resident_bytes(process.pid)
+    if baseline_physical is None:
+        raise ImageValidationUnavailable("physical footprint is unavailable")
+    peak_rss = process.memory_info().rss
+    peak_physical = baseline_physical
+
+    def observe_footprint(*_: int) -> None:
+        nonlocal peak_rss, peak_physical
+        current = resident_bytes(process.pid)
+        if current is None:
+            raise ImageValidationUnavailable("physical footprint is unavailable")
+        peak_rss = max(peak_rss, process.memory_info().rss)
+        peak_physical = max(peak_physical, current)
+
+    adapter_path = path / adapters[0]
+    pipeline = MfluxTxt2ImgPipeline(
+        _load_native(base_path, lora_paths=(adapter_path,), lora_scales=(1.0,)), base_load
+    )
+    observe_footprint()
+    images = pipeline.generate(_smoke_spec(base.model_id, base.manifest_sha256), observe_footprint)
+    observe_footprint()
+    try:
+        if (
+            len(images) != 1
+            or images[0].mode != "RGB"
+            or images[0].size != (_SMOKE_SIZE, _SMOKE_SIZE)
+            or images[0].getbbox() is None
+            or max(ImageStat.Stat(images[0]).stddev) <= 1
+        ):
+            raise ImageValidationUnavailable("LoRA smoke returned degenerate pixels")
+        thumbnail_sha256 = _thumbnail_digest(images[0])
+    finally:
+        for image in images:
+            image.close()
+    if max(peak_rss, peak_physical) > reservation_bytes:
+        raise ImageValidationUnavailable("LoRA smoke exceeded reserved memory")
+    return ImageAssetValidationResult(
+        validated=True,
+        kind=request.kind,
+        manifest_sha256=request.manifest_sha256,
+        source_revision=request.source_revision,
+        peak_rss_bytes=peak_rss,
+        peak_physical_bytes=peak_physical,
+        peak_physical_delta_bytes=max(0, peak_physical - baseline_physical),
+        thumbnail_sha256=thumbnail_sha256,
     )
 
 

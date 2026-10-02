@@ -55,7 +55,11 @@ from coire_core.models.engine import (
     ReconcileExpectation,
     ReconcileRequest,
 )
-from coire_core.models.image_worker import ImageAssetValidateRequest, ImageAssetValidationResult
+from coire_core.models.image_worker import (
+    ImageAssetValidateRequest,
+    ImageAssetValidationResult,
+    ImageValidationBase,
+)
 from coire_core.models.instance import InstanceState
 from coire_core.models.jobs import ChecksumManifest, DownloadStage, JobKind, JobStage, JobStatus
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
@@ -345,6 +349,34 @@ class RegistryReconciler:
         if not model.manifest_sha256 or not model.source_revision:
             await self._fail(session, job, model, "image source evidence is incomplete")
             return False
+        compatible_base: ImageValidationBase | None = None
+        if model.kind in {ModelKind.IMAGE_LORA, ModelKind.CONTROL_MODEL}:
+            raw_base_id = (model.capability_profile or {}).get("compatible_base_model_id")
+            try:
+                base_id = uuid.UUID(str(raw_base_id))
+            except ValueError:
+                await self._fail(session, job, model, "image compatible base is unavailable")
+                return False
+            base = await session.get(ModelRow, base_id)
+            if (
+                base is None
+                or base.kind is not ModelKind.IMAGE_MODEL
+                or base.state is not ModelState.READY
+                or base.manifest_sha256 is None
+                or base.source_revision is None
+            ):
+                await self._fail(session, job, model, "image compatible base is unavailable")
+                return False
+            try:
+                compatible_base = ImageValidationBase(
+                    model_id=base.id,
+                    slug=base.slug,
+                    source_revision=base.source_revision,
+                    manifest_sha256=base.manifest_sha256,
+                )
+            except ValueError:
+                await self._fail(session, job, model, "image compatible base is invalid")
+                return False
         evidence = dict(job.image_validation or {})
         for role, node in (("origin", origin), ("replica", replica)):
             if role in evidence:
@@ -370,6 +402,7 @@ class RegistryReconciler:
                     source_revision=model.source_revision,
                     manifest_sha256=model.manifest_sha256,
                     reservation_id=validation_id,
+                    compatible_base=compatible_base,
                 ),
             )
             if not status.is_terminal:

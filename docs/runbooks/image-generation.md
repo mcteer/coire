@@ -29,12 +29,16 @@ non-degenerate pixels from a neutral prompt; the narrow measured capability and
 thumbnail digest are recorded with both results before either reservation is
 released. The validator samples the process's physical footprint during both
 native smokes, including Metal memory on macOS, and refuses a transient peak
-above the held bytes. The gate compares the **absolute process peak** with the
+above the held bytes. LoRA validation on each Studio verifies the exact local
+base and adapter manifests, applies the single adapter through pinned mflux,
+and requires a non-degenerate native output. Its hold includes the base's
+memory estimate. Control and upscale execution validation remains unavailable.
+The gate compares the **absolute process peak** with the
 held bytes, while recording absolute RSS/physical peaks and the physical
 baseline delta. If a validation
 job is still running, leave the
 reservation held and inspect its exact job ID, process identity, local manifest and
-`CoireImageValidationFailures` alert. Auxiliary mode-specific validation is still
+`CoireImageValidationFailures` alert. Control and upscale mode-specific validation is still
 unavailable and those assets remain unpublished. Do not set the image admission
 flag until T033 and the remaining real Studio acceptance pass.
 Base acquisition reserves the larger of twice the selected file bytes or three

@@ -12,7 +12,11 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw
 
-from coire_core.models.image_worker import ImageAssetValidateRequest, ImageAssetValidationResult
+from coire_core.models.image_worker import (
+    ImageAssetValidateRequest,
+    ImageAssetValidationResult,
+    ImageValidationBase,
+)
 from coire_core.models.images import (
     ImageCapabilityProfile,
     ImageClassificationResult,
@@ -56,6 +60,16 @@ def _request(
         source_revision=revision,
         manifest_sha256=digest,
         reservation_id=uuid.uuid4(),
+        compatible_base=(
+            ImageValidationBase(
+                model_id=uuid.uuid4(),
+                slug="org--image",
+                source_revision=revision,
+                manifest_sha256=digest,
+            )
+            if kind in {ModelKind.IMAGE_LORA, ModelKind.CONTROL_MODEL}
+            else None
+        ),
     )
 
 
@@ -149,6 +163,79 @@ def test_auxiliary_asset_remains_unpublished_without_mode_specific_smoke(tmp_pat
         validate_image_asset(
             store, _request(digest, kind=ModelKind.CONTROL_MODEL), reservation_bytes=10**9
         )
+
+
+def test_lora_smoke_uses_one_verified_local_adapter_and_exact_base(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = Store(tmp_path / "models")
+    for slug, filename in (
+        ("org--base", "model.safetensors"),
+        ("org--adapter", "adapter.safetensors"),
+    ):
+        root = store.path_for(slug)
+        root.mkdir(parents=True)
+        (root / filename).write_bytes(slug.encode())
+        store.write_manifest(
+            store.hash_tree(slug, repo_id=slug.replace("--", "/"), revision=REVISION)
+        )
+    base_manifest = store.read_manifest("org--base")
+    adapter_manifest = store.read_manifest("org--adapter")
+    assert base_manifest is not None and adapter_manifest is not None
+    base = ImageValidationBase(
+        model_id=uuid.uuid4(),
+        slug="org--base",
+        source_revision=REVISION,
+        manifest_sha256=base_manifest.sha256(),
+    )
+    request = ImageAssetValidateRequest(
+        job_id=uuid.uuid4(),
+        model_id=uuid.uuid4(),
+        slug="org--adapter",
+        kind=ModelKind.IMAGE_LORA,
+        source_revision=REVISION,
+        manifest_sha256=adapter_manifest.sha256(),
+        reservation_id=uuid.uuid4(),
+        compatible_base=base,
+    )
+    loaded: list[Path] = []
+
+    def load_native(
+        path: Path, *, lora_paths: tuple[Path, ...], lora_scales: tuple[float, ...]
+    ) -> object:
+        assert path == store.path_for(base.slug)
+        assert lora_paths == (store.path_for(request.slug) / "adapter.safetensors",)
+        assert lora_scales == (1.0,)
+        loaded.extend(lora_paths)
+        return object()
+
+    class FakePipeline:
+        def __init__(self, model: object, load: object) -> None:
+            assert model is not None and load is not None
+
+        def generate(
+            self, resolved: ResolvedImageSpec, progress: Callable[[int, int, int], None]
+        ) -> tuple[Image.Image, ...]:
+            assert resolved.spec.model_id == base.model_id
+            progress(0, 4, 4)
+            image = Image.new("RGB", (512, 512), "blue")
+            ImageDraw.Draw(image).rectangle((128, 128, 384, 384), fill="white")
+            return (image,)
+
+    monkeypatch.setattr(image_validation, "_load_native", load_native)
+    monkeypatch.setattr(image_validation, "MfluxTxt2ImgPipeline", FakePipeline)
+    result = validate_image_asset(store, request, reservation_bytes=10**12)
+    assert result.validated and result.kind is ModelKind.IMAGE_LORA
+    assert result.thumbnail_sha256 is not None and loaded
+    with pytest.raises(ImageCopyUnavailable):
+        validate_image_asset(
+            store,
+            request.model_copy(
+                update={"compatible_base": base.model_copy(update={"manifest_sha256": "0" * 64})}
+            ),
+            reservation_bytes=10**12,
+        )
+    assert len(loaded) == 1
 
 
 def test_published_base_evidence_requires_physical_peak() -> None:

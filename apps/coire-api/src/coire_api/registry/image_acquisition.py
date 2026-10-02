@@ -100,6 +100,7 @@ async def submit_image_asset(
     ).scalar_one_or_none()
     if existing is not None:
         raise await _refuse(session, actor, request.repo_id, "duplicate", 409)
+    base_memory_estimate = 0
     if request.compatible_base_model_id is not None:
         base = await session.get(ModelRow, request.compatible_base_model_id)
         if (
@@ -113,6 +114,7 @@ async def submit_image_asset(
             or re.fullmatch(r"[0-9a-f]{64}", base.manifest_sha256) is None
         ):
             raise await _refuse(session, actor, request.repo_id, "compatible_base_unavailable")
+        base_memory_estimate = base.memory_estimate_bytes
     try:
         origin = choose_origin(views)
         replica = replica_for(origin, views)
@@ -150,6 +152,7 @@ async def submit_image_asset(
     memory_estimate = max(selected_total * 2, selected_weights * 3)
     if request.kind is ModelKind.IMAGE_MODEL:
         memory_estimate += 16 * 1024**3
+    memory_estimate += base_memory_estimate
     if any(
         view.store_free_bytes < selected_total + settings.disk_reserve_bytes
         for view in (origin, replica)

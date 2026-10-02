@@ -11,8 +11,10 @@ import pytest
 from pydantic import ValidationError
 
 from coire_core.models.image_worker import (
+    ImageAssetValidateRequest,
     ImageTransferGrant,
     ImageTransferReceipt,
+    ImageValidationBase,
     ImageWorkerLoadRequest,
     ImageWorkerLoadResult,
     ImageWorkerOutputManifest,
@@ -30,11 +32,42 @@ from coire_core.models.images import (
     ResolvedImageSpec,
     canonical_spec_hash,
 )
+from coire_core.models.registry import ModelKind
 
 MODEL = uuid.UUID("10000000-0000-0000-0000-000000000001")
 INSTANCE = uuid.UUID("20000000-0000-0000-0000-000000000001")
 OUTPUT = uuid.UUID("30000000-0000-0000-0000-000000000001")
 JOB = "01J00000000000000000000000"
+
+
+def test_auxiliary_validation_requires_an_exact_pinned_base_copy() -> None:
+    values = {
+        "job_id": uuid.uuid4(),
+        "model_id": uuid.uuid4(),
+        "slug": "org--adapter",
+        "kind": ModelKind.IMAGE_LORA,
+        "source_revision": "a" * 40,
+        "manifest_sha256": "b" * 64,
+        "reservation_id": uuid.uuid4(),
+    }
+    with pytest.raises(ValidationError, match="compatible base"):
+        ImageAssetValidateRequest.model_validate(values)
+    base = ImageValidationBase(
+        model_id=MODEL,
+        slug="org--base",
+        source_revision="c" * 40,
+        manifest_sha256="d" * 64,
+    )
+    assert (
+        ImageAssetValidateRequest.model_validate(
+            {**values, "compatible_base": base}
+        ).compatible_base
+        == base
+    )
+    with pytest.raises(ValidationError, match="compatible base"):
+        ImageAssetValidateRequest.model_validate(
+            {**values, "kind": ModelKind.IMAGE_MODEL, "compatible_base": base}
+        )
 
 
 def _resolved() -> ResolvedImageSpec:

@@ -80,6 +80,17 @@ class ImageWorkerLoadRequest(BaseModel):
         return value
 
 
+class ImageValidationBase(BaseModel):
+    """Exact published base copy required for auxiliary native smoke."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_id: uuid.UUID
+    slug: str = Field(pattern=SLUG_PATTERN)
+    source_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
+    manifest_sha256: str = Field(pattern=SHA256_PATTERN)
+
+
 class ImageAssetValidateRequest(BaseModel):
     """Reserved, offline Studio validation of an acquired image copy."""
 
@@ -92,11 +103,16 @@ class ImageAssetValidateRequest(BaseModel):
     source_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
     manifest_sha256: str = Field(pattern=SHA256_PATTERN)
     reservation_id: uuid.UUID
+    compatible_base: ImageValidationBase | None = None
 
     @model_validator(mode="after")
     def image_only(self) -> ImageAssetValidateRequest:
         if self.kind is ModelKind.LANGUAGE_MODEL or self.source_revision == "0" * 40:
             raise ValueError("a pinned image asset is required")
+        if (self.kind in {ModelKind.IMAGE_LORA, ModelKind.CONTROL_MODEL}) != (
+            self.compatible_base is not None
+        ):
+            raise ValueError("LoRA and control validation require an exact compatible base")
         return self
 
 

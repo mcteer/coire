@@ -526,6 +526,7 @@ def _progress(job: JobFile, delta: int, files_done: int) -> None:
 
 def run_image_validate(job: JobFile) -> int:
     """Validate a pinned local image copy inside a credential-free acquisition worker."""
+    from coire_core.models.image_worker import ImageValidationBase
     from coire_node.image_runtime.pipeline import ImagePipelineUnavailable
     from coire_node.image_runtime.preflight import ImageCopyUnavailable
     from coire_node.image_validation import ImageValidationUnavailable, validate_image_asset
@@ -538,6 +539,11 @@ def run_image_validate(job: JobFile) -> int:
         source_revision=job.params["source_revision"],
         manifest_sha256=job.params["manifest_sha256"],
         reservation_id=uuid.UUID(job.params["reservation_id"]),
+        compatible_base=(
+            ImageValidationBase.model_validate(job.params["compatible_base"])
+            if job.params.get("compatible_base") is not None
+            else None
+        ),
     )
     job.status.stage = JobStage.RESOLVING
     job.save(force=True)

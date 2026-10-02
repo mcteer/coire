@@ -320,6 +320,7 @@ async def test_admin_image_intake_pins_revision_and_licence_before_pull(
         actor="admin:test",
     )
     assert adapter.capability_profile == {"compatible_base_model_id": str(model.id)}
+    assert adapter.memory_estimate_bytes == model.memory_estimate_bytes + 3072
 
     one_low_node = [
         NodeView(

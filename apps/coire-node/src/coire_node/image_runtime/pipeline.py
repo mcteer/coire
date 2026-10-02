@@ -65,7 +65,12 @@ def _require_offline() -> None:
         raise ImagePipelineUnavailable()
 
 
-def _load_native(path: Path) -> _NativeModel:
+def _load_native(
+    path: Path,
+    *,
+    lora_paths: tuple[Path, ...] = (),
+    lora_scales: tuple[float, ...] = (),
+) -> _NativeModel:
     """Import mflux only after the node sets its credential-free offline environment."""
     _require_offline()
     model_module = importlib.import_module("mflux.models.z_image.variants.z_image")
@@ -73,7 +78,14 @@ def _load_native(path: Path) -> _NativeModel:
     config = config_module.ModelConfig.z_image_turbo()
     if config.supports_guidance:
         raise ImagePipelineUnavailable()
-    model = model_module.ZImage(model_path=str(path), model_config=config)
+    if len(lora_paths) != len(lora_scales) or any(not item.is_file() for item in lora_paths):
+        raise ImagePipelineUnavailable()
+    model = model_module.ZImage(
+        model_path=str(path),
+        model_config=config,
+        lora_paths=[str(item) for item in lora_paths] or None,
+        lora_scales=list(lora_scales) or None,
+    )
     # Materialize lazy weights on their creating thread before execution moves
     # to the worker thread. MLX streams cannot be evaluated across threads.
     mlx = importlib.import_module("mlx.core")

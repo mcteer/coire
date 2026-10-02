@@ -132,3 +132,87 @@ async def test_two_verified_image_copies_remain_unready_until_validation() -> No
     model.image_capability_profile = _profile().model_dump(mode="json")
     model.image_validated_at = datetime.now(UTC)
     assert await service.recompute_state(session, model) is ModelState.READY
+
+
+async def test_lora_validation_commands_bind_the_same_ready_base_on_both_copies() -> None:
+    base = ModelRow(
+        id=uuid.uuid4(),
+        kind=ModelKind.IMAGE_MODEL,
+        slug="org--base",
+        state=ModelState.READY,
+        source_revision="a" * 40,
+        manifest_sha256="b" * 64,
+    )
+    adapter = ModelRow(
+        id=uuid.uuid4(),
+        kind=ModelKind.IMAGE_LORA,
+        slug="org--adapter",
+        state=ModelState.REPLICATING,
+        source_revision="c" * 40,
+        manifest_sha256="d" * 64,
+        memory_estimate_bytes=10**9,
+        capability_profile={"compatible_base_model_id": str(base.id)},
+    )
+    assert adapter.manifest_sha256 is not None and adapter.source_revision is not None
+    adapter_manifest_sha256: str = adapter.manifest_sha256
+    adapter_source_revision: str = adapter.source_revision
+    job = DownloadJobRow(id=uuid.uuid4(), model_id=adapter.id, image_validation=None)
+    origin = NodeRow(id=uuid.uuid4(), name="coire-edge-a")
+    replica = NodeRow(id=uuid.uuid4(), name="coire-edge-b")
+    commands: list[tuple[str, object]] = []
+
+    class Session:
+        async def get(self, model_type: type[object], identity: object) -> ModelRow:
+            assert model_type is ModelRow and identity == base.id
+            return base
+
+    class Client:
+        async def hold_reservation(self, node: str, request: object) -> object:
+            commands.append(("hold", node))
+            return object()
+
+        async def start_image_validate(self, node: str, request: Any) -> JobStatus:
+            assert request.compatible_base is not None
+            assert request.compatible_base.model_id == base.id
+            assert request.compatible_base.manifest_sha256 == base.manifest_sha256
+            commands.append(("validate", node))
+            now = datetime.now(UTC)
+            return JobStatus(
+                job_id=request.job_id,
+                kind=JobKind.IMAGE_VALIDATE,
+                slug=adapter.slug,
+                stage=JobStage.DONE,
+                started_at=now,
+                updated_at=now,
+                result=ImageAssetValidationResult(
+                    validated=True,
+                    kind=ModelKind.IMAGE_LORA,
+                    manifest_sha256=adapter_manifest_sha256,
+                    source_revision=adapter_source_revision,
+                    peak_rss_bytes=100,
+                    peak_physical_bytes=200,
+                    peak_physical_delta_bytes=100,
+                    thumbnail_sha256="e" * 64,
+                ).model_dump(mode="json"),
+            )
+
+        async def release_reservation(self, node: str, reservation_id: uuid.UUID) -> None:
+            commands.append(("release", node))
+
+    reconciler = RegistryReconciler(Settings(_secrets_dir="/nonexistent"))  # type: ignore[call-arg]
+    for _ in (origin, replica):
+        assert not await reconciler._validate_image_copies(
+            cast(AsyncSession, Session()), cast(Any, Client()), job, adapter, origin, replica
+        )
+    assert await reconciler._validate_image_copies(
+        cast(AsyncSession, Session()), cast(Any, Client()), job, adapter, origin, replica
+    )
+    assert adapter.image_validated_at is not None
+    assert commands == [
+        ("hold", origin.name),
+        ("validate", origin.name),
+        ("hold", replica.name),
+        ("validate", replica.name),
+        ("release", origin.name),
+        ("release", replica.name),
+    ]

@@ -1,5 +1,19 @@
 # Feature 015 execution record
 
+## Native LoRA acquisition smoke — 2026-10-02
+
+LoRA validation now carries the exact ready base ID, slug, revision and manifest
+digest from the registry through the node job into a credential-free worker.
+Each Studio verifies both local trees, applies one safetensors adapter through
+the pinned mflux loader, generates a neutral output and records the physical
+peak and thumbnail before either validation hold is released. Intake reserves
+the base memory estimate as well as adapter memory. A real locally generated
+tiny adapter passed the pinned MLX/mflux smoke; the complete local native
+image suite passed **10 tests**. The full Python suite passed **1,846** with
+160 platform/external skips; all **138** web tests, ESLint, Ruff, mypy and
+OpenAPI freshness passed. Control/upscale validation and LoRA job execution
+remain open under T033/T056, so image admission remains disabled.
+
 ## Auxiliary base compatibility binding — 2026-10-02
 
 Admin acquisition now requires a ready image base ID for LoRA and control assets,
