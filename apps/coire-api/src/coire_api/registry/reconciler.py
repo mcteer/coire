@@ -360,7 +360,7 @@ class RegistryReconciler:
             base = await session.get(ModelRow, base_id)
             if (
                 base is None
-                or base.kind is not ModelKind.IMAGE_MODEL
+                or base.kind != ModelKind.IMAGE_MODEL
                 or base.state is not ModelState.READY
                 or base.manifest_sha256 is None
                 or base.source_revision is None

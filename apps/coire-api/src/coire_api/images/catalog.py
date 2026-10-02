@@ -120,7 +120,7 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
         eligible_controls: list[ImageAdapterOption] = []
         for asset in () if fill_only else control_assets:
             if (
-                asset.kind is not ModelKind.CONTROL_MODEL
+                asset.kind != ModelKind.CONTROL_MODEL
                 or asset.visibility is not Visibility.PUBLISHED
                 or not isinstance(asset.capability_profile, dict)
                 or asset.capability_profile.get("compatible_base_model_id") != str(row.id)
@@ -177,7 +177,7 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
         if basic.max_loras:
             for adapter in adapters:
                 if (
-                    adapter.kind is not ModelKind.IMAGE_LORA
+                    adapter.kind != ModelKind.IMAGE_LORA
                     or adapter.visibility is not Visibility.PUBLISHED
                     or not isinstance(adapter.capability_profile, dict)
                     or adapter.capability_profile.get("compatible_base_model_id") != str(row.id)
@@ -211,7 +211,7 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
         eligible_upscalers: list[ImageAdapterOption] = []
         for asset in upscale_assets:
             if (
-                asset.kind is not ModelKind.UPSCALE_MODEL
+                asset.kind != ModelKind.UPSCALE_MODEL
                 or asset.visibility is not Visibility.PUBLISHED
             ):
                 continue

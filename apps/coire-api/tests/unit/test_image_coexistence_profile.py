@@ -82,6 +82,7 @@ class _Scalars:
 
 class _Session:
     def __init__(self) -> None:
+        self.admission_lock_calls = 0
         self.node = SimpleNamespace(**vars(NODE_FACTS))
         self.image = SimpleNamespace(
             kind=ModelKind.IMAGE_MODEL,
@@ -112,6 +113,11 @@ class _Session:
         )
         self.chat_model = SimpleNamespace(kind=ModelKind.LANGUAGE_MODEL, state=ModelState.READY)
         self.row: ImageCoexistenceProfileRow | None = None
+
+    async def execute(self, statement: object, parameters: object) -> None:
+        assert "pg_advisory_xact_lock" in str(statement)
+        assert isinstance(parameters, dict) and "key" in parameters
+        self.admission_lock_calls += 1
 
     async def get(self, model: type[object], identity: object, **kwargs: object) -> object | None:
         if model is ImageCoexistenceProfileRow:
@@ -164,6 +170,7 @@ async def test_admin_report_is_audited_and_dispatch_admits_measured_pair(
         cast(AsyncSession, session), principal, approved.id
     )
     assert invalidated.status == "invalidated"
+    assert session.admission_lock_calls == 1
     assert len(audited) == 2 and audited[1]["action"] == "image.coexistence.invalidated"
     assert not await chat_mix_allowed(
         cast(AsyncSession, session), NODE, IMAGE, {str(CHAT)}, datetime.now(UTC)

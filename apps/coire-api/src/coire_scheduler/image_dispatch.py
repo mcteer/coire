@@ -159,10 +159,10 @@ async def _bound_loras(
         if (
             selected.variant_id is not None
             or dependency is None
-            or dependency.kind is not ModelKind.IMAGE_LORA
+            or dependency.kind != ModelKind.IMAGE_LORA
             or (not from_preset and dependency.visibility is not Visibility.PUBLISHED)
-            or dependency.backend is not EngineBackend.AUXILIARY
-            or dependency.source is not ModelSource.STUDIO
+            or dependency.backend != EngineBackend.AUXILIARY
+            or dependency.source != ModelSource.STUDIO
             or dependency.state is not ModelState.READY
             or dependency.manifest_sha256 is None
             or _DIGEST.fullmatch(dependency.manifest_sha256) is None
@@ -189,10 +189,10 @@ async def _bound_loras(
         if (
             selected_control.variant_id is not None
             or control is None
-            or control.kind is not ModelKind.CONTROL_MODEL
+            or control.kind != ModelKind.CONTROL_MODEL
             or (not from_preset and control.visibility is not Visibility.PUBLISHED)
-            or control.backend is not EngineBackend.AUXILIARY
-            or control.source is not ModelSource.STUDIO
+            or control.backend != EngineBackend.AUXILIARY
+            or control.source != ModelSource.STUDIO
             or control.state is not ModelState.READY
             or control.manifest_sha256 is None
             or _DIGEST.fullmatch(control.manifest_sha256) is None
@@ -219,10 +219,10 @@ async def _bound_loras(
         if (
             upscale_request.variant_id is not None
             or upscale is None
-            or upscale.kind is not ModelKind.UPSCALE_MODEL
+            or upscale.kind != ModelKind.UPSCALE_MODEL
             or (not from_preset and upscale.visibility is not Visibility.PUBLISHED)
-            or upscale.backend is not EngineBackend.AUXILIARY
-            or upscale.source is not ModelSource.STUDIO
+            or upscale.backend != EngineBackend.AUXILIARY
+            or upscale.source != ModelSource.STUDIO
             or upscale.state is not ModelState.READY
             or upscale.manifest_sha256 is None
             or _DIGEST.fullmatch(upscale.manifest_sha256) is None

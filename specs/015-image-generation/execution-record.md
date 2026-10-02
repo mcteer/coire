@@ -1,5 +1,35 @@
 # Feature 015 execution record
 
+## Agent-run Studio and PostgreSQL continuation — 2026-10-02
+
+`AGENTS.md` and this feature's quickstart now explicitly permit coding agents to
+run Studio acceptance workloads. CI remains isolated. A disposable localhost-only
+PostgreSQL 17 container (`coire-015-postgres-final`, ephemeral tmpfs, host port
+32776) passed the existing four cross-process admission/lease cases and five
+migration/quota cases. A new independent-interpreter test exposed and now proves
+that profile invalidation waits for the same node admission lock as dispatch.
+It also exercised approved and invalidated profile reads from actual PostgreSQL
+rows. The test exposed string-backed registry `kind`/`source`/`backend` fields
+that image admission, dependency dispatch, acquisition and catalog compared by
+Python identity; those paths now compare values. Focused admission and listing
+tests passed **51**, strict mypy passed **652 source files**, and the full Python
+suite passed **1,877 tests, 161 skipped**. The separate real tiny mflux selection
+passed **10 tests** with `COIRE_ENGINE=1`; its default skipped run is not evidence.
+
+Both Studios accepted the exact locked 87-wheel node build into immutable
+`/opt/coire/envs/0.2.0-99dfeacec71e` and passed installer import/dependency
+smokes. Their existing `mcteer` LaunchDaemons were restarted by terminating only
+their recorded agent PIDs; launchd `KeepAlive` restarted them. Authenticated
+`/node/health` returned 200 on both. Studio A re-adopted its existing
+Qwen2.5-Coder 1.5B text engine and returned a four-token completion over the
+authenticated node proxy (HTTP 200, one choice). Studio B loaded its verified
+SmolVLM 256M copy, returned a four-token completion (HTTP 200, one choice),
+and returned to `stopped` after the smoke. No image assets are present in either
+Studio model store. The current live core rejects the legacy Keychain admin
+bearer with HTTP 401, and an active human-admin identity is needed for audited
+image acquisition and publication. Final-source CI, browser acceptance,
+full-model image matrix, and coexistence benchmarks are still open.
+
 ## Pinned Union Canny execution — 2026-10-02
 
 Direct and preset admission now bind a ready Union control asset to the exact

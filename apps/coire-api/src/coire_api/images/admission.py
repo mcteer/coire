@@ -148,17 +148,17 @@ async def _load_policy(
         _ready_image_dependency(dependency, request.model_id)
         assert dependency is not None
         if dependency_id in selected_loras and (
-            dependency.kind is not ModelKind.IMAGE_LORA
+            dependency.kind != ModelKind.IMAGE_LORA
             or dependency.visibility is not Visibility.PUBLISHED
         ):
             raise ImageValidationError("image LoRA unavailable")
         if dependency_id == selected_upscale and (
-            dependency.kind is not ModelKind.UPSCALE_MODEL
+            dependency.kind != ModelKind.UPSCALE_MODEL
             or dependency.visibility is not Visibility.PUBLISHED
         ):
             raise ImageValidationError("image upscale model unavailable")
         if dependency_id == selected_control and (
-            dependency.kind is not ModelKind.CONTROL_MODEL
+            dependency.kind != ModelKind.CONTROL_MODEL
             or dependency.visibility is not Visibility.PUBLISHED
         ):
             raise ImageValidationError("image control model unavailable")

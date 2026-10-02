@@ -297,7 +297,7 @@ async def chat_mix_allowed(
         model = await session.get(ModelRow, variant.model_id, populate_existing=True)
         if (
             model is None
-            or model.kind is not ModelKind.LANGUAGE_MODEL
+            or model.kind != ModelKind.LANGUAGE_MODEL
             or model.state is not ModelState.READY
         ):
             return False

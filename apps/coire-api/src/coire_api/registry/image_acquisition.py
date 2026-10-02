@@ -105,7 +105,7 @@ async def submit_image_asset(
         base = await session.get(ModelRow, request.compatible_base_model_id)
         if (
             base is None
-            or base.kind is not ModelKind.IMAGE_MODEL
+            or base.kind != ModelKind.IMAGE_MODEL
             or base.state is not ModelState.READY
             or base.backend != "mflux"
             or base.source != ModelSource.STUDIO

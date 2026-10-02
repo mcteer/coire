@@ -383,9 +383,9 @@ def test_direct_policy_checks_hidden_dependencies(monkeypatch: pytest.MonkeyPatc
     profile = _profile(required_dependency_ids=[HIDDEN])
     base = SimpleNamespace(
         id=MODEL,
-        kind=ModelKind.IMAGE_MODEL,
-        backend=EngineBackend.MFLUX,
-        source=ModelSource.STUDIO,
+        kind=ModelKind.IMAGE_MODEL.value,
+        backend=EngineBackend.MFLUX.value,
+        source=ModelSource.STUDIO.value,
         state=ModelState.READY,
         visibility=Visibility.PUBLISHED,
         image_capability_profile=profile.model_dump(mode="json"),
@@ -394,9 +394,9 @@ def test_direct_policy_checks_hidden_dependencies(monkeypatch: pytest.MonkeyPatc
     )
     hidden = SimpleNamespace(
         id=HIDDEN,
-        kind=ModelKind.IMAGE_LORA,
-        backend=EngineBackend.AUXILIARY,
-        source=ModelSource.STUDIO,
+        kind=ModelKind.IMAGE_LORA.value,
+        backend=EngineBackend.AUXILIARY.value,
+        source=ModelSource.STUDIO.value,
         state=ModelState.READY,
         entitlement=["hidden"],
         manifest_sha256="b" * 64,

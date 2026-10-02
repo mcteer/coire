@@ -15,15 +15,38 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from coire_api.db import Base, MemoryReservationRow, NodeRow, RequestLeaseRow
+from coire_api.auth import Principal, PrincipalKind
+from coire_api.db import (
+    Base,
+    ImageCoexistenceProfileRow,
+    MemoryReservationRow,
+    ModelRow,
+    ModelVariantRow,
+    NodeRow,
+    RequestLeaseRow,
+)
+from coire_api.images import coexistence
 from coire_api.placement.service import (
     LedgerNotFoundError,
     _active_leases,
     acquire_lease,
     refresh_lease,
 )
+from coire_core.models.acquisition import VariantState
+from coire_core.models.images import (
+    ImageCoexistenceBounds,
+    ImageCoexistenceProfile,
+    ImageCoexistenceReportRequest,
+)
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
+from coire_core.models.registry import EngineBackend, ModelKind, ModelState
+from coire_scheduler.image_admission import (
+    chat_mix_allowed,
+    coexistence_report_hash,
+    node_hardware_fingerprint,
+    node_runtime_fingerprint,
+)
 
 # Credentials stay in the child environment, never argv or output. This invokes
 # production admission helpers in another interpreter, not an asyncio mock.
@@ -197,3 +220,164 @@ async def test_expired_chat_lease_cannot_be_revived_or_counted_for_admission(
         assert not await refresh_lease(session, active_id, ttl_seconds=0)
         assert await refresh_lease(session, active_id, ttl_seconds=60)
         assert await _active_leases(session) == {reservation_id: 1}
+
+
+@pytest.mark.integration
+async def test_profile_invalidation_waits_for_independent_node_admission(
+    admission_database: tuple[async_sessionmaker[AsyncSession], str, uuid.UUID, uuid.UUID],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sessions, dsn, node_id, reservation_id = admission_database
+    image_id, chat_model_id, variant_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    now = datetime.now(UTC)
+    engine = create_async_engine(dsn)
+    async with engine.begin() as connection:
+        await connection.run_sync(
+            lambda sync: Base.metadata.create_all(
+                sync,
+                tables=[
+                    Base.metadata.tables["models"],
+                    Base.metadata.tables["model_variants"],
+                    Base.metadata.tables["image_coexistence_profiles"],
+                ],
+            )
+        )
+    await engine.dispose()
+    async with sessions() as session, session.begin():
+        node = await session.get(NodeRow, node_id)
+        assert node is not None
+        session.add_all(
+            [
+                ModelRow(
+                    id=image_id,
+                    repo_id="test/image",
+                    slug="test--image",
+                    display_name="Image",
+                    precision="4bit",
+                    weight_bytes=1,
+                    total_bytes=1,
+                    file_count=1,
+                    memory_estimate_bytes=1,
+                    kind=ModelKind.IMAGE_MODEL,
+                    backend=EngineBackend.MFLUX.value,
+                    state=ModelState.READY,
+                    image_capability_profile={},
+                ),
+                ModelRow(
+                    id=chat_model_id,
+                    repo_id="test/chat",
+                    slug="test--chat",
+                    display_name="Chat",
+                    precision="4bit",
+                    weight_bytes=1,
+                    total_bytes=1,
+                    file_count=1,
+                    memory_estimate_bytes=1,
+                    kind=ModelKind.LANGUAGE_MODEL,
+                    backend=EngineBackend.MLX_LM.value,
+                    state=ModelState.READY,
+                ),
+            ]
+        )
+        await session.flush()
+        session.add(
+            ModelVariantRow(
+                id=variant_id,
+                model_id=chat_model_id,
+                name="chat",
+                slug="test--chat-variant",
+                source_revision="a" * 40,
+                precision="4bit",
+                state=VariantState.READY,
+                validated=True,
+                published=True,
+            )
+        )
+        report = ImageCoexistenceReportRequest(
+            node_id=node_id,
+            image_model_id=image_id,
+            chat_variant_ids=(variant_id,),
+            hardware_fingerprint=node_hardware_fingerprint(node),
+            runtime_fingerprint=node_runtime_fingerprint(node),
+            measured_bounds=ImageCoexistenceBounds(
+                max_width=512, max_height=512, max_steps=4, max_outputs=1
+            ),
+            duration_seconds=900,
+            prompt_tokens_max=4096,
+            first_token_p95_ms=1200,
+            gateway_overhead_p95_ms=15,
+            image_completed_count=1,
+            image_progress_observed=True,
+            swap_observed=False,
+            thermal_alarm=False,
+            runtime_version="mflux-0.20.0",
+            measured_at=now - timedelta(minutes=5),
+            valid_until=now + timedelta(hours=1),
+        )
+        profile_id = uuid.uuid4()
+        session.add(
+            ImageCoexistenceProfileRow(
+                id=profile_id,
+                profile_hash=coexistence_report_hash(report),
+                node_id=node_id,
+                hardware_fingerprint=report.hardware_fingerprint,
+                runtime_fingerprint=report.runtime_fingerprint,
+                chat_variant_ids=[str(variant_id)],
+                image_model_id=image_id,
+                image_mode="txt2img",
+                measured_bounds=report.measured_bounds.model_dump(mode="json"),
+                benchmark_result=report.model_dump(mode="json"),
+                first_token_p95_ms=1200,
+                status="approved",
+                valid_until=report.valid_until,
+            )
+        )
+    async with sessions() as session:
+        assert await chat_mix_allowed(session, node_id, image_id, {str(variant_id)}, now)
+
+    async def no_audit(*args: object, **kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(coexistence, "write_audit", no_audit)
+    child = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        _LOCK_PROCESS,
+        str(node_id),
+        str(reservation_id),
+        "keep",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "COIRE_TEST_CHILD_DATABASE_URL": dsn},
+    )
+    assert child.stdin is not None and child.stdout is not None
+    task: asyncio.Task[ImageCoexistenceProfile] | None = None
+    try:
+        assert await asyncio.wait_for(child.stdout.readline(), 10) == b"locked\n"
+
+        async def revoke() -> ImageCoexistenceProfile:
+            async with sessions() as session, session.begin():
+                return await coexistence.invalidate_coexistence_profile(
+                    session,
+                    Principal(kind=PrincipalKind.ADMIN, user_id=uuid.uuid4()),
+                    profile_id,
+                )
+
+        task = asyncio.create_task(revoke())
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(task), 0.15)
+        child.stdin.write(b"release admission\n")
+        await child.stdin.drain()
+        result = await asyncio.wait_for(task, 5)
+        assert result.status == "invalidated"
+        assert await asyncio.wait_for(child.wait(), 5) == 0
+        async with sessions() as session:
+            assert not await chat_mix_allowed(session, node_id, image_id, {str(variant_id)}, now)
+    finally:
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        if child.returncode is None:
+            child.kill()
+        await child.wait()

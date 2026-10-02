@@ -16,6 +16,7 @@ from coire_api.db import (
     ModelVariantRow,
     NodeRow,
 )
+from coire_api.placement.service import lock_nodes_for_admission
 from coire_core.errors import ImageNotFound, ImageValidationError
 from coire_core.models.acquisition import VariantState
 from coire_core.models.audit import AuditOutcome
@@ -83,9 +84,9 @@ async def admit_coexistence_report(
     )
     if (
         model is None
-        or model.kind is not ModelKind.IMAGE_MODEL
+        or model.kind != ModelKind.IMAGE_MODEL
         or model.backend != EngineBackend.MFLUX
-        or model.source is not ModelSource.STUDIO
+        or model.source != ModelSource.STUDIO
         or model.state is not ModelState.READY
         or model.visibility is not Visibility.PUBLISHED
         or model.image_capability_profile is None
@@ -120,7 +121,7 @@ async def admit_coexistence_report(
         chat_model = await session.get(ModelRow, variant.model_id)
         if (
             chat_model is None
-            or chat_model.kind is not ModelKind.LANGUAGE_MODEL
+            or chat_model.kind != ModelKind.LANGUAGE_MODEL
             or chat_model.state is not ModelState.READY
         ):
             raise ImageValidationError("coexistence chat model unavailable")
@@ -170,6 +171,13 @@ async def invalidate_coexistence_profile(
     session: AsyncSession, principal: Principal, profile_id: uuid.UUID
 ) -> ImageCoexistenceProfile:
     """Stop future mixed admission as soon as the audited row commits."""
+    existing = await session.get(ImageCoexistenceProfileRow, profile_id)
+    if existing is None:
+        raise ImageNotFound()
+    # Serialize revocation with dispatch and chat admission on this node.
+    # Read the row again after the lock so a stale identity map cannot restore
+    # an approval that another transaction has already revoked.
+    await lock_nodes_for_admission(session, [existing.node_id])
     row = await session.get(
         ImageCoexistenceProfileRow, profile_id, populate_existing=True, with_for_update=True
     )
