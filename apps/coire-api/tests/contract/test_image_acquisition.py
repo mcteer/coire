@@ -58,6 +58,22 @@ def test_image_base_inspection_has_explicit_kind_backend_and_licence() -> None:
     assert result.revision == "a" * 40
 
 
+def test_z_image_diffusers_root_manifest_is_a_local_config() -> None:
+    repo = _repo(
+        repo_id="Tongyi-MAI/Z-Image-Turbo",
+        files=[
+            RepoFile(path="model_index.json", bytes=100),
+            RepoFile(path="transformer/config.json", bytes=100),
+            RepoFile(
+                path="transformer/diffusion_pytorch_model.safetensors",
+                bytes=1024,
+                upstream_sha256="b" * 64,
+            ),
+        ],
+    )
+    assert classify_image_inspection(repo, ModelKind.IMAGE_MODEL).supported
+
+
 def test_image_inspection_rejects_missing_licence_or_commit() -> None:
     assert (
         classify_image_inspection(_repo(license_id=None), ModelKind.IMAGE_MODEL).rejection_code

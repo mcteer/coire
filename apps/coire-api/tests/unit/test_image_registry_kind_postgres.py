@@ -12,6 +12,10 @@ import asyncpg
 import pytest
 from alembic import command
 from alembic.config import Config
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+from coire_api.db import ModelRow
+from coire_core.models.registry import ModelKind
 
 
 @pytest.mark.integration
@@ -106,6 +110,40 @@ def test_registry_kind_upgrade_and_guarded_downgrade(monkeypatch: pytest.MonkeyP
             )
         finally:
             await connection.close()
+
+        engine = create_async_engine(test_dsn.replace("postgresql:", "postgresql+asyncpg:", 1))
+        sessions = async_sessionmaker(engine, expire_on_commit=False)
+        classifier_id = uuid.uuid4()
+        try:
+            async with sessions.begin() as session:
+                session.add(
+                    ModelRow(
+                        id=classifier_id,
+                        repo_id="test/image-classifier-kind",
+                        slug="test--image-classifier-kind",
+                        display_name="Classifier",
+                        precision="safetensors",
+                        weight_bytes=1,
+                        total_bytes=1,
+                        file_count=1,
+                        memory_estimate_bytes=1,
+                        kind=ModelKind.IMAGE_CLASSIFIER,
+                        backend="auxiliary",
+                        source="studio",
+                        image_capability_profile=None,
+                    )
+                )
+            connection = await asyncpg.connect(test_dsn)
+            try:
+                assert await connection.fetchval(
+                    "SELECT image_capability_profile IS NULL FROM models WHERE id = $1",
+                    classifier_id,
+                )
+                await connection.execute("DELETE FROM models WHERE id = $1", classifier_id)
+            finally:
+                await connection.close()
+        finally:
+            await engine.dispose()
 
     async def clear_profile() -> None:
         connection = await asyncpg.connect(test_dsn)

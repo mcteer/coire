@@ -246,7 +246,9 @@ class ModelRow(Base):
     context_window: Mapped[int | None] = mapped_column(Integer, nullable=True)
     chat_template: Mapped[str | None] = mapped_column(Text, nullable=True)
     capability_profile: Mapped[dict[str, object]] = mapped_column(JSONB, default=dict)
-    image_capability_profile: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    image_capability_profile: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     backend: Mapped[str] = mapped_column(String(16), default="mlx_lm", server_default="mlx_lm")
     kind: Mapped[str] = mapped_column(
         String(32), default=ModelKind.LANGUAGE_MODEL, server_default="language_model"
