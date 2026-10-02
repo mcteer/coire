@@ -17,6 +17,14 @@ attempted. A regression test fails the first 25 purges and confirms the 26th
 is reached on the next pass; the focused maintenance suite passed **18 tests**,
 with Ruff and strict mypy green. T039 remains open for full retention evidence.
 
+## Full-disk generation failure injection — 2026-10-02
+
+A local fake-worker recovery integration case now injects `ENOSPC` at PNG
+encoding, verifies the private attempt directory is removed and verifies the
+durable node journal has not advanced to a publishable state. The recovery
+suite passed **3 tests**, with Ruff and strict mypy green. T075 remains open
+for its remaining boundary and failure matrix.
+
 ## CI image gate and chat lease expiry — 2026-10-02
 
 The `c55b433` pull-request CI run passed general Ruff/strict mypy lint and the

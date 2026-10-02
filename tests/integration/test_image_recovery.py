@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -24,9 +25,10 @@ from coire_core.models.images import (
     canonical_recipe_bytes,
     canonical_spec_hash,
 )
+from coire_node import image_worker
 from coire_node.image_cleanup import cleanup_image_outputs
 from coire_node.image_jobs import ImageJobJournal, ImageJournalConflict
-from coire_node.image_worker import run_image_job
+from coire_node.image_worker import ImageJobExecutionError, run_image_job
 from coire_node.testing.fake_image_worker import FakeImagePipeline
 
 pytestmark = pytest.mark.integration
@@ -86,6 +88,45 @@ def test_restart_replays_same_fence_and_refuses_changed_attempt(tmp_path: Path) 
     with pytest.raises(ImageJournalConflict):
         restarted.begin(original.model_copy(update={"fence": 2}))
     assert restarted.get(JOB) == running
+
+
+def test_full_disk_during_png_write_keeps_journal_unpublished_and_removes_scratch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    start = _request()
+    journal = ImageJobJournal(tmp_path, NODE)
+    queued = journal.begin(start)
+    load = ImageWorkerLoadRequest(
+        slug="studio--fake-image",
+        model_id=start.model_id,
+        instance_id=start.instance_id,
+        manifest_sha256=start.resolved.model_sha256,
+        reservation_bytes=start.reservation_bytes,
+        runtime_version=start.resolved.pipeline_version,
+    )
+
+    def no_space(*args: object) -> None:
+        raise OSError(errno.ENOSPC, "disk full")
+
+    monkeypatch.setattr(image_worker, "write_image_png", no_space)
+    scratch = tmp_path / "image-scratch"
+    with pytest.raises(ImageJobExecutionError):
+        run_image_job(
+            FakeImagePipeline(),
+            load,
+            ImageWorkerRunRequest(
+                job_id=JOB,
+                attempt=1,
+                fence=1,
+                instance_id=start.instance_id,
+                resolved=start.resolved,
+                deadline_at=start.deadline_at,
+            ),
+            scratch,
+            lambda *_: None,
+        )
+    assert journal.get(JOB) == queued
+    assert not (scratch / f"{JOB}-1-1").exists()
 
 
 def test_fenced_receipt_cannot_clean_or_publish_a_different_attempt(tmp_path: Path) -> None:
