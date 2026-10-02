@@ -347,7 +347,13 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
         logger.info("resumed %d acquisition job(s)", resumed)
     engines.start_health_loop()
     if hasattr(collector, "attach"):
-        collector.attach(store=store, jobs=jobs, engines=engines)
+        collector.attach(
+            store=store,
+            jobs=jobs,
+            engines=engines,
+            image_workers=image_workers,
+            reservations=reservations,
+        )
 
     servers: list[uvicorn.Server] = []
     if not settings.legacy_network_mode and control_addr:

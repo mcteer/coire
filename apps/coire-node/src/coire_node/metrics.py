@@ -217,17 +217,29 @@ class MetricsCollector:
         self._store: object | None = None
         self._jobs: object | None = None
         self._engines: object | None = None
+        self._image_workers: object | None = None
+        self._reservations: object | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         # Prime psutil's CPU deltas so the first real sample is meaningful, not 0.0.
         psutil.cpu_percent(interval=None)
         self._proc.cpu_percent(interval=None)
 
-    def attach(self, *, store: object, jobs: object, engines: object) -> None:
-        """Give the collector the feature-001 sources for its additive NodeStatus fields."""
+    def attach(
+        self,
+        *,
+        store: object,
+        jobs: object,
+        engines: object,
+        image_workers: object | None = None,
+        reservations: object | None = None,
+    ) -> None:
+        """Give the collector disjoint node memory holders for NodeStatus."""
         self._store = store
         self._jobs = jobs
         self._engines = engines
+        self._image_workers = image_workers
+        self._reservations = reservations
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
@@ -285,6 +297,7 @@ class MetricsCollector:
             jobs=self._job_statuses(),
             memory_budget_bytes=self._budget(),
             memory_committed_bytes=self._committed(),
+            image_worker_resident_bytes=self._image_resident(),
             store_free_bytes=self._store_free(),
             supported_backends=(
                 [EngineBackend.MLX_LM, EngineBackend.MLX_VLM]
@@ -349,9 +362,15 @@ class MetricsCollector:
         if self._engines is None:
             return 0
         try:
-            return int(self._engines.committed_bytes())  # type: ignore[attr-defined]
+            committed = int(self._engines.committed_bytes())  # type: ignore[attr-defined]
+            if self._image_workers is not None:
+                committed += int(self._image_workers.committed_bytes())  # type: ignore[attr-defined]
+            if self._reservations is not None:
+                committed += int(self._reservations.held_bytes())  # type: ignore[attr-defined]
+            return committed
         except Exception:
-            return 0
+            logger.exception("could not read complete node memory commitment")
+            return self._budget() or int(psutil.virtual_memory().total)
 
     def _store_free(self) -> int:
         if self._store is None:
@@ -360,6 +379,15 @@ class MetricsCollector:
             return int(self._store.free_bytes())  # type: ignore[attr-defined]
         except Exception:
             return 0
+
+    def _image_resident(self) -> int | None:
+        if self._image_workers is None:
+            return None
+        try:
+            return self._image_workers.measured_resident_bytes()  # type: ignore[attr-defined, no-any-return]
+        except Exception:
+            logger.exception("could not measure image worker physical footprint")
+            return None
 
     def latest(self, *, path: NodePath = NodePath.MESH) -> NodeStatus:
         with self._lock:

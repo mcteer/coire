@@ -29,6 +29,7 @@ from coire_core.models.image_worker import (
     ImageWorkerUnloadRequest,
 )
 from coire_core.settings import Settings
+from coire_node.footprint import resident_bytes as measured_footprint_bytes
 from coire_node.image_runtime.bootstrap import (
     ImageWorkerBootstrapError,
     _read_private,
@@ -157,6 +158,14 @@ class ImageProcessSupervisor:
             if self.record_path.exists():
                 return int(self.memory_total_bytes * self.settings.node_memory_budget_fraction)
             return self._uncertain_reserved_bytes
+
+    def measured_resident_bytes(self) -> int | None:
+        """Return the exact live worker's physical footprint, including Metal on macOS."""
+        with self._lock:
+            record = self._record
+            if record is None or record.status.pid is None or not _identity_alive(record):
+                return None
+            return measured_footprint_bytes(record.status.pid)
 
     def current_status(self) -> ImageWorkerLoadResult | None:
         with self._lock:

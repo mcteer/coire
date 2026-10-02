@@ -25,6 +25,17 @@ from coire_core.settings import Settings
 logger = logging.getLogger(__name__)
 
 
+def measured_node_residency(
+    status: NodeStatus | NodeStatusV2, *, image_reserved_bytes: int
+) -> int | None:
+    """Include the image child's physical footprint without inventing an unknown value."""
+    if image_reserved_bytes > 0 and status.image_worker_resident_bytes is None:
+        return None
+    return sum(engine.resident_bytes or 0 for engine in status.engines) + (
+        status.image_worker_resident_bytes or 0
+    )
+
+
 class NodeProber:
     """Polls `/node/health` on every registered node and records what it finds."""
 
@@ -91,28 +102,44 @@ class NodeProber:
                             None if status is not None else "node health probe failed"
                         )
                         ledger.health_sampled_at = datetime.now(UTC)
-                        ledger.measured_resident_bytes = (
-                            sum(engine.resident_bytes or 0 for engine in status.engines)
-                            if status is not None
-                            else ledger.measured_resident_bytes
-                        )
                         if status is not None:
-                            model_reserved = await session.scalar(
+                            resident_reserved = await session.scalar(
                                 select(
                                     func.coalesce(func.sum(MemoryReservationRow.bytes), 0)
                                 ).where(
                                     MemoryReservationRow.node_id == row.id,
-                                    MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                                    MemoryReservationRow.holder_type.in_(
+                                        (ReservationHolder.MODEL, ReservationHolder.IMAGE)
+                                    ),
                                     MemoryReservationRow.state.in_(
                                         [
+                                            MemoryReservationState.PENDING,
                                             MemoryReservationState.HELD,
                                             MemoryReservationState.RELEASING,
                                         ]
                                     ),
                                 )
                             )
+                            image_reserved = await session.scalar(
+                                select(
+                                    func.coalesce(func.sum(MemoryReservationRow.bytes), 0)
+                                ).where(
+                                    MemoryReservationRow.node_id == row.id,
+                                    MemoryReservationRow.holder_type == ReservationHolder.IMAGE,
+                                    MemoryReservationRow.state.in_(
+                                        [
+                                            MemoryReservationState.PENDING,
+                                            MemoryReservationState.HELD,
+                                            MemoryReservationState.RELEASING,
+                                        ]
+                                    ),
+                                )
+                            )
+                            ledger.measured_resident_bytes = measured_node_residency(
+                                status, image_reserved_bytes=int(image_reserved or 0)
+                            )
                             drift = drift_ratio(
-                                reserved_bytes=int(model_reserved or 0),
+                                reserved_bytes=int(resident_reserved or 0),
                                 measured_bytes=ledger.measured_resident_bytes,
                             )
                             ledger_drift.set(

@@ -124,6 +124,16 @@ one admission lock. Each new load counts the other two live commitments, so
 an acquisition hold cannot race or be ignored by a model load. Inspect the
 node memory commitments and acquisition reservations together when a load
 waits for budget.
+`/node/health` reports the sum of language engines, the resident image worker,
+and acquisition holds in `memory_committed_bytes`; these are disjoint local
+holders. If any source cannot be read, the health sample reports the full node
+budget instead of an unsafe zero. Compare that field with the core ledger and
+the worker's exact process identity before clearing any apparent drift. The
+`image_worker_resident_bytes` health field reports that live process's measured
+physical footprint, including Metal memory on macOS. If an image reservation
+exists but the footprint is unavailable, core leaves measured residency
+unknown; inspect the worker journal and the `coire_placement_ledger_drift_ratio`
+alert before reconciling a reservation.
 On agent restart, image re-adoption runs before listeners bind. An uncertain
 record holds the full image budget; inspect the process and private record
 before reconciliation. Roll back the node wheel after an exact-instance

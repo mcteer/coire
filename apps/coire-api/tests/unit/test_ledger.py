@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import cast
 
-from coire_api.placement.service import drift_ratio
+from coire_api.db import MemoryReservationRow
+from coire_api.placement.service import drift_ratio, resident_reservation_bytes
 from coire_core.models.node import Reachability
+from coire_core.models.placement import ReservationHolder
 from coire_scheduler.placement import NodeCapacity, node_admissible, plan_admission
 
 
@@ -45,3 +49,16 @@ def test_drift_is_measured_against_authoritative_reservations() -> None:
     assert drift_ratio(reserved_bytes=0, measured_bytes=10) == 1.0
     assert drift_ratio(reserved_bytes=0, measured_bytes=0) is None
     assert drift_ratio(reserved_bytes=100, measured_bytes=None) is None
+
+
+def test_residency_drift_includes_image_but_excludes_nonprocess_holds() -> None:
+    rows = cast(
+        list[MemoryReservationRow],
+        [
+            SimpleNamespace(holder_type=ReservationHolder.MODEL, bytes=100),
+            SimpleNamespace(holder_type=ReservationHolder.IMAGE, bytes=50),
+            SimpleNamespace(holder_type=ReservationHolder.SANDBOX, bytes=25),
+        ],
+    )
+    assert resident_reservation_bytes(rows) == 150
+    assert drift_ratio(reserved_bytes=resident_reservation_bytes(rows), measured_bytes=150) == 0

@@ -1,5 +1,21 @@
 # Feature 015 execution record
 
+## Node health image memory accounting — 2026-10-02
+
+Node health now adds disjoint language engine, resident image worker and
+acquisition-hold commitments. An unreadable holder reports the full node
+budget rather than zero. It separately reports the exact live image child's
+physical footprint, and core includes that footprint in measured residency;
+an unavailable footprint leaves drift unknown while an image hold exists.
+Both the prober and ledger projection compare measured model-plus-image
+residency against matching model-plus-image reservations. The node health
+contract was extended for the additive field. Focused regressions passed
+**29 tests**, the node health contract passed **12 tests**, and the full Python
+suite passed **1,819 tests** with 159 platform/external skips. Web tests
+passed **138 tests**; lint, build, OpenAPI freshness, Ruff and strict mypy
+across 646 source files passed. The remaining transient/cache and real-cluster
+drift matrix still belong to T070.
+
 ## Cross-process legacy launch deduplication — 2026-10-02
 
 Admin and gateway legacy loads now re-read active engine rows after acquiring
@@ -10,7 +26,7 @@ that rebuilt API stack (**2 integration tests**). A ready hold requires its
 node ledger row even when the hold already exists. The focused gateway tests
 passed **11 tests**; the complete local Python suite passed **1,815 tests**
 with 159 platform/external skips. Ruff and strict mypy across 645 files passed.
-The latest CI for this commit is pending. T065/T068 remain open for their wider
+The latest CI for this commit is pending. T065/T072 remain open for their wider
 placement and coexistence matrices.
 
 ## Owner input binding for fill and control — 2026-10-02

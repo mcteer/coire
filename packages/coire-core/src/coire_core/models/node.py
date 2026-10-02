@@ -291,8 +291,8 @@ class NodeStatus(BaseModel):
     jobs: list[JobStatus] = Field(default_factory=list)
     memory_budget_bytes: int = 0
     memory_committed_bytes: int = 0
-    """Sum of the *estimates* of live engines, not their measured footprints. Admission on a
-    number that moves under load is not reproducible (spec FR-020, research R6)."""
+    """Disjoint engine, image-worker and acquisition holds; not measured footprint."""
+    image_worker_resident_bytes: int | None = Field(default=None, ge=0)
     store_free_bytes: int = 0
     supported_backends: list[EngineBackend] = Field(default_factory=lambda: [EngineBackend.MLX_LM])
 
@@ -323,6 +323,7 @@ class NodeStatusV2(BaseModel):
     jobs: list[JobStatus] = Field(default_factory=list)
     memory_budget_bytes: int = Field(default=0, ge=0)
     memory_committed_bytes: int = Field(default=0, ge=0)
+    image_worker_resident_bytes: int | None = Field(default=None, ge=0)
     store_free_bytes: int = Field(default=0, ge=0)
     supported_backends: list[EngineBackend] = Field(default_factory=lambda: [EngineBackend.MLX_LM])
     run_images_configured: bool = False

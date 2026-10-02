@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
@@ -38,7 +38,7 @@ class LedgerNotFoundError(LookupError):
 meter = metrics.get_meter("coire.api.placement")
 ledger_drift = meter.create_gauge(
     "coire_placement_ledger_drift_ratio",
-    description="Measured model residency minus model reservations, divided by model reservations.",
+    description="Measured model and image residency minus their reservations, divided by those reservations.",
 )
 
 
@@ -48,6 +48,15 @@ def drift_ratio(*, reserved_bytes: int, measured_bytes: int | None) -> float | N
     if reserved_bytes == 0:
         return 1.0 if measured_bytes > 0 else None
     return (measured_bytes - reserved_bytes) / reserved_bytes
+
+
+def resident_reservation_bytes(reservations: Sequence[MemoryReservationRow]) -> int:
+    """Match the model and image processes included in measured residency."""
+    return sum(
+        row.bytes
+        for row in reservations
+        if row.holder_type in (ReservationHolder.MODEL, ReservationHolder.IMAGE)
+    )
 
 
 @asynccontextmanager
@@ -176,10 +185,8 @@ async def project_ledgers(session: AsyncSession) -> list[MemoryLedger]:
         )
         reserved = sum(row.bytes for row in reservations)
         measured = ledger.measured_resident_bytes
-        model_reserved = sum(
-            row.bytes for row in reservations if row.holder_type is ReservationHolder.MODEL
-        )
-        drift = drift_ratio(reserved_bytes=model_reserved, measured_bytes=measured)
+        resident_reserved = resident_reservation_bytes(reservations)
+        drift = drift_ratio(reserved_bytes=resident_reserved, measured_bytes=measured)
         node = nodes[ledger.node_id]
         ledger_drift.set(drift if drift is not None else 0.0, {"node": node.name})
         result.append(

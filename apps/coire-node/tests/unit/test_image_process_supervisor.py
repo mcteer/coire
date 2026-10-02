@@ -407,6 +407,16 @@ def test_default_term_kill_grace_confirms_death_within_five_seconds(
     assert result.reserved_bytes == 0
 
 
+def test_worker_footprint_requires_exact_live_process_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager, _request = _started(tmp_path, monkeypatch)
+    monkeypatch.setattr(supervisor, "measured_footprint_bytes", lambda pid: 800)
+    assert manager.measured_resident_bytes() == 800
+    FakePsutilProcess.alive = False
+    assert manager.measured_resident_bytes() is None
+
+
 def test_stop_never_signals_reused_or_uncertain_pid(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
