@@ -26,6 +26,8 @@ first-token p95, unavailable metrics or fresh thermal alarm and commits fenced
 profiles and serious/critical thermal samples. Focused profile, admission and
 monitor suites passed **41 tests**, so T069 is reconciled as complete. The
 operator 15-minute benchmark and physical coexistence evidence remain T084.
+The regression helper now also treats a nonfinite direct latency sample as
+unavailable and withdraws approval; the expanded monitor suite passed **11 tests**.
 
 ## Atomic image/chat admission reconciliation — 2026-10-02
 
@@ -40,6 +42,18 @@ change; the focused gateway/observability suite passed **11 tests**, strict mypy
 and Ruff passed, and both Chat and Image Prometheus rule files validated.
 The cross-process PostgreSQL lease tests above passed. T068 is reconciled as
 complete; simulated full contention remains T072 and physical evidence T084.
+The subsequent full non-integration/non-engine Python gate passed **1,792 tests**
+with 2 existing skips and 166 deselections.
+
+## Image worker residency reconciliation — 2026-10-02
+
+T071's idle sweep, pin guard, durable drain intent, exact node stop proof and
+startup adoption were already implemented in `image_residency.py`, the node
+supervisor/agent and authenticated worker/admin routes. The scheduler advances
+past a busy first batch and retains a held reservation on uncertain node stop.
+The focused residency, supervisor, node contract and admin unload suites passed
+**24 tests**. T071 is reconciled as complete; node physical footprint and
+operator restart trials remain T070/T083.
 
 ## Retained output receipt audit — 2026-10-02
 

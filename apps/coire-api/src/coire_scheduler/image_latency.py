@@ -80,9 +80,12 @@ async def invalidate_regressed_node(
     if (
         not thermal_alarm
         and p95_ms is not None
-        and (not math.isfinite(p95_ms) or p95_ms <= _P95_LIMIT_MS)
+        and math.isfinite(p95_ms)
+        and p95_ms <= _P95_LIMIT_MS
     ):
         return 0, 0
+    if p95_ms is not None and not math.isfinite(p95_ms):
+        p95_ms = None
     reason = (
         "thermal_alarm"
         if thermal_alarm

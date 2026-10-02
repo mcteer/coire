@@ -66,6 +66,7 @@ async def test_invalid_or_nonfinite_latency_cannot_authorize_a_regression() -> N
     ("p95_ms", "thermal_alarm", "audit_action"),
     [
         (1500.001, False, "image.coexistence.latency_invalidated"),
+        (float("nan"), False, "image.coexistence.monitor_invalidated"),
         (None, True, "image.coexistence.thermal_invalidated"),
     ],
 )
