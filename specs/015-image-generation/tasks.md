@@ -112,7 +112,7 @@ changes invalidate correctly. Cache occupancy remains bounded, and one patched s
 pairs wait. An approved same-node image/chat configuration completes images while meeting chat
 latency. Idle unload and crash recovery release reservations only after confirmed termination.
 
-- [ ] T065 [P] [US5] Add cross-process admission/lease-expiry/profile-invalidation tests in `apps/coire-api/tests/unit/test_image_admission.py`, covering pinned placement, concurrent chat arrival and incompatible new loads (FR-004, FR-005, FR-006, FR-025).
+- [X] T065 [P] [US5] Add cross-process admission/lease-expiry/profile-invalidation tests in `apps/coire-api/tests/unit/test_image_admission.py` and `test_image_accelerator_admission.py`, covering pinned placement, concurrent chat arrival and incompatible new loads (FR-004, FR-005, FR-006, FR-025).
 - [X] T066 [P] [US5] Add image resident/transient/TTL/re-adoption/drift tests in `apps/coire-node/tests/unit/test_image_residency.py` and scheduler ledger tests in `apps/coire-api/tests/unit/test_image_placement.py` (FR-004, FR-006, FR-029).
 - [x] T067 [P] [US5] Add a repeatable mixed-workload benchmark driver and report schema in `tests/benchmarks/image_chat.py`, recording gateway overhead, first-token p50/p95, decode throughput, image progress, thermal state and footprint (FR-033, FR-035, SC-006).
 - [X] T068 [US5] Implement shared atomic accelerator admission/profile matching in `apps/coire-api/src/coire_scheduler/image_admission.py`, `coire_api/placement/service.py` and `gateway/proxy.py`; image scheduling prefers B within registry policy and honors chat leases/pinning (FR-004, FR-005, FR-006, SC-006).

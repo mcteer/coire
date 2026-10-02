@@ -22,6 +22,7 @@ from coire_api.db import (
     MemoryReservationRow,
     ModelRow,
     ModelVariantRow,
+    NodeMemoryLedgerRow,
     NodeRow,
     RequestLeaseRow,
 )
@@ -44,9 +45,11 @@ from coire_core.models.registry import EngineBackend, ModelKind, ModelState
 from coire_scheduler.image_admission import (
     chat_mix_allowed,
     coexistence_report_hash,
+    image_available_bytes,
     node_hardware_fingerprint,
     node_runtime_fingerprint,
 )
+from coire_scheduler.image_dispatch import ImageNodeCandidate, choose_image_node
 
 # Credentials stay in the child environment, never argv or output. This invokes
 # production admission helpers in another interpreter, not an asyncio mock.
@@ -69,6 +72,9 @@ async def main():
                 row = await session.get(MemoryReservationRow, uuid.UUID(sys.argv[2]))
                 row.state = MemoryReservationState.RELEASED
                 row.released_at = datetime.now(UTC)
+            elif sys.argv[3] == 'consume':
+                row = await session.get(MemoryReservationRow, uuid.UUID(sys.argv[2]))
+                row.bytes = 1024 ** 3
     finally:
         await engine.dispose()
 asyncio.run(main())
@@ -334,6 +340,7 @@ async def test_profile_invalidation_waits_for_independent_node_admission(
         )
     async with sessions() as session:
         assert await chat_mix_allowed(session, node_id, image_id, {str(variant_id)}, now)
+        assert not await chat_mix_allowed(session, node_id, image_id, {str(uuid.uuid4())}, now)
 
     async def no_audit(*args: object, **kwargs: object) -> None:
         pass
@@ -374,6 +381,105 @@ async def test_profile_invalidation_waits_for_independent_node_admission(
         assert await asyncio.wait_for(child.wait(), 5) == 0
         async with sessions() as session:
             assert not await chat_mix_allowed(session, node_id, image_id, {str(variant_id)}, now)
+    finally:
+        if task is not None:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        if child.returncode is None:
+            child.kill()
+        await child.wait()
+
+
+@pytest.mark.integration
+async def test_pinned_image_rechecks_capacity_after_independent_chat_hold(
+    admission_database: tuple[async_sessionmaker[AsyncSession], str, uuid.UUID, uuid.UUID],
+) -> None:
+    sessions, dsn, node_id, reservation_id = admission_database
+    engine = create_async_engine(dsn)
+    async with engine.begin() as connection:
+        await connection.run_sync(
+            lambda sync: Base.metadata.create_all(
+                sync,
+                tables=[
+                    Base.metadata.tables[name]
+                    for name in (
+                        "models",
+                        "model_variants",
+                        "placement_decisions",
+                        "node_memory_ledgers",
+                        "model_instances",
+                        "instance_members",
+                    )
+                ],
+            )
+        )
+    await engine.dispose()
+    image_id = uuid.uuid4()
+    async with sessions() as session, session.begin():
+        session.add(
+            NodeMemoryLedgerRow(
+                node_id=node_id,
+                budget_bytes=1024**3,
+                measured_resident_bytes=1024,
+                health=Reachability.HEALTHY,
+            )
+        )
+
+    async def candidate() -> ImageNodeCandidate:
+        async with sessions() as session, session.begin():
+            from coire_api.placement.service import lock_nodes_for_admission
+
+            await lock_nodes_for_admission(session, [node_id])
+            node = await session.get(NodeRow, node_id)
+            assert node is not None
+            available = await image_available_bytes(
+                session, node, image_id, 40, budget_fraction=1.0
+            )
+            return ImageNodeCandidate(
+                name="coire-edge-b",
+                node_id=node_id,
+                healthy=True,
+                memory_total_bytes=available,
+                image_busy=False,
+                chat_unmeasured=False,
+            )
+
+    initial = await candidate()
+    assert choose_image_node("pinned:coire-edge-b", 40, [initial]) == initial
+    child = await asyncio.create_subprocess_exec(
+        sys.executable,
+        "-c",
+        _LOCK_PROCESS,
+        str(node_id),
+        str(reservation_id),
+        "consume",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={**os.environ, "COIRE_TEST_CHILD_DATABASE_URL": dsn},
+    )
+    assert child.stdin is not None and child.stdout is not None
+    task: asyncio.Task[ImageNodeCandidate] | None = None
+    try:
+        assert await asyncio.wait_for(child.stdout.readline(), 10) == b"locked\n"
+        task = asyncio.create_task(candidate())
+        with pytest.raises(TimeoutError):
+            await asyncio.wait_for(asyncio.shield(task), 0.15)
+        child.stdin.write(b"release admission\n")
+        await child.stdin.drain()
+        after_chat = await asyncio.wait_for(task, 5)
+        assert await asyncio.wait_for(child.wait(), 5) == 0
+        assert after_chat.memory_total_bytes == 0
+        other = ImageNodeCandidate(
+            name="coire-edge-a",
+            node_id=uuid.uuid4(),
+            healthy=True,
+            memory_total_bytes=1024**3,
+            image_busy=False,
+            chat_unmeasured=False,
+        )
+        assert choose_image_node("pinned:coire-edge-b", 40, [after_chat, other]) is None
+        assert choose_image_node("single:auto", 40, [after_chat, other]) == other
     finally:
         if task is not None:
             task.cancel()

@@ -6,10 +6,12 @@
 run Studio acceptance workloads. CI remains isolated. A disposable localhost-only
 PostgreSQL 17 container (`coire-015-postgres-final`, ephemeral tmpfs, host port
 32776) passed the existing four cross-process admission/lease cases and five
-migration/quota cases. A new independent-interpreter test exposed and now proves
-that profile invalidation waits for the same node admission lock as dispatch.
-It also exercised approved and invalidated profile reads from actual PostgreSQL
-rows. The test exposed string-backed registry `kind`/`source`/`backend` fields
+migration/quota cases. New independent-interpreter tests prove profile
+invalidation waits for the node admission lock, and a competing chat hold is
+re-read before pinned image placement; a full pinned node refuses rather than
+redirecting to the other Studio, while auto placement may choose the other.
+Approved, invalidated and incompatible new-variant profile reads use actual
+PostgreSQL rows. This exposed string-backed registry `kind`/`source`/`backend` fields
 that image admission, dependency dispatch, acquisition and catalog compared by
 Python identity; those paths now compare values. Focused admission and listing
 tests passed **51**, strict mypy passed **652 source files**, and the full Python
