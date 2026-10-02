@@ -213,7 +213,6 @@ def test_failed_worker_cleans_both_scratch_trees_before_terminal_journal(
     assert dispatcher.journal.get(JOB) == reserving
     assert outside.read_bytes() == b"keep"
 
-
     (output / "0.png").unlink()
     (output / "0.png").write_bytes(b"partial")
     (output / "0.png").chmod(0o600)

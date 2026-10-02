@@ -2077,3 +2077,11 @@ T081–T085 remain unchecked until their stated evidence exists. Principles
 I–VII and II-a are addressed in the [plan](plan.md#constitution-check) and
 draft PR #90. No full-model or real-cluster result is inferred from the tiny
 fixture.
+
+After the final prompt/control diagnostic split, the complete local Python
+suite passed **1,874 tests, 160 skipped**. The focused simulated image job
+and recovery integration suite passed **7 tests**, the local tiny native
+worker passed **10 tests**, and the web suite passed **144 tests**. Ruff
+format/check, strict mypy, OpenAPI freshness, web lint/build and diff
+whitespace checks passed. The skipped selections still require external
+integration or platform setup; they are not treated as acceptance evidence.

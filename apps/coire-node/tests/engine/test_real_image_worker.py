@@ -434,6 +434,7 @@ def test_real_encoder_cache_twenty_warm_trials_and_changed_prompt_miss(
             }
         )
         images = pipeline.generate(iteration, lambda *_: None)
+        assert pipeline.cache_status == ("cold" if trial == 0 else "hit")
         try:
             digests.append(pixel_digest(images[0].tobytes(), width=64, height=64, channels=3))
         finally:
@@ -451,6 +452,7 @@ def test_real_encoder_cache_twenty_warm_trials_and_changed_prompt_miss(
     )
     for image in pipeline.generate(other_resolved, lambda *_: None):
         image.close()
+    assert pipeline.cache_status == "cold"
     assert calls == 2
     assert cache_events.count(("prompt", "miss")) == 2
     changed_environment = other_resolved.model_copy(update={"environment_fingerprint": "b" * 64})
