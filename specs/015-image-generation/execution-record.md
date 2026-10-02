@@ -1,9 +1,23 @@
 # Feature 015 execution record
 
+## Prompt cancellation dispatch and bounded process stop — 2026-10-02
+
+A dedicated scheduler scan now discovers committed image cancellation every
+250 ms instead of sharing the two-second acquisition loop. Exact process-group
+TERM escalates to KILL after 2.5 seconds; memory remains held until the same
+process is proved gone. Scheduler records intent-to-cleanup delay, exposes its
+p95 on the image dashboard and alerts above the five-second target. The focused
+poller, workflow, process-supervisor and observability checks passed **20
+tests**; the full local Python suite passed **1,841 tests** with 159
+platform/external skips, and the tiny native image suite passed **9 tests**.
+Strict mypy and Ruff passed. T041 stays open for an end-to-end
+healthy-node timing proof, and T083 retains the full-model Studio matrix.
+
 ## Registry-bound auxiliary copy identity — 2026-10-02
 
 Resolved dependency records now carry the registry's safe local slug alongside
-model UUID and manifest digest. New jobs can bind a local auxiliary tree without
+model UUID, pinned source revision and manifest digest. New jobs can bind a
+local auxiliary tree without
 deriving a path from client text; older recipes remain readable through the
 optional field. Unsafe slugs fail contract validation. OpenAPI and generated
 TypeScript types were refreshed; **35 focused contract/dispatch/replay tests**,

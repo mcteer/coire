@@ -98,6 +98,14 @@ control calls `DELETE /api/v1/images/{job_id}`. A 202 response means cancellatio
 requested; continue observing until a terminal event. If the worker or node cannot prove
 termination, the job and its reservations remain held for reconciliation. Do not remove
 its files or clear its holds by hand.
+The scheduler scans committed cancellation intent every 250 ms and dispatches
+the fenced DBOS stop workflow. A cooperative stop confirms the worker's terminal
+state; otherwise the node sends TERM to the exact process group, escalates to
+KILL after a 2.5-second grace period, and retains its memory hold until death
+is confirmed. `coire_image_cancellation_delay_seconds` measures intent to
+terminal cleanup proof. Inspect its dashboard p95 and
+`CoireImageCancellationSlow` when healthy cancellations exceed five seconds;
+partitioned or uncertain work remains visibly `cancelling` until proof arrives.
 The scheduler persists the exact node attempt journal before loading the
 worker. A cancellation arriving during model load can therefore cancel that
 queued node attempt without starting generation. A replayed terminal node

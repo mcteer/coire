@@ -50,7 +50,7 @@ class ImageProcessUnavailable(RuntimeError):
         super().__init__("image process unavailable")
 
 
-_STOP_GRACE_S = 4.0
+_STOP_GRACE_S = 2.5
 _ProcessState = Literal["same", "gone", "unknown"]
 
 

@@ -70,6 +70,7 @@ from coire_scheduler.runs import run_kill_workflow, run_workflow
 from coire_scheduler.workers import SchedulerWorkers
 
 SERVICE_NAME = "coire-scheduler"
+_IMAGE_CANCEL_POLL_SECONDS = 0.25
 __version__ = "0.1.0"
 logger = logging.getLogger(__name__)
 kill_scan_failures = metrics.get_meter("coire.scheduler.dispatch").create_counter(
@@ -309,20 +310,6 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
             for image_job_id in publishing_image_ids:
                 with SetWorkflowID(f"image-publish-{image_job_id}"):
                     DBOS.start_workflow(image_publish_workflow, image_job_id)
-            async with session_scope() as session:
-                cancelling_image_ids = list(
-                    (
-                        await session.execute(
-                            select(ImageJobRow.id)
-                            .where(ImageJobRow.state == "cancelling")
-                            .order_by(ImageJobRow.updated_at, ImageJobRow.id)
-                            .limit(4)
-                        )
-                    ).scalars()
-                )
-            for image_job_id in cancelling_image_ids:
-                with SetWorkflowID(f"image-cancel-{image_job_id}"):
-                    DBOS.start_workflow(image_cancel_workflow, image_job_id)
             delay = (
                 settings.acquisition_poll_interval_s
                 if ids
@@ -336,7 +323,6 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
                 or observing_image_ids
                 or image_job_ids
                 or publishing_image_ids
-                or cancelling_image_ids
                 else backoff.idle()
             )
             if (
@@ -351,11 +337,43 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
                 or observing_image_ids
                 or image_job_ids
                 or publishing_image_ids
-                or cancelling_image_ids
             ):
                 backoff.active()
         except Exception:
             logger.exception("acquisition dispatcher pass failed")
+            delay = backoff.failed()
+        await wait_or_stop(stop, delay)
+
+
+async def dispatch_image_cancels(stop: asyncio.Event) -> None:
+    """Notice committed cancel intent promptly without speeding every acquisition scan."""
+    settings = get_settings()
+    backoff = PollBackoff(
+        _IMAGE_CANCEL_POLL_SECONDS,
+        _IMAGE_CANCEL_POLL_SECONDS,
+        settings.scheduler_failure_backoff_max_s,
+    )
+    while not stop.is_set():
+        try:
+            async with session_scope() as session:
+                ids = list(
+                    (
+                        await session.execute(
+                            select(ImageJobRow.id)
+                            .where(ImageJobRow.state == "cancelling")
+                            .order_by(ImageJobRow.cancel_requested_at, ImageJobRow.id)
+                            .limit(4)
+                        )
+                    ).scalars()
+                )
+            for job_id in ids:
+                with SetWorkflowID(f"image-cancel-{job_id}"):
+                    DBOS.start_workflow(image_cancel_workflow, job_id)
+            if ids:
+                backoff.active()
+            delay = _IMAGE_CANCEL_POLL_SECONDS
+        except Exception as exc:
+            logger.error("image cancel dispatch failed error_type=%s", type(exc).__name__)
             delay = backoff.failed()
         await wait_or_stop(stop, delay)
 
@@ -453,6 +471,9 @@ def create_app() -> FastAPI:
             await workers.start()
             background.append(
                 asyncio.create_task(dispatch_queued(stop), name="acquisition-dispatcher")
+            )
+            background.append(
+                asyncio.create_task(dispatch_image_cancels(stop), name="image-cancel-dispatcher")
             )
             background.append(
                 asyncio.create_task(dispatch_kills(stop, workers), name="kill-dispatcher")

@@ -74,6 +74,7 @@ _ACTIVE_CHAT = (
 )
 _REUSABLE_WORKER = (InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY)
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_REVISION = re.compile(r"[0-9a-f]{40}\Z")
 
 
 @dataclass(frozen=True, slots=True)
@@ -558,6 +559,8 @@ async def prepare_image_dispatch(
             or dependency.state is not ModelState.READY
             or dependency.manifest_sha256 is None
             or _DIGEST.fullmatch(dependency.manifest_sha256) is None
+            or dependency.source_revision is None
+            or _REVISION.fullmatch(dependency.source_revision) is None
         ):
             await fail_image_attempt(session, job_id, "model_unavailable")
             return None
@@ -565,7 +568,7 @@ async def prepare_image_dispatch(
             ImageManifestDigest(
                 model_id=dependency.id,
                 slug=dependency.slug,
-                revision="published",
+                revision=dependency.source_revision,
                 sha256=dependency.manifest_sha256,
             )
         )

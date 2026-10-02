@@ -387,7 +387,7 @@ def test_stop_escalates_to_kill_within_grace(
     assert signals == [15, 9]
 
 
-def test_default_term_kill_grace_confirms_death_within_five_seconds(
+def test_default_term_kill_grace_leaves_time_for_scheduler_and_cleanup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     manager, request = _started(tmp_path, monkeypatch)
@@ -402,7 +402,7 @@ def test_default_term_kill_grace_confirms_death_within_five_seconds(
     monkeypatch.setattr("coire_node.image_runtime.supervisor.os.killpg", fake_signal)
     started = time.monotonic()
     result = manager.stop(_unload(request))
-    assert time.monotonic() - started < 5.0
+    assert time.monotonic() - started < 3.1
     assert signals == [15, 9]
     assert result.reserved_bytes == 0
 

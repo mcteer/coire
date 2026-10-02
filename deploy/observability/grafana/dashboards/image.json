@@ -859,6 +859,22 @@
       ],
       "title": "Image worker physical footprint unavailable",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 216},
+      "id": 28,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(coire_image_cancellation_delay_seconds_bucket[5m])))",
+          "legendFormat": "cancel intent to cleanup proof p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Image cancellation delay",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

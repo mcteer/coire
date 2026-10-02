@@ -73,6 +73,11 @@ cancellations_total = metrics.get_meter("coire.scheduler.images").create_counter
     unit="1",
     description="Fenced image cancellation recovery",
 )
+cancellation_delay_seconds = metrics.get_meter("coire.scheduler.images").create_histogram(
+    "coire_image_cancellation_delay_seconds",
+    unit="s",
+    description="Elapsed time from committed cancel intent to terminal cleanup proof",
+)
 observations_total = metrics.get_meter("coire.scheduler.images").create_counter(
     "coire_image_observation_total", unit="1", description="Fenced image journal observations"
 )
@@ -476,8 +481,12 @@ async def drive_image_cancel(job_id: str) -> None:
     ):
         raise ImageConflict("node cancellation identity differs from core")
     async with session_scope() as session:
-        if await finalize_cancelled_image_job(session, status, selected_node_id, settings):
-            cancellations_total.add(1, {"outcome": "cancelled"})
+        committed = await finalize_cancelled_image_job(session, status, selected_node_id, settings)
+    if committed:
+        cancellations_total.add(1, {"outcome": "cancelled"})
+        cancellation_delay_seconds.record(
+            max(0.0, (datetime.now(UTC) - request.requested_at).total_seconds())
+        )
 
 
 async def observe_image_job(job_id: str) -> bool:

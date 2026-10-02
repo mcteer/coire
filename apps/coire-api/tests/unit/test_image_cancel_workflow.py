@@ -38,6 +38,7 @@ async def test_cancel_workflow_requires_exact_node_ack_before_finalization(
         cancel_requested_at=now,
     )
     calls: list[str] = []
+    delay_samples: list[float] = []
 
     class Session:
         async def get(self, model: type[object], identity: object) -> Any:
@@ -92,13 +93,20 @@ async def test_cancel_workflow_requires_exact_node_ack_before_finalization(
     monkeypatch.setattr(images, "NodeClient", Client)
     monkeypatch.setattr(images, "finalize_cancelled_image_job", finalize)
     monkeypatch.setattr(images, "get_settings", lambda: Settings(_secrets_dir="/nonexistent"))  # type: ignore[call-arg]
+    monkeypatch.setattr(
+        images,
+        "cancellation_delay_seconds",
+        SimpleNamespace(record=lambda value: delay_samples.append(value)),
+    )
     if wrong_fence:
         with pytest.raises(ImageConflict):
             await images.drive_image_cancel(JOB)
         assert calls == ["node_cancel"]
+        assert delay_samples == []
     else:
         await images.drive_image_cancel(JOB)
         assert calls == ["node_cancel", "core_finalize"]
+        assert len(delay_samples) == 1 and delay_samples[0] >= 0
 
 
 async def test_partition_keeps_committed_cancel_intent_for_retry(

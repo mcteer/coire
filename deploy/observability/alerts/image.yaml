@@ -145,6 +145,12 @@ groups:
         labels: {severity: critical}
         annotations:
           summary: A Studio image worker could not confirm cancellation
+      - alert: CoireImageCancellationSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(coire_image_cancellation_delay_seconds_bucket[5m]))) > 5
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: Image cancellation proof exceeds the five-second healthy-node target
       - alert: CoireImageIdleUnloadUncertain
         expr: sum(increase(coire_image_worker_idle_unloads_total{outcome="uncertain"}[5m])) > 0
         for: 0m
