@@ -68,6 +68,7 @@ async def test_image_validator_persists_both_results_before_releasing_holds() ->
                 manifest_sha256=manifest_sha256,
                 source_revision=source_revision,
                 peak_rss_bytes=100,
+                peak_physical_bytes=200,
                 peak_physical_delta_bytes=100,
                 thumbnail_sha256="c" * 64,
                 image_capability_profile=_profile(),

@@ -95,13 +95,16 @@ def test_reserved_base_smoke_produces_narrow_capability_and_thumbnail_digest(
     assert result.image_capability_profile.max_width == 512
     assert result.image_capability_profile.max_outputs == 1
     assert result.peak_physical_delta_bytes is not None
+    assert result.peak_physical_bytes is not None
+    assert result.peak_physical_bytes >= result.peak_physical_delta_bytes
 
 
 def test_validation_refuses_transient_physical_footprint_above_hold(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store, digest = _copy(tmp_path)
-    samples = iter((100, 200, 1201, 200, 300, 200))
+    # The 301-byte delta fits the hold, but the 1201-byte process peak does not.
+    samples = iter((900, 950, 1201, 950, 950, 950))
     monkeypatch.setattr(image_validation, "resident_bytes", lambda _: next(samples))
 
     class FakePipeline:
@@ -280,6 +283,7 @@ def test_acquisition_worker_persists_typed_validation_evidence(
         manifest_sha256=digest,
         source_revision=REVISION,
         peak_rss_bytes=100,
+        peak_physical_bytes=200,
         peak_physical_delta_bytes=100,
         thumbnail_sha256="c" * 64,
         image_capability_profile=ImageCapabilityProfile.model_validate(

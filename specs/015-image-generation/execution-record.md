@@ -1789,3 +1789,15 @@ Classifier copy-unavailable and memory-refusal paths now emit the failed
 classification stage counter/span used by the existing alert, while keeping
 the owner diagnostic content-free. The focused worker/classifier suite passed
 **14 tests**; no full-model classifier run was claimed.
+
+The base validator now compares the absolute process physical peak with its
+held reservation, rather than only the increase from its already resident
+baseline. It records both values in strict validation evidence. A unit case
+with a 301-byte increase but 1,201-byte absolute peak against a 1,000-byte
+hold fails as required; the focused node/acquisition validation suite passed
+**10 tests**. The local tiny native matrix was rerun after this adjustment:
+**9 passed**.
+
+After the absolute-footprint contract and generated schema update, the full
+local Python suite again passed **1,829 passed, 159 skipped**. The 138 web
+tests, lint/build, strict mypy, Ruff and OpenAPI freshness checks also passed.

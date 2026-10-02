@@ -111,6 +111,7 @@ class ImageAssetValidationResult(BaseModel):
     source_revision: str = Field(pattern=r"^[0-9a-f]{40}$")
     validator_version: str = "image-v1"
     peak_rss_bytes: int = Field(ge=0)
+    peak_physical_bytes: int | None = Field(default=None, ge=0)
     peak_physical_delta_bytes: int | None = Field(default=None, ge=0)
     thumbnail_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
     image_capability_profile: ImageCapabilityProfile | None = None
@@ -123,12 +124,23 @@ class ImageAssetValidationResult(BaseModel):
             and (
                 self.thumbnail_sha256 is None
                 or self.image_capability_profile is None
+                or self.peak_physical_bytes is None
                 or self.peak_physical_delta_bytes is None
             )
         ):
             raise ValueError(
                 "validated image base requires thumbnail, capability and physical evidence"
             )
+        if (
+            self.kind is ModelKind.IMAGE_MODEL
+            and self.peak_physical_bytes is not None
+            and self.peak_physical_delta_bytes is not None
+            and (
+                self.peak_physical_bytes == 0
+                or self.peak_physical_delta_bytes > self.peak_physical_bytes
+            )
+        ):
+            raise ValueError("image physical peak evidence is inconsistent")
         if self.kind is not ModelKind.IMAGE_MODEL and self.image_capability_profile is not None:
             raise ValueError("auxiliary validation cannot claim a base capability")
         return self
