@@ -75,6 +75,22 @@ def test_seedvr2_upscale_accepts_only_complete_native_configless_layout() -> Non
         hub.image_asset_files(repo.model_copy(update={"files": files[:1]}), ModelKind.UPSCALE_MODEL)
 
 
+def test_z_image_selects_diffusers_root_manifest() -> None:
+    files = [
+        RepoFile(path="model_index.json", bytes=100),
+        RepoFile(path="transformer/config.json", bytes=100),
+        RepoFile(
+            path="transformer/diffusion_pytorch_model.safetensors",
+            bytes=1024,
+            upstream_sha256=WEIGHT_SHA,
+        ),
+    ]
+    repo = _repo(files=files).model_copy(update={"repo_id": "Tongyi-MAI/Z-Image-Turbo"})
+    assert hub.image_asset_files(repo, ModelKind.IMAGE_MODEL) == tuple(
+        sorted(item.path for item in files)
+    )
+
+
 def test_control_union_selects_only_pinned_native_checkpoint() -> None:
     selected_name = "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
     files = [

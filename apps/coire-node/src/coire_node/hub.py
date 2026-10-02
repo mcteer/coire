@@ -304,6 +304,7 @@ def image_asset_files(repo: RepoInspection, kind: ModelKind) -> tuple[str, ...]:
     if (
         kind in {ModelKind.IMAGE_MODEL, ModelKind.CONTROL_MODEL, ModelKind.UPSCALE_MODEL}
         and "config.json" not in selected
+        and not (kind is ModelKind.IMAGE_MODEL and "model_index.json" in selected)
         and not (kind is ModelKind.UPSCALE_MODEL and has_seedvr2_3b_layout(repo.repo_id, selected))
         and not (
             kind is ModelKind.CONTROL_MODEL and has_control_union_layout(repo.repo_id, selected)
