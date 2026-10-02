@@ -40,6 +40,12 @@ Sources: [release/provenance](https://pypi.org/project/mflux/0.20.0/),
 | control | `ZImageTurboControlnet` or `Flux1Controlnet`, initially Canny; plain Turbo does not acquire this capability by label alone. |
 | upscale | `SeedVR2` as a separately acquired/reserved stage; backend resolution mapping must match the advertised factor/output bounds. |
 
+The reviewed [FLUX.1-Fill-dev repository](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev/tree/main)
+uses the Flux Dev non-commercial licence and requires the operator's Hugging
+Face account to accept its gated terms before a node token can read files.
+Fill acquisition must remain admin-initiated and use the existing Keychain
+token path; the user image request cannot trigger that acceptance or download.
+
 Sources: [Z-Image](https://github.com/mflux-community/mflux/blob/ada53237b2ac865bc649ef1d06ac1b19b6983865/src/mflux/models/z_image/README.md),
 [Flux](https://github.com/mflux-community/mflux/blob/ada53237b2ac865bc649ef1d06ac1b19b6983865/src/mflux/models/flux/README.md),
 [SeedVR2](https://github.com/mflux-community/mflux/blob/ada53237b2ac865bc649ef1d06ac1b19b6983865/src/mflux/models/seedvr2/README.md).

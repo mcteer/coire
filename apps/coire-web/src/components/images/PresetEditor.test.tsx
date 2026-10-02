@@ -52,6 +52,7 @@ const models: ImageModelList["items"] = [
     required_dependency_count: 0,
     loras: [],
     upscalers: [],
+    controls: [],
     capability: {
       max_guidance: "5",
       max_height: 1024,

@@ -1,5 +1,20 @@
 # Feature 015 execution record
 
+## Pinned Union Canny execution — 2026-10-02
+
+Direct and preset admission now bind a ready Union control asset to the exact
+base; the scheduler holds both model estimates, attaches the authorized control
+input and binds the asset manifest. The Studio builds a temporary local
+composite, applies the requested Canny low/high thresholds before the pinned
+mflux control path, samples physical memory, and removes the composite after
+generation. Control plus LoRA is explicitly refused. The model picker lists
+compatible authorized controls and the form exposes source, strength and
+thresholds. Focused Python checks passed **71 tests, one skipped**; the web
+suite passed **142 tests**, with strict mypy, Ruff, TypeScript build and OpenAPI
+freshness green. The full local repository suite passed **1,864 tests, 160
+skipped**, and 10 local tiny native engine tests passed. Full native Union
+hardware acceptance remains open.
+
 ## Pinned SeedVR2 output stage — 2026-10-02
 
 Direct image admission binds a ready published upscale asset and its entitlement.

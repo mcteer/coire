@@ -32,6 +32,7 @@ from coire_core.models.images import (
     ImageJobReceipt,
     ImageJobSettingsSnapshot,
     ImageJobState,
+    ImageMode,
     ImageSpec,
     ImageSubmitRequest,
     canonical_client_intent_hash,
@@ -105,6 +106,12 @@ async def _load_policy(
                 ModelRow, dependency_id, populate_existing=True, with_for_update=True
             )
             _ready_image_dependency(dependency, preset.request.model_id)
+        if (
+            preset.request.mode is ImageMode.CONTROL
+            and preset.request.control is not None
+            and ImageMode.CONTROL not in profile.modes
+        ):
+            profile = profile.model_copy(update={"modes": (*profile.modes, ImageMode.CONTROL)})
         return ImageAdmissionPolicy(
             request=preset.request,
             profile=profile,
@@ -121,9 +128,12 @@ async def _load_policy(
     required = set(_entitlements(base.entitlement))
     selected_loras = {item.model_id for item in request.loras or []}
     selected_upscale = request.upscale.model_id if request.upscale is not None else None
+    selected_control = request.control.model_id if request.control is not None else None
     selected_ids = set(profile.required_dependency_ids) | selected_loras
     if selected_upscale is not None:
         selected_ids.add(selected_upscale)
+    if selected_control is not None:
+        selected_ids.add(selected_control)
     for dependency_id in sorted(selected_ids):
         dependency = await session.get(
             ModelRow, dependency_id, populate_existing=True, with_for_update=True
@@ -140,7 +150,18 @@ async def _load_policy(
             or dependency.visibility is not Visibility.PUBLISHED
         ):
             raise ImageValidationError("image upscale model unavailable")
+        if dependency_id == selected_control and (
+            dependency.kind is not ModelKind.CONTROL_MODEL
+            or dependency.visibility is not Visibility.PUBLISHED
+        ):
+            raise ImageValidationError("image control model unavailable")
         required.update(_entitlements(dependency.entitlement))
+    if (
+        request.mode is ImageMode.CONTROL
+        and selected_control is not None
+        and ImageMode.CONTROL not in profile.modes
+    ):
+        profile = profile.model_copy(update={"modes": (*profile.modes, ImageMode.CONTROL)})
     effective_request = request
     if "explicit" in required:
         effective_request = request.model_copy(update={"content_mode": ImageContentMode.EXPLICIT})

@@ -11,6 +11,7 @@ from coire_api.images.resolution import resolve_basic_image_spec
 from coire_core.errors import ImageValidationError
 from coire_core.models.images import (
     ImageCapabilityProfile,
+    ImageControl,
     ImageLora,
     ImageMode,
     ImageSubmitRequest,
@@ -101,6 +102,31 @@ def test_resolution_keeps_exact_upscale_asset_and_factor() -> None:
     request = ImageSubmitRequest(model_id=MODEL, prompt="portrait", upscale=upscale)
     resolved = resolve_basic_image_spec(request, _profile(), random_seed=lambda: 123)
     assert resolved.upscale == upscale
+
+
+def test_resolution_preserves_control_thresholds_and_bound_source() -> None:
+    control = ImageControl(
+        image_id=uuid.uuid4(),
+        model_id=uuid.uuid4(),
+        strength=Decimal("0.375125"),
+        low_threshold=23,
+        high_threshold=89,
+    )
+    request = ImageSubmitRequest(
+        model_id=MODEL, prompt="portrait", mode=ImageMode.CONTROL, control=control
+    )
+    profile = _profile(modes=["txt2img", "control"])
+    resolved = resolve_basic_image_spec(request, profile, random_seed=lambda: 123)
+    assert resolved.control == control
+    assert resolved.mode is ImageMode.CONTROL
+    with pytest.raises(ImageValidationError, match="control mode does not support a LoRA stack"):
+        resolve_basic_image_spec(
+            request.model_copy(
+                update={"loras": [ImageLora(model_id=uuid.uuid4(), scale=Decimal("0.5"))]}
+            ),
+            _profile(modes=["txt2img", "control"], max_loras=1),
+            random_seed=lambda: 123,
+        )
 
 
 @pytest.mark.parametrize(

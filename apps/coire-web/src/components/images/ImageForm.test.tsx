@@ -273,3 +273,55 @@ test("selected upscale asset and factor are submitted together", async () => {
   await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
   expect(onSubmit.mock.calls.at(0)?.[0].upscale).toEqual({ model_id: upscaleId, factor: 4 });
 });
+
+test("restored Canny control keeps source and editable thresholds", async () => {
+  const onSubmit = vi.fn(async (request: ImageSubmitRequest) => {
+    void request;
+  });
+  const controlId = "00000000-0000-0000-0000-000000000104";
+  render(
+    <ImageForm
+      models={[
+        {
+          ...models[0],
+          capability: { ...models[0].capability, modes: ["control"], max_loras: 0 },
+          controls: [{ id: controlId, display_name: "Union Canny" }],
+        },
+      ] as ImageModelList["items"]}
+      presets={[]}
+      disabled={false}
+      onSubmit={onSubmit}
+      reuse={{
+        request: {
+          schema_version: 1,
+          model_id: modelId,
+          mode: "control",
+          prompt: "private subject",
+          control: {
+            type: "canny",
+            image_id: inputId,
+            model_id: controlId,
+            strength: "0.375125",
+            low_threshold: 23,
+            high_threshold: 89,
+          },
+        },
+        revision: 1,
+      }}
+    />,
+  );
+  await waitFor(() => expect(screen.getByRole("combobox", { name: "Control model" })).toHaveValue(controlId));
+  fireEvent.change(screen.getByRole("spinbutton", { name: "Canny high threshold" }), {
+    target: { value: "97" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+  expect(onSubmit.mock.calls.at(0)?.[0].control).toEqual({
+    type: "canny",
+    image_id: inputId,
+    model_id: controlId,
+    strength: "0.375125",
+    low_threshold: 23,
+    high_threshold: 97,
+  });
+});

@@ -6318,6 +6318,14 @@
           "capability": {
             "$ref": "#/components/schemas/ImageCapabilityProfile"
           },
+          "controls": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ImageAdapterOption"
+            },
+            "title": "Controls",
+            "type": "array"
+          },
           "display_name": {
             "maxLength": 120,
             "minLength": 1,

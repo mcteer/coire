@@ -59,9 +59,14 @@ held bytes, while recording absolute RSS/physical peaks and the physical
 baseline delta. If a validation
 job is still running, leave the
 reservation held and inspect its exact job ID, process identity, local manifest and
-`CoireImageValidationFailures` alert. Production control job execution remains
-under T056. Do not set the image admission
-flag until T033 and the remaining real Studio acceptance pass.
+`CoireImageValidationFailures` alert. Published Union control assets bound to
+the selected base are available for Canny jobs. The Studio constructs a
+temporary local composite, preprocesses the uploaded control image with the
+requested low/high thresholds, and removes the composite after generation.
+The worker samples physical peak against a hold that includes the resident base,
+control model and classifier. A control job with a LoRA stack is refused during
+admission. Do not set the image admission flag until the remaining real Studio
+acceptance passes.
 Base acquisition reserves the larger of twice the selected file bytes or three
 times the weight bytes, plus 16 GiB of native runtime headroom, on **each**
 Studio. A Studio below that estimate refuses intake before pulling. The smoke

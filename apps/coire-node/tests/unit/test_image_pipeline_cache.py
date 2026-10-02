@@ -16,8 +16,11 @@ from PIL import Image
 
 from coire_core.models.image_worker import ImageWorkerLoadRequest
 from coire_core.models.images import (
+    ImageControl,
+    ImageInputDigest,
     ImageLora,
     ImageManifestDigest,
+    ImageMode,
     ImageSpec,
     ImageUpscale,
     ResolvedImageSpec,
@@ -266,6 +269,60 @@ def test_upscale_stage_writes_final_dimensions_and_exact_recipe(
     assert calls == [(64, 64)] and len(model.calls) == 1
     encoded = write_image_png(images[0], resolved, 0, tmp_path / "output.png")
     assert encoded.recipe.width == 128 and encoded.recipe.height == 128
+    for image in images:
+        image.close()
+
+
+def test_control_stage_uses_bound_input_without_running_plain_base(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    loaded, model, request = _pipeline(max_bytes=4096)
+    loaded._store = Store(tmp_path)
+    monkeypatch.setattr(pipeline, "_sync_latents", lambda value: None)
+    input_id, control_id = uuid.uuid4(), uuid.uuid4()
+    control = ImageControl(
+        image_id=input_id,
+        model_id=control_id,
+        strength=Decimal("0.375125"),
+        low_threshold=23,
+        high_threshold=89,
+    )
+    resolved = _resolved(request, mode=ImageMode.CONTROL, control=control).model_copy(
+        update={
+            "dependencies": (
+                ImageManifestDigest(
+                    model_id=control_id,
+                    slug="alibaba--union",
+                    revision="a" * 40,
+                    sha256="b" * 64,
+                ),
+            ),
+            "inputs": (ImageInputDigest(input_id=input_id, sha256="c" * 64, width=64, height=64),),
+        }
+    )
+    calls: list[object] = []
+
+    class Stage:
+        def __init__(self, **kwargs: object) -> None:
+            calls.append(kwargs["control"])
+
+        def __enter__(self) -> Stage:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            del args
+
+        def generate(self, *, seed: int, prompt: str, steps: int) -> Image.Image:
+            assert seed == 7 and prompt == resolved.spec.prompt
+            for t in range(steps):
+                loaded._callback.call_in_loop(
+                    t=t, seed=seed, prompt=prompt, latents=t, config=None, time_steps=None
+                )
+            return Image.new("RGB", (64, 64))
+
+    monkeypatch.setattr(pipeline, "LocalCannyControlStage", Stage)
+    images = loaded.generate(resolved, lambda *_: None, input_paths={input_id: tmp_path / "input"})
+    assert calls == [control] and model.calls == []
     for image in images:
         image.close()
 

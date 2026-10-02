@@ -45,6 +45,10 @@ export function ImageForm({
   const [initImageId, setInitImageId] = useState<string | null>(null);
   const [maskId, setMaskId] = useState<string | null>(null);
   const [controlImageId, setControlImageId] = useState<string | null>(null);
+  const [controlModelId, setControlModelId] = useState<string | null>(null);
+  const [controlStrength, setControlStrength] = useState("1");
+  const [lowThreshold, setLowThreshold] = useState(100);
+  const [highThreshold, setHighThreshold] = useState(200);
   const [strength, setStrength] = useState<string | null>(null);
   const [loras, setLoras] = useState<NonNullable<ImageSubmitRequest["loras"]>>([]);
   const [upscale, setUpscale] = useState<NonNullable<ImageSubmitRequest["upscale"]> | null>(null);
@@ -71,6 +75,10 @@ export function ImageForm({
     setInitImageId(request.init_image_id ?? null);
     setMaskId(request.mask_id ?? null);
     setControlImageId(request.control?.image_id ?? null);
+    setControlModelId(request.control?.model_id ?? null);
+    setControlStrength(request.control?.strength == null ? "1" : String(request.control.strength));
+    setLowThreshold(request.control?.low_threshold ?? 100);
+    setHighThreshold(request.control?.high_threshold ?? 200);
     setStrength(request.strength == null ? null : String(request.strength));
     setLoras(request.loras ?? []);
     setUpscale(request.upscale ?? null);
@@ -82,6 +90,20 @@ export function ImageForm({
   const capability = preset ? null : capabilityOf(model);
   const missingModel = preset === null && !models.some((item) => item.id === modelId);
   const unsupportedMode = Boolean(capability && !capability.modes.includes(mode));
+  const unsupportedControlLoras = mode === "control" && loras.length > 0;
+  const unavailableControl = Boolean(
+    controlModelId && !model?.controls?.some((available) => available.id === controlModelId),
+  );
+  const invalidControlSettings =
+    mode === "control" &&
+    (!Number.isFinite(Number(controlStrength)) ||
+      Number(controlStrength) <= 0 ||
+      Number(controlStrength) > 1 ||
+      !Number.isInteger(lowThreshold) ||
+      !Number.isInteger(highThreshold) ||
+      lowThreshold < 0 ||
+      highThreshold > 255 ||
+      lowThreshold >= highThreshold);
   const unavailableLora = loras.some(
     (item) => !model?.loras?.some((available) => available.id === item.model_id),
   );
@@ -107,7 +129,7 @@ export function ImageForm({
     (((mode === "img2img" || mode === "fill") && !initImageId) ||
       (mode === "img2img" && !strength) ||
       (mode === "fill" && !maskId) ||
-      (mode === "control" && (!controlImageId || !reusedRequest?.control)));
+      (mode === "control" && (!controlImageId || !controlModelId)));
 
   const cannotSubmit =
     disabled ||
@@ -115,6 +137,9 @@ export function ImageForm({
     prompt.trim() === "" ||
     missingModel ||
     unsupportedMode ||
+    unsupportedControlLoras ||
+    unavailableControl ||
+    invalidControlSettings ||
     missingInput ||
     unavailableLora ||
     unavailableUpscale ||
@@ -125,6 +150,17 @@ export function ImageForm({
   const submit = async () => {
     const text = prompt.trim();
     if (cannotSubmit) return;
+    const control: ImageSubmitRequest["control"] =
+      mode === "control" && controlImageId && controlModelId
+        ? {
+            type: "canny",
+            image_id: controlImageId,
+            model_id: controlModelId,
+            strength: controlStrength,
+            low_threshold: lowThreshold,
+            high_threshold: highThreshold,
+          }
+        : null;
     const overrides: Pick<ImageSubmitRequest, "width" | "height" | "steps" | "seed" | "n"> = {};
     if (width != null) overrides.width = width;
     if (height != null) overrides.height = height;
@@ -160,10 +196,7 @@ export function ImageForm({
         init_image_id: mode === "img2img" || mode === "fill" ? initImageId : null,
         mask_id: mode === "fill" ? maskId : null,
         strength: mode === "img2img" ? strength : null,
-        control:
-          mode === "control" && reusedRequest.control && controlImageId
-            ? { ...reusedRequest.control, image_id: controlImageId }
-            : null,
+        control,
       });
       return;
     }
@@ -177,6 +210,7 @@ export function ImageForm({
       init_image_id: mode === "img2img" || mode === "fill" ? initImageId : null,
       mask_id: mode === "fill" ? maskId : null,
       strength: mode === "img2img" ? strength : null,
+      control,
       loras,
       upscale,
       ...overrides,
@@ -211,6 +245,8 @@ export function ImageForm({
               setModelId(event.target.value);
               setLoras([]);
               setUpscale(null);
+              setControlModelId(null);
+              setControlImageId(null);
             }}
           >
             {models.map((model) => (
@@ -469,12 +505,64 @@ export function ImageForm({
             </label>
           )}
           {mode === "control" && (
-            <ImageInputField
-              label="Control image"
-              purpose="control"
-              value={controlImageId}
-              onChange={setControlImageId}
-            />
+            <fieldset>
+              <legend>Canny control</legend>
+              <label>
+                Control model
+                <select
+                  aria-label="Control model"
+                  value={controlModelId ?? ""}
+                  onChange={(event) => setControlModelId(event.target.value || null)}
+                >
+                  <option value="">Choose control model</option>
+                  {model?.controls?.map((available) => (
+                    <option key={available.id} value={available.id}>
+                      {available.display_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <ImageInputField
+                label="Control image"
+                purpose="control"
+                value={controlImageId}
+                onChange={setControlImageId}
+              />
+              <label>
+                Control strength
+                <input
+                  aria-label="Control strength"
+                  type="number"
+                  min="0.000001"
+                  max="1"
+                  step="any"
+                  value={controlStrength}
+                  onChange={(event) => setControlStrength(event.target.value)}
+                />
+              </label>
+              <label>
+                Canny low threshold
+                <input
+                  aria-label="Canny low threshold"
+                  type="number"
+                  min={0}
+                  max={254}
+                  value={lowThreshold}
+                  onChange={(event) => setLowThreshold(Number(event.target.value))}
+                />
+              </label>
+              <label>
+                Canny high threshold
+                <input
+                  aria-label="Canny high threshold"
+                  type="number"
+                  min={1}
+                  max={255}
+                  value={highThreshold}
+                  onChange={(event) => setHighThreshold(Number(event.target.value))}
+                />
+              </label>
+            </fieldset>
           )}
         </div>
       )}
@@ -512,6 +600,7 @@ export function ImageForm({
       )}
       {missingModel && <p role="alert">The source image model is no longer available.</p>}
       {unsupportedMode && <p role="alert">This model does not support the restored image mode.</p>}
+      {unsupportedControlLoras && <p role="alert">Control mode cannot use a LoRA stack.</p>}
       {(mode === "img2img" || mode === "fill") && !initImageId && (
         <p role="alert">A source image is required for {mode}.</p>
       )}
@@ -520,9 +609,11 @@ export function ImageForm({
       {mode === "control" && !controlImageId && (
         <p role="alert">A control image is required for control generation.</p>
       )}
-      {mode === "control" && !reusedRequest?.control && (
+      {mode === "control" && !controlModelId && (
         <p role="alert">A compatible control model is unavailable for selection.</p>
       )}
+      {unavailableControl && <p role="alert">The selected control model is no longer available.</p>}
+      {invalidControlSettings && <p role="alert">Control strength or Canny thresholds are invalid.</p>}
       {tooManyLoras && <p role="alert">This model no longer supports this LoRA stack.</p>}
       {unavailableLora && <p role="alert">A selected LoRA is no longer available.</p>}
       {unavailableUpscale && <p role="alert">The selected upscale model is no longer available.</p>}

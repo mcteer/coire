@@ -59,17 +59,19 @@ def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> 
         and request.resolved.model_sha256 == load.manifest_sha256
         and request.resolved.pipeline_version == load.runtime_version
         and request.reservation_bytes == load.reservation_bytes
-        and spec.mode in {ImageMode.TXT2IMG, ImageMode.IMG2IMG}
+        and spec.mode in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.CONTROL}
         and spec.guidance == 0
         and spec.negative_prompt is None
-        and len(spec.loras) + int(spec.upscale is not None) == len(request.resolved.dependencies)
+        and not (spec.mode is ImageMode.CONTROL and spec.loras)
+        and len(spec.loras) + int(spec.upscale is not None) + int(spec.control is not None)
+        == len(request.resolved.dependencies)
         and (
             {item.model_id for item in spec.loras}
             | ({spec.upscale.model_id} if spec.upscale else set())
+            | ({spec.control.model_id} if spec.control else set())
         )
         == {item.model_id for item in request.resolved.dependencies}
         and spec.mask_id is None
-        and spec.control is None
         and (
             (spec.mode is ImageMode.TXT2IMG and not request.inputs and not request.resolved.inputs)
             or (
@@ -77,6 +79,12 @@ def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> 
                 and spec.init_image_id is not None
                 and len(request.inputs) == 1
                 and request.inputs[0].input_id == spec.init_image_id
+            )
+            or (
+                spec.mode is ImageMode.CONTROL
+                and spec.control is not None
+                and len(request.inputs) == 1
+                and request.inputs[0].input_id == spec.control.image_id
             )
         )
     )

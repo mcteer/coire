@@ -26,10 +26,9 @@ def resolve_basic_image_spec(
     """Freeze basic txt2img settings; caller validates registry and owner first."""
     if (
         request.model_id is None
-        or request.mode not in (None, ImageMode.TXT2IMG, ImageMode.IMG2IMG)
+        or request.mode not in (None, ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.CONTROL)
         or request.variant_id is not None
         or request.mask_id is not None
-        or request.control is not None
     ):
         raise ImageValidationError("unsupported image setting")
     if (
@@ -56,6 +55,7 @@ def resolve_basic_image_spec(
         "strength": request.strength,
         "loras": request.loras or [],
         "upscale": request.upscale,
+        "control": request.control,
         "output": request.output,
         "content_mode": request.content_mode or ImageContentMode.STANDARD,
     }
@@ -71,4 +71,12 @@ def resolve_basic_image_spec(
         raise ImageValidationError(str(exc)) from exc
     if spec.guidance != 0 or spec.negative_prompt is not None:
         raise ImageValidationError("unsupported image setting")
+    if (
+        any(item.variant_id is not None for item in spec.loras)
+        or (spec.control is not None and spec.control.variant_id is not None)
+        or (spec.upscale is not None and spec.upscale.variant_id is not None)
+    ):
+        raise ImageValidationError("image auxiliary variants are unsupported")
+    if spec.mode is ImageMode.CONTROL and spec.loras:
+        raise ImageValidationError("control mode does not support a LoRA stack")
     return spec

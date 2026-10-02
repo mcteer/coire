@@ -28,6 +28,7 @@ from coire_core.models.image_worker import (
     NodeImageStartRequest,
 )
 from coire_core.models.images import (
+    ImageControl,
     ImageInputDigest,
     ImageLora,
     ImageMode,
@@ -195,6 +196,33 @@ async def test_bound_lora_stack_preserves_order_and_rejects_changed_base() -> No
     assert with_upscale is not None
     assert [item.model_id for item in with_upscale[0]] == [second_id, first_id, upscale_id]
     assert with_upscale[1] == overhead + 2 * 1024**3
+    control_id = uuid.uuid4()
+    adapters[control_id] = SimpleNamespace(
+        id=control_id,
+        slug="alibaba--union",
+        kind=ModelKind.CONTROL_MODEL,
+        visibility=Visibility.PUBLISHED,
+        backend=EngineBackend.AUXILIARY,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        manifest_sha256="f" * 64,
+        source_revision="1" * 40,
+        capability_profile={"compatible_base_model_id": str(MODEL)},
+        memory_estimate_bytes=12 * 1024**3,
+    )
+    controlled = spec.model_copy(
+        update={
+            "mode": ImageMode.CONTROL,
+            "loras": (),
+            "control": ImageControl(image_id=uuid.uuid4(), model_id=control_id),
+        }
+    )
+    with_control = await image_dispatch._bound_loras(
+        session, controlled, cast(ModelRow, base), from_preset=False
+    )
+    assert with_control is not None
+    assert [item.model_id for item in with_control[0]] == [control_id]
+    assert with_control[1] == 12 * 1024**3
     adapters[first_id].capability_profile = {"compatible_base_model_id": str(uuid.uuid4())}
     assert (
         await image_dispatch._bound_loras(session, spec, cast(ModelRow, base), from_preset=False)

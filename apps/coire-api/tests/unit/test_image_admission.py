@@ -20,6 +20,7 @@ from coire_core.errors import ImageConflict, ImageForbidden, ImageValidationErro
 from coire_core.models.images import (
     ImageCapabilityProfile,
     ImageContentMode,
+    ImageControl,
     ImageLora,
     ImageMode,
     ImageSpec,
@@ -515,6 +516,51 @@ def test_direct_upscale_requires_ready_published_auxiliary_asset() -> None:
     assert policy.required_entitlements == frozenset({"upscale"})
     asset.visibility = Visibility.ADMIN_ONLY
     with pytest.raises(ImageValidationError, match="upscale model unavailable"):
+        asyncio.run(admission._load_policy(session, request, PRINCIPAL))
+
+
+def test_direct_control_extends_mode_only_for_exact_ready_base() -> None:
+    control_id = uuid.uuid4()
+    base = SimpleNamespace(
+        id=MODEL,
+        kind=ModelKind.IMAGE_MODEL,
+        backend=EngineBackend.MFLUX,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        visibility=Visibility.PUBLISHED,
+        image_capability_profile=_profile().model_dump(mode="json"),
+        entitlement=[],
+        manifest_sha256="a" * 64,
+    )
+    asset = SimpleNamespace(
+        id=control_id,
+        kind=ModelKind.CONTROL_MODEL,
+        backend=EngineBackend.AUXILIARY,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        visibility=Visibility.PUBLISHED,
+        entitlement=["control"],
+        manifest_sha256="b" * 64,
+        capability_profile={"compatible_base_model_id": str(MODEL)},
+    )
+
+    class Session:
+        async def get(self, model: type[object], identity: object, **kwargs: object) -> object:
+            assert model is ModelRow and kwargs.get("with_for_update") is True
+            return {MODEL: base, control_id: asset}[cast(uuid.UUID, identity)]
+
+    request = ImageSubmitRequest(
+        model_id=MODEL,
+        prompt="portrait",
+        mode=ImageMode.CONTROL,
+        control=ImageControl(image_id=uuid.uuid4(), model_id=control_id),
+    )
+    session = cast(AsyncSession, Session())
+    policy = asyncio.run(admission._load_policy(session, request, PRINCIPAL))
+    assert ImageMode.CONTROL in policy.profile.modes
+    assert policy.required_entitlements == frozenset({"control"})
+    asset.capability_profile = {"compatible_base_model_id": str(uuid.uuid4())}
+    with pytest.raises(ImageValidationError, match="incompatible"):
         asyncio.run(admission._load_policy(session, request, PRINCIPAL))
 
 

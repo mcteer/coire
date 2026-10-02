@@ -4453,6 +4453,11 @@ export interface components {
         /** ImageModelOption */
         ImageModelOption: {
             capability: components["schemas"]["ImageCapabilityProfile"];
+            /**
+             * Controls
+             * @default []
+             */
+            controls: components["schemas"]["ImageAdapterOption"][];
             /** Display Name */
             display_name: string;
             /**

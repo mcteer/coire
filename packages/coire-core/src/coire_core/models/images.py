@@ -339,6 +339,7 @@ class ImageModelOption(BaseModel):
     required_dependency_count: int = Field(ge=0, le=16)
     loras: tuple[ImageAdapterOption, ...] = ()
     upscalers: tuple[ImageAdapterOption, ...] = ()
+    controls: tuple[ImageAdapterOption, ...] = ()
     residency: Literal["unknown"] = "unknown"
 
 

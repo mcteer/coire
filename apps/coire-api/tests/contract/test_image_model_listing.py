@@ -159,6 +159,7 @@ async def test_model_picker_lists_only_authorized_compatible_loras(
     adapter_id = uuid.uuid4()
     restricted_id = uuid.uuid4()
     upscale_id = uuid.uuid4()
+    control_id = uuid.uuid4()
     session = Session()
     session.rows[BASE].image_capability_profile["max_loras"] = 2
     for identity, entitlement in ((adapter_id, []), (restricted_id, ["private"])):
@@ -185,6 +186,18 @@ async def test_model_picker_lists_only_authorized_compatible_loras(
         entitlement=[],
         manifest_sha256="c" * 64,
     )
+    session.rows[control_id] = SimpleNamespace(
+        id=control_id,
+        display_name="Union Canny",
+        kind=ModelKind.CONTROL_MODEL,
+        backend=EngineBackend.AUXILIARY,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        visibility=Visibility.PUBLISHED,
+        entitlement=[],
+        manifest_sha256="d" * 64,
+        capability_profile={"compatible_base_model_id": str(BASE)},
+    )
 
     calls = 0
 
@@ -195,8 +208,10 @@ async def test_model_picker_lists_only_authorized_compatible_loras(
             rows = [session.rows[BASE]]
         elif calls == 2:
             rows = [session.rows[adapter_id], session.rows[restricted_id]]
-        else:
+        elif calls == 3:
             rows = [session.rows[upscale_id]]
+        else:
+            rows = [session.rows[control_id]]
         return SimpleNamespace(all=lambda: rows)
 
     async def live(
@@ -217,6 +232,8 @@ async def test_model_picker_lists_only_authorized_compatible_loras(
     )
     assert [item.id for item in listing.items[0].loras] == [adapter_id]
     assert [item.id for item in listing.items[0].upscalers] == [upscale_id]
+    assert [item.id for item in listing.items[0].controls] == [control_id]
+    assert "control" in listing.items[0].capability.modes
 
 
 async def test_model_picker_omits_base_with_unsupported_default(

@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -22,6 +23,7 @@ from coire_node.image_runtime.cache import (
     StageCacheKey,
     stage_identity,
 )
+from coire_node.image_runtime.controlnet import LocalCannyControlStage
 from coire_node.image_runtime.preflight import RUNTIME_VERSION, verify_image_copy
 from coire_node.image_runtime.upscale import upscale_image
 from coire_node.metrics import ImageNodeOutcome, ImageNodeStage, image_node_span, record_image_stage
@@ -256,11 +258,15 @@ class MfluxTxt2ImgPipeline:
                 raise ImagePipelineUnavailable()
             return
         spec = resolved.spec
-        if len(spec.loras) + int(spec.upscale is not None) != len(resolved.dependencies):
+        if len(spec.loras) + int(spec.upscale is not None) + int(spec.control is not None) != len(
+            resolved.dependencies
+        ):
             raise ImagePipelineUnavailable()
         expected_dependencies = {item.model_id for item in spec.loras}
         if spec.upscale is not None:
             expected_dependencies.add(spec.upscale.model_id)
+        if spec.control is not None:
+            expected_dependencies.add(spec.control.model_id)
         if expected_dependencies != {item.model_id for item in resolved.dependencies}:
             raise ImagePipelineUnavailable()
         dependencies = {item.model_id: item for item in resolved.dependencies}
@@ -354,6 +360,7 @@ class MfluxTxt2ImgPipeline:
     ) -> tuple[Image.Image, ...]:
         spec = resolved.spec
         init_path: Path | None = None
+        control_path: Path | None = None
         if spec.mode is ImageMode.IMG2IMG:
             if (
                 spec.init_image_id is None
@@ -364,6 +371,16 @@ class MfluxTxt2ImgPipeline:
             ):
                 raise ImagePipelineUnavailable()
             init_path = input_paths[spec.init_image_id]
+        elif spec.mode is ImageMode.CONTROL:
+            if (
+                spec.control is None
+                or input_paths is None
+                or set(input_paths) != {spec.control.image_id}
+                or {item.input_id for item in resolved.inputs} != {spec.control.image_id}
+                or spec.loras
+            ):
+                raise ImagePipelineUnavailable()
+            control_path = input_paths[spec.control.image_id]
         elif input_paths:
             raise ImagePipelineUnavailable()
         if (
@@ -371,11 +388,10 @@ class MfluxTxt2ImgPipeline:
             or resolved.model_sha256 != self._request.manifest_sha256
             or spec.model_id != self._request.model_id
             or spec.variant_id != self._request.variant_id
-            or spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG}
+            or spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.CONTROL}
             or spec.guidance != 0
             or spec.negative_prompt is not None
             or spec.mask_id is not None
-            or spec.control is not None
             or (spec.mode is ImageMode.TXT2IMG and resolved.inputs)
         ):
             raise ImagePipelineUnavailable()
@@ -384,7 +400,7 @@ class MfluxTxt2ImgPipeline:
         images: list[Image.Image] = []
         try:
             self._replace_lora_locked(resolved)
-            if self._native_encoder_hook:
+            if control_path is None and self._native_encoder_hook:
                 self._active_prompt_identity = stage_identity(
                     self._request.runtime_version,
                     self._request.manifest_sha256,
@@ -393,14 +409,64 @@ class MfluxTxt2ImgPipeline:
                     self._adapter_id or "",
                     *(dependency.sha256 for dependency in resolved.dependencies),
                 )
-            else:
+            elif control_path is None:
                 self.encode_prompt(resolved)
-            offset = (
-                max(1, int(spec.steps * float(spec.strength)))
-                if init_path is not None and spec.strength is not None
-                else 0
-            )
-            denoise_steps = spec.steps - offset
+            control_stage: LocalCannyControlStage | None = None
+            if control_path is not None:
+                if self._store is None or spec.control is None:
+                    raise ImagePipelineUnavailable()
+                dependency = next(
+                    (
+                        item
+                        for item in resolved.dependencies
+                        if item.model_id == spec.control.model_id
+                    ),
+                    None,
+                )
+                if dependency is None:
+                    raise ImagePipelineUnavailable()
+                control_stage = LocalCannyControlStage(
+                    store=self._store,
+                    base=self._request,
+                    dependency=dependency,
+                    control=spec.control,
+                    source=control_path,
+                    width=spec.width,
+                    height=spec.height,
+                    callback=self._callback,
+                )
+            with control_stage if control_stage is not None else nullcontext():
+                images = list(
+                    self._generate_locked(
+                        resolved, on_progress, init_path=init_path, control_stage=control_stage
+                    )
+                )
+            return tuple(images)
+        except Exception:
+            for image in images:
+                image.close()
+            raise
+        finally:
+            self._active_prompt_identity = None
+            self._lock.release()
+
+    def _generate_locked(
+        self,
+        resolved: ResolvedImageSpec,
+        on_progress: Progress,
+        *,
+        init_path: Path | None,
+        control_stage: LocalCannyControlStage | None,
+    ) -> tuple[Image.Image, ...]:
+        spec = resolved.spec
+        images: list[Image.Image] = []
+        offset = (
+            max(1, int(spec.steps * float(spec.strength)))
+            if init_path is not None and spec.strength is not None
+            else 0
+        )
+        denoise_steps = spec.steps - offset
+        try:
             for index, seed in enumerate(resolved.seeds):
                 self._callback.begin(
                     index=index,
@@ -411,16 +477,22 @@ class MfluxTxt2ImgPipeline:
                     report_total=spec.steps,
                 )
                 try:
-                    generated = self._model.generate_image(
-                        seed=seed,
-                        prompt=spec.prompt,
-                        num_inference_steps=spec.steps,
-                        height=spec.height,
-                        width=spec.width,
-                        guidance=0.0,
-                        negative_prompt=None,
-                        image_path=init_path,
-                        image_strength=float(spec.strength) if spec.strength is not None else None,
+                    generated = (
+                        control_stage.generate(seed=seed, prompt=spec.prompt, steps=spec.steps)
+                        if control_stage is not None
+                        else self._model.generate_image(
+                            seed=seed,
+                            prompt=spec.prompt,
+                            num_inference_steps=spec.steps,
+                            height=spec.height,
+                            width=spec.width,
+                            guidance=0.0,
+                            negative_prompt=None,
+                            image_path=init_path,
+                            image_strength=float(spec.strength)
+                            if spec.strength is not None
+                            else None,
+                        )
                     )
                     if self._callback.completed != denoise_steps:
                         raise ImagePipelineUnavailable()
@@ -487,6 +559,3 @@ class MfluxTxt2ImgPipeline:
             for image in images:
                 image.close()
             raise
-        finally:
-            self._active_prompt_identity = None
-            self._lock.release()

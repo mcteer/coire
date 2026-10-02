@@ -152,7 +152,8 @@ async def _bound_loras(
     for selected in spec.loras:
         dependency = await session.get(ModelRow, selected.model_id, populate_existing=True)
         if (
-            dependency is None
+            selected.variant_id is not None
+            or dependency is None
             or dependency.kind is not ModelKind.IMAGE_LORA
             or (not from_preset and dependency.visibility is not Visibility.PUBLISHED)
             or dependency.backend is not EngineBackend.AUXILIARY
@@ -175,6 +176,36 @@ async def _bound_loras(
                 slug=dependency.slug,
                 revision=dependency.source_revision,
                 sha256=dependency.manifest_sha256,
+            )
+        )
+    if spec.control is not None:
+        selected_control = spec.control
+        control = await session.get(ModelRow, selected_control.model_id, populate_existing=True)
+        if (
+            selected_control.variant_id is not None
+            or control is None
+            or control.kind is not ModelKind.CONTROL_MODEL
+            or (not from_preset and control.visibility is not Visibility.PUBLISHED)
+            or control.backend is not EngineBackend.AUXILIARY
+            or control.source is not ModelSource.STUDIO
+            or control.state is not ModelState.READY
+            or control.manifest_sha256 is None
+            or _DIGEST.fullmatch(control.manifest_sha256) is None
+            or control.source_revision is None
+            or _REVISION.fullmatch(control.source_revision) is None
+            or not isinstance(control.capability_profile, dict)
+            or control.capability_profile.get("compatible_base_model_id") != str(base.id)
+            or control.memory_estimate_bytes is None
+            or control.memory_estimate_bytes < (base.memory_estimate_bytes or 0)
+        ):
+            return None
+        overhead += control.memory_estimate_bytes
+        manifests.append(
+            ImageManifestDigest(
+                model_id=control.id,
+                slug=control.slug,
+                revision=control.source_revision,
+                sha256=control.manifest_sha256,
             )
         )
     if spec.upscale is not None:
@@ -595,13 +626,12 @@ async def prepare_image_dispatch(
         raise ImageConflict("image queue dispatch has bound runtime")
     spec = snapshot.effective_spec
     if (
-        spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG}
+        spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.CONTROL}
         or spec.guidance != 0
         or spec.negative_prompt is not None
         or spec.seed is None
         or spec.variant_id is not None
         or spec.mask_id is not None
-        or spec.control is not None
     ):
         await fail_image_attempt(session, job_id, "unsupported_mode")
         return None
