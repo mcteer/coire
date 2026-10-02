@@ -2009,3 +2009,16 @@ focused real tiny LoRA cache-miss smoke passed. The prior CI checkpoint
 passed lint, unit/contract tests, both engine jobs, image policy and scans;
 its disposable Compose integration was still running when this checkpoint
 was recorded.
+
+The Fill validator now samples physical footprint across both native load
+and denoising; a transient-overrun test fails before a Fill-only profile can
+be published. Ordered LoRA replacement now samples the physical reload peak
+against the actual worker reservation, records a load stage outcome and
+leaves a failed worker unusable rather than serving a partly replaced stack.
+The tiny native LoRA smoke and complete 10-test tiny worker matrix pass with
+this guard. T056/T061 code work is checked; full-weight compatibility and
+memory acceptance remain explicitly open in T083/T084.
+The final local Python suite after this guard passed **1,872 tests, 160
+skipped**; Ruff, strict mypy, OpenAPI freshness and diff whitespace checks
+passed. The skipped tests are external integration/engine selections; the
+10 image-engine tests were run explicitly.

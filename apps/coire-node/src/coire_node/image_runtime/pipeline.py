@@ -18,6 +18,7 @@ from PIL import Image
 from coire_core.image_assets import FLUX_FILL_REPO_ID
 from coire_core.models.image_worker import ImageWorkerLoadRequest
 from coire_core.models.images import ImageMode, ResolvedImageSpec
+from coire_node.footprint import resident_bytes
 from coire_node.image_runtime.cache import (
     NativeStageCache,
     StageCache,
@@ -172,6 +173,54 @@ def _sync_encodings(positive: object, negative: object | None) -> None:
         mlx.eval(positive, negative)
 
 
+def _load_with_physical_peak(
+    loader: Callable[[], _NativeModel], reservation_bytes: int
+) -> _NativeModel:
+    """Reject transient LoRA reload overages before the new stack can serve a job."""
+    try:
+        current = resident_bytes(os.getpid())
+    except Exception:
+        raise ImagePipelineUnavailable() from None
+    if current is None or current > reservation_bytes:
+        raise ImagePipelineUnavailable()
+    peak = current
+    unavailable = False
+    stop = threading.Event()
+
+    def sample() -> None:
+        nonlocal peak, unavailable
+        while not stop.wait(0.01):
+            try:
+                footprint = resident_bytes(os.getpid())
+            except Exception:
+                unavailable = True
+                return
+            if footprint is None:
+                unavailable = True
+                return
+            peak = max(peak, footprint)
+
+    sampler = threading.Thread(target=sample, daemon=True)
+    sampler.start()
+    try:
+        model = loader()
+    finally:
+        stop.set()
+        sampler.join(timeout=2)
+    try:
+        current = resident_bytes(os.getpid())
+    except Exception:
+        raise ImagePipelineUnavailable() from None
+    if (
+        current is None
+        or unavailable
+        or sampler.is_alive()
+        or max(peak, current) > reservation_bytes
+    ):
+        raise ImagePipelineUnavailable()
+    return model
+
+
 class _ProgressCallback:
     def __init__(self) -> None:
         self.report: Progress | None = None
@@ -232,11 +281,14 @@ class MfluxTxt2ImgPipeline:
         prompt_cache_max_bytes: int = _DEFAULT_PROMPT_CACHE_BYTES,
         store: Store | None = None,
         fill: bool = False,
+        enforce_memory: bool = False,
     ) -> None:
         self._model = model
         self._request = request
         self._store = store
         self._fill = fill
+        self._enforce_memory = enforce_memory
+        self._broken = False
         self._callback = _ProgressCallback()
         self._lock = threading.Lock()
         self.prompt_cache = StageCache(prompt_cache_max_bytes)
@@ -308,6 +360,7 @@ class MfluxTxt2ImgPipeline:
             prompt_cache_max_bytes=prompt_cache_max_bytes,
             store=store,
             fill=fill,
+            enforce_memory=True,
         )
 
     @property
@@ -316,6 +369,8 @@ class MfluxTxt2ImgPipeline:
 
     def _replace_lora_locked(self, resolved: ResolvedImageSpec) -> None:
         """Rebuild from the verified clean base whenever the ordered stack changes."""
+        if self._broken:
+            raise ImagePipelineUnavailable()
         if (
             resolved.spec.model_id != self._request.model_id
             or resolved.spec.variant_id != self._request.variant_id
@@ -391,10 +446,37 @@ class MfluxTxt2ImgPipeline:
         gc.collect()
         mlx = importlib.import_module("mlx.core")
         mlx.clear_cache()
-        self._attach_model(
-            _load_native(base_path, fill=True)
-            if self._fill
-            else _load_native(base_path, lora_paths=tuple(paths), lora_scales=tuple(scales))
+        began = time.monotonic()
+        try:
+            with image_node_span(ImageNodeStage.LOAD):
+
+                def reload() -> _NativeModel:
+                    return (
+                        _load_native(base_path, fill=True)
+                        if self._fill
+                        else _load_native(
+                            base_path, lora_paths=tuple(paths), lora_scales=tuple(scales)
+                        )
+                    )
+
+                model = (
+                    _load_with_physical_peak(reload, self._request.reservation_bytes)
+                    if self._enforce_memory
+                    else reload()
+                )
+            self._attach_model(model)
+        except Exception:
+            self._broken = True
+            record_image_stage(
+                ImageNodeStage.LOAD,
+                ImageNodeOutcome.FAILED,
+                duration_s=time.monotonic() - began,
+            )
+            raise
+        record_image_stage(
+            ImageNodeStage.LOAD,
+            ImageNodeOutcome.SUCCEEDED,
+            duration_s=time.monotonic() - began,
         )
         self._adapter_id = wanted
 

@@ -161,17 +161,16 @@ def _validate_image_asset(
         peak_rss = max(peak_rss, process.memory_info().rss)
         peak_physical = max(peak_physical, current)
 
-    pipeline = MfluxTxt2ImgPipeline.load(store, load)
-    observe_footprint()
     if manifest.repo_id == FLUX_FILL_REPO_ID:
-        return _validate_fill_smoke(
-            pipeline,
+        return _validate_fill_with_peak(
+            store,
+            load,
             request,
-            observe_footprint,
-            lambda: (peak_rss, peak_physical),
             baseline_physical=baseline_physical,
             reservation_bytes=reservation_bytes,
         )
+    pipeline = MfluxTxt2ImgPipeline.load(store, load)
+    observe_footprint()
     images = pipeline.generate(
         _smoke_spec(request.model_id, request.manifest_sha256), observe_footprint
     )
@@ -260,6 +259,79 @@ def _validate_image_asset(
         peak_physical_delta_bytes=measured_physical,
         thumbnail_sha256=thumbnail_sha256,
         image_capability_profile=profile,
+    )
+
+
+def _validate_fill_with_peak(
+    store: Store,
+    load: ImageWorkerLoadRequest,
+    request: ImageAssetValidateRequest,
+    *,
+    baseline_physical: int,
+    reservation_bytes: int,
+) -> ImageAssetValidationResult:
+    """Sample physical load and denoising peaks, including transient MLX allocations."""
+    process = psutil.Process()
+    peak_rss = process.memory_info().rss
+    peak_physical = baseline_physical
+    unavailable = False
+    stop = threading.Event()
+
+    def sample() -> None:
+        nonlocal peak_rss, peak_physical, unavailable
+        while not stop.wait(0.01):
+            try:
+                current = resident_bytes(process.pid)
+                rss = process.memory_info().rss
+            except Exception:
+                unavailable = True
+                return
+            if current is None:
+                unavailable = True
+                return
+            peak_rss = max(peak_rss, rss)
+            peak_physical = max(peak_physical, current)
+
+    sampler = threading.Thread(target=sample, daemon=True)
+    sampler.start()
+    try:
+        pipeline = MfluxTxt2ImgPipeline.load(store, load)
+
+        def observe() -> None:
+            nonlocal peak_rss, peak_physical, unavailable
+            try:
+                current = resident_bytes(process.pid)
+                rss = process.memory_info().rss
+            except Exception:
+                unavailable = True
+                return
+            if current is None:
+                unavailable = True
+                return
+            peak_rss = max(peak_rss, rss)
+            peak_physical = max(peak_physical, current)
+
+        observe()
+        result = _validate_fill_smoke(
+            pipeline,
+            request,
+            observe,
+            lambda: (peak_rss, peak_physical),
+            baseline_physical=baseline_physical,
+            reservation_bytes=reservation_bytes,
+        )
+    finally:
+        stop.set()
+        sampler.join(timeout=2)
+    observe()
+    if unavailable or sampler.is_alive() or max(peak_rss, peak_physical) > reservation_bytes:
+        raise ImageValidationUnavailable("fill smoke exceeded reserved memory")
+    return result.model_copy(
+        update={
+            "peak_rss_bytes": peak_rss,
+            "peak_physical_bytes": peak_physical,
+            "peak_physical_delta_bytes": max(0, peak_physical - baseline_physical),
+        }
     )
 
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib
 import json
+import threading
+import time
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -12,6 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import psutil
 import pytest
 from PIL import Image, ImageDraw
 
@@ -19,6 +22,7 @@ from coire_core.models.image_worker import (
     ImageAssetValidateRequest,
     ImageAssetValidationResult,
     ImageValidationBase,
+    ImageWorkerLoadRequest,
 )
 from coire_core.models.images import (
     ImageCapabilityProfile,
@@ -81,6 +85,48 @@ def test_fill_smoke_validates_mask_inputs_and_publishes_fill_only_profile() -> N
             lambda: (3000, 3000),
             baseline_physical=100,
             reservation_bytes=2000,
+        )
+
+
+def test_fill_validation_refuses_transient_load_peak(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = _request("a" * 64)
+    hold = psutil.Process().memory_info().rss + 1_000_000
+    load = ImageWorkerLoadRequest(
+        slug=request.slug,
+        model_id=request.model_id,
+        instance_id=request.job_id,
+        manifest_sha256=request.manifest_sha256,
+        reservation_bytes=hold,
+        runtime_version="mflux-0.20.0",
+    )
+    loading = threading.Event()
+    monkeypatch.setattr(
+        image_validation, "resident_bytes", lambda _pid: hold + 1 if loading.is_set() else 100
+    )
+
+    def load_model(*_: object) -> object:
+        loading.set()
+        time.sleep(0.05)
+        loading.clear()
+        return object()
+
+    monkeypatch.setattr(pipeline.MfluxTxt2ImgPipeline, "load", load_model)
+    monkeypatch.setattr(
+        image_validation,
+        "_validate_fill_smoke",
+        lambda *_args, **_kwargs: ImageAssetValidationResult(
+            validated=False,
+            kind=ModelKind.IMAGE_MODEL,
+            manifest_sha256=request.manifest_sha256,
+            source_revision=request.source_revision,
+            peak_rss_bytes=100,
+        ),
+    )
+    with pytest.raises(ImageValidationUnavailable, match="exceeded reserved memory"):
+        image_validation._validate_fill_with_peak(
+            Store(tmp_path), load, request, baseline_physical=100, reservation_bytes=hold
         )
 
 

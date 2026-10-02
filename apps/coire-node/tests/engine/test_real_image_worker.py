@@ -310,6 +310,10 @@ def test_real_local_lora_acquisition_smoke(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pipeline, load = tiny_pipeline
+    # This in-process test exercises physical peak admission without creating a
+    # node reservation. Keep supervisor tests on their smaller held fixture.
+    load = load.model_copy(update={"reservation_bytes": psutil.virtual_memory().total})
+    pipeline._request = load
     store = Store(Path(os.environ["COIRE_TEST_MODEL"]).resolve().parent)
     base_manifest = store.read_manifest(load.slug)
     assert base_manifest is not None

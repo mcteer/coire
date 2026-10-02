@@ -5,6 +5,8 @@ from __future__ import annotations
 import ast
 import importlib
 import inspect
+import threading
+import time
 import uuid
 from decimal import Decimal
 from pathlib import Path
@@ -153,6 +155,23 @@ def test_prompt_cache_defaults_to_256_mib_and_can_be_overridden() -> None:
     smaller, _smaller_model, _smaller_request = _pipeline(max_bytes=4096)
     assert smaller.prompt_cache.max_bytes == 4096
     assert smaller.encoder_cache.max_bytes == 4096
+
+
+def test_lora_reload_rejects_transient_physical_peak(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loading = threading.Event()
+    monkeypatch.setattr(pipeline, "resident_bytes", lambda _pid: 1100 if loading.is_set() else 100)
+
+    def reload() -> Any:
+        loading.set()
+        time.sleep(0.05)
+        loading.clear()
+        return _Model()
+
+    with pytest.raises(pipeline.ImagePipelineUnavailable):
+        pipeline._load_with_physical_peak(reload, 1000)
+    assert pipeline._load_with_physical_peak(lambda: cast(Any, _Model()), 1000) is not None
 
 
 def test_native_encoder_cache_is_byte_bound_and_evicts_lru_values() -> None:

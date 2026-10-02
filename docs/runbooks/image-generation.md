@@ -290,11 +290,16 @@ its repository is gated under the Flux Dev non-commercial licence. The admin
 must accept those terms in the Hugging Face account behind the Keychain-sourced
 node token before acquisition. Validation runs one offline local source/mask
 smoke and advertises only Fill at its measured dimensions, steps and guidance.
+The validation hold covers the entire native Fill load and denoising peak.
 White mask pixels request replacement; black pixels keep the source. A Fill job
 cannot combine LoRAs, control or image strength. The Canny preprocessor keeps
 private input-scoped, byte-bounded edge results keyed by the exact source digest,
 model revisions, thresholds and dimensions; worker placement includes both
-configured cache allowances as well as classifier headroom. Terminal
+configured cache allowances as well as classifier headroom. LoRA stack changes
+unload the previous patched model before loading a clean
+verified base. A physical reload peak above the worker hold fails the job and
+leaves that worker unusable until node unload/restart; inspect the image load
+stage failure and measured node footprint before retrying. Terminal
 publication, cancellation and clean worker failure release the active input
 references. Deleting an input
 used by an active job requests fenced cancellation and tombstones the input;
