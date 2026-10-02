@@ -94,17 +94,25 @@ async def test_recipe_upload_requires_origin_and_returns_private_receipt(
             files={"file": b"pngdata"},
             headers={"Origin": ORIGIN},
         )
-        generation = await client.post(
-            "/api/v1/image-inputs",
-            data={**form, "purpose": "init"},
-            files={"file": b"pngdata"},
-            headers={"Origin": ORIGIN},
-        )
+        generation = [
+            await client.post(
+                "/api/v1/image-inputs",
+                data={**form, "purpose": purpose},
+                files={"file": b"pngdata"},
+                headers={"Origin": ORIGIN},
+            )
+            for purpose in ("init", "mask", "control")
+        ]
     assert denied.status_code == 403
     assert accepted.status_code == 202 and accepted.json()["state"] == "processing"
     assert accepted.headers["cache-control"] == "private, no-store"
-    assert generation.status_code == 202 and generation.json()["purpose"] == "init"
-    assert called == ["admitted", "admitted"]
+    assert all(response.status_code == 202 for response in generation)
+    assert [response.json()["purpose"] for response in generation] == [
+        "init",
+        "mask",
+        "control",
+    ]
+    assert called == ["admitted"] * 4
 
 
 async def test_recipe_upload_stays_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -11,6 +11,8 @@ rejects a changed purpose. The focused core/admission/dispatch/reference suite
 passed **37 tests** with one local-PostgreSQL skip. Ruff and strict mypy across
 645 source files passed. Advanced submission and native execution are still
 refused pending T056, so T054 remains open for end-to-end acceptance.
+The owner upload route contract now exercises each declared generation input
+purpose (`init`, `mask`, `control`) and passed **4 tests** with Ruff green.
 
 ## Legacy prelaunch admission — 2026-10-02
 
