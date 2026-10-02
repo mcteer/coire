@@ -4422,6 +4422,8 @@ export interface components {
             revision: string;
             /** Sha256 */
             sha256: string;
+            /** Slug */
+            slug?: string | null;
             /** Variant Id */
             variant_id?: string | null;
         };

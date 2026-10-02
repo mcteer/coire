@@ -252,6 +252,8 @@ async def admit_image_job(
             explicit=explicit,
             required_entitlements=policy.required_entitlements,
         )
+        if policy.profile.required_dependency_ids:
+            raise ImageValidationError("image model requires an unsupported local component")
         effective_request = (
             policy.request.model_copy(update={"content_mode": ImageContentMode.EXPLICIT})
             if explicit

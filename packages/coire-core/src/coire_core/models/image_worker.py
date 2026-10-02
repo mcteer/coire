@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from coire_core.models.files import SHA256_PATTERN, ULID_PATTERN
+from coire_core.models.files import SHA256_PATTERN, SLUG_PATTERN, ULID_PATTERN
 from coire_core.models.images import (
     GENERATION_INPUT_MAX_BYTES,
     RECIPE_INPUT_MAX_BYTES,
@@ -19,7 +19,7 @@ from coire_core.models.images import (
     ImageRecipe,
     ResolvedImageSpec,
 )
-from coire_core.models.registry import SLUG_PATTERN, ModelKind
+from coire_core.models.registry import ModelKind
 
 NODE_PATTERN = r"^coire-[a-z0-9-]{1,50}$"
 

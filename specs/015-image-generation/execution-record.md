@@ -1,5 +1,21 @@
 # Feature 015 execution record
 
+## Registry-bound auxiliary copy identity — 2026-10-02
+
+Resolved dependency records now carry the registry's safe local slug alongside
+model UUID and manifest digest. New jobs can bind a local auxiliary tree without
+deriving a path from client text; older recipes remain readable through the
+optional field. Unsafe slugs fail contract validation. OpenAPI and generated
+TypeScript types were refreshed; **35 focused contract/dispatch/replay tests**,
+strict mypy, Ruff, OpenAPI freshness, web lint and build passed. Native
+auxiliary stage loading remains under T056. Until that stage is present, a
+base requiring a hidden auxiliary copy is omitted from the picker, rejected
+before capacity reservation on direct submit, refused by node dispatch and
+refused before native execution. The focused admission/picker/pipeline checks
+passed **22 tests** with one local-Postgres integration test skipped. The full
+Python suite passed **1,839 tests** with 159 platform/external skips, and the
+local tiny native image suite passed **9 tests**.
+
 ## SeedVR2 3B local acquisition layout — 2026-10-02
 
 The pinned mflux 0.20.0 SeedVR2 3B loader expects two root safetensors files

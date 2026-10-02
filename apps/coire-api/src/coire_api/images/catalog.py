@@ -62,6 +62,7 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
             ImageMode.TXT2IMG not in policy.profile.modes
             or policy.profile.min_guidance > 0
             or policy.profile.default_guidance != 0
+            or policy.profile.required_dependency_ids
         ):
             continue
         # Advertise only settings accepted by the current fixed native worker.

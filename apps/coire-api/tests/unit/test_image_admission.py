@@ -322,6 +322,42 @@ def test_admission_commits_once_and_replays_same_intent(monkeypatch: pytest.Monk
     assert [kind for kind, _ in calls].count("policy") == policy_count
 
 
+def test_unimplemented_hidden_dependency_is_refused_before_capacity_hold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = FakeSession()
+
+    async def policy(
+        db: object, request: ImageSubmitRequest, principal: Principal
+    ) -> admission.ImageAdmissionPolicy:
+        return admission.ImageAdmissionPolicy(
+            request=request,
+            profile=_profile(required_dependency_ids=[HIDDEN]),
+            required_entitlements=frozenset(),
+        )
+
+    async def authorize(db: object, principal: Principal, **kwargs: object) -> uuid.UUID:
+        return OWNER
+
+    async def reserve(*args: object, **kwargs: object) -> int:
+        raise AssertionError("unsupported component reached capacity reservation")
+
+    monkeypatch.setattr(admission, "_load_policy", policy)
+    monkeypatch.setattr(admission, "authorize_live_image_action", authorize)
+    monkeypatch.setattr(admission, "reserve_image_job_capacity", reserve)
+    with pytest.raises(ImageValidationError, match="unsupported local component"):
+        asyncio.run(
+            admission.admit_image_job(
+                cast(AsyncSession, session),
+                PRINCIPAL,
+                ImageSubmitRequest(model_id=MODEL, prompt="private portrait"),
+                "dependency-key",
+                Settings(_secrets_dir="/nonexistent", image_enabled=True),  # type: ignore[call-arg]
+            )
+        )
+    assert not session.added and "commit" not in session.calls
+
+
 def test_direct_policy_checks_hidden_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     profile = _profile(required_dependency_ids=[HIDDEN])
     base = SimpleNamespace(

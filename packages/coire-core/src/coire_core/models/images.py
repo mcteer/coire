@@ -13,7 +13,7 @@ from typing import Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from coire_core.models.files import SHA256_PATTERN, ULID_PATTERN
+from coire_core.models.files import SHA256_PATTERN, SLUG_PATTERN, ULID_PATTERN
 
 UINT32_MAX = 2**32 - 1
 IMAGE_RUNTIME_VERSION = "mflux-0.20.0"
@@ -542,6 +542,7 @@ class ImageManifestDigest(BaseModel):
 
     model_id: uuid.UUID
     variant_id: uuid.UUID | None = None
+    slug: str | None = Field(default=None, pattern=SLUG_PATTERN)
     revision: str = Field(min_length=1, max_length=120, pattern=r"^[A-Za-z0-9._-]+$")
     sha256: str = Field(pattern=SHA256_PATTERN)
 

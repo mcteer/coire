@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -10,8 +11,14 @@ from typing import Any, cast
 import pytest
 from PIL import Image
 
-from coire_core.models.image_worker import ImageWorkerLoadRequest
-from coire_core.models.images import ImageSpec, ResolvedImageSpec, canonical_spec_hash
+from coire_core.models.image_worker import ImageWorkerLoadRequest, NodeImageStartRequest
+from coire_core.models.images import (
+    ImageManifestDigest,
+    ImageSpec,
+    ResolvedImageSpec,
+    canonical_spec_hash,
+)
+from coire_node.image_dispatch import _supported
 from coire_node.image_runtime.pipeline import ImagePipelineUnavailable, MfluxTxt2ImgPipeline
 from coire_node.image_runtime.preflight import RUNTIME_VERSION, ImageCopyUnavailable
 from coire_node.store import Store
@@ -107,3 +114,47 @@ def test_missing_local_model_copy_fails_before_native_import(
     _, _, request = _fixture()
     with pytest.raises(ImageCopyUnavailable):
         MfluxTxt2ImgPipeline.load(Store(tmp_path), request)
+
+
+def test_unimplemented_hidden_dependency_fails_before_native_execution() -> None:
+    loaded, model, load = _fixture()
+    spec = ImageSpec(
+        model_id=load.model_id,
+        prompt="a blue square",
+        width=64,
+        height=64,
+        steps=1,
+        guidance=Decimal(0),
+        seed=1,
+    )
+    resolved = ResolvedImageSpec(
+        spec=spec,
+        seeds=(1,),
+        pipeline_version=RUNTIME_VERSION,
+        environment_fingerprint="b" * 64,
+        model_sha256=load.manifest_sha256,
+        dependencies=(
+            ImageManifestDigest(
+                model_id=uuid.uuid4(),
+                slug="org--adapter",
+                revision="published",
+                sha256="c" * 64,
+            ),
+        ),
+        spec_hash=canonical_spec_hash(spec),
+    )
+    command = NodeImageStartRequest(
+        job_id="01J00000000000000000000000",
+        attempt=1,
+        fence=1,
+        node="coire-edge-b",
+        model_id=load.model_id,
+        instance_id=load.instance_id,
+        resolved=resolved,
+        deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+        reservation_bytes=load.reservation_bytes,
+    )
+    assert not _supported(command, load)
+    with pytest.raises(ImagePipelineUnavailable):
+        loaded.generate(resolved, lambda *_: None)
+    assert model.calls == 0

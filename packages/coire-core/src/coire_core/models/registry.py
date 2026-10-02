@@ -19,10 +19,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from coire_core.models.files import SLUG_PATTERN
 from coire_core.models.images import ImageCapabilityProfile
 
 REPO_ID_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
-SLUG_PATTERN = r"^[A-Za-z0-9_.-]+--[A-Za-z0-9_.-]+$"
 PLACEMENT_PATTERN = r"^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$"
 MAX_CHAT_TEMPLATE_BYTES = 64 * 1024
 

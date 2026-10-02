@@ -6207,6 +6207,18 @@
             "title": "Sha256",
             "type": "string"
           },
+          "slug": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.-]+--[A-Za-z0-9_.-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
           "variant_id": {
             "anyOf": [
               {

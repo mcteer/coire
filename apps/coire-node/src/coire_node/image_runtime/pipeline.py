@@ -270,6 +270,7 @@ class MfluxTxt2ImgPipeline:
             or spec.guidance != 0
             or spec.negative_prompt is not None
             or spec.loras
+            or resolved.dependencies
             or spec.mask_id is not None
             or spec.control is not None
             or spec.upscale is not None

@@ -564,6 +564,7 @@ async def prepare_image_dispatch(
         dependencies.append(
             ImageManifestDigest(
                 model_id=dependency.id,
+                slug=dependency.slug,
                 revision="published",
                 sha256=dependency.manifest_sha256,
             )

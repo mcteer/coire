@@ -63,6 +63,7 @@ def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> 
         and spec.guidance == 0
         and spec.negative_prompt is None
         and not spec.loras
+        and not request.resolved.dependencies
         and spec.mask_id is None
         and spec.control is None
         and spec.upscale is None

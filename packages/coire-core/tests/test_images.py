@@ -199,10 +199,25 @@ def test_recipe_is_bounded_precise_and_has_separate_pixel_digest() -> None:
         environment_fingerprint="a" * 64,
         model_sha256="b" * 64,
         spec_hash=canonical_spec_hash(resolved_spec),
-        dependencies=(ImageManifestDigest(model_id=MODEL, revision="v1", sha256="a" * 64),),
+        dependencies=(
+            ImageManifestDigest(
+                model_id=MODEL,
+                slug="numz--SeedVR2_comfyUI",
+                revision="v1",
+                sha256="a" * 64,
+            ),
+        ),
         inputs=(ImageInputDigest(input_id=INPUT, sha256="b" * 64, width=512, height=512),),
     )
     assert len(bound.inputs) == 1
+    assert bound.dependencies[0].slug == "numz--SeedVR2_comfyUI"
+    with pytest.raises(ValidationError):
+        ImageManifestDigest(
+            model_id=MODEL,
+            slug="../../private",
+            revision="v1",
+            sha256="a" * 64,
+        )
 
 
 def test_capability_limits() -> None:

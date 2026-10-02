@@ -168,6 +168,22 @@ async def test_model_picker_omits_base_with_unsupported_default(
     assert BASE not in {item.id for item in result.items}
 
 
+async def test_model_picker_omits_ready_base_with_unimplemented_hidden_component(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Session()
+    session.rows[HIDDEN].state = ModelState.READY
+
+    async def live(db: object, actor: Principal, **kwargs: object) -> uuid.UUID:
+        return OWNER
+
+    monkeypatch.setattr(catalog, "authorize_live_image_action", live)
+    listing = await catalog.list_eligible_image_models(
+        cast(AsyncSession, session), Principal(kind=PrincipalKind.USER, user_id=OWNER)
+    )
+    assert BROKEN not in {item.id for item in listing.items}
+
+
 async def test_model_picker_route_is_typed_and_disabled_until_admission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

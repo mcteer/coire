@@ -11,6 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validato
 
 ULID_PATTERN = r"^[0-9A-HJKMNP-TV-Z]{26}$"
 SHA256_PATTERN = r"^[a-f0-9]{64}$"
+SLUG_PATTERN = r"^[A-Za-z0-9_.-]+--[A-Za-z0-9_.-]+$"
 
 
 def _safe_basename(value: str) -> str:
