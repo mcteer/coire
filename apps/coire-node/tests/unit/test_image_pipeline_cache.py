@@ -346,6 +346,7 @@ def test_control_stage_uses_bound_input_without_running_plain_base(
     monkeypatch.setattr(pipeline, "LocalCannyControlStage", Stage)
     images = loaded.generate(resolved, lambda *_: None, input_paths={input_id: tmp_path / "input"})
     assert calls == [control] and model.calls == []
+    assert loaded.cache_status is None
     for image in images:
         image.close()
 

@@ -296,6 +296,7 @@ class MfluxTxt2ImgPipeline:
         self._adapter_id: str | None = None
         self._active_prompt_identity: str | None = None
         self._native_encoder_hook = False
+        self._active_control = False
         self._original_encoder: Callable[..., tuple[object, object | None]] | None = None
         self._attach_model(model)
 
@@ -370,6 +371,8 @@ class MfluxTxt2ImgPipeline:
     @property
     def cache_status(self) -> str | None:
         """Last observed prompt lookup for the active job; absent means unmeasured."""
+        if self._active_control:
+            return None
         if self._native_encoder_hook or self._fill:
             return self.encoder_cache.last_outcome
         return self.prompt_cache.last_outcome
@@ -578,6 +581,7 @@ class MfluxTxt2ImgPipeline:
             raise ImagePipelineUnavailable()
         images: list[Image.Image] = []
         try:
+            self._active_control = control_path is not None
             self.encoder_cache.last_outcome = None
             self.prompt_cache.last_outcome = None
             self._replace_lora_locked(resolved)

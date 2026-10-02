@@ -295,8 +295,16 @@ White mask pixels request replacement; black pixels keep the source. A Fill job
 cannot combine LoRAs, control or image strength. The Canny preprocessor keeps
 private input-scoped, byte-bounded edge results keyed by the exact source digest,
 model revisions, thresholds and dimensions; worker placement includes both
-configured cache allowances as well as classifier headroom. LoRA stack changes
-unload the previous patched model before loading a clean
+configured cache allowances as well as classifier headroom.
+
+The image timeline reports the last fenced prompt-cache observation as cold,
+reused or evicted. An unavailable status means the worker has not reported a
+prompt lookup for that job; it is not evidence of a miss. Control preprocessing
+cache events remain aggregate telemetry. The worker residency label
+means the node observed it during the last running event, not that it is still
+loaded after the job ends. Use `coire_image_node_cache_events_total` and the node
+reservation/footprint panels for aggregate diagnosis.
+LoRA stack changes unload the previous patched model before loading a clean
 verified base. A physical reload peak above the worker hold fails the job and
 leaves that worker unusable until node unload/restart; inspect the image load
 stage failure and measured node footprint before retrying. Terminal
