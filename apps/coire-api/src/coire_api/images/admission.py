@@ -104,7 +104,7 @@ async def _load_policy(
             dependency = await session.get(
                 ModelRow, dependency_id, populate_existing=True, with_for_update=True
             )
-            _ready_image_dependency(dependency)
+            _ready_image_dependency(dependency, preset.request.model_id)
         return ImageAdmissionPolicy(
             request=preset.request,
             profile=profile,
@@ -123,7 +123,7 @@ async def _load_policy(
         dependency = await session.get(
             ModelRow, dependency_id, populate_existing=True, with_for_update=True
         )
-        _ready_image_dependency(dependency)
+        _ready_image_dependency(dependency, request.model_id)
         assert dependency is not None
         required.update(_entitlements(dependency.entitlement))
     effective_request = request
@@ -136,7 +136,7 @@ async def _load_policy(
     )
 
 
-def _ready_image_dependency(row: ModelRow | None) -> None:
+def _ready_image_dependency(row: ModelRow | None, base_model_id: uuid.UUID) -> None:
     if (
         row is None
         or row.kind not in AUXILIARY_IMAGE_KINDS
@@ -147,6 +147,11 @@ def _ready_image_dependency(row: ModelRow | None) -> None:
         or _DIGEST.fullmatch(row.manifest_sha256) is None
     ):
         raise ImageValidationError("image dependency unavailable")
+    if row.kind in {ModelKind.IMAGE_LORA, ModelKind.CONTROL_MODEL} and (
+        not isinstance(row.capability_profile, dict)
+        or row.capability_profile.get("compatible_base_model_id") != str(base_model_id)
+    ):
+        raise ImageValidationError("image dependency is incompatible with the selected base")
 
 
 def _replay_entitlements(row: ImageJobRow) -> frozenset[str]:

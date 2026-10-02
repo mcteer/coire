@@ -17,6 +17,11 @@ resolved commit, selected safe file inventory and licence in the registry and au
 row. Only the origin Studio pulls; it selects inert files, hashes them against Hub
 safetensors digests, and sends the verified manifest to the replica. Both copy
 manifests must match the inspected inventory before validation starts.
+LoRA and control asset intake also requires `compatible_base_model_id` naming an
+already ready, locally validated image base. The admin API records this base ID
+with the auxiliary asset, and admission rejects a dependency bound to another
+base. Retiring the base makes it ineligible for new jobs; acquire a separately
+validated auxiliary copy for a replacement base.
 
 The `VERIFY_REPLICA` acquisition stage now holds a measured Studio reservation
 and invokes an offline `image_validate` job on each copy. A base model must produce

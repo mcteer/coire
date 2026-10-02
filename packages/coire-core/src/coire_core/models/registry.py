@@ -257,6 +257,7 @@ class ImageAssetAcquireRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
     placement_policy: str = Field(default="single:auto", pattern=PLACEMENT_PATTERN)
+    compatible_base_model_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def image_kind_and_reviewed_licence(self) -> ImageAssetAcquireRequest:
@@ -264,6 +265,11 @@ class ImageAssetAcquireRequest(BaseModel):
             raise ValueError("image asset kind required")
         if self.accepted_license_id.lower() in {"other", "unknown"}:
             raise ValueError("a declared licence identifier must be reviewed")
+        if self.kind in {ModelKind.IMAGE_LORA, ModelKind.CONTROL_MODEL}:
+            if self.compatible_base_model_id is None:
+                raise ValueError("LoRA and control assets require a compatible base model")
+        elif self.compatible_base_model_id is not None:
+            raise ValueError("this image asset kind cannot bind a base model")
         return self
 
 

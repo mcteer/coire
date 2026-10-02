@@ -4888,6 +4888,18 @@
             "title": "Accepted License Id",
             "type": "string"
           },
+          "compatible_base_model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compatible Base Model Id"
+          },
           "description": {
             "anyOf": [
               {

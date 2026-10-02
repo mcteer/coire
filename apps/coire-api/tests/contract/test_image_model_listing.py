@@ -79,6 +79,7 @@ class Session:
             state=ModelState.FAILED,
             manifest_sha256="b" * 64,
             entitlement=[],
+            capability_profile={"compatible_base_model_id": str(BROKEN)},
         )
 
     async def scalars(self, query: object) -> Any:

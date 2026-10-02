@@ -1,5 +1,17 @@
 # Feature 015 execution record
 
+## Auxiliary base compatibility binding — 2026-10-02
+
+Admin acquisition now requires a ready image base ID for LoRA and control assets,
+stores that binding with the auxiliary registry row, and refuses a missing or
+different base at image admission. Intake refuses an unready base before upstream
+inspection. OpenAPI and generated web types were refreshed. Focused acquisition,
+listing and admission tests passed **25** with one local-PostgreSQL skip. The
+full local Python suite passed **1,843** with 159 platform/external skips;
+all **138** web tests, ESLint, Ruff, strict mypy and OpenAPI freshness passed.
+Native auxiliary validation and
+execution remain open under T033/T056, so admission still refuses their jobs.
+
 ## Prompt cancellation dispatch and bounded process stop — 2026-10-02
 
 A dedicated scheduler scan now discovers committed image cancellation every

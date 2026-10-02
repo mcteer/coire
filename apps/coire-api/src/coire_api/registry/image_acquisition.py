@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from sqlalchemy import select
@@ -19,6 +20,7 @@ from coire_core.models.jobs import DownloadStage, JobKind, JobStatus
 from coire_core.models.registry import (
     ImageAssetAcquireRequest,
     ModelKind,
+    ModelSource,
     ModelState,
     Visibility,
     slug_for,
@@ -98,6 +100,19 @@ async def submit_image_asset(
     ).scalar_one_or_none()
     if existing is not None:
         raise await _refuse(session, actor, request.repo_id, "duplicate", 409)
+    if request.compatible_base_model_id is not None:
+        base = await session.get(ModelRow, request.compatible_base_model_id)
+        if (
+            base is None
+            or base.kind is not ModelKind.IMAGE_MODEL
+            or base.state is not ModelState.READY
+            or base.backend != "mflux"
+            or base.source != ModelSource.STUDIO
+            or base.image_capability_profile is None
+            or base.manifest_sha256 is None
+            or re.fullmatch(r"[0-9a-f]{64}", base.manifest_sha256) is None
+        ):
+            raise await _refuse(session, actor, request.repo_id, "compatible_base_unavailable")
     try:
         origin = choose_origin(views)
         replica = replica_for(origin, views)
@@ -173,7 +188,11 @@ async def submit_image_asset(
         total_bytes=selected_total,
         file_count=len(selected),
         memory_estimate_bytes=memory_estimate,
-        capability_profile={},
+        capability_profile=(
+            {"compatible_base_model_id": str(request.compatible_base_model_id)}
+            if request.compatible_base_model_id is not None
+            else {}
+        ),
         image_capability_profile=None,
         source_revision=inspection.revision,
         license_id=inspection.license_id,

@@ -174,6 +174,24 @@ def test_control_input_binding_and_duplicate_purpose_refusal() -> None:
         image_input_bindings(repeated)
 
 
+def test_lora_dependency_is_bound_to_its_reviewed_base() -> None:
+    row = ModelRow(
+        id=uuid.uuid4(),
+        kind=ModelKind.IMAGE_LORA,
+        backend=EngineBackend.AUXILIARY.value,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        manifest_sha256="a" * 64,
+        capability_profile={"compatible_base_model_id": str(MODEL)},
+    )
+    admission._ready_image_dependency(row, MODEL)
+    with pytest.raises(ImageValidationError, match="incompatible"):
+        admission._ready_image_dependency(row, uuid.uuid4())
+    row.capability_profile = {}
+    with pytest.raises(ImageValidationError, match="incompatible"):
+        admission._ready_image_dependency(row, MODEL)
+
+
 def _profile(**updates: object) -> ImageCapabilityProfile:
     values: dict[str, object] = {
         "modes": ["txt2img"],
@@ -379,6 +397,7 @@ def test_direct_policy_checks_hidden_dependencies(monkeypatch: pytest.MonkeyPatc
         state=ModelState.READY,
         entitlement=["hidden"],
         manifest_sha256="b" * 64,
+        capability_profile={"compatible_base_model_id": str(MODEL)},
     )
 
     class Session:

@@ -3935,6 +3935,8 @@ export interface components {
         ImageAssetAcquireRequest: {
             /** Accepted License Id */
             accepted_license_id: string;
+            /** Compatible Base Model Id */
+            compatible_base_model_id?: string | null;
             /** Description */
             description?: string | null;
             /** Display Name */

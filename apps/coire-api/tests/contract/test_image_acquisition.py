@@ -23,7 +23,12 @@ from coire_core.models.jobs import (
     RepoInspection,
 )
 from coire_core.models.node import Reachability
-from coire_core.models.registry import EngineBackend, ImageAssetAcquireRequest, ModelKind
+from coire_core.models.registry import (
+    EngineBackend,
+    ImageAssetAcquireRequest,
+    ModelKind,
+    ModelState,
+)
 from coire_core.settings import Settings
 
 
@@ -127,6 +132,16 @@ def test_image_acquisition_contract_requires_human_licence_review() -> None:
         accepted_license_id="apache-2.0",
     )
     assert request.accepted_license_id == "apache-2.0"
+    base_id = uuid.uuid4()
+    assert (
+        ImageAssetAcquireRequest(
+            repo_id="org/adapter",
+            kind=ModelKind.IMAGE_LORA,
+            accepted_license_id="apache-2.0",
+            compatible_base_model_id=base_id,
+        ).compatible_base_model_id
+        == base_id
+    )
     for payload in (
         {"repo_id": "org/image-base", "kind": "image_model"},
         {"repo_id": "org/image-base", "kind": "language_model", "accepted_license_id": "MIT"},
@@ -141,9 +156,60 @@ def test_image_acquisition_contract_requires_human_licence_review() -> None:
             "accepted_license_id": "MIT",
             "trust_remote_code": True,
         },
+        {"repo_id": "org/adapter", "kind": "image_lora", "accepted_license_id": "MIT"},
+        {"repo_id": "org/control", "kind": "control_model", "accepted_license_id": "MIT"},
+        {
+            "repo_id": "org/image-base",
+            "kind": "image_model",
+            "accepted_license_id": "MIT",
+            "compatible_base_model_id": str(base_id),
+        },
     ):
         with pytest.raises(ValidationError):
             ImageAssetAcquireRequest.model_validate(payload)
+
+
+async def test_auxiliary_intake_refuses_an_unready_base_before_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Result:
+        def scalar_one_or_none(self) -> None:
+            return None
+
+    class Session:
+        async def execute(self, query: object) -> Result:
+            return Result()
+
+        async def get(self, model: type[object], identity: object) -> ModelRow:
+            assert model is ModelRow
+            return ModelRow(id=identity, kind=ModelKind.IMAGE_MODEL, state=ModelState.DOWNLOADING)
+
+    class Client:
+        async def inspect(self, node: str, repo_id: str) -> RepoInspection:
+            pytest.fail("unready base reached upstream inspection")
+
+    audits: list[dict[str, object]] = []
+
+    async def audit(session: object, **kwargs: object) -> None:
+        audits.append(kwargs)
+
+    monkeypatch.setattr(image_acquisition, "write_audit", audit)
+    request = ImageAssetAcquireRequest(
+        repo_id="org/adapter",
+        kind=ModelKind.IMAGE_LORA,
+        accepted_license_id="apache-2.0",
+        compatible_base_model_id=uuid.uuid4(),
+    )
+    with pytest.raises(RegistryError, match="compatible_base_unavailable"):
+        await image_acquisition.submit_image_asset(
+            Session(),  # type: ignore[arg-type]
+            request,
+            client=Client(),  # type: ignore[arg-type]
+            settings=Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+            views=[],
+            actor="admin:test",
+        )
+    assert audits[-1]["detail"] == {"reason": "compatible_base_unavailable"}
 
 
 async def test_admin_image_intake_pins_revision_and_licence_before_pull(
@@ -226,6 +292,34 @@ async def test_admin_image_intake_pins_revision_and_licence_before_pull(
         "model.safetensors": {"bytes": 1024, "upstream_sha256": "b" * 64},
     }
     assert audits[0]["detail"]["license_id"] == "apache-2.0"  # type: ignore[index]
+
+    class SessionWithBase(Session):
+        async def get(self, model_type: type[object], identity: object) -> ModelRow:
+            assert model_type is ModelRow and identity == model.id
+            model.state = ModelState.READY
+            model.image_capability_profile = {"modes": ["txt2img"]}
+            model.manifest_sha256 = "c" * 64
+            return model
+
+    class AdapterClient:
+        async def inspect(self, node: str, repo_id: str) -> RepoInspection:
+            assert node == "coire-edge-a" and repo_id == "org/adapter"
+            return _repo(repo_id=repo_id)
+
+    adapter, _adapter_job = await image_acquisition.submit_image_asset(
+        SessionWithBase(),  # type: ignore[arg-type]
+        ImageAssetAcquireRequest(
+            repo_id="org/adapter",
+            kind=ModelKind.IMAGE_LORA,
+            accepted_license_id="apache-2.0",
+            compatible_base_model_id=model.id,
+        ),
+        client=AdapterClient(),  # type: ignore[arg-type]
+        settings=Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        views=views,
+        actor="admin:test",
+    )
+    assert adapter.capability_profile == {"compatible_base_model_id": str(model.id)}
 
     one_low_node = [
         NodeView(
