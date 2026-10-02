@@ -1,5 +1,21 @@
 # Feature 015 execution record
 
+## Clean resident LoRA stack replacement — 2026-10-02
+
+The resident Z-Image pipeline now checks each ordered adapter's pinned slug,
+revision and manifest before a stack change. It drops the previous model and
+prompt cache, clears MLX cache, and loads the requested adapters against the
+verified clean base; an unchanged stack retains the resident model. A changed
+or missing adapter refuses before the current resident is dropped. The local
+real mflux tiny fixture generated with an adapter, reused it, and returned to
+the base, with **10 native tests** passing. The focused unit pipeline gate
+passed **23 tests**; Ruff and strict mypy passed. Direct admission now checks
+publication, entitlement and exact base compatibility. Dispatch binds ordered
+manifest digests and includes incremental adapter estimates in the worker hold;
+node dispatch refuses a missing or extra adapter. The full repository gate after
+those changes passed **1,853 tests, 160 skipped**. The web adapter picker and
+real Studio peak measurements remain open under T057/T061/T083.
+
 ## Pinned Union control acquisition smoke — 2026-10-02
 
 The pinned mflux control acquisition now selects one reviewed Union 2.1

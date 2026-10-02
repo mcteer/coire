@@ -11,6 +11,7 @@ from coire_api.images.resolution import resolve_basic_image_spec
 from coire_core.errors import ImageValidationError
 from coire_core.models.images import (
     ImageCapabilityProfile,
+    ImageLora,
     ImageMode,
     ImageSubmitRequest,
     canonical_spec_hash,
@@ -80,6 +81,18 @@ def test_img2img_resolution_preserves_full_precision_strength_and_bound_input() 
     assert result.seed == 0
     with pytest.raises(ImageValidationError, match="mode is unsupported"):
         resolve_basic_image_spec(request, _profile(), random_seed=lambda: 123)
+
+
+def test_resolution_preserves_ordered_lora_scales_and_capability_limit() -> None:
+    adapters = [
+        ImageLora(model_id=uuid.uuid4(), scale=Decimal("0.375125")),
+        ImageLora(model_id=uuid.uuid4(), scale=Decimal("-1.00001")),
+    ]
+    request = ImageSubmitRequest(model_id=MODEL, prompt="portrait", loras=adapters)
+    result = resolve_basic_image_spec(request, _profile(max_loras=2), random_seed=lambda: 123)
+    assert result.loras == tuple(adapters)
+    with pytest.raises(ImageValidationError, match="loras exceed model bound"):
+        resolve_basic_image_spec(request, _profile(max_loras=1), random_seed=lambda: 123)
 
 
 @pytest.mark.parametrize(

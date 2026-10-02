@@ -16,7 +16,7 @@ from typing import cast
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.db import ImageJobRow, ModelInstanceRow
+from coire_api.db import ImageJobRow, ModelInstanceRow, ModelRow
 from coire_api.nodes_client import NodeError, NodeErrorKind
 from coire_core.errors import ImageConflict
 from coire_core.models.image_worker import (
@@ -29,6 +29,7 @@ from coire_core.models.image_worker import (
 )
 from coire_core.models.images import (
     ImageInputDigest,
+    ImageLora,
     ImageMode,
     ImageSpec,
     ResolvedImageSpec,
@@ -37,6 +38,7 @@ from coire_core.models.images import (
 )
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState
+from coire_core.models.registry import EngineBackend, ModelKind, ModelSource, ModelState, Visibility
 from coire_core.settings import Settings
 from coire_scheduler import image_dispatch, images
 from coire_scheduler.image_dispatch import (
@@ -119,6 +121,63 @@ def test_image_hold_includes_classifier_budget_for_placement() -> None:
             "single:auto", hold, [_candidate(IMAGE_PREFERRED_NODE, memory_total_bytes=hold)]
         )
         is not None
+    )
+
+
+async def test_bound_lora_stack_preserves_order_and_rejects_changed_base() -> None:
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    base = SimpleNamespace(id=MODEL, memory_estimate_bytes=8 * 1024**3)
+
+    def adapter(identity: uuid.UUID, revision: str, overhead: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=identity,
+            slug=f"studio--adapter-{identity.hex[:8]}",
+            kind=ModelKind.IMAGE_LORA,
+            visibility=Visibility.PUBLISHED,
+            backend=EngineBackend.AUXILIARY,
+            source=ModelSource.STUDIO,
+            state=ModelState.READY,
+            manifest_sha256="a" * 64,
+            source_revision=revision,
+            capability_profile={"compatible_base_model_id": str(MODEL)},
+            memory_estimate_bytes=base.memory_estimate_bytes + overhead,
+        )
+
+    adapters = {
+        first_id: adapter(first_id, "b" * 40, 128 * 1024**2),
+        second_id: adapter(second_id, "c" * 40, 256 * 1024**2),
+    }
+
+    class Session:
+        async def get(self, model: type[object], identity: object, **kwargs: object) -> object:
+            assert kwargs.get("populate_existing") is True
+            return adapters[cast(uuid.UUID, identity)]
+
+    spec = ImageSpec(
+        model_id=MODEL,
+        prompt="private subject",
+        width=64,
+        height=64,
+        steps=2,
+        guidance=Decimal(0),
+        seed=3,
+        loras=(
+            ImageLora(model_id=second_id, scale=Decimal("0.375125")),
+            ImageLora(model_id=first_id, scale=Decimal("-0.5")),
+        ),
+    )
+    session = cast(AsyncSession, Session())
+    bound = await image_dispatch._bound_loras(
+        session, spec, cast(ModelRow, base), from_preset=False
+    )
+    assert bound is not None
+    manifests, overhead = bound
+    assert [item.model_id for item in manifests] == [second_id, first_id]
+    assert overhead == 384 * 1024**2
+    adapters[first_id].capability_profile = {"compatible_base_model_id": str(uuid.uuid4())}
+    assert (
+        await image_dispatch._bound_loras(session, spec, cast(ModelRow, base), from_preset=False)
+        is None
     )
 
 

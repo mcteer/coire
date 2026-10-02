@@ -28,7 +28,6 @@ def resolve_basic_image_spec(
         request.model_id is None
         or request.mode not in (None, ImageMode.TXT2IMG, ImageMode.IMG2IMG)
         or request.variant_id is not None
-        or request.loras
         or request.mask_id is not None
         or request.control is not None
         or request.upscale is not None
@@ -56,6 +55,7 @@ def resolve_basic_image_spec(
         "n": request.n if request.n is not None else 1,
         "init_image_id": request.init_image_id,
         "strength": request.strength,
+        "loras": request.loras or [],
         "output": request.output,
         "content_mode": request.content_mode or ImageContentMode.STANDARD,
     }

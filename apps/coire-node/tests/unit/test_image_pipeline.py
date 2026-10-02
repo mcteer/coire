@@ -13,6 +13,7 @@ from PIL import Image
 
 from coire_core.models.image_worker import ImageWorkerLoadRequest, NodeImageStartRequest
 from coire_core.models.images import (
+    ImageLora,
     ImageManifestDigest,
     ImageSpec,
     ResolvedImageSpec,
@@ -158,3 +159,46 @@ def test_unimplemented_hidden_dependency_fails_before_native_execution() -> None
     with pytest.raises(ImagePipelineUnavailable):
         loaded.generate(resolved, lambda *_: None)
     assert model.calls == 0
+
+
+def test_node_accepts_only_exact_lora_dependency_set() -> None:
+    _loaded, _model, load = _fixture()
+    adapter_id = uuid.uuid4()
+    spec = ImageSpec(
+        model_id=load.model_id,
+        prompt="a blue square",
+        width=64,
+        height=64,
+        steps=1,
+        guidance=Decimal(0),
+        seed=1,
+        loras=(ImageLora(model_id=adapter_id, scale=Decimal("0.375125")),),
+    )
+    dependency = ImageManifestDigest(
+        model_id=adapter_id, slug="org--adapter", revision="a" * 40, sha256="c" * 64
+    )
+    resolved = ResolvedImageSpec(
+        spec=spec,
+        seeds=(1,),
+        pipeline_version=RUNTIME_VERSION,
+        environment_fingerprint="b" * 64,
+        model_sha256=load.manifest_sha256,
+        dependencies=(dependency,),
+        spec_hash=canonical_spec_hash(spec),
+    )
+    command = NodeImageStartRequest(
+        job_id="01J00000000000000000000000",
+        attempt=1,
+        fence=1,
+        node="coire-edge-b",
+        model_id=load.model_id,
+        instance_id=load.instance_id,
+        resolved=resolved,
+        deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+        reservation_bytes=load.reservation_bytes,
+    )
+    assert _supported(command, load)
+    assert not _supported(
+        command.model_copy(update={"resolved": resolved.model_copy(update={"dependencies": ()})}),
+        load,
+    )

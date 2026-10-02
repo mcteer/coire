@@ -76,7 +76,7 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
                 ),
                 "min_guidance": 0,
                 "max_guidance": 0,
-                "max_loras": 0,
+                "max_loras": policy.profile.max_loras,
                 "supports_negative_prompt": False,
                 "required_dependency_ids": (),
             }

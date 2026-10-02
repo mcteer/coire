@@ -119,12 +119,18 @@ async def _load_policy(
     profile = _ready_image_base(base)
     assert base is not None
     required = set(_entitlements(base.entitlement))
-    for dependency_id in sorted(profile.required_dependency_ids):
+    selected_loras = {item.model_id for item in request.loras or []}
+    for dependency_id in sorted(set(profile.required_dependency_ids) | selected_loras):
         dependency = await session.get(
             ModelRow, dependency_id, populate_existing=True, with_for_update=True
         )
         _ready_image_dependency(dependency, request.model_id)
         assert dependency is not None
+        if dependency_id in selected_loras and (
+            dependency.kind is not ModelKind.IMAGE_LORA
+            or dependency.visibility is not Visibility.PUBLISHED
+        ):
+            raise ImageValidationError("image LoRA unavailable")
         required.update(_entitlements(dependency.entitlement))
     effective_request = request
     if "explicit" in required:

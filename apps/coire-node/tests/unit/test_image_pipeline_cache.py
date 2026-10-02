@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import inspect
 import uuid
 from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -13,6 +16,8 @@ from PIL import Image
 
 from coire_core.models.image_worker import ImageWorkerLoadRequest
 from coire_core.models.images import (
+    ImageLora,
+    ImageManifestDigest,
     ImageSpec,
     ResolvedImageSpec,
     canonical_spec_hash,
@@ -21,6 +26,7 @@ from coire_core.models.images import (
 from coire_node.image_runtime import pipeline
 from coire_node.image_runtime.cache import NativeStageCache, StageCacheKey, stage_identity
 from coire_node.image_runtime.preflight import RUNTIME_VERSION
+from coire_node.store import Store
 
 
 class _Callbacks:
@@ -291,37 +297,82 @@ def test_refused_generation_does_not_fill_the_prompt_cache() -> None:
     assert loaded.prompt_cache.occupancy("prompt") == 0
 
 
-def test_replace_lora_keeps_one_adapter_and_drops_the_prompt_cache() -> None:
-    loaded, _model, request = _pipeline(max_bytes=4096)
-    resolved = _resolved(request)
-    key = _key(request, resolved, resolved.seeds[0])
-    loaded.encode_prompt(resolved)
-    adapter_ids: list[str | None] = []
-    cache_ids: list[int] = [id(loaded.prompt_cache)]
-    present: list[bool] = []
+def test_replace_lora_reloads_clean_base_once_per_verified_stack(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    request = _request()
+    root = Path("/private/verified")
+    revisions = {"org--adapter-a": "a" * 40, "org--adapter-b": "b" * 40}
 
-    def replace(adapter_id: str | None) -> None:
-        loaded.replace_lora(adapter_id)
-        adapter_ids.append(loaded.adapter_id)
-        cache_ids.append(id(loaded.prompt_cache))
-        present.append(loaded.prompt_cache.get(key) is not None)
+    class FakeStore:
+        def read_manifest(self, slug: str) -> object:
+            return SimpleNamespace(
+                revision=revisions[slug], files=[SimpleNamespace(path="adapter.safetensors")]
+            )
 
-    replace("adapter-a")
-    loaded.encode_prompt(resolved)
-    replace("adapter-a")
-    loaded.encode_prompt(resolved)
-    replace("adapter-b")
-    loaded.encode_prompt(resolved)
-    replace(None)
-    assert adapter_ids == ["adapter-a", "adapter-a", "adapter-b", None]
-    assert present == [False, False, False, False]
-    assert len(set(cache_ids)) == len(cache_ids)
-    assert loaded.prompt_cache.max_bytes == 4096
+    loaded = pipeline.MfluxTxt2ImgPipeline(
+        cast(Any, _Model()), request, prompt_cache_max_bytes=4096, store=cast(Store, FakeStore())
+    )
+    monkeypatch.setattr(pipeline, "verify_image_copy", lambda store, load: root / load.slug)
+    monkeypatch.setattr(
+        importlib,
+        "import_module",
+        lambda name: SimpleNamespace(clear_cache=lambda: None) if name == "mlx.core" else None,
+    )
+    native_loads: list[tuple[tuple[Path, ...], tuple[float, ...]]] = []
 
-    loaded.encode_prompt(resolved)
-    kept = id(loaded.prompt_cache)
-    with pytest.raises(ValueError, match="empty"):
-        loaded.replace_lora("")
+    def load_native(
+        path: Path, *, lora_paths: tuple[Path, ...], lora_scales: tuple[float, ...]
+    ) -> Any:
+        assert path == root / request.slug
+        native_loads.append((lora_paths, lora_scales))
+        return _Model()
+
+    monkeypatch.setattr(pipeline, "_load_native", load_native)
+    base = _resolved(request)
+
+    def with_adapter(name: str) -> ResolvedImageSpec:
+        model_id = uuid.uuid5(uuid.NAMESPACE_DNS, name)
+        spec = base.spec.model_copy(
+            update={"loras": (ImageLora(model_id=model_id, scale=Decimal("0.125")),)}
+        )
+        return base.model_copy(
+            update={
+                "spec": spec,
+                "spec_hash": canonical_spec_hash(spec),
+                "dependencies": (
+                    ImageManifestDigest(
+                        model_id=model_id,
+                        slug=f"org--adapter-{name}",
+                        revision=revisions[f"org--adapter-{name}"],
+                        sha256=("c" if name == "a" else "d") * 64,
+                    ),
+                ),
+            }
+        )
+
+    first = with_adapter("a")
+    second = with_adapter("b")
+    with pytest.raises(pipeline.ImagePipelineUnavailable):
+        loaded.replace_lora(first.model_copy(update={"model_sha256": "0" * 64}))
+    assert native_loads == []
+    loaded.replace_lora(first)
+    first_identity = loaded.adapter_id
+    assert first_identity is not None
+    cache_before = loaded.prompt_cache
+    loaded.replace_lora(first)
+    assert loaded.prompt_cache is cache_before
+    revisions["org--adapter-b"] = "0" * 40
+    with pytest.raises(pipeline.ImagePipelineUnavailable):
+        loaded.replace_lora(second)
+    assert loaded.adapter_id == first_identity and loaded.prompt_cache is cache_before
+    revisions["org--adapter-b"] = "b" * 40
+    loaded.replace_lora(second)
+    assert loaded.adapter_id != first_identity and loaded.prompt_cache is not cache_before
+    loaded.replace_lora(base)
+    assert native_loads == [
+        ((root / "org--adapter-a" / "adapter.safetensors",), (0.125,)),
+        ((root / "org--adapter-b" / "adapter.safetensors",), (0.125,)),
+        ((), ()),
+    ]
     assert loaded.adapter_id is None
-    assert id(loaded.prompt_cache) == kept
-    assert loaded.prompt_cache.get(key) is not None

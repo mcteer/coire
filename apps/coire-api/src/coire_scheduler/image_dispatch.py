@@ -54,7 +54,7 @@ from coire_core.models.images import (
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
-from coire_core.models.registry import ModelKind, ModelSource, ModelState, Visibility
+from coire_core.models.registry import EngineBackend, ModelKind, ModelSource, ModelState, Visibility
 from coire_core.settings import Settings
 from coire_scheduler.image_admission import (
     chat_mix_allowed,
@@ -137,6 +137,47 @@ def _placed(row: ImageJobRow) -> bool:
 def image_worker_hold_bytes(model_estimate_bytes: int | None, settings: Settings) -> int:
     """Reserve CPU classification headroom alongside the resident image estimate."""
     return max(model_estimate_bytes or 0, 1) + settings.image_classifier_memory_bytes
+
+
+async def _bound_loras(
+    session: AsyncSession,
+    spec: ImageSpec,
+    base: ModelRow,
+    *,
+    from_preset: bool,
+) -> tuple[tuple[ImageManifestDigest, ...], int] | None:
+    """Bind ordered, compatible copies and their incremental measured hold."""
+    manifests: list[ImageManifestDigest] = []
+    overhead = 0
+    for selected in spec.loras:
+        dependency = await session.get(ModelRow, selected.model_id, populate_existing=True)
+        if (
+            dependency is None
+            or dependency.kind is not ModelKind.IMAGE_LORA
+            or (not from_preset and dependency.visibility is not Visibility.PUBLISHED)
+            or dependency.backend is not EngineBackend.AUXILIARY
+            or dependency.source is not ModelSource.STUDIO
+            or dependency.state is not ModelState.READY
+            or dependency.manifest_sha256 is None
+            or _DIGEST.fullmatch(dependency.manifest_sha256) is None
+            or dependency.source_revision is None
+            or _REVISION.fullmatch(dependency.source_revision) is None
+            or not isinstance(dependency.capability_profile, dict)
+            or dependency.capability_profile.get("compatible_base_model_id") != str(base.id)
+            or dependency.memory_estimate_bytes is None
+            or dependency.memory_estimate_bytes < (base.memory_estimate_bytes or 0)
+        ):
+            return None
+        overhead += dependency.memory_estimate_bytes - (base.memory_estimate_bytes or 0)
+        manifests.append(
+            ImageManifestDigest(
+                model_id=dependency.id,
+                slug=dependency.slug,
+                revision=dependency.source_revision,
+                sha256=dependency.manifest_sha256,
+            )
+        )
+    return tuple(manifests), overhead
 
 
 async def fail_image_attempt(session: AsyncSession, job_id: str, code: str) -> bool:
@@ -531,7 +572,6 @@ async def prepare_image_dispatch(
         or spec.negative_prompt is not None
         or spec.seed is None
         or spec.variant_id is not None
-        or spec.loras
         or spec.mask_id is not None
         or spec.control is not None
         or spec.upscale is not None
@@ -551,34 +591,20 @@ async def prepare_image_dispatch(
     except ImageConflict:
         await fail_image_attempt(session, job_id, "input_unavailable")
         return None
-    dependencies: list[ImageManifestDigest] = []
-    for dependency_id in profile.required_dependency_ids:
-        dependency = await session.get(ModelRow, dependency_id, populate_existing=True)
-        if (
-            dependency is None
-            or dependency.state is not ModelState.READY
-            or dependency.manifest_sha256 is None
-            or _DIGEST.fullmatch(dependency.manifest_sha256) is None
-            or dependency.source_revision is None
-            or _REVISION.fullmatch(dependency.source_revision) is None
-        ):
-            await fail_image_attempt(session, job_id, "model_unavailable")
-            return None
-        dependencies.append(
-            ImageManifestDigest(
-                model_id=dependency.id,
-                slug=dependency.slug,
-                revision=dependency.source_revision,
-                sha256=dependency.manifest_sha256,
-            )
-        )
+    bound_loras = await _bound_loras(session, spec, model, from_preset=row.preset_id is not None)
+    if bound_loras is None:
+        await fail_image_attempt(session, job_id, "model_unavailable")
+        return None
+    dependencies, adapter_overhead = bound_loras
     studios = (await session.scalars(select(NodeRow).where(NodeRow.role == NodeRole.STUDIO))).all()
     # Chat placement uses the same transaction-scoped node locks. Acquire all
     # candidates before reading image/chat occupancy so neither path can race
     # a new incompatible resident load into the chosen Studio.
     await lock_nodes_for_admission(session, [studio.id for studio in studios])
     candidates: list[ImageNodeCandidate] = []
-    reservation = image_worker_hold_bytes(model.memory_estimate_bytes, settings)
+    reservation = image_worker_hold_bytes(
+        (model.memory_estimate_bytes or 0) + adapter_overhead, settings
+    )
     for studio in studios:
         candidates.append(
             ImageNodeCandidate(
@@ -607,7 +633,7 @@ async def prepare_image_dispatch(
         pipeline_version=IMAGE_RUNTIME_VERSION,
         environment_fingerprint=image_environment_fingerprint(studio, model.manifest_sha256),
         model_sha256=model.manifest_sha256,
-        dependencies=tuple(dependencies),
+        dependencies=dependencies,
         inputs=tuple(
             ImageInputDigest(
                 input_id=item.input_id,

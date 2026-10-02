@@ -22,6 +22,14 @@ already ready, locally validated image base. The admin API records this base ID
 with the auxiliary asset, and admission rejects a dependency bound to another
 base. Retiring the base makes it ineligible for new jobs; acquire a separately
 validated auxiliary copy for a replacement base.
+The resident Z-Image pipeline verifies an exact local LoRA manifest before
+using it. A changed ordered stack drops its prompt cache and rebuilds from
+clean base weights; an invalid adapter leaves the current stack untouched.
+Direct image jobs may select up to four published, base-compatible LoRAs.
+The scheduler binds the ordered local manifests and reserves the base estimate,
+each adapter's incremental estimate, and classifier headroom before dispatch.
+If the resident worker has a smaller hold, the job waits for an eligible Studio
+or the resident worker's idle unload. The web LoRA picker remains under T057.
 
 The `VERIFY_REPLICA` acquisition stage now holds a measured Studio reservation
 and invokes an offline `image_validate` job on each copy. A base model must produce

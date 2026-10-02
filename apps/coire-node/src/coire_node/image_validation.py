@@ -237,6 +237,7 @@ def _validate_image_asset(
         default_height=_SMOKE_SIZE,
         default_steps=_SMOKE_STEPS,
         default_guidance=Decimal(0),
+        max_loras=4,
     )
     return ImageAssetValidationResult(
         validated=True,

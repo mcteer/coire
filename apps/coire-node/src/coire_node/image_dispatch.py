@@ -62,8 +62,9 @@ def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> 
         and spec.mode in {ImageMode.TXT2IMG, ImageMode.IMG2IMG}
         and spec.guidance == 0
         and spec.negative_prompt is None
-        and not spec.loras
-        and not request.resolved.dependencies
+        and len(spec.loras) == len(request.resolved.dependencies)
+        and {item.model_id for item in spec.loras}
+        == {item.model_id for item in request.resolved.dependencies}
         and spec.mask_id is None
         and spec.control is None
         and spec.upscale is None

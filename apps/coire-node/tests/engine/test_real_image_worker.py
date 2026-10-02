@@ -45,6 +45,8 @@ from coire_core.models.image_worker import (
 )
 from coire_core.models.images import (
     ImageInputDigest,
+    ImageLora,
+    ImageManifestDigest,
     ImageMode,
     ImageSpec,
     ResolvedImageSpec,
@@ -306,7 +308,7 @@ def test_real_acquisition_smoke_proves_txt2img_and_img2img(
 def test_real_local_lora_acquisition_smoke(
     tiny_pipeline: tuple[MfluxTxt2ImgPipeline, ImageWorkerLoadRequest],
 ) -> None:
-    _, load = tiny_pipeline
+    pipeline, load = tiny_pipeline
     store = Store(Path(os.environ["COIRE_TEST_MODEL"]).resolve().parent)
     base_manifest = store.read_manifest(load.slug)
     assert base_manifest is not None
@@ -326,11 +328,12 @@ def test_real_local_lora_acquisition_smoke(
             adapter_slug, repo_id="coire-test/image-lora", revision=base_manifest.revision
         )
         store.write_manifest(adapter_manifest)
+        adapter_id = uuid.uuid4()
         result = validate_image_asset(
             store,
             ImageAssetValidateRequest(
                 job_id=uuid.uuid4(),
-                model_id=uuid.uuid4(),
+                model_id=adapter_id,
                 slug=adapter_slug,
                 kind=ModelKind.IMAGE_LORA,
                 source_revision=adapter_manifest.revision,
@@ -348,6 +351,35 @@ def test_real_local_lora_acquisition_smoke(
         assert result.validated and result.kind is ModelKind.IMAGE_LORA
         assert result.thumbnail_sha256 is not None
         assert result.peak_physical_delta_bytes is not None
+        basic = _resolved(load)
+        lora_spec = basic.spec.model_copy(
+            update={"loras": (ImageLora(model_id=adapter_id, scale=Decimal("0.5")),)}
+        )
+        lora_run = basic.model_copy(
+            update={
+                "spec": lora_spec,
+                "spec_hash": canonical_spec_hash(lora_spec),
+                "dependencies": (
+                    ImageManifestDigest(
+                        model_id=adapter_id,
+                        slug=adapter_slug,
+                        revision=adapter_manifest.revision,
+                        sha256=adapter_manifest.sha256(),
+                    ),
+                ),
+            }
+        )
+        images = pipeline.generate(lora_run, lambda *_: None)
+        assert len(images) == 1 and images[0].size == (64, 64)
+        images[0].close()
+        applied = pipeline.adapter_id
+        assert applied is not None
+        images = pipeline.generate(lora_run, lambda *_: None)
+        images[0].close()
+        assert pipeline.adapter_id == applied
+        images = pipeline.generate(basic, lambda *_: None)
+        images[0].close()
+        assert pipeline.adapter_id is None
     finally:
         store.delete(adapter_slug)
 

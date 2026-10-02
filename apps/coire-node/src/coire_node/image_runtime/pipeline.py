@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import importlib
 import os
 import threading
@@ -164,20 +165,30 @@ class MfluxTxt2ImgPipeline:
         request: ImageWorkerLoadRequest,
         *,
         prompt_cache_max_bytes: int = _DEFAULT_PROMPT_CACHE_BYTES,
+        store: Store | None = None,
     ) -> None:
         self._model = model
         self._request = request
+        self._store = store
         self._callback = _ProgressCallback()
-        self._model.callbacks.register(self._callback)
         self._lock = threading.Lock()
         self.prompt_cache = StageCache(prompt_cache_max_bytes)
         self.encoder_cache = NativeStageCache(prompt_cache_max_bytes)
         self._adapter_id: str | None = None
         self._active_prompt_identity: str | None = None
         self._native_encoder_hook = False
+        self._original_encoder: Callable[..., tuple[object, object | None]] | None = None
+        self._attach_model(model)
+
+    def _attach_model(self, model: _NativeModel) -> None:
+        self._model = model
+        model.callbacks.register(self._callback)
+        self._native_encoder_hook = False
+        self._original_encoder = None
         native_encoder = getattr(model, "_encode_prompts", None)
         if callable(native_encoder):
             encoder = cast(Callable[..., tuple[object, object | None]], native_encoder)
+            self._original_encoder = encoder
 
             def cached_encoder(
                 *, prompt: str, negative_prompt: str | None, guidance: float
@@ -217,21 +228,99 @@ class MfluxTxt2ImgPipeline:
     ) -> MfluxTxt2ImgPipeline:
         _require_offline()
         path = verify_image_copy(store, request)
-        return cls(_load_native(path), request, prompt_cache_max_bytes=prompt_cache_max_bytes)
+        return cls(
+            _load_native(path),
+            request,
+            prompt_cache_max_bytes=prompt_cache_max_bytes,
+            store=store,
+        )
 
     @property
     def adapter_id(self) -> str | None:
         return self._adapter_id
 
-    def replace_lora(self, adapter_id: str | None) -> None:
-        """Keep one adapter id. Replacement and unload drop the prompt cache."""
-        if adapter_id == "":
-            raise ValueError("lora adapter id must not be empty")
-        with self._lock:
-            max_bytes = self.prompt_cache.max_bytes
-            self._adapter_id = adapter_id
-            self.prompt_cache = StageCache(max_bytes)
-            self.encoder_cache = NativeStageCache(max_bytes)
+    def _replace_lora_locked(self, resolved: ResolvedImageSpec) -> None:
+        """Rebuild from the verified clean base whenever the ordered stack changes."""
+        if (
+            resolved.spec.model_id != self._request.model_id
+            or resolved.spec.variant_id != self._request.variant_id
+            or resolved.model_sha256 != self._request.manifest_sha256
+            or resolved.pipeline_version != self._request.runtime_version
+        ):
+            raise ImagePipelineUnavailable()
+        if self._store is None:
+            if resolved.spec.loras or resolved.dependencies:
+                raise ImagePipelineUnavailable()
+            return
+        spec = resolved.spec
+        if len(spec.loras) != len(resolved.dependencies):
+            raise ImagePipelineUnavailable()
+        if {item.model_id for item in spec.loras} != {
+            item.model_id for item in resolved.dependencies
+        }:
+            raise ImagePipelineUnavailable()
+        dependencies = {item.model_id: item for item in resolved.dependencies}
+        paths: list[Path] = []
+        scales: list[float] = []
+        identity: list[str] = [self._request.manifest_sha256]
+        for adapter in spec.loras:
+            dependency = dependencies[adapter.model_id]
+            if (
+                adapter.variant_id is not None
+                or dependency.variant_id is not None
+                or dependency.slug is None
+            ):
+                raise ImagePipelineUnavailable()
+            load = ImageWorkerLoadRequest(
+                slug=dependency.slug,
+                model_id=dependency.model_id,
+                instance_id=self._request.instance_id,
+                manifest_sha256=dependency.sha256,
+                reservation_bytes=self._request.reservation_bytes,
+                runtime_version=self._request.runtime_version,
+            )
+            path = verify_image_copy(self._store, load)
+            manifest = self._store.read_manifest(dependency.slug)
+            if manifest is None or manifest.revision != dependency.revision:
+                raise ImagePipelineUnavailable()
+            weights = [
+                entry.path for entry in manifest.files if entry.path.endswith(".safetensors")
+            ]
+            if len(weights) != 1:
+                raise ImagePipelineUnavailable()
+            paths.append(path / weights[0])
+            scales.append(float(adapter.scale))
+            identity.extend((str(adapter.model_id), dependency.sha256, str(adapter.scale)))
+        wanted = stage_identity(*identity) if spec.loras else None
+        if wanted == self._adapter_id:
+            return
+        base_path = verify_image_copy(self._store, self._request)
+        previous = self._model
+        if self._original_encoder is not None:
+            previous._encode_prompts = self._original_encoder
+        self._original_encoder = None
+        self._model = cast("_NativeModel", None)
+        self._callback.end()
+        max_bytes = self.prompt_cache.max_bytes
+        self.prompt_cache = StageCache(max_bytes)
+        self.encoder_cache = NativeStageCache(max_bytes)
+        self._adapter_id = None
+        del previous
+        gc.collect()
+        mlx = importlib.import_module("mlx.core")
+        mlx.clear_cache()
+        self._attach_model(
+            _load_native(base_path, lora_paths=tuple(paths), lora_scales=tuple(scales))
+        )
+        self._adapter_id = wanted
+
+    def replace_lora(self, resolved: ResolvedImageSpec) -> None:
+        if not self._lock.acquire(blocking=False):
+            raise ImagePipelineUnavailable()
+        try:
+            self._replace_lora_locked(resolved)
+        finally:
+            self._lock.release()
 
     def encode_prompt(self, resolved: ResolvedImageSpec) -> None:
         """Remember the prompt stage for each seed. Callers still run the denoiser."""
@@ -281,8 +370,6 @@ class MfluxTxt2ImgPipeline:
             or spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG}
             or spec.guidance != 0
             or spec.negative_prompt is not None
-            or spec.loras
-            or resolved.dependencies
             or spec.mask_id is not None
             or spec.control is not None
             or spec.upscale is not None
@@ -293,6 +380,7 @@ class MfluxTxt2ImgPipeline:
             raise ImagePipelineUnavailable()
         images: list[Image.Image] = []
         try:
+            self._replace_lora_locked(resolved)
             if self._native_encoder_hook:
                 self._active_prompt_identity = stage_identity(
                     self._request.runtime_version,

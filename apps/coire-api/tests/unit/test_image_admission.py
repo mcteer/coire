@@ -20,6 +20,7 @@ from coire_core.errors import ImageConflict, ImageForbidden, ImageValidationErro
 from coire_core.models.images import (
     ImageCapabilityProfile,
     ImageContentMode,
+    ImageLora,
     ImageMode,
     ImageSpec,
     ImageSubmitRequest,
@@ -425,6 +426,53 @@ def test_direct_policy_checks_hidden_dependencies(monkeypatch: pytest.MonkeyPatc
     hidden.state = ModelState.FAILED
     with pytest.raises(ImageValidationError):
         asyncio.run(admission._load_policy(cast(AsyncSession, Session()), request, PRINCIPAL))
+
+
+def test_direct_lora_must_be_published_and_bound_to_selected_base() -> None:
+    adapter_id = uuid.uuid4()
+    base = SimpleNamespace(
+        id=MODEL,
+        kind=ModelKind.IMAGE_MODEL,
+        backend=EngineBackend.MFLUX,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        visibility=Visibility.PUBLISHED,
+        image_capability_profile=_profile(max_loras=1).model_dump(mode="json"),
+        entitlement=[],
+        manifest_sha256="a" * 64,
+    )
+    adapter = SimpleNamespace(
+        id=adapter_id,
+        kind=ModelKind.IMAGE_LORA,
+        backend=EngineBackend.AUXILIARY,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        visibility=Visibility.PUBLISHED,
+        entitlement=["adapter"],
+        manifest_sha256="b" * 64,
+        capability_profile={"compatible_base_model_id": str(MODEL)},
+    )
+
+    class Session:
+        async def get(self, model: type[object], identity: object, **kwargs: object) -> object:
+            assert model is ModelRow and kwargs.get("with_for_update") is True
+            return {MODEL: base, adapter_id: adapter}[cast(uuid.UUID, identity)]
+
+    request = ImageSubmitRequest(
+        model_id=MODEL,
+        prompt="portrait",
+        loras=[ImageLora(model_id=adapter_id, scale=Decimal("0.375125"))],
+    )
+    session = cast(AsyncSession, Session())
+    policy = asyncio.run(admission._load_policy(session, request, PRINCIPAL))
+    assert policy.required_entitlements == frozenset({"adapter"})
+    adapter.visibility = Visibility.ADMIN_ONLY
+    with pytest.raises(ImageValidationError, match="LoRA unavailable"):
+        asyncio.run(admission._load_policy(session, request, PRINCIPAL))
+    adapter.visibility = Visibility.PUBLISHED
+    adapter.capability_profile = {"compatible_base_model_id": str(uuid.uuid4())}
+    with pytest.raises(ImageValidationError, match="incompatible"):
+        asyncio.run(admission._load_policy(session, request, PRINCIPAL))
 
 
 async def test_img2img_admission_retains_only_ready_owner_input_with_exact_dimensions() -> None:
