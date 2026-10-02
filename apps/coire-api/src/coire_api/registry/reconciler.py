@@ -44,6 +44,7 @@ from coire_api.db import (
 )
 from coire_api.instance import service as instance_service
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
+from coire_api.placement.service import node_admission_lock
 from coire_api.registry import image_acquisition, service
 from coire_core.models.acquisition import ReservationRequest
 from coire_core.models.audit import AuditAction, AuditOutcome
@@ -642,11 +643,29 @@ class RegistryReconciler:
             row.chat_template_sha256 = status.chat_template_sha256
             row.load_seconds = status.load_seconds
             row.last_health_at = status.last_health_at
-            if status.state in TERMINAL_ENGINE_STATES and row.stopped_at is None:
-                row.stopped_at = status.stopped_at or datetime.now(UTC)
-                await self._fail_instance_for_engine(
-                    session, row, status.state_reason or "engine exited while instance was active"
-                )
+            if status.state in TERMINAL_ENGINE_STATES:
+                if row.stopped_at is None:
+                    row.stopped_at = status.stopped_at or datetime.now(UTC)
+                    await self._fail_instance_for_engine(
+                        session,
+                        row,
+                        status.state_reason or "engine exited while instance was active",
+                    )
+                if row.instance_id is None and row.model_id is not None:
+                    # A node-confirmed terminal legacy process can no longer use
+                    # the compatibility hold created at its first inference.
+                    async with node_admission_lock(session, row.node_id):
+                        hold = await session.scalar(
+                            select(MemoryReservationRow).where(
+                                MemoryReservationRow.node_id == row.node_id,
+                                MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                                MemoryReservationRow.holder_id == str(row.model_id),
+                                MemoryReservationRow.state == MemoryReservationState.HELD,
+                            )
+                        )
+                        if hold is not None:
+                            hold.state = MemoryReservationState.RELEASED
+                            hold.released_at = row.stopped_at
 
     async def _reconcile_nodes(self, session: AsyncSession, client: NodeClient) -> None:
         """Ask named nodes what they are really running (spec FR-015)."""

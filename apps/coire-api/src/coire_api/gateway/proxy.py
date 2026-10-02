@@ -14,12 +14,14 @@ from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import (
     EngineProcessRow,
     InstanceMemberRow,
     MemoryReservationRow,
     ModelInstanceRow,
+    NodeMemoryLedgerRow,
     ShardGroupRow,
     session_scope,
 )
@@ -27,6 +29,7 @@ from coire_api.gateway.telemetry import lease_loss_counter, queue_duration_ms, t
 from coire_api.placement.service import (
     acquire_lease,
     lock_nodes_for_admission,
+    node_admission_lock,
     refresh_lease,
     release_lease,
 )
@@ -129,6 +132,67 @@ async def engine_slot(engine_url: str, settings: Settings) -> AsyncIterator[None
         semaphore.release()
 
 
+async def _ensure_legacy_engine_hold(
+    session: AsyncSession, engine: EngineProcessRow, holder_id: str
+) -> None:
+    """Fence a live legacy engine in the shared ledger before serving inference."""
+    existing = await session.scalar(
+        select(MemoryReservationRow).where(
+            MemoryReservationRow.node_id == engine.node_id,
+            MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+            MemoryReservationRow.holder_id == holder_id,
+        )
+    )
+    if existing is not None and existing.state is MemoryReservationState.HELD:
+        if existing.bytes < engine.estimate_bytes:
+            raise ChatModelUnavailable()
+        return
+    ledger = await session.get(NodeMemoryLedgerRow, engine.node_id, populate_existing=True)
+    if ledger is None or engine.estimate_bytes <= 0:
+        raise ChatModelUnavailable()
+    reservations = (
+        await session.scalars(
+            select(MemoryReservationRow).where(
+                MemoryReservationRow.node_id == engine.node_id,
+                MemoryReservationRow.state.in_(
+                    (
+                        MemoryReservationState.PENDING,
+                        MemoryReservationState.HELD,
+                        MemoryReservationState.RELEASING,
+                    )
+                ),
+            )
+        )
+    ).all()
+    if any(row.holder_type is ReservationHolder.IMAGE for row in reservations):
+        raise ChatModelUnavailable()
+    occupied = sum(row.bytes for row in reservations if row is not existing)
+    if occupied + engine.estimate_bytes > ledger.budget_bytes:
+        raise ChatModelUnavailable()
+    if existing is None:
+        session.add(
+            MemoryReservationRow(
+                node_id=engine.node_id,
+                holder_type=ReservationHolder.MODEL,
+                holder_id=holder_id,
+                bytes=engine.estimate_bytes,
+                state=MemoryReservationState.HELD,
+            )
+        )
+    else:
+        existing.bytes = engine.estimate_bytes
+        existing.state = MemoryReservationState.HELD
+        existing.released_at = None
+    await session.flush()
+
+
+async def _ensure_legacy_engine_hold_locked(
+    session: AsyncSession, engine: EngineProcessRow, holder_id: str
+) -> None:
+    async with node_admission_lock(session, engine.node_id):
+        await _ensure_legacy_engine_hold(session, engine, holder_id)
+
+
 @asynccontextmanager
 async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[None]:
     """Protect a resolved model from TTL/eviction for the full upstream request lifetime."""
@@ -187,6 +251,8 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
             engine = None
         if engine is not None and engine.model_id is not None:
             holder_id = str(engine.instance_id or engine.model_id)
+            if engine.instance_id is None:
+                await _ensure_legacy_engine_hold_locked(session, engine, holder_id)
             reservation = await session.scalar(
                 select(MemoryReservationRow).where(
                     MemoryReservationRow.node_id == engine.node_id,

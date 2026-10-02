@@ -6,12 +6,16 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from coire_api.db import EngineProcessRow, MemoryReservationRow, NodeMemoryLedgerRow
 from coire_api.gateway import proxy
 from coire_core.errors import ChatModelUnavailable
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import Settings
 
 
@@ -121,6 +125,7 @@ async def test_node_proxy_request_acquires_and_releases_memory_lease(
         calls.append(("release", lease))
 
     monkeypatch.setattr(proxy, "session_scope", sessions)
+    monkeypatch.setattr(proxy, "_ensure_legacy_engine_hold_locked", AsyncMock())
     monkeypatch.setattr(proxy, "acquire_lease", acquire)
     monkeypatch.setattr(proxy, "release_lease", release)
     settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
@@ -162,6 +167,7 @@ async def test_inference_stops_when_its_memory_lease_cannot_be_renewed(
         released.append(identity)
 
     monkeypatch.setattr(proxy, "session_scope", sessions)
+    monkeypatch.setattr(proxy, "_ensure_legacy_engine_hold_locked", AsyncMock())
     monkeypatch.setattr(proxy, "acquire_lease", acquire)
     monkeypatch.setattr(proxy, "refresh_lease", refresh)
     monkeypatch.setattr(proxy, "release_lease", release)
@@ -204,6 +210,7 @@ async def test_inference_continues_while_memory_lease_renewal_succeeds(
         released.append(identity)
 
     monkeypatch.setattr(proxy, "session_scope", sessions)
+    monkeypatch.setattr(proxy, "_ensure_legacy_engine_hold_locked", AsyncMock())
     monkeypatch.setattr(proxy, "acquire_lease", acquire)
     monkeypatch.setattr(proxy, "refresh_lease", refresh)
     monkeypatch.setattr(proxy, "release_lease", release)
@@ -275,8 +282,13 @@ async def test_node_proxy_refuses_unreserved_engine_inference(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class Session:
-        async def get(self, model: object, identity: object) -> object:
+        async def get(self, model: object, identity: object, **kwargs: object) -> object:
+            if model is NodeMemoryLedgerRow:
+                return None
             return SimpleNamespace(model_id=uuid.uuid4(), instance_id=None, node_id=uuid.uuid4())
+
+        async def execute(self, statement: object, parameters: object) -> None:
+            return None
 
         async def scalar(self, statement: object) -> None:
             return None
@@ -292,3 +304,61 @@ async def test_node_proxy_refuses_unreserved_engine_inference(
             Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         ):
             pytest.fail("unreserved engine request reached the upstream")
+
+
+async def test_legacy_engine_hold_is_bounded_and_excludes_image_worker() -> None:
+    node_id = uuid.uuid4()
+    model_id = uuid.uuid4()
+    engine = cast(
+        EngineProcessRow,
+        SimpleNamespace(node_id=node_id, model_id=model_id, estimate_bytes=4),
+    )
+
+    class Rows:
+        def __init__(self, items: list[MemoryReservationRow]) -> None:
+            self.items = items
+
+        def all(self) -> list[MemoryReservationRow]:
+            return self.items
+
+    class Session:
+        def __init__(self) -> None:
+            self.reservations: list[MemoryReservationRow] = []
+            self.created: MemoryReservationRow | None = None
+
+        async def scalar(self, statement: object) -> None:
+            return None
+
+        async def get(self, model: object, identity: object, **kwargs: object) -> object:
+            assert model is NodeMemoryLedgerRow and identity == node_id
+            return SimpleNamespace(budget_bytes=10)
+
+        async def scalars(self, statement: object) -> Rows:
+            return Rows(self.reservations)
+
+        def add(self, row: MemoryReservationRow) -> None:
+            self.created = row
+
+        async def flush(self) -> None:
+            return None
+
+    session = Session()
+    await proxy._ensure_legacy_engine_hold(cast(AsyncSession, session), engine, str(model_id))
+    assert session.created is not None
+    assert session.created.state is MemoryReservationState.HELD
+    assert session.created.holder_id == str(model_id)
+    session.reservations = [
+        MemoryReservationRow(
+            node_id=node_id,
+            holder_type=ReservationHolder.IMAGE,
+            holder_id=str(uuid.uuid4()),
+            bytes=1,
+            state=MemoryReservationState.HELD,
+        )
+    ]
+    with pytest.raises(ChatModelUnavailable):
+        await proxy._ensure_legacy_engine_hold(cast(AsyncSession, session), engine, str(model_id))
+    session.reservations[0].holder_type = ReservationHolder.SANDBOX
+    session.reservations[0].bytes = 7
+    with pytest.raises(ChatModelUnavailable):
+        await proxy._ensure_legacy_engine_hold(cast(AsyncSession, session), engine, str(model_id))

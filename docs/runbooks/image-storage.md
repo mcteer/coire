@@ -23,6 +23,11 @@ unwritten holds. Inspect both `held_bytes` and `stored_bytes` when diagnosing a
 refusal; never reset them manually while a job or purge is uncertain. Local
 cross-process PostgreSQL contention tests have passed; production placement and
 coexistence acceptance remain open.
+The gateway reconciles a ready legacy chat engine into the shared node ledger
+before granting inference. It refuses the request if the node budget or an image
+worker prevents that hold. The reconciler releases the hold after the node
+reports a terminal engine state. If chat returns `chat_model_unavailable`, inspect
+the engine row and node memory reservations together; do not clear a live hold.
 Every five minutes, API maintenance compares global and owner `stored_bytes` with
 unpurged published output rows and ready/deleting input rows under the quota lock.
 Inspect `coire_image_quota_drift_bytes`, the Image stored quota reconciliation panel,
