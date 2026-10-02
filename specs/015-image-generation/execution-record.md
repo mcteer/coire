@@ -2059,7 +2059,7 @@ The simulated worker recovery suite now injects a classifier failure after
 successful PNG generation and verifies the fenced worker reports an `unknown`
 tag with a safe error while keeping output in private scratch. All **5**
 local recovery integration tests passed. The broader all-boundary matrix in
-T075 remains open.
+T075 was reconciled in the final-source matrix below.
 
 ## Final-source acceptance matrix in progress — 2026-10-02
 
@@ -2067,13 +2067,13 @@ T075 remains open.
 | --- | --- | --- |
 | Native image modes | Tiny offline Z-Image txt2img/img2img, ordered LoRA replacement, cancellation, cleanup and cache smoke passed; Fill, Union Canny and SeedVR2 have typed binding, local preflight, mode-specific unit smokes and physical hold guards. | Operator must validate both full Studio copies and execute every advertised mode with real pinned assets (T083). |
 | OpenAI-compatible and owner API | Image route contracts, SSE/receipt, owner input/output, entitlement and grant tests pass; OpenAPI and generated web types are current. | Browser journeys and final source CI (T081/T082). |
-| Authorization and failure recovery | Unit/contract matrix covers revoked keys/grants, explicit entitlement, cancellation/publication arbitration, lost cleanup acknowledgment, parser refusal, full disk, partial batch and reboot journal replay. Local simulated classifier failure passed. | Final combined failure injection and healthy-node cancel timing (T041/T075). |
-| Placement and coexistence | Node and core held-memory accounting, profile binding/invalidation and uncertainty tests pass locally; production admission remains disabled by default. | Cross-process PostgreSQL admission and simulated contention gate evidence, then operator 15-minute mixed benchmark (T065/T072/T084). |
+| Authorization and failure recovery | Unit/contract matrix covers revoked keys/grants, explicit entitlement, cancellation/publication arbitration, lost cleanup acknowledgment, parser crash, full disk, partial batch and reboot journal replay. Local simulated classifier failure passed. | Full-model healthy-node cancel timing (T041/T083). |
+| Placement and coexistence | Node and core held-memory accounting, profile binding/invalidation, uncertainty and simulated chat/image contention tests pass locally; production admission remains disabled by default. | Cross-process PostgreSQL admission, then operator 15-minute mixed benchmark (T065/T084). |
 | Reproduction and cache | Local tiny fixture has 20 warm prompt-cache trials; cold/hit/evicted per-job observations are typed. | Operator 10 same-environment full-model reproduction trials and 20 warm-cache trials (T084). |
 | Packaging and operations | Previous CI checkpoint passed all jobs; local affected-image policy, scans and SBOM checks are recorded above. | Final-source CI integration/build/scan and immutable native node/text/VLM smoke (T081). |
 
-The parent task list is the acceptance authority. T041, T065, T072, T075 and
-T081–T085 remain unchecked until their stated evidence exists. Principles
+The parent task list is the acceptance authority. T041, T065 and T081–T085
+remain unchecked until their stated evidence exists. Principles
 I–VII and II-a are addressed in the [plan](plan.md#constitution-check) and
 draft PR #90. No full-model or real-cluster result is inferred from the tiny
 fixture.
@@ -2089,5 +2089,29 @@ integration or platform setup; they are not treated as acceptance evidence.
 The private recipe parser client now has an injected connection-loss/recovery
 case: a crashed worker returns a content-free retryable error, and the same
 bound request succeeds after the worker responds again. Its focused client
-suite passed **4 tests**. This adds parser-crash coverage to T075 without
-claiming the remaining combined failure matrix.
+suite passed **4 tests**. This adds parser-crash coverage to the local fault
+matrix in T075.
+
+T075 coverage reconciliation: the requested authorization and fault matrix
+is implemented across the owner route contracts, node worker contracts,
+`test_image_recovery.py` and focused publication/recipe/transfer/classifier
+unit tests. Revoked owner/key/explicit access, parser connection loss,
+classifier failure, disk exhaustion, receipt and cleanup acknowledgment
+loss, cancelled partial batches and reboot journal replay each have explicit
+assertions. The combined focused boundary suite passed **99 tests** with no
+skips. The proposed new `tests/integration/test_image_isolation.py` filename
+was not needed because the API isolation contract lives at
+`apps/coire-api/tests/contract/test_image_isolation.py` and local recovery
+scenarios live at `tests/integration/test_image_recovery.py`. Full-model
+Studio fault/timing acceptance remains T041/T083; T075's local fault matrix
+is complete.
+
+T072's local simulated contention scenario now combines the production
+profile/placement/capacity decisions under a controlled chat-before-image
+arrival. A measured resident pair admits the image; an additional unmeasured
+chat variant makes the pinned image wait while the chat set remains intact.
+Invalidating the report or changing the runtime fingerprint also blocks new
+image admission. A held image reservation survives lost worker inventory and
+leaves zero eligible capacity until stop proof. Both integration scenarios
+passed locally. T065 still requires actual cross-process PostgreSQL execution,
+and T084 requires the measured 15-minute real-cluster workload.
