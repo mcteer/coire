@@ -119,3 +119,24 @@ async def test_recipe_client_distinguishes_busy_and_refused_without_body() -> No
             with pytest.raises(error) as caught:
                 await client.parse_image_recipe(request)
             assert "private prompt" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_recipe_parser_connection_loss_is_retryable_without_leaking_input() -> None:
+    request = _request()
+    result = _result(request)
+    crashed = True
+
+    def respond(http_request: httpx.Request) -> httpx.Response:
+        nonlocal crashed
+        if crashed:
+            crashed = False
+            raise httpx.ConnectError("private parser process died", request=http_request)
+        return httpx.Response(200, json=result.model_dump(mode="json"))
+
+    client = _client(httpx.MockTransport(respond))
+    async with client:
+        with pytest.raises(FileWorkerError, match="recipe worker unavailable") as caught:
+            await client.parse_image_recipe(request)
+        assert "private parser" not in str(caught.value)
+        assert await client.parse_image_recipe(request) == result

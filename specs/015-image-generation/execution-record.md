@@ -2085,3 +2085,9 @@ worker passed **10 tests**, and the web suite passed **144 tests**. Ruff
 format/check, strict mypy, OpenAPI freshness, web lint/build and diff
 whitespace checks passed. The skipped selections still require external
 integration or platform setup; they are not treated as acceptance evidence.
+
+The private recipe parser client now has an injected connection-loss/recovery
+case: a crashed worker returns a content-free retryable error, and the same
+bound request succeeds after the worker responds again. Its focused client
+suite passed **4 tests**. This adds parser-crash coverage to T075 without
+claiming the remaining combined failure matrix.
