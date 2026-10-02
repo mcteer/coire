@@ -45,6 +45,8 @@ estimate, including when the classifier copy is temporarily unavailable. If
 the copy is absent or corrupt, publication records `unknown` with
 an unavailable diagnostic. If the held worker has insufficient measured headroom,
 the classifier does not start and records `classifier_memory`.
+Both fallback paths count as failed classifier stages for the
+`CoireImageClassifierFailures` alert.
 
 The acquiring admin must record each asset's licence review and accepted licence
 ID before the acquisition request. A model with an unverified copy, missing local

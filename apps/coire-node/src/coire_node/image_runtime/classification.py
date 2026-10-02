@@ -86,6 +86,17 @@ def _unknown(code: SafeError) -> ImageClassificationResult:
     )
 
 
+def record_classifier_unavailable(job_id: str) -> None:
+    """Count a classifier stage skipped before a CPU child can be launched."""
+    with image_node_span(ImageNodeStage.CLASSIFY, job_id=job_id):
+        record_image_stage(
+            ImageNodeStage.CLASSIFY,
+            ImageNodeOutcome.FAILED,
+            duration_s=0.0,
+            job_id=job_id,
+        )
+
+
 def apply_explicit_policy(
     result: ImageClassificationResult, *, explicit: bool
 ) -> ImageClassificationResult:

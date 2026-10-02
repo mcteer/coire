@@ -240,12 +240,14 @@ async def test_worker_skips_classifier_when_hold_is_too_small(
 
     load, run = _requests()
     pipeline = FakePipeline()
+    unavailable: list[str] = []
 
     async def forbidden(*_args: object, **_kwargs: object) -> ImageClassificationResult:
         pytest.fail("classifier started without memory headroom")
 
     monkeypatch.setattr(control, "classify_image", forbidden)
     monkeypatch.setattr(control, "resident_bytes", lambda _pid: 800)
+    monkeypatch.setattr(control, "record_classifier_unavailable", unavailable.append)
     app = create_worker_app(
         load,
         pipeline,
@@ -267,3 +269,4 @@ async def test_worker_skips_classifier_when_hold_is_too_small(
         )
     assert done.outputs[0].classification is not None
     assert done.outputs[0].classification.safe_error == "classifier_memory"
+    assert unavailable == [JOB]

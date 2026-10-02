@@ -1784,3 +1784,8 @@ Studio lacks that hold. The contract test checks the persisted estimate and
 one-low-node refusal; **8 acquisition contract tests passed**. This remains a
 conservative estimate, with native smoke as the final measured gate. It is not
 a full-model benchmark or auxiliary validation.
+
+Classifier copy-unavailable and memory-refusal paths now emit the failed
+classification stage counter/span used by the existing alert, while keeping
+the owner diagnostic content-free. The focused worker/classifier suite passed
+**14 tests**; no full-model classifier run was claimed.

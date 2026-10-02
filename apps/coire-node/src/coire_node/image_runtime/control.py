@@ -32,7 +32,11 @@ from coire_core.models.images import (
     canonical_recipe_bytes,
 )
 from coire_node.footprint import resident_bytes
-from coire_node.image_runtime.classification import _unknown, classify_image
+from coire_node.image_runtime.classification import (
+    _unknown,
+    classify_image,
+    record_classifier_unavailable,
+)
 from coire_node.image_worker import GeneratedOutput, ImageJobCancelled, Progress, run_image_job
 
 _MAX_RETAINED_JOBS = 32
@@ -121,6 +125,7 @@ class _WorkerState:
                         footprint is None
                         or footprint + self.classifier_memory_bytes > self.load.reservation_bytes
                     ):
+                        record_classifier_unavailable(request.job_id)
                         classification = _unknown("classifier_memory")
                     else:
                         classification = await classify_image(
@@ -129,6 +134,8 @@ class _WorkerState:
                             reservation_bytes=self.classifier_memory_bytes,
                             job_id=request.job_id,
                         )
+                else:
+                    record_classifier_unavailable(request.job_id)
                 manifests.append(_manifest(output, classification))
             if cancelled.is_set():
                 raise ImageJobCancelled()
