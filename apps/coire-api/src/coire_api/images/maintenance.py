@@ -54,6 +54,29 @@ logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("coire.api.image.maintenance")
 
 
+def prepare_private_blob_root(root: Path) -> None:
+    """Tighten a fresh Docker volume before any image sweep or transfer runs."""
+    try:
+        descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except FileNotFoundError:
+        # A non-composed development API may have no image volume. The first
+        # transfer creates its own private root when image generation is used.
+        return
+    except OSError as exc:
+        raise ImageStorageUnavailable() from exc
+    try:
+        details = os.fstat(descriptor)
+        if not stat.S_ISDIR(details.st_mode) or details.st_uid != os.getuid():
+            raise ImageStorageUnavailable()
+        if details.st_mode & 0o077:
+            os.fchmod(descriptor, 0o700)
+            os.fsync(descriptor)
+    except OSError as exc:
+        raise ImageStorageUnavailable() from exc
+    finally:
+        os.close(descriptor)
+
+
 @dataclass(frozen=True, slots=True)
 class StoredQuotaReconciliation:
     """Content-free read-only comparison; drift never authorizes quota release."""
@@ -656,6 +679,7 @@ class ImageOutputMaintenance:
     async def start(self) -> None:
         if self._task is not None:
             return
+        await asyncio.to_thread(prepare_private_blob_root, Path(self.settings.image_blob_root))
         self._stop.clear()
         self._task = asyncio.create_task(self._run(), name="image-output-maintenance")
 

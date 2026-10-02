@@ -4,6 +4,10 @@ Image admission stays disabled by default. The API is the sole owner of the
 `coire-blobs` volume at `/opt/coire/blobs`. The file worker processes image inputs in
 dedicated `images` subpaths under the existing chat original/derived volumes; it does not
 mount final blobs. The scheduler has no blob mount.
+On API startup, an existing blob volume owned by the API UID is tightened to
+mode `0700` before maintenance begins. A symlink or foreign-owned mount is refused.
+If startup refuses the mount, inspect its owner and type before correcting the
+deployment volume; do not broaden permissions to make the sweep pass.
 
 ## Inspect
 

@@ -42,6 +42,29 @@ def _private_file(path: Path, content: bytes) -> None:
     path.chmod(0o600)
 
 
+def test_fresh_owned_blob_volume_is_tightened_before_maintenance(tmp_path: Path) -> None:
+    root = tmp_path / "blobs"
+    root.mkdir(mode=0o755)
+    maintenance.prepare_private_blob_root(root)
+    assert root.stat().st_mode & 0o777 == 0o700
+    assert purge_stale_transfer_temporaries(root)[0] == 0
+
+
+def test_blob_root_refuses_symlink_and_foreign_owner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "blobs"
+    root.mkdir(mode=0o755)
+    alias = tmp_path / "alias"
+    alias.symlink_to(root)
+    with pytest.raises(ImageStorageUnavailable):
+        maintenance.prepare_private_blob_root(alias)
+    monkeypatch.setattr(maintenance.os, "getuid", lambda: -1)
+    with pytest.raises(ImageStorageUnavailable):
+        maintenance.prepare_private_blob_root(root)
+    assert root.stat().st_mode & 0o777 == 0o755
+
+
 def test_retained_output_integrity_checks_receipt_and_link_count(tmp_path: Path) -> None:
     payload = b"private png fixture"
     blob = tmp_path / "0.png"
