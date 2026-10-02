@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -16,6 +17,7 @@ from coire_core.models.images import (
     ImageCapabilityProfile,
     ImageClassificationResult,
     ImageContentTag,
+    ImageMode,
     ResolvedImageSpec,
 )
 from coire_core.models.jobs import JobKind, JobStage, JobStatus
@@ -69,7 +71,7 @@ def test_reserved_base_smoke_produces_narrow_capability_and_thumbnail_digest(
         def generate(
             self,
             resolved: ResolvedImageSpec,
-            progress: object,
+            progress: Callable[[int, int, int], None],
             *,
             input_paths: dict[uuid.UUID, Path] | None = None,
         ) -> tuple[Image.Image, ...]:
@@ -92,6 +94,33 @@ def test_reserved_base_smoke_produces_narrow_capability_and_thumbnail_digest(
     assert result.image_capability_profile.modes == ("txt2img", "img2img")
     assert result.image_capability_profile.max_width == 512
     assert result.image_capability_profile.max_outputs == 1
+    assert result.peak_physical_delta_bytes is not None
+
+
+def test_validation_refuses_transient_physical_footprint_above_hold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, digest = _copy(tmp_path)
+    samples = iter((100, 200, 1201, 200, 300, 200))
+    monkeypatch.setattr(image_validation, "resident_bytes", lambda _: next(samples))
+
+    class FakePipeline:
+        def generate(
+            self,
+            resolved: ResolvedImageSpec,
+            progress: Callable[[int, int, int], None],
+            *,
+            input_paths: dict[uuid.UUID, Path] | None = None,
+        ) -> tuple[Image.Image, ...]:
+            del resolved, input_paths
+            progress(0, 1, 4)
+            image = Image.new("RGB", (512, 512), "blue")
+            ImageDraw.Draw(image).rectangle((128, 128, 384, 384), fill="white")
+            return (image,)
+
+    monkeypatch.setattr(pipeline.MfluxTxt2ImgPipeline, "load", lambda *args: FakePipeline())
+    with pytest.raises(ImageValidationUnavailable, match="exceeded reserved memory"):
+        validate_image_asset(store, _request(digest), reservation_bytes=1000)
 
 
 def test_validation_rejects_changed_manifest_or_extra_local_file_before_native_load(
@@ -115,6 +144,32 @@ def test_auxiliary_asset_remains_unpublished_without_mode_specific_smoke(tmp_pat
     with pytest.raises(ImageValidationUnavailable, match="auxiliary execution validation"):
         validate_image_asset(
             store, _request(digest, kind=ModelKind.CONTROL_MODEL), reservation_bytes=10**9
+        )
+
+
+def test_published_base_evidence_requires_physical_peak() -> None:
+    profile = ImageCapabilityProfile(
+        modes=(ImageMode.TXT2IMG,),
+        min_width=512,
+        max_width=512,
+        min_height=512,
+        max_height=512,
+        max_pixels=512 * 512,
+        min_steps=4,
+        max_steps=4,
+        min_guidance=Decimal(0),
+        max_guidance=Decimal(0),
+        max_outputs=1,
+    )
+    with pytest.raises(ValueError, match="physical evidence"):
+        ImageAssetValidationResult(
+            validated=True,
+            kind=ModelKind.IMAGE_MODEL,
+            manifest_sha256="b" * 64,
+            source_revision=REVISION,
+            peak_rss_bytes=100,
+            thumbnail_sha256="c" * 64,
+            image_capability_profile=profile,
         )
 
 
@@ -225,6 +280,7 @@ def test_acquisition_worker_persists_typed_validation_evidence(
         manifest_sha256=digest,
         source_revision=REVISION,
         peak_rss_bytes=100,
+        peak_physical_delta_bytes=100,
         thumbnail_sha256="c" * 64,
         image_capability_profile=ImageCapabilityProfile.model_validate(
             {

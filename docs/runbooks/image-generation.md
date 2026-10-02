@@ -22,8 +22,10 @@ The `VERIFY_REPLICA` acquisition stage now holds a measured Studio reservation
 and invokes an offline `image_validate` job on each copy. A base model must produce
 non-degenerate pixels from a neutral prompt; the narrow measured capability and
 thumbnail digest are recorded with both results before either reservation is
-released. If a validation job is still running, leave the reservation held and
-inspect its exact job ID, process identity, local manifest and
+released. The validator samples the process's physical footprint during both
+native smokes, including Metal memory on macOS, and refuses a transient peak
+above the held bytes. If a validation job is still running, leave the
+reservation held and inspect its exact job ID, process identity, local manifest and
 `CoireImageValidationFailures` alert. Auxiliary mode-specific validation is still
 unavailable and those assets remain unpublished. Do not set the image admission
 flag until T033 and the remaining real Studio acceptance pass.

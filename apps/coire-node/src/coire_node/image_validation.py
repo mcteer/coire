@@ -29,6 +29,7 @@ from coire_core.models.images import (
     canonical_spec_hash,
 )
 from coire_core.models.registry import ModelKind
+from coire_node.footprint import resident_bytes
 from coire_node.image_runtime.classification import (
     CLASSIFIER_REVISION,
     classify_image_with_peak,
@@ -127,11 +128,28 @@ def _validate_image_asset(
         return _validate_classifier(path, request, reservation_bytes=reservation_bytes)
     if request.kind is not ModelKind.IMAGE_MODEL:
         raise ImageValidationUnavailable("auxiliary execution validation is unavailable")
-    baseline_rss = psutil.Process().memory_info().rss
+    process = psutil.Process()
+    baseline_rss = process.memory_info().rss
+    baseline_physical = resident_bytes(process.pid)
+    if baseline_physical is None:
+        raise ImageValidationUnavailable("physical footprint is unavailable")
+    peak_rss = baseline_rss
+    peak_physical = baseline_physical
+
+    def observe_footprint(*_: int) -> None:
+        nonlocal peak_rss, peak_physical
+        current = resident_bytes(process.pid)
+        if current is None:
+            raise ImageValidationUnavailable("physical footprint is unavailable")
+        peak_rss = max(peak_rss, process.memory_info().rss)
+        peak_physical = max(peak_physical, current)
+
     pipeline = MfluxTxt2ImgPipeline.load(store, load)
+    observe_footprint()
     images = pipeline.generate(
-        _smoke_spec(request.model_id, request.manifest_sha256), lambda *_: None
+        _smoke_spec(request.model_id, request.manifest_sha256), observe_footprint
     )
+    observe_footprint()
     try:
         if (
             len(images) != 1
@@ -171,7 +189,8 @@ def _validate_image_asset(
                 ),
             }
         )
-        transformed = pipeline.generate(resolved, lambda *_: None, input_paths={input_id: source})
+        transformed = pipeline.generate(resolved, observe_footprint, input_paths={input_id: source})
+        observe_footprint()
         try:
             if (
                 len(transformed) != 1
@@ -184,8 +203,9 @@ def _validate_image_asset(
         finally:
             for image in transformed:
                 image.close()
-    measured_rss = max(0, psutil.Process().memory_info().rss - baseline_rss)
-    if measured_rss > reservation_bytes:
+    measured_rss = max(0, peak_rss - baseline_rss)
+    measured_physical = max(0, peak_physical - baseline_physical)
+    if max(measured_rss, measured_physical) > reservation_bytes:
         raise ImageValidationUnavailable("image smoke exceeded reserved memory")
     profile = ImageCapabilityProfile(
         modes=(ImageMode.TXT2IMG, ImageMode.IMG2IMG),
@@ -210,6 +230,7 @@ def _validate_image_asset(
         manifest_sha256=request.manifest_sha256,
         source_revision=request.source_revision,
         peak_rss_bytes=measured_rss,
+        peak_physical_delta_bytes=measured_physical,
         thumbnail_sha256=thumbnail_sha256,
         image_capability_profile=profile,
     )

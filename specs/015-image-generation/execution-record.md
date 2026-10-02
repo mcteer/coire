@@ -1,5 +1,17 @@
 # Feature 015 execution record
 
+## Native validation physical peak — 2026-10-02
+
+The reserved base-model validation worker now samples its physical footprint
+after load, at denoising progress, and after both txt2img/img2img smokes. On
+macOS this includes Metal allocations. A transient peak beyond the hold or an
+unreadable footprint fails validation. Evidence includes additive
+`peak_physical_delta_bytes`. A regression covers a peak that falls before the
+final sample. Both-copy acquisition evidence requires the physical field;
+focused validation and reconciler tests passed **10 tests**. Auxiliary
+mode-specific smokes and the operator full-model matrix remain open in
+T033/T083.
+
 ## Physical overage image admission — 2026-10-02
 
 Image and chat placement now subtract measured model-plus-image footprint above the
