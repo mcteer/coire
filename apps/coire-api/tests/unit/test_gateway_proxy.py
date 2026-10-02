@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
@@ -129,6 +130,48 @@ async def test_node_proxy_request_acquires_and_releases_memory_lease(
     ):
         assert calls == [("acquire", reservation_id)]
     assert calls == [("acquire", reservation_id), ("release", lease_id)]
+
+
+@pytest.mark.parametrize("renewal", ["expired", "unavailable"])
+async def test_inference_stops_when_its_memory_lease_cannot_be_renewed(
+    monkeypatch: pytest.MonkeyPatch, renewal: str
+) -> None:
+    lease_id = uuid.uuid4()
+    released: list[uuid.UUID] = []
+
+    class Session:
+        async def get(self, model: object, identity: object) -> object:
+            return SimpleNamespace(model_id=uuid.uuid4(), instance_id=None, node_id=uuid.uuid4())
+
+        async def scalar(self, query: object) -> object:
+            return SimpleNamespace(id=uuid.uuid4())
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    async def acquire(*args: object, **kwargs: object) -> object:
+        return SimpleNamespace(id=lease_id)
+
+    async def refresh(*args: object, **kwargs: object) -> bool:
+        if renewal == "unavailable":
+            raise OSError("database unavailable")
+        return False
+
+    async def release(session: object, identity: uuid.UUID) -> None:
+        released.append(identity)
+
+    monkeypatch.setattr(proxy, "session_scope", sessions)
+    monkeypatch.setattr(proxy, "acquire_lease", acquire)
+    monkeypatch.setattr(proxy, "refresh_lease", refresh)
+    monkeypatch.setattr(proxy, "release_lease", release)
+    settings = Settings(_secrets_dir="/nonexistent", placement_lease_ttl_s=0.2)  # type: ignore[call-arg]
+    with pytest.raises(asyncio.CancelledError):
+        async with proxy.request_lease(
+            f"http://coire-edge-a.lab:9400/node/engines/{uuid.uuid4()}/proxy", settings
+        ):
+            await asyncio.sleep(1)
+    assert released == [lease_id]
 
 
 async def test_sharded_request_locks_all_nodes_before_acquiring_any_lease(

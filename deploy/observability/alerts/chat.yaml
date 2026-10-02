@@ -55,3 +55,9 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: A resolved bare VLM request failed
+      - alert: CoireGatewayLeaseLoss
+        expr: sum(increase(coire_gateway_lease_losses_total[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Inference was stopped after its accelerator memory lease was lost

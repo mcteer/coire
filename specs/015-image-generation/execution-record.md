@@ -1,5 +1,46 @@
 # Feature 015 execution record
 
+## CI image gate and chat lease expiry — 2026-10-02
+
+The `c55b433` pull-request CI run passed general Ruff/strict mypy lint and the
+required Apple Silicon `image-engine` job. That job built the ignored tiny image
+fixture, then ran the offline native worker and lifecycle suite successfully.
+The preceding run found that the fixture's optional tokenizer import was visible
+to the Linux lint environment; the fixture now imports it only when building the
+fixture. The full CI run and image build/integration jobs are still in progress.
+
+Chat request leases now refuse refresh once expired, released, or given a
+nonpositive renewal. A disposable local PostgreSQL 17 cross-process admission
+suite passed **3 tests**, including expiry accounting and a renewal refusal;
+the container and test database were removed. Ruff and strict mypy across 644
+source files passed. T065 stays open for its full placement and contention matrix.
+
+## Coexistence circuit breaker reconciliation — 2026-10-02
+
+T069 was already implemented across report admission, profile matching and the
+15-second live latency monitor. The human-admin route audits approved, refused
+and invalidated reports; stale, failing, changed-node or unmeasured reports are
+refused. The monitor withdraws approved profiles on a >1.5-second same-node
+first-token p95, unavailable metrics or fresh thermal alarm and commits fenced
+`cancelling` intents for active image jobs. Dispatch excludes invalidated
+profiles and serious/critical thermal samples. Focused profile, admission and
+monitor suites passed **41 tests**, so T069 is reconciled as complete. The
+operator 15-minute benchmark and physical coexistence evidence remain T084.
+
+## Atomic image/chat admission reconciliation — 2026-10-02
+
+T068's shared transaction-scoped node locks, measured profile checks, Studio B
+preference, pinned placement and chat request leases were present. A gateway
+renewal failure could silently leave inference running after its lease expired;
+the gateway now cancels that request on an expired or unavailable renewal,
+records a bounded reason counter and logs the event. The Chat dashboard, alert
+and image runbook cover diagnosis without force-releasing a resident hold.
+The image dispatch/coexistence/gateway suite passed **44 tests** after the
+change; the focused gateway/observability suite passed **11 tests**, strict mypy
+and Ruff passed, and both Chat and Image Prometheus rule files validated.
+The cross-process PostgreSQL lease tests above passed. T068 is reconciled as
+complete; simulated full contention remains T072 and physical evidence T084.
+
 ## Retained output receipt audit — 2026-10-02
 
 API maintenance now reads a bounded page of retained published blobs every five
@@ -23,7 +64,7 @@ runner and runs the offline native image worker suite as a required job. Release
 publication depends on that job; the preexisting informational text/VLM engine
 job excludes the image test so it cannot accidentally fail from a missing fixture.
 The equivalent local offline suite passed **9 tests**, and the workflow YAML parsed
-successfully. Remote CI execution remains unverified until this branch runs in CI.
+successfully. The later `c55b433` CI run passed this required Apple Silicon job.
 
 ## PostgreSQL migration and admission gate — 2026-10-02
 

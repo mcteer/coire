@@ -177,6 +177,22 @@
       ],
       "title": "Studio engine re-adoption and generation recheck",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 88},
+      "id": 12,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (reason) (increase(coire_gateway_lease_losses_total[5m]))",
+          "legendFormat": "{{reason}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Inference memory lease losses",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

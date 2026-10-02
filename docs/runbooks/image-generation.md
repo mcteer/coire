@@ -284,7 +284,13 @@ be leased from stale session state. Sharded requests acquire the complete node s
 in canonical order before inserting any rank lease. These locks are released by
 the short database transaction, not held throughout chat decoding. Request leases
 continue to protect the ongoing request through their existing heartbeat/release
-path. For local concurrency verification, use only an explicitly disposable
+path. A request stops if renewal finds an expired lease or cannot reach the
+database; the gateway attempts normal lease release in either case. Inspect
+`coire_gateway_lease_losses_total` by `reason` and the
+`CoireGatewayLeaseLoss` alert in the Chat dashboard, then check database health
+and the node's current reservation before retrying. Do not force-release a
+resident hold to clear this alert. For local concurrency verification, use only
+an explicitly disposable
 localhost PostgreSQL DSN and run `test_image_accelerator_admission.py`, the integration
 case in `test_image_admission.py`, and the migration/quota race in
 `test_image_persistence.py` under `apps/coire-api/tests/unit/`. Those tests do not
