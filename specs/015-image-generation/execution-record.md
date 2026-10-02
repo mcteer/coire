@@ -2122,3 +2122,11 @@ renamed to `test_image_contention.py`, and the quickstart command was updated.
 After that correction the complete Python suite passed **1,877 tests, 160
 skipped**; the selected nine simulated image integration tests passed; Ruff
 format/check, strict mypy, OpenAPI freshness and diff whitespace checks passed.
+
+CI run `37071113150` on `a1d9ac3` passed every job: lint, unit/contract,
+native text/VLM engine and image-engine tests, all production image builds,
+image policy, CRITICAL scans, SBOM generation and disposable Compose
+integration. The integration selection finished **124 passed, 33 skipped**;
+those skips do not satisfy the opt-in cross-process PostgreSQL or real-Studio
+acceptance gates. T081 remains open for the final immutable Studio node
+install and text/VLM smoke after the image runtime changes.
