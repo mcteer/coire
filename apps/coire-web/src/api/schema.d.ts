@@ -3928,6 +3928,16 @@ export interface components {
              */
             state: "queued" | "reserving" | "running" | "transferring" | "cancelling" | "cancelled" | "failed" | "succeeded";
         };
+        /** ImageAdapterOption */
+        ImageAdapterOption: {
+            /** Display Name */
+            display_name: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+        };
         /**
          * ImageAssetAcquireRequest
          * @description An admin's explicit image-asset and model-licence acquisition decision.
@@ -4450,6 +4460,11 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /**
+             * Loras
+             * @default []
+             */
+            loras: components["schemas"]["ImageAdapterOption"][];
             /** Required Dependency Count */
             required_dependency_count: number;
             /**

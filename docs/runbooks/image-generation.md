@@ -29,7 +29,9 @@ Direct image jobs may select up to four published, base-compatible LoRAs.
 The scheduler binds the ordered local manifests and reserves the base estimate,
 each adapter's incremental estimate, and classifier headroom before dispatch.
 If the resident worker has a smaller hold, the job waits for an eligible Studio
-or the resident worker's idle unload. The web LoRA picker remains under T057.
+or the resident worker's idle unload. The model picker lists only authorized,
+published adapters for that base; the form preserves their order and exact
+decimal scale strings.
 
 The `VERIFY_REPLICA` acquisition stage now holds a measured Studio reservation
 and invokes an offline `image_validate` job on each copy. A base model must produce

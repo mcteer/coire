@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,8 +13,10 @@ from coire_api.images.admission import _load_policy
 from coire_api.images.authorization import authorize_live_image_action
 from coire_core.errors import ImageConflict, ImageForbidden, ImageNotFound, ImageValidationError
 from coire_core.models.images import (
+    ImageAdapterOption,
     ImageCapabilityProfile,
     ImageContentMode,
+    ImageLora,
     ImageMode,
     ImageModelList,
     ImageModelOption,
@@ -36,6 +40,20 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
             )
             .order_by(ModelRow.display_name, ModelRow.id)
             .limit(100)
+        )
+    ).all()
+    adapters = (
+        await session.scalars(
+            select(ModelRow)
+            .where(
+                ModelRow.kind == ModelKind.IMAGE_LORA,
+                ModelRow.backend == EngineBackend.AUXILIARY,
+                ModelRow.source == ModelSource.STUDIO,
+                ModelRow.state == ModelState.READY,
+                ModelRow.visibility == Visibility.PUBLISHED,
+            )
+            .order_by(ModelRow.display_name, ModelRow.id)
+            .limit(400)
         )
     ).all()
     items: list[ImageModelOption] = []
@@ -81,6 +99,41 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
                 "required_dependency_ids": (),
             }
         )
+        eligible_loras: list[ImageAdapterOption] = []
+        if basic.max_loras:
+            for adapter in adapters:
+                if (
+                    adapter.kind is not ModelKind.IMAGE_LORA
+                    or adapter.visibility is not Visibility.PUBLISHED
+                    or not isinstance(adapter.capability_profile, dict)
+                    or adapter.capability_profile.get("compatible_base_model_id") != str(row.id)
+                ):
+                    continue
+                try:
+                    selected = await _load_policy(
+                        session,
+                        ImageSubmitRequest(
+                            model_id=row.id,
+                            prompt="image adapter eligibility check",
+                            loras=[ImageLora(model_id=adapter.id, scale=Decimal(1))],
+                        ),
+                        principal,
+                    )
+                    explicit = (
+                        selected.request.content_mode is ImageContentMode.EXPLICIT
+                        or "explicit" in selected.required_entitlements
+                    )
+                    await authorize_live_image_action(
+                        session,
+                        principal,
+                        explicit=explicit,
+                        required_entitlements=selected.required_entitlements,
+                    )
+                except (ImageForbidden, ImageConflict, ImageNotFound, ImageValidationError):
+                    continue
+                eligible_loras.append(
+                    ImageAdapterOption(id=adapter.id, display_name=adapter.display_name)
+                )
         items.append(
             ImageModelOption(
                 id=row.id,
@@ -88,6 +141,7 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
                 display_name=row.display_name,
                 capability=basic,
                 required_dependency_count=len(policy.profile.required_dependency_ids),
+                loras=tuple(eligible_loras),
             )
         )
     return ImageModelList(items=items)

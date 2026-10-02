@@ -162,3 +162,81 @@ test("default retention is until owner deletion, and absent policy refuses submi
   await waitFor(() => expect(onSubmit).not.toHaveBeenCalled());
   expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
 });
+
+test("selected LoRAs keep their order and exact scale strings", async () => {
+  const onSubmit = vi.fn(async (request: ImageSubmitRequest) => {
+    void request;
+  });
+  const adapters = [
+    { id: "00000000-0000-0000-0000-000000000101", display_name: "First adapter" },
+    { id: "00000000-0000-0000-0000-000000000102", display_name: "Second adapter" },
+  ];
+  render(
+    <ImageForm
+      models={[
+        {
+          ...models[0],
+          capability: { ...models[0].capability, modes: ["txt2img"], max_loras: 2 },
+          loras: adapters,
+        },
+      ] as ImageModelList["items"]}
+      presets={[]}
+      disabled={false}
+      onSubmit={onSubmit}
+    />,
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Image prompt" }), {
+    target: { value: "a private subject" },
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "Add LoRA" }), {
+    target: { value: adapters[1].id },
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "Add LoRA" }), {
+    target: { value: adapters[0].id },
+  });
+  fireEvent.change(screen.getByRole("spinbutton", { name: "LoRA scale 1" }), {
+    target: { value: "0.375125" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+  expect(onSubmit.mock.calls.at(0)?.[0].loras).toEqual([
+    { model_id: adapters[1].id, scale: "0.375125" },
+    { model_id: adapters[0].id, scale: "1" },
+  ]);
+});
+
+test("restored adapter refuses submission when it is no longer listed", async () => {
+  const onSubmit = vi.fn(async () => {});
+  render(
+    <ImageForm
+      models={[
+        {
+          ...models[0],
+          capability: { ...models[0].capability, max_loras: 1 },
+          loras: [],
+        },
+      ] as ImageModelList["items"]}
+      presets={[]}
+      disabled={false}
+      onSubmit={onSubmit}
+      reuse={{
+        request: {
+          schema_version: 1,
+          model_id: modelId,
+          mode: "img2img",
+          prompt: "saved",
+          init_image_id: inputId,
+          strength: "0.5",
+          loras: [{ model_id: "00000000-0000-0000-0000-000000000101", scale: "1" }],
+        },
+        revision: 1,
+      }}
+    />,
+  );
+  expect(await screen.findByText("A selected LoRA is no longer available.")).toHaveAttribute(
+    "role",
+    "alert",
+  );
+  expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+  expect(onSubmit).not.toHaveBeenCalled();
+});

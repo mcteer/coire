@@ -153,6 +153,58 @@ async def test_model_picker_never_advertises_unimplemented_native_modes(
     assert selected.capability.modes == ("txt2img",)
 
 
+async def test_model_picker_lists_only_authorized_compatible_loras(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter_id = uuid.uuid4()
+    restricted_id = uuid.uuid4()
+    session = Session()
+    session.rows[BASE].image_capability_profile["max_loras"] = 2
+    for identity, entitlement in ((adapter_id, []), (restricted_id, ["private"])):
+        session.rows[identity] = SimpleNamespace(
+            id=identity,
+            display_name=f"Adapter {identity.hex[:8]}",
+            kind=ModelKind.IMAGE_LORA,
+            backend=EngineBackend.AUXILIARY,
+            source=ModelSource.STUDIO,
+            state=ModelState.READY,
+            visibility=Visibility.PUBLISHED,
+            entitlement=entitlement,
+            manifest_sha256="b" * 64,
+            capability_profile={"compatible_base_model_id": str(BASE)},
+        )
+
+    calls = 0
+
+    async def scalars(query: object) -> Any:
+        nonlocal calls
+        calls += 1
+        rows = (
+            [session.rows[BASE]]
+            if calls == 1
+            else [session.rows[adapter_id], session.rows[restricted_id]]
+        )
+        return SimpleNamespace(all=lambda: rows)
+
+    async def live(
+        db: object,
+        actor: Principal,
+        *,
+        explicit: bool = False,
+        required_entitlements: frozenset[str] = frozenset(),
+    ) -> uuid.UUID:
+        if required_entitlements:
+            raise ImageForbidden()
+        return OWNER
+
+    session.scalars = scalars  # type: ignore[method-assign]
+    monkeypatch.setattr(catalog, "authorize_live_image_action", live)
+    listing = await catalog.list_eligible_image_models(
+        cast(AsyncSession, session), Principal(kind=PrincipalKind.USER, user_id=OWNER)
+    )
+    assert [item.id for item in listing.items[0].loras] == [adapter_id]
+
+
 async def test_model_picker_omits_base_with_unsupported_default(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

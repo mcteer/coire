@@ -13,8 +13,12 @@ passed **23 tests**; Ruff and strict mypy passed. Direct admission now checks
 publication, entitlement and exact base compatibility. Dispatch binds ordered
 manifest digests and includes incremental adapter estimates in the worker hold;
 node dispatch refuses a missing or extra adapter. The full repository gate after
-those changes passed **1,853 tests, 160 skipped**. The web adapter picker and
-real Studio peak measurements remain open under T057/T061/T083.
+those changes passed **1,855 tests, 160 skipped**. Real Studio peak measurements
+remain open under T061/T083. The web model
+listing now filters base-compatible published adapters through live entitlement
+checks, and the form submits an ordered stack with exact scale strings. The
+component gate passed **140 tests** and the model-listing contract passed
+**8 tests**; TypeScript build and lint were run after the generated schema.
 
 ## Pinned Union control acquisition smoke — 2026-10-02
 

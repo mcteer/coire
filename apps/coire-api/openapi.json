@@ -4878,6 +4878,28 @@
         "title": "ImageActivityItem",
         "type": "object"
       },
+      "ImageAdapterOption": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "ImageAdapterOption",
+        "type": "object"
+      },
       "ImageAssetAcquireRequest": {
         "additionalProperties": false,
         "description": "An admin's explicit image-asset and model-licence acquisition decision.",
@@ -6306,6 +6328,14 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "loras": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ImageAdapterOption"
+            },
+            "title": "Loras",
+            "type": "array"
           },
           "required_dependency_count": {
             "maximum": 16.0,

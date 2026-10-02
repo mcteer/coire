@@ -46,6 +46,7 @@ export function ImageForm({
   const [maskId, setMaskId] = useState<string | null>(null);
   const [controlImageId, setControlImageId] = useState<string | null>(null);
   const [strength, setStrength] = useState<string | null>(null);
+  const [loras, setLoras] = useState<NonNullable<ImageSubmitRequest["loras"]>>([]);
   const [reusedRequest, setReusedRequest] = useState<ImageSubmitRequest | null>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -70,6 +71,7 @@ export function ImageForm({
     setMaskId(request.mask_id ?? null);
     setControlImageId(request.control?.image_id ?? null);
     setStrength(request.strength == null ? null : String(request.strength));
+    setLoras(request.loras ?? []);
     promptRef.current?.focus();
   }, [reuse]);
   const preset = presets.find((item) => item.id === presetId) ?? null;
@@ -78,6 +80,13 @@ export function ImageForm({
   const capability = preset ? null : capabilityOf(model);
   const missingModel = preset === null && !models.some((item) => item.id === modelId);
   const unsupportedMode = Boolean(capability && !capability.modes.includes(mode));
+  const unavailableLora = loras.some(
+    (item) => !model?.loras?.some((available) => available.id === item.model_id),
+  );
+  const tooManyLoras = Boolean(capability && loras.length > capability.max_loras);
+  const invalidLoraScale = loras.some(
+    (item) => !Number.isFinite(Number(item.scale)) || Number(item.scale) < -2 || Number(item.scale) > 2,
+  );
   const missingInput =
     preset === null &&
     (((mode === "img2img" || mode === "fill") && !initImageId) ||
@@ -92,11 +101,9 @@ export function ImageForm({
     missingModel ||
     unsupportedMode ||
     missingInput ||
-    Boolean(
-      reusedRequest?.loras?.length &&
-      capability &&
-      reusedRequest.loras.length > capability.max_loras,
-    );
+    unavailableLora ||
+    tooManyLoras ||
+    invalidLoraScale;
 
   const submit = async () => {
     const text = prompt.trim();
@@ -131,6 +138,7 @@ export function ImageForm({
         steps,
         seed,
         n: count,
+        loras,
         init_image_id: mode === "img2img" || mode === "fill" ? initImageId : null,
         mask_id: mode === "fill" ? maskId : null,
         strength: mode === "img2img" ? strength : null,
@@ -151,6 +159,7 @@ export function ImageForm({
       init_image_id: mode === "img2img" || mode === "fill" ? initImageId : null,
       mask_id: mode === "fill" ? maskId : null,
       strength: mode === "img2img" ? strength : null,
+      loras,
       ...overrides,
     });
   };
@@ -179,7 +188,10 @@ export function ImageForm({
           <select
             aria-label="Image model"
             value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
+            onChange={(event) => {
+              setModelId(event.target.value);
+              setLoras([]);
+            }}
           >
             {models.map((model) => (
               <option key={model.id} value={model.id}>
@@ -302,6 +314,65 @@ export function ImageForm({
               />
             </label>
           )}
+          {capability.max_loras > 0 && (
+            <fieldset>
+              <legend>LoRA adapters</legend>
+              {loras.map((selected, index) => (
+                <div key={selected.model_id}>
+                  <span>
+                    {model?.loras?.find((item) => item.id === selected.model_id)?.display_name ??
+                      "Unavailable adapter"}
+                  </span>
+                  <label>
+                    Scale {index + 1}
+                    <input
+                      aria-label={`LoRA scale ${index + 1}`}
+                      type="number"
+                      min={-2}
+                      max={2}
+                      step="any"
+                      value={selected.scale}
+                      onChange={(event) =>
+                        setLoras((current) =>
+                          current.map((item, position) =>
+                            position === index ? { ...item, scale: event.target.value } : item,
+                          ),
+                        )
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    aria-label={`Remove LoRA ${index + 1}`}
+                    onClick={() => setLoras((current) => current.filter((_, position) => position !== index))}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <label>
+                Add LoRA
+                <select
+                  aria-label="Add LoRA"
+                  value=""
+                  disabled={loras.length >= capability.max_loras}
+                  onChange={(event) => {
+                    const id = event.target.value;
+                    if (id) setLoras((current) => [...current, { model_id: id, scale: "1" }]);
+                  }}
+                >
+                  <option value="">Choose adapter</option>
+                  {(model?.loras ?? [])
+                    .filter((available) => !loras.some((item) => item.model_id === available.id))
+                    .map((available) => (
+                      <option key={available.id} value={available.id}>
+                        {available.display_name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </fieldset>
+          )}
           {(mode === "img2img" || mode === "fill") && (
             <ImageInputField
               label="Source image"
@@ -387,11 +458,9 @@ export function ImageForm({
       {mode === "control" && !reusedRequest?.control && (
         <p role="alert">A compatible control model is unavailable for selection.</p>
       )}
-      {reusedRequest?.loras?.length &&
-        capability &&
-        reusedRequest.loras.length > capability.max_loras && (
-          <p role="alert">This model no longer supports the restored LoRA stack.</p>
-        )}
+      {tooManyLoras && <p role="alert">This model no longer supports this LoRA stack.</p>}
+      {unavailableLora && <p role="alert">A selected LoRA is no longer available.</p>}
+      {invalidLoraScale && <p role="alert">Each LoRA scale must be between -2 and 2.</p>}
       <button className="button" type="submit" disabled={cannotSubmit}>
         {disabled ? "Submitting…" : "Generate"}
       </button>

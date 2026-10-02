@@ -322,6 +322,13 @@ class ImageCapabilityProfile(BaseModel):
             raise ValueError("negative_prompt is unsupported")
 
 
+class ImageAdapterOption(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: uuid.UUID
+    display_name: str = Field(min_length=1, max_length=120)
+
+
 class ImageModelOption(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -330,6 +337,7 @@ class ImageModelOption(BaseModel):
     display_name: str = Field(min_length=1, max_length=120)
     capability: ImageCapabilityProfile
     required_dependency_count: int = Field(ge=0, le=16)
+    loras: tuple[ImageAdapterOption, ...] = ()
     residency: Literal["unknown"] = "unknown"
 
 
