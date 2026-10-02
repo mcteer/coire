@@ -133,6 +133,11 @@ def _placed(row: ImageJobRow) -> bool:
     return row.fence != 0 or row.selected_node_id is not None or row.instance_id is not None
 
 
+def image_worker_hold_bytes(model_estimate_bytes: int | None, settings: Settings) -> int:
+    """Reserve CPU classification headroom alongside the resident image estimate."""
+    return max(model_estimate_bytes or 0, 1) + settings.image_classifier_memory_bytes
+
+
 async def fail_image_attempt(session: AsyncSession, job_id: str, code: str) -> bool:
     """Record one terminal failure. A missing journal is not a reason to generate again."""
     now = datetime.now(UTC)
@@ -569,7 +574,7 @@ async def prepare_image_dispatch(
     # a new incompatible resident load into the chosen Studio.
     await lock_nodes_for_admission(session, [studio.id for studio in studios])
     candidates: list[ImageNodeCandidate] = []
-    reservation = max(int(model.memory_estimate_bytes or 0), 1)
+    reservation = image_worker_hold_bytes(model.memory_estimate_bytes, settings)
     for studio in studios:
         candidates.append(
             ImageNodeCandidate(

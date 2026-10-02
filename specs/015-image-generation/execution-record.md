@@ -1754,3 +1754,8 @@ Local gates after these changes: Python **1,828 passed, 159 skipped**; web
 OpenAPI freshness passed. Engine-only and real Studio checks remain open. The
 classification transport does not establish T083/T084 acceptance or make an
 unverified auxiliary model publishable.
+
+Image placement now reserves the configured classifier allowance in addition
+to the base model estimate. The exact-fit placement test and 42 focused
+dispatch/admission/coexistence tests pass (one local PostgreSQL skip). This is
+conservative headroom; full physical coexistence acceptance remains T070/T084.

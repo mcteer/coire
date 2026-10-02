@@ -44,6 +44,7 @@ from coire_scheduler.image_dispatch import (
     ImageNodeCandidate,
     PreparedImageDispatch,
     choose_image_node,
+    image_worker_hold_bytes,
 )
 
 JOB = "01J00000000000000000000000"
@@ -98,6 +99,26 @@ def test_auto_placement_prefers_studio_b_and_skips_blocked_nodes() -> None:
             "pinned:coire-edge-b", 1024, [_candidate(IMAGE_PREFERRED_NODE, thermal_alarm=True)]
         )
         is None
+    )
+
+
+def test_image_hold_includes_classifier_budget_for_placement() -> None:
+    settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent", image_classifier_memory_bytes=1024**3
+    )
+    hold = image_worker_hold_bytes(8 * 1024**3, settings)
+    assert hold == 9 * 1024**3
+    assert (
+        choose_image_node(
+            "single:auto", hold, [_candidate(IMAGE_PREFERRED_NODE, memory_total_bytes=hold - 1)]
+        )
+        is None
+    )
+    assert (
+        choose_image_node(
+            "single:auto", hold, [_candidate(IMAGE_PREFERRED_NODE, memory_total_bytes=hold)]
+        )
+        is not None
     )
 
 

@@ -36,7 +36,9 @@ keep those outputs private while diagnosing the pinned Studio classifier.
 The worker uses only an exact locally verified classifier copy. It classifies
 each generated PNG after generation within the existing image worker hold;
 `COIRE_IMAGE_CLASSIFIER_MEMORY_BYTES` caps the classifier child to 1 GiB by
-default. If the copy is absent or corrupt, publication records `unknown` with
+default. New image placements add that allowance to the model's held memory
+estimate, including when the classifier copy is temporarily unavailable. If
+the copy is absent or corrupt, publication records `unknown` with
 an unavailable diagnostic. If the held worker has insufficient measured headroom,
 the classifier does not start and records `classifier_memory`.
 
