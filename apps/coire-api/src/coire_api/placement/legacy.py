@@ -30,13 +30,14 @@ async def ensure_legacy_model_hold(
             MemoryReservationRow.holder_id == str(model_id),
         )
     )
-    if existing is not None and existing.state is MemoryReservationState.HELD:
-        if existing.bytes < estimate_bytes:
-            raise ChatModelUnavailable()
-        return existing
-    ledger = await session.get(NodeMemoryLedgerRow, node_id, populate_existing=True)
-    if ledger is None or estimate_bytes <= 0:
+    held = existing is not None and existing.state is MemoryReservationState.HELD
+    if held and existing is not None and existing.bytes < estimate_bytes:
         raise ChatModelUnavailable()
+    ledger = None
+    if not held:
+        ledger = await session.get(NodeMemoryLedgerRow, node_id, populate_existing=True)
+        if ledger is None or estimate_bytes <= 0:
+            raise ChatModelUnavailable()
     reservations = (
         await session.scalars(
             select(MemoryReservationRow).where(
@@ -51,8 +52,7 @@ async def ensure_legacy_model_hold(
             )
         )
     ).all()
-    if any(row.holder_type is ReservationHolder.IMAGE for row in reservations):
-        raise ChatModelUnavailable()
+    has_image_hold = any(row.holder_type is ReservationHolder.IMAGE for row in reservations)
     live_image = await session.scalar(
         select(ModelInstanceRow.id)
         .join(InstanceMemberRow, InstanceMemberRow.instance_id == ModelInstanceRow.id)
@@ -70,8 +70,15 @@ async def ensure_legacy_model_hold(
         )
         .limit(1)
     )
-    if live_image is not None:
+    if live_image is not None and not has_image_hold:
+        # A worker with no shared hold has an unknown footprint. Even a legacy
+        # model with a valid hold cannot safely serve alongside it.
         raise ChatModelUnavailable()
+    if held and existing is not None:
+        return existing
+    if has_image_hold or live_image is not None:
+        raise ChatModelUnavailable()
+    assert ledger is not None
     occupied = sum(row.bytes for row in reservations if row is not existing)
     if occupied + estimate_bytes > ledger.budget_bytes:
         raise ChatModelUnavailable()
