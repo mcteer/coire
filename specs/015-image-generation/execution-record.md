@@ -1,5 +1,30 @@
 # Feature 015 execution record
 
+## Fresh blob volume and legacy gateway hold — 2026-10-02
+
+Disposable Compose inspection found that a fresh `coire-blobs` Docker volume
+started owned by API UID 65532 with mode `0755`. Its private staging sweep
+therefore failed every pass. API startup now tightens an owned volume to `0700`
+and refuses symlinks or foreign ownership. The rebuilt local API container
+reported UID 65532 and mode `0700`; the focused maintenance suite passed
+**20 tests**. Existing `coire` services were left running; only `coire-it`
+test containers and volumes were recycled.
+
+The earlier full PR CI runs failed eight chat gateway integration cases. A
+current-image local Compose reproduction found a ready legacy engine with no
+model hold in the shared memory ledger, while the gateway correctly refused
+inference without one. The gateway now takes the node admission lock, checks
+the budget and absence of an image worker, records a held legacy reservation,
+and only then grants a request lease. The reconciler releases that hold after
+the node reports a terminal engine state. The two previously failing focused
+gateway cases passed against rebuilt current API, scheduler, migration and
+node-test images. Gateway/authorization/coexistence tests passed **60 tests**,
+strict mypy passed across 644 files, and the complete local pytest run passed
+**1,813 tests** with 158 platform/external skips. A fresh full CI and full
+local Compose suite are still running; this is not final release evidence.
+The admission check also refuses a live image worker whose hold is missing;
+the focused gateway suite passed **11 tests** after that guard.
+
 ## Bounded orphan input inventory — 2026-10-02
 
 The private original/derived input orphan sweep now stops after 4,096 directory

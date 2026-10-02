@@ -325,8 +325,11 @@ async def test_legacy_engine_hold_is_bounded_and_excludes_image_worker() -> None
         def __init__(self) -> None:
             self.reservations: list[MemoryReservationRow] = []
             self.created: MemoryReservationRow | None = None
+            self.live_image: uuid.UUID | None = None
 
-        async def scalar(self, statement: object) -> None:
+        async def scalar(self, statement: object) -> uuid.UUID | None:
+            if "model_instances" in str(statement):
+                return self.live_image
             return None
 
         async def get(self, model: object, identity: object, **kwargs: object) -> object:
@@ -358,7 +361,19 @@ async def test_legacy_engine_hold_is_bounded_and_excludes_image_worker() -> None
     ]
     with pytest.raises(ChatModelUnavailable):
         await proxy._ensure_legacy_engine_hold(cast(AsyncSession, session), engine, str(model_id))
-    session.reservations[0].holder_type = ReservationHolder.SANDBOX
-    session.reservations[0].bytes = 7
+    session.reservations.clear()
+    session.live_image = uuid.uuid4()
+    with pytest.raises(ChatModelUnavailable):
+        await proxy._ensure_legacy_engine_hold(cast(AsyncSession, session), engine, str(model_id))
+    session.live_image = None
+    session.reservations = [
+        MemoryReservationRow(
+            node_id=node_id,
+            holder_type=ReservationHolder.SANDBOX,
+            holder_id="agent-sandbox",
+            bytes=7,
+            state=MemoryReservationState.HELD,
+        )
+    ]
     with pytest.raises(ChatModelUnavailable):
         await proxy._ensure_legacy_engine_hold(cast(AsyncSession, session), engine, str(model_id))

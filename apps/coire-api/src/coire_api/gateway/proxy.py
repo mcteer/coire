@@ -34,6 +34,7 @@ from coire_api.placement.service import (
     release_lease,
 )
 from coire_core.errors import ChatModelUnavailable
+from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import Settings
 
@@ -165,6 +166,25 @@ async def _ensure_legacy_engine_hold(
         )
     ).all()
     if any(row.holder_type is ReservationHolder.IMAGE for row in reservations):
+        raise ChatModelUnavailable()
+    live_image = await session.scalar(
+        select(ModelInstanceRow.id)
+        .join(InstanceMemberRow, InstanceMemberRow.instance_id == ModelInstanceRow.id)
+        .where(
+            InstanceMemberRow.node_id == engine.node_id,
+            ModelInstanceRow.policy.like("image:%"),
+            ModelInstanceRow.state.in_(
+                (
+                    InstanceState.LAUNCHING,
+                    InstanceState.WARMING,
+                    InstanceState.READY,
+                    InstanceState.DRAINING,
+                )
+            ),
+        )
+        .limit(1)
+    )
+    if live_image is not None:
         raise ChatModelUnavailable()
     occupied = sum(row.bytes for row in reservations if row is not existing)
     if occupied + engine.estimate_bytes > ledger.budget_bytes:
