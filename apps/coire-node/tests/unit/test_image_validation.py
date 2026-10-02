@@ -97,6 +97,7 @@ def test_reserved_base_smoke_produces_narrow_capability_and_thumbnail_digest(
     assert result.peak_physical_delta_bytes is not None
     assert result.peak_physical_bytes is not None
     assert result.peak_physical_bytes >= result.peak_physical_delta_bytes
+    assert result.peak_rss_bytes > 0
 
 
 def test_validation_refuses_transient_physical_footprint_above_hold(

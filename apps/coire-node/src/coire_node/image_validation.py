@@ -203,7 +203,6 @@ def _validate_image_asset(
         finally:
             for image in transformed:
                 image.close()
-    measured_rss = max(0, peak_rss - baseline_rss)
     measured_physical = max(0, peak_physical - baseline_physical)
     if max(peak_rss, peak_physical) > reservation_bytes:
         raise ImageValidationUnavailable("image smoke exceeded reserved memory")
@@ -229,7 +228,7 @@ def _validate_image_asset(
         kind=request.kind,
         manifest_sha256=request.manifest_sha256,
         source_revision=request.source_revision,
-        peak_rss_bytes=measured_rss,
+        peak_rss_bytes=peak_rss,
         peak_physical_bytes=peak_physical,
         peak_physical_delta_bytes=measured_physical,
         thumbnail_sha256=thumbnail_sha256,

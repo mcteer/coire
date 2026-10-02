@@ -1801,3 +1801,6 @@ hold fails as required; the focused node/acquisition validation suite passed
 After the absolute-footprint contract and generated schema update, the full
 local Python suite again passed **1,829 passed, 159 skipped**. The 138 web
 tests, lint/build, strict mypy, Ruff and OpenAPI freshness checks also passed.
+The `peak_rss_bytes` evidence now reports the absolute RSS peak, consistent
+with its field name and the classifier validator; physical delta remains
+separately named.

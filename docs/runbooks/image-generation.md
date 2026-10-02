@@ -25,7 +25,8 @@ thumbnail digest are recorded with both results before either reservation is
 released. The validator samples the process's physical footprint during both
 native smokes, including Metal memory on macOS, and refuses a transient peak
 above the held bytes. The gate compares the **absolute process peak** with the
-held bytes, while recording both the peak and its baseline delta. If a validation
+held bytes, while recording absolute RSS/physical peaks and the physical
+baseline delta. If a validation
 job is still running, leave the
 reservation held and inspect its exact job ID, process identity, local manifest and
 `CoireImageValidationFailures` alert. Auxiliary mode-specific validation is still
