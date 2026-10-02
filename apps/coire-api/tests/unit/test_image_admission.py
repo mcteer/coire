@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from coire_api.auth import Principal, PrincipalKind
-from coire_api.db import ImageJobEventRow, ImageJobRow, ModelRow
+from coire_api.db import ImageInputRow, ImageJobEventRow, ImageJobRow, ModelRow
 from coire_api.images import admission
 from coire_api.placement.service import lock_nodes_for_admission
 from coire_core.errors import ImageConflict, ImageForbidden, ImageValidationError
@@ -23,9 +23,11 @@ from coire_core.models.images import (
     ImageMode,
     ImageSpec,
     ImageSubmitRequest,
+    image_input_bindings,
 )
 from coire_core.models.registry import EngineBackend, ModelKind, ModelSource, ModelState, Visibility
 from coire_core.settings import Settings
+from coire_scheduler import image_dispatch
 
 OWNER = uuid.uuid4()
 MODEL = uuid.uuid4()
@@ -87,7 +89,89 @@ async def test_node_admission_lock_serializes_independent_postgres_connections()
     finally:
         release_first.set()
         await first_task
-        await engine.dispose()
+    await engine.dispose()
+
+
+async def test_fill_inputs_are_retained_and_transferred_together() -> None:
+    init_id, mask_id = uuid.uuid4(), uuid.uuid4()
+    spec = ImageSpec(
+        model_id=MODEL,
+        mode=ImageMode.FILL,
+        prompt="private subject",
+        width=512,
+        height=512,
+        steps=4,
+        guidance=Decimal(0),
+        seed=1,
+        init_image_id=init_id,
+        mask_id=mask_id,
+    )
+    rows = {
+        input_id: SimpleNamespace(
+            id=input_id,
+            owner_user_id=OWNER,
+            purpose=purpose,
+            state="ready",
+            deleted_at=None,
+            normalized_key=str(input_id),
+            normalized_sha256="a" * 64,
+            normalized_bytes=1024,
+            normalized_width=512,
+            normalized_height=512,
+            active_references=0,
+        )
+        for input_id, purpose in ((init_id, "init"), (mask_id, "mask"))
+    }
+
+    class Session:
+        async def get(self, model: type[object], identity: object, **kwargs: object) -> object:
+            assert model is ImageInputRow
+            return rows[cast(uuid.UUID, identity)]
+
+    session = cast(AsyncSession, Session())
+    rows[mask_id].state = "processing"
+    with pytest.raises(ImageValidationError, match="mask image"):
+        await admission._retain_generation_inputs(session, OWNER, spec)
+    assert all(row.active_references == 0 for row in rows.values())
+    rows[mask_id].state = "ready"
+    await admission._retain_generation_inputs(session, OWNER, spec)
+    assert all(row.active_references == 1 for row in rows.values())
+    manifests = await image_dispatch._bound_inputs(session, OWNER, spec)
+    assert {item.input_id: item.purpose for item in manifests} == {
+        init_id: "init",
+        mask_id: "mask",
+    }
+    rows[mask_id].purpose = "init"
+    with pytest.raises(ImageConflict, match="bound image input"):
+        await image_dispatch._bound_inputs(session, OWNER, spec)
+
+
+def test_control_input_binding_and_duplicate_purpose_refusal() -> None:
+    control_id = uuid.uuid4()
+    spec = ImageSpec.model_validate(
+        {
+            "model_id": MODEL,
+            "mode": "control",
+            "prompt": "private subject",
+            "width": 512,
+            "height": 512,
+            "steps": 4,
+            "guidance": "0",
+            "seed": 1,
+            "control": {"image_id": control_id, "model_id": uuid.uuid4()},
+        }
+    )
+    assert image_input_bindings(spec) == ((control_id, "control"),)
+    repeated = spec.model_copy(
+        update={
+            "mode": ImageMode.FILL,
+            "init_image_id": control_id,
+            "mask_id": control_id,
+            "control": None,
+        }
+    )
+    with pytest.raises(ValueError, match="multiple purposes"):
+        image_input_bindings(repeated)
 
 
 def _profile(**updates: object) -> ImageCapabilityProfile:
@@ -324,13 +408,13 @@ async def test_img2img_admission_retains_only_ready_owner_input_with_exact_dimen
             return row
 
     session = cast(AsyncSession, InputSession())
-    await admission._retain_init_input(session, OWNER, spec)
+    await admission._retain_generation_inputs(session, OWNER, spec)
     assert row.active_references == 1
     row.normalized_width = 513
     with pytest.raises(ImageValidationError, match="init image"):
-        await admission._retain_init_input(session, OWNER, spec)
+        await admission._retain_generation_inputs(session, OWNER, spec)
     assert row.active_references == 1
     row.normalized_width = 512
     row.owner_user_id = uuid.uuid4()
     with pytest.raises(ImageValidationError, match="init image"):
-        await admission._retain_init_input(session, OWNER, spec)
+        await admission._retain_generation_inputs(session, OWNER, spec)

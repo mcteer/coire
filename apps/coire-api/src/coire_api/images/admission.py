@@ -35,6 +35,7 @@ from coire_core.models.images import (
     ImageSpec,
     ImageSubmitRequest,
     canonical_client_intent_hash,
+    image_input_bindings,
 )
 from coire_core.models.registry import (
     AUXILIARY_IMAGE_KINDS,
@@ -159,28 +160,39 @@ def _replay_entitlements(row: ImageJobRow) -> frozenset[str]:
         raise ImageConflict("image authorization snapshot unavailable") from exc
 
 
-async def _retain_init_input(session: AsyncSession, owner_id: uuid.UUID, spec: ImageSpec) -> None:
-    if spec.init_image_id is None:
-        return
-    row = await session.get(
-        ImageInputRow, spec.init_image_id, populate_existing=True, with_for_update=True
-    )
-    if (
-        row is None
-        or row.owner_user_id != owner_id
-        or row.purpose != "init"
-        or row.state != "ready"
-        or row.deleted_at is not None
-        or row.normalized_key != str(spec.init_image_id)
-        or row.normalized_sha256 is None
-        or _DIGEST.fullmatch(row.normalized_sha256) is None
-        or row.normalized_bytes is None
-        or not 0 < row.normalized_bytes <= GENERATION_INPUT_MAX_BYTES
-        or row.normalized_width != spec.width
-        or row.normalized_height != spec.height
-    ):
-        raise ImageValidationError("init image is unavailable or has different dimensions")
-    row.active_references += 1
+async def _retain_generation_inputs(
+    session: AsyncSession, owner_id: uuid.UUID, spec: ImageSpec
+) -> None:
+    """Retain every owner input together before admitting a generation job."""
+    try:
+        bindings = image_input_bindings(spec)
+    except ValueError as exc:
+        raise ImageValidationError(str(exc)) from exc
+    rows: list[ImageInputRow] = []
+    for input_id, purpose in bindings:
+        row = await session.get(
+            ImageInputRow, input_id, populate_existing=True, with_for_update=True
+        )
+        if (
+            row is None
+            or row.owner_user_id != owner_id
+            or row.purpose != purpose
+            or row.state != "ready"
+            or row.deleted_at is not None
+            or row.normalized_key != str(input_id)
+            or row.normalized_sha256 is None
+            or _DIGEST.fullmatch(row.normalized_sha256) is None
+            or row.normalized_bytes is None
+            or not 0 < row.normalized_bytes <= GENERATION_INPUT_MAX_BYTES
+            or row.normalized_width != spec.width
+            or row.normalized_height != spec.height
+        ):
+            raise ImageValidationError(
+                f"{purpose} image is unavailable or has different dimensions"
+            )
+        rows.append(row)
+    for row in rows:
+        row.active_references += 1
 
 
 async def admit_image_job(
@@ -246,7 +258,7 @@ async def admit_image_job(
             else policy.request
         )
         spec = resolve_basic_image_spec(effective_request, policy.profile, random_seed=random_seed)
-        await _retain_init_input(session, owner_id, spec)
+        await _retain_generation_inputs(session, owner_id, spec)
         held_bytes = await reserve_image_job_capacity(session, owner_id, spec.n, settings)
         now = datetime.now(UTC)
         job_id = new_job_id()

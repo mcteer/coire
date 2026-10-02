@@ -49,6 +49,7 @@ from coire_core.models.images import (
     ResolvedImageSpec,
     canonical_spec_hash,
     expand_image_seeds,
+    image_input_bindings,
 )
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import NodeRole, Reachability
@@ -390,35 +391,40 @@ async def _bound_inputs(
     session: AsyncSession, owner_id: uuid.UUID, spec: ImageSpec
 ) -> tuple[NodeImageInputManifest, ...]:
     """Translate retained owner inputs to path-free, exact node manifests."""
-    if spec.init_image_id is None:
-        return ()
-    row = await session.get(ImageInputRow, spec.init_image_id, populate_existing=True)
-    if (
-        row is None
-        or row.owner_user_id != owner_id
-        or row.purpose != "init"
-        or row.state != "ready"
-        or row.deleted_at is not None
-        or row.active_references < 1
-        or row.normalized_key != str(spec.init_image_id)
-        or row.normalized_sha256 is None
-        or _DIGEST.fullmatch(row.normalized_sha256) is None
-        or row.normalized_bytes is None
-        or not 0 < row.normalized_bytes <= 10 * 1024 * 1024
-        or row.normalized_width != spec.width
-        or row.normalized_height != spec.height
-    ):
-        raise ImageConflict("bound image input is unavailable")
-    return (
-        NodeImageInputManifest(
-            input_id=row.id,
-            purpose="init",
-            sha256=row.normalized_sha256,
-            byte_count=row.normalized_bytes,
-            width=spec.width,
-            height=spec.height,
-        ),
-    )
+    try:
+        bindings = image_input_bindings(spec)
+    except ValueError as exc:
+        raise ImageConflict("bound image input is unavailable") from exc
+    manifests: list[NodeImageInputManifest] = []
+    for input_id, purpose in bindings:
+        row = await session.get(ImageInputRow, input_id, populate_existing=True)
+        if (
+            row is None
+            or row.owner_user_id != owner_id
+            or row.purpose != purpose
+            or row.state != "ready"
+            or row.deleted_at is not None
+            or row.active_references < 1
+            or row.normalized_key != str(input_id)
+            or row.normalized_sha256 is None
+            or _DIGEST.fullmatch(row.normalized_sha256) is None
+            or row.normalized_bytes is None
+            or not 0 < row.normalized_bytes <= 10 * 1024 * 1024
+            or row.normalized_width != spec.width
+            or row.normalized_height != spec.height
+        ):
+            raise ImageConflict("bound image input is unavailable")
+        manifests.append(
+            NodeImageInputManifest(
+                input_id=row.id,
+                purpose=purpose,
+                sha256=row.normalized_sha256,
+                byte_count=row.normalized_bytes,
+                width=spec.width,
+                height=spec.height,
+            )
+        )
+    return tuple(manifests)
 
 
 def _commands(

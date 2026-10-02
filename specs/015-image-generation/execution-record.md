@@ -1,5 +1,17 @@
 # Feature 015 execution record
 
+## Owner input binding for fill and control — 2026-10-02
+
+The shared image contract now lists init, mask and control input IDs in stable
+lock order and refuses reuse of one ID for two purposes. Admission validates all
+owner rows before retaining any reference; dispatch builds an exact purpose,
+digest and dimension manifest for each input. A regression test proves a bad
+mask leaves the init reference untouched, verifies both fill manifests and
+rejects a changed purpose. The focused core/admission/dispatch/reference suite
+passed **37 tests** with one local-PostgreSQL skip. Ruff and strict mypy across
+645 source files passed. Advanced submission and native execution are still
+refused pending T056, so T054 remains open for end-to-end acceptance.
+
 ## Legacy prelaunch admission — 2026-10-02
 
 Both admin and gateway legacy load paths now commit an engine row and its
@@ -11,7 +23,10 @@ unheld rows, and the engine integration test now checks that a launch response
 already has a held model reservation. Focused gateway/loading/reconciler tests
 passed **19 tests**; the complete local Python suite passed **1,813 tests**
 with 158 platform/external skips. Ruff and strict mypy across 645 files passed.
-Current-image Compose and PR CI remain pending for this change.
+The full disposable current-image Compose suite passed **121 tests** with
+32 environment skips. A rebuilt API image passed the targeted admin load test,
+including its immediate memory-hold assertion. The fixture removed the
+`coire-it` stack after both runs. The latest PR CI remains pending.
 
 ## Fresh blob volume and legacy gateway hold — 2026-10-02
 

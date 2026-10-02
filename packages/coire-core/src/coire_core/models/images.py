@@ -214,6 +214,22 @@ class ImageSpec(BaseModel):
         return self
 
 
+def image_input_bindings(
+    spec: ImageSpec,
+) -> tuple[tuple[uuid.UUID, Literal["init", "mask", "control"]], ...]:
+    """Return every generation input in stable lock order, rejecting reused IDs."""
+    bindings: list[tuple[uuid.UUID, Literal["init", "mask", "control"]]] = []
+    if spec.init_image_id is not None:
+        bindings.append((spec.init_image_id, "init"))
+    if spec.mask_id is not None:
+        bindings.append((spec.mask_id, "mask"))
+    if spec.control is not None:
+        bindings.append((spec.control.image_id, "control"))
+    if len({input_id for input_id, _ in bindings}) != len(bindings):
+        raise ValueError("one image input cannot serve multiple purposes")
+    return tuple(sorted(bindings, key=lambda item: item[0]))
+
+
 class ImageCapabilityProfile(BaseModel):
     """Measured base-model bounds; checked after request and preset resolution."""
 
