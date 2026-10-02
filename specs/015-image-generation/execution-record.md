@@ -2060,3 +2060,20 @@ successful PNG generation and verifies the fenced worker reports an `unknown`
 tag with a safe error while keeping output in private scratch. All **5**
 local recovery integration tests passed. The broader all-boundary matrix in
 T075 remains open.
+
+## Final-source acceptance matrix in progress — 2026-10-02
+
+| Boundary | Local evidence | Required remaining evidence |
+| --- | --- | --- |
+| Native image modes | Tiny offline Z-Image txt2img/img2img, ordered LoRA replacement, cancellation, cleanup and cache smoke passed; Fill, Union Canny and SeedVR2 have typed binding, local preflight, mode-specific unit smokes and physical hold guards. | Operator must validate both full Studio copies and execute every advertised mode with real pinned assets (T083). |
+| OpenAI-compatible and owner API | Image route contracts, SSE/receipt, owner input/output, entitlement and grant tests pass; OpenAPI and generated web types are current. | Browser journeys and final source CI (T081/T082). |
+| Authorization and failure recovery | Unit/contract matrix covers revoked keys/grants, explicit entitlement, cancellation/publication arbitration, lost cleanup acknowledgment, parser refusal, full disk, partial batch and reboot journal replay. Local simulated classifier failure passed. | Final combined failure injection and healthy-node cancel timing (T041/T075). |
+| Placement and coexistence | Node and core held-memory accounting, profile binding/invalidation and uncertainty tests pass locally; production admission remains disabled by default. | Cross-process PostgreSQL admission and simulated contention gate evidence, then operator 15-minute mixed benchmark (T065/T072/T084). |
+| Reproduction and cache | Local tiny fixture has 20 warm prompt-cache trials; cold/hit/evicted per-job observations are typed. | Operator 10 same-environment full-model reproduction trials and 20 warm-cache trials (T084). |
+| Packaging and operations | Previous CI checkpoint passed all jobs; local affected-image policy, scans and SBOM checks are recorded above. | Final-source CI integration/build/scan and immutable native node/text/VLM smoke (T081). |
+
+The parent task list is the acceptance authority. T041, T065, T072, T075 and
+T081–T085 remain unchecked until their stated evidence exists. Principles
+I–VII and II-a are addressed in the [plan](plan.md#constitution-check) and
+draft PR #90. No full-model or real-cluster result is inferred from the tiny
+fixture.
