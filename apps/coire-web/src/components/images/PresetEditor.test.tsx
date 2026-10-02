@@ -51,6 +51,7 @@ const models: ImageModelList["items"] = [
     residency: "unknown",
     required_dependency_count: 0,
     loras: [],
+    upscalers: [],
     capability: {
       max_guidance: "5",
       max_height: 1024,

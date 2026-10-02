@@ -240,3 +240,36 @@ test("restored adapter refuses submission when it is no longer listed", async ()
   expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
   expect(onSubmit).not.toHaveBeenCalled();
 });
+
+test("selected upscale asset and factor are submitted together", async () => {
+  const onSubmit = vi.fn(async (request: ImageSubmitRequest) => {
+    void request;
+  });
+  const upscaleId = "00000000-0000-0000-0000-000000000103";
+  render(
+    <ImageForm
+      models={[
+        {
+          ...models[0],
+          capability: { ...models[0].capability, modes: ["txt2img"] },
+          upscalers: [{ id: upscaleId, display_name: "SeedVR2" }],
+        },
+      ] as ImageModelList["items"]}
+      presets={[]}
+      disabled={false}
+      onSubmit={onSubmit}
+    />,
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Image prompt" }), {
+    target: { value: "a private subject" },
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "Upscale model" }), {
+    target: { value: upscaleId },
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "Upscale factor" }), {
+    target: { value: "4" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+  await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+  expect(onSubmit.mock.calls.at(0)?.[0].upscale).toEqual({ model_id: upscaleId, factor: 4 });
+});

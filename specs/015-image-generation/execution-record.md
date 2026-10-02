@@ -1,5 +1,18 @@
 # Feature 015 execution record
 
+## Pinned SeedVR2 output stage — 2026-10-02
+
+Direct image admission binds a ready published upscale asset and its entitlement.
+The scheduler adds its exact manifest and memory estimate to the worker hold.
+The resident Studio checks the pinned SeedVR2 3B inventory, runs offline from
+local bytes, samples physical footprint against the hold, and requires exact
+2×/4× RGB dimensions. PNG recipes now validate the final dimensions. The web
+picker filters upscalers through live authority and submits the selected factor.
+Focused Python checks passed **67 tests, one skipped**; the web component suite
+passed **141 tests**, with TypeScript build, lint and OpenAPI freshness green.
+The full local repository suite passed **1,859 tests, 160 skipped**. Operator
+Studio generation and physical peak gates remain open.
+
 ## Clean resident LoRA stack replacement — 2026-10-02
 
 The resident Z-Image pipeline now checks each ordered adapter's pinned slug,

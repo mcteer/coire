@@ -4475,6 +4475,11 @@ export interface components {
             residency: "unknown";
             /** Slug */
             slug: string;
+            /**
+             * Upscalers
+             * @default []
+             */
+            upscalers: components["schemas"]["ImageAdapterOption"][];
         };
         /** ImageOutput */
         ImageOutput: {

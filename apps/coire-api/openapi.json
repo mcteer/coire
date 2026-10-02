@@ -6354,6 +6354,14 @@
             "minLength": 1,
             "title": "Slug",
             "type": "string"
+          },
+          "upscalers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ImageAdapterOption"
+            },
+            "title": "Upscalers",
+            "type": "array"
           }
         },
         "required": [

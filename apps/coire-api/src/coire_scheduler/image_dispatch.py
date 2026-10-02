@@ -146,7 +146,7 @@ async def _bound_loras(
     *,
     from_preset: bool,
 ) -> tuple[tuple[ImageManifestDigest, ...], int] | None:
-    """Bind ordered, compatible copies and their incremental measured hold."""
+    """Bind ordered local copies and their incremental measured hold."""
     manifests: list[ImageManifestDigest] = []
     overhead = 0
     for selected in spec.loras:
@@ -175,6 +175,34 @@ async def _bound_loras(
                 slug=dependency.slug,
                 revision=dependency.source_revision,
                 sha256=dependency.manifest_sha256,
+            )
+        )
+    if spec.upscale is not None:
+        upscale_request = spec.upscale
+        upscale = await session.get(ModelRow, upscale_request.model_id, populate_existing=True)
+        if (
+            upscale_request.variant_id is not None
+            or upscale is None
+            or upscale.kind is not ModelKind.UPSCALE_MODEL
+            or (not from_preset and upscale.visibility is not Visibility.PUBLISHED)
+            or upscale.backend is not EngineBackend.AUXILIARY
+            or upscale.source is not ModelSource.STUDIO
+            or upscale.state is not ModelState.READY
+            or upscale.manifest_sha256 is None
+            or _DIGEST.fullmatch(upscale.manifest_sha256) is None
+            or upscale.source_revision is None
+            or _REVISION.fullmatch(upscale.source_revision) is None
+            or upscale.memory_estimate_bytes is None
+            or upscale.memory_estimate_bytes < 1
+        ):
+            return None
+        overhead += upscale.memory_estimate_bytes
+        manifests.append(
+            ImageManifestDigest(
+                model_id=upscale.id,
+                slug=upscale.slug,
+                revision=upscale.source_revision,
+                sha256=upscale.manifest_sha256,
             )
         )
     return tuple(manifests), overhead
@@ -574,7 +602,6 @@ async def prepare_image_dispatch(
         or spec.variant_id is not None
         or spec.mask_id is not None
         or spec.control is not None
-        or spec.upscale is not None
     ):
         await fail_image_attempt(session, job_id, "unsupported_mode")
         return None

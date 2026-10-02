@@ -14,6 +14,7 @@ from coire_core.models.images import (
     ImageLora,
     ImageMode,
     ImageSubmitRequest,
+    ImageUpscale,
     canonical_spec_hash,
 )
 
@@ -93,6 +94,13 @@ def test_resolution_preserves_ordered_lora_scales_and_capability_limit() -> None
     assert result.loras == tuple(adapters)
     with pytest.raises(ImageValidationError, match="loras exceed model bound"):
         resolve_basic_image_spec(request, _profile(max_loras=1), random_seed=lambda: 123)
+
+
+def test_resolution_keeps_exact_upscale_asset_and_factor() -> None:
+    upscale = ImageUpscale(model_id=uuid.uuid4(), factor=2)
+    request = ImageSubmitRequest(model_id=MODEL, prompt="portrait", upscale=upscale)
+    resolved = resolve_basic_image_spec(request, _profile(), random_seed=lambda: 123)
+    assert resolved.upscale == upscale
 
 
 @pytest.mark.parametrize(

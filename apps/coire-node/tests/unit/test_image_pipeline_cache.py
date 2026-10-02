@@ -19,12 +19,14 @@ from coire_core.models.images import (
     ImageLora,
     ImageManifestDigest,
     ImageSpec,
+    ImageUpscale,
     ResolvedImageSpec,
     canonical_spec_hash,
     expand_image_seeds,
 )
 from coire_node.image_runtime import pipeline
 from coire_node.image_runtime.cache import NativeStageCache, StageCacheKey, stage_identity
+from coire_node.image_runtime.metadata import write_image_png
 from coire_node.image_runtime.preflight import RUNTIME_VERSION
 from coire_node.store import Store
 
@@ -231,6 +233,41 @@ def test_zero_cache_budget_disables_retention_without_blocking_generation(
     assert len(model.calls) == 2
     assert loaded.prompt_cache.occupancy("prompt") == 0
     assert loaded.encoder_cache.used_bytes == 0
+
+
+def test_upscale_stage_writes_final_dimensions_and_exact_recipe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    loaded, model, request = _pipeline(max_bytes=4096)
+    loaded._store = Store(tmp_path)
+    monkeypatch.setattr(pipeline, "_sync_latents", lambda value: None)
+    upscale_id = uuid.uuid4()
+    resolved = _resolved(request, upscale=ImageUpscale(model_id=upscale_id, factor=2)).model_copy(
+        update={
+            "dependencies": (
+                ImageManifestDigest(
+                    model_id=upscale_id,
+                    slug="numz--seedvr2",
+                    revision="a" * 40,
+                    sha256="b" * 64,
+                ),
+            )
+        }
+    )
+    calls: list[tuple[int, int]] = []
+
+    def scaled(source: Image.Image, **kwargs: object) -> Image.Image:
+        calls.append(source.size)
+        assert kwargs["factor"] == 2
+        return Image.new("RGB", (128, 128))
+
+    monkeypatch.setattr(pipeline, "upscale_image", scaled)
+    images = loaded.generate(resolved, lambda *_: None)
+    assert calls == [(64, 64)] and len(model.calls) == 1
+    encoded = write_image_png(images[0], resolved, 0, tmp_path / "output.png")
+    assert encoded.recipe.width == 128 and encoded.recipe.height == 128
+    for image in images:
+        image.close()
 
 
 def test_generate_encodes_before_denoising_and_still_calls_the_model(

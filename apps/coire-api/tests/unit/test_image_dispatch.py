@@ -32,6 +32,7 @@ from coire_core.models.images import (
     ImageLora,
     ImageMode,
     ImageSpec,
+    ImageUpscale,
     ResolvedImageSpec,
     canonical_spec_hash,
     expand_image_seeds,
@@ -174,6 +175,26 @@ async def test_bound_lora_stack_preserves_order_and_rejects_changed_base() -> No
     manifests, overhead = bound
     assert [item.model_id for item in manifests] == [second_id, first_id]
     assert overhead == 384 * 1024**2
+    upscale_id = uuid.uuid4()
+    adapters[upscale_id] = SimpleNamespace(
+        id=upscale_id,
+        slug="numz--seedvr2",
+        kind=ModelKind.UPSCALE_MODEL,
+        visibility=Visibility.PUBLISHED,
+        backend=EngineBackend.AUXILIARY,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        manifest_sha256="d" * 64,
+        source_revision="e" * 40,
+        memory_estimate_bytes=2 * 1024**3,
+    )
+    upscaled = spec.model_copy(update={"upscale": ImageUpscale(model_id=upscale_id, factor=2)})
+    with_upscale = await image_dispatch._bound_loras(
+        session, upscaled, cast(ModelRow, base), from_preset=False
+    )
+    assert with_upscale is not None
+    assert [item.model_id for item in with_upscale[0]] == [second_id, first_id, upscale_id]
+    assert with_upscale[1] == overhead + 2 * 1024**3
     adapters[first_id].capability_profile = {"compatible_base_model_id": str(uuid.uuid4())}
     assert (
         await image_dispatch._bound_loras(session, spec, cast(ModelRow, base), from_preset=False)

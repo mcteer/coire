@@ -47,6 +47,7 @@ export function ImageForm({
   const [controlImageId, setControlImageId] = useState<string | null>(null);
   const [strength, setStrength] = useState<string | null>(null);
   const [loras, setLoras] = useState<NonNullable<ImageSubmitRequest["loras"]>>([]);
+  const [upscale, setUpscale] = useState<NonNullable<ImageSubmitRequest["upscale"]> | null>(null);
   const [reusedRequest, setReusedRequest] = useState<ImageSubmitRequest | null>(null);
   const promptRef = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
@@ -72,6 +73,7 @@ export function ImageForm({
     setControlImageId(request.control?.image_id ?? null);
     setStrength(request.strength == null ? null : String(request.strength));
     setLoras(request.loras ?? []);
+    setUpscale(request.upscale ?? null);
     promptRef.current?.focus();
   }, [reuse]);
   const preset = presets.find((item) => item.id === presetId) ?? null;
@@ -86,6 +88,19 @@ export function ImageForm({
   const tooManyLoras = Boolean(capability && loras.length > capability.max_loras);
   const invalidLoraScale = loras.some(
     (item) => !Number.isFinite(Number(item.scale)) || Number(item.scale) < -2 || Number(item.scale) > 2,
+  );
+  const unavailableUpscale = Boolean(
+    upscale && !model?.upscalers?.some((available) => available.id === upscale.model_id),
+  );
+  const sourceWidth = width ?? capability?.default_width ?? null;
+  const sourceHeight = height ?? capability?.default_height ?? null;
+  const upscaleExceedsBounds = Boolean(
+    upscale &&
+      sourceWidth &&
+      sourceHeight &&
+      (sourceWidth * upscale.factor > 4096 ||
+        sourceHeight * upscale.factor > 4096 ||
+        sourceWidth * sourceHeight * upscale.factor ** 2 > 16_000_000),
   );
   const missingInput =
     preset === null &&
@@ -102,6 +117,8 @@ export function ImageForm({
     unsupportedMode ||
     missingInput ||
     unavailableLora ||
+    unavailableUpscale ||
+    upscaleExceedsBounds ||
     tooManyLoras ||
     invalidLoraScale;
 
@@ -139,6 +156,7 @@ export function ImageForm({
         seed,
         n: count,
         loras,
+        upscale,
         init_image_id: mode === "img2img" || mode === "fill" ? initImageId : null,
         mask_id: mode === "fill" ? maskId : null,
         strength: mode === "img2img" ? strength : null,
@@ -160,6 +178,7 @@ export function ImageForm({
       mask_id: mode === "fill" ? maskId : null,
       strength: mode === "img2img" ? strength : null,
       loras,
+      upscale,
       ...overrides,
     });
   };
@@ -191,6 +210,7 @@ export function ImageForm({
             onChange={(event) => {
               setModelId(event.target.value);
               setLoras([]);
+              setUpscale(null);
             }}
           >
             {models.map((model) => (
@@ -373,6 +393,51 @@ export function ImageForm({
               </label>
             </fieldset>
           )}
+          {(model?.upscalers?.length ?? 0) > 0 && (
+            <fieldset>
+              <legend>Upscale</legend>
+              <label>
+                Upscale model
+                <select
+                  aria-label="Upscale model"
+                  value={upscale?.model_id ?? ""}
+                  onChange={(event) =>
+                    setUpscale(
+                      event.target.value
+                        ? { model_id: event.target.value, factor: upscale?.factor ?? 2 }
+                        : null,
+                    )
+                  }
+                >
+                  <option value="">No upscale</option>
+                  {model?.upscalers?.map((available) => (
+                    <option key={available.id} value={available.id}>
+                      {available.display_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {upscale && (
+                <label>
+                  Upscale factor
+                  <select
+                    aria-label="Upscale factor"
+                    value={upscale.factor}
+                    onChange={(event) =>
+                      setUpscale((current) =>
+                        current
+                          ? { ...current, factor: Number(event.target.value) as 2 | 4 }
+                          : null,
+                      )
+                    }
+                  >
+                    <option value={2}>2×</option>
+                    <option value={4}>4×</option>
+                  </select>
+                </label>
+              )}
+            </fieldset>
+          )}
           {(mode === "img2img" || mode === "fill") && (
             <ImageInputField
               label="Source image"
@@ -460,6 +525,8 @@ export function ImageForm({
       )}
       {tooManyLoras && <p role="alert">This model no longer supports this LoRA stack.</p>}
       {unavailableLora && <p role="alert">A selected LoRA is no longer available.</p>}
+      {unavailableUpscale && <p role="alert">The selected upscale model is no longer available.</p>}
+      {upscaleExceedsBounds && <p role="alert">Upscale exceeds the final image size limit.</p>}
       {invalidLoraScale && <p role="alert">Each LoRA scale must be between -2 and 2.</p>}
       <button className="button" type="submit" disabled={cannotSubmit}>
         {disabled ? "Submitting…" : "Generate"}

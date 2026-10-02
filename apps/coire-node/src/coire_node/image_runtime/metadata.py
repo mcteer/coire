@@ -64,7 +64,13 @@ def write_image_png(
         if (
             path.suffix != ".png"
             or image.mode != "RGB"
-            or image.size != (resolved.spec.width, resolved.spec.height)
+            or image.size
+            != (
+                resolved.spec.width
+                * (resolved.spec.upscale.factor if resolved.spec.upscale else 1),
+                resolved.spec.height
+                * (resolved.spec.upscale.factor if resolved.spec.upscale else 1),
+            )
             or not 0 <= output_index < len(resolved.seeds)
         ):
             raise ImageMetadataUnavailable()

@@ -6,6 +6,7 @@ import gc
 import importlib
 import os
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -22,6 +23,8 @@ from coire_node.image_runtime.cache import (
     stage_identity,
 )
 from coire_node.image_runtime.preflight import RUNTIME_VERSION, verify_image_copy
+from coire_node.image_runtime.upscale import upscale_image
+from coire_node.metrics import ImageNodeOutcome, ImageNodeStage, image_node_span, record_image_stage
 from coire_node.store import Store
 
 Progress = Callable[[int, int, int], None]
@@ -249,15 +252,16 @@ class MfluxTxt2ImgPipeline:
         ):
             raise ImagePipelineUnavailable()
         if self._store is None:
-            if resolved.spec.loras or resolved.dependencies:
+            if resolved.spec.loras or resolved.spec.upscale is not None or resolved.dependencies:
                 raise ImagePipelineUnavailable()
             return
         spec = resolved.spec
-        if len(spec.loras) != len(resolved.dependencies):
+        if len(spec.loras) + int(spec.upscale is not None) != len(resolved.dependencies):
             raise ImagePipelineUnavailable()
-        if {item.model_id for item in spec.loras} != {
-            item.model_id for item in resolved.dependencies
-        }:
+        expected_dependencies = {item.model_id for item in spec.loras}
+        if spec.upscale is not None:
+            expected_dependencies.add(spec.upscale.model_id)
+        if expected_dependencies != {item.model_id for item in resolved.dependencies}:
             raise ImagePipelineUnavailable()
         dependencies = {item.model_id: item for item in resolved.dependencies}
         paths: list[Path] = []
@@ -372,7 +376,6 @@ class MfluxTxt2ImgPipeline:
             or spec.negative_prompt is not None
             or spec.mask_id is not None
             or spec.control is not None
-            or spec.upscale is not None
             or (spec.mode is ImageMode.TXT2IMG and resolved.inputs)
         ):
             raise ImagePipelineUnavailable()
@@ -433,6 +436,49 @@ class MfluxTxt2ImgPipeline:
                     if image.mode != "RGB" or image.size != (spec.width, spec.height):
                         image.close()
                         raise ImagePipelineUnavailable()
+                    if spec.upscale is not None:
+                        if self._store is None:
+                            image.close()
+                            raise ImagePipelineUnavailable()
+                        dependency = next(
+                            (
+                                item
+                                for item in resolved.dependencies
+                                if item.model_id == spec.upscale.model_id
+                            ),
+                            None,
+                        )
+                        if dependency is None:
+                            image.close()
+                            raise ImagePipelineUnavailable()
+                        began = time.monotonic()
+                        try:
+                            with image_node_span(ImageNodeStage.UPSCALE):
+                                scaled = upscale_image(
+                                    image,
+                                    store=self._store,
+                                    dependency=dependency,
+                                    instance_id=self._request.instance_id,
+                                    reservation_bytes=self._request.reservation_bytes,
+                                    runtime_version=self._request.runtime_version,
+                                    seed=seed,
+                                    factor=spec.upscale.factor,
+                                )
+                        except Exception:
+                            record_image_stage(
+                                ImageNodeStage.UPSCALE,
+                                ImageNodeOutcome.FAILED,
+                                duration_s=time.monotonic() - began,
+                            )
+                            raise
+                        finally:
+                            image.close()
+                        record_image_stage(
+                            ImageNodeStage.UPSCALE,
+                            ImageNodeOutcome.SUCCEEDED,
+                            duration_s=time.monotonic() - began,
+                        )
+                        image = scaled
                     images.append(image)
                 finally:
                     self._callback.end()

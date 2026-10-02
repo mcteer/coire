@@ -32,6 +32,13 @@ If the resident worker has a smaller hold, the job waits for an eligible Studio
 or the resident worker's idle unload. The model picker lists only authorized,
 published adapters for that base; the form preserves their order and exact
 decimal scale strings.
+Published SeedVR2 assets can be selected as a 2× or 4× output stage. Dispatch
+adds the standalone upscaler estimate to the resident base, adapters and
+classifier hold. The Studio verifies the exact local manifest, runs offline,
+checks final dimensions and samples its physical peak. Upscale output recipes
+record final dimensions; if the asset or reservation is unavailable, the job
+fails without publishing a partial batch. The picker shows only authorized
+published upscalers.
 
 The `VERIFY_REPLICA` acquisition stage now holds a measured Studio reservation
 and invokes an offline `image_validate` job on each copy. A base model must produce

@@ -158,6 +158,7 @@ async def test_model_picker_lists_only_authorized_compatible_loras(
 ) -> None:
     adapter_id = uuid.uuid4()
     restricted_id = uuid.uuid4()
+    upscale_id = uuid.uuid4()
     session = Session()
     session.rows[BASE].image_capability_profile["max_loras"] = 2
     for identity, entitlement in ((adapter_id, []), (restricted_id, ["private"])):
@@ -173,17 +174,29 @@ async def test_model_picker_lists_only_authorized_compatible_loras(
             manifest_sha256="b" * 64,
             capability_profile={"compatible_base_model_id": str(BASE)},
         )
+    session.rows[upscale_id] = SimpleNamespace(
+        id=upscale_id,
+        display_name="SeedVR2",
+        kind=ModelKind.UPSCALE_MODEL,
+        backend=EngineBackend.AUXILIARY,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        visibility=Visibility.PUBLISHED,
+        entitlement=[],
+        manifest_sha256="c" * 64,
+    )
 
     calls = 0
 
     async def scalars(query: object) -> Any:
         nonlocal calls
         calls += 1
-        rows = (
-            [session.rows[BASE]]
-            if calls == 1
-            else [session.rows[adapter_id], session.rows[restricted_id]]
-        )
+        if calls == 1:
+            rows = [session.rows[BASE]]
+        elif calls == 2:
+            rows = [session.rows[adapter_id], session.rows[restricted_id]]
+        else:
+            rows = [session.rows[upscale_id]]
         return SimpleNamespace(all=lambda: rows)
 
     async def live(
@@ -203,6 +216,7 @@ async def test_model_picker_lists_only_authorized_compatible_loras(
         cast(AsyncSession, session), Principal(kind=PrincipalKind.USER, user_id=OWNER)
     )
     assert [item.id for item in listing.items[0].loras] == [adapter_id]
+    assert [item.id for item in listing.items[0].upscalers] == [upscale_id]
 
 
 async def test_model_picker_omits_base_with_unsupported_default(

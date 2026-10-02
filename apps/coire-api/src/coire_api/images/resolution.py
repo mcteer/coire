@@ -30,7 +30,6 @@ def resolve_basic_image_spec(
         or request.variant_id is not None
         or request.mask_id is not None
         or request.control is not None
-        or request.upscale is not None
     ):
         raise ImageValidationError("unsupported image setting")
     if (
@@ -56,6 +55,7 @@ def resolve_basic_image_spec(
         "init_image_id": request.init_image_id,
         "strength": request.strength,
         "loras": request.loras or [],
+        "upscale": request.upscale,
         "output": request.output,
         "content_mode": request.content_mode or ImageContentMode.STANDARD,
     }
