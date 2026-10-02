@@ -29,6 +29,10 @@ reservation held and inspect its exact job ID, process identity, local manifest 
 `CoireImageValidationFailures` alert. Auxiliary mode-specific validation is still
 unavailable and those assets remain unpublished. Do not set the image admission
 flag until T033 and the remaining real Studio acceptance pass.
+Base acquisition reserves the larger of twice the selected file bytes or three
+times the weight bytes, plus 16 GiB of native runtime headroom, on **each**
+Studio. A Studio below that estimate refuses intake before pulling. The smoke
+still rejects a base whose measured peak exceeds its actual reservation.
 
 Gallery cards show a safe classifier diagnostic when tagging is unavailable or
 fails. An `unknown` tag does not mean the pixels were classified as normal;

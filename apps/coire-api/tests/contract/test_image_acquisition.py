@@ -188,6 +188,7 @@ async def test_admin_image_intake_pins_revision_and_licence_before_pull(
     assert model.kind is ModelKind.IMAGE_MODEL
     assert model.backend == EngineBackend.MFLUX.value
     assert model.total_bytes == 1124
+    assert model.memory_estimate_bytes == 16 * 1024**3 + 3072
     assert job.origin_node_id == nodes[0].id
     assert job.replica_node_id == nodes[1].id
     assert job.expected_files == {
@@ -195,6 +196,30 @@ async def test_admin_image_intake_pins_revision_and_licence_before_pull(
         "model.safetensors": {"bytes": 1024, "upstream_sha256": "b" * 64},
     }
     assert audits[0]["detail"]["license_id"] == "apache-2.0"  # type: ignore[index]
+
+    one_low_node = [
+        NodeView(
+            name=node.name,
+            reachability=Reachability.HEALTHY,
+            store_free_bytes=10**12,
+            memory_budget_bytes=16 * 1024**3 if index == 0 else 10**12,
+        )
+        for index, node in enumerate(nodes)
+    ]
+    with pytest.raises(RegistryError, match="insufficient_memory"):
+        await image_acquisition.submit_image_asset(
+            Session(),  # type: ignore[arg-type]
+            ImageAssetAcquireRequest(
+                repo_id="org/image-base",
+                kind=ModelKind.IMAGE_MODEL,
+                accepted_license_id="apache-2.0",
+            ),
+            client=Client(),  # type: ignore[arg-type]
+            settings=Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+            views=one_low_node,
+            actor="admin:test",
+        )
+    assert audits[-1]["detail"] == {"reason": "insufficient_memory"}
 
 
 async def test_admin_licence_mismatch_is_audited_before_job(

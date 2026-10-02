@@ -111,17 +111,18 @@ async def submit_image_asset(
         raise await _refuse(session, actor, request.repo_id, result.rejection_code or "unsupported")
     if result.license_id != request.accepted_license_id:
         raise await _refuse(session, actor, request.repo_id, "licence_review_mismatch")
-    # A conservative admission estimate; reserved Studio validation measures actual peak
-    # memory before the asset may become ready for execution.
+    # Native image execution may use much more unified memory than its weights
+    # occupy on disk. The local tiny-model smoke measured 13.6 GiB of transient
+    # physical footprint; leave a 16 GiB floor above the file-based estimate.
     memory_estimate = max(inspection.total_bytes * 2, inspection.weight_bytes * 3)
+    if request.kind is ModelKind.IMAGE_MODEL:
+        memory_estimate += 16 * 1024**3
     if any(
         view.store_free_bytes < inspection.total_bytes + settings.disk_reserve_bytes
         for view in (origin, replica)
     ):
         raise await _refuse(session, actor, request.repo_id, "insufficient_disk")
-    if request.kind is ModelKind.IMAGE_MODEL and all(
-        view.memory_free_bytes < memory_estimate for view in (origin, replica)
-    ):
+    if any(view.memory_free_bytes < memory_estimate for view in (origin, replica)):
         raise await _refuse(session, actor, request.repo_id, "insufficient_memory")
     nodes = (
         (

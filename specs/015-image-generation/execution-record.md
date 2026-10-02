@@ -1777,3 +1777,10 @@ the nine image-engine tests above were run explicitly with the ignored local
 fixture. The 138 browser unit tests, lint, build, Ruff, mypy and OpenAPI
 freshness gates passed before the final test-only correction. Remote CI for
 this head is pending.
+
+Base-model acquisition now adds 16 GiB to its file-derived validation
+reservation based on the local physical peak and rejects intake if either
+Studio lacks that hold. The contract test checks the persisted estimate and
+one-low-node refusal; **8 acquisition contract tests passed**. This remains a
+conservative estimate, with native smoke as the final measured gate. It is not
+a full-model benchmark or auxiliary validation.
