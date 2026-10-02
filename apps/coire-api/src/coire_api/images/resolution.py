@@ -26,9 +26,9 @@ def resolve_basic_image_spec(
     """Freeze basic txt2img settings; caller validates registry and owner first."""
     if (
         request.model_id is None
-        or request.mode not in (None, ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.CONTROL)
+        or request.mode
+        not in (None, ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.FILL, ImageMode.CONTROL)
         or request.variant_id is not None
-        or request.mask_id is not None
     ):
         raise ImageValidationError("unsupported image setting")
     if (
@@ -52,6 +52,7 @@ def resolve_basic_image_spec(
         else (random_seed or (lambda: secrets.randbits(32)))(),
         "n": request.n if request.n is not None else 1,
         "init_image_id": request.init_image_id,
+        "mask_id": request.mask_id,
         "strength": request.strength,
         "loras": request.loras or [],
         "upscale": request.upscale,
@@ -69,8 +70,10 @@ def resolve_basic_image_spec(
         raise ImageValidationError(f"invalid {field} setting") from exc
     except ValueError as exc:
         raise ImageValidationError(str(exc)) from exc
-    if spec.guidance != 0 or spec.negative_prompt is not None:
+    if (spec.guidance != 0 and spec.mode is not ImageMode.FILL) or spec.negative_prompt is not None:
         raise ImageValidationError("unsupported image setting")
+    if spec.mode is ImageMode.FILL and (spec.loras or spec.strength is not None):
+        raise ImageValidationError("fill does not support LoRAs or strength")
     if (
         any(item.variant_id is not None for item in spec.loras)
         or (spec.control is not None and spec.control.variant_id is not None)

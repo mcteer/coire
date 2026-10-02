@@ -284,12 +284,23 @@ removes that scratch. Admission retains every ready owner input in stable lock
 order, checking its purpose, digest and dimensions before incrementing any
 reference. Dispatch builds a separate exact manifest for each init, mask or
 control input and transfers each normalized PNG before the worker starts.
-Image-to-image verifies the init digest again inside the worker. Terminal
+Image-to-image and Fill verify their bound image inputs again inside the worker.
+Fill uses the separately acquired `black-forest-labs/FLUX.1-Fill-dev` base;
+its repository is gated under the Flux Dev non-commercial licence. The admin
+must accept those terms in the Hugging Face account behind the Keychain-sourced
+node token before acquisition. Validation runs one offline local source/mask
+smoke and advertises only Fill at its measured dimensions, steps and guidance.
+White mask pixels request replacement; black pixels keep the source. A Fill job
+cannot combine LoRAs, control or image strength. The Canny preprocessor keeps
+private input-scoped, byte-bounded edge results keyed by the exact source digest,
+model revisions, thresholds and dimensions; worker placement includes both
+configured cache allowances as well as classifier headroom. Terminal
 publication, cancellation and clean worker failure release the active input
 references. Deleting an input
 used by an active job requests fenced cancellation and tombstones the input;
-the purge waits for the node's stop and cleanup acknowledgment. Fill, control, LoRA and upscale
-execution remain under T056; full end-to-end input acceptance remains under T054.
+the purge waits for the node's stop and cleanup acknowledgment. Full-model
+Fill/control/LoRA/upscale acceptance and owner input end-to-end checks remain
+operator gates.
 
 The node replays one bounded page of terminal job journals every 30 seconds, including
 immediately after restart. A failed or cancelled attempt with `scratch_cleaned=false`

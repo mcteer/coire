@@ -9,7 +9,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import cv2
 import pytest
 from PIL import Image
 
@@ -17,6 +16,7 @@ from coire_core.image_assets import CONTROL_UNION_FILE, CONTROL_UNION_REPO_ID
 from coire_core.models.image_worker import ImageWorkerLoadRequest
 from coire_core.models.images import ImageControl, ImageManifestDigest
 from coire_node.image_runtime import controlnet
+from coire_node.image_runtime.cache import StageCache, StageCacheKey, stage_identity
 from coire_node.store import Store
 
 
@@ -76,13 +76,13 @@ def test_local_union_control_uses_exact_canny_thresholds_and_removes_composite(
     )
     monkeypatch.setattr(controlnet, "resident_bytes", lambda _pid: 512)
     thresholds: list[tuple[int, int]] = []
-    actual_canny = cv2.Canny
 
     def canny(image: Any, low: int, high: int) -> Any:
+        assert image is not None
         thresholds.append((low, high))
-        return actual_canny(image, low, high)
+        return object()
 
-    monkeypatch.setattr(cv2, "Canny", canny)
+    monkeypatch.setattr(Image, "fromarray", lambda _array: Image.new("L", (64, 64), "white"))
     preprocess = SimpleNamespace(ZImageControlnetUtil=SimpleNamespace(_preprocess=lambda *_: None))
     callback = object()
 
@@ -128,24 +128,36 @@ def test_local_union_control_uses_exact_canny_thresholds_and_removes_composite(
             )
         if name == "mlx.core":
             return SimpleNamespace(eval=lambda *_: None, clear_cache=lambda: None)
+        if name == "cv2":
+            return SimpleNamespace(Canny=canny)
+        if name == "numpy":
+            return SimpleNamespace(asarray=lambda image: image)
         return actual_import(name)
 
     monkeypatch.setattr("coire_node.image_runtime.controlnet.importlib.import_module", fake_import)
     source = tmp_path / "source.png"
     with Image.new("RGB", (64, 64), "white") as image:
         image.save(source)
-    with controlnet.LocalCannyControlStage(
-        store=store,
-        base=base,
-        dependency=dependency,
-        control=control,
-        source=source,
-        width=64,
-        height=64,
-        callback=callback,
-    ) as stage:
-        output = stage.generate(seed=7, prompt="private subject", steps=2)
-    assert output.size == (64, 64)
-    output.close()
+    edge_cache = StageCache(1024 * 1024)
+    key = StageCacheKey(
+        stage="control", owner_id=str(control.image_id), identity=stage_identity("edges")
+    )
+    for _ in range(2):
+        with controlnet.LocalCannyControlStage(
+            store=store,
+            base=base,
+            dependency=dependency,
+            control=control,
+            source=source,
+            width=64,
+            height=64,
+            callback=callback,
+            edge_cache=edge_cache,
+            edge_key=key,
+        ) as stage:
+            output = stage.generate(seed=7, prompt="private subject", steps=2)
+        assert output.size == (64, 64)
+        output.close()
     assert thresholds == [(23, 89)]
+    assert edge_cache.occupancy("control") > 0
     assert list(tmp_path.glob("coire-control-*")) == []

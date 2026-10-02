@@ -39,7 +39,9 @@ export function ImageForm({
   const [steps, setSteps] = useState<number | null>(null);
   const [seed, setSeed] = useState<number | null>(null);
   const [count, setCount] = useState<number | null>(null);
-  const [mode, setMode] = useState<NonNullable<ImageSubmitRequest["mode"]>>("txt2img");
+  const [mode, setMode] = useState<NonNullable<ImageSubmitRequest["mode"]>>(
+    models[0]?.capability?.modes[0] ?? "txt2img",
+  );
   const [negativePrompt, setNegativePrompt] = useState("");
   const [guidance, setGuidance] = useState<string | null>(null);
   const [initImageId, setInitImageId] = useState<string | null>(null);
@@ -88,6 +90,11 @@ export function ImageForm({
   const model =
     models.find((item) => item.id === modelId) ?? (reusedRequest ? undefined : models[0]);
   const capability = preset ? null : capabilityOf(model);
+  useEffect(() => {
+    if (!reusedRequest && capability && !capability.modes.includes(mode)) {
+      setMode(capability.modes[0]);
+    }
+  }, [capability, mode, reusedRequest]);
   const missingModel = preset === null && !models.some((item) => item.id === modelId);
   const unsupportedMode = Boolean(capability && !capability.modes.includes(mode));
   const unsupportedControlLoras = mode === "control" && loras.length > 0;
@@ -243,6 +250,11 @@ export function ImageForm({
             value={modelId}
             onChange={(event) => {
               setModelId(event.target.value);
+              const selected = models.find((item) => item.id === event.target.value);
+              if (selected?.capability && !selected.capability.modes.includes(mode)) {
+                setMode(selected.capability.modes[0]);
+              }
+              setGuidance(null);
               setLoras([]);
               setUpscale(null);
               setControlModelId(null);

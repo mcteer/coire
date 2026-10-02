@@ -131,6 +131,21 @@ test("names missing source and mask fields before fill submission", async () => 
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
+test("a newly available fill-only model selects fill and requests both inputs", async () => {
+  const fillModel = [
+    { ...models[0], capability: { ...models[0].capability, modes: ["fill"] } },
+  ] as ImageModelList["items"];
+  const onSubmit = vi.fn(async () => {});
+  const { rerender } = render(
+    <ImageForm models={[]} presets={[]} disabled={false} onSubmit={onSubmit} />,
+  );
+  rerender(<ImageForm models={fillModel} presets={[]} disabled={false} onSubmit={onSubmit} />);
+  expect(await screen.findByRole("combobox", { name: "Image mode" })).toHaveValue("fill");
+  expect(screen.getByText("A source image is required for fill.")).toBeInTheDocument();
+  expect(screen.getByText("A mask image is required for fill.")).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
 test("discloses configured retention, quota and upload bounds before generation", () => {
   render(
     <ImageForm

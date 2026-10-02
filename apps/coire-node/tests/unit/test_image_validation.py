@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from PIL import Image, ImageDraw
@@ -37,6 +38,50 @@ from coire_node.store import Store
 from coire_node.worker import EXIT_OK, JobFile, run_image_validate
 
 REVISION = "a" * 40
+
+
+def test_fill_smoke_validates_mask_inputs_and_publishes_fill_only_profile() -> None:
+    class FakeFill:
+        def generate(
+            self,
+            resolved: ResolvedImageSpec,
+            progress: Callable[[int, int, int], None],
+            *,
+            input_paths: dict[uuid.UUID, Path] | None = None,
+        ) -> tuple[Image.Image, ...]:
+            assert resolved.spec.mode is ImageMode.FILL
+            assert resolved.spec.guidance == 4
+            assert input_paths is not None and len(input_paths) == 2
+            assert resolved.spec.mask_id is not None
+            mask = input_paths[resolved.spec.mask_id]
+            with Image.open(mask) as image:
+                assert image.mode == "L" and image.getpixel((256, 256)) == 255
+                assert image.getpixel((0, 0)) == 0
+            progress(0, 4, 4)
+            output = Image.new("RGB", (512, 512), "blue")
+            ImageDraw.Draw(output).rectangle((128, 128, 384, 384), fill="white")
+            return (output,)
+
+    result = image_validation._validate_fill_smoke(
+        cast(Any, FakeFill()),
+        _request("a" * 64),
+        lambda: None,
+        lambda: (1000, 1000),
+        baseline_physical=100,
+        reservation_bytes=2000,
+    )
+    assert result.image_capability_profile is not None
+    assert result.image_capability_profile.modes == (ImageMode.FILL,)
+    assert result.image_capability_profile.max_loras == 0
+    with pytest.raises(ImageValidationUnavailable, match="reserved memory"):
+        image_validation._validate_fill_smoke(
+            cast(Any, FakeFill()),
+            _request("a" * 64),
+            lambda: None,
+            lambda: (3000, 3000),
+            baseline_physical=100,
+            reservation_bytes=2000,
+        )
 
 
 def _copy(tmp_path: Path, *, revision: str = REVISION) -> tuple[Store, str]:

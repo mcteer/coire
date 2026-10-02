@@ -106,12 +106,12 @@ def test_auto_placement_prefers_studio_b_and_skips_blocked_nodes() -> None:
     )
 
 
-def test_image_hold_includes_classifier_budget_for_placement() -> None:
+def test_image_hold_includes_classifier_and_cache_budget_for_placement() -> None:
     settings = Settings(  # type: ignore[call-arg]
         _secrets_dir="/nonexistent", image_classifier_memory_bytes=1024**3
     )
     hold = image_worker_hold_bytes(8 * 1024**3, settings)
-    assert hold == 9 * 1024**3
+    assert hold == 9 * 1024**3 + 2 * settings.image_prompt_cache_max_bytes
     assert (
         choose_image_node(
             "single:auto", hold, [_candidate(IMAGE_PREFERRED_NODE, memory_total_bytes=hold - 1)]

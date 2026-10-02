@@ -1960,3 +1960,31 @@ tests, lint/build, strict mypy, Ruff and OpenAPI freshness checks also passed.
 The `peak_rss_bytes` evidence now reports the absolute RSS peak, consistent
 with its field name and the classifier validator; physical delta remains
 separately named.
+
+## Fill and bounded control cache — 2026-10-02
+
+The offline native worker now recognizes the reviewed Flux Fill repository by
+its exact repository ID, loads `Flux1Fill` from the verified local copy, binds
+the owner source and white-edit mask, and forwards measured guidance without
+silently applying image strength or LoRAs. Admin base validation performs a
+real local Fill smoke before publishing a Fill-only measured profile. The
+node, scheduler, direct admission and fresh web picker accept that profile and
+its two input manifests. The separate gated repository and licence acceptance
+remain an operator acquisition prerequisite; no full Fill weights were
+downloaded during this run.
+
+Flux prompt encodings now use a 256 MiB configurable byte-bounded native LRU.
+Canny edges use a private input-ID-scoped byte LRU keyed by the exact source
+digest, base/control manifests, runtime, dimensions and thresholds. The
+placement hold includes both cache allowances and classifier headroom in addition to the
+validated resident estimate. Focused tests prove Fill field forwarding,
+mask polarity, memory refusal, cache eviction and Canny cache hits. The
+Linux CI collection issue from a direct `cv2` import in the Canny unit test
+was fixed by stubbing the native preprocessing import at the test boundary.
+
+After the cache-accounting change, the full local suite passed
+**1,868 tests, 160 skipped**, the native tiny matrix passed **10 tests**, and
+the web suite passed **143 tests** with lint/build; strict mypy, Ruff and
+OpenAPI freshness passed. Remote CI is being rerun.
+The tiny fixture does not represent gated Flux Fill or full Union/LoRA/SeedVR2
+weights. Full-model Studio and cluster acceptance remains open under T083/T084.

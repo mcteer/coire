@@ -9,6 +9,7 @@ import io
 import os
 import threading
 import uuid
+from collections.abc import Callable
 from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -20,6 +21,7 @@ from PIL import Image, ImageDraw, ImageStat
 from coire_core.image_assets import (
     CONTROL_UNION_FILE,
     CONTROL_UNION_REPO_ID,
+    FLUX_FILL_REPO_ID,
     SEEDVR2_3B_FILES,
     SEEDVR2_3B_REPO_ID,
 )
@@ -161,6 +163,15 @@ def _validate_image_asset(
 
     pipeline = MfluxTxt2ImgPipeline.load(store, load)
     observe_footprint()
+    if manifest.repo_id == FLUX_FILL_REPO_ID:
+        return _validate_fill_smoke(
+            pipeline,
+            request,
+            observe_footprint,
+            lambda: (peak_rss, peak_physical),
+            baseline_physical=baseline_physical,
+            reservation_bytes=reservation_bytes,
+        )
     images = pipeline.generate(
         _smoke_spec(request.model_id, request.manifest_sha256), observe_footprint
     )
@@ -247,6 +258,104 @@ def _validate_image_asset(
         peak_rss_bytes=peak_rss,
         peak_physical_bytes=peak_physical,
         peak_physical_delta_bytes=measured_physical,
+        thumbnail_sha256=thumbnail_sha256,
+        image_capability_profile=profile,
+    )
+
+
+def _validate_fill_smoke(
+    pipeline: MfluxTxt2ImgPipeline,
+    request: ImageAssetValidateRequest,
+    observe_footprint: Callable[[], None],
+    measured_peak: Callable[[], tuple[int, int]],
+    *,
+    baseline_physical: int,
+    reservation_bytes: int,
+) -> ImageAssetValidationResult:
+    """Exercise the exact offline Flux Fill weights with a white-edit/black-keep mask."""
+    with TemporaryDirectory(prefix="coire-fill-smoke-") as directory:
+        source_id, mask_id = uuid.uuid4(), uuid.uuid4()
+        source = Path(directory) / f"{source_id}.png"
+        mask = Path(directory) / f"{mask_id}.png"
+        with Image.new("RGB", (_SMOKE_SIZE, _SMOKE_SIZE), (32, 96, 192)) as image:
+            image.save(source, format="PNG")
+        with Image.new("L", (_SMOKE_SIZE, _SMOKE_SIZE), 0) as image:
+            ImageDraw.Draw(image).rectangle((128, 128, 383, 383), fill=255)
+            image.save(mask, format="PNG")
+        spec = ImageSpec(
+            model_id=request.model_id,
+            mode=ImageMode.FILL,
+            prompt=_SMOKE_PROMPT,
+            width=_SMOKE_SIZE,
+            height=_SMOKE_SIZE,
+            steps=_SMOKE_STEPS,
+            guidance=Decimal(4),
+            seed=1,
+            init_image_id=source_id,
+            mask_id=mask_id,
+        )
+        resolved = ResolvedImageSpec(
+            spec=spec,
+            seeds=(1,),
+            pipeline_version=RUNTIME_VERSION,
+            environment_fingerprint="0" * 64,
+            model_sha256=request.manifest_sha256,
+            spec_hash=canonical_spec_hash(spec),
+            inputs=tuple(
+                ImageInputDigest(
+                    input_id=input_id,
+                    sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                    width=_SMOKE_SIZE,
+                    height=_SMOKE_SIZE,
+                )
+                for input_id, path in ((source_id, source), (mask_id, mask))
+            ),
+        )
+        images = pipeline.generate(
+            resolved, lambda *_: observe_footprint(), input_paths={source_id: source, mask_id: mask}
+        )
+        observe_footprint()
+        try:
+            if (
+                len(images) != 1
+                or images[0].mode != "RGB"
+                or images[0].size != (_SMOKE_SIZE, _SMOKE_SIZE)
+                or images[0].getbbox() is None
+                or max(ImageStat.Stat(images[0]).stddev) <= 1
+            ):
+                raise ImageValidationUnavailable("fill smoke returned degenerate pixels")
+            thumbnail_sha256 = _thumbnail_digest(images[0])
+        finally:
+            for image in images:
+                image.close()
+    peak_rss, peak_physical = measured_peak()
+    if max(peak_rss, peak_physical) > reservation_bytes:
+        raise ImageValidationUnavailable("fill smoke exceeded reserved memory")
+    profile = ImageCapabilityProfile(
+        modes=(ImageMode.FILL,),
+        min_width=_SMOKE_SIZE,
+        max_width=_SMOKE_SIZE,
+        min_height=_SMOKE_SIZE,
+        max_height=_SMOKE_SIZE,
+        max_pixels=_SMOKE_SIZE * _SMOKE_SIZE,
+        min_steps=_SMOKE_STEPS,
+        max_steps=_SMOKE_STEPS,
+        min_guidance=Decimal(4),
+        max_guidance=Decimal(4),
+        max_outputs=1,
+        default_width=_SMOKE_SIZE,
+        default_height=_SMOKE_SIZE,
+        default_steps=_SMOKE_STEPS,
+        default_guidance=Decimal(4),
+    )
+    return ImageAssetValidationResult(
+        validated=True,
+        kind=request.kind,
+        manifest_sha256=request.manifest_sha256,
+        source_revision=request.source_revision,
+        peak_rss_bytes=peak_rss,
+        peak_physical_bytes=peak_physical,
+        peak_physical_delta_bytes=max(0, peak_physical - baseline_physical),
         thumbnail_sha256=thumbnail_sha256,
         image_capability_profile=profile,
     )

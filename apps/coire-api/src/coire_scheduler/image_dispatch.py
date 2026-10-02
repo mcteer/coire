@@ -135,8 +135,12 @@ def _placed(row: ImageJobRow) -> bool:
 
 
 def image_worker_hold_bytes(model_estimate_bytes: int | None, settings: Settings) -> int:
-    """Reserve CPU classification headroom alongside the resident image estimate."""
-    return max(model_estimate_bytes or 0, 1) + settings.image_classifier_memory_bytes
+    """Reserve classifier and bounded cache headroom alongside the resident image estimate."""
+    return (
+        max(model_estimate_bytes or 0, 1)
+        + settings.image_classifier_memory_bytes
+        + 2 * settings.image_prompt_cache_max_bytes
+    )
 
 
 async def _bound_loras(
@@ -626,12 +630,13 @@ async def prepare_image_dispatch(
         raise ImageConflict("image queue dispatch has bound runtime")
     spec = snapshot.effective_spec
     if (
-        spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.CONTROL}
-        or spec.guidance != 0
+        spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.FILL, ImageMode.CONTROL}
+        or (spec.mode is not ImageMode.FILL and spec.guidance != 0)
         or spec.negative_prompt is not None
         or spec.seed is None
         or spec.variant_id is not None
-        or spec.mask_id is not None
+        or (spec.mode is not ImageMode.FILL and spec.mask_id is not None)
+        or (spec.mode is ImageMode.FILL and (spec.loras or spec.strength is not None))
     ):
         await fail_image_attempt(session, job_id, "unsupported_mode")
         return None

@@ -17,6 +17,7 @@ from coire_core.image_assets import CONTROL_UNION_FILE, CONTROL_UNION_REPO_ID
 from coire_core.models.image_worker import ImageWorkerLoadRequest
 from coire_core.models.images import ImageControl, ImageManifestDigest
 from coire_node.footprint import resident_bytes
+from coire_node.image_runtime.cache import StageCache, StageCacheKey
 from coire_node.image_runtime.preflight import verify_image_copy
 from coire_node.store import Store
 
@@ -39,6 +40,8 @@ class LocalCannyControlStage:
         width: int,
         height: int,
         callback: object,
+        edge_cache: StageCache | None = None,
+        edge_key: StageCacheKey | None = None,
     ) -> None:
         self.store = store
         self.base = base
@@ -48,6 +51,8 @@ class LocalCannyControlStage:
         self.width = width
         self.height = height
         self.callback = callback
+        self.edge_cache = edge_cache
+        self.edge_key = edge_key
         self._directory: tempfile.TemporaryDirectory[str] | None = None
         self._model: object | None = None
         self._edge_path: Path | None = None
@@ -116,17 +121,27 @@ class LocalCannyControlStage:
             control_root = composite / "controlnet"
             control_root.mkdir(mode=0o700)
             os.link(auxiliary_path / CONTROL_UNION_FILE, control_root / CONTROL_UNION_FILE)
-            with Image.open(self.source) as raw:
-                if raw.size != (self.width, self.height):
-                    raise ImageControlUnavailable()
-                gray = raw.convert("L")
-                cv2 = importlib.import_module("cv2")
-                np = importlib.import_module("numpy")
-                edges = cv2.Canny(
-                    np.asarray(gray), self.control.low_threshold, self.control.high_threshold
-                )
-                self._edge_path = composite / "canny.png"
-                Image.fromarray(edges).convert("RGB").save(self._edge_path, format="PNG")
+            cached = (
+                self.edge_cache.get(self.edge_key) if self.edge_cache and self.edge_key else None
+            )
+            self._edge_path = composite / "canny.png"
+            if cached is not None:
+                self._edge_path.write_bytes(cached)
+            else:
+                with Image.open(self.source) as raw:
+                    if raw.size != (self.width, self.height):
+                        raise ImageControlUnavailable()
+                    gray = raw.convert("L")
+                    cv2 = importlib.import_module("cv2")
+                    np = importlib.import_module("numpy")
+                    edges = cv2.Canny(
+                        np.asarray(gray), self.control.low_threshold, self.control.high_threshold
+                    )
+                    Image.fromarray(edges).convert("RGB").save(self._edge_path, format="PNG")
+                if self.edge_cache is not None and self.edge_key is not None:
+                    payload = self._edge_path.read_bytes()
+                    if len(payload) <= self.edge_cache.max_bytes:
+                        self.edge_cache.put(self.edge_key, payload)
             module = importlib.import_module(
                 "mflux.models.z_image.variants.controlnet.z_image_turbo_controlnet"
             )

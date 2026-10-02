@@ -1,4 +1,4 @@
-"""Fixed, local-only Z-Image Turbo execution inside a supervised Studio worker."""
+"""Verified local Z-Image and Flux Fill execution inside a supervised Studio worker."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from typing import Protocol, cast
 
 from PIL import Image
 
+from coire_core.image_assets import FLUX_FILL_REPO_ID
 from coire_core.models.image_worker import ImageWorkerLoadRequest
 from coire_core.models.images import ImageMode, ResolvedImageSpec
 from coire_node.image_runtime.cache import (
@@ -44,6 +45,7 @@ class _CallbackRegistry(Protocol):
 
 class _NativeModel(Protocol):
     callbacks: _CallbackRegistry
+    prompt_cache: dict[str, tuple[object, object]]
     _encode_prompts: Callable[..., tuple[object, object | None]]
 
     def generate_image(
@@ -61,6 +63,53 @@ class _NativeModel(Protocol):
     ) -> object: ...
 
 
+class _FillModel(Protocol):
+    def generate_image(
+        self,
+        *,
+        seed: int,
+        prompt: str,
+        image_path: Path,
+        masked_image_path: Path,
+        num_inference_steps: int,
+        height: int,
+        width: int,
+        guidance: float,
+    ) -> object: ...
+
+
+class _BoundFluxPromptCache(dict[str, tuple[object, object]]):
+    """mflux's Flux prompt mapping with evaluated, byte-bounded resident values."""
+
+    def __init__(self, cache: NativeStageCache, identity: str) -> None:
+        super().__init__()
+        self.cache = cache
+        self.identity = identity
+        self.pending: dict[str, tuple[object, object]] = {}
+
+    def _key(self, prompt: str) -> StageCacheKey:
+        return StageCacheKey(stage="prompt", identity=stage_identity(self.identity, prompt))
+
+    def __contains__(self, prompt: object) -> bool:
+        if not isinstance(prompt, str):
+            return False
+        value = self.cache.get(self._key(prompt))
+        if value is None:
+            return False
+        self.pending[prompt] = cast(tuple[object, object], value)
+        return True
+
+    def __getitem__(self, prompt: str) -> tuple[object, object]:
+        return self.pending.pop(prompt)
+
+    def __setitem__(self, prompt: str, value: tuple[object, object]) -> None:
+        positive, pooled = value
+        _sync_encodings(positive, pooled)
+        size = int(getattr(positive, "nbytes", 0)) + int(getattr(pooled, "nbytes", 0))
+        if 0 < size <= self.cache.max_bytes:
+            self.cache.put(self._key(prompt), value, size)
+
+
 def _require_offline() -> None:
     if (
         os.environ.get("HF_HUB_OFFLINE") != "1"
@@ -74,24 +123,35 @@ def _require_offline() -> None:
 def _load_native(
     path: Path,
     *,
+    fill: bool = False,
     lora_paths: tuple[Path, ...] = (),
     lora_scales: tuple[float, ...] = (),
 ) -> _NativeModel:
     """Import mflux only after the node sets its credential-free offline environment."""
     _require_offline()
-    model_module = importlib.import_module("mflux.models.z_image.variants.z_image")
     config_module = importlib.import_module("mflux.models.common.config.model_config")
-    config = config_module.ModelConfig.z_image_turbo()
-    if config.supports_guidance:
-        raise ImagePipelineUnavailable()
-    if len(lora_paths) != len(lora_scales) or any(not item.is_file() for item in lora_paths):
-        raise ImagePipelineUnavailable()
-    model = model_module.ZImage(
-        model_path=str(path),
-        model_config=config,
-        lora_paths=[str(item) for item in lora_paths] or None,
-        lora_scales=list(lora_scales) or None,
+    config = (
+        config_module.ModelConfig.dev_fill() if fill else config_module.ModelConfig.z_image_turbo()
     )
+    if config.supports_guidance is not fill:
+        raise ImagePipelineUnavailable()
+    if (
+        (fill and lora_paths)
+        or len(lora_paths) != len(lora_scales)
+        or any(not item.is_file() for item in lora_paths)
+    ):
+        raise ImagePipelineUnavailable()
+    if fill:
+        module = importlib.import_module("mflux.models.flux.variants.fill.flux_fill")
+        model = module.Flux1Fill(model_path=str(path), model_config=config)
+    else:
+        module = importlib.import_module("mflux.models.z_image.variants.z_image")
+        model = module.ZImage(
+            model_path=str(path),
+            model_config=config,
+            lora_paths=[str(item) for item in lora_paths] or None,
+            lora_scales=list(lora_scales) or None,
+        )
     # Materialize lazy weights on their creating thread before execution moves
     # to the worker thread. MLX streams cannot be evaluated across threads.
     mlx = importlib.import_module("mlx.core")
@@ -171,10 +231,12 @@ class MfluxTxt2ImgPipeline:
         *,
         prompt_cache_max_bytes: int = _DEFAULT_PROMPT_CACHE_BYTES,
         store: Store | None = None,
+        fill: bool = False,
     ) -> None:
         self._model = model
         self._request = request
         self._store = store
+        self._fill = fill
         self._callback = _ProgressCallback()
         self._lock = threading.Lock()
         self.prompt_cache = StageCache(prompt_cache_max_bytes)
@@ -188,6 +250,11 @@ class MfluxTxt2ImgPipeline:
     def _attach_model(self, model: _NativeModel) -> None:
         self._model = model
         model.callbacks.register(self._callback)
+        if self._fill:
+            model.prompt_cache = _BoundFluxPromptCache(
+                self.encoder_cache,
+                stage_identity(self._request.runtime_version, self._request.manifest_sha256),
+            )
         self._native_encoder_hook = False
         self._original_encoder = None
         native_encoder = getattr(model, "_encode_prompts", None)
@@ -233,11 +300,14 @@ class MfluxTxt2ImgPipeline:
     ) -> MfluxTxt2ImgPipeline:
         _require_offline()
         path = verify_image_copy(store, request)
+        manifest = store.read_manifest(request.slug)
+        fill = manifest is not None and manifest.repo_id == FLUX_FILL_REPO_ID
         return cls(
-            _load_native(path),
+            _load_native(path, fill=True) if fill else _load_native(path),
             request,
             prompt_cache_max_bytes=prompt_cache_max_bytes,
             store=store,
+            fill=fill,
         )
 
     @property
@@ -258,6 +328,8 @@ class MfluxTxt2ImgPipeline:
                 raise ImagePipelineUnavailable()
             return
         spec = resolved.spec
+        if self._fill and spec.loras:
+            raise ImagePipelineUnavailable()
         if len(spec.loras) + int(spec.upscale is not None) + int(spec.control is not None) != len(
             resolved.dependencies
         ):
@@ -320,7 +392,9 @@ class MfluxTxt2ImgPipeline:
         mlx = importlib.import_module("mlx.core")
         mlx.clear_cache()
         self._attach_model(
-            _load_native(base_path, lora_paths=tuple(paths), lora_scales=tuple(scales))
+            _load_native(base_path, fill=True)
+            if self._fill
+            else _load_native(base_path, lora_paths=tuple(paths), lora_scales=tuple(scales))
         )
         self._adapter_id = wanted
 
@@ -360,6 +434,7 @@ class MfluxTxt2ImgPipeline:
     ) -> tuple[Image.Image, ...]:
         spec = resolved.spec
         init_path: Path | None = None
+        mask_path: Path | None = None
         control_path: Path | None = None
         if spec.mode is ImageMode.IMG2IMG:
             if (
@@ -371,6 +446,19 @@ class MfluxTxt2ImgPipeline:
             ):
                 raise ImagePipelineUnavailable()
             init_path = input_paths[spec.init_image_id]
+        elif spec.mode is ImageMode.FILL:
+            if (
+                spec.init_image_id is None
+                or spec.mask_id is None
+                or spec.strength is not None
+                or spec.loras
+                or input_paths is None
+                or set(input_paths) != {spec.init_image_id, spec.mask_id}
+                or {item.input_id for item in resolved.inputs} != {spec.init_image_id, spec.mask_id}
+            ):
+                raise ImagePipelineUnavailable()
+            init_path = input_paths[spec.init_image_id]
+            mask_path = input_paths[spec.mask_id]
         elif spec.mode is ImageMode.CONTROL:
             if (
                 spec.control is None
@@ -388,10 +476,12 @@ class MfluxTxt2ImgPipeline:
             or resolved.model_sha256 != self._request.manifest_sha256
             or spec.model_id != self._request.model_id
             or spec.variant_id != self._request.variant_id
-            or spec.mode not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.CONTROL}
-            or spec.guidance != 0
+            or spec.mode
+            not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.FILL, ImageMode.CONTROL}
+            or (self._fill != (spec.mode is ImageMode.FILL))
+            or (not self._fill and spec.guidance != 0)
             or spec.negative_prompt is not None
-            or spec.mask_id is not None
+            or (not self._fill and spec.mask_id is not None)
             or (spec.mode is ImageMode.TXT2IMG and resolved.inputs)
         ):
             raise ImagePipelineUnavailable()
@@ -425,6 +515,31 @@ class MfluxTxt2ImgPipeline:
                 )
                 if dependency is None:
                     raise ImagePipelineUnavailable()
+                source_digest = next(
+                    (
+                        item.sha256
+                        for item in resolved.inputs
+                        if item.input_id == spec.control.image_id
+                    ),
+                    None,
+                )
+                if source_digest is None:
+                    raise ImagePipelineUnavailable()
+                edge_key = StageCacheKey(
+                    stage="control",
+                    owner_id=str(spec.control.image_id),
+                    identity=stage_identity(
+                        self._request.runtime_version,
+                        self._request.manifest_sha256,
+                        dependency.sha256,
+                        source_digest,
+                        str(spec.width),
+                        str(spec.height),
+                        str(spec.control.low_threshold),
+                        str(spec.control.high_threshold),
+                        "canny-v1",
+                    ),
+                )
                 control_stage = LocalCannyControlStage(
                     store=self._store,
                     base=self._request,
@@ -434,11 +549,17 @@ class MfluxTxt2ImgPipeline:
                     width=spec.width,
                     height=spec.height,
                     callback=self._callback,
+                    edge_cache=self.prompt_cache,
+                    edge_key=edge_key,
                 )
             with control_stage if control_stage is not None else nullcontext():
                 images = list(
                     self._generate_locked(
-                        resolved, on_progress, init_path=init_path, control_stage=control_stage
+                        resolved,
+                        on_progress,
+                        init_path=init_path,
+                        mask_path=mask_path,
+                        control_stage=control_stage,
                     )
                 )
             return tuple(images)
@@ -456,6 +577,7 @@ class MfluxTxt2ImgPipeline:
         on_progress: Progress,
         *,
         init_path: Path | None,
+        mask_path: Path | None,
         control_stage: LocalCannyControlStage | None,
     ) -> tuple[Image.Image, ...]:
         spec = resolved.spec
@@ -480,6 +602,17 @@ class MfluxTxt2ImgPipeline:
                     generated = (
                         control_stage.generate(seed=seed, prompt=spec.prompt, steps=spec.steps)
                         if control_stage is not None
+                        else cast("_FillModel", self._model).generate_image(
+                            seed=seed,
+                            prompt=spec.prompt,
+                            image_path=init_path,
+                            masked_image_path=mask_path,
+                            num_inference_steps=spec.steps,
+                            height=spec.height,
+                            width=spec.width,
+                            guidance=float(spec.guidance),
+                        )
+                        if self._fill and init_path is not None and mask_path is not None
                         else self._model.generate_image(
                             seed=seed,
                             prompt=spec.prompt,

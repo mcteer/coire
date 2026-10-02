@@ -10,6 +10,7 @@ SEEDVR2_3B_REPO_ID = "numz/SeedVR2_comfyUI"
 SEEDVR2_3B_FILES = frozenset({"seedvr2_ema_3b_fp16.safetensors", "ema_vae_fp16.safetensors"})
 CONTROL_UNION_REPO_ID = "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
 CONTROL_UNION_FILE = "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+FLUX_FILL_REPO_ID = "black-forest-labs/FLUX.1-Fill-dev"
 
 
 def has_seedvr2_3b_layout(repo_id: str, files: Container[str]) -> bool:

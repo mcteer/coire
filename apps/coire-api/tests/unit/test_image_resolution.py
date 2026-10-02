@@ -85,6 +85,23 @@ def test_img2img_resolution_preserves_full_precision_strength_and_bound_input() 
         resolve_basic_image_spec(request, _profile(), random_seed=lambda: 123)
 
 
+def test_fill_resolution_binds_both_inputs_and_measured_guidance() -> None:
+    source, mask = uuid.uuid4(), uuid.uuid4()
+    request = ImageSubmitRequest(
+        model_id=MODEL,
+        mode=ImageMode.FILL,
+        prompt="replace the square",
+        init_image_id=source,
+        mask_id=mask,
+    )
+    profile = _profile(modes=["fill"], min_guidance="4", max_guidance="4", default_guidance="4")
+    spec = resolve_basic_image_spec(request, profile, random_seed=lambda: 123)
+    assert spec.mode is ImageMode.FILL
+    assert (spec.init_image_id, spec.mask_id, spec.guidance) == (source, mask, Decimal(4))
+    with pytest.raises(ImageValidationError, match="fill does not support"):
+        resolve_basic_image_spec(request.model_copy(update={"strength": Decimal("0.5")}), profile)
+
+
 def test_resolution_preserves_ordered_lora_scales_and_capability_limit() -> None:
     adapters = [
         ImageLora(model_id=uuid.uuid4(), scale=Decimal("0.375125")),

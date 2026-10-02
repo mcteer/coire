@@ -107,15 +107,18 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
             )
         except (ImageForbidden, ImageConflict, ImageNotFound, ImageValidationError):
             continue
+        fill_only = policy.profile.modes == (ImageMode.FILL,)
         if (
-            ImageMode.TXT2IMG not in policy.profile.modes
-            or policy.profile.min_guidance > 0
-            or policy.profile.default_guidance != 0
-            or policy.profile.required_dependency_ids
-        ):
+            not fill_only
+            and (
+                ImageMode.TXT2IMG not in policy.profile.modes
+                or policy.profile.min_guidance > 0
+                or policy.profile.default_guidance != 0
+            )
+        ) or policy.profile.required_dependency_ids:
             continue
         eligible_controls: list[ImageAdapterOption] = []
-        for asset in control_assets:
+        for asset in () if fill_only else control_assets:
             if (
                 asset.kind is not ModelKind.CONTROL_MODEL
                 or asset.visibility is not Visibility.PUBLISHED
@@ -153,7 +156,9 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
         basic = ImageCapabilityProfile.model_validate(
             {
                 **policy.profile.model_dump(),
-                "modes": (
+                "modes": (ImageMode.FILL,)
+                if fill_only
+                else (
                     tuple(
                         mode
                         for mode in (ImageMode.TXT2IMG, ImageMode.IMG2IMG)
@@ -161,9 +166,9 @@ async def list_eligible_image_models(session: AsyncSession, principal: Principal
                     )
                     + ((ImageMode.CONTROL,) if eligible_controls else ())
                 ),
-                "min_guidance": 0,
-                "max_guidance": 0,
-                "max_loras": policy.profile.max_loras,
+                "min_guidance": policy.profile.min_guidance if fill_only else 0,
+                "max_guidance": policy.profile.max_guidance if fill_only else 0,
+                "max_loras": 0 if fill_only else policy.profile.max_loras,
                 "supports_negative_prompt": False,
                 "required_dependency_ids": (),
             }

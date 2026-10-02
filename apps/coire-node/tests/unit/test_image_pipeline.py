@@ -27,7 +27,12 @@ from coire_core.models.images import (
     canonical_spec_hash,
 )
 from coire_node.image_dispatch import _supported
-from coire_node.image_runtime.pipeline import ImagePipelineUnavailable, MfluxTxt2ImgPipeline
+from coire_node.image_runtime.cache import NativeStageCache
+from coire_node.image_runtime.pipeline import (
+    ImagePipelineUnavailable,
+    MfluxTxt2ImgPipeline,
+    _BoundFluxPromptCache,
+)
 from coire_node.image_runtime.preflight import RUNTIME_VERSION, ImageCopyUnavailable
 from coire_node.store import Store
 
@@ -59,6 +64,101 @@ def _fixture() -> tuple[MfluxTxt2ImgPipeline, _Model, ImageWorkerLoadRequest]:
     )
     model = _Model()
     return MfluxTxt2ImgPipeline(cast(Any, model), request), model, request
+
+
+def test_fill_passes_exact_source_mask_and_guidance_to_native_model(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, request = _fixture()
+    source_id, mask_id = uuid.uuid4(), uuid.uuid4()
+    source, mask = tmp_path / "source.png", tmp_path / "mask.png"
+    Image.new("RGB", (64, 64), "blue").save(source)
+    Image.new("L", (64, 64), 255).save(mask)
+
+    class Callbacks(_Callbacks):
+        def register(self, callback: object) -> None:
+            model.callback = callback
+
+    class FillModel(_Model):
+        def __init__(self) -> None:
+            super().__init__()
+            self.callback: Any = None
+            self.callbacks = Callbacks()
+
+        def generate_image(self, **kwargs: object) -> Image.Image:
+            self.calls += 1
+            assert kwargs["image_path"] == source
+            assert kwargs["masked_image_path"] == mask
+            assert kwargs["guidance"] == 4.0
+            assert "negative_prompt" not in kwargs
+            for step in range(2):
+                self.callback.call_in_loop(
+                    t=step,
+                    seed=7,
+                    prompt="fill a square",
+                    latents=step,
+                    config=None,
+                    time_steps=None,
+                )
+            return Image.new("RGB", (64, 64), "red")
+
+    model = FillModel()
+    loaded = MfluxTxt2ImgPipeline(cast(Any, model), request, fill=True)
+    monkeypatch.setattr("coire_node.image_runtime.pipeline._sync_latents", lambda value: None)
+    spec = ImageSpec(
+        model_id=request.model_id,
+        mode=ImageMode.FILL,
+        prompt="fill a square",
+        width=64,
+        height=64,
+        steps=2,
+        guidance=Decimal(4),
+        seed=7,
+        init_image_id=source_id,
+        mask_id=mask_id,
+    )
+    resolved = ResolvedImageSpec(
+        spec=spec,
+        seeds=(7,),
+        pipeline_version=RUNTIME_VERSION,
+        environment_fingerprint="b" * 64,
+        model_sha256=request.manifest_sha256,
+        spec_hash=canonical_spec_hash(spec),
+        inputs=(
+            ImageInputDigest(input_id=source_id, sha256="a" * 64, width=64, height=64),
+            ImageInputDigest(input_id=mask_id, sha256="b" * 64, width=64, height=64),
+        ),
+    )
+    images = loaded.generate(
+        resolved, lambda *_: None, input_paths={source_id: source, mask_id: mask}
+    )
+    assert len(images) == 1 and model.calls == 1
+    images[0].close()
+    with pytest.raises(ImagePipelineUnavailable):
+        loaded.generate(resolved, lambda *_: None, input_paths={source_id: source})
+    assert model.calls == 1
+
+
+def test_flux_native_prompt_cache_is_byte_bounded_and_evicts_old_encodings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Encoding:
+        nbytes = 12
+
+    monkeypatch.setattr("coire_node.image_runtime.pipeline._sync_encodings", lambda *_: None)
+    cache = NativeStageCache(48)
+    mapping = _BoundFluxPromptCache(cache, "a" * 64)
+    first = (Encoding(), Encoding())
+    second = (Encoding(), Encoding())
+    third = (Encoding(), Encoding())
+    mapping["first"] = first
+    mapping["second"] = second
+    assert cache.used_bytes == 48
+    assert "first" in mapping and mapping["first"] is first
+    mapping["third"] = third
+    assert cache.used_bytes == 48
+    assert "second" not in mapping
+    assert "third" in mapping and mapping["third"] is third
 
 
 @pytest.mark.parametrize(
