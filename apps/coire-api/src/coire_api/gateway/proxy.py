@@ -221,28 +221,35 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                     await asyncio.wait_for(stop_refresh.wait(), timeout=interval)
                     return
                 except TimeoutError:
-                    try:
-                        async with session_scope() as session:
-                            refreshed = [
-                                await refresh_lease(
-                                    session,
-                                    lease_id,
-                                    ttl_seconds=settings.placement_lease_ttl_s,
-                                )
-                                for lease_id in lease_ids
-                            ]
-                    except Exception:
-                        lease_loss_counter.add(1, {"reason": "unavailable"})
-                        logger.error("gateway memory lease renewal unavailable")
-                        if request_task is not None:
-                            request_task.cancel()
-                        return
-                    if not all(refreshed):
-                        lease_loss_counter.add(1, {"reason": "expired"})
-                        logger.error("gateway memory lease expired during inference")
-                        if request_task is not None:
-                            request_task.cancel()
-                        return
+                    with tracer.start_as_current_span("coire.gateway.lease_renewal"):
+                        try:
+                            async with session_scope() as session:
+                                refreshed = [
+                                    await refresh_lease(
+                                        session,
+                                        lease_id,
+                                        ttl_seconds=settings.placement_lease_ttl_s,
+                                    )
+                                    for lease_id in lease_ids
+                                ]
+                        except Exception:
+                            lease_loss_counter.add(1, {"reason": "unavailable"})
+                            logger.error(
+                                "gateway memory lease renewal unavailable",
+                                extra={"instance_id": str(instance_id)},
+                            )
+                            if request_task is not None:
+                                request_task.cancel()
+                            return
+                        if not all(refreshed):
+                            lease_loss_counter.add(1, {"reason": "expired"})
+                            logger.error(
+                                "gateway memory lease expired during inference",
+                                extra={"instance_id": str(instance_id)},
+                            )
+                            if request_task is not None:
+                                request_task.cancel()
+                            return
 
         refresher = asyncio.create_task(keep_fresh()) if lease_ids else None
         yield

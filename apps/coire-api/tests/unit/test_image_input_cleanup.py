@@ -7,7 +7,7 @@ import os
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -320,3 +320,52 @@ def test_orphan_input_inventory_refuses_unbounded_unrecognized_entries(tmp_path:
         (tmp_path / f"unknown-{index}").touch()
     with pytest.raises(ImageStorageUnavailable):
         input_cleanup._old_generated_names(tmp_path)
+
+
+@pytest.mark.parametrize("kind", ["deleted", "failed"])
+async def test_input_purge_sweeps_advance_past_failed_first_batch(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    timestamp = datetime.now(UTC) - timedelta(hours=1)
+    rows = [(uuid.UUID(int=index), timestamp) for index in range(1, 27)]
+    statements: list[str] = []
+    attempted: list[uuid.UUID] = []
+
+    class Session:
+        async def execute(self, statement: object) -> SimpleNamespace:
+            statements.append(str(statement))
+            page = (
+                rows[:25]
+                if len(statements) in {1, 4}
+                else rows[25:]
+                if len(statements) == 2
+                else []
+            )
+            return SimpleNamespace(all=lambda: page)
+
+        async def scalar(self, statement: object) -> datetime:
+            return timestamp
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[Session]:
+        yield Session()
+
+    async def purge(settings: Settings, input_id: uuid.UUID) -> bool:
+        attempted.append(input_id)
+        if input_id != rows[-1][0]:
+            raise ImageStorageUnavailable()
+        return True
+
+    monkeypatch.setattr(input_cleanup, "session_scope", scope)
+    monkeypatch.setattr(input_cleanup, f"purge_{kind}_input", purge)
+    monkeypatch.setattr(input_cleanup, f"_{kind}_after", None)
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    sweep = getattr(input_cleanup, f"sweep_{kind}_inputs")
+    assert await sweep(settings) == 0
+    assert attempted == [row[0] for row in rows[:25]]
+    assert await sweep(settings) == 1
+    assert attempted[-1] == rows[-1][0]
+    column = "deleted_at" if kind == "deleted" else "created_at"
+    assert f"image_inputs.{column}, image_inputs.id" in statements[1]
+    assert await sweep(settings) == 0
+    assert attempted[-25:] == [row[0] for row in rows[:25]]

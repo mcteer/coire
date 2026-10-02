@@ -20,6 +20,13 @@ The first remote `cac9474` test job exposed one older deletion-service fixture
 that still mocked scalar rows after the new keyset query. The fixture now
 supplies `(id, deleted_at)` rows; the combined deletion/maintenance suite
 passed **24 tests**. A fresh full CI run is required before this gate is green.
+The full local non-integration/non-engine Python suite after that correction
+passed **1,794 tests**, with 2 existing skips and 168 deselections.
+
+The deleted and failed input purge sweeps now use bounded keyset pages too, so
+25 unpurgeable earlier inputs cannot starve a later one. The two failure-page
+regressions and the focused input cleanup suite passed **16 tests**, with Ruff
+and strict mypy green. Physical retention acceptance remains open under T039.
 
 ## Full-disk generation failure injection — 2026-10-02
 

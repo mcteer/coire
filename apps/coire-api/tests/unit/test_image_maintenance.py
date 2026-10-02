@@ -76,7 +76,8 @@ async def test_deleted_output_sweep_advances_past_failed_first_batch(
     class Session:
         async def execute(self, statement: object) -> SimpleNamespace:
             queries.append(str(statement))
-            return SimpleNamespace(all=lambda: rows[:25] if len(queries) == 1 else rows[25:])
+            page = rows[:25] if len(queries) in {1, 4} else rows[25:] if len(queries) == 2 else []
+            return SimpleNamespace(all=lambda: page)
 
         async def scalar(self, statement: object) -> datetime:
             return now
@@ -100,6 +101,8 @@ async def test_deleted_output_sweep_advances_past_failed_first_batch(
     assert await maintenance.sweep_deleted_outputs(settings) == 1
     assert attempted[-1] == rows[-1][0]
     assert "image_outputs.deleted_at, image_outputs.id" in queries[1]
+    assert await maintenance.sweep_deleted_outputs(settings) == 0
+    assert attempted[-25:] == [row[0] for row in rows[:25]]
 
 
 @pytest.mark.parametrize("concurrent_tombstone", [False, True])

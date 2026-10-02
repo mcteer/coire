@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from opentelemetry import metrics, trace
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, tuple_
 
 from coire_api.db import ImageInputRow, ImageQuotaRow, session_scope
 from coire_api.images.quota import _QUOTA_LOCK, _locked_rows
@@ -21,6 +21,8 @@ from coire_core.settings import Settings
 _BATCH_SIZE = 25
 _MAX_DIRECTORY_ENTRIES = 4096
 _ORPHAN_GRACE_SECONDS = 3600
+_deleted_after: tuple[datetime, uuid.UUID] | None = None
+_failed_after: tuple[datetime, uuid.UUID] | None = None
 tracer = trace.get_tracer("coire.api.image")
 logger = logging.getLogger(__name__)
 cleanup_total = metrics.get_meter("coire.api.image").create_counter(
@@ -211,17 +213,30 @@ async def purge_deleted_input(settings: Settings, input_id: uuid.UUID) -> bool:
 
 
 async def sweep_deleted_inputs(settings: Settings) -> int:
+    global _deleted_after
     async with session_scope() as session:
-        pending = (
-            await session.scalars(
-                select(ImageInputRow.id)
-                .where(ImageInputRow.state == "deleting", ImageInputRow.purged_at.is_(None))
-                .order_by(ImageInputRow.deleted_at, ImageInputRow.id)
-                .limit(_BATCH_SIZE)
+        query = (
+            select(ImageInputRow.id, ImageInputRow.deleted_at)
+            .where(
+                ImageInputRow.state == "deleting",
+                ImageInputRow.deleted_at.is_not(None),
+                ImageInputRow.purged_at.is_(None),
+            )
+            .order_by(ImageInputRow.deleted_at, ImageInputRow.id)
+            .limit(_BATCH_SIZE)
+        )
+        page = (
+            await session.execute(
+                query.where(tuple_(ImageInputRow.deleted_at, ImageInputRow.id) > _deleted_after)
+                if _deleted_after is not None
+                else query
             )
         ).all()
+        if not page and _deleted_after is not None:
+            page = (await session.execute(query)).all()
+        _deleted_after = (page[-1][1], page[-1][0]) if page else None
     purged = 0
-    for input_id in pending:
+    for input_id, _ in page:
         try:
             if await purge_deleted_input(settings, input_id):
                 cleanup_total.add(1, {"kind": "deleted", "outcome": "succeeded"})
@@ -237,19 +252,28 @@ async def sweep_deleted_inputs(settings: Settings) -> int:
 
 
 async def sweep_failed_inputs(settings: Settings) -> int:
+    global _failed_after
     async with session_scope() as session:
-        pending = (
-            await session.scalars(
-                select(ImageInputRow.id)
-                .where(
-                    ImageInputRow.state == "failed",
-                    ImageInputRow.purged_at.is_(None),
-                    ImageInputRow.held_bytes > 0,
-                )
-                .order_by(ImageInputRow.created_at, ImageInputRow.id)
-                .limit(_BATCH_SIZE)
+        query = (
+            select(ImageInputRow.id, ImageInputRow.created_at)
+            .where(
+                ImageInputRow.state == "failed",
+                ImageInputRow.purged_at.is_(None),
+                ImageInputRow.held_bytes > 0,
+            )
+            .order_by(ImageInputRow.created_at, ImageInputRow.id)
+            .limit(_BATCH_SIZE)
+        )
+        page = (
+            await session.execute(
+                query.where(tuple_(ImageInputRow.created_at, ImageInputRow.id) > _failed_after)
+                if _failed_after is not None
+                else query
             )
         ).all()
+        if not page and _failed_after is not None:
+            page = (await session.execute(query)).all()
+        _failed_after = (page[-1][1], page[-1][0]) if page else None
         oldest = await session.scalar(
             select(func.min(ImageInputRow.updated_at)).where(
                 or_(ImageInputRow.state == "failed", ImageInputRow.state == "deleting"),
@@ -259,7 +283,7 @@ async def sweep_failed_inputs(settings: Settings) -> int:
     age = max(0.0, (datetime.now(UTC) - oldest).total_seconds()) if oldest else 0.0
     input_purge_oldest_seconds.set(age)
     purged = 0
-    for input_id in pending:
+    for input_id, _ in page:
         try:
             if await purge_failed_input(settings, input_id):
                 cleanup_total.add(1, {"kind": "failed", "outcome": "succeeded"})
