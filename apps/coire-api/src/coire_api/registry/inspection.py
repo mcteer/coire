@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from coire_api.registry.placement import NodeView
+from coire_core.image_assets import has_seedvr2_3b_layout, include_image_asset_path
 from coire_core.memory import runtime_reservation_bytes
 from coire_core.models.acquisition import FitDecision, InspectionResult, Precision, VariantRecipe
 from coire_core.models.jobs import RepoInspection
@@ -77,6 +78,8 @@ def classify_image_inspection(repo: RepoInspection, kind: ModelKind) -> Inspecti
                 rejection = "unsafe_file_path"
                 break
             seen.add(path)
+            if not include_image_asset_path(repo.repo_id, kind, path):
+                continue
             if path.split("/")[-1] in _IMAGE_SAFE_NAMES or any(
                 path.endswith(suffix) for suffix in _IMAGE_SAFE_SUFFIXES
             ):
@@ -94,6 +97,9 @@ def classify_image_inspection(repo: RepoInspection, kind: ModelKind) -> Inspecti
             rejection is None
             and kind in {ModelKind.IMAGE_MODEL, ModelKind.CONTROL_MODEL, ModelKind.UPSCALE_MODEL}
             and "config.json" not in selected
+            and not (
+                kind is ModelKind.UPSCALE_MODEL and has_seedvr2_3b_layout(repo.repo_id, selected)
+            )
         ):
             rejection = "missing_local_config"
     return InspectionResult(

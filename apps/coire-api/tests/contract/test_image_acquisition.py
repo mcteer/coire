@@ -90,6 +90,36 @@ def test_auxiliary_inspection_never_claims_a_generation_backend() -> None:
     assert result.backend is EngineBackend.AUXILIARY
 
 
+def test_seedvr2_upscale_inspection_requires_exact_configless_layout() -> None:
+    files = [
+        RepoFile(path=name, bytes=1024, upstream_sha256="b" * 64)
+        for name in ("seedvr2_ema_3b_fp16.safetensors", "ema_vae_fp16.safetensors")
+    ]
+    files.append(
+        RepoFile(path="seedvr2_ema_7b_fp16.safetensors", bytes=2048, upstream_sha256="b" * 64)
+    )
+    repo = _repo(
+        repo_id="numz/SeedVR2_comfyUI",
+        files=files,
+        total_bytes=4096,
+        weight_bytes=4096,
+    )
+    result = classify_image_inspection(repo, ModelKind.UPSCALE_MODEL)
+    assert result.supported and result.backend is EngineBackend.AUXILIARY
+    assert (
+        classify_image_inspection(
+            _repo(repo_id="other/upscaler", files=files), ModelKind.UPSCALE_MODEL
+        ).rejection_code
+        == "missing_local_config"
+    )
+    assert (
+        classify_image_inspection(
+            _repo(repo_id="numz/SeedVR2_comfyUI", files=files[:1]), ModelKind.UPSCALE_MODEL
+        ).rejection_code
+        == "missing_local_config"
+    )
+
+
 def test_image_acquisition_contract_requires_human_licence_review() -> None:
     request = ImageAssetAcquireRequest(
         repo_id="org/image-base",
@@ -220,6 +250,91 @@ async def test_admin_image_intake_pins_revision_and_licence_before_pull(
             actor="admin:test",
         )
     assert audits[-1]["detail"] == {"reason": "insufficient_memory"}
+
+
+async def test_seedvr2_intake_excludes_unselected_7b_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    nodes = [NodeRow(id=uuid.uuid4(), name=name) for name in ("coire-edge-a", "coire-edge-b")]
+    files = [
+        RepoFile(path=name, bytes=size, upstream_sha256="b" * 64)
+        for name, size in (
+            ("seedvr2_ema_3b_fp16.safetensors", 1024),
+            ("ema_vae_fp16.safetensors", 1024),
+            ("seedvr2_ema_7b_fp16.safetensors", 2048),
+        )
+    ]
+    repo = _repo(
+        repo_id="numz/SeedVR2_comfyUI",
+        files=files,
+        total_bytes=4096,
+        weight_bytes=4096,
+    )
+
+    class Result:
+        def __init__(self, items: list[object]) -> None:
+            self.items = items
+
+        def scalar_one_or_none(self) -> object | None:
+            return None
+
+        def scalars(self) -> Result:
+            return self
+
+        def all(self) -> list[object]:
+            return self.items
+
+    class Session:
+        def __init__(self) -> None:
+            self.queries = 0
+
+        async def execute(self, query: object) -> Result:
+            self.queries += 1
+            return Result([] if self.queries == 1 else list[object](nodes))
+
+        async def flush(self) -> None:
+            pass
+
+        def add(self, row: object) -> None:
+            pass
+
+    class Client:
+        async def inspect(self, node: str, repo_id: str) -> RepoInspection:
+            assert node == "coire-edge-a" and repo_id == repo.repo_id
+            return repo
+
+    async def audit(session: object, **kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(image_acquisition, "write_audit", audit)
+    views = [
+        NodeView(
+            name=node.name,
+            reachability=Reachability.HEALTHY,
+            store_free_bytes=10**12,
+            memory_budget_bytes=10**12,
+        )
+        for node in nodes
+    ]
+    model, job = await image_acquisition.submit_image_asset(
+        Session(),  # type: ignore[arg-type]
+        ImageAssetAcquireRequest(
+            repo_id=repo.repo_id,
+            kind=ModelKind.UPSCALE_MODEL,
+            accepted_license_id="apache-2.0",
+        ),
+        client=Client(),  # type: ignore[arg-type]
+        settings=Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        views=views,
+        actor="admin:test",
+    )
+    assert model.weight_bytes == model.total_bytes == 2048
+    assert model.memory_estimate_bytes == 6144
+    assert job.expected_files is not None
+    assert set(job.expected_files) == {
+        "seedvr2_ema_3b_fp16.safetensors",
+        "ema_vae_fp16.safetensors",
+    }
 
 
 async def test_admin_licence_mismatch_is_audited_before_job(

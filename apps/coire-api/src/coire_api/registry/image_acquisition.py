@@ -13,6 +13,7 @@ from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.registry.inspection import classify_image_inspection
 from coire_api.registry.placement import NoCandidate, NodeView, choose_origin, replica_for
 from coire_api.registry.service import RegistryError
+from coire_core.image_assets import include_image_asset_path
 from coire_core.models.audit import AuditAction, AuditOutcome
 from coire_core.models.jobs import DownloadStage, JobKind, JobStatus
 from coire_core.models.registry import (
@@ -111,14 +112,31 @@ async def submit_image_asset(
         raise await _refuse(session, actor, request.repo_id, result.rejection_code or "unsupported")
     if result.license_id != request.accepted_license_id:
         raise await _refuse(session, actor, request.repo_id, "licence_review_mismatch")
+    selected = {
+        item.path
+        for item in inspection.files
+        if include_image_asset_path(request.repo_id, request.kind, item.path)
+        and (
+            item.path.endswith(
+                (".safetensors", ".json", ".txt", ".model", ".tiktoken", ".md", ".yaml", ".yml")
+            )
+            or item.path in {".gitattributes", "LICENSE", "LICENSE.txt"}
+        )
+    }
+    selected_total = sum(item.bytes for item in inspection.files if item.path in selected)
+    selected_weights = sum(
+        item.bytes
+        for item in inspection.files
+        if item.path in selected and item.path.endswith(".safetensors")
+    )
     # Native image execution may use much more unified memory than its weights
     # occupy on disk. The local tiny-model smoke measured 13.6 GiB of transient
     # physical footprint; leave a 16 GiB floor above the file-based estimate.
-    memory_estimate = max(inspection.total_bytes * 2, inspection.weight_bytes * 3)
+    memory_estimate = max(selected_total * 2, selected_weights * 3)
     if request.kind is ModelKind.IMAGE_MODEL:
         memory_estimate += 16 * 1024**3
     if any(
-        view.store_free_bytes < inspection.total_bytes + settings.disk_reserve_bytes
+        view.store_free_bytes < selected_total + settings.disk_reserve_bytes
         for view in (origin, replica)
     ):
         raise await _refuse(session, actor, request.repo_id, "insufficient_disk")
@@ -136,14 +154,6 @@ async def submit_image_asset(
     by_name = {node.name: node for node in nodes}
     if origin.name not in by_name or replica.name not in by_name:
         raise await _refuse(session, actor, request.repo_id, "nodes_unregistered", 503)
-    selected = {
-        item.path
-        for item in inspection.files
-        if item.path.endswith(
-            (".safetensors", ".json", ".txt", ".model", ".tiktoken", ".md", ".yaml", ".yml")
-        )
-        or item.path in {".gitattributes", "LICENSE", "LICENSE.txt"}
-    }
     model = ModelRow(
         id=uuid.uuid4(),
         kind=request.kind,
@@ -159,10 +169,8 @@ async def submit_image_asset(
         tags=[],
         placement_policy=request.placement_policy,
         precision="safetensors",
-        weight_bytes=sum(
-            item.bytes for item in inspection.files if item.path.endswith(".safetensors")
-        ),
-        total_bytes=sum(item.bytes for item in inspection.files if item.path in selected),
+        weight_bytes=selected_weights,
+        total_bytes=selected_total,
         file_count=len(selected),
         memory_estimate_bytes=memory_estimate,
         capability_profile={},

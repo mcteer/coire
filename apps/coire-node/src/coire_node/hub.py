@@ -28,6 +28,7 @@ from huggingface_hub.errors import (
     RevisionNotFoundError,
 )
 
+from coire_core.image_assets import has_seedvr2_3b_layout, include_image_asset_path
 from coire_core.models.jobs import JobErrorKind, Quantization, RepoFile, RepoInspection
 from coire_core.models.registry import AUXILIARY_IMAGE_KINDS, ModelKind
 
@@ -281,6 +282,8 @@ def image_asset_files(repo: RepoInspection, kind: ModelKind) -> tuple[str, ...]:
         ):
             raise ValueError("image asset has an unsafe or duplicate path")
         seen.add(path)
+        if not include_image_asset_path(repo.repo_id, kind, path):
+            continue
         if Path(path).suffix not in _IMAGE_SAFE_SUFFIXES and path not in _IMAGE_SAFE_NAMES:
             continue
         if path.endswith(".safetensors") and (
@@ -297,6 +300,7 @@ def image_asset_files(repo: RepoInspection, kind: ModelKind) -> tuple[str, ...]:
     if (
         kind in {ModelKind.IMAGE_MODEL, ModelKind.CONTROL_MODEL, ModelKind.UPSCALE_MODEL}
         and "config.json" not in selected
+        and not (kind is ModelKind.UPSCALE_MODEL and has_seedvr2_3b_layout(repo.repo_id, selected))
     ):
         raise ValueError("image asset has no local config")
     if kind is ModelKind.IMAGE_CLASSIFIER:

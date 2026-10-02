@@ -53,6 +53,28 @@ def test_classifier_selects_only_pinned_safe_files() -> None:
     assert all(not item.endswith((".pt", ".bin")) for item in selected)
 
 
+def test_seedvr2_upscale_accepts_only_complete_native_configless_layout() -> None:
+    files = [
+        RepoFile(path=name, bytes=1024, upstream_sha256=WEIGHT_SHA)
+        for name in ("seedvr2_ema_3b_fp16.safetensors", "ema_vae_fp16.safetensors")
+    ]
+    files.append(
+        RepoFile(path="seedvr2_ema_7b_fp16.safetensors", bytes=2048, upstream_sha256=WEIGHT_SHA)
+    )
+    repo = _repo(files=files).model_copy(update={"repo_id": "numz/SeedVR2_comfyUI"})
+    assert hub.image_asset_files(repo, ModelKind.UPSCALE_MODEL) == tuple(
+        sorted(item.path for item in files[:2])
+    )
+    with pytest.raises(ValueError):
+        hub.image_asset_files(
+            repo.model_copy(update={"repo_id": "other/upscaler"}), ModelKind.UPSCALE_MODEL
+        )
+    with pytest.raises(ValueError):
+        hub.image_asset_files(_repo(files=files), ModelKind.UPSCALE_MODEL)
+    with pytest.raises(ValueError):
+        hub.image_asset_files(repo.model_copy(update={"files": files[:1]}), ModelKind.UPSCALE_MODEL)
+
+
 @pytest.mark.parametrize(
     ("repo", "kind"),
     [

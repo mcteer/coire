@@ -1,5 +1,15 @@
 # Feature 015 execution record
 
+## SeedVR2 3B local acquisition layout — 2026-10-02
+
+The pinned mflux 0.20.0 SeedVR2 3B loader expects two root safetensors files
+without `config.json`. Admin inspection and node snapshot selection now accept
+that exact repository/layout, exclude its unrelated 7B weight and size memory
+and disk holds from only selected bytes. Other configless upscalers still fail
+closed. The focused inspection/acquisition tests passed **23 tests**, with Ruff
+and strict mypy passing. Aux execution validation and publication remain open
+under T033/T056.
+
 ## Terminal Studio scratch journal replay — 2026-10-02
 
 The Studio agent now scans bounded durable journal pages every 30 seconds,
@@ -9,11 +19,12 @@ retain bytes and journal evidence and emit the existing cleanup failure metric.
 The directory scan streams keys and keeps only the next 25 in memory; a
 4,098-entry regression proves history beyond the old inventory limit cannot
 disable cleanup.
-The node unit and route contract checks passed **31 tests**; Ruff and strict mypy
-passed. Core tombstone, orphan staging, input and quota sweeps were already
-present and remain active when image admission is disabled. Full suite result is
-being refreshed; operator retention and cancellation timing still require the
-cluster matrix in T083.
+The node unit and route contract checks passed **31 tests**; the full local
+Python suite at `3f29968` passed **1,832 tests** with 159 platform/external
+skips. The inventory change passed **11 focused tests**, Ruff and strict mypy.
+Core tombstone, orphan staging, input and quota sweeps were
+already present and remain active when image admission is disabled. Operator
+retention and cancellation timing still require the cluster matrix in T083.
 
 ## Private gallery classifier diagnostic — 2026-10-02
 

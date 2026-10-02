@@ -36,6 +36,13 @@ Base acquisition reserves the larger of twice the selected file bytes or three
 times the weight bytes, plus 16 GiB of native runtime headroom, on **each**
 Studio. A Studio below that estimate refuses intake before pulling. The smoke
 still rejects a base whose measured peak exceeds its actual reservation.
+For `numz/SeedVR2_comfyUI` acquired as `upscale_model`, the pinned mflux 0.20.0
+3B loader uses root `seedvr2_ema_3b_fp16.safetensors` and
+`ema_vae_fp16.safetensors` without `config.json`. Intake requires both verified
+files and excludes the upstream 7B weights from the transfer and reservation
+estimate. This layout exception does not bypass the offline auxiliary smoke;
+the asset remains unpublished until T033/T056 validate native execution on
+both Studio copies.
 
 Gallery cards show a safe classifier diagnostic when tagging is unavailable or
 fails. An `unknown` tag does not mean the pixels were classified as normal;
