@@ -106,6 +106,9 @@ def test_full_disk_during_png_write_keeps_journal_unpublished_and_removes_scratc
     )
 
     def no_space(*args: object) -> None:
+        path = args[3]
+        assert isinstance(path, Path)
+        path.write_bytes(b"partial PNG")
         raise OSError(errno.ENOSPC, "disk full")
 
     monkeypatch.setattr(image_worker, "write_image_png", no_space)
@@ -124,6 +127,56 @@ def test_full_disk_during_png_write_keeps_journal_unpublished_and_removes_scratc
             ),
             scratch,
             lambda *_: None,
+        )
+    assert journal.get(JOB) == queued
+    assert not (scratch / f"{JOB}-1-1").exists()
+
+
+def test_cancel_after_first_png_removes_entire_unpublished_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    start = _request()
+    spec = start.resolved.spec.model_copy(update={"n": 2})
+    resolved = start.resolved.model_copy(
+        update={"spec": spec, "seeds": (1, 2), "spec_hash": canonical_spec_hash(spec)}
+    )
+    start = start.model_copy(update={"resolved": resolved})
+    journal = ImageJobJournal(tmp_path, NODE)
+    queued = journal.begin(start)
+    load = ImageWorkerLoadRequest(
+        slug="studio--fake-image",
+        model_id=start.model_id,
+        instance_id=start.instance_id,
+        manifest_sha256=resolved.model_sha256,
+        reservation_bytes=start.reservation_bytes,
+        runtime_version=resolved.pipeline_version,
+    )
+    write_png = image_worker.write_image_png
+    cancelled = False
+
+    def cancel_after_first(*args: object) -> object:
+        nonlocal cancelled
+        result = write_png(*args)  # type: ignore[arg-type]
+        cancelled = True
+        return result
+
+    monkeypatch.setattr(image_worker, "write_image_png", cancel_after_first)
+    scratch = tmp_path / "image-scratch"
+    with pytest.raises(ImageJobExecutionError):
+        run_image_job(
+            FakeImagePipeline(),
+            load,
+            ImageWorkerRunRequest(
+                job_id=JOB,
+                attempt=1,
+                fence=1,
+                instance_id=start.instance_id,
+                resolved=resolved,
+                deadline_at=start.deadline_at,
+            ),
+            scratch,
+            lambda *_: None,
+            is_cancelled=lambda: cancelled,
         )
     assert journal.get(JOB) == queued
     assert not (scratch / f"{JOB}-1-1").exists()

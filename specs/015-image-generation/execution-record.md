@@ -16,13 +16,18 @@ Twenty-five damaged early blobs no longer prevent a later tombstone from being
 attempted. A regression test fails the first 25 purges and confirms the 26th
 is reached on the next pass; the focused maintenance suite passed **18 tests**,
 with Ruff and strict mypy green. T039 remains open for full retention evidence.
+The first remote `cac9474` test job exposed one older deletion-service fixture
+that still mocked scalar rows after the new keyset query. The fixture now
+supplies `(id, deleted_at)` rows; the combined deletion/maintenance suite
+passed **24 tests**. A fresh full CI run is required before this gate is green.
 
 ## Full-disk generation failure injection — 2026-10-02
 
-A local fake-worker recovery integration case now injects `ENOSPC` at PNG
-encoding, verifies the private attempt directory is removed and verifies the
-durable node journal has not advanced to a publishable state. The recovery
-suite passed **3 tests**, with Ruff and strict mypy green. T075 remains open
+A local fake-worker recovery integration case now injects `ENOSPC` after a
+partial PNG write. Another requests cancellation after the first PNG in a
+two-output batch. Both verify the private attempt directory is removed and
+the durable node journal has not advanced to a publishable state. The recovery
+suite passed **4 tests**, with Ruff and strict mypy green. T075 remains open
 for its remaining boundary and failure matrix.
 
 ## CI image gate and chat lease expiry — 2026-10-02

@@ -136,14 +136,15 @@ async def test_maintenance_continues_after_one_blob_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ids = [uuid.uuid4(), uuid.uuid4()]
+    deleted_at = datetime.now(UTC)
 
-    class ScalarRows:
-        def all(self) -> list[uuid.UUID]:
-            return ids
+    class DeletedRows:
+        def all(self) -> list[tuple[uuid.UUID, datetime]]:
+            return [(identity, deleted_at) for identity in ids]
 
     class PendingSession:
-        async def scalars(self, statement: object) -> ScalarRows:
-            return ScalarRows()
+        async def execute(self, statement: object) -> DeletedRows:
+            return DeletedRows()
 
         async def scalar(self, statement: object) -> datetime:
             return datetime.now(UTC)
@@ -162,5 +163,6 @@ async def test_maintenance_continues_after_one_blob_fails(
 
     monkeypatch.setattr(maintenance, "session_scope", fake_scope)
     monkeypatch.setattr(maintenance, "purge_deleted_output", fake_purge)
+    monkeypatch.setattr(maintenance, "_deleted_after", None)
     assert await maintenance.sweep_deleted_outputs(Settings(_secrets_dir="/nonexistent")) == 1  # type: ignore[call-arg]
     assert called == ids
