@@ -151,6 +151,15 @@ class TestLoadAndUnload:
             assert resp.status_code == 202, resp.text
             engine = resp.json()
             assert engine["state"] == "starting"
+            ledgers = client.get("/api/v1/admin/ledger", headers=admin_headers)
+            assert ledgers.status_code == 200, ledgers.text
+            assert any(
+                reservation["holder_type"] == "model"
+                and reservation["holder_id"] == ready_model["id"]
+                and reservation["state"] == "held"
+                for ledger in ledgers.json()
+                for reservation in ledger["reservations"]
+            ), "model launch was visible without its memory hold"
 
             ready = wait_engine(api_url, admin_headers, engine["id"], "ready")
             assert ready["pid"]

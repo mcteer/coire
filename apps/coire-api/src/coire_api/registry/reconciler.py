@@ -593,6 +593,22 @@ class RegistryReconciler:
         logger.error("acquisition of %s failed: %s", model.slug, reason)
 
     # -- engines -----------------------------------------------------------
+    async def _release_legacy_hold(self, session: AsyncSession, row: EngineProcessRow) -> None:
+        if row.instance_id is not None or row.model_id is None:
+            return
+        async with node_admission_lock(session, row.node_id):
+            hold = await session.scalar(
+                select(MemoryReservationRow).where(
+                    MemoryReservationRow.node_id == row.node_id,
+                    MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                    MemoryReservationRow.holder_id == str(row.model_id),
+                    MemoryReservationRow.state == MemoryReservationState.HELD,
+                )
+            )
+            if hold is not None:
+                hold.state = MemoryReservationState.RELEASED
+                hold.released_at = row.stopped_at or datetime.now(UTC)
+
     async def _sync_engines(self, session: AsyncSession, client: NodeClient) -> None:
         rows = (
             (
@@ -631,6 +647,7 @@ class RegistryReconciler:
                     row.state_reason = "the node no longer knows this engine"
                     row.stopped_at = datetime.now(UTC)
                     await self._fail_instance_for_engine(session, row, row.state_reason)
+                    await self._release_legacy_hold(session, row)
                     logger.warning("engine %s is unknown to %s", row.id, node.name)
                 continue
             row.state = status.state
@@ -651,21 +668,7 @@ class RegistryReconciler:
                         row,
                         status.state_reason or "engine exited while instance was active",
                     )
-                if row.instance_id is None and row.model_id is not None:
-                    # A node-confirmed terminal legacy process can no longer use
-                    # the compatibility hold created at its first inference.
-                    async with node_admission_lock(session, row.node_id):
-                        hold = await session.scalar(
-                            select(MemoryReservationRow).where(
-                                MemoryReservationRow.node_id == row.node_id,
-                                MemoryReservationRow.holder_type == ReservationHolder.MODEL,
-                                MemoryReservationRow.holder_id == str(row.model_id),
-                                MemoryReservationRow.state == MemoryReservationState.HELD,
-                            )
-                        )
-                        if hold is not None:
-                            hold.state = MemoryReservationState.RELEASED
-                            hold.released_at = row.stopped_at
+                await self._release_legacy_hold(session, row)
 
     async def _reconcile_nodes(self, session: AsyncSession, client: NodeClient) -> None:
         """Ask named nodes what they are really running (spec FR-015)."""

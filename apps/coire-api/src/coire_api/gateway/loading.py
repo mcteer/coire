@@ -21,7 +21,9 @@ from coire_api.db import (
 from coire_api.gateway.telemetry import tracer
 from coire_api.instance.service import append_initial_transition
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.placement.legacy import ensure_legacy_model_hold_locked
 from coire_api.registry.visual_memory import require_supported_placement, reservation_bytes
+from coire_core.errors import ChatModelUnavailable
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import Reachability
@@ -140,8 +142,6 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
                 )
                 .limit(1)
             )
-            if existing is not None and existing.state is EngineState.READY:
-                return
             model = await session.get(ModelRow, model_id)
             if model is None:
                 raise ModelLoadError("model disappeared during load")
@@ -162,6 +162,19 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             if target is None:
                 raise ModelLoadError("no verified reachable model copy")
             _, node = target
+            if existing is not None and existing.node_id != node.id:
+                hosting_node = await session.get(NodeRow, existing.node_id)
+                if hosting_node is None or hosting_node.reachability is not Reachability.HEALTHY:
+                    raise ModelLoadError("existing engine node is unavailable")
+                node = hosting_node
+            if existing is not None and existing.state is EngineState.READY:
+                try:
+                    await ensure_legacy_model_hold_locked(
+                        session, existing.node_id, model.id, existing.estimate_bytes
+                    )
+                except ChatModelUnavailable as exc:
+                    raise ModelLoadError("node memory admission refused") from exc
+                return
             row = existing or EngineProcessRow(
                 id=uuid.uuid4(),
                 model_id=model.id,
@@ -173,41 +186,50 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             )
             if existing is None:
                 session.add(row)
-                await session.flush()
-                # Publish the stable engine identity before the node process can become
-                # visible to reconciliation. Holding this insert uncommitted across the
-                # network launch lets reconciliation race an orphan row with the same id.
-                await session.commit()
             try:
-                async with NodeClient(settings, timeout=settings.gateway_wait_ceiling_s) as client:
-                    _, engine = await client.start_engine(
-                        node.name,
-                        engine_id=row.id,
-                        slug=model.slug,
-                        estimate_bytes=required_bytes,
-                        chat_template=(
-                            model.chat_template if model.backend == EngineBackend.MLX_LM else None
-                        ),
-                        backend=EngineBackend(model.backend),
-                    )
-                    deadline = time.monotonic() + settings.gateway_wait_ceiling_s
-                    while engine.state is EngineState.STARTING and time.monotonic() < deadline:
-                        await asyncio.sleep(min(0.5, settings.node_engine_health_interval_s))
-                        engine = await client.get_engine(node.name, row.id)
-                    if engine.state is not EngineState.READY:
-                        reason = engine.state_reason or f"engine entered {engine.state.value}"
-                        raise ModelLoadError(reason)
-            except (NodeError, ModelLoadError) as exc:
-                row.state = EngineState.FAILED
-                row.state_reason = str(exc)[:500]
-                raise ModelLoadError(str(exc)) from exc
-            row.port = engine.port
-            row.pid = engine.pid
-            row.process_create_time = engine.process_create_time
-            row.state = engine.state
-            row.backend = engine.backend.value
-            row.state_reason = engine.state_reason
-            row.load_seconds = engine.load_seconds
+                await ensure_legacy_model_hold_locked(
+                    session, row.node_id, model.id, required_bytes
+                )
+            except ChatModelUnavailable as exc:
+                raise ModelLoadError("node memory admission refused") from exc
+            engine_id = row.id
+            node_name = node.name
+            slug = model.slug
+            chat_template = model.chat_template if model.backend == EngineBackend.MLX_LM else None
+            backend = EngineBackend(model.backend)
+            # Publish engine identity and the hold atomically before node launch.
+        try:
+            async with NodeClient(settings, timeout=settings.gateway_wait_ceiling_s) as client:
+                _, engine = await client.start_engine(
+                    node_name,
+                    engine_id=engine_id,
+                    slug=slug,
+                    estimate_bytes=required_bytes,
+                    chat_template=chat_template,
+                    backend=backend,
+                )
+                deadline = time.monotonic() + settings.gateway_wait_ceiling_s
+                while engine.state is EngineState.STARTING and time.monotonic() < deadline:
+                    await asyncio.sleep(min(0.5, settings.node_engine_health_interval_s))
+                    engine = await client.get_engine(node_name, engine_id)
+                if engine.state is not EngineState.READY:
+                    reason = engine.state_reason or f"engine entered {engine.state.value}"
+                    raise ModelLoadError(reason)
+        except (NodeError, ModelLoadError) as exc:
+            # A transport failure may leave a live process. Its STARTING row and
+            # hold remain until node reconciliation confirms a terminal state.
+            raise ModelLoadError(str(exc)) from exc
+        async with session_scope() as session:
+            updated_row = await session.get(EngineProcessRow, engine_id)
+            if updated_row is None:
+                raise ModelLoadError("engine disappeared during load")
+            updated_row.port = engine.port
+            updated_row.pid = engine.pid
+            updated_row.process_create_time = engine.process_create_time
+            updated_row.state = engine.state
+            updated_row.backend = engine.backend.value
+            updated_row.state_reason = engine.state_reason
+            updated_row.load_seconds = engine.load_seconds
 
     with tracer.start_as_current_span("coire.gateway.load") as span:
         span.set_attribute("coire.model.id", str(model_id))

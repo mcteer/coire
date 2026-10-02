@@ -1,5 +1,18 @@
 # Feature 015 execution record
 
+## Legacy prelaunch admission — 2026-10-02
+
+Both admin and gateway legacy load paths now commit an engine row and its
+shared model memory hold under the node admission lock before asking coire-node
+to start the process. A definite node budget refusal releases the hold; an
+uncertain transport failure retains it until reconciliation confirms terminal
+or missing node state. The ready-engine gateway path also reconciles old
+unheld rows, and the engine integration test now checks that a launch response
+already has a held model reservation. Focused gateway/loading/reconciler tests
+passed **19 tests**; the complete local Python suite passed **1,813 tests**
+with 158 platform/external skips. Ruff and strict mypy across 645 files passed.
+Current-image Compose and PR CI remain pending for this change.
+
 ## Fresh blob volume and legacy gateway hold — 2026-10-02
 
 Disposable Compose inspection found that a fresh `coire-blobs` Docker volume

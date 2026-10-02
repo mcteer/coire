@@ -21,20 +21,21 @@ from coire_api.db import (
     InstanceMemberRow,
     MemoryReservationRow,
     ModelInstanceRow,
-    NodeMemoryLedgerRow,
     ShardGroupRow,
     session_scope,
 )
 from coire_api.gateway.telemetry import lease_loss_counter, queue_duration_ms, tracer
+from coire_api.placement.legacy import (
+    ensure_legacy_model_hold,
+    ensure_legacy_model_hold_locked,
+)
 from coire_api.placement.service import (
     acquire_lease,
     lock_nodes_for_admission,
-    node_admission_lock,
     refresh_lease,
     release_lease,
 )
 from coire_core.errors import ChatModelUnavailable
-from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import Settings
 
@@ -137,80 +138,17 @@ async def _ensure_legacy_engine_hold(
     session: AsyncSession, engine: EngineProcessRow, holder_id: str
 ) -> None:
     """Fence a live legacy engine in the shared ledger before serving inference."""
-    existing = await session.scalar(
-        select(MemoryReservationRow).where(
-            MemoryReservationRow.node_id == engine.node_id,
-            MemoryReservationRow.holder_type == ReservationHolder.MODEL,
-            MemoryReservationRow.holder_id == holder_id,
-        )
+    await ensure_legacy_model_hold(
+        session, engine.node_id, uuid.UUID(holder_id), engine.estimate_bytes
     )
-    if existing is not None and existing.state is MemoryReservationState.HELD:
-        if existing.bytes < engine.estimate_bytes:
-            raise ChatModelUnavailable()
-        return
-    ledger = await session.get(NodeMemoryLedgerRow, engine.node_id, populate_existing=True)
-    if ledger is None or engine.estimate_bytes <= 0:
-        raise ChatModelUnavailable()
-    reservations = (
-        await session.scalars(
-            select(MemoryReservationRow).where(
-                MemoryReservationRow.node_id == engine.node_id,
-                MemoryReservationRow.state.in_(
-                    (
-                        MemoryReservationState.PENDING,
-                        MemoryReservationState.HELD,
-                        MemoryReservationState.RELEASING,
-                    )
-                ),
-            )
-        )
-    ).all()
-    if any(row.holder_type is ReservationHolder.IMAGE for row in reservations):
-        raise ChatModelUnavailable()
-    live_image = await session.scalar(
-        select(ModelInstanceRow.id)
-        .join(InstanceMemberRow, InstanceMemberRow.instance_id == ModelInstanceRow.id)
-        .where(
-            InstanceMemberRow.node_id == engine.node_id,
-            ModelInstanceRow.policy.like("image:%"),
-            ModelInstanceRow.state.in_(
-                (
-                    InstanceState.LAUNCHING,
-                    InstanceState.WARMING,
-                    InstanceState.READY,
-                    InstanceState.DRAINING,
-                )
-            ),
-        )
-        .limit(1)
-    )
-    if live_image is not None:
-        raise ChatModelUnavailable()
-    occupied = sum(row.bytes for row in reservations if row is not existing)
-    if occupied + engine.estimate_bytes > ledger.budget_bytes:
-        raise ChatModelUnavailable()
-    if existing is None:
-        session.add(
-            MemoryReservationRow(
-                node_id=engine.node_id,
-                holder_type=ReservationHolder.MODEL,
-                holder_id=holder_id,
-                bytes=engine.estimate_bytes,
-                state=MemoryReservationState.HELD,
-            )
-        )
-    else:
-        existing.bytes = engine.estimate_bytes
-        existing.state = MemoryReservationState.HELD
-        existing.released_at = None
-    await session.flush()
 
 
 async def _ensure_legacy_engine_hold_locked(
     session: AsyncSession, engine: EngineProcessRow, holder_id: str
 ) -> None:
-    async with node_admission_lock(session, engine.node_id):
-        await _ensure_legacy_engine_hold(session, engine, holder_id)
+    await ensure_legacy_model_hold_locked(
+        session, engine.node_id, uuid.UUID(holder_id), engine.estimate_bytes
+    )
 
 
 @asynccontextmanager

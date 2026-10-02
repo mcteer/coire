@@ -32,6 +32,7 @@ from coire_api.auth import CurrentAdmin
 from coire_api.db import (
     DownloadJobRow,
     EngineProcessRow,
+    MemoryReservationRow,
     ModelCopyRow,
     ModelRow,
     ModelStateTransitionRow,
@@ -40,13 +41,17 @@ from coire_api.db import (
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.providers import credential_present
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.placement.legacy import ensure_legacy_model_hold_locked
+from coire_api.placement.service import node_admission_lock
 from coire_api.preconditions import require_current
 from coire_api.registry import image_acquisition, service
 from coire_api.registry.placement import NoCandidate, choose_load_node
 from coire_api.registry.visual_memory import reservation_bytes
+from coire_core.errors import ChatModelUnavailable
 from coire_core.models.audit import AuditAction
 from coire_core.models.engine import EngineProcess, EngineState
 from coire_core.models.jobs import DownloadJob
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.registry import (
     EngineBackend,
     ImageAssetAcquireRequest,
@@ -500,6 +505,13 @@ async def load_model(
         )
     ).scalar_one_or_none()
     if existing is not None:
+        try:
+            await ensure_legacy_model_hold_locked(
+                session, node.id, model.id, existing.estimate_bytes
+            )
+        except ChatModelUnavailable as exc:
+            raise HTTPException(status.HTTP_409_CONFLICT, "node memory admission refused") from exc
+        await session.commit()
         # FR-019: a second load of the same model on the same node is a no-op.
         response.status_code = status.HTTP_200_OK
         nodes = {node.id: node.name}
@@ -518,6 +530,15 @@ async def load_model(
     session.add(row)
 
     try:
+        await ensure_legacy_model_hold_locked(session, node.id, model.id, required_bytes)
+    except ChatModelUnavailable as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "node memory admission refused") from exc
+    # Commit engine identity and its memory hold together before starting Metal work.
+    # Reconciliation must see both if the node responds before this request finishes.
+    await session.commit()
+
+    try:
         already, engine_status = await client.start_engine(
             node.name,
             engine_id=engine_id,
@@ -527,9 +548,24 @@ async def load_model(
             backend=EngineBackend(model.backend),
         )
     except NodeError as exc:
-        # The row has only been added to this session; DELETE requires a
-        # persisted row and masks the node refusal with an HTTP 500.
-        await session.rollback()
+        if exc.kind.value == "conflict":
+            # A conflict is a definite node refusal. Other failures may leave
+            # a live process; reconciliation keeps the hold until it proves stop.
+            async with node_admission_lock(session, node.id):
+                row.state = EngineState.FAILED
+                row.state_reason = str(exc)[:500]
+                hold = await session.scalar(
+                    select(MemoryReservationRow).where(
+                        MemoryReservationRow.node_id == node.id,
+                        MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                        MemoryReservationRow.holder_id == str(model.id),
+                        MemoryReservationRow.state == MemoryReservationState.HELD,
+                    )
+                )
+                if hold is not None:
+                    hold.state = MemoryReservationState.RELEASED
+                    hold.released_at = datetime.now(UTC)
+            await session.commit()
         if exc.kind.value == "conflict":
             body_out = exc.body or {}
             raise HTTPException(

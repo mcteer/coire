@@ -23,7 +23,13 @@ unwritten holds. Inspect both `held_bytes` and `stored_bytes` when diagnosing a
 refusal; never reset them manually while a job or purge is uncertain. Local
 cross-process PostgreSQL contention tests have passed; production placement and
 coexistence acceptance remain open.
-The gateway reconciles a ready legacy chat engine into the shared node ledger
+
+The admin and gateway legacy load paths commit the engine row and shared
+`model` memory hold in one transaction before asking coire-node to start the
+engine. A definite node budget refusal releases that hold. A transport error
+leaves the `starting` row and hold intact until reconciliation gets terminal
+status or a confirmed missing-engine response after the startup grace period.
+The gateway also reconciles a ready legacy chat engine into the shared node ledger
 before granting inference. It refuses the request if the node budget or an image
 worker prevents that hold. The reconciler releases the hold after the node
 reports a terminal engine state. If chat returns `chat_model_unavailable`, inspect

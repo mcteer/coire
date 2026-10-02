@@ -285,7 +285,9 @@ async def test_node_proxy_refuses_unreserved_engine_inference(
         async def get(self, model: object, identity: object, **kwargs: object) -> object:
             if model is NodeMemoryLedgerRow:
                 return None
-            return SimpleNamespace(model_id=uuid.uuid4(), instance_id=None, node_id=uuid.uuid4())
+            return SimpleNamespace(
+                model_id=uuid.uuid4(), instance_id=None, node_id=uuid.uuid4(), estimate_bytes=4
+            )
 
         async def execute(self, statement: object, parameters: object) -> None:
             return None
