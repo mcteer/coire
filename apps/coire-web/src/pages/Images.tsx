@@ -211,6 +211,8 @@ export function Images({ canEditPresets = false }: { canEditPresets?: boolean })
           state={active.state}
           step={active.step}
           totalSteps={active.total}
+          cacheStatus={active.cacheStatus}
+          workerResidency={active.workerResidency}
           busy={busyJob === activeJobId}
           error={active.error}
           onStop={() => void stop(activeJobId)}

@@ -1,4 +1,4 @@
-import type { ImageJob } from "../../api/images";
+import type { ImageJob, ImageJobEvent } from "../../api/images";
 import { isTerminalImageState } from "../../hooks/useImageJob";
 
 export function ImageTimeline({
@@ -6,6 +6,8 @@ export function ImageTimeline({
   state,
   step,
   totalSteps,
+  cacheStatus = null,
+  workerResidency = null,
   onStop,
   busy,
   error = null,
@@ -14,6 +16,8 @@ export function ImageTimeline({
   state: ImageJob["state"] | null;
   step: number | null;
   totalSteps: number | null;
+  cacheStatus?: ImageJobEvent["cache_status"];
+  workerResidency?: ImageJobEvent["worker_residency"];
   onStop: () => void;
   busy: boolean;
   error?: string | null;
@@ -37,8 +41,20 @@ export function ImageTimeline({
       {step != null && totalSteps != null && (
         <progress value={step} max={totalSteps} aria-label="Image generation progress" />
       )}
-      <p>Cache status unavailable for this job.</p>
-      <p>Worker residency status unavailable for this job.</p>
+      <p>
+        {cacheStatus === "hit"
+          ? "Prompt cache reused."
+          : cacheStatus === "cold"
+            ? "Prompt cache cold: encoding ran."
+            : cacheStatus === "evicted"
+              ? "Prompt cache evicted: encoding ran again."
+              : "Prompt cache status unavailable for this job."}
+      </p>
+      <p>
+        {workerResidency === "resident"
+          ? "Worker observed resident at the last progress update."
+          : "Worker residency status unavailable for this job."}
+      </p>
       {error && (
         <p className="error" role="alert">
           {error}

@@ -2022,3 +2022,27 @@ The final local Python suite after this guard passed **1,872 tests, 160
 skipped**; Ruff, strict mypy, OpenAPI freshness and diff whitespace checks
 passed. The skipped tests are external integration/engine selections; the
 10 image-engine tests were run explicitly.
+
+T070 accounting review: node admission totals language engines, the image
+worker and conversion holds under one lock; health publishes the exact image
+child's physical footprint. Core reconciliation adds physical overage only
+above resident model/image reservations, so pending conversion holds are not
+counted twice. Image dispatch now holds validated resident memory plus exact
+auxiliary overhead, two byte-bounded cache allowances and the CPU classifier
+allowance. The existing held-worker reuse and uncertain-process tests remain
+green. Physical chat/image coexistence is still unapproved pending T084.
+
+## Per-job cache and residency observation — 2026-10-02
+
+The bounded prompt stage caches now distinguish a first cold lookup, a real
+resident hit and a key known to have been evicted. The resident worker reports
+that outcome with its fenced progress; the Studio journal and core SSE event
+carry the typed observation to the image timeline. A running node progress
+report marks the worker observed resident at that update; missing or terminal
+observations remain explicitly unavailable. Only bounded hashed cache keys are
+retained for eviction history. Focused node/core tests passed **48 tests**,
+the web suite passed **144 tests**, and strict mypy, Ruff, OpenAPI freshness,
+web lint/build and the 10-test local tiny native suite passed. The full Python
+suite before the final focused node contract assertion passed **1,872 tests,
+160 skipped**; the final assertion passed in the focused rerun. T063 is
+complete; the 20-trial production cache measurement remains T084.

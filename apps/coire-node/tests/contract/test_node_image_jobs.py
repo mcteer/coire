@@ -212,6 +212,8 @@ def test_failed_worker_cleans_both_scratch_trees_before_terminal_journal(
         dispatcher._reconcile(reserving, request, observed)
     assert dispatcher.journal.get(JOB) == reserving
     assert outside.read_bytes() == b"keep"
+
+
     (output / "0.png").unlink()
     (output / "0.png").write_bytes(b"partial")
     (output / "0.png").chmod(0o600)
@@ -219,6 +221,41 @@ def test_failed_worker_cleans_both_scratch_trees_before_terminal_journal(
     assert failed.state == "failed" and failed.scratch_cleaned
     assert not output.exists() and not inputs.exists()
     assert outside.read_bytes() == b"keep"
+
+
+def test_running_worker_cache_observation_reaches_fenced_node_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatcher = _setup(
+        tmp_path, monkeypatch, httpx.MockTransport(lambda _: httpx.Response(503))
+    )
+    request = _request()
+    queued = dispatcher.journal.begin(request)
+    reserving = dispatcher.journal.advance(
+        queued.model_copy(
+            update={
+                "state": "reserving",
+                "pid": 123,
+                "process_create_time": 1.0,
+                "updated_at": queued.updated_at + timedelta(microseconds=1),
+            }
+        )
+    )
+    observed = ImageWorkerStatus(
+        job_id=JOB,
+        attempt=1,
+        fence=4,
+        state="running",
+        output_index=0,
+        step=1,
+        total_steps=20,
+        cache_status="cold",
+        updated_at=datetime.now(UTC),
+    )
+    running = dispatcher._reconcile(reserving, request, observed)
+    assert running.cache_status == "cold"
+    assert running.progress_step == 1
+    assert dispatcher.journal.get(JOB) == running
 
 
 async def test_failed_journal_repairs_cleanup_on_status_retry(

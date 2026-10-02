@@ -17,7 +17,7 @@ test("shows queue and progress and stops only before a terminal server state", (
     />,
   );
   expect(screen.getByRole("status")).toHaveTextContent("queued");
-  expect(screen.getByText("Cache status unavailable for this job.")).toBeInTheDocument();
+  expect(screen.getByText("Prompt cache status unavailable for this job.")).toBeInTheDocument();
   expect(screen.getByText("Worker residency status unavailable for this job.")).toBeInTheDocument();
   expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: `Stop image job ${JOB}` }));
@@ -50,6 +50,36 @@ test("shows queue and progress and stops only before a terminal server state", (
     />,
   );
   expect(screen.queryByRole("button", { name: `Stop image job ${JOB}` })).not.toBeInTheDocument();
+});
+
+test("reports measured cache reuse, eviction, and observed worker residency", () => {
+  const { rerender } = render(
+    <ImageTimeline
+      jobId={JOB}
+      state="running"
+      step={1}
+      totalSteps={2}
+      cacheStatus="hit"
+      workerResidency="resident"
+      onStop={vi.fn()}
+      busy={false}
+    />,
+  );
+  expect(screen.getByText("Prompt cache reused.")).toBeInTheDocument();
+  expect(screen.getByText("Worker observed resident at the last progress update.")).toBeInTheDocument();
+  rerender(
+    <ImageTimeline
+      jobId={JOB}
+      state="running"
+      step={2}
+      totalSteps={2}
+      cacheStatus="evicted"
+      onStop={vi.fn()}
+      busy={false}
+    />,
+  );
+  expect(screen.getByText("Prompt cache evicted: encoding ran again.")).toBeInTheDocument();
+  expect(screen.getByText("Worker residency status unavailable for this job.")).toBeInTheDocument();
 });
 
 test("disables stop while cancellation is in flight", () => {

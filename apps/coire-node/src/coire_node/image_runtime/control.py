@@ -102,6 +102,7 @@ class _WorkerState:
                 output_index=index,
                 step=step,
                 total_steps=total,
+                cache_status=getattr(self.pipeline, "cache_status", None),
             )
 
         try:
@@ -145,7 +146,13 @@ class _WorkerState:
             else:
                 self.update(key, state="failed", stage="failed", safe_error="generation_failed")
         else:
-            self.update(key, state="generated", stage="generated", outputs=tuple(manifests))
+            self.update(
+                key,
+                state="generated",
+                stage="generated",
+                outputs=tuple(manifests),
+                cache_status=getattr(self.pipeline, "cache_status", None),
+            )
         finally:
             with self.lock:
                 self.active = None

@@ -443,6 +443,7 @@ class ImageNodeDispatcher:
                         "state": "running",
                         "progress_step": progress_step,
                         "progress_total": progress_total,
+                        "cache_status": observed.cache_status,
                         "updated_at": _later(current),
                     }
                 )
@@ -474,6 +475,7 @@ class ImageNodeDispatcher:
                     update={
                         "state": "transferring",
                         "outputs": observed.outputs,
+                        "cache_status": observed.cache_status,
                         "updated_at": _later(running),
                     }
                 )

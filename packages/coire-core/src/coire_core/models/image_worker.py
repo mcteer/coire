@@ -394,6 +394,7 @@ class NodeImageJob(ImageJobBinding):
     process_create_time: float | None = Field(default=None, gt=0)
     progress_step: int | None = Field(default=None, ge=0)
     progress_total: int | None = Field(default=None, ge=1)
+    cache_status: Literal["hit", "cold", "evicted"] | None = None
     outputs: tuple[ImageWorkerOutputManifest, ...] = Field(default_factory=tuple, max_length=4)
     receipts: tuple[ImageTransferReceipt, ...] = Field(default_factory=tuple, max_length=4)
     scratch_cleaned: bool = False
@@ -479,6 +480,7 @@ class ImageWorkerStatus(ImageJobBinding):
     output_index: int | None = Field(default=None, ge=0, le=3)
     step: int | None = Field(default=None, ge=0)
     total_steps: int | None = Field(default=None, ge=1)
+    cache_status: Literal["hit", "cold", "evicted"] | None = None
     safe_error: str | None = Field(default=None, max_length=200)
     outputs: tuple[ImageWorkerOutputManifest, ...] = Field(default_factory=tuple, max_length=4)
     updated_at: AwareDatetime

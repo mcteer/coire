@@ -31,7 +31,9 @@ def test_changed_prompt_or_adapter_misses_and_byte_limit_evicts() -> None:
     assert cache.get(changed) is None
     cache.put(changed, b"abcd")
     assert cache.get(first) is None
+    assert cache.last_outcome == "evicted"
     assert cache.get(changed) == b"abcd"
+    assert cache.last_outcome == "hit"
     with pytest.raises(ValueError):
         cache.put(changed, b"12345")
 

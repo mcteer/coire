@@ -4351,6 +4351,8 @@ export interface components {
              * Format: date-time
              */
             at: string;
+            /** Cache Status */
+            cache_status?: ("hit" | "cold" | "evicted") | null;
             /** Job Id */
             job_id: string;
             /** Output Index */
@@ -4376,6 +4378,8 @@ export interface components {
              * @enum {string}
              */
             type: "queued" | "started" | "progress" | "done" | "error" | "cancelled" | "reset";
+            /** Worker Residency */
+            worker_residency?: "resident" | null;
         };
         /** ImageJobPage */
         ImageJobPage: {

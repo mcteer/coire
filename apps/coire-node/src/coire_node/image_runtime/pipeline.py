@@ -367,6 +367,13 @@ class MfluxTxt2ImgPipeline:
     def adapter_id(self) -> str | None:
         return self._adapter_id
 
+    @property
+    def cache_status(self) -> str | None:
+        """Last observed prompt lookup for the active job; absent means unmeasured."""
+        if self._native_encoder_hook or self._fill:
+            return self.encoder_cache.last_outcome
+        return self.prompt_cache.last_outcome
+
     def _replace_lora_locked(self, resolved: ResolvedImageSpec) -> None:
         """Rebuild from the verified clean base whenever the ordered stack changes."""
         if self._broken:
@@ -571,6 +578,8 @@ class MfluxTxt2ImgPipeline:
             raise ImagePipelineUnavailable()
         images: list[Image.Image] = []
         try:
+            self.encoder_cache.last_outcome = None
+            self.prompt_cache.last_outcome = None
             self._replace_lora_locked(resolved)
             if control_path is None and self._native_encoder_hook:
                 self._active_prompt_identity = stage_identity(

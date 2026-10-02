@@ -180,9 +180,13 @@ def test_native_encoder_cache_is_byte_bound_and_evicts_lru_values() -> None:
     second = StageCacheKey(stage="prompt", identity="b" * 64)
     cache.put(first, object(), 6)
     assert cache.used_bytes == 6
+    assert cache.get(first) is not None
+    assert cache.last_outcome == "hit"
     cache.put(second, object(), 6)
     assert cache.get(first) is None
+    assert cache.last_outcome == "evicted"
     assert cache.get(second) is not None
+    assert cache.last_outcome == "hit"
     assert cache.used_bytes == 6
     with pytest.raises(ValueError):
         cache.put(first, object(), 11)

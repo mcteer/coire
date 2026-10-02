@@ -60,7 +60,9 @@ class Session:
         self.latest = event
 
 
-def status(session: Session, *, state: str = "running", step: int = 1) -> NodeImageJob:
+def status(
+    session: Session, *, state: str = "running", step: int = 1, cache_status: str | None = None
+) -> NodeImageJob:
     return NodeImageJob.model_validate(
         {
             "job_id": JOB,
@@ -71,6 +73,7 @@ def status(session: Session, *, state: str = "running", step: int = 1) -> NodeIm
             "state": state,
             "progress_step": step if state == "running" else None,
             "progress_total": 10 if state == "running" else None,
+            "cache_status": cache_status,
             "updated_at": datetime.now(UTC),
         }
     )
@@ -84,16 +87,19 @@ async def test_observation_starts_once_and_rate_limits_progress() -> None:
             cast(AsyncSession, session), JOB, session.node_id, observed, expected_node=NODE
         )
 
-    assert await reconcile(status(session))
+    assert await reconcile(status(session, cache_status="cold"))
     assert session.row.state == "running"
     assert session.row.progress == 0.1
     assert [item.event_type for item in session.added] == ["started"]
+    assert session.added[-1].payload["cache_status"] == "cold"
+    assert session.added[-1].payload["worker_residency"] == "resident"
     assert await reconcile(status(session, step=2))
     assert session.row.progress == 0.2
     assert len(session.added) == 1
     session.latest.created_at -= timedelta(seconds=1)
-    assert await reconcile(status(session, step=3))
+    assert await reconcile(status(session, step=3, cache_status="hit"))
     assert [item.event_type for item in session.added] == ["started", "progress"]
+    assert str(session.added[-1].payload["cache_status"]) == "hit"
     assert await reconcile(status(session, step=10))
     version_at_cap = session.row.version
     assert session.row.progress == 0.99

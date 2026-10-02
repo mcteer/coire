@@ -99,6 +99,8 @@ async def reconcile_image_observation(
             at=now,
             type="started",
             state=ImageJobState.RUNNING,
+            cache_status=observed.cache_status,
+            worker_residency="resident",
         )
     elif (
         progress is not None
@@ -116,6 +118,8 @@ async def reconcile_image_observation(
             stage="generation",
             step=step,
             total_steps=total,
+            cache_status=observed.cache_status,
+            worker_residency="resident",
         )
     else:
         return True

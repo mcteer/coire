@@ -717,6 +717,8 @@ class ImageJobEvent(BaseModel):
     output_index: int | None = Field(default=None, ge=0, le=3)
     step: int | None = Field(default=None, ge=0)
     total_steps: int | None = Field(default=None, ge=1)
+    cache_status: Literal["hit", "cold", "evicted"] | None = None
+    worker_residency: Literal["resident"] | None = None
     safe_code: str | None = Field(default=None, max_length=100)
     outputs: list[ImageOutput] | None = Field(default=None, max_length=4)
     snapshot: ImageJob | None = None

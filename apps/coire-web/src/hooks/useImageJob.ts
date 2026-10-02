@@ -21,6 +21,8 @@ export function useImageJob(jobId: string | null) {
     state,
     step,
     total,
+    cacheStatus: event?.cache_status ?? null,
+    workerResidency: event?.worker_residency ?? null,
     terminal: isTerminalImageState(state),
     error: stream.error ?? failureCode,
   };
