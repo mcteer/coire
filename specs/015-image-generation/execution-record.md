@@ -1,5 +1,20 @@
 # Feature 015 execution record
 
+## Native scheduler-to-node cancellation timing — 2026-10-02
+
+The local tiny mflux test now starts a 100-step, 256-pixel real MLX generation,
+waits for observed progress, commits a cancelling core intent, and calls the
+production `drive_image_cancel` scheduler path. Its node client adapter invokes
+the real `ImageNodeDispatcher` and process-group TERM/KILL supervisor; the core
+session and terminal DB write are deterministic in-memory fixtures. It requires
+the node journal to be cancelled and scratch-cleaned, the core state to be
+terminal, and elapsed time from the intent to be under five seconds. Both
+native cancellation variants passed (**2 tests**, 7.20 seconds combined).
+The 250 ms core cancellation discovery poll, PostgreSQL cancel/publication
+arbitration, and partition-held-reservation tests passed separately. This closes
+T041's healthy local timing/implementation proof; full production-model
+Studio cancellation remains in T083.
+
 ## Agent-run Studio and PostgreSQL continuation — 2026-10-02
 
 `AGENTS.md` and this feature's quickstart now explicitly permit coding agents to

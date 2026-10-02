@@ -15,11 +15,13 @@ import socket
 import sys
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import cast
+from types import SimpleNamespace
+from typing import Any, cast
 
 import httpx
 import psutil
@@ -27,6 +29,7 @@ import pytest
 from PIL import Image
 from pydantic import SecretStr
 
+from coire_api.db import ImageJobRow, NodeRow
 from coire_core.image_png import parse_recipe_png
 from coire_core.models.image_worker import (
     ImageAssetValidateRequest,
@@ -40,6 +43,7 @@ from coire_core.models.image_worker import (
     NodeImageCancelRequest,
     NodeImageCleanupRequest,
     NodeImageInputManifest,
+    NodeImageJob,
     NodeImageStartRequest,
     NodeImageTransferRequest,
 )
@@ -66,6 +70,7 @@ from coire_node.image_transfer import push_image_outputs
 from coire_node.image_validation import validate_image_asset
 from coire_node.image_worker import ImageJobCancelled, ImageJobExecutionError, run_image_job
 from coire_node.store import Store
+from coire_scheduler import images as scheduler_images
 
 pytestmark = [
     pytest.mark.engine,
@@ -668,19 +673,71 @@ async def test_real_child_survives_supervisor_restart_and_serves_same_pid(
                     )
                 )
                 dispatcher = ImageNodeDispatcher(journal, restarted)
-                began = time.monotonic()
-                cancelled_job = await dispatcher.cancel(
-                    NodeImageCancelRequest(
-                        job_id=JOB,
-                        attempt=1,
-                        fence=3,
-                        reason="user",
-                        requested_at=datetime.now(UTC),
-                    )
+                node_id = uuid.uuid4()
+                requested_at = datetime.now(UTC)
+                core_row = SimpleNamespace(
+                    id=JOB,
+                    state="cancelling",
+                    selected_node_id=node_id,
+                    instance_id=load.instance_id,
+                    attempt=1,
+                    fence=3,
+                    cancel_requested_at=requested_at,
                 )
+
+                class CoreSession:
+                    async def get(self, model: type[object], identity: object) -> Any:
+                        if model is ImageJobRow:
+                            assert identity == JOB
+                            return core_row
+                        assert model is NodeRow and identity == node_id
+                        return SimpleNamespace(name="coire-edge-b")
+
+                @asynccontextmanager
+                async def core_scope() -> AsyncIterator[CoreSession]:
+                    yield CoreSession()
+
+                class LocalNodeClient:
+                    def __init__(self, settings: Settings) -> None:
+                        pass
+
+                    async def __aenter__(self) -> LocalNodeClient:
+                        return self
+
+                    async def __aexit__(self, *args: object) -> None:
+                        pass
+
+                    async def cancel_image_job(
+                        self, node: str, request: NodeImageCancelRequest
+                    ) -> NodeImageJob:
+                        assert node == "coire-edge-b"
+                        result = await dispatcher.cancel(request)
+                        assert result is not None
+                        return result
+
+                async def finalize(
+                    session: object,
+                    status: NodeImageJob,
+                    selected_node_id: uuid.UUID,
+                    settings: Settings,
+                ) -> bool:
+                    assert selected_node_id == node_id
+                    assert status.state == "cancelled" and status.scratch_cleaned
+                    core_row.state = "cancelled"
+                    return True
+
+                monkeypatch.setattr(scheduler_images, "session_scope", core_scope)
+                monkeypatch.setattr(scheduler_images, "NodeClient", LocalNodeClient)
+                monkeypatch.setattr(scheduler_images, "finalize_cancelled_image_job", finalize)
+                monkeypatch.setattr(scheduler_images, "get_settings", lambda: settings)
+                began = time.monotonic()
+                await scheduler_images.drive_image_cancel(JOB)
                 assert time.monotonic() - began < 5
+                assert (datetime.now(UTC) - requested_at).total_seconds() < 5
+                cancelled_job = journal.get(JOB)
                 assert cancelled_job is not None
                 assert cancelled_job.state == "cancelled" and cancelled_job.scratch_cleaned
+                assert core_row.state == "cancelled"
     finally:
         began = time.monotonic()
         stopped = active_manager.stop(
