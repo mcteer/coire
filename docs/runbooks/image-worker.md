@@ -180,7 +180,8 @@ node supervisor sends TERM and then KILL only to the verified PID/create-time
 process group. It marks `cancelled` after a matching worker response or
 confirmed process death and safe removal of the exact attempt's private PNG
 scratch. A cancelled journal from an earlier worker revision is repaired on
-retry only after that cleanup. An uncertain process or failed cleanup leaves the
+the next exact status or cancel retry only after that cleanup. An uncertain
+process or failed cleanup leaves the
 journal in `cancelling` and keeps its memory reservation. Inspect the
 `coire.node.image.cancel` span and fixed `stage="cancel"` metric; do not
 delete the private record or publish scratch outputs while cancellation is

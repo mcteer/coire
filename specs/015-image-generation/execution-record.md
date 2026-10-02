@@ -1,5 +1,13 @@
 # Feature 015 execution record
 
+## Cancelled scratch status recovery — 2026-10-02
+
+An exact node status retry now repairs a terminal cancelled journal with
+unacknowledged scratch cleanup, using the same fenced deletion as the cancel
+retry. It records `scratch_cleaned` only after both output and input scratch
+are gone. The node image-job contract passed **21 tests**. T039 remains open
+for the wider periodic orphan and quota sweeps.
+
 ## Node health image memory accounting — 2026-10-02
 
 Node health now adds disjoint language engine, resident image worker and

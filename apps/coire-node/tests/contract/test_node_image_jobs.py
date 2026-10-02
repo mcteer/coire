@@ -248,6 +248,32 @@ async def test_failed_journal_repairs_cleanup_on_status_retry(
     assert not scratch.exists()
 
 
+async def test_cancelled_journal_repairs_cleanup_on_status_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, dispatcher = _setup(
+        tmp_path, monkeypatch, httpx.MockTransport(lambda _: httpx.Response(503))
+    )
+    queued = dispatcher.journal.begin(_request())
+    cancelled = dispatcher.journal.advance(
+        queued.model_copy(
+            update={
+                "state": "cancelled",
+                "updated_at": queued.updated_at + timedelta(microseconds=1),
+            }
+        )
+    )
+    scratch = tmp_path / "image-scratch" / f"{JOB}-1-4"
+    scratch.mkdir(parents=True, mode=0o700)
+    scratch.parent.chmod(0o700)
+    (scratch / "0.png").write_bytes(b"partial")
+    (scratch / "0.png").chmod(0o600)
+    repaired = await dispatcher.status(ImageJobBinding(job_id=JOB, attempt=1, fence=4))
+    assert repaired is not None and repaired.state == "cancelled" and repaired.scratch_cleaned
+    assert repaired.updated_at > cancelled.updated_at
+    assert not scratch.exists()
+
+
 async def test_dispatch_auth_replay_and_exact_fence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
