@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import cast
 
 import httpx
+import psutil
 import pytest
 from PIL import Image
 from pydantic import SecretStr
@@ -278,9 +279,9 @@ def test_real_acquisition_smoke_proves_txt2img_and_img2img(
     manifest = store.read_manifest(load.slug)
     assert manifest is not None
     monkeypatch.setattr(MfluxTxt2ImgPipeline, "load", lambda *_: pipeline)
-    # The local Metal footprint for two smoke modes reached 13.6 GB despite the
-    # sub-1 GB fixture. Validation must use a measured Studio-scale hold.
-    validation_hold_bytes = 16 * 1024**3
+    # This smoke exercises native execution and footprint reporting on hosts
+    # with different RAM sizes. Production admission supplies the actual hold.
+    validation_hold_bytes = psutil.virtual_memory().total
     result = validate_image_asset(
         store,
         ImageAssetValidateRequest(
