@@ -2099,14 +2099,14 @@ unit tests. Revoked owner/key/explicit access, parser connection loss,
 classifier failure, disk exhaustion, receipt and cleanup acknowledgment
 loss, cancelled partial batches and reboot journal replay each have explicit
 assertions. The combined focused boundary suite passed **99 tests** with no
-skips. The proposed new `tests/integration/test_image_isolation.py` filename
-was not needed because the API isolation contract lives at
+skips. The proposed `tests/integration/test_image_isolation.py` filename
+collides with the existing contract module; the API isolation contract lives at
 `apps/coire-api/tests/contract/test_image_isolation.py` and local recovery
 scenarios live at `tests/integration/test_image_recovery.py`. Full-model
 Studio fault/timing acceptance remains T041/T083; T075's local fault matrix
 is complete.
 
-T072's local simulated contention scenario now combines the production
+T072's `test_image_contention.py` local simulated scenario combines the production
 profile/placement/capacity decisions under a controlled chat-before-image
 arrival. A measured resident pair admits the image; an additional unmeasured
 chat variant makes the pinned image wait while the chat set remains intact.
@@ -2115,3 +2115,10 @@ image admission. A held image reservation survives lost worker inventory and
 leaves zero eligible capacity until stop proof. Both integration scenarios
 passed locally. T065 still requires actual cross-process PostgreSQL execution,
 and T084 requires the measured 15-minute real-cluster workload.
+
+The first combined collection found a pytest module-name collision with the
+existing API `test_image_isolation.py` contract. The new contention test was
+renamed to `test_image_contention.py`, and the quickstart command was updated.
+After that correction the complete Python suite passed **1,877 tests, 160
+skipped**; the selected nine simulated image integration tests passed; Ruff
+format/check, strict mypy, OpenAPI freshness and diff whitespace checks passed.

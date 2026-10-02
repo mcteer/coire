@@ -48,11 +48,10 @@ text/VLM rows, with one reversible migration per child PR.
 
 ## Local simulated-node integration
 
-The following proposed tests are created by tasks.md; these commands are not claims that the
-files or results already exist:
+The local simulated image tests can be run without model weights:
 
 ```sh
-COIRE_INTEGRATION=1 uv run pytest -q -m integration tests/integration/test_015_image_jobs.py tests/integration/test_image_recovery.py tests/integration/test_image_isolation.py
+COIRE_INTEGRATION=1 uv run pytest -q -m integration tests/integration/test_015_image_jobs.py tests/integration/test_image_recovery.py tests/integration/test_image_contention.py
 ```
 
 Prove receipt latency; ordered queued/started/progress/done events; same-key deduplication; key
