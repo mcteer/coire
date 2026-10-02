@@ -43,6 +43,7 @@ def test_image_dashboard_and_alerts_have_actionable_content_free_queries() -> No
         "CoireImageQueueReconciliationFailures",
         "CoireImageDispatchUncertain",
         "CoireImageWorkerStopFailures",
+        "CoireImageResidencyMeasurementUnavailable",
         "CoireImageStorageFailures",
         "CoireImageChatRegression",
     } <= names
@@ -53,6 +54,7 @@ def test_image_dashboard_and_alerts_have_actionable_content_free_queries() -> No
         "Image cancellation and worker stops",
         "Image storage refusals",
         "Studio image cache occupancy",
+        "Image worker physical footprint unavailable",
         "Studio image classification",
         "Gateway chat first-token p95 during image activity",
     } <= titles

@@ -133,7 +133,8 @@ the worker's exact process identity before clearing any apparent drift. The
 physical footprint, including Metal memory on macOS. If an image reservation
 exists but the footprint is unavailable, core leaves measured residency
 unknown; inspect the worker journal and the `coire_placement_ledger_drift_ratio`
-alert before reconciling a reservation.
+panel plus `CoireImageResidencyMeasurementUnavailable` alert before reconciling
+a reservation.
 On agent restart, image re-adoption runs before listeners bind. An uncertain
 record holds the full image budget; inspect the process and private record
 before reconciliation. Roll back the node wheel after an exact-instance

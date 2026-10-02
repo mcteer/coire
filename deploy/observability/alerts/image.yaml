@@ -151,6 +151,12 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: An idle Studio image worker could not prove its stop; memory remains held
+      - alert: CoireImageResidencyMeasurementUnavailable
+        expr: max(coire_image_residency_measurement_unavailable) > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: An image memory reservation exists without a measurable live worker footprint
       - alert: CoireImageStorageFailures
         expr: sum(increase(coire_image_requests_total{reason="storage",outcome=~"failed|refused"}[5m])) > 0
         for: 0m

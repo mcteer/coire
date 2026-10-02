@@ -16,7 +16,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from coire_api.db import MemoryReservationRow, NodeMemoryLedgerRow, NodeRow, create_engine
-from coire_api.placement.service import drift_ratio, ledger_drift
+from coire_api.placement.service import (
+    drift_ratio,
+    image_residency_unavailable,
+    ledger_drift,
+)
 from coire_core.models.node import NodeStatus, NodeStatusV2, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.net import ControlClient
@@ -137,6 +141,13 @@ class NodeProber:
                             )
                             ledger.measured_resident_bytes = measured_node_residency(
                                 status, image_reserved_bytes=int(image_reserved or 0)
+                            )
+                            image_residency_unavailable.set(
+                                int(
+                                    int(image_reserved or 0) > 0
+                                    and status.image_worker_resident_bytes is None
+                                ),
+                                {"node": row.name},
                             )
                             drift = drift_ratio(
                                 reserved_bytes=int(resident_reserved or 0),

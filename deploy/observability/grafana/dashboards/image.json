@@ -843,6 +843,22 @@
       ],
       "title": "Image retained output integrity",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 208},
+      "id": 27,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "max by (node) (coire_image_residency_measurement_unavailable)",
+          "legendFormat": "{{node}} unmeasurable (1=yes)",
+          "refId": "A"
+        }
+      ],
+      "title": "Image worker physical footprint unavailable",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

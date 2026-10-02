@@ -40,6 +40,10 @@ ledger_drift = meter.create_gauge(
     "coire_placement_ledger_drift_ratio",
     description="Measured model and image residency minus their reservations, divided by those reservations.",
 )
+image_residency_unavailable = meter.create_gauge(
+    "coire_image_residency_measurement_unavailable",
+    description="One means an image reservation exists but the exact worker footprint cannot be measured.",
+)
 
 
 def drift_ratio(*, reserved_bytes: int, measured_bytes: int | None) -> float | None:

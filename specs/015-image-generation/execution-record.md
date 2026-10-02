@@ -1,5 +1,15 @@
 # Feature 015 execution record
 
+## Unmeasurable image residency alert — 2026-10-02
+
+The prober now emits `coire_image_residency_measurement_unavailable` when an
+image hold has no exact live-worker footprint. A provisioned warning fires
+after two minutes, so an unknown drift sample is visible instead of appearing
+healthy. Alert provisioning and placement tests passed **7 tests**; Ruff and
+strict mypy across 646 source files passed. The full Python suite on the
+preceding recovery commit passed **1,821 tests** with 159 platform/external
+skips. The real-cluster footprint matrix remains in T070.
+
 ## Cancelled scratch status recovery — 2026-10-02
 
 An exact node status retry now repairs a terminal cancelled journal with
