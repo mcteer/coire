@@ -82,6 +82,42 @@ def test_deleted_input_purge_rejects_symlink_and_references(tmp_path: Path) -> N
     assert row.purged_at is None and owner.held_bytes == 7
 
 
+def test_deleted_input_purge_retains_quota_for_hardlinked_original(tmp_path: Path) -> None:
+    row = _row()
+    row.state = "deleting"
+    row.deleted_at = datetime.now(UTC)
+    original = tmp_path / str(row.id)
+    original.write_bytes(b"pngdata")
+    alias = tmp_path / "retained-alias"
+    os.link(original, alias)
+    owner, global_row = _quotas()
+    with pytest.raises(ImageStorageUnavailable):
+        input_cleanup.purge_deleted_input_bytes(tmp_path, row, owner, global_row)
+    assert original.exists() and alias.exists()
+    assert row.purged_at is None and owner.held_bytes == global_row.held_bytes == 7
+
+
+def test_failed_normalized_input_retains_hold_for_hardlinked_derived(tmp_path: Path) -> None:
+    original = tmp_path / "original"
+    derived = tmp_path / "derived"
+    original.mkdir()
+    derived.mkdir()
+    row = _row()
+    row.purpose = "init"
+    row.held_bytes = 7 + 10 * 1024 * 1024
+    (original / str(row.id)).write_bytes(b"pngdata")
+    normalized = derived / str(row.id)
+    normalized.write_bytes(b"normalized")
+    alias = tmp_path / "retained-alias"
+    os.link(normalized, alias)
+    owner, global_row = _quotas()
+    owner.held_bytes = global_row.held_bytes = row.held_bytes
+    with pytest.raises(ImageStorageUnavailable):
+        input_cleanup.purge_failed_input_bytes(original, row, owner, global_row, derived)
+    assert normalized.exists() and alias.exists()
+    assert row.purged_at is None and owner.held_bytes == global_row.held_bytes == row.held_bytes
+
+
 def test_deleted_input_missing_file_is_retry_safe(tmp_path: Path) -> None:
     row = _row()
     row.state = "deleting"

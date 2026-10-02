@@ -98,6 +98,7 @@ class _WorkerState:
                 request,
                 self.scratch_root,
                 progress,
+                is_cancelled=cancelled.is_set,
             )
             manifests = tuple(_manifest(output) for output in outputs)
         except Exception:

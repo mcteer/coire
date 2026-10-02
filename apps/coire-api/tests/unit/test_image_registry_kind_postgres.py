@@ -111,7 +111,7 @@ def test_registry_kind_upgrade_and_guarded_downgrade(monkeypatch: pytest.MonkeyP
         connection = await asyncpg.connect(test_dsn)
         try:
             assert await connection.fetchval("SELECT version_num FROM alembic_version") == (
-                "0029_image_acquisition_source"
+                "0030_image_output_retention"
             )
             await connection.execute(
                 "UPDATE models SET state = 'downloading', "

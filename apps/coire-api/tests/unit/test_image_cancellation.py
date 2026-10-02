@@ -181,6 +181,49 @@ async def test_wrong_owner_or_revocation_never_mutates_job(monkeypatch: pytest.M
     assert denied.row.state == "queued" and denied.added == []
 
 
+async def test_input_deletion_can_cancel_owned_job_after_dependency_revocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row = _job(state="running", fence=3)
+    row.authorization_snapshot = {
+        "required_entitlements": ["explicit"],
+        "explicit": True,
+        "output_hold_bytes": 64,
+    }
+    session = Session(row)
+    checked: list[dict[str, object]] = []
+    audits: list[dict[str, object]] = []
+
+    async def authorize(db: object, principal: Principal, **kwargs: object) -> uuid.UUID:
+        assert db is session and principal is PRINCIPAL
+        checked.append(kwargs)
+        if kwargs.get("explicit") or kwargs.get("required_entitlements"):
+            raise ImageForbidden()
+        return OWNER
+
+    async def audit(db: object, **kwargs: object) -> None:
+        assert db is session
+        audits.append(kwargs)
+
+    monkeypatch.setattr(cancellation, "authorize_live_image_action", authorize)
+    monkeypatch.setattr(cancellation, "write_audit", audit)
+    result, terminal = await cancellation.request_image_job_cancel_for_input_deletion(
+        cast(AsyncSession, session), PRINCIPAL, JOB
+    )
+    assert result.state is ImageJobState.CANCELLING and not terminal
+    assert checked == [{}]
+    context = audits[0]["context"]
+    assert isinstance(context, dict)
+    assert context["reason"] == "input_deleted"
+    assert row.cancel_requested_at is not None
+
+    repeated, terminal = await cancellation.request_image_job_cancel_for_input_deletion(
+        cast(AsyncSession, session), PRINCIPAL, JOB
+    )
+    assert repeated.state is ImageJobState.CANCELLING and not terminal
+    assert checked == [{}, {}]
+
+
 @pytest.mark.parametrize("state, terminal", [("cancelling", False), ("cancelled", True)])
 async def test_repeated_cancel_does_not_charge_or_append_events(
     monkeypatch: pytest.MonkeyPatch, state: str, terminal: bool

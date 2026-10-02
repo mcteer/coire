@@ -265,7 +265,7 @@ jobs:
         env:
           COIRE_ENGINE: "1"
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: uv run pytest -m engine apps/coire-node/tests/engine -q
+        run: uv run pytest -m engine apps/coire-node/tests/engine --ignore=apps/coire-node/tests/engine/test_real_image_worker.py -q
       - name: record the measurements
         if: always()
         run: |
@@ -273,10 +273,30 @@ jobs:
             cat engine-measurements.md >> "$GITHUB_STEP_SUMMARY"
           fi
 
+  image-engine:
+    needs: lint
+    runs-on: macos-15
+    env:
+      COIRE_TEST_MODEL: ${{ github.workspace }}/models/test--image-tiny
+      COIRE_ENGINE: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --package coire-node --frozen
+      - name: build ignored tiny image fixture
+        run: uv run python apps/coire-node/tests/engine/build_tiny_image_fixture.py
+      - name: real offline image worker and lifecycle gate
+        run: uv run pytest -q -rs apps/coire-node/tests/engine/test_real_image_worker.py
+
   publish:
     # Only tagged releases publish. Pull requests never push an image.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [lint, test, build, integration, pin-check]
+    needs: [lint, test, build, integration, pin-check, image-engine]
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read

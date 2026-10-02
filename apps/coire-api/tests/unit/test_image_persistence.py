@@ -25,6 +25,7 @@ from coire_api.auth import Principal, PrincipalKind
 from coire_api.db import (
     AuditRow,
     Base,
+    ImageInputRow,
     ImageJobEventRow,
     ImageJobRow,
     ImageOutputRow,
@@ -373,6 +374,44 @@ def test_postgres_image_quota_serializes_independent_admissions(
             assert len(retained_quota) == 2 and all(
                 quota.stored_bytes == 90 for quota in retained_quota
             )
+            async with sessions() as session:
+                drift = await maintenance.reconcile_stored_image_quota(session)
+            assert drift.mismatched_rows == 2 and drift.max_abs_drift_bytes == 30
+            async with sessions() as session, session.begin():
+                for quota in (await session.scalars(select(ImageQuotaRow))).all():
+                    quota.stored_bytes = 60
+            async with sessions() as session:
+                reconciled = await maintenance.reconcile_stored_image_quota(session)
+            assert reconciled.mismatched_rows == 0 and reconciled.max_abs_drift_bytes == 0
+            input_id = uuid.uuid4()
+            async with sessions() as session, session.begin():
+                session.add(
+                    ImageInputRow(
+                        id=input_id,
+                        owner_user_id=owner_id,
+                        purpose="recipe",
+                        original_key=str(input_id),
+                        original_bytes=10,
+                        original_sha256="e" * 64,
+                        state="ready",
+                        recipe={},
+                        held_bytes=0,
+                        active_references=0,
+                    )
+                )
+                for quota in (await session.scalars(select(ImageQuotaRow))).all():
+                    quota.stored_bytes = 70
+            async with sessions() as session:
+                with_input = await maintenance.reconcile_stored_image_quota(session)
+            assert with_input.mismatched_rows == 0 and with_input.max_abs_drift_bytes == 0
+            async with sessions() as session, session.begin():
+                image_input = await session.get(ImageInputRow, input_id)
+                assert image_input is not None
+                image_input.state = "deleting"
+                image_input.deleted_at = now
+            async with sessions() as session:
+                tombstoned = await maintenance.reconcile_stored_image_quota(session)
+            assert tombstoned.mismatched_rows == 0 and tombstoned.max_abs_drift_bytes == 0
             assert all(output is not None and output.purged_at is None for output in outputs)
             assert outputs[0] is not None and outputs[0].deleted_at is not None
             assert all(output is not None and output.deleted_at is None for output in outputs[1:])

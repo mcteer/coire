@@ -29,6 +29,21 @@ async def request_image_job_cancel(
     return await _request_cancel(session, principal, job_id, admin=False, commit=commit)
 
 
+async def request_image_job_cancel_for_input_deletion(
+    session: AsyncSession, principal: Principal, job_id: str, *, commit: bool = False
+) -> tuple[ImageJob, bool]:
+    """Let a live owner delete their own input even after a job dependency was revoked."""
+    return await _request_cancel(
+        session,
+        principal,
+        job_id,
+        admin=False,
+        commit=commit,
+        enforce_dependencies=False,
+        reason="input_deleted",
+    )
+
+
 async def request_admin_image_job_cancel(
     session: AsyncSession, principal: Principal, job_id: str
 ) -> tuple[ImageJob, bool]:
@@ -43,7 +58,14 @@ async def request_admin_image_job_cancel(
 
 
 async def _request_cancel(
-    session: AsyncSession, principal: Principal, job_id: str, *, admin: bool, commit: bool = True
+    session: AsyncSession,
+    principal: Principal,
+    job_id: str,
+    *,
+    admin: bool,
+    commit: bool = True,
+    enforce_dependencies: bool = True,
+    reason: str | None = None,
 ) -> tuple[ImageJob, bool]:
     # Admission takes this advisory lock before a job lock. Keep the same order.
     await session.execute(_QUOTA_LOCK)
@@ -52,15 +74,18 @@ async def _request_cancel(
         raise ImageNotFound()
     snapshot, required, explicit = _policy(row)
     if not admin:
-        await authorize_live_image_action(
-            session, principal, explicit=explicit, required_entitlements=required
-        )
+        if enforce_dependencies:
+            await authorize_live_image_action(
+                session, principal, explicit=explicit, required_entitlements=required
+            )
+        else:
+            await authorize_live_image_action(session, principal)
     try:
         state = ImageJobState(row.state)
     except ValueError as exc:
         raise ImageConflict("image job state unavailable") from exc
     if state in _TERMINAL or state is ImageJobState.CANCELLING:
-        if not admin:
+        if not admin and enforce_dependencies:
             return await get_owned_image_job(session, principal, job_id), state in _TERMINAL
         latest = await session.scalar(
             select(func.max(ImageJobEventRow.sequence)).where(ImageJobEventRow.job_id == job_id)
@@ -136,6 +161,7 @@ async def _request_cancel(
         context={
             "previous_state": state.value,
             "terminal": queued_without_node,
+            **({"reason": reason} if reason is not None else {}),
             **({"owner_id": str(row.owner_user_id)} if admin else {}),
         },
     )

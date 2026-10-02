@@ -811,6 +811,38 @@
       ],
       "title": "Image worker idle unloads",
       "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 192},
+      "id": 25,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "max(coire_image_quota_drift_bytes)",
+          "legendFormat": "largest stored-byte counter drift",
+          "refId": "A"
+        }
+      ],
+      "title": "Image stored quota reconciliation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 200},
+      "id": 26,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum(increase(coire_image_output_integrity_failures_total[15m]))",
+          "legendFormat": "retained blob receipt failures",
+          "refId": "A"
+        }
+      ],
+      "title": "Image retained output integrity",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

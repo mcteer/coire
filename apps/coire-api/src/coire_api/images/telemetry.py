@@ -29,6 +29,16 @@ purge_oldest_seconds = meter.create_gauge(
     unit="s",
     description="Age of oldest image blob awaiting verified physical purge",
 )
+quota_drift_bytes = meter.create_gauge(
+    "coire_image_quota_drift_bytes",
+    unit="By",
+    description="Maximum absolute difference between stored image quota and durable rows",
+)
+output_integrity_failures_total = meter.create_counter(
+    "coire_image_output_integrity_failures_total",
+    unit="1",
+    description="Published private image blobs missing or differing from durable receipts",
+)
 purges_total = meter.create_counter(
     "coire_image_purge_total", unit="1", description="Private image blob purge outcomes"
 )

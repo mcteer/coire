@@ -1,5 +1,164 @@
 # Feature 015 execution record
 
+## Retained output receipt audit — 2026-10-02
+
+API maintenance now reads a bounded page of retained published blobs every five
+minutes and checks size, SHA-256, private mode, owner UID and single-link status
+against the durable output row. Missing or altered bytes increment a content-free
+counter and alert without deleting rows or releasing quota. Tests cover a valid
+blob, changed content, a hard link, a missing blob and maintenance-loop wiring.
+The focused maintenance/telemetry/observability suite passed **21 tests**; the
+Prometheus rule test passed in an isolated local container. Ruff and strict mypy
+passed. T039 remains open for complete inventory of core and Studio bytes and
+operator retention evidence.
+After the migration and integrity changes, the full non-integration/non-engine
+Python gate passed **1,789 tests**, with 2 existing skips and 165 deselections;
+OpenAPI freshness, 137 web tests, ESLint, TypeScript/Vite build, Ruff format/check
+and strict mypy also passed.
+
+## Required tiny image CI gate — 2026-10-02
+
+CI now builds the ignored <=1 GB image fixture on its Apple Silicon `macos-15`
+runner and runs the offline native image worker suite as a required job. Release
+publication depends on that job; the preexisting informational text/VLM engine
+job excludes the image test so it cannot accidentally fail from a missing fixture.
+The equivalent local offline suite passed **9 tests**, and the workflow YAML parsed
+successfully. Remote CI execution remains unverified until this branch runs in CI.
+
+## PostgreSQL migration and admission gate — 2026-10-02
+
+The image migration, registry-kind rollback, quota contention and accelerator
+admission tests ran against a disposable local PostgreSQL 17 container: **14 passed**.
+Two downgrade assertions had expected revision 0029 after a guarded failure;
+Alembic correctly rolls the entire failed downgrade back to current revision
+0030. The assertions now verify the actual transactional outcome. The test
+database and container were removed. This covers the local migration portion
+of T081; immutable node install, affected-image scans and real Studio smoke remain.
+
+## Local affected-image policy and scan gate — 2026-10-02
+
+Native arm64 builds passed for `coire-api`, `coire-scheduler`, `coire-file-worker`,
+`coire-migrate`, `coire-prometheus`, `coire-grafana` and `coire-web`. Each local image
+passed `scripts/image-policy.sh` (including no-shell, non-root, architecture and
+digest-pinned base rules), a Trivy CRITICAL scan with exit code 0 and a generated,
+valid SPDX JSON SBOM. These are disposable local `:015-local` images; remote CI
+and the immutable native node-install/text/VLM smoke portions of T081 remain open.
+
+## Cancellation during output encoding — 2026-10-02
+
+The loopback worker now passes its cancellation event into the fenced image job
+executor. The executor checks it immediately after generation, before each PNG
+write and after the last write, removing the attempt directory on cancellation.
+Tests inject cancellation after the first and last writes of a two-output batch;
+neither leaves scratch output or a generated result. The focused worker/control
+and simulated job suite passed **11 tests**; Ruff and strict mypy passed. T041
+remains open for cross-process cancellation/publication and healthy-stop timing.
+The full post-change local Python gate passed **1,786 tests**, with 2 existing
+skips and 165 deselections; the offline tiny native worker passed **9 tests**.
+Ruff format/check and strict mypy across 644 source files passed.
+
+Local `docker compose -f deploy/compose/compose.yaml config --quiet` and the web
+TypeScript/Vite production build passed. These checks do not substitute for the
+affected-image build, scan, SBOM and immutable node install gates in T081.
+
+## Input hard-link quota guard — 2026-10-02
+
+Physical input cleanup now refuses to release held or stored quota while an original
+or normalized private input has another hard link. The generated-path unlink helper
+checks link count before unlinking. Regression tests cover deletion of a linked
+original and failed normalization with a linked derived file; both retain the bytes,
+row state and quota for investigation. The focused input-cleanup suite passed
+**13 tests**; Ruff and strict mypy across 644 source files passed. T039 remains open
+for complete physical inventory and operator retention verification.
+
+## Bounded Studio attempt cleanup — 2026-10-02
+
+Studio cancellation now inventories private output and input attempt directories with
+bounded scans based on the request's output and input counts. Extra entries cause a
+fail-closed retry before any file is unlinked. A regression test verifies that an
+unexpected extra PNG leaves both files intact. The focused node suites passed
+**10 tests**; the four local image-job recovery integration tests passed. The
+post-change non-integration/non-engine suite passed **1,782 tests**, with 2 existing
+skips and 165 deselections. Ruff, strict mypy across 644 source files, OpenAPI
+freshness, web ESLint and **137 web tests** passed. The offline local tiny native
+worker suite passed **9 tests**. T039 remains open for the full
+scratch/orphan/quota recovery matrix and operator retention evidence.
+
+## Referenced-input deletion after entitlement revocation — 2026-10-02
+
+Deleting an owned image input with active jobs now uses a dedicated owner-cancellation
+path. It rechecks the live user/personal key and job ownership, but does not require
+the job's already-revoked model or explicit entitlement to request cleanup. The
+normal owner cancellation route still enforces its existing dependency check. A
+failing-case test covers a running explicit job after entitlement revocation and
+idempotent repeated cancellation; **16 focused cancellation/input tests** pass,
+with Ruff and mypy for the changed modules green. The post-change
+non-integration/non-engine gate passed **1,781 tests**, with 2 existing skips and
+165 deselections. The offline local tiny native image gate passed **9 tests** with
+`COIRE_ENGINE=1`; no production Studio was contacted. T054 remains open for its full
+processing/transfer/retention acceptance matrix.
+
+## Terminal-node cancellation race — 2026-10-02
+
+Core cancellation now accepts an exact terminal Studio journal in `cancelled`,
+`failed` or `succeeded` state when scratch cleanup is proved and the locked core
+job has not published an output. This closes the case where Studio transfer
+finished before a committed core cancel intent, leaving the core job permanently
+`cancelling`. Core still purges all transfer attempts before releasing its hold;
+release evidence records the node's actual terminal state. Parameterized tests
+cover all three node outcomes and two-attempt scratch, with **16 focused
+cancel/workflow/publication tests** passing. A separate scheduler partition unit
+test proves an unreachable node leaves the committed `cancelling` intent for retry;
+all **3 workflow tests** pass. The cross-process partition and
+publication-race acceptance under T041 remains open.
+
+## Read-only stored quota reconciliation — 2026-10-02
+
+API maintenance now checks owner and global stored-byte counters against unpurged
+published outputs and ready/deleting inputs every five minutes under the shared quota
+advisory lock. It reports only bounded drift and row-count facts in a metric/log/span;
+it never edits a counter or removes uncertain bytes. A disposable local PostgreSQL
+test detected a 30-byte mismatch from an unaccounted staged row, returned to zero
+after counter correction, and continued to count a ready/tombstoned input. The
+container and test database were removed. The new alert passed `promtool test rules`
+in an isolated local image; 29 focused unit tests, Ruff, strict mypy and OpenAPI
+freshness passed. T039 remains open for physical-byte/orphan and operator retention
+reconciliation, including Studio inspection.
+
+## All-attempt terminal cleanup — 2026-10-02
+
+Terminal cancellation, worker failure and revoked-publication cleanup now inventory and
+remove every known core transfer attempt before releasing the job's storage hold. The
+inventory rejects an unexpected future attempt before deleting any known bytes. The
+periodic terminal sweep reuses this path. Tests prove a two-attempt cancellation and
+failure remove both directories before release, plus refusal of a future attempt.
+The focused maintenance/recovery/publication/integration selection passed **28 tests**;
+Ruff and mypy for the changed modules passed. The full non-integration/non-engine Python
+gate after this change passed **1,777 tests**, with 2 existing skips and 165 deselections;
+the web suite passed **137 tests** with ESLint, and full Ruff, strict mypy across 644
+source files, and OpenAPI freshness passed. T039 remains open for complete quota
+reconciliation and operator retention evidence.
+
+## Bounded staging maintenance — 2026-10-02
+
+The temporary-upload sweep now refuses more than 4,096 staging directory entries before
+sorting or walking them, matching the orphan sweep's bound. A regression test creates
+4,097 entries and proves the fail-closed behavior. The maintenance suite passed
+**12 tests**; Ruff and mypy for the changed module passed. T039 remains open for
+quota reconciliation and operator retention evidence.
+
+## Scratch cleanup hard-link guard — 2026-10-01
+
+Receipt-aware Studio cleanup now refuses a generated PNG with multiple hard links before
+it records terminal success. Core output purge likewise retains quota until a linked blob
+can be removed without retained bytes. A retained hard link could otherwise leave bytes
+after the expected path was removed. The contract tests prove linked outputs keep their
+job or quota state and both paths intact. Focused node/API cleanup tests: **9 passed**;
+Ruff and mypy for the changed modules pass. The local tiny native worker suite: **9 passed**.
+T039 remains open for the full scratch/orphan/quota recovery matrix and operator evidence.
+The fresh non-integration, non-engine suite after this change passed **1,774 tests**, with
+two existing skips and 165 deselected integration/engine tests.
+
 ## Local implementation checks — 2026-09-30
 
 The current writable checkout is `feat/015-image-generation`. Its working tree includes the

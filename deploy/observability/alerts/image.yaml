@@ -97,6 +97,18 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: Private image blobs are past the 24-hour purge deadline
+      - alert: CoireImageStoredQuotaDrift
+        expr: max(coire_image_quota_drift_bytes) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: Image stored-byte counters differ from durable unpurged rows
+      - alert: CoireImageOutputIntegrityFailure
+        expr: sum(increase(coire_image_output_integrity_failures_total[15m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A retained private image blob differs from its published receipt
       - alert: CoireImageInputCleanupFailures
         expr: sum(increase(coire_image_input_cleanup_total{outcome="failed"}[5m])) > 0
         for: 0m

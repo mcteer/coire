@@ -337,7 +337,7 @@ async def test_revoked_publication_purges_staging_before_releasing_hold(
     async def audit(*_: object, **__: object) -> None:
         operations.append("audit")
 
-    monkeypatch.setattr(storage, "purge_cancelled_transfer_staging", purge)
+    monkeypatch.setattr(storage, "purge_terminal_transfer_staging", purge)
     monkeypatch.setattr(storage, "release_storage_hold", release)
     monkeypatch.setattr(storage, "write_audit", audit)
     settings = cast(Settings, SimpleNamespace(image_blob_root="/unused"))
@@ -362,7 +362,7 @@ async def test_revoked_publication_keeps_hold_when_node_ack_is_missing(
     session.transfers[0].node_cleanup_ack_at = None
     monkeypatch.setattr(
         storage,
-        "purge_cancelled_transfer_staging",
+        "purge_terminal_transfer_staging",
         lambda *_: pytest.fail("staging must remain"),
     )
     with pytest.raises(ImageConflict, match="cleanup is incomplete"):

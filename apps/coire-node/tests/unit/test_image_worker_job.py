@@ -137,6 +137,39 @@ def test_failure_removes_all_partial_outputs(
     assert not (tmp_path / "scratch" / f"{JOB}-1-2").exists()
 
 
+@pytest.mark.parametrize("cancel_after_output", [1, 2])
+def test_cancel_during_encoding_removes_partial_and_complete_batches(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cancel_after_output: int
+) -> None:
+    load, run = _requests()
+    writer = write_image_png
+    writes = 0
+    cancelled = False
+
+    def cancel_after_write(
+        image: Image.Image, resolved: ResolvedImageSpec, index: int, path: Path
+    ) -> object:
+        nonlocal writes, cancelled
+        encoded = writer(image, resolved, index, path)
+        writes += 1
+        if writes == cancel_after_output:
+            cancelled = True
+        return encoded
+
+    monkeypatch.setattr(image_worker, "write_image_png", cancel_after_write)
+    with pytest.raises(image_worker.ImageJobExecutionError, match="image job failed"):
+        image_worker.run_image_job(
+            FakePipeline(),
+            load,
+            run,
+            tmp_path / "scratch",
+            lambda *args: None,
+            is_cancelled=lambda: cancelled,
+        )
+    assert writes == cancel_after_output
+    assert not (tmp_path / "scratch" / f"{JOB}-1-2").exists()
+
+
 def test_expired_deadline_and_symlink_scratch_fail_closed(tmp_path: Path) -> None:
     load, run = _requests()
     expired = run.model_copy(update={"deadline_at": datetime.now(UTC) - timedelta(seconds=1)})

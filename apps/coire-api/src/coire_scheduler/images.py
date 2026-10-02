@@ -30,7 +30,7 @@ from coire_api.images.expiry import expire_queued_image_job
 from coire_api.images.input_references import release_image_input_references
 from coire_api.images.job_capacity import release_pending_image_job_capacity
 from coire_api.images.jobs import _policy
-from coire_api.images.maintenance import purge_cancelled_transfer_staging
+from coire_api.images.maintenance import purge_terminal_transfer_staging
 from coire_api.images.observation import reconcile_image_observation
 from coire_api.images.quota import _QUOTA_LOCK, release_storage_hold
 from coire_api.images.storage import (
@@ -210,8 +210,8 @@ async def finalize_cancelled_image_job(
     selected_node_id: uuid.UUID,
     settings: Settings,
 ) -> bool:
-    """Commit terminal cancellation only after both node and core scratch are absent."""
-    if status.state != "cancelled" or not status.scratch_cleaned:
+    """Commit cancellation after a terminal node proves scratch cleanup, even if transfer won there."""
+    if status.state not in {"cancelled", "failed", "succeeded"} or not status.scratch_cleaned:
         raise ImageConflict("node cancellation cleanup is incomplete")
     await session.execute(_QUOTA_LOCK)
     row = await session.get(
@@ -262,7 +262,7 @@ async def finalize_cancelled_image_job(
     if not isinstance(held, int) or isinstance(held, bool) or held <= 0:
         raise ImageConflict("image capacity hold unavailable")
     await asyncio.to_thread(
-        purge_cancelled_transfer_staging,
+        purge_terminal_transfer_staging,
         Path(settings.image_blob_root),
         row.id,
         row.attempt,
@@ -286,6 +286,7 @@ async def finalize_cancelled_image_job(
     lease.released_at = now
     lease.release_evidence = {
         "state": "cancelled",
+        "node_state": status.state,
         "node": status.node,
         "scratch_cleaned": True,
         "observed_at": status.updated_at.isoformat(),
@@ -364,7 +365,7 @@ async def finalize_failed_image_job(
     if not isinstance(held, int) or isinstance(held, bool) or held <= 0:
         raise ImageConflict("image capacity hold unavailable")
     await asyncio.to_thread(
-        purge_cancelled_transfer_staging,
+        purge_terminal_transfer_staging,
         Path(settings.image_blob_root),
         row.id,
         row.attempt,

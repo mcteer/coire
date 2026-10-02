@@ -60,10 +60,13 @@ def discard_cancelled_image_scratch(
         attempt_info = os.fstat(attempt_fd)
         if attempt_info.st_uid != os.getuid() or attempt_info.st_mode & 0o077:
             raise ImageCleanupUnavailable()
-        names = os.listdir(attempt_fd)
         allowed = {f"{index}.png" for index in range(original.resolved.spec.n)}
-        if any(name not in allowed for name in names):
-            raise ImageCleanupUnavailable()
+        names: list[str] = []
+        with os.scandir(attempt_fd) as entries:
+            for entry in entries:
+                if len(names) >= len(allowed) or entry.name not in allowed:
+                    raise ImageCleanupUnavailable()
+                names.append(entry.name)
         for name in names:
             info = os.stat(name, dir_fd=attempt_fd, follow_symlinks=False)
             if (
@@ -103,7 +106,12 @@ def _verify_output(
         info = path.lstat()
     except OSError:
         raise ImageCleanupUnavailable() from None
-    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_uid != os.getuid()
+        or info.st_mode & 0o077
+        or info.st_nlink != 1
+    ):
         raise ImageCleanupUnavailable()
     try:
         recipe = parse_recipe_png(

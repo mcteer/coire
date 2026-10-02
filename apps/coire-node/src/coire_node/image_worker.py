@@ -113,6 +113,7 @@ def _run_attempt(
     *,
     monotonic: Callable[[], float],
     utc_now: Callable[[], datetime],
+    is_cancelled: Callable[[], bool],
 ) -> tuple[GeneratedOutput, ...]:
     resolved = request.resolved
     if (
@@ -149,15 +150,21 @@ def _run_attempt(
             )
         else:
             images = pipeline.generate(resolved, progress)
+        if is_cancelled():
+            raise ImageJobCancelled()
         if len(images) != len(resolved.seeds) or utc_now() >= request.deadline_at:
             raise ImageJobExecutionError()
         results: list[GeneratedOutput] = []
         for index, image in enumerate(images):
+            if is_cancelled():
+                raise ImageJobCancelled()
             if utc_now() >= request.deadline_at:
                 raise ImageJobExecutionError()
             path = attempt_dir / f"{index}.png"
             encoded = write_image_png(image, resolved, index, path)
             results.append(GeneratedOutput(index=index, path=path, encoded=encoded))
+        if is_cancelled():
+            raise ImageJobCancelled()
         return tuple(results)
     except Exception:
         shutil.rmtree(attempt_dir)
@@ -176,6 +183,7 @@ def run_image_job(
     *,
     monotonic: Callable[[], float] = time.monotonic,
     utc_now: Callable[[], datetime] = _utc_now,
+    is_cancelled: Callable[[], bool] = lambda: False,
 ) -> tuple[GeneratedOutput, ...]:
     """Execute once; replay cannot overwrite a completed or partial attempt directory."""
     started = time.monotonic()
@@ -189,6 +197,7 @@ def run_image_job(
                 on_progress,
                 monotonic=monotonic,
                 utc_now=utc_now,
+                is_cancelled=is_cancelled,
             )
         except ImageJobCancelled:
             record_image_stage(

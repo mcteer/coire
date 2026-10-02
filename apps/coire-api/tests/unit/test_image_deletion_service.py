@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -112,6 +113,23 @@ def test_missing_blob_is_retry_safe_after_unlink_before_commit(tmp_path: Path) -
     purge_output_blob(tmp_path, row, owner, global_quota)
     assert row.purged_at is not None
     assert owner.stored_bytes == global_quota.stored_bytes == 0
+
+
+def test_purge_keeps_quota_when_blob_has_another_hard_link(tmp_path: Path) -> None:
+    row = _output()
+    row.deleted_at = datetime.now(UTC)
+    (tmp_path / "outputs").mkdir()
+    target = tmp_path / "outputs" / "one.png"
+    target.write_bytes(b"pngdata")
+    duplicate = tmp_path / "retained.png"
+    os.link(target, duplicate)
+    owner = cast(ImageQuotaRow, SimpleNamespace(scope="owner", owner_user_id=OWNER, stored_bytes=7))
+    global_quota = cast(ImageQuotaRow, SimpleNamespace(scope="global", stored_bytes=7))
+    with pytest.raises(ImageStorageUnavailable):
+        purge_output_blob(tmp_path, row, owner, global_quota)
+    assert target.exists() and duplicate.exists()
+    assert row.purged_at is None
+    assert owner.stored_bytes == global_quota.stored_bytes == 7
 
 
 async def test_maintenance_continues_after_one_blob_fails(

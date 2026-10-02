@@ -24,7 +24,7 @@ from coire_api.db import (
 from coire_api.images.authorization import authorize_live_image_action
 from coire_api.images.input_references import release_image_input_references
 from coire_api.images.jobs import _policy
-from coire_api.images.maintenance import purge_cancelled_transfer_staging
+from coire_api.images.maintenance import purge_terminal_transfer_staging
 from coire_api.images.quota import _QUOTA_LOCK, release_storage_hold, settle_storage_hold
 from coire_api.images.transfer import _verify_staged
 from coire_core.errors import ImageConflict, ImageForbidden, ImageStorageUnavailable
@@ -365,7 +365,7 @@ async def fail_revoked_image_batch(
     if latest is None or latest < 1:
         raise ImageConflict("image event history unavailable")
     await asyncio.to_thread(
-        purge_cancelled_transfer_staging,
+        purge_terminal_transfer_staging,
         Path(settings.image_blob_root),
         job_id,
         row.attempt,

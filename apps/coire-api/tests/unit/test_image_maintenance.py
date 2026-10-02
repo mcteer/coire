@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -15,10 +16,12 @@ from typing import cast
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from coire_api.db import ImageOutputRow
 from coire_api.images import maintenance
 from coire_api.images.maintenance import (
     purge_cancelled_transfer_staging,
     purge_stale_transfer_temporaries,
+    purge_terminal_transfer_staging,
 )
 from coire_core.errors import ImageStorageUnavailable
 from coire_core.settings import Settings
@@ -39,6 +42,81 @@ def _private_file(path: Path, content: bytes) -> None:
     path.chmod(0o600)
 
 
+def test_retained_output_integrity_checks_receipt_and_link_count(tmp_path: Path) -> None:
+    payload = b"private png fixture"
+    blob = tmp_path / "0.png"
+    _private_file(blob, payload)
+    row = cast(
+        ImageOutputRow,
+        SimpleNamespace(
+            blob_key="0.png",
+            size_bytes=len(payload),
+            file_sha256=hashlib.sha256(payload).hexdigest(),
+        ),
+    )
+    maintenance.verify_retained_output_blob(tmp_path, row)
+    alias = tmp_path / "retained-alias"
+    os.link(blob, alias)
+    with pytest.raises(ImageStorageUnavailable):
+        maintenance.verify_retained_output_blob(tmp_path, row)
+    alias.unlink()
+    blob.write_bytes(b"changed png fixture")
+    with pytest.raises(ImageStorageUnavailable):
+        maintenance.verify_retained_output_blob(tmp_path, row)
+
+
+@pytest.mark.parametrize("concurrent_tombstone", [False, True])
+async def test_retained_output_integrity_rechecks_missing_blob_before_reporting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, concurrent_tombstone: bool
+) -> None:
+    output_id = uuid.uuid4()
+    row = cast(
+        ImageOutputRow,
+        SimpleNamespace(
+            id=output_id,
+            state="published",
+            deleted_at=None,
+            purged_at=None,
+            blob_key="missing.png",
+            size_bytes=7,
+            file_sha256="a" * 64,
+        ),
+    )
+    counts: list[int] = []
+    reads = 0
+
+    class Session:
+        async def scalars(self, statement: object) -> SimpleNamespace:
+            del statement
+            return SimpleNamespace(all=lambda: [output_id])
+
+        async def get(self, model: object, identity: object, **kwargs: object) -> object:
+            nonlocal reads
+            assert model is ImageOutputRow and identity == output_id
+            reads += 1
+            if reads == 2 and concurrent_tombstone:
+                row.deleted_at = datetime.now(UTC)
+            return row
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[Session]:
+        yield Session()
+
+    monkeypatch.setattr(maintenance, "session_scope", scope)
+    monkeypatch.setattr(
+        maintenance,
+        "output_integrity_failures_total",
+        SimpleNamespace(add=lambda count: counts.append(count)),
+    )
+    settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent", image_blob_root=str(tmp_path)
+    )
+    failed, cursor = await maintenance.sweep_retained_output_integrity(settings)
+    assert (failed, cursor) == (0 if concurrent_tombstone else 1, output_id)
+    assert counts == ([0] if concurrent_tombstone else [0, 1])
+    assert row.state == "published" and row.purged_at is None
+
+
 def test_cancelled_staging_removes_only_exact_attempt(tmp_path: Path) -> None:
     root = tmp_path / "blobs"
     first = _attempt(root, 1)
@@ -50,6 +128,30 @@ def test_cancelled_staging_removes_only_exact_attempt(tmp_path: Path) -> None:
     assert not first.exists()
     assert (second / "0.png").read_bytes() == b"keep"
     assert not purge_cancelled_transfer_staging(root, JOB, 1)
+
+
+def test_terminal_staging_removes_every_known_attempt_before_releasing_hold(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "blobs"
+    first = _attempt(root, 1)
+    second = _attempt(root, 2)
+    _private_file(first / "0.png", b"older partial output")
+    _private_file(second / "0.png", b"latest partial output")
+    assert purge_terminal_transfer_staging(root, JOB, 2)
+    assert not first.exists() and not second.exists()
+    assert not purge_terminal_transfer_staging(root, JOB, 2)
+
+
+def test_terminal_staging_refuses_future_attempt_and_retains_all_bytes(tmp_path: Path) -> None:
+    root = tmp_path / "blobs"
+    first = _attempt(root, 1)
+    third = _attempt(root, 3)
+    _private_file(first / "0.png", b"older partial output")
+    _private_file(third / "0.png", b"unexpected future attempt")
+    with pytest.raises(ImageStorageUnavailable):
+        purge_terminal_transfer_staging(root, JOB, 2)
+    assert (first / "0.png").exists() and (third / "0.png").exists()
 
 
 async def test_terminal_staging_sweep_removes_failed_job_after_grace(
@@ -204,6 +306,18 @@ def test_stale_temporary_sweep_refuses_symlink(tmp_path: Path) -> None:
     assert outside.read_bytes() == b"keep"
 
 
+def test_stale_temporary_sweep_refuses_unbounded_job_inventory(tmp_path: Path) -> None:
+    root = tmp_path / "blobs"
+    staging = root / "image-staging"
+    staging.mkdir(parents=True)
+    root.chmod(0o700)
+    staging.chmod(0o700)
+    for index in range(4097):
+        (staging / f"unknown-{index}").touch(mode=0o600)
+    with pytest.raises(ImageStorageUnavailable):
+        purge_stale_transfer_temporaries(root)
+
+
 async def test_output_retention_is_opt_in_bounded_and_audited(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -308,6 +422,21 @@ async def test_maintenance_starts_even_when_admission_is_disabled(
     monkeypatch.setattr(maintenance, "sweep_retained_outputs", sweep("retention"), raising=False)
     monkeypatch.setattr(maintenance, "sweep_deleted_outputs", sweep("outputs"))
 
+    async def quota_sweep(settings: Settings) -> maintenance.StoredQuotaReconciliation:
+        calls.append("quota")
+        return maintenance.StoredQuotaReconciliation(mismatched_rows=0, max_abs_drift_bytes=0)
+
+    monkeypatch.setattr(maintenance, "sweep_stored_image_quota", quota_sweep)
+
+    async def integrity_sweep(
+        settings: Settings, *, after_output: uuid.UUID | None = None
+    ) -> tuple[int, uuid.UUID]:
+        calls.append("output_integrity")
+        assert after_output is None
+        return 0, uuid.uuid4()
+
+    monkeypatch.setattr(maintenance, "sweep_retained_output_integrity", integrity_sweep)
+
     async def terminal_sweep(
         settings: Settings, *, after_job: str | None = None
     ) -> tuple[int, str]:
@@ -341,6 +470,8 @@ async def test_maintenance_starts_even_when_admission_is_disabled(
     assert calls == [
         "retention",
         "outputs",
+        "quota",
+        "output_integrity",
         "terminal_staging",
         "orphan_staging",
         "transfer_temps",

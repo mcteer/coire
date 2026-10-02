@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -204,3 +205,27 @@ async def test_cleanup_recovers_after_bytes_removed_but_before_terminal_journal(
         )
     assert result.status_code == 200
     assert dispatcher.journal.get(JOB).scratch_cleaned  # type: ignore[union-attr]
+
+
+async def test_cleanup_refuses_hardlinked_output_before_terminal_success(tmp_path: Path) -> None:
+    settings, dispatcher, cleanup, path = _fixture(tmp_path)
+    duplicate = tmp_path / "linked-output.png"
+    os.link(path, duplicate)
+    app = create_app(
+        settings,
+        StubCollector(),
+        listener=NetworkPath.CONTROL,
+        store=Store(settings.node_store_dir),
+        image_dispatcher=dispatcher,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://node",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as client:
+        result = await client.post(
+            f"/node/images/jobs/{JOB}/cleanup", json=cleanup.model_dump(mode="json")
+        )
+    assert result.status_code == 503
+    assert path.exists() and duplicate.exists()
+    assert dispatcher.journal.get(JOB).state == "transferring"  # type: ignore[union-attr]

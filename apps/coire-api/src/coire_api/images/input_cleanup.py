@@ -65,7 +65,7 @@ def _unlink_generated_file(root: Path, name: str) -> None:
             details = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
         except FileNotFoundError:
             return
-        if not stat.S_ISREG(details.st_mode):
+        if not stat.S_ISREG(details.st_mode) or details.st_nlink != 1:
             raise ImageStorageUnavailable()
         os.unlink(name, dir_fd=root_fd)
         os.fsync(root_fd)

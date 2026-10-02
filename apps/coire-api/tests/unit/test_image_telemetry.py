@@ -78,9 +78,13 @@ def test_image_dashboard_and_alert_are_provisioned() -> None:
     )
     expressions = [target["expr"] for panel in dashboard["panels"] for target in panel["targets"]]
     assert any("coire_image_requests_total" in expression for expression in expressions)
+    assert any(
+        "coire_image_output_integrity_failures_total" in expression for expression in expressions
+    )
     assert any("coire_image_purge_oldest_seconds" in expression for expression in expressions)
     assert any("coire_image_input_cleanup_total" in expression for expression in expressions)
     assert any("coire_image_input_purge_oldest_seconds" in expression for expression in expressions)
+    assert any("coire_image_quota_drift_bytes" in expression for expression in expressions)
     assert any("coire_image_queue_expiration_total" in expression for expression in expressions)
     assert any("coire_image_publication_total" in expression for expression in expressions)
     assert any(
@@ -95,6 +99,7 @@ def test_image_dashboard_and_alert_are_provisioned() -> None:
     assert {
         "CoireImageFailures",
         "CoireImagePurgeOverdue",
+        "CoireImageStoredQuotaDrift",
         "CoireImageInputCleanupFailures",
         "CoireImageInputPurgeOverdue",
         "CoireImageQueueExpiryFailures",

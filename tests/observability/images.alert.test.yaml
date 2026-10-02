@@ -63,3 +63,23 @@ tests:
       - eval_time: 7m
         alertname: CoireImagePurgeOverdue
         exp_alerts: []
+  - interval: 1m
+    input_series:
+      - series: 'coire_image_quota_drift_bytes'
+        values: '0 30 30 30 30 30 30 30 30 30 30 30 30 30'
+    alert_rule_test:
+      - eval_time: 12m
+        alertname: CoireImageStoredQuotaDrift
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: Image stored-byte counters differ from durable unpurged rows}
+  - interval: 1m
+    input_series:
+      - series: 'coire_image_output_integrity_failures_total'
+        values: '0 0 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: CoireImageOutputIntegrityFailure
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: A retained private image blob differs from its published receipt}

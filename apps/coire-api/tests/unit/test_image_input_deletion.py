@@ -106,7 +106,7 @@ async def test_deleting_referenced_input_requests_job_cancellation_before_tombst
         calls.append(job_id)
         return object(), False
 
-    monkeypatch.setattr(input_deletion, "request_image_job_cancel", cancel)
+    monkeypatch.setattr(input_deletion, "request_image_job_cancel_for_input_deletion", cancel)
     result = await input_deletion.tombstone_owned_input(session, owner, row.id)  # type: ignore[arg-type]
     assert result.state == "deleting" and row.deleted_at is not None
     assert row.active_references == 1 and calls == session.job_ids

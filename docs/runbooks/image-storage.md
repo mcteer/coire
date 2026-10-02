@@ -16,14 +16,28 @@ transaction advisory lock. A caller reserves worst-case bytes before publication
 then settles only confirmed stored bytes or releases a failed hold in that same
 transaction as the owning input/job row. The physical disk floor counts existing
 unwritten holds. Inspect both `held_bytes` and `stored_bytes` when diagnosing a
-refusal; never reset them manually while a job or purge is uncertain. Cross-process
-PostgreSQL contention evidence is still required before image admission is enabled.
+refusal; never reset them manually while a job or purge is uncertain. Local
+cross-process PostgreSQL contention tests have passed; production placement and
+coexistence acceptance remain open.
+Every five minutes, API maintenance compares global and owner `stored_bytes` with
+unpurged published output rows and ready/deleting input rows under the quota lock.
+Inspect `coire_image_quota_drift_bytes`, the Image stored quota reconciliation panel,
+and `CoireImageStoredQuotaDrift` if the difference persists. This check only reports
+drift; it never changes a quota or deletes bytes. Inspect output/input purge state and
+any retained staging before repairing a counter through an audited operator procedure.
+Every five minutes, maintenance also verifies one bounded page of retained published
+output files against their size and SHA-256 receipt, private file mode and single-link
+ownership. A missing or altered file increments
+`coire_image_output_integrity_failures_total`; inspect the Image retained output
+integrity panel and `CoireImageOutputIntegrityFailure`. The check is read-only and
+does not free quota. Investigate the output ID in the structured log, preserve the
+database row and inspect the paired blob backup before restoring bytes.
 The image-job capacity helper now reserves one pending slot, daily output allowance
 and the worst-case `n * 64 MiB` output hold in the same transaction as a future job
 row. At start it moves held outputs to consumed outputs and frees the queue slot;
 queued cancellation frees the slot, allowance and byte hold. UTC day rollover resets
-consumed outputs while preserving in-flight held outputs. These helpers are not yet
-called by a public job route. Inspect owner/global `pending_jobs`, `held_outputs`,
+consumed outputs while preserving in-flight held outputs. The native submit route
+uses these helpers when image admission is enabled. Inspect owner/global `pending_jobs`, `held_outputs`,
 `consumed_outputs` and `held_bytes` together when diagnosing admission refusal.
 The scheduler also expires a job after its 30-minute queue deadline if it has no
 selected node, instance, reservation, fence or cancellation intent. Expiry writes a
@@ -36,28 +50,37 @@ The queued image-admission service now commits one job, generated seed, capacity
 first event and content-free audit row for a new owner/idempotency key; a matching
 retry returns the existing job without charging again. It accepts only ready,
 published Studio image bases with a measured profile and valid manifest digest,
-plus ready hidden dependencies. It has no public submit route yet, and the default
-`COIRE_IMAGE_ENABLED=false` setting also refuses a direct service call. Inspect
+plus ready hidden dependencies. The public native route exists, while the default
+`COIRE_IMAGE_ENABLED=false` setting refuses new submissions. Inspect
 `image_jobs.intent_sha256`, the `authorization_snapshot` policy and quota counters
 together when investigating a replay conflict; never copy prompts from
 `submitted_spec` or `resolved_spec` into logs or audit details.
 
-The owner recipe-only `POST /api/v1/image-inputs` path now uses private staging and a
-quota hold in one admission transaction; `GET /api/v1/image-inputs/{id}` returns the
-owner's processing/ready/failed state. Admission still requires
+The owner `POST /api/v1/image-inputs` path uses private staging for recipe,
+init, mask and control purposes. It commits the input row and quota hold in
+one admission transaction; `GET /api/v1/image-inputs/{id}` returns the owner's
+processing/ready/failed state. Recipe processing extracts settings without
+decoding image pixels. Admission still requires
 `COIRE_IMAGE_ENABLED=true`, which remains false by default. The scheduler scans
-committed processing rows and starts `coire.image.input.recipe` with the row's
-processing ULID. Successful parsing stores the strict recipe and settles the hold
-once. Worker outages remain processing for retry. A stable parser refusal sets
-`failed` but retains the hold until the physical input cleanup path ships; do not
+committed processing rows and starts `coire.image.input.recipe` or
+`coire.image.input.normalize`, according to purpose, with the row's processing
+ULID. Successful processing stores the strict recipe or normalized input and settles
+the hold once. Worker outages remain processing for retry. A stable parser refusal
+sets `failed`; maintenance purges its original before releasing the hold. Do not
 adjust counters manually. Inspect `coire_image_input_processing_total` and the
 `coire.scheduler.image_input.parse` span without recording recipe text.
 If the upload commit outcome is uncertain, the generated original is retained so a
-committed processing row can recover; the orphan sweeper must reconcile unreferenced
-files before image admission is enabled.
+committed processing row can recover; maintenance reconciles unreferenced files
+before their bytes can be considered free.
 The API maintenance loop now purges failed recipe input originals before releasing
 their quota holds, while preserving the failed status for owner polling. It also
-removes generated-key originals and `.uploading` files older than one hour only
+lets a live owner delete an input referenced by a job after that job's image-model
+or explicit entitlement is revoked: the delete transaction requests fenced
+cancellation of each owned active job, then tombstones the input. The input bytes
+and their stored quota remain until every reference is released and physical
+cleanup succeeds. Inspect the job's `cancelling` state before diagnosing a
+deletion that has not reached `purged`. The maintenance loop also removes
+generated-key originals and `.uploading` files older than one hour only
 after a quota-lock-protected database check finds no committed input row. It skips
 symlinks, unfamiliar names and recent files. Inspect
 `coire_image_input_cleanup_total` and `coire_image_input_purge_oldest_seconds`; the
@@ -65,8 +88,9 @@ Images dashboard and alerts `CoireImageInputCleanupFailures` and
 `CoireImageInputPurgeOverdue` cover repeated failures and the 24-hour deadline.
 If cleanup fails, keep the row and hold for retry; do not remove the original volume.
 Owners can also `DELETE /api/v1/image-inputs/{id}`. A 202 response commits the
-tombstone before returning; subsequent status reads hide the input. Active job
-references return 409, so stop and drain those jobs before retrying. Maintenance
+tombstone before returning; subsequent status reads hide the input. Active owned
+jobs receive a fenced cancel request in the same transaction. An inconsistent or
+unbounded reference set returns 409 and retains the input for investigation. Maintenance
 removes tombstoned recipe originals and releases held or settled storage only after
 the generated regular file is absent. Inspect `coire_image_input_cleanup_total` with
 `kind="deleted"` and the oldest pending input gauge. Repeated deletion is safe,
@@ -85,7 +109,8 @@ calling it. The private staging primitive streams into a generated temporary key
 the 10 MiB generation or 64 MiB recipe cap and the declared count, then hashes and
 fsyncs. Admission calls its exclusive `publish()` only after owner quota and DB
 checks; it calls `discard()` after refusal. A failed or cancelled staging read removes
-its temporary file. Orphan cleanup is still required before upload admission is enabled.
+its temporary file. The orphan sweep removes only old unowned generated files after
+checking durable input rows.
 The file worker's private `POST /v1/image-recipes/parse` handoff requires its dedicated
 service token and a generated input UUID, expected byte count and SHA-256. It reads the
 configured read-only `images` namespace, verifies size and hash on one descriptor, and

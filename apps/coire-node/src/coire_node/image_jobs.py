@@ -428,7 +428,12 @@ def discard_node_image_inputs(
         if attempt_info.st_uid != os.getuid() or attempt_info.st_mode & 0o077:
             raise ImageJournalUnavailable()
         allowed = {str(item.input_id) for item in original.inputs}
-        names = os.listdir(attempt_fd)
+        names: list[str] = []
+        with os.scandir(attempt_fd) as entries:
+            for entry in entries:
+                if len(names) >= len(allowed) * 2:
+                    raise ImageJournalUnavailable()
+                names.append(entry.name)
         for name in names:
             temporary_id = name.split(".", 2)[1] if name.startswith(".") else None
             if name not in allowed and temporary_id not in allowed:

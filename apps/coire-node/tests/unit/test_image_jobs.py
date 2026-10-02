@@ -126,6 +126,23 @@ def test_cancelled_scratch_refuses_symlink_and_retries_after_removal(tmp_path: P
     assert outside.read_bytes() == b"keep"
 
 
+def test_cancelled_scratch_refuses_extra_entries_before_unlink(tmp_path: Path) -> None:
+    journal = ImageJobJournal(tmp_path, NODE)
+    queued = journal.begin(_request())
+    root = tmp_path / "image-scratch"
+    attempt = root / f"{JOB}-1-4"
+    attempt.mkdir(parents=True, mode=0o700)
+    root.chmod(0o700)
+    expected = attempt / "0.png"
+    unexpected = attempt / "1.png"
+    for path in (expected, unexpected):
+        path.write_bytes(b"private output")
+        path.chmod(0o600)
+    with pytest.raises(ImageCleanupUnavailable):
+        discard_cancelled_image_scratch(journal, tmp_path, queued)
+    assert expected.exists() and unexpected.exists()
+
+
 def test_journal_refuses_unsafe_path_or_public_file(tmp_path: Path) -> None:
     journal = ImageJobJournal(tmp_path, NODE)
     with pytest.raises(ImageJournalConflict):
