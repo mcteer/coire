@@ -1988,3 +1988,24 @@ the web suite passed **143 tests** with lint/build; strict mypy, Ruff and
 OpenAPI freshness passed. Remote CI is being rerun.
 The tiny fixture does not represent gated Flux Fill or full Union/LoRA/SeedVR2
 weights. Full-model Studio and cluster acceptance remains open under T083/T084.
+
+The tiny-model LoRA smoke now counts native encoder events through a clean
+adapter load, repeated same-stack job and return to the base: two misses and
+at least one hit, with the adapter identity removed on return. Together with
+the 20 consecutive changed-seed/step warm hits, changed-prompt/environment
+misses, zero-budget test and byte-bound assertions, this closes local T064.
+The node command also rejects a Fill attempt with one missing input or
+source/mask purposes swapped before the native model is called.
+
+The owner input implementation (T054) is covered by scoped upload/get/delete
+route contracts, bounded parser/staging/cleanup tests, active-reference
+cancellation tests, exact node transfer binding and the local native img2img
+attempt. Full-model source/mask/control transfer acceptance remains in T083.
+
+After binding Fill admission to the exact reviewed repository and refusing
+swapped node source/mask purposes, the full local Python suite passed
+**1,870 tests, 160 skipped**. Ruff, strict mypy, OpenAPI freshness and the
+focused real tiny LoRA cache-miss smoke passed. The prior CI checkpoint
+passed lint, unit/contract tests, both engine jobs, image policy and scans;
+its disposable Compose integration was still running when this checkpoint
+was recorded.

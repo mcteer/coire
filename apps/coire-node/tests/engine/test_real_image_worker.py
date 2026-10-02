@@ -307,6 +307,7 @@ def test_real_acquisition_smoke_proves_txt2img_and_img2img(
 
 def test_real_local_lora_acquisition_smoke(
     tiny_pipeline: tuple[MfluxTxt2ImgPipeline, ImageWorkerLoadRequest],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pipeline, load = tiny_pipeline
     store = Store(Path(os.environ["COIRE_TEST_MODEL"]).resolve().parent)
@@ -369,6 +370,11 @@ def test_real_local_lora_acquisition_smoke(
                 ),
             }
         )
+        cache_events: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            "coire_node.image_runtime.cache.record_image_cache",
+            lambda stage, outcome, occupancy: cache_events.append((stage, outcome)),
+        )
         images = pipeline.generate(lora_run, lambda *_: None)
         assert len(images) == 1 and images[0].size == (64, 64)
         images[0].close()
@@ -379,6 +385,8 @@ def test_real_local_lora_acquisition_smoke(
         assert pipeline.adapter_id == applied
         images = pipeline.generate(basic, lambda *_: None)
         images[0].close()
+        assert cache_events.count(("prompt", "miss")) == 2
+        assert cache_events.count(("prompt", "hit")) >= 1
         assert pipeline.adapter_id is None
     finally:
         store.delete(adapter_slug)

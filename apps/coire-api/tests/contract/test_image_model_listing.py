@@ -17,6 +17,7 @@ from coire_api.images import catalog
 from coire_api.images.authorization import require_image_principal
 from coire_api.routes import images
 from coire_core.errors import ImageForbidden
+from coire_core.image_assets import FLUX_FILL_REPO_ID
 from coire_core.models.images import ImageCapabilityProfile, ImageModelList
 from coire_core.models.registry import EngineBackend, ModelKind, ModelSource, ModelState, Visibility
 from coire_core.settings import Settings
@@ -51,6 +52,7 @@ def _base(model_id: uuid.UUID, *, explicit: bool = False, hidden: bool = False) 
     )
     return SimpleNamespace(
         id=model_id,
+        repo_id="org/z-image-turbo",
         slug=f"model-{model_id.hex}",
         display_name="Image model",
         kind=ModelKind.IMAGE_MODEL,
@@ -136,7 +138,7 @@ async def test_model_picker_filters_hidden_dependencies_and_live_authority(
     assert all(item.residency == "unknown" for item in listing.items)
 
 
-async def test_model_picker_never_advertises_unimplemented_native_modes(
+async def test_model_picker_never_advertises_incompatible_turbo_modes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = Session()
@@ -149,8 +151,37 @@ async def test_model_picker_never_advertises_unimplemented_native_modes(
     listing = await catalog.list_eligible_image_models(
         cast(AsyncSession, session), Principal(kind=PrincipalKind.USER, user_id=OWNER)
     )
+    assert BASE not in {item.id for item in listing.items}
+
+
+async def test_model_picker_keeps_measured_fill_guidance_for_fill_only_base(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Session()
+    profile = session.rows[BASE].image_capability_profile
+    profile.update(
+        {
+            "modes": ["fill"],
+            "min_guidance": "4",
+            "max_guidance": "4",
+            "default_guidance": "4",
+        }
+    )
+    session.rows[BASE].repo_id = FLUX_FILL_REPO_ID
+
+    async def live(db: object, actor: Principal, **kwargs: object) -> uuid.UUID:
+        return OWNER
+
+    monkeypatch.setattr(catalog, "authorize_live_image_action", live)
+    listing = await catalog.list_eligible_image_models(
+        cast(AsyncSession, session), Principal(kind=PrincipalKind.USER, user_id=OWNER)
+    )
     selected = next(item for item in listing.items if item.id == BASE)
-    assert selected.capability.modes == ("txt2img",)
+    assert selected.capability.modes == ("fill",)
+    assert selected.capability.default_guidance == 4
+    assert selected.capability.min_guidance == selected.capability.max_guidance == 4
+    assert selected.capability.max_loras == 0
+    assert not selected.controls
 
 
 async def test_model_picker_lists_only_authorized_compatible_loras(

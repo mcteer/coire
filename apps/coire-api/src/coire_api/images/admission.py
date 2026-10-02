@@ -23,6 +23,7 @@ from coire_api.images.quota import _QUOTA_LOCK
 from coire_api.images.resolution import resolve_basic_image_spec
 from coire_api.images.telemetry import ImageOperation, image_span
 from coire_core.errors import ImageConflict, ImageForbidden, ImageValidationError
+from coire_core.image_assets import FLUX_FILL_REPO_ID
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.images import (
     GENERATION_INPUT_MAX_BYTES,
@@ -86,9 +87,15 @@ def _ready_image_base(row: ModelRow | None) -> ImageCapabilityProfile:
     ):
         raise ImageValidationError("image model unavailable")
     try:
-        return ImageCapabilityProfile.model_validate(row.image_capability_profile)
+        profile = ImageCapabilityProfile.model_validate(row.image_capability_profile)
     except ValidationError as exc:
         raise ImageValidationError("image model capability unavailable") from exc
+    fill_repo = getattr(row, "repo_id", None) == FLUX_FILL_REPO_ID
+    if (fill_repo and profile.modes != (ImageMode.FILL,)) or (
+        not fill_repo and ImageMode.FILL in profile.modes
+    ):
+        raise ImageValidationError("image model mode differs from reviewed source")
+    return profile
 
 
 async def _load_policy(

@@ -88,6 +88,14 @@ def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> 
                 and spec.strength is None
                 and {item.input_id for item in request.inputs} == {spec.init_image_id, spec.mask_id}
                 and len(request.inputs) == 2
+                and any(
+                    item.input_id == spec.init_image_id and item.purpose == "init"
+                    for item in request.inputs
+                )
+                and any(
+                    item.input_id == spec.mask_id and item.purpose == "mask"
+                    for item in request.inputs
+                )
             )
             or (
                 spec.mode is ImageMode.CONTROL

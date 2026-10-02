@@ -32,6 +32,7 @@ from coire_api.images.jobs import _policy
 from coire_api.images.quota import _QUOTA_LOCK
 from coire_api.placement.service import lock_nodes_for_admission
 from coire_core.errors import ImageConflict
+from coire_core.image_assets import FLUX_FILL_REPO_ID
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.image_worker import (
     ImageWorkerLoadRequest,
@@ -432,9 +433,15 @@ def _ready_base(row: ModelRow | None) -> ImageCapabilityProfile | None:
     ):
         return None
     try:
-        return ImageCapabilityProfile.model_validate(row.image_capability_profile)
+        profile = ImageCapabilityProfile.model_validate(row.image_capability_profile)
     except ValidationError:
         return None
+    fill_repo = getattr(row, "repo_id", None) == FLUX_FILL_REPO_ID
+    if (fill_repo and profile.modes != (ImageMode.FILL,)) or (
+        not fill_repo and ImageMode.FILL in profile.modes
+    ):
+        return None
+    return profile
 
 
 async def _chat_unmeasured(

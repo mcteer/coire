@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pytest
 from PIL import Image
@@ -367,5 +367,70 @@ def test_node_accepts_exact_control_asset_and_bound_input() -> None:
     assert _supported(command, load)
     assert not _supported(
         command.model_copy(update={"resolved": resolved.model_copy(update={"dependencies": ()})}),
+        load,
+    )
+
+
+def test_node_fill_requires_both_exact_input_manifests() -> None:
+    _, _, load = _fixture()
+    source_id, mask_id = uuid.uuid4(), uuid.uuid4()
+    spec = ImageSpec(
+        model_id=load.model_id,
+        mode=ImageMode.FILL,
+        prompt="replace the square",
+        width=64,
+        height=64,
+        steps=2,
+        guidance=Decimal(4),
+        seed=1,
+        init_image_id=source_id,
+        mask_id=mask_id,
+    )
+    inputs = tuple(
+        NodeImageInputManifest(
+            input_id=input_id,
+            purpose=cast(Literal["init", "mask"], purpose),
+            sha256="c" * 64,
+            byte_count=100,
+            width=64,
+            height=64,
+        )
+        for input_id, purpose in ((source_id, "init"), (mask_id, "mask"))
+    )
+    resolved = ResolvedImageSpec(
+        spec=spec,
+        seeds=(1,),
+        pipeline_version=RUNTIME_VERSION,
+        environment_fingerprint="b" * 64,
+        model_sha256=load.manifest_sha256,
+        inputs=tuple(
+            ImageInputDigest(input_id=item.input_id, sha256=item.sha256, width=64, height=64)
+            for item in inputs
+        ),
+        spec_hash=canonical_spec_hash(spec),
+    )
+    command = NodeImageStartRequest(
+        job_id="01J00000000000000000000000",
+        attempt=1,
+        fence=1,
+        node="coire-edge-b",
+        model_id=load.model_id,
+        instance_id=load.instance_id,
+        resolved=resolved,
+        inputs=inputs,
+        deadline_at=datetime.now(UTC) + timedelta(minutes=1),
+        reservation_bytes=load.reservation_bytes,
+    )
+    assert _supported(command, load)
+    assert not _supported(command.model_copy(update={"inputs": inputs[:1]}), load)
+    assert not _supported(
+        command.model_copy(
+            update={
+                "inputs": (
+                    inputs[0].model_copy(update={"purpose": "mask"}),
+                    inputs[1].model_copy(update={"purpose": "init"}),
+                )
+            }
+        ),
         load,
     )
