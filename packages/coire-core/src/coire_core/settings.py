@@ -187,6 +187,7 @@ class Settings(BaseSettings):
     image_cancel_grace_s: int = Field(default=5, ge=1, le=5)
     image_prompt_cache_max_bytes: int = Field(default=256 * 1024**2, ge=0, le=256 * 1024**2)
     image_control_cache_max_bytes: int = Field(default=256 * 1024**2, ge=0, le=256 * 1024**2)
+    image_classifier_memory_bytes: int = Field(default=1024**3, ge=256 * 1024**2, le=4 * 1024**3)
     image_blob_root: str = "/opt/coire/blobs"
     image_transfer_api_url: str = "http://coire-core.lab:8180"
     image_input_original_root: str = "/opt/coire/chat/originals/images"

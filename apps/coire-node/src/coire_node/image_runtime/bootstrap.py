@@ -79,8 +79,16 @@ async def run_process(path: Path) -> None:
     pipeline = pipeline_module.MfluxTxt2ImgPipeline.load(
         store, config.load, prompt_cache_max_bytes=config.prompt_cache_max_bytes
     )
+    classification_module = importlib.import_module("coire_node.image_runtime.classification")
+    classifier_model_dir = classification_module.verified_classifier_copy(store)
     app = control_module.create_worker_app(
-        config.load, pipeline, config.scratch_dir, token=token, port=config.port
+        config.load,
+        pipeline,
+        config.scratch_dir,
+        token=token,
+        port=config.port,
+        classifier_model_dir=classifier_model_dir,
+        classifier_memory_bytes=config.classifier_memory_bytes,
     )
     await control_module.serve_worker(app, port=config.port)
 

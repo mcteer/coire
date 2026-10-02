@@ -111,6 +111,7 @@ pipeline and operator gates pass.
 | `COIRE_IMAGE_CANCEL_GRACE_S` | 5 s | 5 s |
 | `COIRE_IMAGE_PROMPT_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
 | `COIRE_IMAGE_CONTROL_CACHE_MAX_BYTES` | 256 MiB | 256 MiB |
+| `COIRE_IMAGE_CLASSIFIER_MEMORY_BYTES` | 1 GiB | 4 GiB |
 
 The API exposes current input/output ceilings, owner quota, pending/daily limits and
 output-retention policy through authenticated `GET /api/v1/images/models`, even

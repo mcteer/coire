@@ -148,7 +148,11 @@ async def push_image_outputs(
                         or receipt.recipe_sha256 != outputs[grant.index].recipe_sha256
                     ):
                         raise ImageTransferUnavailable()
-                    receipts.append(receipt)
+                    receipts.append(
+                        receipt.model_copy(
+                            update={"classification": outputs[grant.index].classification}
+                        )
+                    )
         except (httpx.HTTPError, ValueError, ImageTransferUnavailable, OSError):
             record_image_stage(
                 ImageNodeStage.TRANSFER, ImageNodeOutcome.FAILED, job_id=request.job_id

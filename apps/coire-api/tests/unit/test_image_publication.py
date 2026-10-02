@@ -26,6 +26,8 @@ from coire_api.images import storage
 from coire_core.errors import ImageConflict, ImageForbidden
 from coire_core.models.image_worker import ImageTransferReceipt
 from coire_core.models.images import (
+    ImageClassificationResult,
+    ImageContentTag,
     ImageJobSettingsSnapshot,
     ImageRecipe,
     ImageSpec,
@@ -228,6 +230,31 @@ async def test_complete_batch_publishes_with_one_terminal_event(
     assert len(session.audits) == 1
     assert session.lease.released_at is not None
     assert not await storage.publish_image_batch(cast(AsyncSession, session), JOB, settings)
+
+
+async def test_published_tag_uses_studio_classification_when_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = Session()
+    classification = ImageClassificationResult(
+        tag=ImageContentTag.EXPLICIT,
+        score=Decimal("0.91"),
+        classifier_revision="a" * 40,
+        processor_sha256="b" * 64,
+        tagged_at=datetime.now(UTC),
+    )
+    first = ImageTransferReceipt.model_validate(session.transfers[0].receipt)
+    session.transfers[0].receipt = first.model_copy(
+        update={"classification": classification}
+    ).model_dump(mode="json")
+    _patch(monkeypatch, session)
+    assert await storage.publish_image_batch(
+        cast(AsyncSession, session), JOB, cast(Settings, SimpleNamespace(image_blob_root="/unused"))
+    )
+    outputs = [item for item in session.added if isinstance(item, ImageOutputRow)]
+    assert outputs[0].content_tag == "explicit"
+    assert outputs[0].classifier_provenance["score"] == "0.91"
+    assert outputs[1].content_tag == "unknown"
 
 
 async def test_explicit_completion_audits_entitlement_without_content(

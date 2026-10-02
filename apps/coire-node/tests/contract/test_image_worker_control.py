@@ -22,7 +22,14 @@ from coire_core.models.image_worker import (
     ImageWorkerRunRequest,
     ImageWorkerStatus,
 )
-from coire_core.models.images import ImageSpec, ResolvedImageSpec, canonical_spec_hash
+from coire_core.models.images import (
+    ImageClassificationResult,
+    ImageContentTag,
+    ImageSpec,
+    ResolvedImageSpec,
+    canonical_spec_hash,
+)
+from coire_node.image_runtime.classification import CLASSIFIER_REVISION
 from coire_node.image_runtime.control import create_worker_app
 from coire_node.image_worker import Progress
 
@@ -175,3 +182,88 @@ async def test_cancel_reports_terminal_only_after_worker_stops(tmp_path: Path) -
             client, ImageJobBinding(job_id=JOB, attempt=1, fence=2), "cancelled"
         )
         assert done.outputs == ()
+
+
+async def test_worker_attaches_classifier_result_within_held_memory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from coire_node.image_runtime import control
+
+    load, run = _requests()
+    pipeline = FakePipeline()
+    calls: list[Path] = []
+
+    async def classify(
+        model_dir: Path, image_path: Path, **kwargs: object
+    ) -> ImageClassificationResult:
+        assert model_dir == tmp_path / "classifier"
+        assert kwargs["reservation_bytes"] == 256
+        calls.append(image_path)
+        return ImageClassificationResult(
+            tag=ImageContentTag.EXPLICIT,
+            score=Decimal("0.9"),
+            classifier_revision=CLASSIFIER_REVISION,
+            processor_sha256="a" * 64,
+            tagged_at=datetime.now(UTC),
+        )
+
+    monkeypatch.setattr(control, "classify_image", classify)
+    monkeypatch.setattr(control, "resident_bytes", lambda _pid: 512)
+    app = create_worker_app(
+        load,
+        pipeline,
+        tmp_path / "scratch",
+        token=TOKEN,
+        port=39179,
+        classifier_model_dir=tmp_path / "classifier",
+        classifier_memory_bytes=256,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://worker",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as client:
+        assert (await client.put("/job", json=run.model_dump(mode="json"))).status_code == 202
+        pipeline.release.set()
+        done = await _wait_status(
+            client, ImageJobBinding(job_id=JOB, attempt=1, fence=2), "generated"
+        )
+    assert len(calls) == 1
+    assert done.outputs[0].classification is not None
+    assert done.outputs[0].classification.tag is ImageContentTag.EXPLICIT
+
+
+async def test_worker_skips_classifier_when_hold_is_too_small(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from coire_node.image_runtime import control
+
+    load, run = _requests()
+    pipeline = FakePipeline()
+
+    async def forbidden(*_args: object, **_kwargs: object) -> ImageClassificationResult:
+        pytest.fail("classifier started without memory headroom")
+
+    monkeypatch.setattr(control, "classify_image", forbidden)
+    monkeypatch.setattr(control, "resident_bytes", lambda _pid: 800)
+    app = create_worker_app(
+        load,
+        pipeline,
+        tmp_path / "scratch",
+        token=TOKEN,
+        port=39180,
+        classifier_model_dir=tmp_path / "classifier",
+        classifier_memory_bytes=256,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://worker",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as client:
+        assert (await client.put("/job", json=run.model_dump(mode="json"))).status_code == 202
+        pipeline.release.set()
+        done = await _wait_status(
+            client, ImageJobBinding(job_id=JOB, attempt=1, fence=2), "generated"
+        )
+    assert done.outputs[0].classification is not None
+    assert done.outputs[0].classification.safe_error == "classifier_memory"

@@ -184,8 +184,13 @@ async def drive_image_transfer(job_id: str) -> None:
         ):
             raise ImageConflict("image attempt changed after cleanup")
         receipts = {receipt.index: receipt for receipt in status.receipts}
+        outputs = {output.index: output for output in status.outputs}
         if set(receipts) != set(range(resolved.spec.n)):
             raise ImageConflict("image receipt indexes are incomplete")
+        if outputs and set(outputs) != set(receipts):
+            raise ImageConflict("image output indexes differ from receipts")
+        if not outputs and any(receipt.classification is not None for receipt in receipts.values()):
+            raise ImageConflict("classified receipt lacks an output manifest")
         now = datetime.now(UTC)
         for index in sorted(receipts):
             transfer = await session.get(
@@ -195,8 +200,16 @@ async def drive_image_transfer(job_id: str) -> None:
             if transfer is None or transfer.receipt is None:
                 raise ImageConflict("core image receipt is missing")
             stored = ImageTransferReceipt.model_validate(transfer.receipt)
-            if stored != receipt:
+            if (
+                (outputs and receipt.classification != outputs[index].classification)
+                or (
+                    stored.classification is not None
+                    and stored.classification != receipt.classification
+                )
+                or stored.model_copy(update={"classification": receipt.classification}) != receipt
+            ):
                 raise ImageConflict("core and node image receipts differ")
+            transfer.receipt = receipt.model_dump(mode="json")
             transfer.node_cleanup_ack_at = now
         locked.receipt_state = "complete"
         locked.cleanup_state = "cleaned"

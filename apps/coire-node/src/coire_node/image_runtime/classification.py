@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import importlib
 import os
+import stat
 import sys
 import time
 from contextlib import suppress
@@ -17,13 +18,17 @@ from typing import Literal
 import psutil
 
 from coire_core.models.images import ImageClassificationResult, ImageContentTag
+from coire_core.models.registry import slug_for
+from coire_node.image_runtime.preflight import ImageCopyUnavailable, _safe_local_tree
 from coire_node.metrics import (
     ImageNodeOutcome,
     ImageNodeStage,
     image_node_span,
     record_image_stage,
 )
+from coire_node.store import Store, StoreError
 
+CLASSIFIER_REPO_ID = "Falconsai/nsfw_image_detection"
 CLASSIFIER_REVISION = "96cb0d0342c7afb80cab76ecc58b265fa44da256"
 CLASSIFIER_WEIGHT_SHA256 = "97b2ce64ec146884b37f98ee7944ca4891aa72f6827dc0cb10684a1cbecd5830"
 CLASSIFIER_WEIGHT_BYTES = 343_223_968
@@ -33,6 +38,40 @@ CLASSIFIER_THRESHOLD = Decimal("0.5")
 SafeError = Literal[
     "classifier_failed", "classifier_timeout", "classifier_memory", "classifier_invalid_result"
 ]
+
+
+def verified_classifier_copy(store: Store) -> Path | None:
+    """Find an exact offline classifier copy without acquiring or trusting a path from a job."""
+    slug = slug_for(CLASSIFIER_REPO_ID)
+    try:
+        if not stat.S_ISDIR((store.root / slug).lstat().st_mode):
+            return None
+        manifest = store.read_manifest(slug)
+        if (
+            manifest is None
+            or manifest.slug != slug
+            or manifest.repo_id != CLASSIFIER_REPO_ID
+            or manifest.revision != CLASSIFIER_REVISION
+        ):
+            return None
+        weights = [item for item in manifest.files if item.path == "model.safetensors"]
+        if (
+            len(weights) != 1
+            or weights[0].bytes != CLASSIFIER_WEIGHT_BYTES
+            or weights[0].sha256 != CLASSIFIER_WEIGHT_SHA256
+            or not {"config.json", "preprocessor_config.json"}.issubset(
+                {item.path for item in manifest.files}
+            )
+            or sum(item.bytes for item in manifest.files) != manifest.total_bytes
+        ):
+            return None
+        root = store.path_for(slug)
+        _safe_local_tree(root)
+        if store.verify_against(slug, manifest):
+            return None
+        return root
+    except (OSError, StoreError, ImageCopyUnavailable, ValueError):
+        return None
 
 
 def _unknown(code: SafeError) -> ImageClassificationResult:

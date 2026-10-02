@@ -3996,6 +3996,31 @@ export interface components {
              */
             supports_negative_prompt: boolean;
         };
+        /**
+         * ImageClassificationResult
+         * @description Bounded Studio classifier IPC and persisted gallery-tag provenance.
+         */
+        ImageClassificationResult: {
+            /** Classifier Revision */
+            classifier_revision: string;
+            /** Processor Sha256 */
+            processor_sha256?: string | null;
+            /** Safe Error */
+            safe_error?: ("classifier_failed" | "classifier_timeout" | "classifier_memory" | "classifier_invalid_result") | null;
+            /** Score */
+            score?: string | null;
+            tag: components["schemas"]["ImageContentTag"];
+            /**
+             * Tagged At
+             * Format: date-time
+             */
+            tagged_at: string;
+            /**
+             * Threshold
+             * @default 0.5
+             */
+            threshold: string;
+        };
         /** @enum {string} */
         ImageClassifierDiagnostic: "classifier_unavailable" | "classifier_failed" | "classifier_timeout" | "classifier_memory" | "classifier_invalid_result";
         /**
@@ -4730,6 +4755,7 @@ export interface components {
             attempt: number;
             /** Byte Count */
             byte_count: number;
+            classification?: components["schemas"]["ImageClassificationResult"] | null;
             /** Fence */
             fence: number;
             /** Index */

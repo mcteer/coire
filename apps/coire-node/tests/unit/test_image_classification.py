@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import sys
 from contextlib import nullcontext
 from datetime import UTC, datetime
@@ -14,8 +15,31 @@ import pytest
 
 from coire_core.models.images import ImageClassificationResult, ImageContentTag
 from coire_node.image_runtime import classification
+from coire_node.store import Store
 
 REVISION = "96cb0d0342c7afb80cab76ecc58b265fa44da256"
+
+
+def test_classifier_copy_requires_pinned_verified_local_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = Store(tmp_path / "store")
+    slug = "Falconsai--nsfw_image_detection"
+    root = store.path_for(slug)
+    root.mkdir(parents=True)
+    weight = b"local safe weight"
+    (root / "model.safetensors").write_bytes(weight)
+    (root / "config.json").write_text("{}")
+    (root / "preprocessor_config.json").write_text("{}")
+    monkeypatch.setattr(classification, "CLASSIFIER_WEIGHT_BYTES", len(weight))
+    monkeypatch.setattr(
+        classification, "CLASSIFIER_WEIGHT_SHA256", hashlib.sha256(weight).hexdigest()
+    )
+    manifest = store.hash_tree(slug, repo_id=classification.CLASSIFIER_REPO_ID, revision=REVISION)
+    store.write_manifest(manifest)
+    assert classification.verified_classifier_copy(store) == root
+    (root / "model.safetensors").write_bytes(b"tampered weight")
+    assert classification.verified_classifier_copy(store) is None
 
 
 def _result(tag: ImageContentTag, *, score: Decimal | None) -> ImageClassificationResult:

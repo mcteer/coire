@@ -33,6 +33,12 @@ flag until T033 and the remaining real Studio acceptance pass.
 Gallery cards show a safe classifier diagnostic when tagging is unavailable or
 fails. An `unknown` tag does not mean the pixels were classified as normal;
 keep those outputs private while diagnosing the pinned Studio classifier.
+The worker uses only an exact locally verified classifier copy. It classifies
+each generated PNG after generation within the existing image worker hold;
+`COIRE_IMAGE_CLASSIFIER_MEMORY_BYTES` caps the classifier child to 1 GiB by
+default. If the copy is absent or corrupt, publication records `unknown` with
+an unavailable diagnostic. If the held worker has insufficient measured headroom,
+the classifier does not start and records `classifier_memory`.
 
 The acquiring admin must record each asset's licence review and accepted licence
 ID before the acquisition request. A model with an unverified copy, missing local
@@ -205,8 +211,9 @@ the pinned offline Studio CPU stage could not classify; it remains visible only
 through owner-authorized private routes and is never shareable. Policy-explicit output remains explicit
 even if classification fails. Inspect the classifier revision, processor digest,
 threshold and safe error in the output record and the `CoireImageClassifierFailures`
-alert. The execution-to-publication classifier wiring remains open under T022;
-the current publication fallback stores `unknown` for standard output. See the
+alert. The transfer receipt preserves the Studio classification and publication
+stores its tag, score and diagnostic. Standard output falls back to `unknown`
+when the classifier is unavailable. See the
 [classification runbook](image-classification.md) for the stage and rollback steps.
 
 On a Studio, a fenced advanced attempt reserves its input manifest before accepting

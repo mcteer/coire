@@ -410,6 +410,7 @@ class ImageProcessSupervisor:
                 config = ImageWorkerProcessConfig(
                     load=request,
                     prompt_cache_max_bytes=self.settings.image_prompt_cache_max_bytes,
+                    classifier_memory_bytes=self.settings.image_classifier_memory_bytes,
                     store_dir=Path(self.settings.node_store_dir),
                     scratch_dir=self.scratch_root,
                     token_file=token_file,

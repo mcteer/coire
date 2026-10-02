@@ -26,7 +26,13 @@ from coire_core.models.image_worker import (
     ImageWorkerRunRequest,
     ImageWorkerStatus,
 )
-from coire_core.models.images import ResolvedImageSpec, canonical_recipe_bytes
+from coire_core.models.images import (
+    ImageClassificationResult,
+    ResolvedImageSpec,
+    canonical_recipe_bytes,
+)
+from coire_node.footprint import resident_bytes
+from coire_node.image_runtime.classification import _unknown, classify_image
 from coire_node.image_worker import GeneratedOutput, ImageJobCancelled, Progress, run_image_job
 
 _MAX_RETAINED_JOBS = 32
@@ -47,10 +53,14 @@ class _WorkerState:
         load: ImageWorkerLoadRequest,
         pipeline: _ImagePipeline,
         scratch_root: Path,
+        classifier_model_dir: Path | None,
+        classifier_memory_bytes: int,
     ) -> None:
         self.load = load
         self.pipeline = pipeline
         self.scratch_root = scratch_root
+        self.classifier_model_dir = classifier_model_dir
+        self.classifier_memory_bytes = classifier_memory_bytes
         self.lock = threading.RLock()
         self.jobs: dict[_Key, tuple[ImageWorkerRunRequest, ImageWorkerStatus]] = {}
         self.cancel_events: dict[_Key, threading.Event] = {}
@@ -100,25 +110,49 @@ class _WorkerState:
                 progress,
                 is_cancelled=cancelled.is_set,
             )
-            manifests = tuple(_manifest(output) for output in outputs)
+            manifests = []
+            for output in outputs:
+                if cancelled.is_set():
+                    raise ImageJobCancelled()
+                classification = None
+                if self.classifier_model_dir is not None:
+                    footprint = resident_bytes(os.getpid())
+                    if (
+                        footprint is None
+                        or footprint + self.classifier_memory_bytes > self.load.reservation_bytes
+                    ):
+                        classification = _unknown("classifier_memory")
+                    else:
+                        classification = await classify_image(
+                            self.classifier_model_dir,
+                            output.path,
+                            reservation_bytes=self.classifier_memory_bytes,
+                            job_id=request.job_id,
+                        )
+                manifests.append(_manifest(output, classification))
+            if cancelled.is_set():
+                raise ImageJobCancelled()
         except Exception:
             if cancelled.is_set():
                 self.update(key, state="cancelled", stage="cancelled", safe_error=None)
             else:
                 self.update(key, state="failed", stage="failed", safe_error="generation_failed")
         else:
-            self.update(key, state="generated", stage="generated", outputs=manifests)
+            self.update(key, state="generated", stage="generated", outputs=tuple(manifests))
         finally:
             with self.lock:
                 self.active = None
 
 
-def _manifest(output: GeneratedOutput) -> ImageWorkerOutputManifest:
+def _manifest(
+    output: GeneratedOutput, classification: ImageClassificationResult | None = None
+) -> ImageWorkerOutputManifest:
     return ImageWorkerOutputManifest(
         index=output.index,
         byte_count=output.encoded.byte_count,
         sha256=output.encoded.sha256,
         recipe_sha256=hashlib.sha256(canonical_recipe_bytes(output.encoded.recipe)).hexdigest(),
+        classification=classification,
     )
 
 
@@ -129,12 +163,16 @@ def create_worker_app(
     *,
     token: str,
     port: int,
+    classifier_model_dir: Path | None = None,
+    classifier_memory_bytes: int = 1024**3,
 ) -> FastAPI:
     """Build the private worker app after node preflight and native model load."""
     if len(token) < 32 or not 1 <= port <= 65535:
         raise ValueError("invalid worker control configuration")
     app = FastAPI(title="coire image worker", docs_url=None, redoc_url=None, openapi_url=None)
-    state = _WorkerState(load, pipeline, scratch_root)
+    state = _WorkerState(
+        load, pipeline, scratch_root, classifier_model_dir, classifier_memory_bytes
+    )
 
     async def authorize(credentials: BearerDep) -> None:
         presented = credentials.credentials if credentials else ""

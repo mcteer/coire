@@ -92,10 +92,19 @@ async def test_bootstrap_strips_credentials_and_imports_native_modules_lazily(
             return object()
 
     def fake_app(
-        load: ImageWorkerLoadRequest, pipeline: object, scratch: Path, *, token: str, port: int
+        load: ImageWorkerLoadRequest,
+        pipeline: object,
+        scratch: Path,
+        *,
+        token: str,
+        port: int,
+        classifier_model_dir: Path | None,
+        classifier_memory_bytes: int,
     ) -> object:
         assert load == config.load and scratch == config.scratch_dir
         assert token == "t" * 64 and port == config.port
+        assert classifier_model_dir is None
+        assert classifier_memory_bytes == config.classifier_memory_bytes
         called.append("app")
         return object()
 
@@ -113,6 +122,9 @@ async def test_bootstrap_strips_credentials_and_imports_native_modules_lazily(
             "coire_node.image_runtime.control": SimpleNamespace(
                 create_worker_app=fake_app, serve_worker=fake_serve
             ),
+            "coire_node.image_runtime.classification": SimpleNamespace(
+                verified_classifier_copy=lambda _store: None
+            ),
         }[name]
 
     monkeypatch.setattr("coire_node.image_runtime.bootstrap.importlib.import_module", fake_import)
@@ -123,6 +135,7 @@ async def test_bootstrap_strips_credentials_and_imports_native_modules_lazily(
         "import:coire_node.image_runtime.control",
         "store",
         "load",
+        "import:coire_node.image_runtime.classification",
         "app",
         "serve",
     ]

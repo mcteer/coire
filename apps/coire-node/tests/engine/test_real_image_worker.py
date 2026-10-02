@@ -56,6 +56,7 @@ from coire_node.image_cleanup import cleanup_image_outputs, discard_cancelled_im
 from coire_node.image_dispatch import ImageNodeDispatcher
 from coire_node.image_jobs import ImageJobJournal
 from coire_node.image_runtime import supervisor
+from coire_node.image_runtime.classification import _unknown
 from coire_node.image_runtime.pipeline import MfluxTxt2ImgPipeline
 from coire_node.image_transfer import push_image_outputs
 from coire_node.image_validation import validate_image_asset
@@ -671,6 +672,7 @@ async def test_real_png_transfer_receipt_allows_node_scratch_cleanup(
         byte_count=output.encoded.byte_count,
         sha256=output.encoded.sha256,
         recipe_sha256=hashlib.sha256(canonical_recipe_bytes(output.encoded.recipe)).hexdigest(),
+        classification=_unknown("classifier_failed"),
     )
     current = journal.advance(
         current.model_copy(
@@ -720,7 +722,7 @@ async def test_real_png_transfer_receipt_allows_node_scratch_cleanup(
         settings,
         transport=httpx.MockTransport(receive),
     )
-    assert transferred == (receipt,)
+    assert transferred == (receipt.model_copy(update={"classification": manifest.classification}),)
     cleaned = cleanup_image_outputs(
         journal,
         tmp_path,

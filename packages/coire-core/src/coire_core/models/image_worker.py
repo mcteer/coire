@@ -15,6 +15,7 @@ from coire_core.models.images import (
     GENERATION_INPUT_MAX_BYTES,
     RECIPE_INPUT_MAX_BYTES,
     ImageCapabilityProfile,
+    ImageClassificationResult,
     ImageRecipe,
     ResolvedImageSpec,
 )
@@ -161,6 +162,7 @@ class ImageWorkerProcessConfig(BaseModel):
     schema_version: Literal[1] = 1
     load: ImageWorkerLoadRequest
     prompt_cache_max_bytes: int = Field(default=256 * 1024**2, ge=0, le=256 * 1024**2)
+    classifier_memory_bytes: int = Field(default=1024**3, ge=256 * 1024**2, le=4 * 1024**3)
     store_dir: Path
     scratch_dir: Path
     token_file: Path
@@ -300,6 +302,7 @@ class ImageTransferReceipt(ImageJobBinding):
     byte_count: int = Field(ge=1, le=RECIPE_INPUT_MAX_BYTES)
     sha256: str = Field(pattern=SHA256_PATTERN)
     recipe_sha256: str = Field(pattern=SHA256_PATTERN)
+    classification: ImageClassificationResult | None = None
     verified_at: AwareDatetime
 
 
@@ -343,6 +346,7 @@ class ImageWorkerOutputManifest(BaseModel):
     byte_count: int = Field(ge=1, le=RECIPE_INPUT_MAX_BYTES)
     sha256: str = Field(pattern=SHA256_PATTERN)
     recipe_sha256: str = Field(pattern=SHA256_PATTERN)
+    classification: ImageClassificationResult | None = None
 
 
 class NodeImageJob(ImageJobBinding):

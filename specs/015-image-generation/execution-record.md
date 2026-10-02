@@ -1737,3 +1737,20 @@ full acceptance scope. All **24 unchecked parent tasks remain unchecked**, inclu
 native auxiliary adapters/validation, complete coexistence/failure/browser/release
 matrices and T083/T084 full-model/operator acceptance. No production image weights
 were acquired, admission was not enabled and no physical evidence was fabricated.
+
+## Studio classification transport and local gates — 2026-10-02
+
+The Studio worker now discovers only the pinned, locally verified classifier copy.
+After generation it classifies each encoded PNG in a CPU child under a bounded
+memory allowance, or records a safe memory diagnostic when measured headroom is
+insufficient. Classified output identity travels through the node receipt and
+durable core transfer row; publication records the classifier tag, score and
+provenance. A missing classifier retains the private `unknown` fallback. Tests
+cover the verified-copy gate, classified worker manifest, memory refusal,
+transfer recovery and publication.
+
+Local gates after these changes: Python **1,828 passed, 159 skipped**; web
+**138 passed** with lint and production build; strict mypy, Ruff check/format and
+OpenAPI freshness passed. Engine-only and real Studio checks remain open. The
+classification transport does not establish T083/T084 acceptance or make an
+unverified auxiliary model publishable.

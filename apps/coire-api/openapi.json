@@ -5102,6 +5102,79 @@
         "title": "ImageCapabilityProfile",
         "type": "object"
       },
+      "ImageClassificationResult": {
+        "additionalProperties": false,
+        "description": "Bounded Studio classifier IPC and persisted gallery-tag provenance.",
+        "properties": {
+          "classifier_revision": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Classifier Revision",
+            "type": "string"
+          },
+          "processor_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processor Sha256"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "enum": [
+                  "classifier_failed",
+                  "classifier_timeout",
+                  "classifier_memory",
+                  "classifier_invalid_result"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "tag": {
+            "$ref": "#/components/schemas/ImageContentTag"
+          },
+          "tagged_at": {
+            "format": "date-time",
+            "title": "Tagged At",
+            "type": "string"
+          },
+          "threshold": {
+            "default": "0.5",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Threshold",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag",
+          "classifier_revision",
+          "tagged_at"
+        ],
+        "title": "ImageClassificationResult",
+        "type": "object"
+      },
       "ImageClassifierDiagnostic": {
         "enum": [
           "classifier_unavailable",
@@ -7349,6 +7422,16 @@
             "minimum": 1.0,
             "title": "Byte Count",
             "type": "integer"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageClassificationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "fence": {
             "minimum": 1.0,

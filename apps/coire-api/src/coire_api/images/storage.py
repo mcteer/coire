@@ -213,9 +213,24 @@ async def publish_image_batch(session: AsyncSession, job_id: str, settings: Sett
     if latest is None or latest < 1:
         raise ImageConflict("image event history unavailable")
     now = datetime.now(UTC)
-    tag = ImageContentTag.EXPLICIT if explicit else ImageContentTag.UNKNOWN
     published_outputs: list[ImageOutput] = []
     for transfer, receipt, recipe in verified:
+        classification = receipt.classification
+        tag = (
+            ImageContentTag.EXPLICIT
+            if explicit
+            else classification.tag
+            if classification is not None
+            else ImageContentTag.UNKNOWN
+        )
+        provenance = (
+            classification.model_dump(mode="json")
+            if classification is not None
+            else {"status": "unavailable"}
+        )
+        diagnostic = (
+            classification.safe_error if classification is not None else "classifier_unavailable"
+        )
         session.add(
             ImageOutputRow(
                 id=receipt.output_id,
@@ -228,7 +243,7 @@ async def publish_image_batch(session: AsyncSession, job_id: str, settings: Sett
                 pixel_sha256=recipe.pixel_sha256,
                 recipe=recipe.model_dump(mode="json"),
                 content_tag=tag,
-                classifier_provenance={"status": "unavailable"},
+                classifier_provenance=provenance,
                 entitlement_snapshot={"required_entitlements": sorted(required)},
                 state="published",
                 created_at=now,
@@ -242,7 +257,7 @@ async def publish_image_batch(session: AsyncSession, job_id: str, settings: Sett
                 index=receipt.index,
                 recipe=recipe,
                 tag=tag,
-                classifier_diagnostic="classifier_unavailable",
+                classifier_diagnostic=diagnostic,
                 byte_count=receipt.byte_count,
                 file_sha256=receipt.sha256,
                 created_at=now,

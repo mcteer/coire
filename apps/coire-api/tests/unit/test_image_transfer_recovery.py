@@ -22,6 +22,8 @@ from coire_core.models.image_worker import (
     NodeImageTransferRequest,
 )
 from coire_core.models.images import (
+    ImageClassificationResult,
+    ImageContentTag,
     ImageJobSettingsSnapshot,
     ImageSpec,
     ResolvedImageSpec,
@@ -158,6 +160,37 @@ async def test_restart_reconciles_existing_node_cleanup_without_rerunning(
     assert session.job.receipt_state == "complete"
     assert session.transfer.node_cleanup_ack_at is not None
     assert session.commits == 2
+
+    classification = ImageClassificationResult(
+        tag=ImageContentTag.NORMAL,
+        score=Decimal("0.1"),
+        classifier_revision="a" * 40,
+        processor_sha256="b" * 64,
+        tagged_at=now,
+    )
+    status = status.model_copy(
+        update={
+            "outputs": (
+                ImageWorkerOutputManifest(
+                    index=0,
+                    byte_count=receipt.byte_count,
+                    sha256=receipt.sha256,
+                    recipe_sha256=receipt.recipe_sha256,
+                    classification=classification,
+                ),
+            ),
+            "receipts": (receipt.model_copy(update={"classification": classification}),),
+        }
+    )
+    session.job.cleanup_state = "pending"
+    session.job.receipt_state = "pending"
+    session.transfer.node_cleanup_ack_at = None
+    session.transfer.receipt = receipt.model_dump(mode="json")
+    await images.drive_image_transfer(JOB)
+    assert (
+        ImageTransferReceipt.model_validate(session.transfer.receipt).classification
+        == classification
+    )
 
     session.job.cleanup_state = "pending"
     session.job.receipt_state = "pending"
