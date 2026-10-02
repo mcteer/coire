@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image, ImageDraw
@@ -236,6 +238,65 @@ def test_lora_smoke_uses_one_verified_local_adapter_and_exact_base(
             reservation_bytes=10**12,
         )
     assert len(loaded) == 1
+
+
+def test_seedvr2_upscale_smoke_requires_exact_reviewed_local_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = Store(tmp_path / "models")
+    slug = "numz--SeedVR2_comfyUI"
+    root = store.path_for(slug)
+    root.mkdir(parents=True)
+    for filename in ("seedvr2_ema_3b_fp16.safetensors", "ema_vae_fp16.safetensors"):
+        (root / filename).write_bytes(filename.encode())
+    manifest = store.hash_tree(slug, repo_id="numz/SeedVR2_comfyUI", revision=REVISION)
+    store.write_manifest(manifest)
+    request = ImageAssetValidateRequest(
+        job_id=uuid.uuid4(),
+        model_id=uuid.uuid4(),
+        slug=slug,
+        kind=ModelKind.UPSCALE_MODEL,
+        source_revision=REVISION,
+        manifest_sha256=manifest.sha256(),
+        reservation_id=uuid.uuid4(),
+    )
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+    imports: list[str] = []
+
+    class FakeSeedVR2:
+        def __init__(self, *, model_path: str, model_config: object) -> None:
+            assert model_path == str(root) and model_config == "seedvr2-3b"
+
+        def parameters(self) -> tuple[()]:
+            return ()
+
+        def generate_image(self, *, seed: int, image_path: Path, resolution: int) -> object:
+            assert seed == 1 and resolution == 128 and image_path.is_file()
+            image = Image.new("RGB", (128, 128), "blue")
+            ImageDraw.Draw(image).rectangle((32, 32, 96, 96), fill="white")
+            return SimpleNamespace(image=image)
+
+    def module(name: str) -> object:
+        imports.append(name)
+        if name.endswith("variants.upscale.seedvr2"):
+            return SimpleNamespace(SeedVR2=FakeSeedVR2)
+        if name.endswith("model_config"):
+            return SimpleNamespace(ModelConfig=SimpleNamespace(seedvr2_3b=lambda: "seedvr2-3b"))
+        if name == "mlx.core":
+            return SimpleNamespace(eval=lambda value: None)
+        raise AssertionError(name)
+
+    monkeypatch.setattr(importlib, "import_module", module)
+    result = validate_image_asset(store, request, reservation_bytes=10**12)
+    assert result.validated and result.thumbnail_sha256 is not None
+    assert any(name.endswith("variants.upscale.seedvr2") for name in imports)
+    (root / "seedvr2_ema_7b_fp16.safetensors").write_bytes(b"unexpected")
+    with pytest.raises(ImageCopyUnavailable):
+        validate_image_asset(store, request, reservation_bytes=10**12)
+    assert len(imports) == 3
 
 
 def test_published_base_evidence_requires_physical_peak() -> None:

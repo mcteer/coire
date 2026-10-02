@@ -1,5 +1,17 @@
 # Feature 015 execution record
 
+## Pinned SeedVR2 3B acquisition smoke — 2026-10-02
+
+The Studio validator now accepts only the reviewed `numz/SeedVR2_comfyUI`
+3B root safetensors pair, verifies the complete local manifest, loads the
+pinned native SeedVR2 3B runtime without credentials, and requires a
+non-degenerate 128×128 output from a synthetic 64×64 input. A sampler records
+the physical peak during load and generation and refuses a peak beyond the
+held memory. The unit smoke and wrong-file gate passed. The full local Python
+suite passed **1,847** with 160 platform/external skips; Ruff, strict mypy and
+OpenAPI freshness passed. A real 3B weight smoke on both Studios and upscale
+job execution remain open under T056/T083; admission stays disabled.
+
 ## Native LoRA acquisition smoke — 2026-10-02
 
 LoRA validation now carries the exact ready base ID, slug, revision and manifest

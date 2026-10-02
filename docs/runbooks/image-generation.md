@@ -32,14 +32,16 @@ native smokes, including Metal memory on macOS, and refuses a transient peak
 above the held bytes. LoRA validation on each Studio verifies the exact local
 base and adapter manifests, applies the single adapter through pinned mflux,
 and requires a non-degenerate native output. Its hold includes the base's
-memory estimate. Control and upscale execution validation remains unavailable.
+memory estimate. The pinned SeedVR2 3B upscaler also runs an offline native
+twofold smoke against synthetic pixels, with a sampled physical peak. Control
+execution validation remains unavailable.
 The gate compares the **absolute process peak** with the
 held bytes, while recording absolute RSS/physical peaks and the physical
 baseline delta. If a validation
 job is still running, leave the
 reservation held and inspect its exact job ID, process identity, local manifest and
-`CoireImageValidationFailures` alert. Control and upscale mode-specific validation is still
-unavailable and those assets remain unpublished. Do not set the image admission
+`CoireImageValidationFailures` alert. Control mode-specific validation is still
+unavailable and control assets remain unpublished. Do not set the image admission
 flag until T033 and the remaining real Studio acceptance pass.
 Base acquisition reserves the larger of twice the selected file bytes or three
 times the weight bytes, plus 16 GiB of native runtime headroom, on **each**
@@ -50,8 +52,8 @@ For `numz/SeedVR2_comfyUI` acquired as `upscale_model`, the pinned mflux 0.20.0
 `ema_vae_fp16.safetensors` without `config.json`. Intake requires both verified
 files and excludes the upstream 7B weights from the transfer and reservation
 estimate. This layout exception does not bypass the offline auxiliary smoke;
-the asset remains unpublished until T033/T056 validate native execution on
-both Studio copies.
+both Studio copies must pass a native SeedVR2 twofold smoke before publication.
+Production upscale job execution remains under T056.
 
 Gallery cards show a safe classifier diagnostic when tagging is unavailable or
 fails. An `unknown` tag does not mean the pixels were classified as normal;

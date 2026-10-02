@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib
 import io
+import threading
 import uuid
 from decimal import Decimal
 from pathlib import Path
@@ -12,8 +14,9 @@ from tempfile import TemporaryDirectory
 
 import psutil
 from opentelemetry import metrics, trace
-from PIL import Image, ImageStat
+from PIL import Image, ImageDraw, ImageStat
 
+from coire_core.image_assets import SEEDVR2_3B_FILES, SEEDVR2_3B_REPO_ID
 from coire_core.models.image_worker import (
     ImageAssetValidateRequest,
     ImageAssetValidationResult,
@@ -34,7 +37,7 @@ from coire_node.image_runtime.classification import (
     CLASSIFIER_REVISION,
     classify_image_with_peak,
 )
-from coire_node.image_runtime.pipeline import MfluxTxt2ImgPipeline, _load_native
+from coire_node.image_runtime.pipeline import MfluxTxt2ImgPipeline, _load_native, _require_offline
 from coire_node.image_runtime.preflight import RUNTIME_VERSION, verify_image_copy
 from coire_node.store import Store
 
@@ -128,6 +131,8 @@ def _validate_image_asset(
         return _validate_classifier(path, request, reservation_bytes=reservation_bytes)
     if request.kind is ModelKind.IMAGE_LORA:
         return _validate_lora(store, path, request, reservation_bytes=reservation_bytes)
+    if request.kind is ModelKind.UPSCALE_MODEL:
+        return _validate_upscale(store, path, request, reservation_bytes=reservation_bytes)
     if request.kind is not ModelKind.IMAGE_MODEL:
         raise ImageValidationUnavailable("auxiliary execution validation is unavailable")
     process = psutil.Process()
@@ -309,6 +314,94 @@ def _validate_lora(
             image.close()
     if max(peak_rss, peak_physical) > reservation_bytes:
         raise ImageValidationUnavailable("LoRA smoke exceeded reserved memory")
+    return ImageAssetValidationResult(
+        validated=True,
+        kind=request.kind,
+        manifest_sha256=request.manifest_sha256,
+        source_revision=request.source_revision,
+        peak_rss_bytes=peak_rss,
+        peak_physical_bytes=peak_physical,
+        peak_physical_delta_bytes=max(0, peak_physical - baseline_physical),
+        thumbnail_sha256=thumbnail_sha256,
+    )
+
+
+def _validate_upscale(
+    store: Store,
+    path: Path,
+    request: ImageAssetValidateRequest,
+    *,
+    reservation_bytes: int,
+) -> ImageAssetValidationResult:
+    """Run the reviewed local SeedVR2 3B tree against a small generated image."""
+    manifest = store.read_manifest(request.slug)
+    weights = (
+        {entry.path for entry in manifest.files if entry.path.endswith(".safetensors")}
+        if manifest is not None
+        else set()
+    )
+    if manifest is None or manifest.repo_id != SEEDVR2_3B_REPO_ID or weights != SEEDVR2_3B_FILES:
+        raise ImageValidationUnavailable("unsupported local upscale layout")
+    _require_offline()
+    process = psutil.Process()
+    baseline_physical = resident_bytes(process.pid)
+    if baseline_physical is None:
+        raise ImageValidationUnavailable("physical footprint is unavailable")
+    peak_rss = process.memory_info().rss
+    peak_physical = baseline_physical
+    unavailable = False
+    stop = threading.Event()
+
+    def sample() -> None:
+        nonlocal peak_rss, peak_physical, unavailable
+        while not stop.wait(0.01):
+            current = resident_bytes(process.pid)
+            if current is None:
+                unavailable = True
+                return
+            peak_rss = max(peak_rss, process.memory_info().rss)
+            peak_physical = max(peak_physical, current)
+
+    sampler = threading.Thread(target=sample, daemon=True)
+    sampler.start()
+    thumbnail_sha256: str
+    try:
+        model_module = importlib.import_module("mflux.models.seedvr2.variants.upscale.seedvr2")
+        config_module = importlib.import_module("mflux.models.common.config.model_config")
+        model = model_module.SeedVR2(
+            model_path=str(path), model_config=config_module.ModelConfig.seedvr2_3b()
+        )
+        mlx = importlib.import_module("mlx.core")
+        mlx.eval(model.parameters())
+        with TemporaryDirectory(prefix="coire-upscale-smoke-") as directory:
+            source = Path(directory) / "input.png"
+            with Image.new("RGB", (64, 64), (32, 96, 192)) as sample_image:
+                ImageDraw.Draw(sample_image).rectangle((16, 16, 48, 48), fill=(220, 180, 20))
+                sample_image.save(source, format="PNG")
+            generated = model.generate_image(seed=1, image_path=source, resolution=128)
+            output = getattr(generated, "image", None)
+            if not isinstance(output, Image.Image):
+                raise ImageValidationUnavailable("upscale smoke returned no image")
+            try:
+                if (
+                    output.mode != "RGB"
+                    or output.size != (128, 128)
+                    or max(ImageStat.Stat(output).stddev) <= 1
+                ):
+                    raise ImageValidationUnavailable("upscale smoke returned degenerate pixels")
+                thumbnail_sha256 = _thumbnail_digest(output)
+            finally:
+                output.close()
+    finally:
+        stop.set()
+        sampler.join(timeout=2)
+    current = resident_bytes(process.pid)
+    if current is None or unavailable or sampler.is_alive():
+        raise ImageValidationUnavailable("physical footprint is unavailable")
+    peak_rss = max(peak_rss, process.memory_info().rss)
+    peak_physical = max(peak_physical, current)
+    if max(peak_rss, peak_physical) > reservation_bytes:
+        raise ImageValidationUnavailable("upscale smoke exceeded reserved memory")
     return ImageAssetValidationResult(
         validated=True,
         kind=request.kind,
