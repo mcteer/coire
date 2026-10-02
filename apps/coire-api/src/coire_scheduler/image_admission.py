@@ -29,6 +29,7 @@ from coire_api.db import (
     NodeMemoryLedgerRow,
     NodeRow,
 )
+from coire_api.placement.service import effective_occupied_bytes
 from coire_core.models.acquisition import VariantState
 from coire_core.models.images import ImageCoexistenceReportRequest
 from coire_core.models.instance import InstanceState
@@ -72,7 +73,9 @@ async def image_available_bytes(
             )
         )
     ).all()
-    occupied = sum(item.bytes for item in reservations)
+    occupied = effective_occupied_bytes(reservations, ledger.measured_resident_bytes)
+    if occupied is None:
+        return 0
     image_holds = [item for item in reservations if item.holder_type is ReservationHolder.IMAGE]
     if len(image_holds) > 1:
         return 0

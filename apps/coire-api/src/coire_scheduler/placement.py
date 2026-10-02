@@ -26,7 +26,11 @@ from coire_api.db import (
     VariantCopyRow,
     session_scope,
 )
-from coire_api.placement.service import ensure_ledgers, node_admission_lock
+from coire_api.placement.service import (
+    effective_occupied_bytes,
+    ensure_ledgers,
+    node_admission_lock,
+)
 from coire_core.models.acquisition import VariantState
 from coire_core.models.engine import EngineState
 from coire_core.models.node import Reachability
@@ -286,6 +290,10 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                     .scalars()
                     .all()
                 )
+                occupied = effective_occupied_bytes(reservations, ledger.measured_resident_bytes)
+                if occupied is None:
+                    profile_refused = True
+                    continue
                 now = datetime.now(UTC)
                 active = dict(
                     (
@@ -318,7 +326,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                     plan = plan_admission(
                         NodeCapacity(
                             budget_bytes=ledger.budget_bytes,
-                            reserved_bytes=sum(item.bytes for item in reservations),
+                            reserved_bytes=occupied,
                         ),
                         decision.required_bytes,
                         candidates,
@@ -364,7 +372,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                         plan = plan_admission(
                             NodeCapacity(
                                 budget_bytes=ledger.budget_bytes,
-                                reserved_bytes=sum(item.bytes for item in reservations),
+                                reserved_bytes=occupied,
                             ),
                             decision.required_bytes,
                             drained,

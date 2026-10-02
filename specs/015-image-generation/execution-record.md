@@ -1,5 +1,16 @@
 # Feature 015 execution record
 
+## Physical overage image admission — 2026-10-02
+
+Image and chat placement now subtract measured model-plus-image footprint above the
+matching reservations exactly once. An existing image hold with unavailable
+measured residency is ineligible until a health sample resolves it; live
+language engines with unreadable footprints also make residency unknown.
+The coexistence/prober/ledger unit checks passed **32 tests**; Ruff and strict mypy
+across 646 source files passed. The existing native admission lock remains the
+last local safety gate. The broader transient/cache and real-cluster matrix
+remain in T070/T072.
+
 ## Unmeasurable image residency alert — 2026-10-02
 
 The prober now emits `coire_image_residency_measurement_unavailable` when an

@@ -132,9 +132,13 @@ the worker's exact process identity before clearing any apparent drift. The
 `image_worker_resident_bytes` health field reports that live process's measured
 physical footprint, including Metal memory on macOS. If an image reservation
 exists but the footprint is unavailable, core leaves measured residency
-unknown; inspect the worker journal and the `coire_placement_ledger_drift_ratio`
+unknown. It also refuses to invent a zero for an unmeasured live language
+engine. Inspect the worker journal and the `coire_placement_ledger_drift_ratio`
 panel plus `CoireImageResidencyMeasurementUnavailable` alert before reconciling
-a reservation.
+a reservation. Core image and chat placement subtract any measured
+model-plus-image footprint above the matching reservations once from available
+memory. A live image hold with unknown measured residency waits for a new
+health sample before either kind of load is admitted.
 On agent restart, image re-adoption runs before listeners bind. An uncertain
 record holds the full image budget; inspect the process and private record
 before reconciliation. Roll back the node wheel after an exact-instance

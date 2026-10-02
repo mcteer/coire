@@ -21,6 +21,7 @@ from coire_api.placement.service import (
     image_residency_unavailable,
     ledger_drift,
 )
+from coire_core.models.engine import LIVE_ENGINE_STATES, EngineState
 from coire_core.models.node import NodeStatus, NodeStatusV2, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.net import ControlClient
@@ -33,6 +34,12 @@ def measured_node_residency(
     status: NodeStatus | NodeStatusV2, *, image_reserved_bytes: int
 ) -> int | None:
     """Include the image child's physical footprint without inventing an unknown value."""
+    if any(
+        engine.resident_bytes is None
+        and (engine.state in LIVE_ENGINE_STATES or engine.state is EngineState.ORPHAN)
+        for engine in status.engines
+    ):
+        return None
     if image_reserved_bytes > 0 and status.image_worker_resident_bytes is None:
         return None
     return sum(engine.resident_bytes or 0 for engine in status.engines) + (
@@ -145,7 +152,7 @@ class NodeProber:
                             image_residency_unavailable.set(
                                 int(
                                     int(image_reserved or 0) > 0
-                                    and status.image_worker_resident_bytes is None
+                                    and ledger.measured_resident_bytes is None
                                 ),
                                 {"node": row.name},
                             )

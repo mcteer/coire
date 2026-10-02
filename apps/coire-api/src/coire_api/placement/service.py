@@ -42,7 +42,7 @@ ledger_drift = meter.create_gauge(
 )
 image_residency_unavailable = meter.create_gauge(
     "coire_image_residency_measurement_unavailable",
-    description="One means an image reservation exists but the exact worker footprint cannot be measured.",
+    description="One means an image reservation exists but a live model or image footprint cannot be measured.",
 )
 
 
@@ -61,6 +61,18 @@ def resident_reservation_bytes(reservations: Sequence[MemoryReservationRow]) -> 
         for row in reservations
         if row.holder_type in (ReservationHolder.MODEL, ReservationHolder.IMAGE)
     )
+
+
+def effective_occupied_bytes(
+    reservations: Sequence[MemoryReservationRow], measured_resident_bytes: int | None
+) -> int | None:
+    """Count physical overage once; an unmeasured held image process blocks admission."""
+    occupied = sum(row.bytes for row in reservations)
+    if measured_resident_bytes is None:
+        if any(row.holder_type is ReservationHolder.IMAGE for row in reservations):
+            return None
+        return occupied
+    return occupied + max(0, measured_resident_bytes - resident_reservation_bytes(reservations))
 
 
 @asynccontextmanager

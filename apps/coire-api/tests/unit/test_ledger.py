@@ -5,7 +5,11 @@ from types import SimpleNamespace
 from typing import cast
 
 from coire_api.db import MemoryReservationRow
-from coire_api.placement.service import drift_ratio, resident_reservation_bytes
+from coire_api.placement.service import (
+    drift_ratio,
+    effective_occupied_bytes,
+    resident_reservation_bytes,
+)
 from coire_core.models.node import Reachability
 from coire_core.models.placement import ReservationHolder
 from coire_scheduler.placement import NodeCapacity, node_admissible, plan_admission
@@ -62,3 +66,7 @@ def test_residency_drift_includes_image_but_excludes_nonprocess_holds() -> None:
     )
     assert resident_reservation_bytes(rows) == 150
     assert drift_ratio(reserved_bytes=resident_reservation_bytes(rows), measured_bytes=150) == 0
+    assert effective_occupied_bytes(rows, 150) == 175
+    assert effective_occupied_bytes(rows, 180) == 205
+    assert effective_occupied_bytes(rows, None) is None
+    assert effective_occupied_bytes(rows[:1], None) == 100

@@ -221,9 +221,12 @@ async def test_shared_image_memory_counts_chat_and_reuses_only_exact_worker_hold
         def __init__(self) -> None:
             self.workers: list[uuid.UUID] = []
             self.holds: list[object] = [chat_hold]
+            self.measured_resident_bytes: int | None = 20
 
         async def get(self, model: object, identity: object, **kwargs: object) -> object:
-            return SimpleNamespace(budget_bytes=100)
+            return SimpleNamespace(
+                budget_bytes=100, measured_resident_bytes=self.measured_resident_bytes
+            )
 
         async def scalars(self, statement: object) -> _Rows:
             if "memory_reservations" in str(statement):
@@ -245,12 +248,28 @@ async def test_shared_image_memory_counts_chat_and_reuses_only_exact_worker_hold
     )
     session.holds.append(image_hold)
     session.workers = [instance_id]
+    session.measured_resident_bytes = 60
     assert (
         await image_available_bytes(
             cast(Any, session), cast(Any, node), MODEL_ID, 40, budget_fraction=0.9
         )
         == 70
     )
+    session.measured_resident_bytes = 80
+    assert (
+        await image_available_bytes(
+            cast(Any, session), cast(Any, node), MODEL_ID, 40, budget_fraction=0.9
+        )
+        == 50
+    )
+    session.measured_resident_bytes = None
+    assert (
+        await image_available_bytes(
+            cast(Any, session), cast(Any, node), MODEL_ID, 40, budget_fraction=0.9
+        )
+        == 0
+    )
+    session.measured_resident_bytes = 60
     session.workers = []
     assert (
         await image_available_bytes(

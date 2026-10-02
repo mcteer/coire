@@ -156,7 +156,7 @@ groups:
         for: 2m
         labels: {severity: warning}
         annotations:
-          summary: An image memory reservation exists without a measurable live worker footprint
+          summary: An image hold exists while a live model or image footprint is unavailable
       - alert: CoireImageStorageFailures
         expr: sum(increase(coire_image_requests_total{reason="storage",outcome=~"failed|refused"}[5m])) > 0
         for: 0m
