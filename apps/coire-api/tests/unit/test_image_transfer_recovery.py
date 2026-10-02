@@ -192,6 +192,30 @@ async def test_restart_reconciles_existing_node_cleanup_without_rerunning(
         == classification
     )
 
+    status = status.model_copy(
+        update={
+            "receipts": (
+                receipt.model_copy(
+                    update={
+                        "classification": classification.model_copy(
+                            update={"tag": ImageContentTag.EXPLICIT, "score": Decimal("0.9")}
+                        )
+                    }
+                ),
+            )
+        }
+    )
+    session.job.cleanup_state = "pending"
+    session.job.receipt_state = "pending"
+    session.transfer.node_cleanup_ack_at = None
+    with pytest.raises(ImageConflict, match="core and node image receipts differ"):
+        await images.drive_image_transfer(JOB)
+    assert session.transfer.node_cleanup_ack_at is None
+
+    status = status.model_copy(
+        update={"receipts": (receipt.model_copy(update={"classification": classification}),)}
+    )
+
     session.job.cleanup_state = "pending"
     session.job.receipt_state = "pending"
     session.transfer.node_cleanup_ack_at = None

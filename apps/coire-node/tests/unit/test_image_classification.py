@@ -40,6 +40,14 @@ def test_classifier_copy_requires_pinned_verified_local_files(
     assert classification.verified_classifier_copy(store) == root
     (root / "model.safetensors").write_bytes(b"tampered weight")
     assert classification.verified_classifier_copy(store) is None
+    (root / "model.safetensors").write_bytes(weight)
+    manifest_path = store.manifest_path(slug)
+    original = manifest_path.read_bytes()
+    manifest_path.unlink()
+    external = tmp_path / "external-manifest.json"
+    external.write_bytes(original)
+    manifest_path.symlink_to(external)
+    assert classification.verified_classifier_copy(store) is None
 
 
 def _result(tag: ImageContentTag, *, score: Decimal | None) -> ImageClassificationResult:

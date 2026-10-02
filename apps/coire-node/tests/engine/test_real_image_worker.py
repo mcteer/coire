@@ -278,6 +278,9 @@ def test_real_acquisition_smoke_proves_txt2img_and_img2img(
     manifest = store.read_manifest(load.slug)
     assert manifest is not None
     monkeypatch.setattr(MfluxTxt2ImgPipeline, "load", lambda *_: pipeline)
+    # The local Metal footprint for two smoke modes reached 13.6 GB despite the
+    # sub-1 GB fixture. Validation must use a measured Studio-scale hold.
+    validation_hold_bytes = 16 * 1024**3
     result = validate_image_asset(
         store,
         ImageAssetValidateRequest(
@@ -289,11 +292,13 @@ def test_real_acquisition_smoke_proves_txt2img_and_img2img(
             manifest_sha256=load.manifest_sha256,
             reservation_id=uuid.uuid4(),
         ),
-        reservation_bytes=load.reservation_bytes,
+        reservation_bytes=validation_hold_bytes,
     )
     assert result.validated and result.thumbnail_sha256 is not None
     assert result.image_capability_profile is not None
     assert result.image_capability_profile.modes == (ImageMode.TXT2IMG, ImageMode.IMG2IMG)
+    assert result.peak_physical_delta_bytes is not None
+    assert result.peak_physical_delta_bytes <= validation_hold_bytes
 
 
 def test_real_encoder_cache_twenty_warm_trials_and_changed_prompt_miss(

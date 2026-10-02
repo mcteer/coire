@@ -1759,3 +1759,12 @@ Image placement now reserves the configured classifier allowance in addition
 to the base model estimate. The exact-fit placement test and 42 focused
 dispatch/admission/coexistence tests pass (one local PostgreSQL skip). This is
 conservative headroom; full physical coexistence acceptance remains T070/T084.
+
+The local tiny native matrix was rerun with `COIRE_ENGINE=1` and the ignored
+`models/test--image-tiny` fixture. A 500 MB validation hold failed the new
+physical-footprint check; a diagnostic run measured about 13.6 GB of physical
+delta during the two native smokes. The test now supplies a 16 GiB validation
+hold and asserts the measured delta is within it. All **9 native tests passed**.
+The fixture is under 1 GB on disk, but its Metal runtime footprint is much
+larger; this single local measurement does not approve any full-model Studio
+placement or coexistence profile.

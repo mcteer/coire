@@ -46,6 +46,8 @@ def verified_classifier_copy(store: Store) -> Path | None:
     try:
         if not stat.S_ISDIR((store.root / slug).lstat().st_mode):
             return None
+        if not stat.S_ISREG(store.manifest_path(slug).lstat().st_mode):
+            return None
         manifest = store.read_manifest(slug)
         if (
             manifest is None
