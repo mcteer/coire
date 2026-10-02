@@ -241,6 +241,16 @@ used by an active job requests fenced cancellation and tombstones the input;
 the purge waits for the node's stop and cleanup acknowledgment. Fill, control, LoRA and upscale
 execution remain under T056; full end-to-end input acceptance remains under T054.
 
+The node replays one bounded page of terminal job journals every 30 seconds, including
+immediately after restart. A failed or cancelled attempt with `scratch_cleaned=false`
+keeps its journal and reservation evidence until both private Studio scratch trees are
+physically empty. The sweep accepts only files bound to that exact job, attempt and
+fence; an unexpected file, link or permission causes a `cleanup` stage failure and
+retains the bytes for investigation. Check `coire_image_node_stages_total{stage="cleanup"}`
+and the node's `image terminal scratch cleanup failed` log for a retrying attempt.
+To retry, correct the unsafe entry and let the next sweep run; do not clear the journal
+or release its reservation manually while process identity is uncertain.
+
 The `coire-blobs` volume is API-only. Back up and restore it together with the Postgres
 rows that describe image inputs, outputs, receipts and quota holds. Restoring only one
 side can leave inaccessible outputs or unreconciled storage reservations. Confirm that

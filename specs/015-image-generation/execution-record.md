@@ -1,5 +1,17 @@
 # Feature 015 execution record
 
+## Terminal Studio scratch journal replay — 2026-10-02
+
+The Studio agent now scans bounded durable journal pages every 30 seconds,
+including after restart, and retries physical output/input scratch deletion for
+failed or cancelled attempts before recording `scratch_cleaned`. Unsafe entries
+retain bytes and journal evidence and emit the existing cleanup failure metric.
+The node unit and route contract checks passed **31 tests**; Ruff and strict mypy
+passed. Core tombstone, orphan staging, input and quota sweeps were already
+present and remain active when image admission is disabled. Full suite result is
+being refreshed; operator retention and cancellation timing still require the
+cluster matrix in T083.
+
 ## Private gallery classifier diagnostic — 2026-10-02
 
 Owner output projections now expose a bounded classifier diagnostic, and the

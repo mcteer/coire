@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -44,6 +45,9 @@ class ImageDispatchUnavailable(RuntimeError):
 
 class ImageDispatchConflict(RuntimeError):
     """This command does not bind to the resident worker or supported pipeline."""
+
+
+logger = logging.getLogger(__name__)
 
 
 def _supported(request: NodeImageStartRequest, load: ImageWorkerLoadRequest) -> bool:
@@ -108,6 +112,38 @@ class ImageNodeDispatcher:
         self.worker = worker
         self.transport = transport
         self._lock = asyncio.Lock()
+
+    async def sweep_terminal_scratch(self, *, after_job: str | None = None) -> str | None:
+        """Repair terminal cleanup after lost requests or an agent restart."""
+        async with self._lock:
+            pending, cursor = await asyncio.to_thread(
+                self.journal.pending_terminal_cleanup, after_job=after_job
+            )
+            for status in pending:
+                with image_node_span(ImageNodeStage.CLEANUP, job_id=status.job_id):
+                    try:
+                        await asyncio.to_thread(self._discard_terminal_attempt, status)
+                        self.journal.advance(
+                            status.model_copy(
+                                update={"scratch_cleaned": True, "updated_at": _later(status)}
+                            )
+                        )
+                    except Exception as exc:
+                        record_image_stage(
+                            ImageNodeStage.CLEANUP, ImageNodeOutcome.FAILED, job_id=status.job_id
+                        )
+                        logger.error(
+                            "image terminal scratch cleanup failed job_id=%s error_type=%s",
+                            status.job_id,
+                            type(exc).__name__,
+                        )
+                        continue
+                    record_image_stage(
+                        ImageNodeStage.CLEANUP,
+                        ImageNodeOutcome.SUCCEEDED,
+                        job_id=status.job_id,
+                    )
+            return cursor
 
     async def reserve_inputs(self, request: NodeImageStartRequest) -> tuple[bool, NodeImageJob]:
         """Persist every attempt before worker loading or private input upload."""

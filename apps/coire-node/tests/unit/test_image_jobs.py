@@ -7,13 +7,17 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from coire_core.models.image_worker import NodeImageStartRequest
 from coire_core.models.images import ImageSpec, ResolvedImageSpec, canonical_spec_hash
 from coire_node.image_cleanup import ImageCleanupUnavailable, discard_cancelled_image_scratch
+from coire_node.image_dispatch import ImageNodeDispatcher
 from coire_node.image_jobs import ImageJobJournal, ImageJournalConflict, ImageJournalUnavailable
+from coire_node.image_runtime.supervisor import ImageProcessSupervisor
 
 JOB = "01J00000000000000000000000"
 NODE = "coire-edge-b"
@@ -102,6 +106,71 @@ def test_journal_terminal_and_uncertain_state_never_restarts(tmp_path: Path) -> 
     with pytest.raises(ImageJournalUnavailable):
         journal.get(JOB)
     assert path.read_text() == "broken"
+
+
+@pytest.mark.asyncio
+async def test_terminal_scratch_sweep_replays_after_lost_cleanup(tmp_path: Path) -> None:
+    journal = ImageJobJournal(tmp_path, NODE)
+    queued = journal.begin(_request())
+    failed = journal.advance(
+        queued.model_copy(update={"state": "failed", "updated_at": datetime.now(UTC)})
+    )
+    output_root = tmp_path / "image-scratch"
+    input_root = tmp_path / "image-input-scratch"
+    for root in (output_root, input_root):
+        attempt = root / f"{JOB}-1-4"
+        attempt.mkdir(parents=True, mode=0o700)
+        root.chmod(0o700)
+    output = output_root / f"{JOB}-1-4" / "0.png"
+    output.write_bytes(b"private output")
+    output.chmod(0o600)
+    worker = cast(
+        ImageProcessSupervisor, SimpleNamespace(settings=SimpleNamespace(node_state_dir=tmp_path))
+    )
+    dispatcher = ImageNodeDispatcher(journal, worker)
+    assert await dispatcher.sweep_terminal_scratch() == JOB
+    repaired = journal.get(JOB)
+    assert repaired is not None and repaired.state == failed.state and repaired.scratch_cleaned
+    assert not (output_root / f"{JOB}-1-4").exists()
+    assert not (input_root / f"{JOB}-1-4").exists()
+    assert await dispatcher.sweep_terminal_scratch(after_job=JOB) is None
+
+
+@pytest.mark.asyncio
+async def test_terminal_scratch_sweep_retains_unsafe_bytes(tmp_path: Path) -> None:
+    journal = ImageJobJournal(tmp_path, NODE)
+    queued = journal.begin(_request())
+    journal.advance(
+        queued.model_copy(update={"state": "cancelled", "updated_at": datetime.now(UTC)})
+    )
+    root = tmp_path / "image-scratch"
+    attempt = root / f"{JOB}-1-4"
+    attempt.mkdir(parents=True, mode=0o700)
+    root.chmod(0o700)
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"keep")
+    (attempt / "0.png").symlink_to(outside)
+    worker = cast(
+        ImageProcessSupervisor, SimpleNamespace(settings=SimpleNamespace(node_state_dir=tmp_path))
+    )
+    dispatcher = ImageNodeDispatcher(journal, worker)
+    assert await dispatcher.sweep_terminal_scratch() == JOB
+    current = journal.get(JOB)
+    assert current is not None and not current.scratch_cleaned
+    assert outside.read_bytes() == b"keep"
+
+
+def test_terminal_scratch_page_is_bounded_and_rejects_invalid_cursor(tmp_path: Path) -> None:
+    journal = ImageJobJournal(tmp_path, NODE)
+    queued = journal.begin(_request())
+    journal.advance(queued.model_copy(update={"state": "failed", "updated_at": datetime.now(UTC)}))
+    pending, cursor = journal.pending_terminal_cleanup()
+    assert len(pending) == 1 and cursor == JOB
+    assert journal.pending_terminal_cleanup(after_job=JOB) == ((), None)
+    with pytest.raises(ImageJournalConflict):
+        journal.pending_terminal_cleanup(after_job="../bad")
+    with pytest.raises(ImageJournalConflict):
+        journal.pending_terminal_cleanup(limit=26)
 
 
 def test_cancelled_scratch_refuses_symlink_and_retries_after_removal(tmp_path: Path) -> None:

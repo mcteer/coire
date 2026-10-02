@@ -479,9 +479,16 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
     failover_controller = build_controller(settings, docker)
     if failover_controller is not None:
         await failover_controller.start()
+    image_sweep_stop = asyncio.Event()
+    image_sweep_task = asyncio.create_task(
+        _sweep_terminal_image_scratch(image_dispatcher, image_sweep_stop),
+        name="image-terminal-scratch-maintenance",
+    )
     try:
         await asyncio.gather(*(s.serve() for s in servers))
     finally:
+        image_sweep_stop.set()
+        await image_sweep_task
         if failover_controller is not None:
             await failover_controller.stop()
         await engines_routes.close_engine_client()
@@ -490,3 +497,20 @@ async def serve(settings: Settings, collector: SupportsLatest) -> None:
         # (spec FR-015).
         engines.shutdown()
         jobs.shutdown()
+
+
+async def _sweep_terminal_image_scratch(
+    dispatcher: ImageNodeDispatcher, stop: asyncio.Event
+) -> None:
+    """Replay a bounded journal page each pass, including after node restart."""
+    cursor: str | None = None
+    while not stop.is_set():
+        try:
+            cursor = await dispatcher.sweep_terminal_scratch(after_job=cursor)
+        except Exception as exc:
+            logger.error("image terminal scratch sweep failed error_type=%s", type(exc).__name__)
+            cursor = None
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=30.0)
+        except TimeoutError:
+            continue

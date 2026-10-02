@@ -181,6 +181,41 @@ class ImageJobJournal:
             record = self._record(job_id)
             return record.request if record is not None else None
 
+    def pending_terminal_cleanup(
+        self, *, after_job: str | None = None, limit: int = 25
+    ) -> tuple[tuple[NodeImageJob, ...], str | None]:
+        """Page durable terminal attempts without trusting scratch directory names."""
+        if after_job is not None:
+            self._path(after_job)
+        if not 1 <= limit <= 25:
+            raise ImageJournalConflict()
+        with self._lock:
+            _private_root(self.root)
+            try:
+                names = os.listdir(self.root)
+            except OSError:
+                raise ImageJournalUnavailable() from None
+            if len(names) > 4096:
+                raise ImageJournalUnavailable()
+            job_ids = sorted(
+                name[:-5]
+                for name in names
+                if name.endswith(".json") and re.fullmatch(ULID_PATTERN, name[:-5])
+            )
+            selected = [job_id for job_id in job_ids if after_job is None or job_id > after_job]
+            page = selected[:limit]
+            pending: list[NodeImageJob] = []
+            for job_id in page:
+                record = self._record(job_id)
+                if record is None:
+                    raise ImageJournalUnavailable()
+                if (
+                    record.status.state in {"failed", "cancelled"}
+                    and not record.status.scratch_cleaned
+                ):
+                    pending.append(record.status)
+            return tuple(pending), page[-1] if page else None
+
     def advance(self, status: NodeImageJob) -> NodeImageJob:
         try:
             status = NodeImageJob.model_validate(status.model_dump())
