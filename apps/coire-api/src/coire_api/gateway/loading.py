@@ -21,7 +21,8 @@ from coire_api.db import (
 from coire_api.gateway.telemetry import tracer
 from coire_api.instance.service import append_initial_transition
 from coire_api.nodes_client import NodeClient, NodeError
-from coire_api.placement.legacy import ensure_legacy_model_hold_locked
+from coire_api.placement.legacy import ensure_legacy_model_hold
+from coire_api.placement.service import node_admission_lock
 from coire_api.registry.visual_memory import require_supported_placement, reservation_bytes
 from coire_core.errors import ChatModelUnavailable
 from coire_core.models.engine import EngineState
@@ -167,32 +168,41 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
                 if hosting_node is None or hosting_node.reachability is not Reachability.HEALTHY:
                     raise ModelLoadError("existing engine node is unavailable")
                 node = hosting_node
-            if existing is not None and existing.state is EngineState.READY:
-                try:
-                    await ensure_legacy_model_hold_locked(
-                        session, existing.node_id, model.id, existing.estimate_bytes
-                    )
-                except ChatModelUnavailable as exc:
-                    raise ModelLoadError("node memory admission refused") from exc
-                return
-            row = existing or EngineProcessRow(
-                id=uuid.uuid4(),
-                model_id=model.id,
-                node_id=node.id,
-                port=0,
-                state=EngineState.STARTING,
-                estimate_bytes=required_bytes,
-                backend=model.backend,
-            )
-            if existing is None:
-                session.add(row)
             try:
-                await ensure_legacy_model_hold_locked(
-                    session, row.node_id, model.id, required_bytes
-                )
+                async with node_admission_lock(session, node.id):
+                    # The first lookup only selected a node. Re-read under its
+                    # transaction lock so concurrent gateway processes reuse
+                    # one engine identity and one shared memory hold.
+                    existing = await session.scalar(
+                        select(EngineProcessRow)
+                        .where(
+                            EngineProcessRow.model_id == model_id,
+                            EngineProcessRow.node_id == node.id,
+                            EngineProcessRow.state.in_([EngineState.STARTING, EngineState.READY]),
+                        )
+                        .order_by(EngineProcessRow.started_at.desc())
+                        .limit(1)
+                    )
+                    if existing is not None and existing.state is EngineState.READY:
+                        await ensure_legacy_model_hold(
+                            session, node.id, model.id, existing.estimate_bytes
+                        )
+                        return
+                    row = existing or EngineProcessRow(
+                        id=uuid.uuid4(),
+                        model_id=model.id,
+                        node_id=node.id,
+                        port=0,
+                        state=EngineState.STARTING,
+                        estimate_bytes=required_bytes,
+                        backend=model.backend,
+                    )
+                    if existing is None:
+                        session.add(row)
+                    await ensure_legacy_model_hold(session, row.node_id, model.id, required_bytes)
+                    engine_id = row.id
             except ChatModelUnavailable as exc:
                 raise ModelLoadError("node memory admission refused") from exc
-            engine_id = row.id
             node_name = node.name
             slug = model.slug
             chat_template = model.chat_template if model.backend == EngineBackend.MLX_LM else None

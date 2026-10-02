@@ -33,11 +33,9 @@ async def ensure_legacy_model_hold(
     held = existing is not None and existing.state is MemoryReservationState.HELD
     if held and existing is not None and existing.bytes < estimate_bytes:
         raise ChatModelUnavailable()
-    ledger = None
-    if not held:
-        ledger = await session.get(NodeMemoryLedgerRow, node_id, populate_existing=True)
-        if ledger is None or estimate_bytes <= 0:
-            raise ChatModelUnavailable()
+    ledger = await session.get(NodeMemoryLedgerRow, node_id, populate_existing=True)
+    if ledger is None or estimate_bytes <= 0:
+        raise ChatModelUnavailable()
     reservations = (
         await session.scalars(
             select(MemoryReservationRow).where(
@@ -78,7 +76,6 @@ async def ensure_legacy_model_hold(
         return existing
     if has_image_hold or live_image is not None:
         raise ChatModelUnavailable()
-    assert ledger is not None
     occupied = sum(row.bytes for row in reservations if row is not existing)
     if occupied + estimate_bytes > ledger.budget_bytes:
         raise ChatModelUnavailable()

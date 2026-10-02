@@ -1,5 +1,18 @@
 # Feature 015 execution record
 
+## Cross-process legacy launch deduplication — 2026-10-02
+
+Admin and gateway legacy loads now re-read active engine rows after acquiring
+the selected node's transaction lock. Two concurrent admin requests on the
+disposable Compose stack returned one `202`, one `200`, and the same engine ID;
+the worker reached ready. The immediate held-memory assertion also passed in
+that rebuilt API stack (**2 integration tests**). A ready hold requires its
+node ledger row even when the hold already exists. The focused gateway tests
+passed **11 tests**; the complete local Python suite passed **1,815 tests**
+with 159 platform/external skips. Ruff and strict mypy across 645 files passed.
+The latest CI for this commit is pending. T065/T068 remain open for their wider
+placement and coexistence matrices.
+
 ## Owner input binding for fill and control — 2026-10-02
 
 The shared image contract now lists init, mask and control input IDs in stable

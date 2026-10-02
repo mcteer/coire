@@ -41,7 +41,7 @@ from coire_api.db import (
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.providers import credential_present
 from coire_api.nodes_client import NodeClient, NodeError
-from coire_api.placement.legacy import ensure_legacy_model_hold_locked
+from coire_api.placement.legacy import ensure_legacy_model_hold
 from coire_api.placement.service import node_admission_lock
 from coire_api.preconditions import require_current
 from coire_api.registry import image_acquisition, service
@@ -493,50 +493,42 @@ async def load_model(
     if node is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "node is not registered")
 
-    # STARTING/READY only, not STOPPING: an engine on its way out is not "already loaded",
-    # and returning it would hand the caller something that becomes `stopped` moments later.
-    existing = (
-        await session.execute(
-            select(EngineProcessRow).where(
-                EngineProcessRow.model_id == model.id,
-                EngineProcessRow.node_id == node.id,
-                EngineProcessRow.state.in_([EngineState.STARTING, EngineState.READY]),
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        try:
-            await ensure_legacy_model_hold_locked(
-                session, node.id, model.id, existing.estimate_bytes
-            )
-        except ChatModelUnavailable as exc:
-            raise HTTPException(status.HTTP_409_CONFLICT, "node memory admission refused") from exc
-        await session.commit()
-        # FR-019: a second load of the same model on the same node is a no-op.
-        response.status_code = status.HTTP_200_OK
-        nodes = {node.id: node.name}
-        return _engine(existing, nodes)
-
-    engine_id = uuid.uuid4()
-    row = EngineProcessRow(
-        id=engine_id,
-        model_id=model.id,
-        node_id=node.id,
-        port=0,
-        state=EngineState.STARTING,
-        estimate_bytes=required_bytes,
-        backend=model.backend,
-    )
-    session.add(row)
-
     try:
-        await ensure_legacy_model_hold_locked(session, node.id, model.id, required_bytes)
+        async with node_admission_lock(session, node.id):
+            # Re-read after the lock. Another API process may have committed a
+            # STARTING row and its hold while this request waited for the lock.
+            existing = await session.scalar(
+                select(EngineProcessRow)
+                .where(
+                    EngineProcessRow.model_id == model.id,
+                    EngineProcessRow.node_id == node.id,
+                    EngineProcessRow.state.in_([EngineState.STARTING, EngineState.READY]),
+                )
+                .order_by(EngineProcessRow.started_at.desc())
+                .limit(1)
+            )
+            if existing is not None:
+                await ensure_legacy_model_hold(session, node.id, model.id, existing.estimate_bytes)
+                await session.commit()
+                response.status_code = status.HTTP_200_OK
+                return _engine(existing, {node.id: node.name})
+            engine_id = uuid.uuid4()
+            row = EngineProcessRow(
+                id=engine_id,
+                model_id=model.id,
+                node_id=node.id,
+                port=0,
+                state=EngineState.STARTING,
+                estimate_bytes=required_bytes,
+                backend=model.backend,
+            )
+            session.add(row)
+            await ensure_legacy_model_hold(session, node.id, model.id, required_bytes)
+            # Publish the engine identity and hold in the same transaction.
+            await session.commit()
     except ChatModelUnavailable as exc:
         await session.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, "node memory admission refused") from exc
-    # Commit engine identity and its memory hold together before starting Metal work.
-    # Reconciliation must see both if the node responds before this request finishes.
-    await session.commit()
 
     try:
         already, engine_status = await client.start_engine(

@@ -329,6 +329,7 @@ async def test_legacy_engine_hold_is_bounded_and_excludes_image_worker() -> None
             self.created: MemoryReservationRow | None = None
             self.existing: MemoryReservationRow | None = None
             self.live_image: uuid.UUID | None = None
+            self.ledger_missing = False
 
         async def scalar(self, statement: object) -> uuid.UUID | MemoryReservationRow | None:
             if "model_instances" in str(statement):
@@ -339,7 +340,7 @@ async def test_legacy_engine_hold_is_bounded_and_excludes_image_worker() -> None
 
         async def get(self, model: object, identity: object, **kwargs: object) -> object:
             assert model is NodeMemoryLedgerRow and identity == node_id
-            return SimpleNamespace(budget_bytes=10)
+            return None if self.ledger_missing else SimpleNamespace(budget_bytes=10)
 
         async def scalars(self, statement: object) -> Rows:
             return Rows(self.reservations)
@@ -381,6 +382,10 @@ async def test_legacy_engine_hold_is_bounded_and_excludes_image_worker() -> None
         )
     ]
     await proxy._ensure_legacy_engine_hold(cast(AsyncSession, session), engine, str(model_id))
+    session.ledger_missing = True
+    with pytest.raises(ChatModelUnavailable):
+        await proxy._ensure_legacy_engine_hold(cast(AsyncSession, session), engine, str(model_id))
+    session.ledger_missing = False
     session.existing = None
     session.live_image = None
     session.reservations.clear()

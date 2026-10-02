@@ -29,6 +29,8 @@ The admin and gateway legacy load paths commit the engine row and shared
 engine. A definite node budget refusal releases that hold. A transport error
 leaves the `starting` row and hold intact until reconciliation gets terminal
 status or a confirmed missing-engine response after the startup grace period.
+Both load paths recheck the active engine under the node admission lock, so
+simultaneous requests on one node reuse the same engine identity.
 The gateway also reconciles a ready legacy chat engine into the shared node ledger
 before granting inference. It refuses the request if the node budget or an image
 worker prevents that hold. The reconciler releases the hold after the node
