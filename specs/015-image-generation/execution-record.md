@@ -1770,3 +1770,10 @@ tests passed** locally.
 The fixture is under 1 GB on disk, but its Metal runtime footprint is much
 larger; this single local measurement does not approve any full-model Studio
 placement or coexistence profile.
+
+At `ffa052f`, the complete local Python gate passed **1,829 passed, 159
+skipped**. The 159 skips are optional external integration/engine environments;
+the nine image-engine tests above were run explicitly with the ignored local
+fixture. The 138 browser unit tests, lint, build, Ruff, mypy and OpenAPI
+freshness gates passed before the final test-only correction. Remote CI for
+this head is pending.
