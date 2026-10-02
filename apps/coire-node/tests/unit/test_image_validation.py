@@ -513,6 +513,7 @@ def test_pinned_classifier_requires_local_cpu_smoke_before_publication(
         model_dir: Path, image_path: Path, **kwargs: object
     ) -> tuple[ImageClassificationResult, int]:
         assert model_dir == store.path_for("org--image")
+        assert kwargs["job_id"] is None
         called.append(image_path)
         result = ImageClassificationResult(
             tag=ImageContentTag.NORMAL,

@@ -756,7 +756,8 @@ def _validate_classifier(
                 path,
                 sample,
                 reservation_bytes=reservation_bytes,
-                job_id=str(request.job_id),
+                # Acquisition IDs are UUIDs; image run telemetry accepts ULIDs only.
+                job_id=None,
             )
         )
     if (
