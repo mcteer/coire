@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import errno
 import hashlib
 import uuid
@@ -9,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import httpx
 import pytest
 
 from coire_core.models.image_worker import (
@@ -28,6 +30,9 @@ from coire_core.models.images import (
 from coire_node import image_worker
 from coire_node.image_cleanup import cleanup_image_outputs
 from coire_node.image_jobs import ImageJobJournal, ImageJournalConflict
+from coire_node.image_runtime import control as worker_control
+from coire_node.image_runtime.classification import _unknown
+from coire_node.image_runtime.control import create_worker_app
 from coire_node.image_worker import ImageJobExecutionError, run_image_job
 from coire_node.testing.fake_image_worker import FakeImagePipeline
 
@@ -289,3 +294,58 @@ def test_fenced_receipt_cannot_clean_or_publish_a_different_attempt(tmp_path: Pa
             ),
         )
     assert not output.path.exists()
+
+
+async def test_classifier_failure_keeps_generated_batch_private_and_tags_unknown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    start = _request()
+    load = ImageWorkerLoadRequest(
+        slug="studio--fake-image",
+        model_id=start.model_id,
+        instance_id=start.instance_id,
+        manifest_sha256=start.resolved.model_sha256,
+        reservation_bytes=1024,
+        runtime_version=start.resolved.pipeline_version,
+    )
+
+    async def failed_classifier(*args: object, **kwargs: object) -> object:
+        return _unknown("classifier_failed")
+
+    monkeypatch.setattr(worker_control, "classify_image", failed_classifier)
+    monkeypatch.setattr(worker_control, "resident_bytes", lambda pid: 0)
+    app = create_worker_app(
+        load,
+        FakeImagePipeline(),
+        tmp_path / "scratch",
+        token="t" * 64,
+        port=39179,
+        classifier_model_dir=tmp_path / "classifier",
+        classifier_memory_bytes=1,
+    )
+    command = ImageWorkerRunRequest(
+        job_id=JOB,
+        attempt=1,
+        fence=1,
+        instance_id=start.instance_id,
+        resolved=start.resolved,
+        deadline_at=start.deadline_at,
+    )
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://worker",
+        headers={"Authorization": "Bearer " + "t" * 64},
+    ) as client:
+        assert (await client.put("/job", json=command.model_dump(mode="json"))).status_code == 202
+        for _ in range(100):
+            response = await client.post(
+                "/status",
+                json={"job_id": JOB, "attempt": 1, "fence": 1},
+            )
+            assert response.status_code == 200
+            if response.json()["state"] == "generated":
+                break
+            await asyncio.sleep(0.01)
+        assert response.json()["state"] == "generated"
+        assert response.json()["outputs"][0]["classification"]["tag"] == "unknown"
+        assert response.json()["outputs"][0]["classification"]["safe_error"] == "classifier_failed"

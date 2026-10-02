@@ -2046,3 +2046,17 @@ web lint/build and the 10-test local tiny native suite passed. The full Python
 suite before the final focused node contract assertion passed **1,872 tests,
 160 skipped**; the final assertion passed in the focused rerun. T063 is
 complete; the 20-trial production cache measurement remains T084.
+
+T066 coverage reconciliation: the implemented node supervisor and API ledger
+tests live in `test_image_process_supervisor.py`, `test_image_residency.py`,
+`test_ledger.py` and `test_image_coexistence_admission.py` rather than the
+proposed new filenames. They cover held resident and transient bytes, exact
+PID re-adoption, tampered/uncertain records, idle TTL and pinning, stop-proof
+release, physical overage and missing residency. The focused gate passed
+**49 tests**. Production drift and coexistence measurements remain T084.
+
+The simulated worker recovery suite now injects a classifier failure after
+successful PNG generation and verifies the fenced worker reports an `unknown`
+tag with a safe error while keeping output in private scratch. All **5**
+local recovery integration tests passed. The broader all-boundary matrix in
+T075 remains open.

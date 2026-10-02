@@ -373,6 +373,7 @@ def test_generate_encodes_before_denoising_and_still_calls_the_model(
     monkeypatch.setattr(model, "generate_image", track_generate)
     images = loaded.generate(resolved, lambda index, step, total: None)
     assert order == ["encode", "generate", "generate"]
+    assert loaded.cache_status == "cold"
     assert [call["seed"] for call in model.calls] == [7, 8]
     assert all(image.mode == "RGB" and image.size == (64, 64) for image in images)
     for image in images:
@@ -401,6 +402,7 @@ def test_warm_prompt_cache_does_not_store_again_during_generate(
     monkeypatch.setattr(loaded.prompt_cache, "put", spy)
     images = loaded.generate(resolved, lambda index, step, total: None)
     assert stored == []
+    assert loaded.cache_status == "hit"
     assert len(model.calls) == 1
     for image in images:
         image.close()
