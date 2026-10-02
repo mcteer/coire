@@ -174,6 +174,48 @@ async def test_inference_stops_when_its_memory_lease_cannot_be_renewed(
     assert released == [lease_id]
 
 
+async def test_inference_continues_while_memory_lease_renewal_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    lease_id = uuid.uuid4()
+    renewed = 0
+    released: list[uuid.UUID] = []
+
+    class Session:
+        async def get(self, model: object, identity: object) -> object:
+            return SimpleNamespace(model_id=uuid.uuid4(), instance_id=None, node_id=uuid.uuid4())
+
+        async def scalar(self, query: object) -> object:
+            return SimpleNamespace(id=uuid.uuid4())
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    async def acquire(*args: object, **kwargs: object) -> object:
+        return SimpleNamespace(id=lease_id)
+
+    async def refresh(*args: object, **kwargs: object) -> bool:
+        nonlocal renewed
+        renewed += 1
+        return True
+
+    async def release(session: object, identity: uuid.UUID) -> None:
+        released.append(identity)
+
+    monkeypatch.setattr(proxy, "session_scope", sessions)
+    monkeypatch.setattr(proxy, "acquire_lease", acquire)
+    monkeypatch.setattr(proxy, "refresh_lease", refresh)
+    monkeypatch.setattr(proxy, "release_lease", release)
+    settings = Settings(_secrets_dir="/nonexistent", placement_lease_ttl_s=0.2)  # type: ignore[call-arg]
+    async with proxy.request_lease(
+        f"http://coire-edge-a.lab:9400/node/engines/{uuid.uuid4()}/proxy", settings
+    ):
+        await asyncio.sleep(0.25)
+        assert renewed >= 1
+    assert released == [lease_id]
+
+
 async def test_sharded_request_locks_all_nodes_before_acquiring_any_lease(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

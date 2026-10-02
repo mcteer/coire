@@ -37,6 +37,13 @@ the durable node journal has not advanced to a publishable state. The recovery
 suite passed **4 tests**, with Ruff and strict mypy green. T075 remains open
 for its remaining boundary and failure matrix.
 
+## Missing advanced image fields — 2026-10-02
+
+The form now names a missing source, fill mask or control image beside its
+disabled Generate action. A restored fill recipe test verifies source and mask
+errors. The web suite passed **138 tests**, ESLint and TypeScript passed. T057
+remains open for complete advanced settings and model component selection.
+
 ## CI image gate and chat lease expiry — 2026-10-02
 
 The `c55b433` pull-request CI run passed general Ruff/strict mypy lint and the

@@ -103,6 +103,34 @@ test("refuses a restored mode that the current model no longer supports", async 
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
+test("names missing source and mask fields before fill submission", async () => {
+  const onSubmit = vi.fn(async () => {});
+  render(
+    <ImageForm
+      models={[
+        {
+          ...models[0],
+          capability: { ...models[0].capability, modes: ["fill"] },
+        },
+      ] as ImageModelList["items"]}
+      presets={[]}
+      disabled={false}
+      onSubmit={onSubmit}
+      reuse={{
+        request: { schema_version: 1, model_id: modelId, mode: "fill", prompt: "saved" },
+        revision: 1,
+      }}
+    />,
+  );
+  expect(await screen.findByText("A source image is required for fill.")).toHaveAttribute(
+    "role",
+    "alert",
+  );
+  expect(screen.getByText("A mask image is required for fill.")).toHaveAttribute("role", "alert");
+  expect(screen.getByRole("button", { name: "Generate" })).toBeDisabled();
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
 test("discloses configured retention, quota and upload bounds before generation", () => {
   render(
     <ImageForm

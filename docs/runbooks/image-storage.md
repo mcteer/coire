@@ -86,6 +86,9 @@ symlinks, unfamiliar names and recent files. Inspect
 `coire_image_input_cleanup_total` and `coire_image_input_purge_oldest_seconds`; the
 Images dashboard and alerts `CoireImageInputCleanupFailures` and
 `CoireImageInputPurgeOverdue` cover repeated failures and the 24-hour deadline.
+Input orphan inventory stops after 4,096 directory entries. Deleted and failed
+input purges advance through 25-row keyset pages, so inspect the oldest pending
+age rather than assuming every damaged row is retried in the same pass.
 If cleanup fails, keep the row and hold for retry; do not remove the original volume.
 Owners can also `DELETE /api/v1/image-inputs/{id}`. A 202 response commits the
 tombstone before returning; subsequent status reads hide the input. Active owned
@@ -184,9 +187,11 @@ loop checks pending tombstones every 30 seconds, unlinks only regular files belo
 private blob root without following symlinks, then records `purged_at` and releases
 owner/global stored-byte counters. A missing file is retry-safe after an unlink-before-
 commit crash. A failed purge remains pending; inspect `coire_image_purge_total`,
-`coire_image_purge_oldest_seconds` and the `CoireImagePurgeOverdue` alert. To stop new
-output creation keep `COIRE_IMAGE_ENABLED=false`; let maintenance finish before removing
-the blob volume or rolling back the schema.
+`coire_image_purge_oldest_seconds` and the `CoireImagePurgeOverdue` alert. The
+output purge advances through 25-row keyset pages so one damaged early batch
+does not starve later tombstones. It wraps after the last pending row and retries.
+To stop new output creation keep `COIRE_IMAGE_ENABLED=false`; let maintenance
+finish before removing the blob volume or rolling back the schema.
 
 Owners can now issue five-minute download grants via
 `POST /api/v1/image-outputs/{id}/download-grants`. The response URL has a `#grant=`

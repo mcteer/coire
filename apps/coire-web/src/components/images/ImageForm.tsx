@@ -376,7 +376,14 @@ export function ImageForm({
       )}
       {missingModel && <p role="alert">The source image model is no longer available.</p>}
       {unsupportedMode && <p role="alert">This model does not support the restored image mode.</p>}
+      {(mode === "img2img" || mode === "fill") && !initImageId && (
+        <p role="alert">A source image is required for {mode}.</p>
+      )}
+      {mode === "fill" && !maskId && <p role="alert">A mask image is required for fill.</p>}
       {mode === "img2img" && !strength && <p role="alert">Image strength is required.</p>}
+      {mode === "control" && !controlImageId && (
+        <p role="alert">A control image is required for control generation.</p>
+      )}
       {mode === "control" && !reusedRequest?.control && (
         <p role="alert">A compatible control model is unavailable for selection.</p>
       )}
