@@ -20,7 +20,13 @@ from coire_api.images.authorization import (
     require_downloadable_image_output,
 )
 from coire_core.errors import ImageForbidden, ImageNotFound, ImageValidationError
-from coire_core.models.images import ImageContentTag, ImageOutput, ImageOutputPage, ImageRecipe
+from coire_core.models.images import (
+    ImageClassifierDiagnostic,
+    ImageContentTag,
+    ImageOutput,
+    ImageOutputPage,
+    ImageRecipe,
+)
 
 _CURSOR_VERSION = 1
 _CURSOR_SIZE = 41
@@ -51,6 +57,22 @@ def _decode_cursor(cursor: str, owner_id: uuid.UUID) -> tuple[datetime, uuid.UUI
         raise ImageNotFound() from exc
 
 
+def _classifier_diagnostic(row: ImageOutputRow) -> ImageClassifierDiagnostic | None:
+    provenance = row.classifier_provenance or {}
+    if provenance.get("status") == "unavailable":
+        return "classifier_unavailable"
+    safe_error = provenance.get("safe_error")
+    for code in (
+        "classifier_failed",
+        "classifier_timeout",
+        "classifier_memory",
+        "classifier_invalid_result",
+    ):
+        if safe_error == code:
+            return code
+    return "classifier_failed" if row.content_tag == ImageContentTag.UNKNOWN else None
+
+
 def output_projection(row: ImageOutputRow) -> ImageOutput:
     """Expose the exact recipe and digest, never an internal blob path or grant."""
     try:
@@ -60,6 +82,7 @@ def output_projection(row: ImageOutputRow) -> ImageOutput:
             index=row.output_index,
             recipe=ImageRecipe.model_validate(row.recipe),
             tag=ImageContentTag(row.content_tag),
+            classifier_diagnostic=_classifier_diagnostic(row),
             byte_count=row.size_bytes,
             file_sha256=row.file_sha256,
             created_at=row.created_at,

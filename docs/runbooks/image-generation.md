@@ -30,6 +30,10 @@ reservation held and inspect its exact job ID, process identity, local manifest 
 unavailable and those assets remain unpublished. Do not set the image admission
 flag until T033 and the remaining real Studio acceptance pass.
 
+Gallery cards show a safe classifier diagnostic when tagging is unavailable or
+fails. An `unknown` tag does not mean the pixels were classified as normal;
+keep those outputs private while diagnosing the pinned Studio classifier.
+
 The acquiring admin must record each asset's licence review and accepted licence
 ID before the acquisition request. A model with an unverified copy, missing local
 component, failed offline smoke, or incomplete auxiliary validation remains

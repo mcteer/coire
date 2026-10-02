@@ -40,6 +40,15 @@ class ImageContentTag(StrEnum):
     UNKNOWN = "unknown"
 
 
+type ImageClassifierDiagnostic = Literal[
+    "classifier_unavailable",
+    "classifier_failed",
+    "classifier_timeout",
+    "classifier_memory",
+    "classifier_invalid_result",
+]
+
+
 class ImageClassificationResult(BaseModel):
     """Bounded Studio classifier IPC and persisted gallery-tag provenance."""
 
@@ -744,6 +753,7 @@ class ImageOutput(BaseModel):
     index: int = Field(ge=0, le=3)
     recipe: ImageRecipe
     tag: ImageContentTag
+    classifier_diagnostic: ImageClassifierDiagnostic | None = None
     byte_count: int = Field(ge=1, le=RECIPE_INPUT_MAX_BYTES)
     file_sha256: str = Field(pattern=SHA256_PATTERN)
     created_at: datetime

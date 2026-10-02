@@ -3996,6 +3996,8 @@ export interface components {
              */
             supports_negative_prompt: boolean;
         };
+        /** @enum {string} */
+        ImageClassifierDiagnostic: "classifier_unavailable" | "classifier_failed" | "classifier_timeout" | "classifier_memory" | "classifier_invalid_result";
         /**
          * ImageCoexistenceBounds
          * @description Maximum image workload measured alongside the listed resident chat variants.
@@ -4434,6 +4436,7 @@ export interface components {
         ImageOutput: {
             /** Byte Count */
             byte_count: number;
+            classifier_diagnostic?: components["schemas"]["ImageClassifierDiagnostic"] | null;
             /**
              * Created At
              * Format: date-time

@@ -4,6 +4,13 @@ import { ConfirmAction } from "../ConfirmAction";
 import "../../styles/images.css";
 
 const tags = ["normal", "explicit", "unknown"] as const;
+const classifierDiagnostics: Record<NonNullable<ImageOutput["classifier_diagnostic"]>, string> = {
+  classifier_unavailable: "Classifier unavailable; tag is unverified.",
+  classifier_failed: "Classifier failed; tag is unverified.",
+  classifier_timeout: "Classifier timed out; tag is unverified.",
+  classifier_memory: "Classifier exceeded its memory limit; tag is unverified.",
+  classifier_invalid_result: "Classifier returned an invalid result; tag is unverified.",
+};
 
 function Thumbnail({ outputId }: { outputId: string }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -107,6 +114,9 @@ export function ImageGallery({
                 <time dateTime={output.created_at}>
                   {new Date(output.created_at).toLocaleString()}
                 </time>
+                {output.classifier_diagnostic && (
+                  <p role="status">{classifierDiagnostics[output.classifier_diagnostic]}</p>
+                )}
                 <div className="image-gallery-actions">
                   <button
                     className="button"

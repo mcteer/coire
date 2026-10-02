@@ -5102,6 +5102,16 @@
         "title": "ImageCapabilityProfile",
         "type": "object"
       },
+      "ImageClassifierDiagnostic": {
+        "enum": [
+          "classifier_unavailable",
+          "classifier_failed",
+          "classifier_timeout",
+          "classifier_memory",
+          "classifier_invalid_result"
+        ],
+        "type": "string"
+      },
       "ImageCoexistenceBounds": {
         "additionalProperties": false,
         "description": "Maximum image workload measured alongside the listed resident chat variants.",
@@ -6237,6 +6247,16 @@
             "minimum": 1.0,
             "title": "Byte Count",
             "type": "integer"
+          },
+          "classifier_diagnostic": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageClassifierDiagnostic"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "created_at": {
             "format": "date-time",

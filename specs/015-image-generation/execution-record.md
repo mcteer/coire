@@ -1,5 +1,14 @@
 # Feature 015 execution record
 
+## Private gallery classifier diagnostic — 2026-10-02
+
+Owner output projections now expose a bounded classifier diagnostic, and the
+gallery labels unavailable or failed tagging without exposing storage paths.
+The contract/publication checks passed **22 tests**; web tests passed **138**,
+with lint, production build, OpenAPI regeneration/freshness, Ruff and mypy
+passing. Actual output classifier invocation and measured CPU child reservation
+remain open in T033/T070.
+
 ## Native validation physical peak — 2026-10-02
 
 The reserved base-model validation worker now samples its physical footprint

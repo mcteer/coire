@@ -5,7 +5,8 @@ import type { ImageOutput } from "../../api/images";
 
 const output = {
   id: "6c5c5686-52bc-4884-a941-f5fae37db913",
-  tag: "normal",
+  tag: "unknown",
+  classifier_diagnostic: "classifier_unavailable",
   created_at: "2026-10-01T12:00:00Z",
   index: 0,
   job_id: "01J00000000000000000000000",
@@ -45,6 +46,7 @@ test("keeps private gallery actions usable when a preview fails", async () => {
   );
 
   await screen.findByText("Preview unavailable");
+  expect(screen.getByText("Classifier unavailable; tag is unverified.")).toBeVisible();
   expect(screen.getByRole("button", { name: "Retry preview" })).toBeEnabled();
   fireEvent.change(screen.getByRole("combobox", { name: "Image tag" }), {
     target: { value: "unknown" },

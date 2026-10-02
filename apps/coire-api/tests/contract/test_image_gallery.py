@@ -146,6 +146,14 @@ async def test_gallery_page_is_bounded_owner_scoped_and_stable() -> None:
     assert "content_mode" in session.queries[-1]
 
 
+def test_unknown_gallery_tag_exposes_safe_classifier_diagnostic() -> None:
+    row = _row(tag="unknown")
+    row.classifier_provenance = {"status": "unavailable"}
+    projected = outputs.output_projection(row)
+    assert projected.classifier_diagnostic == "classifier_unavailable"
+    assert "blob_key" not in projected.model_dump(mode="json")
+
+
 async def test_invalid_or_other_owner_cursor_is_hidden() -> None:
     other = _row(OTHER)
     own = _row()

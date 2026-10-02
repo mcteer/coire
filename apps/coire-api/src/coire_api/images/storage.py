@@ -242,6 +242,7 @@ async def publish_image_batch(session: AsyncSession, job_id: str, settings: Sett
                 index=receipt.index,
                 recipe=recipe,
                 tag=tag,
+                classifier_diagnostic="classifier_unavailable",
                 byte_count=receipt.byte_count,
                 file_sha256=receipt.sha256,
                 created_at=now,
