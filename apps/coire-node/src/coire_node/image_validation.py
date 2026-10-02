@@ -189,7 +189,18 @@ def _validate_image_asset(
     with TemporaryDirectory(prefix="coire-image-smoke-") as directory:
         input_id = uuid.uuid4()
         source = Path(directory) / f"{input_id}.png"
-        with Image.new("RGB", (_SMOKE_SIZE, _SMOKE_SIZE), (32, 96, 192)) as sample:
+        with Image.new("RGB", (_SMOKE_SIZE, _SMOKE_SIZE)) as sample:
+            # A flat source can remain flat after a low-strength img2img smoke,
+            # so it cannot distinguish a valid transform from degenerate output.
+            pixels = sample.load()
+            assert pixels is not None
+            for y in range(_SMOKE_SIZE):
+                for x in range(_SMOKE_SIZE):
+                    pixels[x, y] = (
+                        32 + (x // 16 % 2) * 160,
+                        96 + (y // 16 % 2) * 96,
+                        192,
+                    )
             sample.save(source, format="PNG")
         digest = hashlib.sha256(source.read_bytes()).hexdigest()
         base = _smoke_spec(request.model_id, request.manifest_sha256)

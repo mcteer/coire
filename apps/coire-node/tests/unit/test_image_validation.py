@@ -16,7 +16,7 @@ from typing import Any, cast
 
 import psutil
 import pytest
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageStat
 
 from coire_core.models.image_worker import (
     ImageAssetValidateRequest,
@@ -185,6 +185,8 @@ def test_reserved_base_smoke_produces_narrow_capability_and_thumbnail_digest(
             if input_paths is not None:
                 assert resolved.spec.mode == "img2img"
                 assert len(input_paths) == 1
+                with Image.open(next(iter(input_paths.values()))) as source:
+                    assert max(ImageStat.Stat(source).stddev) > 1
             image = Image.new("RGB", (512, 512), "blue")
             ImageDraw.Draw(image).rectangle((128, 128, 384, 384), fill="white")
             return (image,)
