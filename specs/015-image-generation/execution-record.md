@@ -1,5 +1,19 @@
 # Feature 015 execution record
 
+## Pinned Union control acquisition smoke — 2026-10-02
+
+The pinned mflux control acquisition now selects one reviewed Union 2.1
+checkpoint and excludes the other upstream safetensors. Both Studio validation
+commands bind the exact ready base. The node verifies both local manifests,
+hardlinks the verified files into a temporary local `controlnet/` composite,
+runs a neutral Canny native smoke and checks non-degenerate pixels, thumbnail
+and sampled physical peak before the copy can publish. A unit test proves the
+composite contains only local bytes and is removed after validation. The
+full local Python suite passed **1,850** with 160 platform/external skips;
+the local tiny native image suite passed **10**. Ruff, strict mypy and OpenAPI
+freshness passed. T033 implementation is complete; production control job
+execution and operator full-model acceptance remain T056/T083.
+
 ## Pinned SeedVR2 3B acquisition smoke — 2026-10-02
 
 The Studio validator now accepts only the reviewed `numz/SeedVR2_comfyUI`

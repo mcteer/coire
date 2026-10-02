@@ -62,6 +62,14 @@ separately acquired, licensed and tested. Sources:
 [Z-Image initialization](https://github.com/mflux-community/mflux/blob/ada53237b2ac865bc649ef1d06ac1b19b6983865/src/mflux/models/z_image/z_image_initializer.py),
 [Flux initialization](https://github.com/mflux-community/mflux/blob/ada53237b2ac865bc649ef1d06ac1b19b6983865/src/mflux/models/flux/flux_initializer.py).
 
+The pinned Union 2.1 control acquisition selects only
+`Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors` from the reviewed
+[Alibaba-PAI repository](https://huggingface.co/alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1/tree/main).
+That repository has no `config.json`; pinned mflux 0.20.0 uses its local Union
+2.1 defaults when the verified checkpoint is linked under `controlnet/` beside
+the verified base tree. The temporary composite is local to the validation
+worker and removed after the native smoke.
+
 **Alternatives**: Opportunistic runtime pulls violate Principle V. A filesystem path by itself
 is not proof that a pipeline is offline. Text perplexity validation cannot validate image assets.
 

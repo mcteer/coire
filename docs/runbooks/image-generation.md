@@ -33,15 +33,17 @@ above the held bytes. LoRA validation on each Studio verifies the exact local
 base and adapter manifests, applies the single adapter through pinned mflux,
 and requires a non-degenerate native output. Its hold includes the base's
 memory estimate. The pinned SeedVR2 3B upscaler also runs an offline native
-twofold smoke against synthetic pixels, with a sampled physical peak. Control
-execution validation remains unavailable.
+twofold smoke against synthetic pixels, with a sampled physical peak. The pinned
+Union 2.1 control checkpoint is validated beside the exact local base tree in a
+temporary `controlnet/` composite and must generate a non-degenerate Canny
+output. Its hold also includes the base memory estimate.
 The gate compares the **absolute process peak** with the
 held bytes, while recording absolute RSS/physical peaks and the physical
 baseline delta. If a validation
 job is still running, leave the
 reservation held and inspect its exact job ID, process identity, local manifest and
-`CoireImageValidationFailures` alert. Control mode-specific validation is still
-unavailable and control assets remain unpublished. Do not set the image admission
+`CoireImageValidationFailures` alert. Production control job execution remains
+under T056. Do not set the image admission
 flag until T033 and the remaining real Studio acceptance pass.
 Base acquisition reserves the larger of twice the selected file bytes or three
 times the weight bytes, plus 16 GiB of native runtime headroom, on **each**

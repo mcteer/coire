@@ -125,6 +125,27 @@ def test_seedvr2_upscale_inspection_requires_exact_configless_layout() -> None:
     )
 
 
+def test_control_union_inspection_selects_reviewed_configless_checkpoint() -> None:
+    selected = "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+    files = [
+        RepoFile(path=name, bytes=1024, upstream_sha256="b" * 64)
+        for name in (
+            selected,
+            "Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2602-8steps.safetensors",
+        )
+    ]
+    repo_id = "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
+    assert classify_image_inspection(
+        _repo(repo_id=repo_id, files=files), ModelKind.CONTROL_MODEL
+    ).supported
+    assert (
+        classify_image_inspection(
+            _repo(repo_id=repo_id, files=files[1:]), ModelKind.CONTROL_MODEL
+        ).rejection_code
+        == "missing_safetensors"
+    )
+
+
 def test_image_acquisition_contract_requires_human_licence_review() -> None:
     request = ImageAssetAcquireRequest(
         repo_id="org/image-base",

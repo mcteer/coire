@@ -159,12 +159,99 @@ def test_validation_rejects_changed_manifest_or_extra_local_file_before_native_l
         validate_image_asset(store, _request(digest), reservation_bytes=10**9)
 
 
-def test_auxiliary_asset_remains_unpublished_without_mode_specific_smoke(tmp_path: Path) -> None:
+def test_control_refuses_unreviewed_repository_layout(tmp_path: Path) -> None:
     store, digest = _copy(tmp_path)
-    with pytest.raises(ImageValidationUnavailable, match="auxiliary execution validation"):
+    with pytest.raises(ImageValidationUnavailable, match="unsupported local control layout"):
         validate_image_asset(
             store, _request(digest, kind=ModelKind.CONTROL_MODEL), reservation_bytes=10**9
         )
+
+
+def test_control_smoke_uses_exact_local_composite_without_hub(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, base_digest = _copy(tmp_path)
+    control_slug = "alibaba-pai--Z-Image-Turbo-Fun-Controlnet-Union-2.1"
+    root = store.path_for(control_slug)
+    root.mkdir()
+    checkpoint = "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+    (root / checkpoint).write_bytes(b"control weights")
+    manifest = store.hash_tree(
+        control_slug,
+        repo_id="alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1",
+        revision=REVISION,
+    )
+    store.write_manifest(manifest)
+    base = ImageValidationBase(
+        model_id=uuid.uuid4(),
+        slug="org--image",
+        source_revision=REVISION,
+        manifest_sha256=base_digest,
+    )
+    request = ImageAssetValidateRequest(
+        job_id=uuid.uuid4(),
+        model_id=uuid.uuid4(),
+        slug=control_slug,
+        kind=ModelKind.CONTROL_MODEL,
+        source_revision=REVISION,
+        manifest_sha256=manifest.sha256(),
+        reservation_id=uuid.uuid4(),
+        compatible_base=base,
+    )
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+    called: list[Path] = []
+
+    class FakeControl:
+        def __init__(self, *, model_path: str, model_config: object) -> None:
+            composite = Path(model_path)
+            assert model_config == "control-union"
+            assert (composite / "model.safetensors").read_bytes() == b"weights"
+            assert (composite / "controlnet" / checkpoint).read_bytes() == b"control weights"
+            called.append(composite)
+
+        def parameters(self) -> tuple[()]:
+            return ()
+
+        def generate_image(self, **kwargs: object) -> Image.Image:
+            assert kwargs["num_inference_steps"] == 4
+            image = Image.new("RGB", (512, 512), "blue")
+            ImageDraw.Draw(image).rectangle((128, 128, 384, 384), fill="white")
+            return image
+
+    def module(name: str) -> object:
+        if name.endswith("z_image_turbo_controlnet"):
+            return SimpleNamespace(ZImageTurboControlnet=FakeControl)
+        if name.endswith("control_types"):
+            return SimpleNamespace(
+                ControlSpec=lambda **kwargs: kwargs,
+                ControlType=SimpleNamespace(canny="canny"),
+            )
+        if name.endswith("model_config"):
+            return SimpleNamespace(
+                ModelConfig=SimpleNamespace(
+                    z_image_turbo_controlnet_union_2_1=lambda: "control-union"
+                )
+            )
+        if name == "mlx.core":
+            return SimpleNamespace(eval=lambda value: None)
+        raise AssertionError(name)
+
+    monkeypatch.setattr(importlib, "import_module", module)
+    result = validate_image_asset(store, request, reservation_bytes=10**12)
+    assert result.validated and result.thumbnail_sha256 is not None
+    assert len(called) == 1 and not called[0].exists()
+    with pytest.raises(ImageCopyUnavailable):
+        validate_image_asset(
+            store,
+            request.model_copy(
+                update={"compatible_base": base.model_copy(update={"manifest_sha256": "0" * 64})}
+            ),
+            reservation_bytes=10**12,
+        )
+    assert len(called) == 1
 
 
 def test_lora_smoke_uses_one_verified_local_adapter_and_exact_base(

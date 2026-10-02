@@ -75,6 +75,27 @@ def test_seedvr2_upscale_accepts_only_complete_native_configless_layout() -> Non
         hub.image_asset_files(repo.model_copy(update={"files": files[:1]}), ModelKind.UPSCALE_MODEL)
 
 
+def test_control_union_selects_only_pinned_native_checkpoint() -> None:
+    selected_name = "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+    files = [
+        RepoFile(path=name, bytes=1024, upstream_sha256=WEIGHT_SHA)
+        for name in (
+            selected_name,
+            "Z-Image-Turbo-Fun-Controlnet-Union-2.1-lite-2602-8steps.safetensors",
+        )
+    ]
+    repo = _repo(files=files).model_copy(
+        update={"repo_id": "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"}
+    )
+    assert hub.image_asset_files(repo, ModelKind.CONTROL_MODEL) == (selected_name,)
+    with pytest.raises(ValueError):
+        hub.image_asset_files(repo.model_copy(update={"files": files[1:]}), ModelKind.CONTROL_MODEL)
+    with pytest.raises(ValueError):
+        hub.image_asset_files(
+            repo.model_copy(update={"repo_id": "other/control"}), ModelKind.CONTROL_MODEL
+        )
+
+
 @pytest.mark.parametrize(
     ("repo", "kind"),
     [
