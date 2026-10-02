@@ -173,6 +173,18 @@ def test_terminal_scratch_page_is_bounded_and_rejects_invalid_cursor(tmp_path: P
         journal.pending_terminal_cleanup(limit=26)
 
 
+def test_terminal_scratch_page_survives_large_durable_inventory(tmp_path: Path) -> None:
+    journal = ImageJobJournal(tmp_path, NODE)
+    queued = journal.begin(_request())
+    journal.advance(queued.model_copy(update={"state": "failed", "updated_at": datetime.now(UTC)}))
+    # Other journal keys still have to be scanned without materializing their
+    # contents or preventing a bounded page from reaching this attempt.
+    for index in range(4097):
+        (journal.root / f"02J{index:023d}.json").touch(mode=0o600)
+    pending, cursor = journal.pending_terminal_cleanup(limit=1)
+    assert len(pending) == 1 and pending[0].job_id == JOB and cursor == JOB
+
+
 def test_cancelled_scratch_refuses_symlink_and_retries_after_removal(tmp_path: Path) -> None:
     journal = ImageJobJournal(tmp_path, NODE)
     queued = journal.begin(_request())

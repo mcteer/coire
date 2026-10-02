@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import bisect
 import hashlib
 import os
 import re
@@ -192,18 +193,22 @@ class ImageJobJournal:
         with self._lock:
             _private_root(self.root)
             try:
-                names = os.listdir(self.root)
+                page: list[str] = []
+                with os.scandir(self.root) as entries:
+                    for entry in entries:
+                        name = entry.name
+                        if not name.endswith(".json"):
+                            continue
+                        job_id = name[:-5]
+                        if re.fullmatch(ULID_PATTERN, job_id) is None or (
+                            after_job is not None and job_id <= after_job
+                        ):
+                            continue
+                        bisect.insort(page, job_id)
+                        if len(page) > limit:
+                            page.pop()
             except OSError:
                 raise ImageJournalUnavailable() from None
-            if len(names) > 4096:
-                raise ImageJournalUnavailable()
-            job_ids = sorted(
-                name[:-5]
-                for name in names
-                if name.endswith(".json") and re.fullmatch(ULID_PATTERN, name[:-5])
-            )
-            selected = [job_id for job_id in job_ids if after_job is None or job_id > after_job]
-            page = selected[:limit]
             pending: list[NodeImageJob] = []
             for job_id in page:
                 record = self._record(job_id)

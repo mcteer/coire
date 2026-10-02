@@ -6,6 +6,9 @@ The Studio agent now scans bounded durable journal pages every 30 seconds,
 including after restart, and retries physical output/input scratch deletion for
 failed or cancelled attempts before recording `scratch_cleaned`. Unsafe entries
 retain bytes and journal evidence and emit the existing cleanup failure metric.
+The directory scan streams keys and keeps only the next 25 in memory; a
+4,098-entry regression proves history beyond the old inventory limit cannot
+disable cleanup.
 The node unit and route contract checks passed **31 tests**; Ruff and strict mypy
 passed. Core tombstone, orphan staging, input and quota sweeps were already
 present and remain active when image admission is disabled. Full suite result is
