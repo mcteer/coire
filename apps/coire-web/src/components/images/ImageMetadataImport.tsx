@@ -94,7 +94,7 @@ export function ImageMetadataImport({
   };
 
   return (
-    <section aria-label="Import image settings">
+    <section className="image-metadata-import" aria-label="Import image settings">
       <h2>Import image settings</h2>
       <p>Drop a Coire PNG recipe or choose a file up to 64 MiB. Source images remain separate.</p>
       <label

@@ -131,6 +131,7 @@ export function PresetEditor({
       )}
       {canEdit && (
         <form
+          className="image-preset-form"
           onSubmit={(event) => {
             event.preventDefault();
             void save();

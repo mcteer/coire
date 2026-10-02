@@ -6,6 +6,64 @@
   grid-column: auto;
 }
 
+.image-preset-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
+  margin-top: var(--s-5);
+}
+
+.image-preset-form h3,
+.image-preset-form label:has(textarea),
+.image-preset-form [role="alert"] {
+  grid-column: 1 / -1;
+}
+
+.image-preset-form h3 {
+  margin: 0;
+}
+
+.image-preset-form label,
+.image-metadata-import label {
+  display: grid;
+  min-width: 0;
+  gap: var(--s-2);
+  color: var(--ink-2);
+  font-size: var(--text-sm);
+}
+
+.image-preset-form input,
+.image-preset-form select,
+.image-preset-form textarea,
+.image-metadata-import input[type="file"] {
+  min-width: 0;
+  width: 100%;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+
+.image-preset-form textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.image-preset-form .button {
+  justify-self: start;
+}
+
+.image-metadata-import input[type="file"] {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 700px) {
+  .image-preset-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .image-generation-form {
   display: grid;
   gap: var(--s-4);
