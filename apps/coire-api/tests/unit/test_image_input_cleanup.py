@@ -313,3 +313,10 @@ def test_orphan_sweep_preserves_committed_row_and_new_or_symlink_files(
     assert (tmp_path / str(recent)).exists()
     assert symlink.is_symlink()
     assert (tmp_path / "not-an-id").read_bytes() == b"keep"
+
+
+def test_orphan_input_inventory_refuses_unbounded_unrecognized_entries(tmp_path: Path) -> None:
+    for index in range(input_cleanup._MAX_DIRECTORY_ENTRIES + 1):
+        (tmp_path / f"unknown-{index}").touch()
+    with pytest.raises(ImageStorageUnavailable):
+        input_cleanup._old_generated_names(tmp_path)

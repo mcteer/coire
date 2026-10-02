@@ -65,6 +65,43 @@ def test_retained_output_integrity_checks_receipt_and_link_count(tmp_path: Path)
         maintenance.verify_retained_output_blob(tmp_path, row)
 
 
+async def test_deleted_output_sweep_advances_past_failed_first_batch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC) - timedelta(hours=1)
+    rows = [(uuid.UUID(int=index), now) for index in range(1, 27)]
+    queries: list[str] = []
+    attempted: list[uuid.UUID] = []
+
+    class Session:
+        async def execute(self, statement: object) -> SimpleNamespace:
+            queries.append(str(statement))
+            return SimpleNamespace(all=lambda: rows[:25] if len(queries) == 1 else rows[25:])
+
+        async def scalar(self, statement: object) -> datetime:
+            return now
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[Session]:
+        yield Session()
+
+    async def purge(settings: Settings, output_id: uuid.UUID) -> bool:
+        attempted.append(output_id)
+        if output_id != rows[-1][0]:
+            raise ImageStorageUnavailable()
+        return True
+
+    monkeypatch.setattr(maintenance, "session_scope", scope)
+    monkeypatch.setattr(maintenance, "purge_deleted_output", purge)
+    monkeypatch.setattr(maintenance, "_deleted_after", None)
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    assert await maintenance.sweep_deleted_outputs(settings) == 0
+    assert attempted == [row[0] for row in rows[:25]]
+    assert await maintenance.sweep_deleted_outputs(settings) == 1
+    assert attempted[-1] == rows[-1][0]
+    assert "image_outputs.deleted_at, image_outputs.id" in queries[1]
+
+
 @pytest.mark.parametrize("concurrent_tombstone", [False, True])
 async def test_retained_output_integrity_rechecks_missing_blob_before_reporting(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, concurrent_tombstone: bool

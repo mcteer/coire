@@ -19,6 +19,7 @@ from coire_core.errors import ImageStorageUnavailable
 from coire_core.settings import Settings
 
 _BATCH_SIZE = 25
+_MAX_DIRECTORY_ENTRIES = 4096
 _ORPHAN_GRACE_SECONDS = 3600
 tracer = trace.get_tracer("coire.api.image")
 logger = logging.getLogger(__name__)
@@ -285,7 +286,9 @@ def _old_generated_names(root: Path) -> list[tuple[str, uuid.UUID]]:
     try:
         found: list[tuple[str, uuid.UUID]] = []
         with os.scandir(root_fd) as entries:
-            for entry in entries:
+            for inspected, entry in enumerate(entries, start=1):
+                if inspected > _MAX_DIRECTORY_ENTRIES:
+                    raise ImageStorageUnavailable()
                 input_id = _input_id_for_name(entry.name)
                 if input_id is None:
                     continue

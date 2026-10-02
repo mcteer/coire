@@ -1,5 +1,22 @@
 # Feature 015 execution record
 
+## Bounded orphan input inventory — 2026-10-02
+
+The private original/derived input orphan sweep now stops after 4,096 directory
+entries even if none matches a generated name. This prevents an unexpectedly
+large directory from consuming an unbounded maintenance pass. A 4,097-entry
+regression test proves fail-closed behavior; the focused cleanup suite passed
+**14 tests**, with Ruff and strict mypy green. T039 remains open for the
+complete physical inventory and operator retention matrix.
+
+## Deleted output sweep starvation — 2026-10-02
+
+The deleted-output purge now pages by `(deleted_at, output_id)` across sweeps.
+Twenty-five damaged early blobs no longer prevent a later tombstone from being
+attempted. A regression test fails the first 25 purges and confirms the 26th
+is reached on the next pass; the focused maintenance suite passed **18 tests**,
+with Ruff and strict mypy green. T039 remains open for full retention evidence.
+
 ## CI image gate and chat lease expiry — 2026-10-02
 
 The `c55b433` pull-request CI run passed general Ruff/strict mypy lint and the

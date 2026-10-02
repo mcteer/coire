@@ -16,7 +16,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from opentelemetry import trace
-from sqlalchemy import func, select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.audit import write_audit
@@ -49,6 +49,7 @@ _BATCH_SIZE = 25
 _SWEEP_SECONDS = 30.0
 _QUOTA_RECONCILE_SECONDS = 300.0
 _OUTPUT_INTEGRITY_SECONDS = 300.0
+_deleted_after: tuple[datetime, uuid.UUID] | None = None
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("coire.api.image.maintenance")
 
@@ -263,16 +264,25 @@ async def sweep_retained_outputs(settings: Settings) -> int:
 
 
 async def sweep_deleted_outputs(settings: Settings) -> int:
-    """Bound each pass; a single bad blob cannot block all later deletions."""
+    """Advance a bounded keyset so damaged early blobs cannot starve later rows."""
+    global _deleted_after
     async with session_scope() as session:
-        pending = (
-            await session.scalars(
-                select(ImageOutputRow.id)
-                .where(ImageOutputRow.deleted_at.is_not(None), ImageOutputRow.purged_at.is_(None))
-                .order_by(ImageOutputRow.deleted_at, ImageOutputRow.id)
-                .limit(_BATCH_SIZE)
+        query = (
+            select(ImageOutputRow.id, ImageOutputRow.deleted_at)
+            .where(ImageOutputRow.deleted_at.is_not(None), ImageOutputRow.purged_at.is_(None))
+            .order_by(ImageOutputRow.deleted_at, ImageOutputRow.id)
+            .limit(_BATCH_SIZE)
+        )
+        page = (
+            await session.execute(
+                query.where(tuple_(ImageOutputRow.deleted_at, ImageOutputRow.id) > _deleted_after)
+                if _deleted_after is not None
+                else query
             )
         ).all()
+        if not page and _deleted_after is not None:
+            page = (await session.execute(query)).all()
+        _deleted_after = (page[-1][1], page[-1][0]) if page else None
         oldest = await session.scalar(
             select(func.min(ImageOutputRow.deleted_at)).where(
                 ImageOutputRow.deleted_at.is_not(None), ImageOutputRow.purged_at.is_(None)
@@ -281,7 +291,7 @@ async def sweep_deleted_outputs(settings: Settings) -> int:
     age = max(0.0, (datetime.now(UTC) - oldest).total_seconds()) if oldest else 0.0
     purge_oldest_seconds.set(age)
     purged = 0
-    for output_id in pending:
+    for output_id, _ in page:
         try:
             if await purge_deleted_output(settings, output_id):
                 purges_total.add(1, {"kind": "output", "outcome": "succeeded"})
