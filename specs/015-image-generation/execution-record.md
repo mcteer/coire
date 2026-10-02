@@ -88,6 +88,13 @@ The cross-process PostgreSQL lease tests above passed. T068 is reconciled as
 complete; simulated full contention remains T072 and physical evidence T084.
 The subsequent full non-integration/non-engine Python gate passed **1,792 tests**
 with 2 existing skips and 166 deselections.
+An additional race audit found that a draining worker can still be alive. Both
+image placement and a new chat load now count draining chat/image instances in
+the resident mix until exact stop proof; a draining image instance without a
+matching hold fences placement. Focused dispatch/coexistence tests passed
+**36 tests**, with Ruff and strict mypy green.
+The full local non-integration/non-engine Python gate after these admission
+changes passed **1,798 tests**, with 2 existing skips and 168 deselections.
 
 ## Image worker residency reconciliation — 2026-10-02
 

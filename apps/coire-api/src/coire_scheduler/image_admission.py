@@ -84,7 +84,12 @@ async def image_available_bytes(
                 InstanceMemberRow.node_id == node.id,
                 ModelInstanceRow.policy.like("image:%"),
                 ModelInstanceRow.state.in_(
-                    (InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY)
+                    (
+                        InstanceState.LAUNCHING,
+                        InstanceState.WARMING,
+                        InstanceState.READY,
+                        InstanceState.DRAINING,
+                    )
                 ),
             )
             .limit(2)
@@ -342,7 +347,12 @@ async def new_chat_mix_allowed(
                 InstanceMemberRow.node_id == node_id,
                 ModelInstanceRow.policy.like("image:%"),
                 ModelInstanceRow.state.in_(
-                    (InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY)
+                    (
+                        InstanceState.LAUNCHING,
+                        InstanceState.WARMING,
+                        InstanceState.READY,
+                        InstanceState.DRAINING,
+                    )
                 ),
             )
         )
@@ -370,7 +380,12 @@ async def new_chat_mix_allowed(
                 .where(
                     InstanceMemberRow.node_id == node_id,
                     ModelInstanceRow.state.in_(
-                        (InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY)
+                        (
+                            InstanceState.LAUNCHING,
+                            InstanceState.WARMING,
+                            InstanceState.READY,
+                            InstanceState.DRAINING,
+                        )
                     ),
                     ModelInstanceRow.variant_id.is_not(None),
                 )

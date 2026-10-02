@@ -69,6 +69,7 @@ _ACTIVE_CHAT = (
     InstanceState.LAUNCHING,
     InstanceState.WARMING,
     InstanceState.READY,
+    InstanceState.DRAINING,
 )
 _REUSABLE_WORKER = (InstanceState.LAUNCHING, InstanceState.WARMING, InstanceState.READY)
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")

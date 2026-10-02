@@ -117,6 +117,38 @@ async def test_draining_worker_blocks_new_image_placement() -> None:
     assert "model_instances.state" in session.queries[1]
 
 
+async def test_draining_chat_remains_in_unmeasured_mix_until_stop_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    variant_id = uuid.uuid4()
+    resident: list[set[str]] = []
+
+    class Session:
+        async def scalars(self, statement: object) -> SimpleNamespace:
+            parameters = statement.compile().params  # type: ignore[attr-defined]
+            assert any(
+                isinstance(value, (list, tuple)) and InstanceState.DRAINING in value
+                for value in parameters.values()
+            )
+            return SimpleNamespace(all=lambda: [variant_id])
+
+    async def approve(
+        session: object,
+        node_id: uuid.UUID,
+        image_model_id: uuid.UUID,
+        chat_variants: set[str],
+        now: datetime,
+    ) -> bool:
+        resident.append(chat_variants)
+        return False
+
+    monkeypatch.setattr(image_dispatch, "chat_mix_allowed", approve)
+    assert await image_dispatch._chat_unmeasured(
+        cast(AsyncSession, Session()), uuid.uuid4(), MODEL, datetime.now(UTC)
+    )
+    assert resident == [{str(variant_id)}]
+
+
 def _prepared() -> PreparedImageDispatch:
     spec = ImageSpec(
         model_id=MODEL,

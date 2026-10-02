@@ -12,6 +12,7 @@ import pytest
 from coire_api.db import ModelRow, ModelVariantRow, NodeRow
 from coire_core.models.acquisition import VariantState
 from coire_core.models.images import ImageCoexistenceBounds, ImageCoexistenceReportRequest
+from coire_core.models.instance import InstanceState
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.registry import ModelKind, ModelState
@@ -227,6 +228,11 @@ async def test_shared_image_memory_counts_chat_and_reuses_only_exact_worker_hold
         async def scalars(self, statement: object) -> _Rows:
             if "memory_reservations" in str(statement):
                 return _Rows(self.holds)
+            if "model_instances.model_id" not in str(statement):
+                assert any(
+                    isinstance(value, (list, tuple)) and InstanceState.DRAINING in value
+                    for value in statement.compile().params.values()  # type: ignore[attr-defined]
+                )
             return _Rows(list(self.workers))
 
     session = Session()
@@ -280,7 +286,15 @@ async def test_new_chat_checks_image_profile_with_all_resident_variants(
             if "memory_reservations" in str(statement):
                 return _Rows(self.holds)
             if next(iter(statement.selected_columns)).name == "id":  # type: ignore[attr-defined]
+                assert any(
+                    isinstance(value, (list, tuple)) and InstanceState.DRAINING in value
+                    for value in statement.compile().params.values()  # type: ignore[attr-defined]
+                )
                 return _Rows(list(self.workers))
+            assert any(
+                isinstance(value, (list, tuple)) and InstanceState.DRAINING in value
+                for value in statement.compile().params.values()  # type: ignore[attr-defined]
+            )
             return _Rows([OTHER_CHAT_ID])
 
     async def approved(
