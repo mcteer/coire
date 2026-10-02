@@ -10,8 +10,10 @@ Use the implementation child branch and frozen workspace, Python3.13 and the rep
 version. Local integration uses the isolated `coire-it` project from
 `tests/integration/conftest.py` with simulated nodes, generated credentials and scratch volumes.
 Never target production Compose or real Studios from CI. Real tiny-engine tests require a local
-Apple Silicon development Mac that is not core. Only an operator performs the real-cluster matrix
-through the existing audited admin/node APIs; no direct engine/SSH/Docker commands on Studios.
+Apple Silicon development Mac that is not core. Coding agents may perform the real-cluster matrix
+as part of development and acceptance testing through the existing audited admin/node APIs.
+Use the documented install and rollback paths for Studio deployment; coire-node owns engine
+processes. Do not start engines directly or use ad hoc Docker commands on the Studios.
 
 Before a manual UI test, an admin must acquire, validate, replicate and publish the test image
 models and compatible auxiliary assets. Use existing identity APIs to create an ordinary user,

@@ -76,7 +76,11 @@ Pre-commit runs ruff, mypy, eslint/prettier, and the OpenAPI freshness check (`u
 - Do not commit secrets, `.env` files, model weights, datasets, or generated images. `.gitignore` covers `/models`, `/data`, `/blobs`; keep it that way.
 - Do not disable or loosen tests, type checks, image scans, or the OpenAPI freshness check to get green.
 - Do not implement admin, explicit-content, or Hugging Face acquisition behaviour outside the admin API and audit path.
-- Do not run `mlx.launch`, engine processes, or `docker` against the real Studios from CI or from your own environment; integration tests use the tiny model locally.
+- Do not target the real Studios from CI. CI integration tests use the tiny model in an isolated environment.
+
+## Studio workload testing by coding agents
+
+Coding agents are authorized to run development and acceptance workloads on the real Studios when the task requires it. This includes installing a tested coire-node build, using admin-acquired and registry-verified models, generating images, running text/VLM smoke tests, measuring chat/image coexistence, and testing cancellation and rollback. Use the documented authenticated admin, gateway, and node paths; coire-node starts and owns engine processes. Keep credentials in Keychain-backed paths, test artifacts out of Git, and record measured results in the feature execution record. Do not treat the CI restriction or the local tiny-model gate as a prohibition on agent-run Studio validation. Stop only for a concrete missing credential, asset, license approval, or other prerequisite that cannot be completed through the authorized workflow; identify that prerequisite precisely.
 
 ## Definition of done for any change
 
