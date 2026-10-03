@@ -34,7 +34,7 @@ SUPPORTED_ARCHITECTURE_FAMILIES = frozenset(
         "qwen35",
     }
 )
-SUPPORTED_VISUAL_ARCHITECTURE_FAMILIES = frozenset({"idefics3"})
+SUPPORTED_VISUAL_ARCHITECTURE_FAMILIES = frozenset({"idefics3", "qwen4exp"})
 VISUAL_PROCESSOR_FILES = frozenset(
     {
         "config.json",
