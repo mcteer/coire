@@ -270,15 +270,29 @@ async def test_event_route_replays_terminal_event_with_private_sse_headers(
         safe_code="worker_unavailable",
     )
 
+    active_scopes = 0
+    scope_calls = 0
+
     @asynccontextmanager
     async def fake_scope() -> Any:
-        yield session
+        nonlocal active_scopes, scope_calls
+        assert active_scopes == 0, "SSE preflight must release its row locks before replay"
+        active_scopes += 1
+        scope_calls += 1
+        try:
+            yield session
+        finally:
+            active_scopes -= 1
 
     async def fake_read(*args: object) -> tuple[Any, list[ImageJobEvent]]:
         return snapshot, [event]
 
+    async def already_disconnected(_: Request) -> bool:
+        return True
+
     monkeypatch.setattr(images, "session_scope", fake_scope)
     monkeypatch.setattr(events, "read_owned_image_events", fake_read)
+    monkeypatch.setattr(Request, "is_disconnected", already_disconnected)
     async with AsyncClient(
         transport=ASGITransport(app=_app(session, principal)), base_url="http://test"
     ) as client:
@@ -288,6 +302,7 @@ async def test_event_route_replays_terminal_event_with_private_sse_headers(
     assert result.headers["cache-control"] == "private, no-store"
     assert result.headers["x-accel-buffering"] == "no"
     assert f"id: {JOB}:1\nevent: error\n" in result.text
+    assert scope_calls == 2
 
 
 def test_event_openapi_describes_stream_and_typed_frame_data() -> None:

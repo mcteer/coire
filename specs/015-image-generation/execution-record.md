@@ -2312,3 +2312,25 @@ integration. The integration selection finished **124 passed, 33 skipped**;
 those skips do not satisfy the opt-in cross-process PostgreSQL or real-Studio
 acceptance gates. T081 remains open for the final immutable Studio node
 install and text/VLM smoke after the image runtime changes.
+
+## Live Studio image reproduction — 2026-10-02
+
+The published, exact-manifest Z-Image Turbo base
+`48075b57-b6b9-48bf-9ace-9438405ccc3d` completed ten sequential 512 × 512,
+four-step `txt2img` jobs through the deployed API, scheduler and Studio node.
+The same prompt, guidance `0`, seed `1515`, pipeline `mflux-0.20.0` and
+environment fingerprint
+`a335847e903c3128a5143ed284a053c76236917f2c4fea2b9e06534274caa90a`
+were used for all ten. Every private generated PNG had pixel digest
+`6f3b30b1d305e4a65ccd49c6434ae2c7f2195fd55811060ac61d96025ab92f4f`.
+For each output, the owner downloaded it with a private grant, uploaded it as
+a recipe input, waited for file processing and imported the recipe; model,
+mode, prompt, dimensions, steps, guidance and seed all restored exactly.
+All ten jobs succeeded in 22.30–26.37 seconds. The trial job IDs are
+`01M3ZNN722Y9G8GYXF2ARX6QF4`, `01M3ZNNWXAPZ9REC0966AZEBJF`,
+`01M3ZNPJRK2QTQ2F7NF4A4WKTM`, `01M3ZNQ8J8DNBBJ53WX4VS5BSA`,
+`01M3ZNR0H8VPQAD3CMTZ86GHDD`, `01M3ZNRPC9SCMD9VEMQKPFF72R`,
+`01M3ZNSC6X61KQTXGJY0259285`, `01M3ZNT32TXYHCKMJEKJE6HFGK`,
+`01M3ZNTRYTH31NGZBCW6XVWWB1` and `01M3ZNVES1C0DYPQ4454P5DRKE`.
+This passes the ten-trial pixel and recipe portion of T084. The production
+cache and same-node chat/image benchmark portions remain open.

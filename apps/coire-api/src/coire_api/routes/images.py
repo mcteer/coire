@@ -264,21 +264,23 @@ async def get_image_job(
     },
 )
 async def image_job_events(
-    request: Request,
     principal: CurrentImageUser,
-    session: SessionDep,
     job_id: str = Path(pattern=ULID_PATTERN),
     last_event_id: Annotated[str | None, Header(alias="Last-Event-ID")] = None,
 ) -> StreamingResponse:
     """Replay durable events; recheck owner and entitlements at every poll."""
     cursor = events.parse_event_cursor(last_event_id, job_id)
-    with image_span(ImageOperation.JOB_EVENTS, job_id=job_id):
-        await jobs.get_owned_image_job(session, principal, job_id)
+    # The preflight transaction must close before the stream starts: owner
+    # authorization locks the user row, and each replay poll locks it again.
+    async with session_scope() as preflight_session:
+        with image_span(ImageOperation.JOB_EVENTS, job_id=job_id):
+            await jobs.get_owned_image_job(preflight_session, principal, job_id)
 
     async def stream() -> AsyncIterator[str]:
         nonlocal cursor
         last_sent = time.monotonic()
-        while not await request.is_disconnected():
+        # StreamingResponse cancels this iterator when the client disconnects.
+        while True:
             try:
                 async with session_scope() as event_session:
                     with image_span(ImageOperation.JOB_EVENTS, job_id=job_id):
