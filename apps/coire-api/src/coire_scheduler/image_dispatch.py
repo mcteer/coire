@@ -777,6 +777,10 @@ async def prepare_image_dispatch(
     ):
         raise ImageConflict("image worker memory reservation differs from placement")
     else:
+        # The node's resident load command is bound to its original hold. A
+        # smaller follow-up job must reuse those exact bytes or the node will
+        # reject the otherwise valid resident worker as a different load.
+        reservation = existing_hold.bytes
         existing_hold.last_used_at = current
     row.fence = 1
     row.selected_node_id = chosen.node_id
