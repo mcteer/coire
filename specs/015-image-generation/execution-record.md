@@ -1,5 +1,22 @@
 # Feature 015 execution record
 
+## Final acceptance audit matrix — 2026-10-03
+
+| Boundary | Evidence | Remaining limit |
+| --- | --- | --- |
+| Native modes and assets | Two verified Studio copies and native validation for Z-Image, LoRA, Union Canny, SeedVR2 upscale and FLUX Fill; live public txt2img, img2img, LoRA, Canny and 2× upscale jobs published private PNGs. | FLUX Fill remains admin-only under its non-commercial licence; its real native fill smoke passed, but no public fill job is claimed. |
+| Compatible API and browser | OpenAI image contracts, URL/base64 flows, SSE replay, gallery/form keyboard and 1024/1440px light/dark checks; 144 web tests and zero reported axe A/AA violations. | No spoken VoiceOver capture. |
+| Authorization and safety | Scoped keys and live entitlements, fenced cancellation, revoked grants, explicit-content denials, audited admin mutations and negative paths covered by contract/integration tests. A full-model running cancel finished and cleaned in 0.77 s; a queued LoRA job was owner-cancelled with zero output. A fresh pinned classifier tagged a live output `normal` with safe error null. | No policy bypass or publication of the admin-only fill asset. |
+| Replication and residency | Audited B-origin acquisition created identical verified B/A variant manifests without operator copying; Standard-QoS system agents, exact PID restart, safe worker idle unload and hold release observed. | B's outbound `.fabric` probe still fails with `EHOSTUNREACH`; A-initiated replication passes, reverse direction is not claimed. |
+| Determinism, cache, coexistence | Ten same-environment PNG/pixel and recipe round trips, twenty warm-cache runs, a 907-second same-node 4k chat plus image trial, audited profile and successful normal scheduler mixed job. | Approval is scoped to the measured B hardware/runtime/model/bounds and expires after 24 hours. |
+| Recovery, storage and rollback | Live owner tombstone/physical purge released exact quota bytes; simulated receipt, crash, lost cleanup and orphan guards; disposable populated Alembic upgrade/downgrade and paired live DB/blob snapshot restored to disposable services with matching PNG digest. | A production drain-before-rollback of the installed node version has not been performed. |
+| Release gates | Final local Python, web, integration, migration, OpenAPI, Compose and affected scheduler image policy/scan/SBOM pass; previous remote CI passed. | Final-source remote CI awaits the one planned push of this branch. |
+
+This matrix reconciles the parent tasks: T084 is complete; T081 remains open
+until final-source remote CI; T083 remains open for B outbound fabric and an
+installed-version drain/rollback exercise. T085 records the exact proof and
+limits in this single PR; it does not silently credit T081 or T083.
+
 ## Measured coexistence and B-to-A replication — 2026-10-03
 
 The Studio B full-length direct-node trial below is the physical evidence for the
@@ -77,7 +94,25 @@ output. A subsequent LoRA job queued because its adapter footprint exceeded
 the existing worker's immutable memory hold; after the chat instance drained,
 the job still waited for the worker's idle unload. It was owner-cancelled while
 queued with zero output, preserving the memory and audit guards. Live LoRA,
-Canny and fill checks remain T083 evidence, not a pass from this queued job.
+and Canny generation had already passed in jobs `01M3ZRKGAA1PYHXM744697EXB1`
+and `01M3ZS9G060077EMD8HP7XCJ8W` below; this queued job adds no new pass.
+Live FLUX Fill and the remaining cluster rollback matrix remain T083 evidence.
+The new worker loaded the verified classifier: the img2img output's durable
+tag is `normal`, score `0.00023784`, safe error null, with the pinned processor
+digest and classifier revision `96cb0d0342c7afb80cab76ecc58b265fa44da256`.
+
+A paired operational backup was taken with no nonterminal image jobs and all
+41 transfer rows in `published` state. The PostgreSQL custom dump SHA-256 is
+`766d6cc437a8b6a1f7a23fa4f2480e20d1c8a25383e582a0d803637d991147d6`;
+the Coire blob tar SHA-256 is
+`2f8291247c04a8df0a0725db37eb2137afa5f0dfe03259bb5c730968c4fe827b`.
+Both were restored into disposable PostgreSQL 17 and a fresh Docker blob volume.
+The restored database had 41 published output rows and 41 succeeded job rows;
+the restored PNG for `01M419BMRD7ZDQFSNSD2E16ZKQ` hashed to its database
+`file_sha256` `4860bea4fa6365222f9c68e2b1d3e96ccea3c59da63bdd776d5b957dc1586dae`.
+The disposable database and volume were removed. This proves a paired snapshot
+can be restored without touching the live control plane; old-worker fencing
+and operational drain-before-rollback remain separate checks.
 
 ## Operator same-node physical trial, not an approval — 2026-10-03
 
