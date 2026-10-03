@@ -258,7 +258,10 @@ services:
       IMAGE_OWNER_STORAGE_QUOTA_BYTES: ${COIRE_IMAGE_OWNER_STORAGE_QUOTA_BYTES:-5368709120}
       IMAGE_GLOBAL_STORAGE_QUOTA_BYTES: ${COIRE_IMAGE_GLOBAL_STORAGE_QUOTA_BYTES:-53687091200}
       IMAGE_DISK_SAFETY_FLOOR_BYTES: ${COIRE_IMAGE_DISK_SAFETY_FLOOR_BYTES:-2147483648}
-    volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
+      IMAGE_BLOB_ROOT: /opt/coire/blobs
+    volumes:
+      - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
+      - coire-blobs:/opt/coire/blobs
     secrets: [postgres_password, node_tokens, file_worker_service_token]
     depends_on:
       postgres: {condition: service_healthy}
