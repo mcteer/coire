@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import tempfile
 from pathlib import Path
 from typing import Any, cast
@@ -23,6 +24,9 @@ REQUIRED_FILES = frozenset(
     }
 )
 logger = logging.getLogger(__name__)
+SUPPORTED_ARCHITECTURES = frozenset(
+    {"Idefics3ForConditionalGeneration", "Qwen4ExpForConditionalGeneration"}
+)
 
 
 def inspect_local_variant(model_path: Path) -> str | None:
@@ -41,9 +45,8 @@ def inspect_local_variant(model_path: Path) -> str | None:
     except (OSError, ValueError):
         return "local visual configuration is unreadable"
     architectures = config.get("architectures")
-    if (
-        not isinstance(architectures, list)
-        or "Idefics3ForConditionalGeneration" not in architectures
+    if not isinstance(architectures, list) or not any(
+        architecture in SUPPORTED_ARCHITECTURES for architecture in architectures
     ):
         return "local visual architecture is unsupported"
     return None
@@ -80,21 +83,35 @@ def run_visual_smoke(
         mlx_module = importlib.import_module("mlx_vlm")
         mlx_generate = mlx_module.generate
         mlx_load = mlx_module.load
+        mlx_apply_chat_template = mlx_module.apply_chat_template
 
         phase = "load"
         mx.metal.reset_peak_memory()
         model, processor = mlx_load(str(model_path), trust_remote_code=False, strict=True)
+        mx.metal.reset_peak_memory()
+        baseline_peak = mx.metal.get_peak_memory()
+        baseline_cache = mx.metal.get_cache_memory()
+        # The variant reservation already includes its serialized weights and load
+        # overhead. Charge only the extra visual working set, including lazy loads.
+        serialized_weights = sum(path.stat().st_size for path in model_path.rglob("*.safetensors"))
         phase = "generate"
+        prompt = mlx_apply_chat_template(
+            processor,
+            model.config,
+            "Describe this image.",
+            num_images=1,
+        )
         with tempfile.TemporaryDirectory(prefix="coire-visual-smoke-") as temporary:
             image_path = Path(temporary) / "fixture.png"
-            Image.new("RGB", (16, 16), color=(255, 0, 0)).save(image_path)
+            pixels = random.Random(0).randbytes(512 * 512 * 3)
+            Image.frombytes("RGB", (512, 512), pixels).save(image_path)
             encoded_bytes = image_path.stat().st_size
             result = cast(
                 Any,
                 mlx_generate(
                     model,
                     cast(Any, processor),
-                    "<image>\nDescribe the single colored square in this image.",
+                    prompt,
                     image=str(image_path),
                     max_tokens=32,
                     verbose=False,
@@ -106,10 +123,12 @@ def run_visual_smoke(
         capability = VisualCapability(
             verified=True,
             max_images=1,
-            max_image_pixels=256,
+            max_image_pixels=512 * 512,
             max_encoded_bytes=encoded_bytes,
-            encoder_memory_bytes=mx.metal.get_peak_memory(),
-            cache_memory_bytes=mx.metal.get_cache_memory(),
+            encoder_memory_bytes=max(
+                0, mx.metal.get_peak_memory() - max(baseline_peak, serialized_weights)
+            ),
+            cache_memory_bytes=max(0, mx.metal.get_cache_memory() - baseline_cache),
         )
         return ValidationOutcome.PASS, None, capability
     except Exception as exc:

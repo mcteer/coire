@@ -15,6 +15,7 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from datetime import UTC, datetime
 
 import uvicorn
 from dbos import DBOS, SetWorkflowID
@@ -26,6 +27,8 @@ from coire_api.db import (
     AcquisitionWorkflowRow,
     AgentRunRow,
     ChatFileProcessingRow,
+    ImageInputRow,
+    ImageJobRow,
     ModelInstanceRow,
     PlacementDecisionRow,
     RunCommandRow,
@@ -49,6 +52,17 @@ from coire_scheduler.files import (
     purge_expired_temporary_outputs,
     purge_failed_file_outputs,
 )
+from coire_scheduler.image_inputs import image_normalize_workflow, image_recipe_workflow
+from coire_scheduler.image_latency import monitor_image_latency
+from coire_scheduler.image_residency import sweep_idle_image_workers
+from coire_scheduler.images import (
+    image_cancel_workflow,
+    image_dispatch_workflow,
+    image_observe_workflow,
+    image_publish_workflow,
+    image_queue_expiry_workflow,
+    image_transfer_workflow,
+)
 from coire_scheduler.instances import instance_drain_workflow, instance_launch_workflow
 from coire_scheduler.mcp_cleanup import sweep_mcp_workspaces
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
@@ -56,6 +70,7 @@ from coire_scheduler.runs import run_kill_workflow, run_workflow
 from coire_scheduler.workers import SchedulerWorkers
 
 SERVICE_NAME = "coire-scheduler"
+_IMAGE_CANCEL_POLL_SECONDS = 0.25
 __version__ = "0.1.0"
 logger = logging.getLogger(__name__)
 kill_scan_failures = metrics.get_meter("coire.scheduler.dispatch").create_counter(
@@ -134,7 +149,8 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
                                         InstanceState.WARMING,
                                         InstanceState.DRAINING,
                                     ]
-                                )
+                                ),
+                                ModelInstanceRow.policy.notlike("image:%"),
                             )
                         )
                     ).tuples()
@@ -182,15 +198,182 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
             for file_job_id in file_ids:
                 with SetWorkflowID(f"file-{file_job_id}"):
                     DBOS.start_workflow(file_processing_workflow, file_job_id)
+            async with session_scope() as session:
+                image_rows = list(
+                    (
+                        await session.execute(
+                            select(
+                                ImageInputRow.id,
+                                ImageInputRow.processing_job_id,
+                                ImageInputRow.purpose,
+                            )
+                            .where(
+                                ImageInputRow.state == "processing",
+                                ImageInputRow.purpose.in_(["recipe", "init", "mask", "control"]),
+                                ImageInputRow.processing_job_id.is_not(None),
+                                ImageInputRow.deleted_at.is_(None),
+                            )
+                            .order_by(ImageInputRow.created_at, ImageInputRow.id)
+                            .limit(1)
+                        )
+                    ).tuples()
+                )
+            for image_input_id, processing_job_id, purpose in image_rows:
+                with SetWorkflowID(f"image-input-{processing_job_id}"):
+                    DBOS.start_workflow(
+                        image_recipe_workflow if purpose == "recipe" else image_normalize_workflow,
+                        str(image_input_id),
+                    )
+            async with session_scope() as session:
+                expired_image_ids = list(
+                    (
+                        await session.execute(
+                            select(ImageJobRow.id)
+                            .where(
+                                ImageJobRow.state == "queued",
+                                ImageJobRow.deadline_at <= datetime.now(UTC),
+                            )
+                            .order_by(ImageJobRow.deadline_at, ImageJobRow.id)
+                            .limit(4)
+                        )
+                    ).scalars()
+                )
+            for image_job_id in expired_image_ids:
+                with SetWorkflowID(f"image-queue-expire-{image_job_id}"):
+                    DBOS.start_workflow(image_queue_expiry_workflow, image_job_id)
+            async with session_scope() as session:
+                dispatch_image_ids = list(
+                    (
+                        await session.execute(
+                            select(ImageJobRow.id)
+                            .where(
+                                ImageJobRow.state == "queued",
+                                ImageJobRow.fence == 0,
+                                ImageJobRow.selected_node_id.is_(None),
+                                ImageJobRow.cancel_requested_at.is_(None),
+                                ImageJobRow.deadline_at > datetime.now(UTC),
+                            )
+                            .order_by(ImageJobRow.queued_at, ImageJobRow.id)
+                            .limit(4)
+                        )
+                    ).scalars()
+                )
+            for image_job_id in dispatch_image_ids:
+                with SetWorkflowID(f"image-dispatch-{image_job_id}"):
+                    DBOS.start_workflow(image_dispatch_workflow, image_job_id)
+            async with session_scope() as session:
+                observing_image_ids = list(
+                    (
+                        await session.execute(
+                            select(ImageJobRow.id)
+                            .where(ImageJobRow.state.in_(["reserving", "running"]))
+                            .order_by(ImageJobRow.updated_at, ImageJobRow.id)
+                            .limit(4)
+                        )
+                    ).scalars()
+                )
+            for image_job_id in observing_image_ids:
+                with SetWorkflowID(f"image-observe-{image_job_id}"):
+                    DBOS.start_workflow(image_observe_workflow, image_job_id)
+            async with session_scope() as session:
+                image_job_ids = list(
+                    (
+                        await session.execute(
+                            select(ImageJobRow.id)
+                            .where(
+                                ImageJobRow.state == "transferring",
+                                ImageJobRow.cleanup_state != "cleaned",
+                            )
+                            .order_by(ImageJobRow.updated_at, ImageJobRow.id)
+                            .limit(4)
+                        )
+                    ).scalars()
+                )
+            for image_job_id in image_job_ids:
+                with SetWorkflowID(f"image-transfer-{image_job_id}"):
+                    DBOS.start_workflow(image_transfer_workflow, image_job_id)
+            async with session_scope() as session:
+                publishing_image_ids = list(
+                    (
+                        await session.execute(
+                            select(ImageJobRow.id)
+                            .where(
+                                ImageJobRow.state == "transferring",
+                                ImageJobRow.receipt_state == "complete",
+                                ImageJobRow.cleanup_state == "cleaned",
+                            )
+                            .order_by(ImageJobRow.updated_at, ImageJobRow.id)
+                            .limit(4)
+                        )
+                    ).scalars()
+                )
+            for image_job_id in publishing_image_ids:
+                with SetWorkflowID(f"image-publish-{image_job_id}"):
+                    DBOS.start_workflow(image_publish_workflow, image_job_id)
             delay = (
                 settings.acquisition_poll_interval_s
-                if ids or placement_ids or instance_rows or run_rows or file_ids
+                if ids
+                or placement_ids
+                or instance_rows
+                or run_rows
+                or file_ids
+                or image_rows
+                or expired_image_ids
+                or dispatch_image_ids
+                or observing_image_ids
+                or image_job_ids
+                or publishing_image_ids
                 else backoff.idle()
             )
-            if ids or placement_ids or instance_rows or run_rows or file_ids:
+            if (
+                ids
+                or placement_ids
+                or instance_rows
+                or run_rows
+                or file_ids
+                or image_rows
+                or expired_image_ids
+                or dispatch_image_ids
+                or observing_image_ids
+                or image_job_ids
+                or publishing_image_ids
+            ):
                 backoff.active()
         except Exception:
             logger.exception("acquisition dispatcher pass failed")
+            delay = backoff.failed()
+        await wait_or_stop(stop, delay)
+
+
+async def dispatch_image_cancels(stop: asyncio.Event) -> None:
+    """Notice committed cancel intent promptly without speeding every acquisition scan."""
+    settings = get_settings()
+    backoff = PollBackoff(
+        _IMAGE_CANCEL_POLL_SECONDS,
+        _IMAGE_CANCEL_POLL_SECONDS,
+        settings.scheduler_failure_backoff_max_s,
+    )
+    while not stop.is_set():
+        try:
+            async with session_scope() as session:
+                ids = list(
+                    (
+                        await session.execute(
+                            select(ImageJobRow.id)
+                            .where(ImageJobRow.state == "cancelling")
+                            .order_by(ImageJobRow.cancel_requested_at, ImageJobRow.id)
+                            .limit(4)
+                        )
+                    ).scalars()
+                )
+            for job_id in ids:
+                with SetWorkflowID(f"image-cancel-{job_id}"):
+                    DBOS.start_workflow(image_cancel_workflow, job_id)
+            if ids:
+                backoff.active()
+            delay = _IMAGE_CANCEL_POLL_SECONDS
+        except Exception as exc:
+            logger.error("image cancel dispatch failed error_type=%s", type(exc).__name__)
             delay = backoff.failed()
         await wait_or_stop(stop, delay)
 
@@ -242,6 +425,10 @@ async def dispatch_idle_ttl(stop: asyncio.Event) -> None:
                 DBOS.start_workflow(idle_ttl_workflow)
         except Exception:
             logger.exception("placement idle-TTL dispatcher pass failed")
+        try:
+            await sweep_idle_image_workers(settings)
+        except Exception:
+            logger.exception("image idle-TTL dispatcher pass failed")
         with suppress(TimeoutError):
             await asyncio.wait_for(stop.wait(), timeout=settings.placement_ttl_interval_s)
 
@@ -286,6 +473,9 @@ def create_app() -> FastAPI:
                 asyncio.create_task(dispatch_queued(stop), name="acquisition-dispatcher")
             )
             background.append(
+                asyncio.create_task(dispatch_image_cancels(stop), name="image-cancel-dispatcher")
+            )
+            background.append(
                 asyncio.create_task(dispatch_kills(stop, workers), name="kill-dispatcher")
             )
             background.append(
@@ -296,6 +486,9 @@ def create_app() -> FastAPI:
             )
             background.append(
                 asyncio.create_task(dispatch_file_purge(stop), name="file-purge-dispatcher")
+            )
+            background.append(
+                asyncio.create_task(monitor_image_latency(stop), name="image-latency-monitor")
             )
             app.state.dbos = runtime
             yield

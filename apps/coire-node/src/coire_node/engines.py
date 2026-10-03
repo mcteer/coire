@@ -26,14 +26,16 @@ import hashlib
 import logging
 import os
 import socket
+import stat
 import subprocess
 import sys
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import httpx
 import psutil
@@ -63,6 +65,11 @@ _load_seconds = _meter.create_histogram(
 _engine_resident = _meter.create_gauge(
     "coire_engine_resident_bytes", unit="By", description="Measured engine footprint."
 )
+_adoption_total = _meter.create_counter(
+    "coire_engine_adoption_total",
+    unit="1",
+    description="Exact-process engine re-adoption and generation recheck outcomes.",
+)
 
 ENGINES_FILE = "engines.json"
 CREATE_TIME_TOLERANCE_S = 1.0
@@ -71,6 +78,7 @@ adjustment without ever matching a different process: pid reuse within one secon
 original's start is not a thing that happens."""
 STOP_GRACE_S = 10.0
 EXIT_OUTPUT_BYTES = 4096
+ENGINE_LOG_MAX_BYTES = 8 * 1024 * 1024
 DEFAULT_ENGINE_COMMAND = (sys.executable, "-m", "mlx_lm.server")
 VISION_ENGINE_COMMAND = (sys.executable, "-m", "mlx_vlm.server")
 
@@ -201,6 +209,7 @@ class _Engine:
         started_at: datetime | None = None,
         chat_template_sha256: str | None = None,
         backend: EngineBackend = EngineBackend.MLX_LM,
+        stderr_path: Path | None = None,
     ) -> None:
         self.engine_id = engine_id
         self.slug = slug
@@ -217,6 +226,7 @@ class _Engine:
         self.load_seconds: float | None = None
         self.chat_template_sha256 = chat_template_sha256
         self.backend = backend
+        self.stderr_path = stderr_path
         self.last_health_at: datetime | None = None
         self.started_at = started_at or datetime.now(UTC)
         self.stopped_at: datetime | None = None
@@ -261,6 +271,7 @@ class _Engine:
             "backend": self.backend.value,
             "started_at": self.started_at.isoformat(),
             "chat_template_sha256": self.chat_template_sha256,
+            "stderr_file": self.stderr_path.name if self.stderr_path is not None else None,
         }
 
 
@@ -287,18 +298,33 @@ def _alive(pid: int | None, create_time: float | None, *, needle: str | None = N
         return False
 
 
+def _still_starting(engine: _Engine) -> bool:
+    """Read mutable engine state again after a blocking network call."""
+    return engine.state is EngineState.STARTING
+
+
 class EngineManager:
     """Spawns, watches, adopts and stops engines."""
 
-    def __init__(self, settings: Settings, store: Store, mesh_address: str) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        store: Store,
+        mesh_address: str,
+        *,
+        memory_lock: threading.RLock | None = None,
+        additional_committed_bytes: Callable[[], int] | None = None,
+    ) -> None:
         self._settings = settings
         self._store = store
         self._address = mesh_address
         self._engines: dict[str, _Engine] = {}
-        self._lock = threading.RLock()
+        self._lock = memory_lock or threading.RLock()
+        self._additional_committed_bytes = additional_committed_bytes or (lambda: 0)
         """One lock spanning the budget check *and* the spawn. Two concurrent loads that each
         fit but together do not must not both be admitted (spec edge case 8)."""
         self._state_file = Path(settings.node_state_dir) / ENGINES_FILE
+        self._stderr_root = Path(settings.node_state_dir) / "engine-stderr"
         self._stop = threading.Event()
         self._health_thread: threading.Thread | None = None
         self._memory_total = psutil.virtual_memory().total
@@ -313,6 +339,70 @@ class EngineManager:
                 e.estimate_bytes or (e.resident_bytes or 0)
                 for e in self._engines.values()
                 if e.state in LIVE_ENGINE_STATES or e.state is EngineState.ORPHAN
+            )
+
+    def _new_stderr_file(self) -> tuple[Path, BinaryIO]:
+        self._stderr_root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        root_info = self._stderr_root.lstat()
+        if (
+            not stat.S_ISDIR(root_info.st_mode)
+            or root_info.st_uid != os.getuid()
+            or root_info.st_mode & 0o077
+        ):
+            raise OSError("engine stderr directory is not private")
+        path = self._stderr_root / f"{uuid.uuid4().hex}.log"
+        fd = os.open(
+            path,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_APPEND,
+            0o600,
+        )
+        return path, os.fdopen(fd, "wb", buffering=0)
+
+    def _read_stderr(self, engine: _Engine) -> str:
+        path = engine.stderr_path
+        if path is None or path.parent != self._stderr_root:
+            return ""
+        try:
+            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                info = os.fstat(fd)
+                if (
+                    not stat.S_ISREG(info.st_mode)
+                    or info.st_uid != os.getuid()
+                    or info.st_mode & 0o077
+                ):
+                    return ""
+                os.lseek(fd, max(0, info.st_size - EXIT_OUTPUT_BYTES), os.SEEK_SET)
+                return os.read(fd, EXIT_OUTPUT_BYTES).decode("utf-8", "replace")
+            finally:
+                os.close(fd)
+        except OSError:
+            return ""
+
+    def _trim_stderr(self, engine: _Engine) -> None:
+        path = engine.stderr_path
+        if path is None or path.parent != self._stderr_root:
+            return
+        try:
+            fd = os.open(path, os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+            try:
+                info = os.fstat(fd)
+                if (
+                    stat.S_ISREG(info.st_mode)
+                    and info.st_uid == os.getuid()
+                    and info.st_mode & 0o077 == 0
+                    and info.st_size > ENGINE_LOG_MAX_BYTES
+                ):
+                    os.ftruncate(fd, 0)
+                    logger.warning(
+                        "trimmed oversized engine stderr file",
+                        extra={"engine_id": str(engine.engine_id)},
+                    )
+            finally:
+                os.close(fd)
+        except OSError:
+            logger.warning(
+                "engine stderr file unavailable", extra={"engine_id": str(engine.engine_id)}
             )
 
     # -- lifecycle ---------------------------------------------------------
@@ -351,7 +441,7 @@ class EngineManager:
                 if self._store.verify_against(slug, manifest):
                     raise CopyMissing(f"visual copy of {slug} differs from its manifest")
 
-            committed = self.committed_bytes()
+            committed = self.committed_bytes() + self._additional_committed_bytes()
             budget = self.budget_bytes()
             if committed + estimate_bytes > budget:
                 raise BudgetExceeded(
@@ -390,15 +480,22 @@ class EngineManager:
             )
             env = build_engine_env(dict(os.environ))
 
-            proc = subprocess.Popen(
-                argv,
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                # Its own session: launchd kills the job's process group on restart, and this
-                # is what keeps the engine out of it (research R4, Apple TN2083).
-                start_new_session=True,
-            )
+            stderr_path, stderr_file = self._new_stderr_file()
+            try:
+                proc = subprocess.Popen(
+                    argv,
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=stderr_file,
+                    # Its own session: launchd kills the job's process group on restart, and this
+                    # is what keeps the engine out of it (research R4, Apple TN2083).
+                    start_new_session=True,
+                )
+            except Exception:
+                stderr_path.unlink(missing_ok=True)
+                raise
+            finally:
+                stderr_file.close()
 
             engine = _Engine(
                 engine_id=engine_id,
@@ -408,6 +505,7 @@ class EngineManager:
                 pid=proc.pid,
                 chat_template_sha256=template_digest,
                 backend=backend,
+                stderr_path=stderr_path,
             )
             engine.proc = proc
             with contextlib.suppress(psutil.Error):
@@ -486,8 +584,24 @@ class EngineManager:
 
         with httpx.Client(timeout=10.0) as client:
             while time.monotonic() < deadline:
+                with self._lock:
+                    if not _still_starting(engine):
+                        return
                 if engine.proc is not None and engine.proc.poll() is not None:
                     self._mark_start_failure(engine)
+                    return
+                if (
+                    engine.proc is None
+                    and engine.pid is not None
+                    and not _alive(engine.pid, engine.create_time)
+                ):
+                    with self._lock:
+                        engine.state = EngineState.FAILED
+                        engine.state_reason = "the re-adopted engine process exited"
+                        engine.stopped_at = datetime.now(UTC)
+                        engine.resident_bytes = None
+                        self._persist()
+                    _adoption_total.add(1, {"backend": engine.backend.value, "outcome": "failed"})
                     return
                 if self._stop.is_set():
                     return
@@ -517,6 +631,8 @@ class EngineManager:
                     continue
                 if resp.status_code == 200:
                     with self._lock:
+                        if not _still_starting(engine):
+                            return
                         engine.state = EngineState.READY
                         engine.load_seconds = time.monotonic() - started
                         engine.last_health_at = datetime.now(UTC)
@@ -533,10 +649,16 @@ class EngineManager:
                         engine.resident_bytes,
                         engine.estimate_bytes,
                     )
+                    if engine.proc is None:
+                        _adoption_total.add(
+                            1, {"backend": engine.backend.value, "outcome": "ready"}
+                        )
                     return
                 time.sleep(1.0)
 
         with self._lock:
+            if not _still_starting(engine):
+                return
             engine.state = EngineState.FAILED
             engine.state_reason = (
                 f"did not answer a generation request within "
@@ -545,22 +667,24 @@ class EngineManager:
             engine.stopped_at = datetime.now(UTC)
             self._persist()
         self._terminate(engine)
+        if engine.proc is None:
+            _adoption_total.add(1, {"backend": engine.backend.value, "outcome": "failed"})
 
     def _mark_start_failure(self, engine: _Engine) -> None:
         """Record why an engine died during startup, with its own account of it."""
         proc = engine.proc
-        output = ""
+        output = self._read_stderr(engine)
         if proc is not None:
             engine.exit_code = proc.returncode
-            if proc.stderr is not None:
-                with contextlib.suppress(Exception):
-                    output = proc.stderr.read().decode("utf-8", "replace")[-EXIT_OUTPUT_BYTES:]
         with self._lock:
             engine.state = EngineState.FAILED
             engine.state_reason = f"the engine exited with status {engine.exit_code} during startup"
             engine.exit_output = output or None
             engine.stopped_at = datetime.now(UTC)
             self._persist()
+        if engine.stderr_path is not None:
+            with contextlib.suppress(OSError):
+                engine.stderr_path.unlink(missing_ok=True)
         logger.error(
             "engine %s failed to start (exit %s): %s",
             engine.engine_id,
@@ -595,7 +719,16 @@ class EngineManager:
                 logger.warning("engine %s did not exit; killing", engine.engine_id)
                 with contextlib.suppress(ProcessLookupError, PermissionError):
                     os.killpg(os.getpgid(pid), 9)
+                deadline = time.monotonic() + 2.0
+                while time.monotonic() < deadline and _alive(pid, engine.create_time):
+                    time.sleep(0.1)
+            if _alive(pid, engine.create_time):
+                logger.error("engine %s stop remains uncertain; memory held", engine.engine_id)
+                return
         with self._lock:
+            if engine.stderr_path is not None:
+                with contextlib.suppress(OSError):
+                    engine.stderr_path.unlink(missing_ok=True)
             engine.state = EngineState.STOPPED
             engine.stopped_at = datetime.now(UTC)
             engine.resident_bytes = None
@@ -654,6 +787,7 @@ class EngineManager:
                     logger.error("engine %s died", engine.engine_id)
                     continue
                 self._sample(engine)
+                self._trim_stderr(engine)
                 engine.last_health_at = datetime.now(UTC)
             self._persist()
 
@@ -713,17 +847,30 @@ class EngineManager:
                 estimate_bytes=record.get("estimate_bytes", 0),
                 pid=pid,
                 create_time=create_time,
-                state=EngineState.READY,
+                state=EngineState.STARTING,
                 started_at=datetime.fromisoformat(record["started_at"]),
                 chat_template_sha256=record.get("chat_template_sha256"),
                 backend=EngineBackend(record.get("backend", "mlx_lm")),
+                stderr_path=(
+                    self._stderr_root / record["stderr_file"]
+                    if isinstance(record.get("stderr_file"), str)
+                    and len(record["stderr_file"]) == 36
+                    and record["stderr_file"].endswith(".log")
+                    and all(char in "0123456789abcdef" for char in record["stderr_file"][:-4])
+                    else None
+                ),
             )
-            engine.state_reason = "re-adopted after an agent restart"
+            engine.state_reason = "rechecking generation after an agent restart"
             self._sample(engine)
             key = str(engine.engine_id) if engine.engine_id else f"orphan-{engine.port}"
             self._engines[key] = engine
             adopted.append(engine.status())
+            with _tracer.start_as_current_span("coire.node.engine_adopt") as span:
+                span.set_attribute("coire.backend", engine.backend.value)
+                span.set_attribute("coire.engine_id", str(engine.engine_id))
+                _adoption_total.add(1, {"backend": engine.backend.value, "outcome": "rechecking"})
             logger.info("adopted engine %s (pid %s) for %s", engine.engine_id, pid, slug)
+            threading.Thread(target=self._probe_until_ready, args=(engine,), daemon=True).start()
 
         self._persist()
         return adopted

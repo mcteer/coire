@@ -22,7 +22,7 @@ from coire_core.models.failover import (
     FailoverModel,
     FailoverSnapshot,
 )
-from coire_core.models.registry import EngineBackend, ModelSource, ModelState, Visibility
+from coire_core.models.registry import EngineBackend, ModelKind, ModelSource, ModelState, Visibility
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -76,6 +76,7 @@ class CoreSnapshotService:
                             ModelRow.visibility == Visibility.PUBLISHED,
                             ModelRow.source == ModelSource.STUDIO,
                             ModelRow.backend == EngineBackend.MLX_LM,
+                            ModelRow.kind == ModelKind.LANGUAGE_MODEL,
                         )
                     )
                 ).all()
@@ -95,6 +96,7 @@ class CoreSnapshotService:
                     for row in rows
                     if (row.source or "studio") == ModelSource.STUDIO
                     and row.backend == EngineBackend.MLX_LM
+                    and row.kind == ModelKind.LANGUAGE_MODEL
                 ],
                 access_verifier=FailoverAccessVerifier(
                     issuer=issuer,

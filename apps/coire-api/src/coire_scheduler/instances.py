@@ -84,6 +84,8 @@ async def execute_instance_launch(instance_id_text: str) -> None:
         try:
             async with session_scope() as session:
                 candidate = await session.get(ModelInstanceRow, instance_id)
+                if candidate is not None and candidate.policy.startswith("image:"):
+                    return
                 sharded = candidate is not None and candidate.policy.startswith("sharded:")
             if not sharded:
                 await _wait_for_fallback_teardown(instance_id)
@@ -109,6 +111,15 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                     InstanceState.DRAINING,
                     InstanceState.STOPPED,
                 }:
+                    return
+                if instance.variant_id is None:
+                    await transition(
+                        session,
+                        instance_id,
+                        InstanceState.FAILED,
+                        reason="validated variant disappeared",
+                        failure_code="variant_missing",
+                    )
                     return
                 variant = await session.get(ModelVariantRow, instance.variant_id)
                 if variant is None or not variant.validated:

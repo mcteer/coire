@@ -19,7 +19,9 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from coire_core.models.registry import ModelKind
 
 SHA256_PATTERN = r"^[0-9a-f]{64}$"
 
@@ -67,7 +69,31 @@ class JobKind(StrEnum):
     VERIFY = "verify"
     CONVERT = "convert"
     VALIDATE = "validate"
+    IMAGE_VALIDATE = "image_validate"
     CLEANUP = "cleanup"
+
+
+class ModelPullRequest(BaseModel):
+    """Node pull request; image assets require an admin-resolved immutable commit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: uuid.UUID
+    repo_id: str
+    slug: str
+    revision: str = "main"
+    model_kind: ModelKind = ModelKind.LANGUAGE_MODEL
+    expected_total_bytes: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def require_image_commit(self) -> ModelPullRequest:
+        if self.model_kind is not ModelKind.LANGUAGE_MODEL and (
+            len(self.revision) != 40
+            or any(char not in "0123456789abcdef" for char in self.revision)
+            or self.revision == "0" * 40
+        ):
+            raise ValueError("image pulls require an immutable commit revision")
+        return self
 
 
 class JobStage(StrEnum):
@@ -131,6 +157,7 @@ class RepoInspection(BaseModel):
     is_mlx_format: bool
     has_gguf_only: bool = False
     gated: bool = False
+    license_id: str | None = Field(default=None, min_length=1, max_length=120)
     architecture: str | None = None
     quantization: Quantization | None = None
     torch_dtype: str | None = None

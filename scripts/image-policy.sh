@@ -63,7 +63,15 @@ fi
 
 # --- rule 4: read-only rootfs compatible -----------------------------------
 # Start with a read-only root and a tmpfs; the container must not die from an unwritable fs.
-RO_CID="$(docker run -d --read-only --tmpfs /tmp --tmpfs /run "$IMAGE" 2>/dev/null)"
+# The API normally receives private writable data volumes at these exact paths.
+# Give the isolated policy probe throwaway tmpfs mounts with the same permissions;
+# the root filesystem remains read-only and no host data is exposed.
+ro_mounts=(--tmpfs /tmp --tmpfs /run)
+if [[ "${IMAGE%%:*}" == *coire-api ]]; then
+  ro_mounts+=(--tmpfs /opt/coire/blobs:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700)
+  ro_mounts+=(--tmpfs /opt/coire/chat/originals:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700)
+fi
+RO_CID="$(docker run -d --read-only "${ro_mounts[@]}" "$IMAGE" 2>/dev/null)"
 if [[ -n "$RO_CID" ]]; then
   for _ in $(seq 1 40); do
     st="$(docker inspect "$RO_CID" --format '{{.State.Status}}' 2>/dev/null)"

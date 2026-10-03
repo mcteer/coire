@@ -1,0 +1,600 @@
+"""Image dispatch prefers Studio B and does not regenerate a lost attempt."""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from coire_api.db import ImageJobRow, ModelInstanceRow, ModelRow
+from coire_api.nodes_client import NodeError, NodeErrorKind
+from coire_core.errors import ImageConflict
+from coire_core.models.image_worker import (
+    ImageWorkerLoadRequest,
+    ImageWorkerLoadResult,
+    NodeImageInputManifest,
+    NodeImageInputRequest,
+    NodeImageJob,
+    NodeImageStartRequest,
+)
+from coire_core.models.images import (
+    ImageControl,
+    ImageInputDigest,
+    ImageLora,
+    ImageMode,
+    ImageSpec,
+    ImageUpscale,
+    ResolvedImageSpec,
+    canonical_spec_hash,
+    expand_image_seeds,
+)
+from coire_core.models.instance import InstanceState
+from coire_core.models.placement import MemoryReservationState
+from coire_core.models.registry import EngineBackend, ModelKind, ModelSource, ModelState, Visibility
+from coire_core.settings import Settings
+from coire_scheduler import image_dispatch, images
+from coire_scheduler.image_dispatch import (
+    IMAGE_PREFERRED_NODE,
+    ImageNodeCandidate,
+    PreparedImageDispatch,
+    choose_image_node,
+    image_worker_hold_bytes,
+)
+
+JOB = "01J00000000000000000000000"
+NODE = "coire-edge-b"
+INSTANCE = uuid.uuid4()
+MODEL = uuid.uuid4()
+
+
+def _candidate(name: str, **overrides: object) -> ImageNodeCandidate:
+    values: dict[str, object] = {
+        "name": name,
+        "node_id": uuid.uuid4(),
+        "healthy": True,
+        "memory_total_bytes": 64 * 1024**3,
+        "image_busy": False,
+        "chat_unmeasured": False,
+    }
+    values.update(overrides)
+    return ImageNodeCandidate(**values)  # type: ignore[arg-type]
+
+
+def test_auto_placement_prefers_studio_b_and_skips_blocked_nodes() -> None:
+    preferred = _candidate(IMAGE_PREFERRED_NODE)
+    other = _candidate("coire-edge-a")
+    chosen = choose_image_node("single:auto", 1024, [other, preferred])
+    assert chosen is preferred
+    busy = choose_image_node(
+        "single:auto", 1024, [_candidate(IMAGE_PREFERRED_NODE, image_busy=True), other]
+    )
+    assert busy is other
+    waiting = choose_image_node(
+        "single:auto",
+        1024,
+        [
+            _candidate(IMAGE_PREFERRED_NODE, chat_unmeasured=True),
+            _candidate("coire-edge-a", chat_unmeasured=True),
+        ],
+    )
+    assert waiting is None
+    pinned = choose_image_node("pinned:coire-edge-a", 1024, [preferred, other])
+    assert pinned is other
+    unreachable = choose_image_node(
+        "pinned:coire-edge-b", 1024, [_candidate(IMAGE_PREFERRED_NODE, healthy=False), other]
+    )
+    assert unreachable is None
+    overheated = choose_image_node(
+        "single:auto", 1024, [_candidate(IMAGE_PREFERRED_NODE, thermal_alarm=True), other]
+    )
+    assert overheated is other
+    assert (
+        choose_image_node(
+            "pinned:coire-edge-b", 1024, [_candidate(IMAGE_PREFERRED_NODE, thermal_alarm=True)]
+        )
+        is None
+    )
+
+
+def test_image_hold_includes_classifier_and_cache_budget_for_placement() -> None:
+    settings = Settings(  # type: ignore[call-arg]
+        _secrets_dir="/nonexistent", image_classifier_memory_bytes=1024**3
+    )
+    hold = image_worker_hold_bytes(8 * 1024**3, settings)
+    assert hold == 9 * 1024**3 + 2 * settings.image_prompt_cache_max_bytes
+    assert (
+        choose_image_node(
+            "single:auto", hold, [_candidate(IMAGE_PREFERRED_NODE, memory_total_bytes=hold - 1)]
+        )
+        is None
+    )
+    assert (
+        choose_image_node(
+            "single:auto", hold, [_candidate(IMAGE_PREFERRED_NODE, memory_total_bytes=hold)]
+        )
+        is not None
+    )
+
+
+async def test_bound_lora_stack_preserves_order_and_rejects_changed_base() -> None:
+    first_id, second_id = uuid.uuid4(), uuid.uuid4()
+    base = SimpleNamespace(id=MODEL, memory_estimate_bytes=8 * 1024**3)
+
+    def adapter(identity: uuid.UUID, revision: str, overhead: int) -> SimpleNamespace:
+        return SimpleNamespace(
+            id=identity,
+            slug=f"studio--adapter-{identity.hex[:8]}",
+            kind=ModelKind.IMAGE_LORA,
+            visibility=Visibility.PUBLISHED,
+            backend=EngineBackend.AUXILIARY,
+            source=ModelSource.STUDIO,
+            state=ModelState.READY,
+            manifest_sha256="a" * 64,
+            source_revision=revision,
+            capability_profile={"compatible_base_model_id": str(MODEL)},
+            memory_estimate_bytes=base.memory_estimate_bytes + overhead,
+        )
+
+    adapters = {
+        first_id: adapter(first_id, "b" * 40, 128 * 1024**2),
+        second_id: adapter(second_id, "c" * 40, 256 * 1024**2),
+    }
+
+    class Session:
+        async def get(self, model: type[object], identity: object, **kwargs: object) -> object:
+            assert kwargs.get("populate_existing") is True
+            return adapters[cast(uuid.UUID, identity)]
+
+    spec = ImageSpec(
+        model_id=MODEL,
+        prompt="private subject",
+        width=64,
+        height=64,
+        steps=2,
+        guidance=Decimal(0),
+        seed=3,
+        loras=(
+            ImageLora(model_id=second_id, scale=Decimal("0.375125")),
+            ImageLora(model_id=first_id, scale=Decimal("-0.5")),
+        ),
+    )
+    session = cast(AsyncSession, Session())
+    bound = await image_dispatch._bound_loras(
+        session, spec, cast(ModelRow, base), from_preset=False
+    )
+    assert bound is not None
+    manifests, overhead = bound
+    assert [item.model_id for item in manifests] == [second_id, first_id]
+    assert overhead == 384 * 1024**2
+    upscale_id = uuid.uuid4()
+    adapters[upscale_id] = SimpleNamespace(
+        id=upscale_id,
+        slug="numz--seedvr2",
+        kind=ModelKind.UPSCALE_MODEL,
+        visibility=Visibility.PUBLISHED,
+        backend=EngineBackend.AUXILIARY,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        manifest_sha256="d" * 64,
+        source_revision="e" * 40,
+        memory_estimate_bytes=2 * 1024**3,
+    )
+    upscaled = spec.model_copy(update={"upscale": ImageUpscale(model_id=upscale_id, factor=2)})
+    with_upscale = await image_dispatch._bound_loras(
+        session, upscaled, cast(ModelRow, base), from_preset=False
+    )
+    assert with_upscale is not None
+    assert [item.model_id for item in with_upscale[0]] == [second_id, first_id, upscale_id]
+    assert with_upscale[1] == overhead + 2 * 1024**3
+    control_id = uuid.uuid4()
+    adapters[control_id] = SimpleNamespace(
+        id=control_id,
+        slug="alibaba--union",
+        kind=ModelKind.CONTROL_MODEL,
+        visibility=Visibility.PUBLISHED,
+        backend=EngineBackend.AUXILIARY,
+        source=ModelSource.STUDIO,
+        state=ModelState.READY,
+        manifest_sha256="f" * 64,
+        source_revision="1" * 40,
+        capability_profile={"compatible_base_model_id": str(MODEL)},
+        memory_estimate_bytes=12 * 1024**3,
+    )
+    controlled = spec.model_copy(
+        update={
+            "mode": ImageMode.CONTROL,
+            "loras": (),
+            "control": ImageControl(image_id=uuid.uuid4(), model_id=control_id),
+        }
+    )
+    with_control = await image_dispatch._bound_loras(
+        session, controlled, cast(ModelRow, base), from_preset=False
+    )
+    assert with_control is not None
+    assert [item.model_id for item in with_control[0]] == [control_id]
+    assert with_control[1] == 4 * 1024**3
+    adapters[first_id].capability_profile = {"compatible_base_model_id": str(uuid.uuid4())}
+    assert (
+        await image_dispatch._bound_loras(session, spec, cast(ModelRow, base), from_preset=False)
+        is None
+    )
+
+
+async def test_draining_worker_blocks_new_image_placement() -> None:
+    class Session:
+        def __init__(self) -> None:
+            self.queries: list[str] = []
+
+        async def scalar(self, statement: object) -> object | None:
+            self.queries.append(str(statement))
+            return "draining-instance" if len(self.queries) == 2 else None
+
+    session = Session()
+    assert await image_dispatch._image_busy(cast(AsyncSession, session), uuid.uuid4(), MODEL)
+    assert len(session.queries) == 2
+    assert "image_execution_leases" in session.queries[0]
+    assert "model_instances.state" in session.queries[1]
+
+
+async def test_draining_chat_remains_in_unmeasured_mix_until_stop_proof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    variant_id = uuid.uuid4()
+    resident: list[set[str]] = []
+
+    class Session:
+        async def scalars(self, statement: object) -> SimpleNamespace:
+            parameters = statement.compile().params  # type: ignore[attr-defined]
+            assert any(
+                isinstance(value, (list, tuple)) and InstanceState.DRAINING in value
+                for value in parameters.values()
+            )
+            return SimpleNamespace(all=lambda: [variant_id])
+
+    async def approve(
+        session: object,
+        node_id: uuid.UUID,
+        image_model_id: uuid.UUID,
+        chat_variants: set[str],
+        now: datetime,
+    ) -> bool:
+        resident.append(chat_variants)
+        return False
+
+    monkeypatch.setattr(image_dispatch, "chat_mix_allowed", approve)
+    assert await image_dispatch._chat_unmeasured(
+        cast(AsyncSession, Session()), uuid.uuid4(), MODEL, datetime.now(UTC)
+    )
+    assert resident == [{str(variant_id)}]
+
+
+def _prepared() -> PreparedImageDispatch:
+    spec = ImageSpec(
+        model_id=MODEL,
+        prompt="private subject",
+        width=64,
+        height=64,
+        steps=2,
+        guidance=Decimal(0),
+        seed=3,
+    )
+    resolved = ResolvedImageSpec(
+        spec=spec,
+        seeds=tuple(expand_image_seeds(3, 1)),
+        pipeline_version="mflux-0.20.0",
+        environment_fingerprint="a" * 64,
+        model_sha256="b" * 64,
+        spec_hash=canonical_spec_hash(spec),
+    )
+    load = ImageWorkerLoadRequest(
+        slug="flux--schnell",
+        model_id=MODEL,
+        instance_id=INSTANCE,
+        manifest_sha256="b" * 64,
+        reservation_bytes=1024,
+        runtime_version="mflux-0.20.0",
+    )
+    start = NodeImageStartRequest(
+        job_id=JOB,
+        attempt=1,
+        fence=1,
+        node=NODE,
+        model_id=MODEL,
+        instance_id=INSTANCE,
+        resolved=resolved,
+        deadline_at=datetime.now(UTC),
+        reservation_bytes=1024,
+    )
+    return PreparedImageDispatch(node=NODE, load=load, start=start)
+
+
+@pytest.mark.parametrize(
+    ("missing", "bad_ready", "terminal_reservation"),
+    [(False, False, False), (True, False, False), (False, True, False), (False, False, True)],
+)
+async def test_dispatch_retains_placed_holds_when_a_worker_reply_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    missing: bool,
+    bad_ready: bool,
+    terminal_reservation: bool,
+) -> None:
+    prepared = _prepared()
+    calls: list[str] = []
+
+    async def prepare(session: object, job_id: str, settings: Settings) -> PreparedImageDispatch:
+        del session, settings
+        assert job_id == JOB
+        calls.append("prepare")
+        return prepared
+
+    class Client:
+        def __init__(self, settings: Settings) -> None:
+            del settings
+
+        async def __aenter__(self) -> Client:
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            del args
+
+        async def reserve_image_inputs(
+            self, node: str, command: NodeImageStartRequest
+        ) -> NodeImageJob:
+            assert node == NODE and command.job_id == JOB
+            calls.append("reserve")
+            return NodeImageJob(
+                job_id=JOB,
+                attempt=1,
+                fence=1,
+                node=NODE,
+                instance_id=INSTANCE,
+                state="cancelled" if terminal_reservation else "queued",
+                scratch_cleaned=terminal_reservation,
+                updated_at=datetime.now(UTC),
+            )
+
+        async def load_image_worker(
+            self, node: str, command: ImageWorkerLoadRequest
+        ) -> ImageWorkerLoadResult:
+            assert node == NODE and command.instance_id == INSTANCE
+            calls.append("load")
+            return ImageWorkerLoadResult(
+                instance_id=INSTANCE, state="starting", reserved_bytes=1024
+            )
+
+        async def image_worker_status(
+            self, node: str, instance_id: uuid.UUID
+        ) -> ImageWorkerLoadResult:
+            assert node == NODE and instance_id == INSTANCE
+            calls.append("ready")
+            return ImageWorkerLoadResult(
+                instance_id=INSTANCE,
+                state="ready",
+                reserved_bytes=1025 if bad_ready else 1024,
+                pid=123,
+                process_create_time=100.0,
+                port=9600,
+            )
+
+        async def start_image_job(self, node: str, command: NodeImageStartRequest) -> NodeImageJob:
+            calls.append("start")
+            if missing:
+                raise NodeError(NodeErrorKind.NOT_FOUND, node, status=404)
+            return NodeImageJob(
+                job_id=command.job_id,
+                attempt=command.attempt,
+                fence=command.fence,
+                node=node,
+                instance_id=command.instance_id,
+                state="reserving",
+                updated_at=datetime.now(UTC),
+            )
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[object]:
+        yield object()
+
+    monkeypatch.setattr(images, "prepare_image_dispatch", prepare)
+
+    async def record_ready(*_: object) -> None:
+        pass
+
+    monkeypatch.setattr(images, "_record_image_worker_ready", record_ready)
+    monkeypatch.setattr(images, "NodeClient", Client)
+    monkeypatch.setattr(images, "session_scope", scope)
+    monkeypatch.setattr(images, "get_settings", lambda: Settings(_secrets_dir="/nonexistent"))  # type: ignore[call-arg]
+
+    if terminal_reservation:
+        assert await images.drive_image_dispatch(JOB) is True
+        assert calls == ["prepare", "reserve"]
+    elif bad_ready:
+        with pytest.raises(ImageConflict, match="readiness differs"):
+            await images.drive_image_dispatch(JOB)
+        assert calls == ["prepare", "reserve", "load", "ready"]
+    elif missing:
+        with pytest.raises(ImageConflict, match="journal is unavailable"):
+            await images.drive_image_dispatch(JOB)
+        assert calls == ["prepare", "reserve", "load", "ready", "start"]
+    else:
+        assert await images.drive_image_dispatch(JOB) is True
+        assert calls == ["prepare", "reserve", "load", "ready", "start"]
+        assert await images.drive_image_dispatch(JOB) is True
+        assert calls.count("start") == 2
+
+
+async def test_img2img_dispatch_reserves_and_stages_exact_owner_input_before_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    input_id = uuid.uuid4()
+    payload = b"normalized-private-png"
+    digest = hashlib.sha256(payload).hexdigest()
+    source = tmp_path / str(input_id)
+    source.write_bytes(payload)
+    basic = _prepared()
+    spec = basic.start.resolved.spec.model_copy(
+        update={
+            "mode": ImageMode.IMG2IMG,
+            "init_image_id": input_id,
+            "strength": Decimal("0.375125"),
+        }
+    )
+    resolved = basic.start.resolved.model_copy(
+        update={
+            "spec": spec,
+            "spec_hash": canonical_spec_hash(spec),
+            "inputs": (ImageInputDigest(input_id=input_id, sha256=digest, width=64, height=64),),
+        }
+    )
+    manifest = NodeImageInputManifest(
+        input_id=input_id,
+        purpose="init",
+        sha256=digest,
+        byte_count=len(payload),
+        width=64,
+        height=64,
+    )
+    prepared = PreparedImageDispatch(
+        node=NODE,
+        load=basic.load,
+        start=basic.start.model_copy(update={"resolved": resolved, "inputs": (manifest,)}),
+    )
+    calls: list[str] = []
+
+    async def prepare(*_: object) -> PreparedImageDispatch:
+        return prepared
+
+    class Session:
+        async def get(self, model: object, identity: object) -> object:
+            assert identity == JOB
+            return type("Job", (), {"cancel_requested_at": None})()
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[object]:
+        yield Session()
+
+    class Client:
+        def __init__(self, _: object) -> None:
+            pass
+
+        async def __aenter__(self) -> Client:
+            return self
+
+        async def __aexit__(self, *_: object) -> None:
+            pass
+
+        async def load_image_worker(self, *_: object) -> ImageWorkerLoadResult:
+            calls.append("load")
+            return ImageWorkerLoadResult(
+                instance_id=INSTANCE, state="starting", reserved_bytes=1024
+            )
+
+        async def image_worker_status(self, *_: object) -> ImageWorkerLoadResult:
+            calls.append("ready")
+            return ImageWorkerLoadResult(
+                instance_id=INSTANCE,
+                state="ready",
+                reserved_bytes=1024,
+                pid=123,
+                process_create_time=100.0,
+                port=9600,
+            )
+
+        async def reserve_image_inputs(
+            self, node: str, command: NodeImageStartRequest
+        ) -> NodeImageJob:
+            assert node == NODE and command == prepared.start
+            calls.append("reserve")
+            return NodeImageJob(
+                job_id=JOB,
+                attempt=1,
+                fence=1,
+                node=NODE,
+                instance_id=INSTANCE,
+                state="queued",
+                updated_at=datetime.now(UTC),
+            )
+
+        async def stage_image_input(
+            self, node: str, command: NodeImageInputRequest, path: Path
+        ) -> object:
+            assert node == NODE and path == source
+            assert await asyncio.to_thread(path.read_bytes) == payload
+            assert command.sha256 == digest
+            calls.append("stage")
+            return object()
+
+        async def start_image_job(self, node: str, command: NodeImageStartRequest) -> NodeImageJob:
+            assert node == NODE and command == prepared.start
+            calls.append("start")
+            return NodeImageJob(
+                job_id=JOB,
+                attempt=1,
+                fence=1,
+                node=NODE,
+                instance_id=INSTANCE,
+                state="reserving",
+                updated_at=datetime.now(UTC),
+            )
+
+    monkeypatch.setattr(images, "prepare_image_dispatch", prepare)
+
+    async def record_ready(*_: object) -> None:
+        pass
+
+    monkeypatch.setattr(images, "_record_image_worker_ready", record_ready)
+    monkeypatch.setattr(images, "NodeClient", Client)
+    monkeypatch.setattr(images, "session_scope", scope)
+    monkeypatch.setattr(
+        images,
+        "get_settings",
+        lambda: Settings(  # type: ignore[call-arg]
+            _secrets_dir="/nonexistent", image_input_derived_root=str(tmp_path)
+        ),
+    )
+    assert await images.drive_image_dispatch(JOB)
+    assert calls == ["reserve", "load", "ready", "stage", "start"]
+
+
+async def test_ready_record_requires_exact_held_worker(monkeypatch: pytest.MonkeyPatch) -> None:
+    node_id = uuid.uuid4()
+    instance = SimpleNamespace(
+        policy=f"image:{NODE}", state=InstanceState.LAUNCHING, updated_at=None, transitioned_at=None
+    )
+    reservation = SimpleNamespace(state=MemoryReservationState.HELD, bytes=1024)
+    member = SimpleNamespace(rank_healthy=False)
+
+    class Session:
+        async def get(self, model: object, identity: object, **kwargs: object) -> object:
+            if model is ImageJobRow:
+                return SimpleNamespace(instance_id=INSTANCE, selected_node_id=node_id)
+            assert model is ModelInstanceRow and identity == INSTANCE
+            return instance
+
+        async def scalar(self, statement: object) -> object:
+            selected = str(statement.selected_columns)  # type: ignore[attr-defined]
+            return reservation if "memory_reservations" in selected else member
+
+        async def execute(self, statement: object, parameters: object = None) -> None:
+            pass
+
+    @asynccontextmanager
+    async def scope() -> AsyncIterator[AsyncSession]:
+        yield cast(AsyncSession, Session())
+
+    monkeypatch.setattr(images, "session_scope", scope)
+    await images._record_image_worker_ready(JOB, INSTANCE, 1024)
+    assert instance.state is InstanceState.READY
+    assert member.rank_healthy is True
+    reservation.bytes = 2048
+    with pytest.raises(ImageConflict, match="reservation changed"):
+        await images._record_image_worker_ready(JOB, INSTANCE, 1024)

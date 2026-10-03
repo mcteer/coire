@@ -10,6 +10,8 @@ from __future__ import annotations
 import os
 import subprocess
 import time
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from typing import Any
 
 import httpx
@@ -140,6 +142,38 @@ def unload_all(api_url: str, headers: dict[str, str], *, timeout: float = 90.0) 
 
 
 class TestLoadAndUnload:
+    def test_concurrent_admin_loads_share_one_engine_identity(
+        self, api_url: str, admin_headers: dict[str, str], ready_model: dict[str, Any]
+    ) -> None:
+        unload_all(api_url, admin_headers)
+        barrier = Barrier(2)
+
+        def load() -> httpx.Response:
+            with _client(api_url) as client:
+                barrier.wait(timeout=10)
+                return client.post(
+                    f"/api/v1/admin/models/{ready_model['id']}/load",
+                    headers=admin_headers,
+                )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first, second = list(pool.map(lambda _: load(), range(2)))
+        assert sorted([first.status_code, second.status_code]) == [200, 202], (
+            first.text,
+            second.text,
+        )
+        first_id = first.json()["id"]
+        assert second.json()["id"] == first_id
+        wait_engine(api_url, admin_headers, first_id, "ready")
+        with _client(api_url) as client:
+            engines = client.get("/api/v1/admin/engines", headers=admin_headers).json()
+        active = [
+            item
+            for item in engines
+            if item["model_id"] == ready_model["id"] and item["state"] in {"starting", "ready"}
+        ]
+        assert [item["id"] for item in active] == [first_id]
+
     def test_a_model_loads_reports_and_unloads(
         self, api_url: str, admin_headers: dict[str, str], ready_model: dict[str, Any]
     ) -> None:
@@ -151,6 +185,15 @@ class TestLoadAndUnload:
             assert resp.status_code == 202, resp.text
             engine = resp.json()
             assert engine["state"] == "starting"
+            ledgers = client.get("/api/v1/admin/ledger", headers=admin_headers)
+            assert ledgers.status_code == 200, ledgers.text
+            assert any(
+                reservation["holder_type"] == "model"
+                and reservation["holder_id"] == ready_model["id"]
+                and reservation["state"] == "held"
+                for ledger in ledgers.json()
+                for reservation in ledger["reservations"]
+            ), "model launch was visible without its memory hold"
 
             ready = wait_engine(api_url, admin_headers, engine["id"], "ready")
             assert ready["pid"]

@@ -327,6 +327,16 @@ async def _successful_stage_job_id(workflow_id: uuid.UUID, stage: AcquisitionSta
         return row.node_job_id
 
 
+def replication_source_stage(
+    source_is_mlx: bool, source_variant_slug: str | None
+) -> AcquisitionStage:
+    return (
+        AcquisitionStage.PULL
+        if source_is_mlx and not source_variant_slug
+        else AcquisitionStage.CONVERT
+    )
+
+
 async def _submit_command(
     workflow_id: uuid.UUID,
     stage: AcquisitionStage,
@@ -396,7 +406,10 @@ async def _run_command_stage(
         )
         return
     if stage is AcquisitionStage.CONVERT:
-        if source_is_mlx:
+        # An existing verified MLX variant is a source, not the new target.
+        # It still needs the explicit dequantize/convert stage to materialize
+        # the requested variant slug before validation and replication.
+        if source_is_mlx and not context.get("source_variant_slug"):
             await _finish_stage(
                 workflow_id, stage, result={"operation": "noop"}, summary="source is already MLX"
             )
@@ -496,7 +509,7 @@ async def _run_command_stage(
         await _finish_stage(workflow_id, stage, result=result, summary="validation checks recorded")
         return
     if stage is AcquisitionStage.REPLICATE:
-        source_stage = AcquisitionStage.PULL if source_is_mlx else AcquisitionStage.CONVERT
+        source_stage = replication_source_stage(source_is_mlx, context.get("source_variant_slug"))
         source_job = await _successful_stage_job_id(workflow_id, source_stage)
         command = await _submit_command(
             workflow_id,
@@ -564,15 +577,35 @@ async def stage_complete(workflow_id_text: str, stage_text: str) -> bool:
     workflow_id = uuid.UUID(workflow_id_text)
     stage = AcquisitionStage(stage_text)
     async with session_scope() as session:
-        return (
-            await session.execute(
-                select(AcquisitionStageRow.id).where(
-                    AcquisitionStageRow.workflow_id == workflow_id,
-                    AcquisitionStageRow.stage == stage,
-                    AcquisitionStageRow.status.in_([StageStatus.SUCCEEDED, StageStatus.SKIPPED]),
+        workflow = await session.get(AcquisitionWorkflowRow, workflow_id)
+        if workflow is None:
+            raise RuntimeError("acquisition workflow disappeared")
+        results = list(
+            (
+                await session.execute(
+                    select(AcquisitionStageRow.result).where(
+                        AcquisitionStageRow.workflow_id == workflow_id,
+                        AcquisitionStageRow.stage == stage,
+                        AcquisitionStageRow.status.in_(
+                            [StageStatus.SUCCEEDED, StageStatus.SKIPPED]
+                        ),
+                    )
                 )
-            )
-        ).scalar_one_or_none() is not None
+            ).scalars()
+        )
+        source_variant_slug = workflow.request.get("source_variant_slug")
+        return reusable_stage_results(
+            stage, source_variant_slug if isinstance(source_variant_slug, str) else None, results
+        )
+
+
+def reusable_stage_results(
+    stage: AcquisitionStage, source_variant_slug: str | None, results: list[dict[str, Any] | None]
+) -> bool:
+    """A stale MLX no-op cannot stand in for a missing derived variant."""
+    if stage is AcquisitionStage.CONVERT and source_variant_slug:
+        return any(result is not None and bool(result.get("manifest_sha256")) for result in results)
+    return bool(results)
 
 
 async def _record_ready(context: dict[str, Any], origin: JobStatus, replica: JobStatus) -> None:

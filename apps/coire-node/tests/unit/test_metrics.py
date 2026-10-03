@@ -32,6 +32,64 @@ def test_sample_populates_every_contract_field() -> None:
     assert status.path is NodePath.MESH
 
 
+def test_node_status_counts_disjoint_engine_image_and_acquisition_holds() -> None:
+    class Engines:
+        def committed_bytes(self) -> int:
+            return 100
+
+        def budget_bytes(self) -> int:
+            return 1000
+
+        def statuses(self) -> list[object]:
+            return []
+
+    class Images:
+        def committed_bytes(self) -> int:
+            return 50
+
+        def measured_resident_bytes(self) -> int:
+            return 40
+
+    class Reservations:
+        def held_bytes(self) -> int:
+            return 25
+
+    class Jobs:
+        def active(self) -> list[object]:
+            return []
+
+    class Store:
+        def free_bytes(self) -> int:
+            return 1000
+
+    c = collector()
+    c.attach(
+        store=Store(),
+        jobs=Jobs(),
+        engines=Engines(),
+        image_workers=Images(),
+        reservations=Reservations(),
+    )
+    status = c.sample()
+    assert status.memory_budget_bytes == 1000
+    assert status.memory_committed_bytes == 175
+    assert status.image_worker_resident_bytes == 40
+
+    def lost_image_hold() -> int:
+        raise RuntimeError("image journal unreadable")
+
+    images = Images()
+    images.committed_bytes = lost_image_hold  # type: ignore[method-assign]
+    c.attach(
+        store=Store(),
+        jobs=Jobs(),
+        engines=Engines(),
+        image_workers=images,
+        reservations=Reservations(),
+    )
+    assert c.sample().memory_committed_bytes == 1000
+
+
 def test_gpu_percent_is_none_when_unreadable(monkeypatch: pytest.MonkeyPatch) -> None:
     """A missing GPU reading must be honest, not fabricated as zero."""
     monkeypatch.setattr("coire_node.metrics.shutil.which", lambda _: None)

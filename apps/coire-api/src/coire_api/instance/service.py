@@ -121,6 +121,8 @@ async def project_instance(session: AsyncSession, row: ModelInstanceRow) -> Mode
         .scalars()
         .all()
     }
+    if row.variant_id is None:
+        raise LookupError("instance not found")
     effective = row.state
     if row.state is InstanceState.READY and any(
         node_rows.get(item.node_id) is None

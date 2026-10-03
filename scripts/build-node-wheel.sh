@@ -24,10 +24,13 @@ case "$CONTROL_TARGET" in
 esac
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-rm -rf dist && mkdir -p dist
+mkdir -p dist/node-wheels
+# Keep verified locked dependency wheels across node rebuilds. Only our two
+# package wheels change; stage-node-wheels.py rechecks every cached hash.
+rm -f dist/coire_core-*.whl dist/coire_core-*.tar.gz \
+  dist/coire_node-*.whl dist/coire_node-*.tar.gz
 uv build --package coire-core --out-dir dist
 uv build --package coire-node --out-dir dist
-mkdir -p dist/node-wheels
 uv export --locked --package coire-node --no-dev --no-emit-workspace \
   --no-header --no-annotate --format requirements.txt \
   --output-file dist/node-wheels/requirements.txt >/dev/null

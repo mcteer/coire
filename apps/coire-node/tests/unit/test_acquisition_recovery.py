@@ -4,7 +4,9 @@ import json
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+from pydantic import SecretStr
 
 from coire_core.models.jobs import JobKind, JobStage, JobStatus
 from coire_core.settings import Settings
@@ -103,3 +105,41 @@ def test_duplicate_job_id_attaches_without_spawning_twice(tmp_path, monkeypatch)
     assert attached is False
     assert first.job_id == second.job_id
     assert spawned == [job_id]
+
+
+def test_only_hub_pull_worker_receives_hf_credential(tmp_path: Path, monkeypatch: Any) -> None:
+    settings = Settings(  # type: ignore[call-arg]
+        node_state_dir=str(tmp_path / "state"),
+        node_store_dir=str(tmp_path / "models"),
+        node_hf_cache_dir=str(tmp_path / "cache"),
+        hf_token=SecretStr("hub-test-token"),
+        _secrets_dir="/nonexistent",
+    )
+    supervisor = JobSupervisor(settings, Store(settings.node_store_dir))
+    now = datetime.now(UTC)
+    environments: list[dict[str, str]] = []
+
+    class FakeProcess:
+        pid = 1234
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        environments.append(cast(dict[str, str], kwargs["env"]))
+        return FakeProcess()
+
+    monkeypatch.setattr("coire_node.jobs.subprocess.Popen", fake_popen)
+    monkeypatch.setenv("HF_TOKEN", "ambient-secret")
+    for kind in (JobKind.PULL, JobKind.VALIDATE):
+        status = JobStatus(
+            job_id=uuid.uuid4(),
+            kind=kind,
+            slug=f"model.{kind.value}",
+            stage=JobStage.QUEUED,
+            started_at=now,
+            updated_at=now,
+        )
+        supervisor._write({}, status)
+        supervisor._spawn(status.job_id)
+    assert environments[0]["HF_TOKEN"] == "hub-test-token"
+    assert "HF_TOKEN" not in environments[1]
+    assert environments[1]["HF_HUB_OFFLINE"] == "1"
+    assert environments[1]["TRANSFORMERS_OFFLINE"] == "1"

@@ -1,0 +1,9 @@
+{
+  "name": "Story panel",
+  "prompt_prefix": "readable scene staging, clear silhouette, coherent setting",
+  "defaults": {
+    "model_id": "__MODEL_ID__",
+    "mode": "txt2img",
+    "n": 1
+  }
+}

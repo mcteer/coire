@@ -43,6 +43,7 @@ COPY --from=grafana-build /src/LICENSE /licenses/LICENSE
 COPY deploy/compose/grafana/provisioning/ /etc/grafana/provisioning/
 COPY deploy/observability/grafana/dashboards/control-plane-efficiency.json /etc/grafana/provisioning/dashboards/control-plane-efficiency.json
 COPY deploy/observability/grafana/dashboards/chat.json /etc/grafana/provisioning/dashboards/chat.json
+COPY deploy/observability/grafana/dashboards/image.json /etc/grafana/provisioning/dashboards/image.json
 ENV GF_PATHS_CONFIG=/etc/grafana/grafana.ini \
     GF_PATHS_DATA=/tmp/grafana \
     GF_PATHS_HOME=/usr/share/grafana \

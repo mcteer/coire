@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import platform
 import subprocess
+import tomllib
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import Mock
@@ -81,10 +83,58 @@ def test_smoke_checks_text_and_vision_cli_without_starting_models(
     monkeypatch.setattr(installer.subprocess, "run", run)
     installer.smoke(Path("/staged/bin/python3"))
     assert [call.args[0] for call in run.call_args_list] == [
-        ["/staged/bin/python3", "-c", "import coire_core, coire_node, mlx_lm, mlx_vlm"],
+        ["/staged/bin/python3", "-c", "import coire_core, coire_node, mlx_lm, mlx_vlm, mflux"],
         ["/staged/bin/python3", "-m", "mlx_lm.server", "--help"],
         ["/staged/bin/python3", "-m", "mlx_vlm.server", "--help"],
+        ["/staged/bin/python3", "-c", "from mflux.models.z_image.variants.z_image import ZImage"],
     ]
+
+
+def test_image_runtime_is_darwin_only_and_locked() -> None:
+    node = tomllib.loads(Path("apps/coire-node/pyproject.toml").read_text())
+    assert "mflux==0.20.0; platform_system=='Darwin'" in node["project"]["dependencies"]
+    lock = tomllib.loads(Path("uv.lock").read_text())
+    packages = {package["name"]: package for package in lock["package"]}
+    assert packages["mflux"]["version"] == "0.20.0"
+    assert any(
+        wheel["url"].startswith("https://files.pythonhosted.org/")
+        and wheel["hash"].startswith("sha256:")
+        for wheel in packages["mflux"]["wheels"]
+    )
+    assert any(
+        dependency["name"] == "mflux" and dependency.get("marker") == "sys_platform == 'darwin'"
+        for dependency in packages["coire-node"]["dependencies"]
+    )
+    for name in ("coire-api", "coire-agent", "coire-core", "coire-file-worker"):
+        assert all(
+            dependency["name"] != "mflux" for dependency in packages[name].get("dependencies", [])
+        )
+
+
+def test_frozen_node_wheel_selection_includes_image_runtime_only_on_darwin(
+    tmp_path: Path,
+) -> None:
+    pylock = tmp_path / "pylock.node.toml"
+    subprocess.run(
+        [
+            "uv",
+            "export",
+            "--locked",
+            "--package",
+            "coire-node",
+            "--no-dev",
+            "--no-emit-workspace",
+            "--format",
+            "pylock.toml",
+            "--output-file",
+            str(pylock),
+        ],
+        check=True,
+        stdout=subprocess.DEVNULL,
+    )
+    selected = _wheel_stage().locked_wheels(pylock)
+    mflux = [url for url, _digest, _size in selected if "/mflux-0.20.0-" in url]
+    assert bool(mflux) is (platform.system() == "Darwin")
 
 
 def test_wheel_hash_failure_never_publishes_partial_file(

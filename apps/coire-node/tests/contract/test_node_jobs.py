@@ -93,6 +93,37 @@ class TestInspect:
 
 
 class TestPull:
+    def test_image_pull_requires_pinned_revision(self, client: TestClient) -> None:
+        response = client.post(
+            "/node/jobs/pull",
+            json={
+                "job_id": str(uuid.uuid4()),
+                "repo_id": "org/image",
+                "slug": "org--image",
+                "revision": "main",
+                "model_kind": "image_model",
+            },
+        )
+        assert response.status_code == 422
+
+    def test_image_validation_requires_a_held_reservation(self, client: TestClient) -> None:
+        body = {
+            "job_id": str(uuid.uuid4()),
+            "model_id": str(uuid.uuid4()),
+            "slug": "org--image",
+            "kind": "image_model",
+            "source_revision": "a" * 40,
+            "manifest_sha256": "b" * 64,
+            "reservation_id": str(uuid.uuid4()),
+        }
+        assert client.post("/node/jobs/image-validate", json=body).status_code == 409
+        assert (
+            client.post(
+                "/node/jobs/image-validate", json={**body, "kind": "language_model"}
+            ).status_code
+            == 422
+        )
+
     def test_a_pull_completes_and_produces_a_manifest(
         self, client: TestClient, fake_hub: FakeHub, contract: dict[str, Any], agent: Agent
     ) -> None:

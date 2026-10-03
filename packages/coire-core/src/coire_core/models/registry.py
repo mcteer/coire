@@ -17,10 +17,12 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from coire_core.models.files import SLUG_PATTERN
+from coire_core.models.images import ImageCapabilityProfile
 
 REPO_ID_PATTERN = r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
-SLUG_PATTERN = r"^[A-Za-z0-9_.-]+--[A-Za-z0-9_.-]+$"
 PLACEMENT_PATTERN = r"^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$"
 MAX_CHAT_TEMPLATE_BYTES = 64 * 1024
 
@@ -96,6 +98,27 @@ class LoadState(StrEnum):
 class EngineBackend(StrEnum):
     MLX_LM = "mlx_lm"
     MLX_VLM = "mlx_vlm"
+    MFLUX = "mflux"
+    AUXILIARY = "auxiliary"
+
+
+class ModelKind(StrEnum):
+    LANGUAGE_MODEL = "language_model"
+    IMAGE_MODEL = "image_model"
+    IMAGE_LORA = "image_lora"
+    CONTROL_MODEL = "control_model"
+    UPSCALE_MODEL = "upscale_model"
+    IMAGE_CLASSIFIER = "image_classifier"
+
+
+AUXILIARY_IMAGE_KINDS = frozenset(
+    {
+        ModelKind.IMAGE_LORA,
+        ModelKind.CONTROL_MODEL,
+        ModelKind.UPSCALE_MODEL,
+        ModelKind.IMAGE_CLASSIFIER,
+    }
+)
 
 
 class ModelSource(StrEnum):
@@ -175,6 +198,7 @@ class CapabilityProfile(BaseModel):
     parallel_tools: bool = False
     chat_template_present: bool = False
     visual_input: VisualCapability | None = None
+    compatible_base_model_id: uuid.UUID | None = None
     verified: bool = False
     """Set only by feature 017's harness evaluation. The router refuses unverified models for
     write-capable tasks, so this is never editable through the curation API."""
@@ -202,6 +226,9 @@ class ModelCopy(BaseModel):
     path: str
     bytes: int
     manifest_sha256: str | None = None
+    source_revision: str | None = None
+    license_id: str | None = None
+    image_validated_at: datetime | None = None
     verified: bool = False
     verified_at: datetime | None = None
     mismatched_paths: list[str] = Field(default_factory=list)
@@ -212,11 +239,39 @@ class ModelAddRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     repo_id: str = Field(pattern=REPO_ID_PATTERN)
+    kind: ModelKind = ModelKind.LANGUAGE_MODEL
     display_name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
     tags: list[Tag] = Field(default_factory=list)
     placement_policy: str = Field(default="single:auto", pattern=PLACEMENT_PATTERN)
     idle_ttl_seconds: int | None = Field(default=None, ge=60)
+
+
+class ImageAssetAcquireRequest(BaseModel):
+    """An admin's explicit image-asset and model-licence acquisition decision."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    repo_id: str = Field(pattern=REPO_ID_PATTERN)
+    kind: ModelKind
+    accepted_license_id: str = Field(min_length=1, max_length=120)
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    placement_policy: str = Field(default="single:auto", pattern=PLACEMENT_PATTERN)
+    compatible_base_model_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def image_kind_and_reviewed_licence(self) -> ImageAssetAcquireRequest:
+        if self.kind is ModelKind.LANGUAGE_MODEL:
+            raise ValueError("image asset kind required")
+        if self.accepted_license_id.lower() in {"other", "unknown"}:
+            raise ValueError("a declared licence identifier must be reviewed")
+        if self.kind in {ModelKind.IMAGE_LORA, ModelKind.CONTROL_MODEL}:
+            if self.compatible_base_model_id is None:
+                raise ValueError("LoRA and control assets require a compatible base model")
+        elif self.compatible_base_model_id is not None:
+            raise ValueError("this image asset kind cannot bind a base model")
+        return self
 
 
 class ModelUpdateRequest(BaseModel):
@@ -256,6 +311,7 @@ class Model(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: uuid.UUID
+    kind: ModelKind = ModelKind.LANGUAGE_MODEL
     repo_id: str
     slug: str
     display_name: str
@@ -275,6 +331,7 @@ class Model(BaseModel):
     context_window: int | None = None
     chat_template: str | None = None
     capability_profile: CapabilityProfile = Field(default_factory=CapabilityProfile)
+    image_capability_profile: ImageCapabilityProfile | None = None
     backend: EngineBackend = EngineBackend.MLX_LM
     source: ModelSource = ModelSource.STUDIO
     provider_model_id: str | None = None
@@ -284,6 +341,32 @@ class Model(BaseModel):
     created_at: datetime
     updated_at: datetime
     ready_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def kind_matches_backend(self) -> Model:
+        if self.kind is ModelKind.IMAGE_MODEL:
+            if self.source is not ModelSource.STUDIO or self.backend is not EngineBackend.MFLUX:
+                raise ValueError("image_model backend must be Studio mflux")
+            if self.state is ModelState.READY and self.image_capability_profile is None:
+                raise ValueError("ready image_model requires image_capability_profile")
+        elif self.kind in AUXILIARY_IMAGE_KINDS:
+            if self.source is not ModelSource.STUDIO or self.backend is not EngineBackend.AUXILIARY:
+                raise ValueError("auxiliary image kind requires Studio auxiliary backend")
+            if self.image_capability_profile is not None:
+                raise ValueError("auxiliary image kind cannot carry base capability")
+            if self.kind in {ModelKind.IMAGE_LORA, ModelKind.CONTROL_MODEL}:
+                if self.capability_profile.compatible_base_model_id is None:
+                    raise ValueError("LoRA and control assets require a compatible base model")
+            elif self.capability_profile.compatible_base_model_id is not None:
+                raise ValueError("this auxiliary kind cannot bind a base model")
+        elif self.backend in {EngineBackend.MFLUX, EngineBackend.AUXILIARY}:
+            raise ValueError("language_model backend cannot be image or auxiliary")
+        if (
+            self.kind not in AUXILIARY_IMAGE_KINDS
+            and self.capability_profile.compatible_base_model_id
+        ):
+            raise ValueError("only auxiliary image assets can bind a base model")
+        return self
 
 
 class ModelListing(BaseModel):
@@ -296,6 +379,7 @@ class ModelListing(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: uuid.UUID
+    kind: ModelKind = ModelKind.LANGUAGE_MODEL
     display_name: str
     description: str | None = None
     tags: list[Tag] = Field(default_factory=list)
@@ -305,7 +389,19 @@ class ModelListing(BaseModel):
     loaded_on: list[str] = Field(default_factory=list)
     estimated_warmup_seconds: float | None = None
     capability_profile: CapabilityProfile
+    image_capability_profile: ImageCapabilityProfile | None = None
     backend: EngineBackend = EngineBackend.MLX_LM
+
+    @model_validator(mode="after")
+    def chat_only(self) -> ModelListing:
+        if self.kind is not ModelKind.LANGUAGE_MODEL or self.backend not in {
+            EngineBackend.MLX_LM,
+            EngineBackend.MLX_VLM,
+        }:
+            raise ValueError("chat listing cannot contain image or auxiliary assets")
+        if self.image_capability_profile is not None:
+            raise ValueError("chat listing cannot contain image capability")
+        return self
 
 
 class ModelRejected(BaseModel):

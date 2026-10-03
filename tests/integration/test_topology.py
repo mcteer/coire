@@ -281,7 +281,12 @@ class TestImagesAndSecrets:
         nginx = (REPO / "apps/coire-web/nginx/nginx.conf").read_text()
         upload = nginx.split("location ~ ^/api/v1/chat/conversations/", 1)[1].split("}", 1)[0]
         assert "client_max_body_size 11m;" in upload
-        assert nginx.count("client_max_body_size") == 1
+        image_input = nginx.split("location = /api/v1/image-inputs", 1)[1].split("}", 1)[0]
+        image_output = nginx.split('location ~ "^/api/v1/internal/images/', 1)[1]
+        image_output = image_output.split("client_max_body_size", 1)[1]
+        assert "client_max_body_size 65m;" in image_input
+        assert image_output.startswith(" 64m;")
+        assert nginx.count("client_max_body_size") == 3
 
     def test_studio_failover_stays_off_the_core_project(self, config: dict[str, Any]) -> None:
         """The frontend is a profiled Studio service. Core's default project does not run it."""

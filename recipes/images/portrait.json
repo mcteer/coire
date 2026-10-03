@@ -1,0 +1,9 @@
+{
+  "name": "Soft portrait",
+  "prompt_prefix": "soft studio portrait, clear subject, balanced light",
+  "defaults": {
+    "model_id": "__MODEL_ID__",
+    "mode": "txt2img",
+    "n": 1
+  }
+}

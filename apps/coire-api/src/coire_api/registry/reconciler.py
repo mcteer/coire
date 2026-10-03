@@ -44,7 +44,9 @@ from coire_api.db import (
 )
 from coire_api.instance import service as instance_service
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
-from coire_api.registry import service
+from coire_api.placement.service import node_admission_lock
+from coire_api.registry import image_acquisition, service
+from coire_core.models.acquisition import ReservationRequest
 from coire_core.models.audit import AuditAction, AuditOutcome
 from coire_core.models.engine import (
     LIVE_ENGINE_STATES,
@@ -53,10 +55,15 @@ from coire_core.models.engine import (
     ReconcileExpectation,
     ReconcileRequest,
 )
+from coire_core.models.image_worker import (
+    ImageAssetValidateRequest,
+    ImageAssetValidationResult,
+    ImageValidationBase,
+)
 from coire_core.models.instance import InstanceState
-from coire_core.models.jobs import ChecksumManifest, DownloadStage, JobStage, JobStatus
+from coire_core.models.jobs import ChecksumManifest, DownloadStage, JobKind, JobStage, JobStatus
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
-from coire_core.models.registry import CopyRole, ModelState
+from coire_core.models.registry import CopyRole, ModelKind, ModelState
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -241,6 +248,14 @@ class RegistryReconciler:
             status = await self._pull(client, job, model, origin.name)
             await self._mirror(job, status)
             if status.stage is JobStage.DONE:
+                if (
+                    model.kind != ModelKind.LANGUAGE_MODEL
+                    and not image_acquisition.copy_manifest_valid(model, job, status)
+                ):
+                    await self._fail(
+                        session, job, model, "image origin manifest differs from inspection"
+                    )
+                    return
                 await self._record_copy(session, job, model, origin, status, role=CopyRole.ORIGIN)
                 job.manifest = status.manifest.model_dump(mode="json") if status.manifest else None
                 model.manifest_sha256 = status.manifest_sha256
@@ -280,6 +295,16 @@ class RegistryReconciler:
                 status = await client.get_job(replica.name, job.id)
             await self._mirror(job, status)
             if status.stage is JobStage.DONE:
+                if (
+                    model.kind != ModelKind.LANGUAGE_MODEL
+                    and not image_acquisition.copy_manifest_valid(
+                        model, job, status, origin_digest=model.manifest_sha256
+                    )
+                ):
+                    await self._fail(
+                        session, job, model, "image replica manifest differs from origin"
+                    )
+                    return
                 await self._record_copy(session, job, model, replica, status, role=CopyRole.REPLICA)
                 await self._set_stage(session, job, model, DownloadStage.VERIFY_REPLICA)
             elif status.stage is JobStage.FAILED:
@@ -289,6 +314,10 @@ class RegistryReconciler:
 
         if job.stage is DownloadStage.VERIFY_REPLICA:
             # Pass-through: the import verified file by file as it wrote.
+            if model.kind != ModelKind.LANGUAGE_MODEL and not await self._validate_image_copies(
+                session, client, job, model, origin, replica
+            ):
+                return
             with contextlib.suppress(NodeError):
                 await client.revoke_export(origin.name, model.slug)
             job.transfer_grant = None
@@ -307,6 +336,132 @@ class RegistryReconciler:
                 )
                 logger.info("model %s is ready on both Studios", model.slug)
 
+    async def _validate_image_copies(
+        self,
+        session: AsyncSession,
+        client: NodeClient,
+        job: DownloadJobRow,
+        model: ModelRow,
+        origin: NodeRow,
+        replica: NodeRow,
+    ) -> bool:
+        """Persist two reserved offline smoke results before releasing either hold."""
+        if not model.manifest_sha256 or not model.source_revision:
+            await self._fail(session, job, model, "image source evidence is incomplete")
+            return False
+        compatible_base: ImageValidationBase | None = None
+        if model.kind in {ModelKind.IMAGE_LORA, ModelKind.CONTROL_MODEL}:
+            raw_base_id = (model.capability_profile or {}).get("compatible_base_model_id")
+            try:
+                base_id = uuid.UUID(str(raw_base_id))
+            except ValueError:
+                await self._fail(session, job, model, "image compatible base is unavailable")
+                return False
+            base = await session.get(ModelRow, base_id)
+            if (
+                base is None
+                or base.kind != ModelKind.IMAGE_MODEL
+                or base.state is not ModelState.READY
+                or base.manifest_sha256 is None
+                or base.source_revision is None
+            ):
+                await self._fail(session, job, model, "image compatible base is unavailable")
+                return False
+            try:
+                compatible_base = ImageValidationBase(
+                    model_id=base.id,
+                    slug=base.slug,
+                    source_revision=base.source_revision,
+                    manifest_sha256=base.manifest_sha256,
+                )
+            except ValueError:
+                await self._fail(session, job, model, "image compatible base is invalid")
+                return False
+        evidence = dict(job.image_validation or {})
+        for role, node in (("origin", origin), ("replica", replica)):
+            if role in evidence:
+                continue
+            validation_id = uuid.uuid5(job.id, f"image-validation:{role}")
+            await client.hold_reservation(
+                node.name,
+                ReservationRequest(
+                    idempotency_key=validation_id,
+                    workflow_id=job.id,
+                    variant_id=model.id,
+                    memory_bytes=model.memory_estimate_bytes,
+                    disk_bytes=1,
+                ),
+            )
+            status = await client.start_image_validate(
+                node.name,
+                ImageAssetValidateRequest(
+                    job_id=validation_id,
+                    model_id=model.id,
+                    slug=model.slug,
+                    kind=ModelKind(model.kind),
+                    source_revision=model.source_revision,
+                    manifest_sha256=model.manifest_sha256,
+                    reservation_id=validation_id,
+                    compatible_base=compatible_base,
+                ),
+            )
+            if not status.is_terminal:
+                status = await client.get_job(node.name, validation_id)
+            if (
+                status.job_id != validation_id
+                or status.slug != model.slug
+                or status.kind is not JobKind.IMAGE_VALIDATE
+            ):
+                await self._fail(session, job, model, "image validation job identity differs")
+                return False
+            if status.stage is JobStage.FAILED:
+                await self._fail(session, job, model, status.error or "image validation failed")
+                for held_role, held_node in (("origin", origin), ("replica", replica)):
+                    with contextlib.suppress(NodeError):
+                        await client.release_reservation(
+                            held_node.name,
+                            uuid.uuid5(job.id, f"image-validation:{held_role}"),
+                        )
+                return False
+            if status.stage is not JobStage.DONE:
+                return False
+            try:
+                result = ImageAssetValidationResult.model_validate(status.result)
+            except ValueError:
+                await self._fail(session, job, model, "image validation evidence is invalid")
+                return False
+            if (
+                not result.validated
+                or result.kind != model.kind
+                or result.manifest_sha256 != model.manifest_sha256
+                or result.source_revision != model.source_revision
+            ):
+                await self._fail(session, job, model, "image validation differs from registry")
+                return False
+            evidence[role] = result.model_dump(mode="json")
+            job.image_validation = evidence
+            job.updated_at = datetime.now(UTC)
+            # Commit this evidence before releasing the hold on a later pass.
+            return False
+        origin_result = ImageAssetValidationResult.model_validate(evidence["origin"])
+        replica_result = ImageAssetValidationResult.model_validate(evidence["replica"])
+        if origin_result.image_capability_profile != replica_result.image_capability_profile:
+            await self._fail(session, job, model, "image capability differs between copies")
+            return False
+        if model.kind == ModelKind.IMAGE_MODEL:
+            if origin_result.image_capability_profile is None:
+                await self._fail(session, job, model, "image capability is unavailable")
+                return False
+            model.image_capability_profile = origin_result.image_capability_profile.model_dump(
+                mode="json"
+            )
+        model.image_validated_at = datetime.now(UTC)
+        for role, node in (("origin", origin), ("replica", replica)):
+            await client.release_reservation(
+                node.name, uuid.uuid5(job.id, f"image-validation:{role}")
+            )
+        return True
+
     async def _pull(
         self, client: NodeClient, job: DownloadJobRow, model: ModelRow, origin: str
     ) -> JobStatus:
@@ -316,6 +471,8 @@ class RegistryReconciler:
             job_id=job.id,
             repo_id=model.repo_id,
             slug=model.slug,
+            revision=model.source_revision or "main",
+            model_kind=ModelKind(model.kind),
             expected_total_bytes=model.total_bytes,
         )
         if not status.is_terminal:
@@ -469,6 +626,22 @@ class RegistryReconciler:
         logger.error("acquisition of %s failed: %s", model.slug, reason)
 
     # -- engines -----------------------------------------------------------
+    async def _release_legacy_hold(self, session: AsyncSession, row: EngineProcessRow) -> None:
+        if row.instance_id is not None or row.model_id is None:
+            return
+        async with node_admission_lock(session, row.node_id):
+            hold = await session.scalar(
+                select(MemoryReservationRow).where(
+                    MemoryReservationRow.node_id == row.node_id,
+                    MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                    MemoryReservationRow.holder_id == str(row.model_id),
+                    MemoryReservationRow.state == MemoryReservationState.HELD,
+                )
+            )
+            if hold is not None:
+                hold.state = MemoryReservationState.RELEASED
+                hold.released_at = row.stopped_at or datetime.now(UTC)
+
     async def _sync_engines(self, session: AsyncSession, client: NodeClient) -> None:
         rows = (
             (
@@ -507,6 +680,7 @@ class RegistryReconciler:
                     row.state_reason = "the node no longer knows this engine"
                     row.stopped_at = datetime.now(UTC)
                     await self._fail_instance_for_engine(session, row, row.state_reason)
+                    await self._release_legacy_hold(session, row)
                     logger.warning("engine %s is unknown to %s", row.id, node.name)
                 continue
             row.state = status.state
@@ -519,11 +693,15 @@ class RegistryReconciler:
             row.chat_template_sha256 = status.chat_template_sha256
             row.load_seconds = status.load_seconds
             row.last_health_at = status.last_health_at
-            if status.state in TERMINAL_ENGINE_STATES and row.stopped_at is None:
-                row.stopped_at = status.stopped_at or datetime.now(UTC)
-                await self._fail_instance_for_engine(
-                    session, row, status.state_reason or "engine exited while instance was active"
-                )
+            if status.state in TERMINAL_ENGINE_STATES:
+                if row.stopped_at is None:
+                    row.stopped_at = status.stopped_at or datetime.now(UTC)
+                    await self._fail_instance_for_engine(
+                        session,
+                        row,
+                        status.state_reason or "engine exited while instance was active",
+                    )
+                await self._release_legacy_hold(session, row)
 
     async def _reconcile_nodes(self, session: AsyncSession, client: NodeClient) -> None:
         """Ask named nodes what they are really running (spec FR-015)."""

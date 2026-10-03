@@ -198,12 +198,20 @@ class JobSupervisor:
 
     def _spawn(self, job_id: uuid.UUID) -> None:
         env = dict(os.environ)
-        # The Hugging Face token is passed ONLY here, into the child that needs it. The agent
-        # never puts it in its own environment, so an unrelated library in the agent process
-        # cannot pick it up (spec FR-005).
-        hf = self._settings.hf_token.get_secret_value()
-        if hf:
-            env["HF_TOKEN"] = hf
+        found = self._read(job_id)
+        if found is None:
+            raise RuntimeError("job disappeared before worker launch")
+        # Only a Hub pull may see the acquisition credential. Local validation and image
+        # execution remain offline even if the invoking environment contains one.
+        env.pop("HF_TOKEN", None)
+        env.pop("HUGGING_FACE_HUB_TOKEN", None)
+        if found[1].kind is JobKind.PULL:
+            hf = self._settings.hf_token.get_secret_value()
+            if hf:
+                env["HF_TOKEN"] = hf
+        else:
+            env["HF_HUB_OFFLINE"] = "1"
+            env["TRANSFORMERS_OFFLINE"] = "1"
         env.setdefault("HF_HOME", self._settings.node_hf_cache_dir)
         env.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 

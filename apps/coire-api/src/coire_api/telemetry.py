@@ -14,6 +14,7 @@ from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, View
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
@@ -45,7 +46,27 @@ def configure_telemetry(service_name: str, service_version: str, endpoint: str) 
         reader = PeriodicExportingMetricReader(
             OTLPMetricExporter(endpoint=endpoint, insecure=True), export_interval_millis=15_000
         )
-        metrics.set_meter_provider(MeterProvider(resource=resource, metric_readers=[reader]))
+        # The coexistence gate is 20 ms. A bucket edge at that value lets
+        # Prometheus distinguish a passing p95 from the default 10 to 25 ms span.
+        overhead_view = View(
+            instrument_name="coire_gateway_overhead_duration_ms",
+            aggregation=ExplicitBucketHistogramAggregation(
+                boundaries=(0, 5, 10, 15, 18, 20, 25, 50, 75, 100, 250, 500, 750, 1000)
+            ),
+        )
+        first_token_view = View(
+            instrument_name="coire_gateway_first_token_duration_ms",
+            aggregation=ExplicitBucketHistogramAggregation(
+                boundaries=(0, 100, 250, 500, 750, 1000, 1250, 1500, 2000, 2500, 5000, 10000)
+            ),
+        )
+        metrics.set_meter_provider(
+            MeterProvider(
+                resource=resource,
+                metric_readers=[reader],
+                views=[overhead_view, first_token_view],
+            )
+        )
         _configured = True
         logger.info("telemetry configured for %s -> %s", service_name, endpoint)
     except Exception:  # pragma: no cover - defensive; export must never break startup

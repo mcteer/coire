@@ -107,6 +107,10 @@ class EngineStartRequest(BaseModel):
 
     @model_validator(mode="after")
     def backend_options_match(self) -> EngineStartRequest:
+        if self.backend is EngineBackend.AUXILIARY:
+            raise ValueError("auxiliary assets cannot start an engine")
+        if self.backend is EngineBackend.MFLUX:
+            raise ValueError("mflux start requires the image worker contract")
         vision_options = (self.vision_cache_size, self.max_num_seqs, self.max_kv_size)
         if self.backend is EngineBackend.MLX_LM and any(
             value is not None for value in vision_options

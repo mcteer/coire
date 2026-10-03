@@ -68,3 +68,77 @@ class ChatModelUnavailable(CoireError):
     code = "chat_model_unavailable"
     title = "Selected model unavailable"
     status = 503
+
+
+class ImageNotFound(CoireError):
+    code = "image_not_found"
+    title = "Image item not found"
+    status = 404
+
+
+class ImageForbidden(CoireError):
+    code = "image_forbidden"
+    title = "Image access denied"
+    status = 403
+
+
+class ImageConflict(CoireError):
+    code = "image_conflict"
+    title = "Image state conflict"
+    status = 409
+
+
+class ImageValidationError(CoireError):
+    code = "image_validation_error"
+    title = "Invalid image request"
+    status = 422
+
+
+class ImageInvalidCursor(CoireError):
+    code = "image_invalid_cursor"
+    title = "Invalid image event cursor"
+    status = 400
+
+
+class ImageInputTooLarge(CoireError):
+    code = "image_input_too_large"
+    title = "Image input too large"
+    status = 413
+
+
+class ImageUnsupportedInput(CoireError):
+    code = "image_unsupported_input"
+    title = "Unsupported image input"
+    status = 415
+
+
+class ImageTimeout(CoireError):
+    code = "image_timeout"
+    title = "Image generation timed out"
+    status = 504
+
+    def __init__(self, job_id: str) -> None:
+        super().__init__("accepted image work continues")
+        self.job_id = job_id
+
+
+class ImageGenerationFailed(CoireError):
+    code = "image_generation_failed"
+    title = "Image generation failed"
+    status = 409
+
+    def __init__(self, job_id: str, failure_code: str) -> None:
+        super().__init__(failure_code)
+        self.job_id = job_id
+
+
+class ImageQuotaExceeded(CoireError):
+    code = "image_quota_exceeded"
+    title = "Image allowance exceeded"
+    status = 429
+
+
+class ImageStorageUnavailable(CoireError):
+    code = "image_storage_unavailable"
+    title = "Image storage unavailable"
+    status = 507

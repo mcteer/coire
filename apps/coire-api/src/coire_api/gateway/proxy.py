@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import (
     EngineProcessRow,
@@ -23,8 +24,18 @@ from coire_api.db import (
     ShardGroupRow,
     session_scope,
 )
-from coire_api.gateway.telemetry import queue_duration_ms, tracer
-from coire_api.placement.service import acquire_lease, refresh_lease, release_lease
+from coire_api.gateway.telemetry import lease_loss_counter, queue_duration_ms, tracer
+from coire_api.placement.legacy import (
+    ensure_legacy_model_hold,
+    ensure_legacy_model_hold_locked,
+)
+from coire_api.placement.service import (
+    acquire_lease,
+    lock_nodes_for_admission,
+    refresh_lease,
+    release_lease,
+)
+from coire_core.errors import ChatModelUnavailable
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.settings import Settings
 
@@ -123,6 +134,23 @@ async def engine_slot(engine_url: str, settings: Settings) -> AsyncIterator[None
         semaphore.release()
 
 
+async def _ensure_legacy_engine_hold(
+    session: AsyncSession, engine: EngineProcessRow, holder_id: str
+) -> None:
+    """Fence a live legacy engine in the shared ledger before serving inference."""
+    await ensure_legacy_model_hold(
+        session, engine.node_id, uuid.UUID(holder_id), engine.estimate_bytes
+    )
+
+
+async def _ensure_legacy_engine_hold_locked(
+    session: AsyncSession, engine: EngineProcessRow, holder_id: str
+) -> None:
+    await ensure_legacy_model_hold_locked(
+        session, engine.node_id, uuid.UUID(holder_id), engine.estimate_bytes
+    )
+
+
 @asynccontextmanager
 async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[None]:
     """Protect a resolved model from TTL/eviction for the full upstream request lifetime."""
@@ -138,7 +166,9 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
     async with session_scope() as session:
         if len(segments) > 2 and segments[2] == "shard-groups":
             group = await session.get(ShardGroupRow, target_id)
-            instance_id = group.instance_id if group is not None else None
+            if group is None:
+                raise ChatModelUnavailable()
+            instance_id = group.instance_id
             members = (
                 list(
                     (
@@ -154,15 +184,21 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                 if instance_id is not None
                 else []
             )
+            if not members:
+                raise ChatModelUnavailable()
+            # Acquire the entire group in canonical order before any individual
+            # request lease; opposite rank orders must not deadlock admissions.
+            await lock_nodes_for_admission(session, [member.node_id for member in members])
             for member in members:
-                if member.reservation_id is not None:
-                    lease = await acquire_lease(
-                        session,
-                        member.reservation_id,
-                        str(uuid.uuid4()),
-                        ttl_seconds=settings.placement_lease_ttl_s,
-                    )
-                    lease_ids.append(lease.id)
+                if member.reservation_id is None:
+                    raise ChatModelUnavailable()
+                lease = await acquire_lease(
+                    session,
+                    member.reservation_id,
+                    str(uuid.uuid4()),
+                    ttl_seconds=settings.placement_lease_ttl_s,
+                )
+                lease_ids.append(lease.id)
         else:
             engine = await session.get(EngineProcessRow, target_id)
             if engine is not None:
@@ -173,6 +209,8 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
             engine = None
         if engine is not None and engine.model_id is not None:
             holder_id = str(engine.instance_id or engine.model_id)
+            if engine.instance_id is None:
+                await _ensure_legacy_engine_hold_locked(session, engine, holder_id)
             reservation = await session.scalar(
                 select(MemoryReservationRow).where(
                     MemoryReservationRow.node_id == engine.node_id,
@@ -181,20 +219,24 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                     MemoryReservationRow.state == MemoryReservationState.HELD,
                 )
             )
-            if reservation is not None:
-                lease = await acquire_lease(
-                    session,
-                    reservation.id,
-                    str(uuid.uuid4()),
-                    ttl_seconds=settings.placement_lease_ttl_s,
-                )
-                lease_ids.append(lease.id)
+            if reservation is None:
+                raise ChatModelUnavailable()
+            lease = await acquire_lease(
+                session,
+                reservation.id,
+                str(uuid.uuid4()),
+                ttl_seconds=settings.placement_lease_ttl_s,
+            )
+            lease_ids.append(lease.id)
+        elif engine is None and len(segments) > 2 and segments[2] != "shard-groups":
+            raise ChatModelUnavailable()
         if instance_id is not None and lease_ids:
             instance = await session.get(ModelInstanceRow, instance_id)
             if instance is not None:
                 instance.in_flight += 1
     try:
         stop_refresh = asyncio.Event()
+        request_task = asyncio.current_task()
 
         async def keep_fresh() -> None:
             interval = max(0.1, settings.placement_lease_ttl_s / 2)
@@ -203,16 +245,34 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                     await asyncio.wait_for(stop_refresh.wait(), timeout=interval)
                     return
                 except TimeoutError:
-                    async with session_scope() as session:
-                        refreshed = [
-                            await refresh_lease(
-                                session,
-                                lease_id,
-                                ttl_seconds=settings.placement_lease_ttl_s,
+                    with tracer.start_as_current_span("coire.gateway.lease_renewal"):
+                        try:
+                            async with session_scope() as session:
+                                refreshed = [
+                                    await refresh_lease(
+                                        session,
+                                        lease_id,
+                                        ttl_seconds=settings.placement_lease_ttl_s,
+                                    )
+                                    for lease_id in lease_ids
+                                ]
+                        except Exception:
+                            lease_loss_counter.add(1, {"reason": "unavailable"})
+                            logger.error(
+                                "gateway memory lease renewal unavailable",
+                                extra={"instance_id": str(instance_id)},
                             )
-                            for lease_id in lease_ids
-                        ]
+                            if request_task is not None:
+                                request_task.cancel()
+                            return
                         if not all(refreshed):
+                            lease_loss_counter.add(1, {"reason": "expired"})
+                            logger.error(
+                                "gateway memory lease expired during inference",
+                                extra={"instance_id": str(instance_id)},
+                            )
+                            if request_task is not None:
+                                request_task.cancel()
                             return
 
         refresher = asyncio.create_task(keep_fresh()) if lease_ids else None

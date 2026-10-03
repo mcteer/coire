@@ -182,6 +182,10 @@ components:
         jobs: { type: array, items: { type: object }, description: "feature 001: active node jobs" }
         memory_budget_bytes: { type: integer, description: "feature 001" }
         memory_committed_bytes: { type: integer, description: "feature 001" }
+        image_worker_resident_bytes:
+          type: [integer, 'null']
+          minimum: 0
+          description: "feature 015: measured physical footprint of exact live image worker"
         store_free_bytes: { type: integer, description: "feature 001" }
         supported_backends: { type: array, items: { type: string, enum: [mlx_lm, mlx_vlm] }, description: "feature 014: optional; old nodes imply mlx_lm only" }
         name: { type: string }

@@ -182,6 +182,14 @@ async def test_concurrent_cold_requests_share_the_load(
             )
         )
     assert all(result.choices[0].message.content for result in results)
+    async with httpx.AsyncClient(base_url=api_url, timeout=30) as control:
+        engines = (await control.get("/api/v1/admin/engines", headers=admin_headers)).json()
+    active = [
+        engine["id"]
+        for engine in engines
+        if engine.get("model_id") == gateway_model and engine.get("state") in ("starting", "ready")
+    ]
+    assert len(active) == 1, active
 
 
 def _usage_outcomes() -> list[str]:

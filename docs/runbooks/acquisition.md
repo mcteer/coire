@@ -13,8 +13,14 @@ curl -fsS -X POST -H "Authorization: Bearer $COIRE_ADMIN_TOKEN" \
   "http://coire-core.lab:8180/api/v1/admin/acquisitions/$WORKFLOW_ID/retry" | jq
 ```
 
-Stages are `inspect → pull → convert → validate → replicate`. An already-MLX source records convert
-as a no-op. Retry is accepted only for failed work; successful stage results remain immutable.
+Stages are `inspect → pull → convert → validate → replicate`. An already-MLX Hub source records
+convert as a no-op when the pulled path is the requested variant. When a verified local MLX
+variant is the source for a new variant slug, convert must materialize the new slug. Identical
+quantization copies its exact weights atomically; a changed recipe dequantizes and converts.
+Validation and replication still require a complete manifest. A stale no-op convert result is
+replayed on retry for a derived variant. Retry is accepted only for failed work; valid successful
+stage results remain immutable. If validation fails after a changed recipe, inspect the smoke,
+perplexity and template results before retrying; the failed target remains unpublished.
 
 To stop physical work during an incident, read its node job id from the audit/trace and send an
 authenticated `DELETE /node/jobs/{job_id}` to that Studio. Cancellation releases conversion
@@ -48,6 +54,25 @@ reservations; partial conversion directories are removed and partial Hub pulls r
 
 Use the **Coire Acquisition Jobs** dashboard for stage duration, reservations, validation, and
 estimate drift. Alerts cover stuck stages, exhausted conversion retries, and >10% size drift.
+
+## Image asset file preflight (feature 015 staging)
+
+`POST /api/v1/admin/image-assets` requires an image/component kind and an
+`accepted_license_id` matching the Studio's metadata-only model-card inspection. The
+admin route records the resolved commit and licence before queueing a Studio pull. The
+preflight requires a resolved commit, safe unique
+paths, safetensors with upstream digests, and local configuration for base/control/upscale
+assets. The classifier is limited to the pinned Falconsai revision and weight digest in the
+feature research. Its upstream repository also contains `.pt` and `.bin` files; the snapshot
+helper selects exact inert files and never transfers those pickle weights. An unsafe path or
+changed classifier digest refuses the asset before transfer. The reconciler verifies the
+origin and replica manifests against the inspected file list, pinned revision and upstream
+weight digests. Inspect the job and the audit row for `licence_review_mismatch`,
+`unresolved_revision`, `unverified_weight` or `image origin/replica manifest differs`.
+Image assets remain unavailable for generation pending reserved Studio validation and
+capability measurement. Keep image admission disabled while that gate is unfinished. To
+roll back, drain or remove acquired image records before downgrading the provenance
+migration; its downgrade guard refuses to discard their recorded source and licence.
 
 ## Raw retention and rollback
 

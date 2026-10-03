@@ -48,6 +48,7 @@ from coire_core.models.registry import (
     EngineBackend,
     LoadState,
     ModelAddRequest,
+    ModelKind,
     ModelListing,
     ModelRejected,
     ModelState,
@@ -125,7 +126,18 @@ async def recompute_state(session: AsyncSession, model: ModelRow) -> ModelState:
     )
     verified = [c for c in copies if c.verified]
 
-    if len(verified) >= 2:
+    if (
+        len(verified) >= 2
+        and model.kind != ModelKind.LANGUAGE_MODEL
+        and (
+            model.image_validated_at is None
+            or (model.kind == ModelKind.IMAGE_MODEL and model.image_capability_profile is None)
+        )
+    ):
+        await transition(
+            session, model, ModelState.REPLICATING, "awaiting reserved image validation"
+        )
+    elif len(verified) >= 2:
         await transition(session, model, ModelState.READY, "two verified copies")
     elif verified:
         await transition(
@@ -171,6 +183,17 @@ async def add_model(
     actor: str,
 ) -> tuple[ModelRow, DownloadJobRow]:
     """Add a model, refusing before any bytes move if it cannot work (spec FR-010)."""
+    if request.kind is not ModelKind.LANGUAGE_MODEL:
+        await write_audit(
+            session,
+            actor=actor,
+            action=AuditAction.MODEL_ADD,
+            target_type="model",
+            target_id=request.repo_id,
+            outcome=AuditOutcome.REFUSED,
+            detail={"reason": "unsupported_kind_in_language_acquisition"},
+        )
+        raise RegistryError(422, "image assets require the image acquisition path")
     slug = slug_for(request.repo_id)
 
     existing = (
@@ -280,6 +303,7 @@ async def add_model(
 
     model = ModelRow(
         id=uuid.uuid4(),
+        kind=ModelKind.LANGUAGE_MODEL,
         repo_id=request.repo_id,
         slug=slug,
         display_name=request.display_name or request.repo_id.split("/", 1)[1],
@@ -527,10 +551,21 @@ def published_ready_entitled(model: ModelRow, entitlements: frozenset[str]) -> b
     """Shared non-admin and native Chat eligibility predicate."""
 
     return (
-        model.visibility is Visibility.PUBLISHED
+        is_chat_backend(model)
+        and model.visibility is Visibility.PUBLISHED
         and model.state is ModelState.READY
         and set(model.entitlement or []).issubset(entitlements)
     )
+
+
+def is_chat_backend(model: ModelRow) -> bool:
+    """Only language and vision engines may enter chat/MCP/failover resolution."""
+    return (model.kind or ModelKind.LANGUAGE_MODEL) == ModelKind.LANGUAGE_MODEL and (
+        model.backend or EngineBackend.MLX_LM
+    ) in {
+        EngineBackend.MLX_LM,
+        EngineBackend.MLX_VLM,
+    }
 
 
 def chat_model_eligible(model: ModelRow, principal: Principal) -> bool:
@@ -547,6 +582,8 @@ def visible_to(
     An admin sees everything. Anyone else sees only published, ready models for which the
     verified identity holds every required entitlement.
     """
+    if not is_chat_backend(model):
+        return False
     if is_admin:
         return True
     return published_ready_entitled(model, entitlements)

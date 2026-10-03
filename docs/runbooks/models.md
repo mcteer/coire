@@ -18,6 +18,22 @@ scripts/coire nodes | jq '.[] | {name, reachability}'
 
 ## Adding a model
 
+Qwen3.8-Flash-Next (125B language parameters) has an MLX-VLM checkpoint at
+`mlx-community/Qwen3.8-Flash-Next-4bit`. Use the variant acquisition API with a
+4-bit recipe; its `Qwen4ExpForConditionalGeneration` architecture routes to the
+pinned bare `mlx_vlm.server`. The checkpoint is approximately 111.5 GB, so inspect
+both Studios' disk and memory budgets before acquisition. The upstream weights use
+the Qwen Community License 1.0; review its terms before publishing. The `-mtp`
+checkpoint includes a speculative head and is not needed for the base roster entry.
+
+The registry slug is `mlx-community--Qwen3.8-Flash-Next-4bit`. It appears in the
+user model picker only after validation, both verified copies, and publication.
+Visual validation uses a deterministic 512×512 high-entropy image and records
+the supported pixel, encoded-byte and incremental encoder/cache memory bounds.
+The model's serialized weights are accounted for by the base reservation once.
+The native smoke formats the image prompt with the installed `mlx-vlm` chat
+template; a literal `<image>` prefix is not valid for this architecture.
+
 ```bash
 scripts/coire model add mlx-community/Qwen3.8-27B-8bit \
   '{"tags":["coding","reasoning"],"placement_policy":"single:auto"}'

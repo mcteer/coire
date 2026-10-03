@@ -10,12 +10,16 @@ Every call goes to the node's declared control DNS name. There is no data-fabric
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+import os
+import stat
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from enum import StrEnum
+from pathlib import Path
 from types import TracebackType
 from typing import Any
 
@@ -23,6 +27,19 @@ import httpx
 
 from coire_core.models.acquisition import Reservation, ReservationRequest, VariantRecipe
 from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileResult
+from coire_core.models.image_worker import (
+    ImageAssetValidateRequest,
+    ImageJobBinding,
+    ImageWorkerLoadRequest,
+    ImageWorkerLoadResult,
+    ImageWorkerUnloadRequest,
+    NodeImageCancelRequest,
+    NodeImageInputReceipt,
+    NodeImageInputRequest,
+    NodeImageJob,
+    NodeImageStartRequest,
+    NodeImageTransferRequest,
+)
 from coire_core.models.jobs import ChecksumManifest, JobStatus, RepoInspection
 from coire_core.models.link import StudioDataLinkStatus
 from coire_core.models.node import (
@@ -33,7 +50,7 @@ from coire_core.models.node import (
     WorkspacePrepareRequest,
     WorkspacePrepareResult,
 )
-from coire_core.models.registry import EngineBackend
+from coire_core.models.registry import EngineBackend, ModelKind
 from coire_core.models.runs import (
     RunActivityPage,
     RunCollectedResult,
@@ -118,6 +135,35 @@ _STATUS_KINDS = {
 }
 
 
+def _read_bound_image_input(path: Path, command: NodeImageInputRequest) -> bytes:
+    """Read one verified shared-volume PNG without following a replaced path."""
+    fd = -1
+    try:
+        if path.name != str(command.input_id):
+            raise ValueError("image input path differs from identifier")
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        info = os.fstat(fd)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_mode & 0o077
+            or info.st_nlink != 1
+            or info.st_size != command.byte_count
+        ):
+            raise ValueError("image input file differs from request")
+        data = bytearray()
+        while block := os.read(fd, 64 * 1024):
+            data.extend(block)
+            if len(data) > command.byte_count:
+                raise ValueError("image input exceeds declared size")
+        if len(data) != command.byte_count or hashlib.sha256(data).hexdigest() != command.sha256:
+            raise ValueError("image input digest differs from request")
+        return bytes(data)
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
 class NodeClient:
     """Talks to node agents. One instance per reconciler pass or request."""
 
@@ -153,16 +199,23 @@ class NodeClient:
         path: str,
         *,
         json: Any = None,
+        content: bytes | None = None,
         expect: tuple[int, ...] = (200, 202, 204),
+        request_timeout_s: float | None = None,
     ) -> tuple[int, dict[str, Any]]:
         try:
+            headers = self._headers(node)
+            if content is not None:
+                headers["Content-Type"] = "application/octet-stream"
             resp = await self._control.request(
                 method,
                 node,
                 path,
                 port=self._settings.node_listen_port,
-                headers=self._headers(node),
+                headers=headers,
                 json=json,
+                content=content,
+                **({"timeout": request_timeout_s} if request_timeout_s is not None else {}),
             )
         except (httpx.HTTPError, FabricUnreachable) as exc:
             raise NodeError(NodeErrorKind.UNREACHABLE, node, detail=str(exc)) from exc
@@ -188,6 +241,120 @@ class NodeClient:
                 body=body,
             )
         return resp.status_code, body
+
+    # -- resident image worker and fenced attempts -------------------------
+    async def load_image_worker(
+        self, node: str, command: ImageWorkerLoadRequest
+    ) -> ImageWorkerLoadResult:
+        _, body = await self._call(
+            "PUT",
+            node,
+            "/node/images/worker",
+            json=command.model_dump(mode="json"),
+            expect=(202,),
+            request_timeout_s=120.0,
+        )
+        return ImageWorkerLoadResult.model_validate(body)
+
+    async def image_worker_status(self, node: str, instance_id: uuid.UUID) -> ImageWorkerLoadResult:
+        _, body = await self._call("GET", node, f"/node/images/worker/{instance_id}", expect=(200,))
+        return ImageWorkerLoadResult.model_validate(body)
+
+    async def unload_image_worker(
+        self, node: str, command: ImageWorkerUnloadRequest
+    ) -> ImageWorkerLoadResult:
+        _, body = await self._call(
+            "DELETE",
+            node,
+            f"/node/images/worker/{command.instance_id}",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return ImageWorkerLoadResult.model_validate(body)
+
+    async def start_image_job(self, node: str, command: NodeImageStartRequest) -> NodeImageJob:
+        if command.node != node:
+            raise ValueError("image job node differs from client destination")
+        _, body = await self._call(
+            "PUT",
+            node,
+            f"/node/images/jobs/{command.job_id}",
+            json=command.model_dump(mode="json"),
+            expect=(200, 202),
+        )
+        return NodeImageJob.model_validate(body)
+
+    async def reserve_image_inputs(self, node: str, command: NodeImageStartRequest) -> NodeImageJob:
+        # Every attempt needs a durable node journal before the worker loads,
+        # including txt2img jobs with no uploaded inputs.
+        if command.node != node:
+            raise ValueError("image input reservation differs from destination")
+        _, body = await self._call(
+            "PUT",
+            node,
+            f"/node/images/jobs/{command.job_id}/reserve-inputs",
+            json=command.model_dump(mode="json"),
+            expect=(200, 202),
+        )
+        return NodeImageJob.model_validate(body)
+
+    async def stage_image_input(
+        self, node: str, command: NodeImageInputRequest, path: Path
+    ) -> NodeImageInputReceipt:
+        if command.node != node:
+            raise ValueError("image input node differs from destination")
+        payload = await asyncio.to_thread(_read_bound_image_input, path, command)
+        query = (
+            f"attempt={command.attempt}&fence={command.fence}"
+            f"&purpose={command.purpose}&sha256={command.sha256}"
+            f"&byte_count={command.byte_count}"
+        )
+        _, body = await self._call(
+            "PUT",
+            node,
+            f"/node/images/jobs/{command.job_id}/inputs/{command.input_id}?{query}",
+            content=payload,
+            expect=(200,),
+            request_timeout_s=5.0,
+        )
+        result = NodeImageInputReceipt.model_validate(body)
+        if result.model_dump(exclude={"staged_at"}) != command.model_dump():
+            raise NodeError(NodeErrorKind.PROTOCOL, node, detail="image input receipt mismatch")
+        return result
+
+    async def image_job_status(self, node: str, binding: ImageJobBinding) -> NodeImageJob:
+        _, body = await self._call(
+            "GET",
+            node,
+            f"/node/images/jobs/{binding.job_id}?attempt={binding.attempt}&fence={binding.fence}",
+            expect=(200,),
+        )
+        return NodeImageJob.model_validate(body)
+
+    async def cancel_image_job(self, node: str, command: NodeImageCancelRequest) -> NodeImageJob:
+        _, body = await self._call(
+            "DELETE",
+            node,
+            f"/node/images/jobs/{command.job_id}",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return NodeImageJob.model_validate(body)
+
+    async def transfer_image_job(
+        self, node: str, command: NodeImageTransferRequest
+    ) -> NodeImageJob:
+        if command.node != node:
+            raise ValueError("image job node differs from client destination")
+        _, body = await self._call(
+            "POST",
+            node,
+            f"/node/images/jobs/{command.job_id}/transfer",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+            request_timeout_s=270.0,
+        )
+        return NodeImageJob.model_validate(body)
 
     # -- health ------------------------------------------------------------
     async def health(self, node: str) -> NodeStatus | NodeStatusV2:
@@ -298,6 +465,7 @@ class NodeClient:
         repo_id: str,
         slug: str,
         revision: str = "main",
+        model_kind: ModelKind = ModelKind.LANGUAGE_MODEL,
         expected_total_bytes: int | None = None,
     ) -> JobStatus:
         payload: dict[str, Any] = {
@@ -305,6 +473,7 @@ class NodeClient:
             "repo_id": repo_id,
             "slug": slug,
             "revision": revision,
+            "model_kind": model_kind.value,
         }
         if expected_total_bytes is not None:
             payload["expected_total_bytes"] = expected_total_bytes
@@ -428,6 +597,18 @@ class NodeClient:
                 "reference_perplexity": reference_perplexity,
                 "reference_variant_id": str(reference_variant_id) if reference_variant_id else None,
             },
+            expect=(200, 202),
+        )
+        return JobStatus.model_validate(body)
+
+    async def start_image_validate(
+        self, node: str, request: ImageAssetValidateRequest
+    ) -> JobStatus:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/jobs/image-validate",
+            json=request.model_dump(mode="json"),
             expect=(200, 202),
         )
         return JobStatus.model_validate(body)

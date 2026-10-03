@@ -16,13 +16,19 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import httpx
 import psutil
 import pytest
 import yaml
 from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
-from coire_core.models.engine import EngineState, ReconcileExpectation, ReconcileRequest
+from coire_core.models.engine import (
+    EngineState,
+    EngineStatus,
+    ReconcileExpectation,
+    ReconcileRequest,
+)
 from coire_node.engines import EngineManager, build_engine_argv
 from coire_node.testing.harness import TOKEN, Agent
 
@@ -121,6 +127,18 @@ def wait_state(agent: Agent, engine_id: uuid.UUID, *states: EngineState, timeout
             return last
         time.sleep(0.1)
     raise AssertionError(f"engine did not reach {states}: {last}")
+
+
+def wait_state_for_manager(
+    manager: EngineManager, engine_id: uuid.UUID, state: EngineState, timeout: float = 30.0
+) -> EngineStatus:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        current = manager.get(engine_id)
+        if current is not None and current.state is state:
+            return current
+        time.sleep(0.1)
+    raise AssertionError(f"engine did not reach {state}: {manager.get(engine_id)}")
 
 
 class TestStart:
@@ -384,6 +402,47 @@ class TestStopAndDeath:
 
 
 class TestReconcile:
+    def test_adopted_engine_keeps_stderr_sink_and_answers_after_parent_exit(
+        self, engine_agent: Agent, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        engine_id = uuid.uuid4()
+        engine_agent.engines.start(engine_id=engine_id, slug=SLUG, estimate_bytes=1024)
+        ready = wait_state(engine_agent, engine_id, EngineState.READY)
+        original = engine_agent.engines._engines[str(engine_id)]
+        stderr_path = original.stderr_path
+        assert stderr_path is not None and stderr_path.is_file()
+        assert original.proc is not None and original.proc.stderr is None
+        engine_agent.engines.shutdown()
+
+        fresh = EngineManager(engine_agent.settings, engine_agent.store, "127.0.0.1")
+        try:
+            assert fresh.adopt_from_state()[0].pid == ready.pid
+            assert wait_state_for_manager(fresh, engine_id, EngineState.READY).pid == ready.pid
+            with httpx.Client(timeout=5.0) as client:
+                response = client.post(
+                    f"http://127.0.0.1:{ready.port}/v1/chat/completions",
+                    json={
+                        "messages": [{"role": "user", "content": "emit-stderr-after-adoption"}],
+                        "max_tokens": 1,
+                    },
+                )
+            assert response.status_code == 200
+            original_persist = fresh._persist
+            stopped_after_cleanup: list[bool] = []
+
+            def observe_terminal_persistence() -> None:
+                if fresh._engines[str(engine_id)].state == EngineState.STOPPED:
+                    stopped_after_cleanup.append(not stderr_path.exists())
+                original_persist()
+
+            monkeypatch.setattr(fresh, "_persist", observe_terminal_persistence)
+            fresh.stop(engine_id)
+            wait_state_for_manager(fresh, engine_id, EngineState.STOPPED)
+            assert stopped_after_cleanup == [True]
+            assert not stderr_path.exists()
+        finally:
+            fresh.shutdown()
+
     def test_a_new_manager_adopts_a_running_engine(
         self, engine_agent: Agent, contract: dict[str, Any]
     ) -> None:
@@ -398,6 +457,8 @@ class TestReconcile:
         adopted = fresh.adopt_from_state()
         assert [a.engine_id for a in adopted] == [engine_id]
         assert adopted[0].pid == ready.pid
+        assert adopted[0].state is EngineState.STARTING
+        assert wait_state_for_manager(fresh, engine_id, EngineState.READY).pid == ready.pid
         assert psutil.pid_exists(ready.pid or 0), "adoption must not have killed it"
 
         result = fresh.reconcile(
@@ -417,6 +478,31 @@ class TestReconcile:
         assert [a.engine_id for a in result.adopted] == [engine_id]
         assert result.dead == []
         fresh.shutdown()
+
+    def test_adoption_keeps_memory_held_until_generation_is_reproved(
+        self, engine_agent: Agent, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        engine_id = uuid.uuid4()
+        engine_agent.engines.start(engine_id=engine_id, slug=SLUG, estimate_bytes=1024)
+        ready = wait_state(engine_agent, engine_id, EngineState.READY)
+        engine_agent.engines.shutdown()
+
+        def unavailable(self: httpx.Client, url: str) -> httpx.Response:
+            del self, url
+            raise httpx.ConnectError("adopted engine did not answer")
+
+        monkeypatch.setattr(httpx.Client, "get", unavailable)
+        fresh = EngineManager(engine_agent.settings, engine_agent.store, "127.0.0.1")
+        try:
+            adopted = fresh.adopt_from_state()
+            assert adopted[0].state is EngineState.STARTING
+            assert adopted[0].pid == ready.pid
+            assert fresh.committed_bytes() >= 1024
+            time.sleep(0.6)
+            current = fresh.get(engine_id)
+            assert current is not None and current.state is EngineState.STARTING
+        finally:
+            fresh.shutdown()
 
     def test_an_engine_that_died_while_the_agent_was_down_is_reported_dead(
         self, engine_agent: Agent

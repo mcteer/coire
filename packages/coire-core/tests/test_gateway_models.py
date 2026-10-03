@@ -1,4 +1,20 @@
-from coire_core.models.gateway import EngineChatRequest
+import uuid
+
+from coire_core.models.gateway import ChatCompletionRequest, EngineChatRequest
+
+
+def test_public_chat_contract_preserves_standard_stream_usage_option() -> None:
+    request = ChatCompletionRequest.model_validate(
+        {
+            "model": str(uuid.uuid4()),
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+    )
+    assert request.model_dump(mode="json", exclude_none=True)["stream_options"] == {
+        "include_usage": True
+    }
 
 
 def test_engine_contract_preserves_usage_request() -> None:

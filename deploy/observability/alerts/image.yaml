@@ -1,0 +1,189 @@
+groups:
+  - name: coire-image
+    rules:
+      - alert: CoireImageFailures
+        expr: sum(increase(coire_image_requests_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A private image API operation failed
+      - alert: CoireImageNodeStageFailures
+        expr: sum(increase(coire_image_node_stages_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A Studio image worker stage failed
+      - alert: CoireImageValidationFailures
+        expr: sum(increase(coire_image_validation_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A reserved Studio image validation failed; the asset remains unpublished
+      - alert: CoireImageClassifierFailures
+        expr: sum(increase(coire_image_node_stages_total{stage="classify",outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Studio image classification failed and outputs need unknown-tag review
+      - alert: CoireImageTransferRecoveryFailures
+        expr: sum(increase(coire_image_transfer_recovery_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A fenced image transfer could not be reconciled
+      - alert: CoireImageObservationFailures
+        expr: sum(increase(coire_image_observation_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A fenced Studio image journal could not be observed
+      - alert: CoireImageAuthorizationRevocations
+        expr: sum(increase(coire_image_observation_total{outcome="revoked"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A running image job lost authorization and cancellation was requested
+      - alert: CoireImageThermalCancellation
+        expr: sum(increase(coire_image_observation_total{outcome="thermal_alarm"}[5m])) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: A Studio thermal alarm requested fenced image cancellation
+      - alert: CoireImagePublicationFailures
+        expr: sum(increase(coire_image_publication_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A verified image batch could not be published
+      - alert: CoireImageQueueExpiryFailures
+        expr: sum(increase(coire_image_queue_expiration_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: An overdue image queue hold could not be reconciled
+      - alert: CoireImageCancellationRecoveryFailures
+        expr: sum(increase(coire_image_cancellation_recovery_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A fenced image cancellation could not be reconciled
+      - alert: CoireImageOutputCleanupFailures
+        expr: sum(increase(coire_image_purge_total{kind="output",outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Private image output cleanup failed
+      - alert: CoireImageTransferTempCleanupFailures
+        expr: sum(increase(coire_image_purge_total{kind="transfer_temp",outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Private image transfer temporary cleanup failed
+      - alert: CoireImageTerminalStagingCleanupFailures
+        expr: sum(increase(coire_image_purge_total{kind="terminal_staging",outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Failed or cancelled image transfer staging could not be removed
+      - alert: CoireImageOrphanStagingCleanupFailures
+        expr: sum(increase(coire_image_purge_total{kind="orphan_staging",outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Unowned image transfer staging could not be removed
+      - alert: CoireImagePurgeOverdue
+        expr: max(coire_image_purge_oldest_seconds) > 86400
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Private image blobs are past the 24-hour purge deadline
+      - alert: CoireImageStoredQuotaDrift
+        expr: max(coire_image_quota_drift_bytes) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: Image stored-byte counters differ from durable unpurged rows
+      - alert: CoireImageOutputIntegrityFailure
+        expr: sum(increase(coire_image_output_integrity_failures_total[15m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: A retained private image blob differs from its published receipt
+      - alert: CoireImageInputCleanupFailures
+        expr: sum(increase(coire_image_input_cleanup_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Private image input cleanup failed
+      - alert: CoireImageInputWorkerFailures
+        expr: sum(increase(coire_image_input_worker_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: The isolated image input worker failed while normalizing or parsing
+      - alert: CoireImageInputPurgeOverdue
+        expr: max(coire_image_input_purge_oldest_seconds) > 86400
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: Failed or deleted image inputs are past the 24-hour purge deadline
+      - alert: CoireImageQueueReconciliationFailures
+        expr: sum(increase(coire_image_queue_expiration_total{outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: An expired image queue hold could not be released safely
+      - alert: CoireImageDispatchUncertain
+        expr: sum(increase(coire_image_dispatch_total{outcome=~"worker_uncertain|journal_missing|conflict|failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Image placement has a missing or uncertain Studio worker journal
+      - alert: CoireImageWorkerStopFailures
+        expr: sum(increase(coire_image_node_stages_total{stage="cancel",outcome="failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: A Studio image worker could not confirm cancellation
+      - alert: CoireImageCancellationSlow
+        expr: histogram_quantile(0.95, sum by (le) (rate(coire_image_cancellation_delay_seconds_bucket[5m]))) > 5
+        for: 1m
+        labels: {severity: warning}
+        annotations:
+          summary: Image cancellation proof exceeds the five-second healthy-node target
+      - alert: CoireImageIdleUnloadUncertain
+        expr: sum(increase(coire_image_worker_idle_unloads_total{outcome="uncertain"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: An idle Studio image worker could not prove its stop; memory remains held
+      - alert: CoireImageResidencyMeasurementUnavailable
+        expr: max(coire_image_residency_measurement_unavailable) > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations:
+          summary: An image hold exists while a live model or image footprint is unavailable
+      - alert: CoireImageStorageFailures
+        expr: sum(increase(coire_image_requests_total{reason="storage",outcome=~"failed|refused"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Image storage admission or publication refused a request
+      - alert: CoireImageChatRegression
+        expr: histogram_quantile(0.95, sum by (le) (rate(coire_gateway_first_token_duration_ms_bucket[15m]))) > 1500 and sum(increase(coire_image_dispatch_total{outcome="started"}[15m])) > 0
+        for: 5m
+        labels: {severity: critical}
+        annotations:
+          summary: Gateway chat first-token p95 exceeds 1.5 seconds while image work starts
+      - alert: CoireImageCoexistenceInvalidated
+        expr: sum(increase(coire_image_latency_monitor_total{outcome="regressed"}[5m])) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations:
+          summary: Live same-node chat latency invalidated image coexistence approval
+      - alert: CoireImageLatencyMonitorUnavailable
+        expr: sum(increase(coire_image_latency_monitor_total{outcome=~"unavailable|failed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Same-node chat latency could not be observed for approved image coexistence

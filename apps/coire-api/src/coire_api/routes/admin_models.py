@@ -32,6 +32,7 @@ from coire_api.auth import CurrentAdmin
 from coire_api.db import (
     DownloadJobRow,
     EngineProcessRow,
+    MemoryReservationRow,
     ModelCopyRow,
     ModelRow,
     ModelStateTransitionRow,
@@ -40,15 +41,20 @@ from coire_api.db import (
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.gateway.providers import credential_present
 from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.placement.legacy import ensure_legacy_model_hold
+from coire_api.placement.service import node_admission_lock
 from coire_api.preconditions import require_current
-from coire_api.registry import service
+from coire_api.registry import image_acquisition, service
 from coire_api.registry.placement import NoCandidate, choose_load_node
 from coire_api.registry.visual_memory import reservation_bytes
+from coire_core.errors import ChatModelUnavailable
 from coire_core.models.audit import AuditAction
 from coire_core.models.engine import EngineProcess, EngineState
 from coire_core.models.jobs import DownloadJob
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.registry import (
     EngineBackend,
+    ImageAssetAcquireRequest,
     LoadRefusalReason,
     LoadRefused,
     Model,
@@ -271,6 +277,36 @@ async def add_model(
     return await _detail(session, model)
 
 
+@router.post("/image-assets", status_code=status.HTTP_202_ACCEPTED)
+async def add_image_asset(
+    request: ImageAssetAcquireRequest,
+    http_request: Request,
+    principal: CurrentAdmin,
+    session: SessionDep,
+    settings: SettingsDep,
+    client: ClientDep,
+) -> dict[str, object]:
+    """Admin-reviewed, pinned image acquisition through the Studio node boundary."""
+    views = await service.node_views(session, _statuses(http_request))
+    try:
+        model, _job = await image_acquisition.submit_image_asset(
+            session,
+            request,
+            client=client,
+            settings=settings,
+            views=views,
+            actor=principal.subject or "admin",
+        )
+    except service.RegistryError as exc:
+        await session.commit()
+        raise HTTPException(exc.status_code, exc.detail) from exc
+    await session.commit()
+    reconciler = getattr(http_request.app.state, "reconciler", None)
+    if reconciler is not None:
+        reconciler._wake.set()
+    return await _detail(session, model)
+
+
 @router.get("/models")
 async def list_models(
     principal: CurrentAdmin,
@@ -457,34 +493,42 @@ async def load_model(
     if node is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "node is not registered")
 
-    # STARTING/READY only, not STOPPING: an engine on its way out is not "already loaded",
-    # and returning it would hand the caller something that becomes `stopped` moments later.
-    existing = (
-        await session.execute(
-            select(EngineProcessRow).where(
-                EngineProcessRow.model_id == model.id,
-                EngineProcessRow.node_id == node.id,
-                EngineProcessRow.state.in_([EngineState.STARTING, EngineState.READY]),
+    try:
+        async with node_admission_lock(session, node.id):
+            # Re-read after the lock. Another API process may have committed a
+            # STARTING row and its hold while this request waited for the lock.
+            existing = await session.scalar(
+                select(EngineProcessRow)
+                .where(
+                    EngineProcessRow.model_id == model.id,
+                    EngineProcessRow.node_id == node.id,
+                    EngineProcessRow.state.in_([EngineState.STARTING, EngineState.READY]),
+                )
+                .order_by(EngineProcessRow.started_at.desc())
+                .limit(1)
             )
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        # FR-019: a second load of the same model on the same node is a no-op.
-        response.status_code = status.HTTP_200_OK
-        nodes = {node.id: node.name}
-        return _engine(existing, nodes)
-
-    engine_id = uuid.uuid4()
-    row = EngineProcessRow(
-        id=engine_id,
-        model_id=model.id,
-        node_id=node.id,
-        port=0,
-        state=EngineState.STARTING,
-        estimate_bytes=required_bytes,
-        backend=model.backend,
-    )
-    session.add(row)
+            if existing is not None:
+                await ensure_legacy_model_hold(session, node.id, model.id, existing.estimate_bytes)
+                await session.commit()
+                response.status_code = status.HTTP_200_OK
+                return _engine(existing, {node.id: node.name})
+            engine_id = uuid.uuid4()
+            row = EngineProcessRow(
+                id=engine_id,
+                model_id=model.id,
+                node_id=node.id,
+                port=0,
+                state=EngineState.STARTING,
+                estimate_bytes=required_bytes,
+                backend=model.backend,
+            )
+            session.add(row)
+            await ensure_legacy_model_hold(session, node.id, model.id, required_bytes)
+            # Publish the engine identity and hold in the same transaction.
+            await session.commit()
+    except ChatModelUnavailable as exc:
+        await session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "node memory admission refused") from exc
 
     try:
         already, engine_status = await client.start_engine(
@@ -496,9 +540,24 @@ async def load_model(
             backend=EngineBackend(model.backend),
         )
     except NodeError as exc:
-        # The row has only been added to this session; DELETE requires a
-        # persisted row and masks the node refusal with an HTTP 500.
-        await session.rollback()
+        if exc.kind.value == "conflict":
+            # A conflict is a definite node refusal. Other failures may leave
+            # a live process; reconciliation keeps the hold until it proves stop.
+            async with node_admission_lock(session, node.id):
+                row.state = EngineState.FAILED
+                row.state_reason = str(exc)[:500]
+                hold = await session.scalar(
+                    select(MemoryReservationRow).where(
+                        MemoryReservationRow.node_id == node.id,
+                        MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                        MemoryReservationRow.holder_id == str(model.id),
+                        MemoryReservationRow.state == MemoryReservationState.HELD,
+                    )
+                )
+                if hold is not None:
+                    hold.state = MemoryReservationState.RELEASED
+                    hold.released_at = datetime.now(UTC)
+            await session.commit()
         if exc.kind.value == "conflict":
             body_out = exc.body or {}
             raise HTTPException(

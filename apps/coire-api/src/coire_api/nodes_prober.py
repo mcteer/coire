@@ -16,13 +16,35 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from coire_api.db import MemoryReservationRow, NodeMemoryLedgerRow, NodeRow, create_engine
-from coire_api.placement.service import drift_ratio, ledger_drift
+from coire_api.placement.service import (
+    drift_ratio,
+    image_residency_unavailable,
+    ledger_drift,
+)
+from coire_core.models.engine import LIVE_ENGINE_STATES, EngineState
 from coire_core.models.node import NodeStatus, NodeStatusV2, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.net import ControlClient
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+def measured_node_residency(
+    status: NodeStatus | NodeStatusV2, *, image_reserved_bytes: int
+) -> int | None:
+    """Include the image child's physical footprint without inventing an unknown value."""
+    if any(
+        engine.resident_bytes is None
+        and (engine.state in LIVE_ENGINE_STATES or engine.state is EngineState.ORPHAN)
+        for engine in status.engines
+    ):
+        return None
+    if image_reserved_bytes > 0 and status.image_worker_resident_bytes is None:
+        return None
+    return sum(engine.resident_bytes or 0 for engine in status.engines) + (
+        status.image_worker_resident_bytes or 0
+    )
 
 
 class NodeProber:
@@ -91,28 +113,51 @@ class NodeProber:
                             None if status is not None else "node health probe failed"
                         )
                         ledger.health_sampled_at = datetime.now(UTC)
-                        ledger.measured_resident_bytes = (
-                            sum(engine.resident_bytes or 0 for engine in status.engines)
-                            if status is not None
-                            else ledger.measured_resident_bytes
-                        )
                         if status is not None:
-                            model_reserved = await session.scalar(
+                            resident_reserved = await session.scalar(
                                 select(
                                     func.coalesce(func.sum(MemoryReservationRow.bytes), 0)
                                 ).where(
                                     MemoryReservationRow.node_id == row.id,
-                                    MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                                    MemoryReservationRow.holder_type.in_(
+                                        (ReservationHolder.MODEL, ReservationHolder.IMAGE)
+                                    ),
                                     MemoryReservationRow.state.in_(
                                         [
+                                            MemoryReservationState.PENDING,
                                             MemoryReservationState.HELD,
                                             MemoryReservationState.RELEASING,
                                         ]
                                     ),
                                 )
                             )
+                            image_reserved = await session.scalar(
+                                select(
+                                    func.coalesce(func.sum(MemoryReservationRow.bytes), 0)
+                                ).where(
+                                    MemoryReservationRow.node_id == row.id,
+                                    MemoryReservationRow.holder_type == ReservationHolder.IMAGE,
+                                    MemoryReservationRow.state.in_(
+                                        [
+                                            MemoryReservationState.PENDING,
+                                            MemoryReservationState.HELD,
+                                            MemoryReservationState.RELEASING,
+                                        ]
+                                    ),
+                                )
+                            )
+                            ledger.measured_resident_bytes = measured_node_residency(
+                                status, image_reserved_bytes=int(image_reserved or 0)
+                            )
+                            image_residency_unavailable.set(
+                                int(
+                                    int(image_reserved or 0) > 0
+                                    and ledger.measured_resident_bytes is None
+                                ),
+                                {"node": row.name},
+                            )
                             drift = drift_ratio(
-                                reserved_bytes=int(model_reserved or 0),
+                                reserved_bytes=int(resident_reserved or 0),
                                 measured_bytes=ledger.measured_resident_bytes,
                             )
                             ledger_drift.set(
@@ -139,20 +184,30 @@ class NodeProber:
             ok = resp.status_code == 200
             if ok:
                 body = resp.json()
-                status = (
+                status: NodeStatus | NodeStatusV2 | None = (
                     NodeStatusV2.model_validate(body)
                     if body.get("path") == "control"
                     else NodeStatus.model_validate(body)
                 )
+                if status is not None and status.name != row.name:
+                    logger.warning(
+                        "probe of %s returned mismatched node name %s", row.name, status.name
+                    )
+                    ok = False
+                    status = None
             else:
                 status = None
-            if not ok:
+            if not ok and resp.status_code != 200:
                 logger.warning("probe of %s returned HTTP %d", row.name, resp.status_code)
         except Exception as exc:
             logger.warning("probe of %s failed: %s", row.name, exc)
             ok = False
 
         if ok:
+            assert status is not None
+            # Registration is one-time, but an immutable agent rollout changes
+            # the runtime fingerprint used by image coexistence admission.
+            row.agent_version = status.agent_version
             recovered = row.reachability in {Reachability.UNKNOWN, Reachability.UNREACHABLE}
             # A sharded rank failure is a semantic degradation, not a transport failure.
             # Successful /health probes must not erase it; a later successful group launch

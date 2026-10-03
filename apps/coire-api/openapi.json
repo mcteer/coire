@@ -228,7 +228,8 @@
       "ActivityKind": {
         "enum": [
           "job",
-          "instance"
+          "instance",
+          "image_worker"
         ],
         "title": "ActivityKind",
         "type": "string"
@@ -1655,6 +1656,35 @@
         "title": "Body_upload_chat_file_api_v1_chat_conversations__conversation_id__files_post",
         "type": "object"
       },
+      "Body_upload_image_input_api_v1_image_inputs_post": {
+        "properties": {
+          "byte_count": {
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "filename",
+          "byte_count",
+          "file"
+        ],
+        "title": "Body_upload_image_input_api_v1_image_inputs_post",
+        "type": "object"
+      },
       "BranchArtifact": {
         "additionalProperties": false,
         "properties": {
@@ -1715,6 +1745,18 @@
             "default": false,
             "title": "Chat Template Present",
             "type": "boolean"
+          },
+          "compatible_base_model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compatible Base Model Id"
           },
           "context_window": {
             "anyOf": [
@@ -2125,6 +2167,16 @@
             "default": false,
             "title": "Stream",
             "type": "boolean"
+          },
+          "stream_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngineStreamOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "temperature": {
             "anyOf": [
@@ -4083,6 +4135,34 @@
         "title": "CursorPage[ActivityItem]",
         "type": "object"
       },
+      "CursorPage_ImageActivityItem_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImageActivityItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[ImageActivityItem]",
+        "type": "object"
+      },
       "ElectionVoteGrant": {
         "additionalProperties": false,
         "properties": {
@@ -4135,10 +4215,26 @@
       "EngineBackend": {
         "enum": [
           "mlx_lm",
-          "mlx_vlm"
+          "mlx_vlm",
+          "mflux",
+          "auxiliary"
         ],
         "title": "EngineBackend",
         "type": "string"
+      },
+      "EngineStreamOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "include_usage": {
+            "title": "Include Usage",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "include_usage"
+        ],
+        "title": "EngineStreamOptions",
+        "type": "object"
       },
       "EvaluationVerdict": {
         "enum": [
@@ -4721,6 +4817,2940 @@
         ],
         "title": "HealthStatus",
         "type": "string"
+      },
+      "ImageActivityItem": {
+        "additionalProperties": false,
+        "description": "Separate ULID image-job projection; no prompt or storage path is exposed.",
+        "properties": {
+          "can_stop": {
+            "title": "Can Stop",
+            "type": "boolean"
+          },
+          "elapsed_seconds": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Elapsed Seconds",
+            "type": "number"
+          },
+          "job_id": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "progress_step": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Step"
+          },
+          "progress_total": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Total"
+          },
+          "safe_failure_code": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Failure Code"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "reserving",
+              "running",
+              "transferring",
+              "cancelling",
+              "cancelled",
+              "failed",
+              "succeeded"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "owner_id",
+          "model_id",
+          "state",
+          "started_at",
+          "can_stop"
+        ],
+        "title": "ImageActivityItem",
+        "type": "object"
+      },
+      "ImageAdapterOption": {
+        "additionalProperties": false,
+        "properties": {
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name"
+        ],
+        "title": "ImageAdapterOption",
+        "type": "object"
+      },
+      "ImageAssetAcquireRequest": {
+        "additionalProperties": false,
+        "description": "An admin's explicit image-asset and model-licence acquisition decision.",
+        "properties": {
+          "accepted_license_id": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Accepted License Id",
+            "type": "string"
+          },
+          "compatible_base_model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compatible Base Model Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ModelKind"
+          },
+          "placement_policy": {
+            "default": "single:auto",
+            "pattern": "^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$",
+            "title": "Placement Policy",
+            "type": "string"
+          },
+          "repo_id": {
+            "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+            "title": "Repo Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo_id",
+          "kind",
+          "accepted_license_id"
+        ],
+        "title": "ImageAssetAcquireRequest",
+        "type": "object"
+      },
+      "ImageCapabilityProfile": {
+        "additionalProperties": false,
+        "description": "Measured base-model bounds; checked after request and preset resolution.",
+        "properties": {
+          "default_guidance": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Guidance"
+          },
+          "default_height": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 64.0,
+                "multipleOf": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Height"
+          },
+          "default_steps": {
+            "anyOf": [
+              {
+                "maximum": 150.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Steps"
+          },
+          "default_width": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 64.0,
+                "multipleOf": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Width"
+          },
+          "max_guidance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Max Guidance",
+            "type": "string"
+          },
+          "max_height": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Max Height",
+            "type": "integer"
+          },
+          "max_loras": {
+            "default": 0,
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Max Loras",
+            "type": "integer"
+          },
+          "max_outputs": {
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Max Outputs",
+            "type": "integer"
+          },
+          "max_pixels": {
+            "maximum": 16000000.0,
+            "minimum": 4096.0,
+            "title": "Max Pixels",
+            "type": "integer"
+          },
+          "max_steps": {
+            "maximum": 150.0,
+            "minimum": 1.0,
+            "title": "Max Steps",
+            "type": "integer"
+          },
+          "max_width": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Max Width",
+            "type": "integer"
+          },
+          "min_guidance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Min Guidance",
+            "type": "string"
+          },
+          "min_height": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Min Height",
+            "type": "integer"
+          },
+          "min_steps": {
+            "maximum": 150.0,
+            "minimum": 1.0,
+            "title": "Min Steps",
+            "type": "integer"
+          },
+          "min_width": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Min Width",
+            "type": "integer"
+          },
+          "modes": {
+            "items": {
+              "$ref": "#/components/schemas/ImageMode"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Modes",
+            "type": "array"
+          },
+          "required_dependency_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Required Dependency Ids",
+            "type": "array"
+          },
+          "supports_negative_prompt": {
+            "default": false,
+            "title": "Supports Negative Prompt",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "modes",
+          "min_width",
+          "max_width",
+          "min_height",
+          "max_height",
+          "max_pixels",
+          "min_steps",
+          "max_steps",
+          "min_guidance",
+          "max_guidance",
+          "max_outputs"
+        ],
+        "title": "ImageCapabilityProfile",
+        "type": "object"
+      },
+      "ImageClassificationResult": {
+        "additionalProperties": false,
+        "description": "Bounded Studio classifier IPC and persisted gallery-tag provenance.",
+        "properties": {
+          "classifier_revision": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Classifier Revision",
+            "type": "string"
+          },
+          "processor_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Processor Sha256"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "enum": [
+                  "classifier_failed",
+                  "classifier_timeout",
+                  "classifier_memory",
+                  "classifier_invalid_result"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "tag": {
+            "$ref": "#/components/schemas/ImageContentTag"
+          },
+          "tagged_at": {
+            "format": "date-time",
+            "title": "Tagged At",
+            "type": "string"
+          },
+          "threshold": {
+            "default": "0.5",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Threshold",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tag",
+          "classifier_revision",
+          "tagged_at"
+        ],
+        "title": "ImageClassificationResult",
+        "type": "object"
+      },
+      "ImageClassifierDiagnostic": {
+        "enum": [
+          "classifier_unavailable",
+          "classifier_failed",
+          "classifier_timeout",
+          "classifier_memory",
+          "classifier_invalid_result"
+        ],
+        "type": "string"
+      },
+      "ImageCoexistenceBounds": {
+        "additionalProperties": false,
+        "description": "Maximum image workload measured alongside the listed resident chat variants.",
+        "properties": {
+          "max_height": {
+            "maximum": 2048.0,
+            "minimum": 64.0,
+            "title": "Max Height",
+            "type": "integer"
+          },
+          "max_outputs": {
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Max Outputs",
+            "type": "integer"
+          },
+          "max_steps": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Max Steps",
+            "type": "integer"
+          },
+          "max_width": {
+            "maximum": 2048.0,
+            "minimum": 64.0,
+            "title": "Max Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "max_width",
+          "max_height",
+          "max_steps",
+          "max_outputs"
+        ],
+        "title": "ImageCoexistenceBounds",
+        "type": "object"
+      },
+      "ImageCoexistenceProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "invalidated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidated At"
+          },
+          "profile_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Profile Hash",
+            "type": "string"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ImageCoexistenceReportRequest"
+          },
+          "status": {
+            "enum": [
+              "approved",
+              "invalidated"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "profile_hash",
+          "status",
+          "report"
+        ],
+        "title": "ImageCoexistenceProfile",
+        "type": "object"
+      },
+      "ImageCoexistenceReportRequest": {
+        "additionalProperties": false,
+        "description": "Admin-attested, same-node mixed-workload benchmark evidence.",
+        "properties": {
+          "chat_variant_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Chat Variant Ids",
+            "type": "array"
+          },
+          "duration_seconds": {
+            "maximum": 86400.0,
+            "minimum": 900.0,
+            "title": "Duration Seconds",
+            "type": "integer"
+          },
+          "first_token_p95_ms": {
+            "maximum": 1500.0,
+            "minimum": 0.0,
+            "title": "First Token P95 Ms",
+            "type": "number"
+          },
+          "gateway_overhead_p95_ms": {
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Gateway Overhead P95 Ms",
+            "type": "number"
+          },
+          "hardware_fingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Hardware Fingerprint",
+            "type": "string"
+          },
+          "image_completed_count": {
+            "minimum": 1.0,
+            "title": "Image Completed Count",
+            "type": "integer"
+          },
+          "image_mode": {
+            "const": "txt2img",
+            "default": "txt2img",
+            "title": "Image Mode",
+            "type": "string"
+          },
+          "image_model_id": {
+            "format": "uuid",
+            "title": "Image Model Id",
+            "type": "string"
+          },
+          "image_progress_observed": {
+            "const": true,
+            "title": "Image Progress Observed",
+            "type": "boolean"
+          },
+          "measured_at": {
+            "format": "date-time",
+            "title": "Measured At",
+            "type": "string"
+          },
+          "measured_bounds": {
+            "$ref": "#/components/schemas/ImageCoexistenceBounds"
+          },
+          "node_id": {
+            "format": "uuid",
+            "title": "Node Id",
+            "type": "string"
+          },
+          "prompt_tokens_max": {
+            "maximum": 32768.0,
+            "minimum": 4096.0,
+            "title": "Prompt Tokens Max",
+            "type": "integer"
+          },
+          "runtime_fingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Runtime Fingerprint",
+            "type": "string"
+          },
+          "runtime_version": {
+            "const": "mflux-0.20.0",
+            "title": "Runtime Version",
+            "type": "string"
+          },
+          "swap_observed": {
+            "const": false,
+            "title": "Swap Observed",
+            "type": "boolean"
+          },
+          "thermal_alarm": {
+            "const": false,
+            "title": "Thermal Alarm",
+            "type": "boolean"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "title": "Valid Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node_id",
+          "image_model_id",
+          "chat_variant_ids",
+          "hardware_fingerprint",
+          "runtime_fingerprint",
+          "measured_bounds",
+          "duration_seconds",
+          "prompt_tokens_max",
+          "first_token_p95_ms",
+          "gateway_overhead_p95_ms",
+          "image_completed_count",
+          "image_progress_observed",
+          "swap_observed",
+          "thermal_alarm",
+          "runtime_version",
+          "measured_at",
+          "valid_until"
+        ],
+        "title": "ImageCoexistenceReportRequest",
+        "type": "object"
+      },
+      "ImageContentMode": {
+        "enum": [
+          "standard",
+          "explicit"
+        ],
+        "title": "ImageContentMode",
+        "type": "string"
+      },
+      "ImageContentTag": {
+        "enum": [
+          "normal",
+          "explicit",
+          "unknown"
+        ],
+        "title": "ImageContentTag",
+        "type": "string"
+      },
+      "ImageControl-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "high_threshold": {
+            "default": 200,
+            "maximum": 255.0,
+            "minimum": 0.0,
+            "title": "High Threshold",
+            "type": "integer"
+          },
+          "image_id": {
+            "format": "uuid",
+            "title": "Image Id",
+            "type": "string"
+          },
+          "low_threshold": {
+            "default": 100,
+            "maximum": 255.0,
+            "minimum": 0.0,
+            "title": "Low Threshold",
+            "type": "integer"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "strength": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "default": "1",
+            "title": "Strength"
+          },
+          "type": {
+            "const": "canny",
+            "default": "canny",
+            "title": "Type",
+            "type": "string"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "image_id",
+          "model_id"
+        ],
+        "title": "ImageControl",
+        "type": "object"
+      },
+      "ImageControl-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "high_threshold": {
+            "default": 200,
+            "maximum": 255.0,
+            "minimum": 0.0,
+            "title": "High Threshold",
+            "type": "integer"
+          },
+          "image_id": {
+            "format": "uuid",
+            "title": "Image Id",
+            "type": "string"
+          },
+          "low_threshold": {
+            "default": 100,
+            "maximum": 255.0,
+            "minimum": 0.0,
+            "title": "Low Threshold",
+            "type": "integer"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "strength": {
+            "default": "1",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Strength",
+            "type": "string"
+          },
+          "type": {
+            "const": "canny",
+            "default": "canny",
+            "title": "Type",
+            "type": "string"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "image_id",
+          "model_id"
+        ],
+        "title": "ImageControl",
+        "type": "object"
+      },
+      "ImageDeletionReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "output_id": {
+            "format": "uuid",
+            "title": "Output Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "tombstoned",
+              "purged"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "output_id",
+          "state"
+        ],
+        "title": "ImageDeletionReceipt",
+        "type": "object"
+      },
+      "ImageDownloadGrant": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "output_id": {
+            "format": "uuid",
+            "title": "Output Id",
+            "type": "string"
+          },
+          "url": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "output_id",
+          "url",
+          "expires_at"
+        ],
+        "title": "ImageDownloadGrant",
+        "type": "object"
+      },
+      "ImageGenerationLimits": {
+        "additionalProperties": false,
+        "description": "Current operator policy, disclosed before accepting private image work.",
+        "properties": {
+          "daily_outputs_per_owner": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Daily Outputs Per Owner",
+            "type": "integer"
+          },
+          "generation_input_max_bytes": {
+            "maximum": 10485760.0,
+            "minimum": 1.0,
+            "title": "Generation Input Max Bytes",
+            "type": "integer"
+          },
+          "output_max_bytes": {
+            "maximum": 67108864.0,
+            "minimum": 1.0,
+            "title": "Output Max Bytes",
+            "type": "integer"
+          },
+          "output_retention_hours": {
+            "anyOf": [
+              {
+                "maximum": 8760.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Retention Hours"
+          },
+          "owner_storage_quota_bytes": {
+            "maximum": 5368709120.0,
+            "minimum": 1.0,
+            "title": "Owner Storage Quota Bytes",
+            "type": "integer"
+          },
+          "pending_per_owner": {
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "Pending Per Owner",
+            "type": "integer"
+          },
+          "recipe_input_max_bytes": {
+            "maximum": 67108864.0,
+            "minimum": 1.0,
+            "title": "Recipe Input Max Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generation_input_max_bytes",
+          "recipe_input_max_bytes",
+          "output_max_bytes",
+          "owner_storage_quota_bytes",
+          "pending_per_owner",
+          "daily_outputs_per_owner"
+        ],
+        "title": "ImageGenerationLimits",
+        "type": "object"
+      },
+      "ImageInput": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_count": {
+            "maximum": 67108864.0,
+            "minimum": 1.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "init",
+              "mask",
+              "control",
+              "recipe"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "uploading",
+              "processing",
+              "ready",
+              "failed",
+              "deleting",
+              "purged"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id",
+          "purpose",
+          "state",
+          "byte_count",
+          "sha256",
+          "created_at"
+        ],
+        "title": "ImageInput",
+        "type": "object"
+      },
+      "ImageInputDigest": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "input_id": {
+            "format": "uuid",
+            "title": "Input Id",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "width": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_id",
+          "sha256",
+          "width",
+          "height"
+        ],
+        "title": "ImageInputDigest",
+        "type": "object"
+      },
+      "ImageJob": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "effective_spec": {
+            "$ref": "#/components/schemas/ImageSpec"
+          },
+          "failure_code": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Code"
+          },
+          "id": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_event_sequence": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Latest Event Sequence",
+            "type": "integer"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/ImageOutput"
+            },
+            "maxItems": 4,
+            "title": "Outputs",
+            "type": "array"
+          },
+          "progress_step": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Progress Step"
+          },
+          "queue_position": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Position"
+          },
+          "resolved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedImageSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/ImageJobState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "effective_spec",
+          "resolved",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ImageJob",
+        "type": "object"
+      },
+      "ImageJobEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "cache_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "hit",
+                  "cold",
+                  "evicted"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Status"
+          },
+          "job_id": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "output_index": {
+            "anyOf": [
+              {
+                "maximum": 3.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Index"
+          },
+          "outputs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ImageOutput"
+                },
+                "maxItems": 4,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outputs"
+          },
+          "queue_position": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Position"
+          },
+          "safe_code": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Code"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ImageJobState"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          },
+          "total_steps": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Steps"
+          },
+          "type": {
+            "enum": [
+              "queued",
+              "started",
+              "progress",
+              "done",
+              "error",
+              "cancelled",
+              "reset"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "worker_residency": {
+            "anyOf": [
+              {
+                "const": "resident",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Residency"
+          }
+        },
+        "required": [
+          "job_id",
+          "sequence",
+          "at",
+          "type",
+          "state"
+        ],
+        "title": "ImageJobEvent",
+        "type": "object"
+      },
+      "ImageJobPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImageJob"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ImageJobPage",
+        "type": "object"
+      },
+      "ImageJobReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "event_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 50,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Cursor"
+          },
+          "job_id": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "queue_position": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Position"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ImageJobState"
+          }
+        },
+        "required": [
+          "job_id",
+          "state"
+        ],
+        "title": "ImageJobReceipt",
+        "type": "object"
+      },
+      "ImageJobState": {
+        "enum": [
+          "queued",
+          "reserving",
+          "running",
+          "transferring",
+          "cancelling",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "ImageJobState",
+        "type": "string"
+      },
+      "ImageLora-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": -2.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "title": "Scale"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "model_id",
+          "scale"
+        ],
+        "title": "ImageLora",
+        "type": "object"
+      },
+      "ImageLora-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "scale": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Scale",
+            "type": "string"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "model_id",
+          "scale"
+        ],
+        "title": "ImageLora",
+        "type": "object"
+      },
+      "ImageManifestDigest": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "revision": {
+            "maxLength": 120,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Revision",
+            "type": "string"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_.-]+--[A-Za-z0-9_.-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "model_id",
+          "revision",
+          "sha256"
+        ],
+        "title": "ImageManifestDigest",
+        "type": "object"
+      },
+      "ImageMode": {
+        "enum": [
+          "txt2img",
+          "img2img",
+          "fill",
+          "control"
+        ],
+        "title": "ImageMode",
+        "type": "string"
+      },
+      "ImageModelList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImageModelOption"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "limits": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageGenerationLimits"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ImageModelList",
+        "type": "object"
+      },
+      "ImageModelOption": {
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "$ref": "#/components/schemas/ImageCapabilityProfile"
+          },
+          "controls": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ImageAdapterOption"
+            },
+            "title": "Controls",
+            "type": "array"
+          },
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "loras": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ImageAdapterOption"
+            },
+            "title": "Loras",
+            "type": "array"
+          },
+          "required_dependency_count": {
+            "maximum": 16.0,
+            "minimum": 0.0,
+            "title": "Required Dependency Count",
+            "type": "integer"
+          },
+          "residency": {
+            "const": "unknown",
+            "default": "unknown",
+            "title": "Residency",
+            "type": "string"
+          },
+          "slug": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Slug",
+            "type": "string"
+          },
+          "upscalers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ImageAdapterOption"
+            },
+            "title": "Upscalers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "display_name",
+          "capability",
+          "required_dependency_count"
+        ],
+        "title": "ImageModelOption",
+        "type": "object"
+      },
+      "ImageOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_count": {
+            "maximum": 67108864.0,
+            "minimum": 1.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "classifier_diagnostic": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageClassifierDiagnostic"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "file_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "File Sha256",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "index": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "job_id": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/ImageRecipe"
+          },
+          "tag": {
+            "$ref": "#/components/schemas/ImageContentTag"
+          }
+        },
+        "required": [
+          "id",
+          "job_id",
+          "index",
+          "recipe",
+          "tag",
+          "byte_count",
+          "file_sha256",
+          "created_at"
+        ],
+        "title": "ImageOutput",
+        "type": "object"
+      },
+      "ImageOutputPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImageOutput"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ImageOutputPage",
+        "type": "object"
+      },
+      "ImageOutputSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "embed_metadata": {
+            "const": true,
+            "default": true,
+            "title": "Embed Metadata",
+            "type": "boolean"
+          },
+          "format": {
+            "const": "png",
+            "default": "png",
+            "title": "Format",
+            "type": "string"
+          }
+        },
+        "title": "ImageOutputSettings",
+        "type": "object"
+      },
+      "ImagePreset": {
+        "additionalProperties": false,
+        "properties": {
+          "defaults": {
+            "$ref": "#/components/schemas/ImageSubmitRequest-Output"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "prompt_prefix": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Prompt Prefix",
+            "type": "string"
+          },
+          "retired": {
+            "default": false,
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "name",
+          "defaults"
+        ],
+        "title": "ImagePreset",
+        "type": "object"
+      },
+      "ImagePresetCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "defaults": {
+            "$ref": "#/components/schemas/ImageSubmitRequest-Input"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "prompt_prefix": {
+            "default": "",
+            "maxLength": 1000,
+            "title": "Prompt Prefix",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "defaults"
+        ],
+        "title": "ImagePresetCreate",
+        "type": "object"
+      },
+      "ImagePresetList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ImagePreset"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ImagePresetList",
+        "type": "object"
+      },
+      "ImagePresetUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "defaults": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageSubmitRequest-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "prompt_prefix": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt Prefix"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "ImagePresetUpdate",
+        "type": "object"
+      },
+      "ImageRecipe": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "output_index": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Output Index",
+            "type": "integer"
+          },
+          "pixel_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Pixel Sha256",
+            "type": "string"
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedImageSpec"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "maximum": 4294967295.0,
+            "minimum": 0.0,
+            "title": "Seed",
+            "type": "integer"
+          },
+          "width": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resolved",
+          "output_index",
+          "seed",
+          "pixel_sha256",
+          "width",
+          "height"
+        ],
+        "title": "ImageRecipe",
+        "type": "object"
+      },
+      "ImageRecipeImport": {
+        "additionalProperties": false,
+        "properties": {
+          "exact_reproduction_available": {
+            "title": "Exact Reproduction Available",
+            "type": "boolean"
+          },
+          "missing_dependency_sha256": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Missing Dependency Sha256",
+            "type": "array"
+          },
+          "missing_input_sha256": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 3,
+            "title": "Missing Input Sha256",
+            "type": "array"
+          },
+          "recipe": {
+            "$ref": "#/components/schemas/ImageRecipe"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/ImageSubmitRequest-Output"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unavailable Reason"
+          }
+        },
+        "required": [
+          "recipe",
+          "settings",
+          "exact_reproduction_available"
+        ],
+        "title": "ImageRecipeImport",
+        "type": "object"
+      },
+      "ImageRecipeImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "replacement_inputs": {
+            "additionalProperties": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxProperties": 3,
+            "title": "Replacement Inputs",
+            "type": "object"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "title": "ImageRecipeImportRequest",
+        "type": "object"
+      },
+      "ImageSpec": {
+        "additionalProperties": false,
+        "description": "Fully specified client-side values before model-capability validation.",
+        "properties": {
+          "content_mode": {
+            "$ref": "#/components/schemas/ImageContentMode",
+            "default": "standard"
+          },
+          "control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageControl-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "guidance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Guidance",
+            "type": "string"
+          },
+          "height": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "init_image_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Init Image Id"
+          },
+          "loras": {
+            "items": {
+              "$ref": "#/components/schemas/ImageLora-Output"
+            },
+            "maxItems": 4,
+            "title": "Loras",
+            "type": "array"
+          },
+          "mask_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Id"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ImageMode",
+            "default": "txt2img"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "n": {
+            "default": 1,
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "N",
+            "type": "integer"
+          },
+          "negative_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative Prompt"
+          },
+          "output": {
+            "$ref": "#/components/schemas/ImageOutputSettings"
+          },
+          "prompt": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 4294967295.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "steps": {
+            "maximum": 150.0,
+            "minimum": 1.0,
+            "title": "Steps",
+            "type": "integer"
+          },
+          "strength": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strength"
+          },
+          "upscale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageUpscale"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "width": {
+            "maximum": 4096.0,
+            "minimum": 64.0,
+            "multipleOf": 8.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model_id",
+          "prompt",
+          "width",
+          "height",
+          "steps",
+          "guidance"
+        ],
+        "title": "ImageSpec",
+        "type": "object"
+      },
+      "ImageSubmitRequest-Input": {
+        "additionalProperties": false,
+        "description": "Root-level overrides; preset/default resolution produces an ImageSpec later.",
+        "properties": {
+          "content_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageContentMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageControl-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "guidance": {
+            "anyOf": [
+              {
+                "maximum": 30.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guidance"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 64.0,
+                "multipleOf": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "init_image_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Init Image Id"
+          },
+          "loras": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ImageLora-Input"
+                },
+                "maxItems": 4,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loras"
+          },
+          "mask_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Id"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "maximum": 4.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          },
+          "negative_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative Prompt"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageOutputSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          },
+          "preset_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Revision"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 4294967295.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "maximum": 150.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          },
+          "strength": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 1.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strength"
+          },
+          "upscale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageUpscale"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 64.0,
+                "multipleOf": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "title": "ImageSubmitRequest",
+        "type": "object"
+      },
+      "ImageSubmitRequest-Output": {
+        "additionalProperties": false,
+        "description": "Root-level overrides; preset/default resolution produces an ImageSpec later.",
+        "properties": {
+          "content_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageContentMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageControl-Output"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "guidance": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Guidance"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 64.0,
+                "multipleOf": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "init_image_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Init Image Id"
+          },
+          "loras": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ImageLora-Output"
+                },
+                "maxItems": 4,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loras"
+          },
+          "mask_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mask Id"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "n": {
+            "anyOf": [
+              {
+                "maximum": 4.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N"
+          },
+          "negative_prompt": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Negative Prompt"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageOutputSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          },
+          "preset_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Revision"
+          },
+          "prompt": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prompt"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 4294967295.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "maximum": 150.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
+          },
+          "strength": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strength"
+          },
+          "upscale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageUpscale"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "maximum": 4096.0,
+                "minimum": 64.0,
+                "multipleOf": 8.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "title": "ImageSubmitRequest",
+        "type": "object"
+      },
+      "ImageTransferReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt": {
+            "minimum": 1.0,
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "byte_count": {
+            "maximum": 67108864.0,
+            "minimum": 1.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageClassificationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fence": {
+            "minimum": 1.0,
+            "title": "Fence",
+            "type": "integer"
+          },
+          "index": {
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "job_id": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "node": {
+            "pattern": "^coire-[a-z0-9-]{1,50}$",
+            "title": "Node",
+            "type": "string"
+          },
+          "output_id": {
+            "format": "uuid",
+            "title": "Output Id",
+            "type": "string"
+          },
+          "recipe_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Recipe Sha256",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Sha256",
+            "type": "string"
+          },
+          "verified_at": {
+            "format": "date-time",
+            "title": "Verified At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "attempt",
+          "fence",
+          "node",
+          "index",
+          "output_id",
+          "byte_count",
+          "sha256",
+          "recipe_sha256",
+          "verified_at"
+        ],
+        "title": "ImageTransferReceipt",
+        "type": "object"
+      },
+      "ImageUpscale": {
+        "additionalProperties": false,
+        "properties": {
+          "factor": {
+            "enum": [
+              2,
+              4
+            ],
+            "title": "Factor",
+            "type": "integer"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "required": [
+          "model_id",
+          "factor"
+        ],
+        "title": "ImageUpscale",
+        "type": "object"
+      },
+      "ImageWorkerLoadResult": {
+        "additionalProperties": false,
+        "properties": {
+          "backend": {
+            "const": "mflux",
+            "default": "mflux",
+            "title": "Backend",
+            "type": "string"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "pid": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pid"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "maximum": 65535.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "process_create_time": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Process Create Time"
+          },
+          "reserved_bytes": {
+            "minimum": 0.0,
+            "title": "Reserved Bytes",
+            "type": "integer"
+          },
+          "safe_error": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Error"
+          },
+          "state": {
+            "enum": [
+              "starting",
+              "ready",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "instance_id",
+          "state",
+          "reserved_bytes"
+        ],
+        "title": "ImageWorkerLoadResult",
+        "type": "object"
       },
       "InstanceCreate": {
         "additionalProperties": false,
@@ -5403,6 +8433,20 @@
             ],
             "title": "Idle Ttl Seconds"
           },
+          "image_capability_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCapabilityProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ModelKind",
+            "default": "language_model"
+          },
           "manifest_sha256": {
             "anyOf": [
               {
@@ -5569,6 +8613,10 @@
               }
             ],
             "title": "Idle Ttl Seconds"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ModelKind",
+            "default": "language_model"
           },
           "placement_policy": {
             "default": "single:auto",
@@ -5741,6 +8789,18 @@
         "title": "ModelInstance",
         "type": "object"
       },
+      "ModelKind": {
+        "enum": [
+          "language_model",
+          "image_model",
+          "image_lora",
+          "control_model",
+          "upscale_model",
+          "image_classifier"
+        ],
+        "title": "ModelKind",
+        "type": "string"
+      },
       "ModelListing": {
         "additionalProperties": false,
         "description": "The user-facing shape.\n\nDeliberately narrow: no paths, no copies, no failure reasons, no repo id. What a user may\nsee about a model is what the picker needs to choose one.",
@@ -5793,6 +8853,20 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "image_capability_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCapabilityProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ModelKind",
+            "default": "language_model"
           },
           "load_state": {
             "$ref": "#/components/schemas/LoadState"
@@ -6584,6 +9658,207 @@
         ],
         "title": "OccupantReason",
         "type": "string"
+      },
+      "OpenAIImageData": {
+        "additionalProperties": false,
+        "properties": {
+          "b64_json": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "B64 Json"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "title": "OpenAIImageData",
+        "type": "object"
+      },
+      "OpenAIImageGenerationRequest": {
+        "additionalProperties": false,
+        "description": "Standard image fields plus prefixed Coire extensions.",
+        "properties": {
+          "coire_content_mode": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageContentMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "coire_preset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Preset Id"
+          },
+          "coire_preset_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Preset Revision"
+          },
+          "coire_seed": {
+            "anyOf": [
+              {
+                "maximum": 4294967295.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Seed"
+          },
+          "model": {
+            "format": "uuid",
+            "title": "Model",
+            "type": "string"
+          },
+          "n": {
+            "default": 1,
+            "maximum": 4.0,
+            "minimum": 1.0,
+            "title": "N",
+            "type": "integer"
+          },
+          "output_format": {
+            "const": "png",
+            "default": "png",
+            "title": "Output Format",
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "quality": {
+            "anyOf": [
+              {
+                "enum": [
+                  "auto",
+                  "standard",
+                  "hd",
+                  "low",
+                  "medium",
+                  "high"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quality"
+          },
+          "response_format": {
+            "default": "url",
+            "enum": [
+              "url",
+              "b64_json"
+            ],
+            "title": "Response Format",
+            "type": "string"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9]{2,4}x[0-9]{2,4}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "stream": {
+            "const": false,
+            "default": false,
+            "title": "Stream",
+            "type": "boolean"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User"
+          }
+        },
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "title": "OpenAIImageGenerationRequest",
+        "type": "object"
+      },
+      "OpenAIImageGenerationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "coire_job_id": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Coire Job Id",
+            "type": "string"
+          },
+          "created": {
+            "minimum": 0.0,
+            "title": "Created",
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/OpenAIImageData"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Data",
+            "type": "array"
+          }
+        },
+        "required": [
+          "created",
+          "data",
+          "coire_job_id"
+        ],
+        "title": "OpenAIImageGenerationResponse",
+        "type": "object"
       },
       "OpenAIImagePart": {
         "additionalProperties": false,
@@ -8011,6 +11286,102 @@
         "title": "ReservationHolder",
         "type": "string"
       },
+      "ResolvedImageSpec": {
+        "additionalProperties": false,
+        "description": "Immutable execution facts; no owner, path, URL or secret field exists.",
+        "properties": {
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/ImageManifestDigest"
+            },
+            "maxItems": 16,
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "environment_fingerprint": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Environment Fingerprint",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "$ref": "#/components/schemas/ImageInputDigest"
+            },
+            "maxItems": 3,
+            "title": "Inputs",
+            "type": "array"
+          },
+          "model_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Model Sha256",
+            "type": "string"
+          },
+          "pipeline_version": {
+            "maxLength": 100,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "title": "Pipeline Version",
+            "type": "string"
+          },
+          "preset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Id"
+          },
+          "preset_revision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preset Revision"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seeds": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Seeds",
+            "type": "array"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/ImageSpec"
+          },
+          "spec_hash": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Spec Hash",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spec",
+          "seeds",
+          "pipeline_version",
+          "environment_fingerprint",
+          "model_sha256",
+          "spec_hash"
+        ],
+        "title": "ResolvedImageSpec",
+        "type": "object"
+      },
       "RunActivity": {
         "additionalProperties": false,
         "description": "Bounded content-free tool lifecycle receipt from one user run.",
@@ -8796,6 +12167,20 @@
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "image_capability_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCapabilityProfile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ModelKind",
+            "default": "language_model"
           },
           "perplexity": {
             "anyOf": [
@@ -10314,6 +13699,685 @@
         "summary": "Get Evaluation",
         "tags": [
           "admin: evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/image-assets": {
+      "post": {
+        "description": "Admin-reviewed, pinned image acquisition through the Studio node boundary.",
+        "operationId": "add_image_asset_api_v1_admin_image_assets_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageAssetAcquireRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Add Image Asset Api V1 Admin Image Assets Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Image Asset",
+        "tags": [
+          "admin: models"
+        ]
+      }
+    },
+    "/api/v1/admin/image-coexistence-profiles": {
+      "post": {
+        "operationId": "approve_image_coexistence_profile_api_v1_admin_image_coexistence_profiles_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageCoexistenceReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageCoexistenceProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Approve Image Coexistence Profile",
+        "tags": [
+          "admin: images"
+        ]
+      }
+    },
+    "/api/v1/admin/image-coexistence-profiles/{profile_id}": {
+      "delete": {
+        "operationId": "invalidate_image_coexistence_profile_api_v1_admin_image_coexistence_profiles__profile_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Profile Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageCoexistenceProfile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Invalidate Image Coexistence Profile",
+        "tags": [
+          "admin: images"
+        ]
+      }
+    },
+    "/api/v1/admin/image-jobs": {
+      "get": {
+        "operationId": "list_admin_image_jobs_api_v1_admin_image_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_ImageActivityItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Admin Image Jobs",
+        "tags": [
+          "admin: images"
+        ]
+      }
+    },
+    "/api/v1/admin/image-jobs/{job_id}": {
+      "delete": {
+        "operationId": "kill_admin_image_job_api_v1_admin_image_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageActivityItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Kill Admin Image Job",
+        "tags": [
+          "admin: images"
+        ]
+      },
+      "get": {
+        "operationId": "inspect_admin_image_job_api_v1_admin_image_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageActivityItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Inspect Admin Image Job",
+        "tags": [
+          "admin: images"
+        ]
+      }
+    },
+    "/api/v1/admin/image-presets": {
+      "post": {
+        "operationId": "create_preset_api_v1_admin_image_presets_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImagePresetCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagePreset"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Preset",
+        "tags": [
+          "admin: images"
+        ]
+      }
+    },
+    "/api/v1/admin/image-presets/{preset_id}": {
+      "delete": {
+        "operationId": "retire_preset_api_v1_admin_image_presets__preset_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Preset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retire Preset",
+        "tags": [
+          "admin: images"
+        ]
+      },
+      "patch": {
+        "operationId": "update_preset_api_v1_admin_image_presets__preset_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "preset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Preset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImagePresetUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagePreset"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Preset",
+        "tags": [
+          "admin: images"
+        ]
+      }
+    },
+    "/api/v1/admin/image-workers/{instance_id}": {
+      "delete": {
+        "description": "Drain an idle image instance, then unload only its exact node-owned process.",
+        "operationId": "unload_admin_image_worker_api_v1_admin_image_workers__instance_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "instance_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Instance Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageWorkerLoadResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Unload Admin Image Worker",
+        "tags": [
+          "admin: images"
         ]
       }
     },
@@ -14912,6 +18976,1126 @@
         ]
       }
     },
+    "/api/v1/image-inputs": {
+      "post": {
+        "operationId": "upload_image_input_api_v1_image_inputs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_image_input_api_v1_image_inputs_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageInput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Upload Image Input",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/image-inputs/{input_id}": {
+      "delete": {
+        "operationId": "delete_image_input_api_v1_image_inputs__input_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "input_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Input Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageInput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Image Input",
+        "tags": [
+          "images"
+        ]
+      },
+      "get": {
+        "operationId": "get_image_input_api_v1_image_inputs__input_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "input_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Input Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageInput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Image Input",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/image-inputs/{input_id}/recipe": {
+      "post": {
+        "operationId": "import_recipe_settings_api_v1_image_inputs__input_id__recipe_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "input_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Input Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageRecipeImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageRecipeImport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Import Recipe Settings",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/image-outputs": {
+      "get": {
+        "operationId": "list_outputs_api_v1_image_outputs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ImageContentTag"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOutputPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Outputs",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/image-outputs/{output_id}": {
+      "delete": {
+        "operationId": "delete_output_api_v1_image_outputs__output_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "output_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Output Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageDeletionReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Output",
+        "tags": [
+          "images"
+        ]
+      },
+      "get": {
+        "operationId": "get_output_api_v1_image_outputs__output_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "output_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Output Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageOutput"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Output",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/image-outputs/{output_id}/content": {
+      "get": {
+        "operationId": "download_content_api_v1_image_outputs__output_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "output_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Output Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Coire-Image-Grant",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "X-Coire-Image-Grant",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Download Content",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/image-outputs/{output_id}/download-grants": {
+      "post": {
+        "operationId": "create_download_grant_api_v1_image_outputs__output_id__download_grants_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "output_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Output Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageDownloadGrant"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Download Grant",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/images": {
+      "get": {
+        "operationId": "list_image_jobs_api_v1_images_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ImageJobState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageJobPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Image Jobs",
+        "tags": [
+          "images"
+        ]
+      },
+      "post": {
+        "description": "Persist the job before returning its receipt. Retries with the same key replay it.",
+        "operationId": "submit_image_job_api_v1_images_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageSubmitRequest-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageJobReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Image Job",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/images/models": {
+      "get": {
+        "operationId": "list_image_models_api_v1_images_models_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageModelList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Image Models",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/images/presets": {
+      "get": {
+        "description": "Show only currently usable published presets; no job is admitted here.",
+        "operationId": "list_presets_api_v1_images_presets_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImagePresetList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Presets",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/images/{job_id}": {
+      "delete": {
+        "operationId": "cancel_image_job_api_v1_images__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Image Job",
+        "tags": [
+          "images"
+        ]
+      },
+      "get": {
+        "operationId": "get_image_job_api_v1_images__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageJob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Image Job",
+        "tags": [
+          "images"
+        ]
+      }
+    },
+    "/api/v1/images/{job_id}/events": {
+      "get": {
+        "description": "Replay durable events; recheck owner and entitlements at every poll.",
+        "operationId": "image_job_events_api_v1_images__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "x-coire-event-schema": {
+                  "$ref": "#/components/schemas/ImageJobEvent"
+                }
+              }
+            },
+            "description": "SSE frames; each data payload is an ImageJobEvent"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Image Job Events",
+        "tags": [
+          "images"
+        ]
+      }
+    },
     "/api/v1/instances": {
       "get": {
         "operationId": "list_instances_api_v1_instances_get",
@@ -15229,6 +20413,141 @@
         "summary": "Instance Events",
         "tags": [
           "instances"
+        ]
+      }
+    },
+    "/api/v1/internal/images/{job_id}/outputs/{index}": {
+      "put": {
+        "description": "Stream a bounded PNG and issue a receipt after private storage is durable.",
+        "operationId": "upload_image_output_api_v1_internal_images__job_id__outputs__index__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "maximum": 3,
+              "minimum": 0,
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-coire-node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Coire-Node"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-coire-attempt",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Coire-Attempt"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-coire-fence",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Coire-Fence"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-coire-transfer-grant",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Coire-Transfer-Grant"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageTransferReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Image Output",
+        "tags": [
+          "internal: images"
         ]
       }
     },
@@ -16557,6 +21876,88 @@
           }
         ],
         "summary": "Chat Completions",
+        "tags": [
+          "compatible"
+        ]
+      }
+    },
+    "/v1/images/generations": {
+      "post": {
+        "description": "Wait for the native job. A timeout keeps the accepted job and returns its id.",
+        "operationId": "generate_image_v1_images_generations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenAIImageGenerationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenAIImageGenerationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Generate Image",
         "tags": [
           "compatible"
         ]

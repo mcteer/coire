@@ -44,6 +44,7 @@ class StubCollector:
             disk_free_bytes=1800000000000,
             agent_cpu_percent=0.3,
             agent_rss_bytes=40 * 1024 * 1024,
+            image_worker_resident_bytes=64 * 1024 * 1024,
             collection_budget_ok=True,
             path=path,
             sampled_at=__import__("datetime").datetime.now(__import__("datetime").UTC),
@@ -136,3 +137,7 @@ class TestContractShape:
         assert "agent_cpu_percent" in body
         assert "agent_rss_bytes" in body
         assert body["collection_budget_ok"] is True
+
+    async def test_reports_measured_image_worker_footprint(self) -> None:
+        body = (await call(NodePath.MESH, AUTH)).json()
+        assert body["image_worker_resident_bytes"] == 64 * 1024 * 1024

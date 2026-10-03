@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 import threading
 import uuid
 from collections.abc import Callable
@@ -16,6 +18,8 @@ from coire_core.models.acquisition import (
 from coire_core.settings import Settings
 from coire_node.store import Store, write_atomic
 
+_MAX_JOURNAL_BYTES = 16 * 1024 * 1024
+
 
 class ReservationRefused(RuntimeError):
     def __init__(self, *, impossible: bool, required: int, committed: int, budget: int) -> None:
@@ -26,25 +30,58 @@ class ReservationRefused(RuntimeError):
         super().__init__(f"needs {required} bytes; {committed} of {budget} already committed")
 
 
+class ReservationLedgerUnavailable(RuntimeError):
+    """An existing hold journal cannot be trusted for memory admission."""
+
+
 class ReservationLedger:
     def __init__(
-        self, settings: Settings, store: Store, committed_engine_bytes: Callable[[], int]
+        self,
+        settings: Settings,
+        store: Store,
+        committed_engine_bytes: Callable[[], int],
+        *,
+        memory_lock: threading.RLock | None = None,
     ) -> None:
         self.settings = settings
         self.store = store
         self._committed_engine_bytes = committed_engine_bytes
         self._path = Path(settings.node_state_dir) / "reservations.json"
-        self._lock = threading.RLock()
+        self._lock = memory_lock or threading.RLock()
         self._items = self._load()
 
     def _load(self) -> dict[uuid.UUID, Reservation]:
+        fd = -1
         try:
-            values = json.loads(self._path.read_text())
+            fd = os.open(self._path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        except FileNotFoundError:
+            return {}
+        except OSError as exc:
+            raise ReservationLedgerUnavailable("reservation journal needs recovery") from exc
+        try:
+            info = os.fstat(fd)
+            if (
+                not stat.S_ISREG(info.st_mode)
+                or info.st_uid != os.getuid()
+                or info.st_mode & 0o077
+                or info.st_nlink != 1
+                or info.st_size > _MAX_JOURNAL_BYTES
+            ):
+                raise ReservationLedgerUnavailable("reservation journal needs recovery")
+            with os.fdopen(fd, "r", closefd=False) as source:
+                raw = source.read(_MAX_JOURNAL_BYTES + 1)
+            if len(raw) > _MAX_JOURNAL_BYTES:
+                raise ReservationLedgerUnavailable("reservation journal needs recovery")
+            values = json.loads(raw)
+            if not isinstance(values, dict):
+                raise ValueError("reservation journal must be an object")
             return {
                 uuid.UUID(key): Reservation.model_validate(value) for key, value in values.items()
             }
-        except (OSError, ValueError, TypeError):
-            return {}
+        except (OSError, ValueError, TypeError) as exc:
+            raise ReservationLedgerUnavailable("reservation journal needs recovery") from exc
+        finally:
+            os.close(fd)
 
     def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
@@ -57,11 +94,12 @@ class ReservationLedger:
         )
 
     def held_bytes(self) -> int:
-        return sum(
-            item.memory_bytes
-            for item in self._items.values()
-            if item.state is ReservationState.HELD
-        )
+        with self._lock:
+            return sum(
+                item.memory_bytes
+                for item in self._items.values()
+                if item.state is ReservationState.HELD
+            )
 
     def hold(self, request: ReservationRequest) -> tuple[Reservation, bool]:
         with self._lock:
