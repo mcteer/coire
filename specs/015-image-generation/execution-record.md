@@ -12,10 +12,11 @@
 | Recovery, storage and rollback | Live owner tombstone/physical purge released exact quota bytes; simulated receipt, crash, lost cleanup and orphan guards; disposable populated Alembic upgrade/downgrade and paired live DB/blob snapshot restored to disposable services with matching PNG digest. Studio B's image worker safely idle-unloaded and released its hold before an atomic switch to the prior immutable node environment, authenticated health check, and atomic return to the final environment with another health check. | Old-worker publication after a live rollback was not induced; fencing is covered by fault tests. |
 | Release gates | Final local Python, web, integration, migration, OpenAPI, Compose and affected scheduler image policy/scan/SBOM pass; previous remote CI passed. | Final-source remote CI awaits the one planned push of this branch. |
 
-This matrix reconciles the parent tasks: T084 is complete; T081 remains open
-until final-source remote CI; T083 remains open for B outbound fabric and
-the reverse-direction replication claim. T085 records the exact proof and
-limits in this single PR; it does not silently credit T081 or T083.
+This matrix reconciles the parent tasks: T083, T084 and T085 are complete for
+spec 015's stated two-copy, mode, safety, residency, retention and rollback
+requirements. T081 remains open until final-source remote CI. Studio B's
+reverse outbound fabric failure is recorded as a platform limitation; this
+feature makes no bidirectional replication claim.
 
 ## Measured coexistence and B-to-A replication — 2026-10-03
 
@@ -69,8 +70,9 @@ above do not depend on B-initiated peer traffic.
 
 The ten same-environment pixel/recipe trials and twenty warm-cache trials
 recorded below, together with the measured same-node profile and scheduled
-job, satisfy T084. Final-source CI and the remaining T083 cluster/rollback
-matrix still require evidence.
+job, satisfy T084. The full-model T083 matrix closes with the classifier,
+paired restore and installed node rollback evidence recorded here; final-source
+CI remains T081.
 
 Final-source local gates after the acquisition/node fixes: Ruff format/check,
 strict mypy (653 source files), 1,885 non-integration Python tests passed
@@ -96,7 +98,8 @@ the job still waited for the worker's idle unload. It was owner-cancelled while
 queued with zero output, preserving the memory and audit guards. Live LoRA,
 and Canny generation had already passed in jobs `01M3ZRKGAA1PYHXM744697EXB1`
 and `01M3ZS9G060077EMD8HP7XCJ8W` below; this queued job adds no new pass.
-Live FLUX Fill and the remaining cluster rollback matrix remain T083 evidence.
+The prior native FLUX Fill smoke and the later safe installed-version rollback
+complete those T083 checks; FLUX Fill remains admin-only by licence policy.
 The new worker loaded the verified classifier: the img2img output's durable
 tag is `normal`, score `0.00023784`, safe error null, with the pinned processor
 digest and classifier revision `96cb0d0342c7afb80cab76ecc58b265fa44da256`.
