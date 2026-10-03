@@ -361,7 +361,10 @@ class Model(BaseModel):
                 raise ValueError("this auxiliary kind cannot bind a base model")
         elif self.backend in {EngineBackend.MFLUX, EngineBackend.AUXILIARY}:
             raise ValueError("language_model backend cannot be image or auxiliary")
-        if self.kind not in AUXILIARY_IMAGE_KINDS and self.capability_profile.compatible_base_model_id:
+        if (
+            self.kind not in AUXILIARY_IMAGE_KINDS
+            and self.capability_profile.compatible_base_model_id
+        ):
             raise ValueError("only auxiliary image assets can bind a base model")
         return self
 
