@@ -28,6 +28,11 @@ checkpoint includes a speculative head and is not needed for the base roster ent
 
 The registry slug is `mlx-community--Qwen3.8-Flash-Next-4bit`. It appears in the
 user model picker only after validation, both verified copies, and publication.
+Visual validation uses a deterministic 512×512 high-entropy image and records
+the supported pixel, encoded-byte and incremental encoder/cache memory bounds.
+The model's serialized weights are accounted for by the base reservation once.
+The native smoke formats the image prompt with the installed `mlx-vlm` chat
+template; a literal `<image>` prefix is not valid for this architecture.
 
 ```bash
 scripts/coire model add mlx-community/Qwen3.8-27B-8bit \

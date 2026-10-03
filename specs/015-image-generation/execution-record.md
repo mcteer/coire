@@ -1,5 +1,53 @@
 # Feature 015 execution record
 
+## Native full-model cancellation and coexistence probe — 2026-10-03
+
+A real Studio B Z-Image job `01M3ZXBPQD50BC9F6W69WW3DS0` reached the node
+journal's `running` state. The authenticated core cancel request returned 202;
+the node journal became `cancelled` in **0.77 seconds** and recorded
+`scratch_cleaned=true`. The core job reached `cancelled` with
+`cleanup_state=cleaned`. This is a production-model node and scheduler
+cancellation check; the earlier tiny-model test provides step-progress timing.
+
+A 75-second same-node probe on Studio B used the published Qwen2.5 Coder
+0.5B variant and the Z-Image base. It collected 91 chat streams with p95 first
+token 688.84 ms and median decode 109.91 tokens/s. The image job stayed queued
+because the combination has no approved coexistence profile; it was cancelled
+without a generation. The probe does **not** satisfy the 15-minute mixed-load
+gate or authorize co-residency. The benchmark now requests OpenAI stream usage
+and queries the Prometheus metric's actual `_milliseconds_bucket` suffix.
+
+The separate Qwen3.8 Flash Next 125B MLX 4-bit acquisition passed native
+512×512 visual generation on Studio B. Its audited workflow verified all
+111,546,653,418 selected bytes on both Studios after an operator fabric copy,
+then published the ready default variant. The authenticated catalog lists it;
+a warm gateway completion on Studio A returned `blue` with HTTP 200 in 6.0 s.
+Its first cold gateway request exceeded a 180-second client timeout while the
+node checked the 111.5 GB store and loaded the bare `mlx_vlm.server`; the
+engine subsequently became ready. The operator copy does not prove unattended
+replication, and the cold-start delay is a user-facing limitation.
+
+## Live LoRA and ControlNet generation — 2026-10-03
+
+The published Z-Image LoRA completed job `01M3ZRKGAA1PYHXM744697EXB1` on
+Studio B with one 258,910-byte private PNG (pixel SHA-256
+`053edd5f9338e3a7b6e81ebac9781de2a9fcc0a8da9b47474a057f0d947b3c81`).
+Its worker was idle-unloaded and the core reservation released. A stale earlier
+worker record was reconciled only after its private job journal and a same-user
+process census proved that no process still held the reservation.
+
+The published Union 2.1 Canny ControlNet completed job
+`01M3ZS9G060077EMD8HP7XCJ8W` on Studio B with one 228,622-byte private PNG
+(pixel SHA-256
+`47766e020a8f81e4a20be4a2bc1f02ffecc8ed656e13fcc4ee62bd0ba0dd277c`).
+This live run exposed double counting of the base model in the control asset's
+placement estimate. The scheduler now adds only the incremental control memory;
+the job moved from queued to reserving after the corrected build was deployed.
+Both outputs were marked `unknown` by the currently unverified classifier, so
+they do not close the classifier acceptance gate. The full local Python suite
+after these fixes and the stream usage contract passed **1,900 tests, 149 skipped**;
+144 web tests, Ruff, strict mypy, TypeScript, and OpenAPI freshness passed.
+
 ## Live control-plane generation and gallery — 2026-10-02
 
 ### Continuation: upscale, recipe and classifier scheduling
@@ -2247,15 +2295,16 @@ T075 was reconciled in the final-source matrix below.
 
 | Boundary | Local evidence | Required remaining evidence |
 | --- | --- | --- |
-| Native image modes | Tiny offline Z-Image txt2img/img2img, ordered LoRA replacement, cancellation, cleanup and cache smoke passed; Fill, Union Canny and SeedVR2 have typed binding, local preflight, mode-specific unit smokes and physical hold guards. | Operator must validate both full Studio copies and execute every advertised mode with real pinned assets (T083). |
-| OpenAI-compatible and owner API | Image route contracts, SSE/receipt, owner input/output, entitlement and grant tests pass; OpenAPI and generated web types are current. | Browser journeys and final source CI (T081/T082). |
-| Authorization and failure recovery | Unit/contract matrix covers revoked keys/grants, explicit entitlement, cancellation/publication arbitration, lost cleanup acknowledgment, parser crash, full disk, partial batch and reboot journal replay. Local simulated classifier failure passed. | Full-model healthy-node cancel timing (T041/T083). |
-| Placement and coexistence | Node and core held-memory accounting, profile binding/invalidation, uncertainty and simulated chat/image contention tests pass locally; production admission remains disabled by default. | Cross-process PostgreSQL admission, then operator 15-minute mixed benchmark (T065/T084). |
-| Reproduction and cache | Local tiny fixture has 20 warm prompt-cache trials; cold/hit/evicted per-job observations are typed. | Operator 10 same-environment full-model reproduction trials and 20 warm-cache trials (T084). |
-| Packaging and operations | Previous CI checkpoint passed all jobs; local affected-image policy, scans and SBOM checks are recorded above. | Final-source CI integration/build/scan and immutable native node/text/VLM smoke (T081). |
+| Native image modes | Tiny offline mode matrix, two-copy native validation of Z-Image, LoRA, Union Canny, SeedVR2 and FLUX Fill; live txt2img, img2img and 2× upscale succeeded. | Live LoRA/control/fill, classifier, native replica, cancellation and rollback gates remain (T083). |
+| OpenAI-compatible and owner API | Image contracts, six-frame live SSE replay, receipt and grant flows; browser keyboard, focus, light/dark and 1024/1440 px checks passed (T082). | Final-source CI (T081). |
+| Authorization and failure recovery | Unit/contract matrix covers revoked keys/grants, entitlement, cancellation/publication arbitration, lost cleanup acknowledgment, parser crash, full disk, partial batch and reboot journal replay. Live queued cancellation reached terminal with zero output. | Full-model healthy-node cancel timing and retention/rollback checks (T083). |
+| Placement and coexistence | Cross-process PostgreSQL admission and lease tests, profile invalidation and simulated chat/image contention passed (T065). Production admission remains disabled by default. | Operator 15-minute same-node mixed benchmark and measured profile approval (T084). |
+| Reproduction and cache | Ten full-model same-environment trials had one identical pixel digest and imported effective recipes; twenty full-model warm-cache trials succeeded with durable `hit`/`resident` events. | 15-minute mixed benchmark only (T084). |
+| Packaging and operations | Complete local Python suite passed 1,899 tests, 149 skipped; both immutable node environments installed; Studio A re-adopted text and served synthetic VLM. Prior CI checkpoints passed. | Final-source CI after GHCR 429 failures, root-owned Standard-QoS plist install and classifier (T081/T083). |
 
-The parent task list is the acceptance authority. T041, T065 and T081–T085
-remain unchecked until their stated evidence exists. Principles
+The parent task list is the acceptance authority. T041 and T065 are checked;
+T082 is checked; T081 and T083–T085 remain unchecked until their stated
+evidence exists. Principles
 I–VII and II-a are addressed in the [plan](plan.md#constitution-check) and
 draft PR #90. No full-model or real-cluster result is inferred from the tiny
 fixture.
@@ -2393,3 +2442,30 @@ hardware/runtime/manifest hashes. It now takes the registered GPU core count
 and uses the exact fingerprint formula, including the node name. Its three
 focused tests pass, including a case where otherwise identical Studios yield
 different identities. The 15-minute real mixed workload remains open.
+
+The latest complete local Python run passed **1,900 tests, 149 skipped** after
+the SSE, scheduler file-mount, worker retention and benchmark corrections.
+The pinned native node build was rebuilt from 87 locked macOS arm64 wheels
+and installed as `/opt/coire/envs/0.2.0-3f3af615c14f` on both Studios. Studio A's
+agent restarted into that environment and returned `/ready` 200. Its installed
+root-owned LaunchDaemon remains `ProcessType=Background`.
+
+The old Studio B worker had already stopped and removed its private record,
+but the core held its image reservation after a lost stop reply. The idle
+sweeper correctly kept the instance `draining` because the old agent returned
+503 without a durable stop proof. The node now persists exact stopped-instance
+proof across restarts. For preexisting lost records, it requires a matching
+private fenced job journal, absent private worker directory, free loopback
+control port and complete same-user process census before returning stop proof.
+The current B host has 34 matching private journals, no worker record and no
+same-user bootstrap process; core reconciliation remains pending until B's
+active model acquisition finishes and the updated node process restarts.
+Fourteen focused node supervisor tests pass, including a lost-record process
+census and restart replay. No reservation was manually released.
+
+CI run `37087860568` failed only when GHCR returned HTTP 429 fetching the
+pinned `uv` base image in integration. Run `37088283134` saw the same GHCR 429
+across several parallel image builds. These are external registry failures,
+not test assertions. Superseded run `37088504867` was cancelled to reduce
+duplicate CI; the workflow now cancels older PR runs and limits the build
+matrix to two simultaneous jobs. Final-source CI remains open.

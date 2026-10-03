@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import httpx
@@ -376,6 +378,53 @@ def test_stop_term_confirms_death_before_releasing_hold(
                 instance_id=uuid.uuid4(), reason="admin", requested_at=datetime.now(UTC)
             )
         )
+
+
+def test_lost_stop_record_requires_matching_journal_and_empty_process_census(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    settings, store, request = _setup(tmp_path)
+    manager = supervisor.ImageProcessSupervisor(
+        settings, store, lambda: 0, memory_total_bytes=10_000
+    )
+    manager.state_root.mkdir(mode=0o700, parents=True)
+    journal_root = manager.state_root.parent / "image-jobs"
+    journal_root.mkdir(mode=0o700)
+    (journal_root / "prior.json").write_text("{}")
+    monkeypatch.setattr(supervisor, "read_image_journal", lambda path: None)
+    monkeypatch.setattr(supervisor, "_loopback_port_free", lambda port: True)
+    monkeypatch.setattr(psutil, "process_iter", lambda: [])
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        manager.stop(_unload(request))
+
+    monkeypatch.setattr(
+        supervisor,
+        "read_image_journal",
+        lambda path: SimpleNamespace(request=SimpleNamespace(instance_id=request.instance_id)),
+    )
+    expected = [
+        "python",
+        "-m",
+        "coire_node.image_runtime.bootstrap",
+        str(manager.state_root / str(request.instance_id) / "launch.json"),
+    ]
+    monkeypatch.setattr(
+        psutil,
+        "process_iter",
+        lambda: [
+            SimpleNamespace(
+                uids=lambda: SimpleNamespace(real=os.getuid()),
+                cmdline=lambda: expected,
+            )
+        ],
+    )
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        manager.stop(_unload(request))
+
+    monkeypatch.setattr(psutil, "process_iter", lambda: [])
+    stopped = manager.stop(_unload(request))
+    assert stopped.safe_error == "worker_stopped"
+    assert manager.stopped_path.exists()
 
 
 def test_stop_escalates_to_kill_within_grace(

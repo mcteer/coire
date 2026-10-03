@@ -116,12 +116,19 @@ class ChatMessage(BaseModel):
         return value
 
 
+class EngineStreamOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    include_usage: bool
+
+
 class ChatCompletionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: uuid.UUID
     messages: list[ChatMessage] = Field(min_length=1)
     stream: bool = False
+    stream_options: EngineStreamOptions | None = None
     max_tokens: int | None = Field(default=None, ge=1)
     temperature: float | None = Field(default=None, ge=0)
     top_p: float | None = Field(default=None, ge=0, le=1)
@@ -163,12 +170,6 @@ class AnthropicMessagesRequest(BaseModel):
     mcp_servers: list[dict[str, Any]] | None = None
     coire_wait_for_model: bool = True
     coire_affinity_node: str | None = Field(default=None, pattern=r"^coire-[a-z0-9-]+$")
-
-
-class EngineStreamOptions(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    include_usage: bool
 
 
 class EngineChatRequest(BaseModel):

@@ -20,6 +20,10 @@ def test_private_blob_volume_is_limited_to_api_and_publisher() -> None:
     assert "coire-blobs:/opt/coire/blobs" in services["coire-scheduler"]["volumes"]
     assert "coire-chat-derived:/opt/coire/chat/derived:ro" in services["coire-scheduler"]["volumes"]
     assert services["coire-scheduler"]["environment"]["IMAGE_BLOB_ROOT"] == "/opt/coire/blobs"
+    assert (
+        services["coire-scheduler"]["environment"]["IMAGE_WORKER_IDLE_TTL_S"]
+        == "${COIRE_IMAGE_WORKER_IDLE_TTL_S:-900}"
+    )
     assert "--chown=65532:65532 /volume/blobs /opt/coire/blobs" in API_IMAGE.read_text()
     for name, service in services.items():
         if name not in {"coire-api", "coire-scheduler"}:

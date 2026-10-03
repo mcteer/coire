@@ -222,7 +222,7 @@ async def test_bound_lora_stack_preserves_order_and_rejects_changed_base() -> No
     )
     assert with_control is not None
     assert [item.model_id for item in with_control[0]] == [control_id]
-    assert with_control[1] == 12 * 1024**3
+    assert with_control[1] == 4 * 1024**3
     adapters[first_id].capability_profile = {"compatible_base_model_id": str(uuid.uuid4())}
     assert (
         await image_dispatch._bound_loras(session, spec, cast(ModelRow, base), from_preset=False)

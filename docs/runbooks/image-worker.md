@@ -258,3 +258,7 @@ worker has stopped, it can retry the same unload after a node-agent restart.
 The node returns that proof only for the matching instance ID. A missing proof
 keeps the core reservation draining for operator reconciliation; never release
 the hold from an absent process record alone.
+For an older worker with no stop proof, the node may confirm absence only when
+its private fenced job journal names that instance, its private worker directory
+is gone, its loopback control port is free, and a same-user process census finds
+no matching bootstrap child. Any unreadable process or journal keeps the hold.

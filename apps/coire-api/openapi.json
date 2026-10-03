@@ -2168,6 +2168,16 @@
             "title": "Stream",
             "type": "boolean"
           },
+          "stream_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngineStreamOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "temperature": {
             "anyOf": [
               {
@@ -4211,6 +4221,20 @@
         ],
         "title": "EngineBackend",
         "type": "string"
+      },
+      "EngineStreamOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "include_usage": {
+            "title": "Include Usage",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "include_usage"
+        ],
+        "title": "EngineStreamOptions",
+        "type": "object"
       },
       "EvaluationVerdict": {
         "enum": [

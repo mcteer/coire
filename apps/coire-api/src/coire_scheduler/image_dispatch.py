@@ -204,7 +204,7 @@ async def _bound_loras(
             or control.memory_estimate_bytes < (base.memory_estimate_bytes or 0)
         ):
             return None
-        overhead += control.memory_estimate_bytes
+        overhead += control.memory_estimate_bytes - (base.memory_estimate_bytes or 0)
         manifests.append(
             ImageManifestDigest(
                 model_id=control.id,

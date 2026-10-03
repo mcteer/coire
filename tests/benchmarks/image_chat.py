@@ -157,6 +157,7 @@ async def _chat(client: httpx.AsyncClient, model: str, node: str) -> ChatSample:
             "messages": [{"role": "user", "content": "Describe a blue square in one sentence."}],
             "max_tokens": 64,
             "stream": True,
+            "stream_options": {"include_usage": True},
             "coire_affinity_node": node,
         },
         timeout=120.0,
@@ -268,7 +269,10 @@ async def _node_identity(client: httpx.AsyncClient, name: str) -> tuple[int, str
 
 
 async def _gateway_overhead(client: httpx.AsyncClient) -> float | None:
-    query = "histogram_quantile(0.95, sum by (le) (rate(coire_gateway_overhead_duration_ms_bucket[5m])))"
+    query = (
+        "histogram_quantile(0.95, sum by (le) "
+        "(rate(coire_gateway_overhead_duration_ms_milliseconds_bucket[5m])))"
+    )
     response = await client.get("/api/v1/query", params={"query": query})
     response.raise_for_status()
     rows = response.json().get("data", {}).get("result", [])

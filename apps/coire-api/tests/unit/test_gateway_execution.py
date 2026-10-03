@@ -28,6 +28,7 @@ from coire_api.gateway.usage import UsageTracker
 from coire_core.models.gateway import (
     ChatCompletionRequest,
     ChatMessage,
+    EngineStreamOptions,
     GatewayProtocol,
     UsageOutcome,
 )
@@ -47,6 +48,15 @@ def test_text_payload_adapters_keep_registry_path_private_and_preserve_content()
     assert canonical["stream"] is True
     assert canonical["stream_options"] == {"include_usage": True}
     assert "coire_wait_for_model" not in compatible
+    with_usage = ChatCompletionRequest(
+        model=model_id,
+        messages=messages,
+        stream=True,
+        stream_options=EngineStreamOptions(include_usage=True),
+    )
+    assert compatible_text_payload(with_usage, "/owned/model")["stream_options"] == {
+        "include_usage": True
+    }
 
 
 def test_shared_usage_binds_only_registry_resolved_identity() -> None:

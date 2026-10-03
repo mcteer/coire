@@ -92,6 +92,7 @@ async def test_probes_collect_stream_usage_fenced_progress_and_node_footprint() 
         if request.url.path == "/v1/chat/completions":
             assert request.headers["Authorization"] == "Bearer user-key"
             assert request.read().decode().find('"coire_affinity_node":"coire-edge-b"') >= 0
+            assert b'"stream_options":{"include_usage":true}' in request.content
             return httpx.Response(
                 200,
                 text=(
@@ -135,6 +136,7 @@ async def test_probes_collect_stream_usage_fenced_progress_and_node_footprint() 
                 ],
             )
         if request.url.path == "/api/v1/query":
+            assert "coire_gateway_overhead_duration_ms_milliseconds_bucket" in str(request.url)
             return httpx.Response(200, json={"data": {"result": [{"value": [0, "12.5"]}]}})
         raise AssertionError(f"unexpected path {request.url.path}")
 

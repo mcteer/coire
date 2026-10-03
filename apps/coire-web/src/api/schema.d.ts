@@ -2893,6 +2893,7 @@ export interface components {
              * @default false
              */
             stream: boolean;
+            stream_options?: components["schemas"]["EngineStreamOptions"] | null;
             /** Temperature */
             temperature?: number | null;
             /** Tool Choice */
@@ -3631,6 +3632,11 @@ export interface components {
          * @enum {string}
          */
         EngineBackend: "mlx_lm" | "mlx_vlm" | "mflux" | "auxiliary";
+        /** EngineStreamOptions */
+        EngineStreamOptions: {
+            /** Include Usage */
+            include_usage: boolean;
+        };
         /**
          * EvaluationVerdict
          * @enum {string}

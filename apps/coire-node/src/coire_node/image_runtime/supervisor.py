@@ -30,6 +30,8 @@ from coire_core.models.image_worker import (
 )
 from coire_core.settings import Settings
 from coire_node.footprint import resident_bytes as measured_footprint_bytes
+from coire_node.image_jobs import ImageJournalUnavailable
+from coire_node.image_jobs import _read as read_image_journal
 from coire_node.image_runtime.bootstrap import (
     ImageWorkerBootstrapError,
     _read_private,
@@ -124,6 +126,40 @@ def _loopback_port_free(port: int) -> bool:
             probe.bind(("127.0.0.1", port))
         except OSError:
             return False
+    return True
+
+
+def _instance_process_absent(state_root: Path, instance_id: uuid.UUID, port: int) -> bool:
+    """Prove a lost private record has no same-user worker or bound control port."""
+    if (state_root / str(instance_id)).exists() or not _loopback_port_free(port):
+        return False
+    journal_root = state_root.parent / "image-jobs"
+    try:
+        journals = list(journal_root.glob("*.json"))
+        if not journals or len(journals) > 4096:
+            return False
+        if not any(
+            (entry := read_image_journal(path)) is not None
+            and entry.request.instance_id == instance_id
+            for path in journals
+        ):
+            return False
+    except (ImageJournalUnavailable, OSError):
+        return False
+    expected = [
+        "-m",
+        "coire_node.image_runtime.bootstrap",
+        str(state_root / str(instance_id) / "launch.json"),
+    ]
+    try:
+        for process in psutil.process_iter():
+            if process.uids().real != os.getuid():
+                continue
+            command = process.cmdline()
+            if not command or command[-3:] == expected:
+                return False
+    except (psutil.Error, OSError, ValueError):
+        return False
     return True
 
 
@@ -297,20 +333,34 @@ class ImageProcessSupervisor:
                 ):
                     return self._last_stopped
                 if not self.record_path.exists():
-                    try:
-                        stopped = ImageWorkerLoadResult.model_validate_json(
-                            _read_private(self.stopped_path, 4096)
-                        )
-                    except (ImageWorkerBootstrapError, OSError, ValueError):
-                        raise ImageProcessUnavailable() from None
-                    if (
-                        stopped.instance_id == request.instance_id
-                        and stopped.state == "failed"
-                        and stopped.reserved_bytes == 0
-                        and stopped.safe_error == "worker_stopped"
+                    if self.stopped_path.exists():
+                        try:
+                            stopped = ImageWorkerLoadResult.model_validate_json(
+                                _read_private(self.stopped_path, 4096)
+                            )
+                        except (ImageWorkerBootstrapError, OSError, ValueError):
+                            raise ImageProcessUnavailable() from None
+                        if (
+                            stopped.instance_id == request.instance_id
+                            and stopped.state == "failed"
+                            and stopped.reserved_bytes == 0
+                            and stopped.safe_error == "worker_stopped"
+                        ):
+                            self._last_stopped = stopped
+                            return stopped
+                        raise ImageProcessUnavailable()
+                    if _instance_process_absent(
+                        self.state_root, request.instance_id, self.settings.node_image_worker_port
                     ):
-                        self._last_stopped = stopped
-                        return stopped
+                        result = ImageWorkerLoadResult(
+                            instance_id=request.instance_id,
+                            state="failed",
+                            reserved_bytes=0,
+                            safe_error="worker_stopped",
+                        )
+                        write_atomic(self.stopped_path, result.model_dump_json().encode("utf-8"))
+                        self._last_stopped = result
+                        return result
                     raise ImageProcessUnavailable()
                 try:
                     record = ImageWorkerProcessRecord.model_validate_json(
