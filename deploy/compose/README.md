@@ -78,11 +78,15 @@ Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 
 
 Image admission is reserved behind `COIRE_IMAGE_ENABLED` (default `false`). These values
 are wired into the API and applicable scheduler settings. The `coire-blobs` volume is mounted
-only by the API; the isolated file worker uses dedicated `images` subpaths of its existing
+by the API for private transfer and by the scheduler for verified publication; the isolated
+file worker uses dedicated `images` subpaths of its existing
 original/derived mounts. Basic job, owner input, and output routes now exist, but advanced
 generation modes, measured chat coexistence and required operator gates remain incomplete.
 Keep admission disabled until the parent feature acceptance gates pass; see
 [`docs/runbooks/image-generation.md`](../../docs/runbooks/image-generation.md).
+For development acceptance involving recipe imports, init images, masks, or control
+inputs, start the file worker with `COMPOSE_PROFILES=image-files` alongside
+`COIRE_IMAGE_ENABLED=true`. The admission flag alone does not start this profile.
 The file worker reads image inputs from `FILE_WORKER_IMAGE_INPUT_ROOT`
 (`/opt/coire/chat/originals/images`), a read-only namespace containing generated UUID
 names. Its authenticated internal routes accept an ID, size and SHA-256, never a path.

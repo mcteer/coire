@@ -7,6 +7,12 @@ until the unchecked tasks and acceptance matrix in
 a simulated worker test does not prove that a Studio can generate, cancel, clean up and
 publish a real batch.
 
+During an isolated development acceptance run that exercises image inputs or recipe
+imports, set `COMPOSE_PROFILES=image-files` as well as `COIRE_IMAGE_ENABLED=true`
+when running `deploy/compose/coire-up --build`. The flag alone leaves the private
+file worker outside the current Compose release, so input processing retries as
+`recipe worker unavailable`.
+
 ## Acquire and validate an image asset
 
 An active human admin submits `POST /api/v1/admin/image-assets` with a Hub `repo_id`,
