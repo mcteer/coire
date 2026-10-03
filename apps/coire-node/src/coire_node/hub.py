@@ -29,6 +29,7 @@ from huggingface_hub.errors import (
 )
 
 from coire_core.image_assets import (
+    FLUX_FILL_REPO_ID,
     SEEDVR2_3B_REPO_ID,
     has_control_union_layout,
     has_seedvr2_3b_layout,
@@ -207,6 +208,19 @@ def inspect(
         else getattr(card_data, "license", None)
     )
     license_id = card_license if isinstance(card_license, str) and card_license else None
+    if license_id == "other" and repo_id == FLUX_FILL_REPO_ID:
+        license_name = (
+            card_data.get("license_name")
+            if isinstance(card_data, dict)
+            else getattr(card_data, "license_name", None)
+        )
+        license_link = (
+            card_data.get("license_link")
+            if isinstance(card_data, dict)
+            else getattr(card_data, "license_link", None)
+        )
+        if license_name == "flux-1-dev-non-commercial-license" and license_link == "LICENSE.md":
+            license_id = license_name
     if license_id is None:
         license_id = next(
             (tag.removeprefix("license:") for tag in info.tags or [] if tag.startswith("license:")),

@@ -333,6 +333,18 @@ files from a running job's private namespace.
 
 ## Rollback and diagnostics
 
+If acquisition fails during Studio-to-Studio import, query authenticated
+`/node/data-link` on both Studios and verify each node's `.fabric:9401` listener
+and peer reachability from the **running node process**. A successful `nc` or
+`httpx` command over SSH does not prove that the launchd daemon can connect:
+macOS local-network privacy can give the daemon `Errno 65` while the SSH login
+process succeeds. [Apple's local-network privacy technote](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy)
+describes different responsible-process treatment. Keep acquisition failed and
+image admission disabled until the installed daemon itself reports an up data
+link and an unassisted two-copy import passes. A manual fabric copy may help
+diagnose validation, but it does not pass the replication release gate. Record
+the exact OS policy and remediation in the cluster execution record.
+
 Disable new admission with `COIRE_IMAGE_ENABLED=false` through the documented compose
 configuration. Existing jobs still need cancellation or completion reconciliation;
 turning the flag off does not prove a worker stopped. Drain them and verify node scratch

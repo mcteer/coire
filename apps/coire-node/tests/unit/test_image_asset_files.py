@@ -285,3 +285,37 @@ def test_seedvr2_empty_config_is_accepted_only_for_pinned_layout(
     assert hub.inspect("numz/SeedVR2_comfyUI").license_id == "apache-2.0"
     with pytest.raises(hub.HubError):
         hub.inspect("other/upscaler")
+
+
+def test_flux_fill_custom_licence_requires_exact_card_name_and_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = tmp_path / "config.json"
+    config.write_text("{}")
+
+    class FakeApi:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def model_info(self, repo_id: str, **kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(
+                sha=REVISION,
+                tags=["license:other"],
+                card_data={
+                    "license": "other",
+                    "license_name": "flux-1-dev-non-commercial-license",
+                    "license_link": "LICENSE.md",
+                },
+                siblings=[],
+            )
+
+    def fake_download(repo_id: str, filename: str, **kwargs: object) -> str:
+        if filename == "tokenizer_config.json":
+            raise EntryNotFoundError("missing")
+        return str(config)
+
+    monkeypatch.setattr(hub, "HfApi", FakeApi)
+    monkeypatch.setattr(hub, "hf_hub_download", fake_download)
+    result = hub.inspect("black-forest-labs/FLUX.1-Fill-dev")
+    assert result.license_id == "flux-1-dev-non-commercial-license"
+    assert hub.inspect("other/fill").license_id == "other"
