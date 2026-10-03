@@ -352,6 +352,9 @@ async def admit_image_job(
             state=ImageJobState.QUEUED,
         )
         session.add(row)
+        # The event row has only a scalar FK, so SQLAlchemy cannot infer that
+        # the new job must be inserted first when it flushes both pending rows.
+        await session.flush()
         session.add(
             ImageJobEventRow(
                 job_id=job_id,
