@@ -1,5 +1,84 @@
 # Feature 015 execution record
 
+## Measured coexistence and B-to-A replication — 2026-10-03
+
+The Studio B full-length direct-node trial below is the physical evidence for the
+audited coexistence profile `85820d5b-3f56-427e-a8c9-6ad9d1df8f21`.
+The submitted report used B's actual 60-GPU-core hardware fingerprint,
+the `0.2.0` node and `mflux-0.20.0` runtime fingerprint, 512 × 512/four-step
+bounds, 907 seconds, 703 near-4,000-token streamed chats, p95 first token
+994.39 ms, node-scoped gateway overhead p95 14.74 ms, 22 completed images,
+observed progress, and no sampled swap or `pmset` thermal alarm. The admin API
+returned HTTP 201 `approved` and recorded `image.coexistence.approved`.
+This profile expires 2026-10-04 15:34:19 UTC; it is not a permanent guarantee.
+The node's `thermal_state` API value was `unknown`, so the macOS thermal probe
+is the evidence for no alarm.
+
+After starting a ready Qwen2.5-Coder-0.5B `mcp-acceptance` instance
+`330ed5d6-e689-4236-8e3a-b822f24390f1` pinned to Studio B, the normal
+`POST /api/v1/images` scheduler path accepted four-step job
+`01M418D4WWGMD4KJVN5MDDM2TQ`. Its durable row selected B's node ID
+`5c2ea3b9-14e5-4ea7-8b8e-567040d1324c`; the owner API reached
+`succeeded` with one private output. The acceptance Compose run explicitly
+enabled `COIRE_IMAGE_ENABLED=true`, `COIRE_CHAT_ENABLED=true`, and the
+`image-files` profile. These flags reset to their documented disabled defaults
+when omitted from a later `coire-up` invocation.
+
+An audited acquisition of a second 4-bit variant exposed three previously
+unmeasured workflow paths: an existing MLX source was skipped instead of
+materialized, retry reused that stale no-op result, and replication selected
+a skipped pull job instead of the conversion job. Regression tests now cover
+all three. The native conversion helper also stopped pre-creating the MLX
+output directory, which `mlx_lm.convert` rejects. Compatible quantization
+now copies exact verified weights atomically instead of degrading them through
+dequantization and requantization; differing recipes still convert and validate.
+The validator now accepts MLX's `chat_template.jinja` output. A fresh audited
+acquisition `4a1eadca-9c07-4532-8dc2-bebb2a0d51fc` then completed
+conversion, validation and replication. Both `variant_copies` rows for variant
+`9456ef58-de35-4c49-ac56-d75cce4b6a90` are verified, with the same manifest
+SHA-256 `ab699c231233deb3053a3648906991bbb163e9466409e05718d67c1a22d00540`:
+B is origin and A is replica. No model weight moved through core.
+
+The final node wheel was installed on both Studios and their single system
+LaunchDaemon processes restarted. A's authenticated `/node/data-link` reports
+`ip_state=up`. B's reports `ip_state=down`, with `[Errno 65] No route to host`
+for its outbound peer probe, although B can serve the verified A-initiated
+replica transfer and the signed Python process can reach A over the control
+network. The operator-approved host and per-user Ethernet exemption preferences
+are present for exact peer `/32` addresses after reboot. This asymmetric
+macOS Local Network result remains a cluster acceptance gap in T083; no
+bidirectional fabric claim is made. The same-node profile and scheduled job
+above do not depend on B-initiated peer traffic.
+
+The ten same-environment pixel/recipe trials and twenty warm-cache trials
+recorded below, together with the measured same-node profile and scheduled
+job, satisfy T084. Final-source CI and the remaining T083 cluster/rollback
+matrix still require evidence.
+
+Final-source local gates after the acquisition/node fixes: Ruff format/check,
+strict mypy (653 source files), 1,885 non-integration Python tests passed
+(18 skipped, 159 deselected), nine simulated image integration tests passed,
+144 web tests passed, ESLint and TypeScript/Vite build passed, OpenAPI freshness
+and Compose config passed. Seven image migration/accelerator PostgreSQL tests,
+including populated upgrade and guarded downgrade, passed against a disposable
+local PostgreSQL 17 container that was removed afterward. The final scheduler
+image passed `scripts/image-policy.sh`, Trivy high/critical scan (zero findings)
+and Syft SPDX export at `/tmp/coire-015-scheduler-final.spdx.json`. The policy
+script was corrected for macOS Bash 3.2's empty-array expansion; the API image
+also passed the corrected policy script. The final-source remote CI run is
+pending a single branch push.
+
+Under the installed Standard-QoS node services, audited retry of the pinned
+Falconsai classifier model `ee4fe044-b313-40c6-846e-785bfc186de4` reached
+`ready` with verified copies on both Studios. The previous image worker was
+allowed to unload before starting a fresh classifier-aware worker. Live job
+`01M419BMRD7ZDQFSNSD2E16ZKQ` completed 512 × 512 img2img with one private
+output. A subsequent LoRA job queued because its adapter footprint exceeded
+the existing worker's immutable memory hold; after the chat instance drained,
+the job still waited for the worker's idle unload. It was owner-cancelled while
+queued with zero output, preserving the memory and audit guards. Live LoRA,
+Canny and fill checks remain T083 evidence, not a pass from this queued job.
+
 ## Operator same-node physical trial, not an approval — 2026-10-03
 
 Studio A had a verified Z-Image Turbo copy and a ready Qwen2.5-Coder-1.5B

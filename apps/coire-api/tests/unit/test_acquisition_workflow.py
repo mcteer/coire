@@ -14,7 +14,13 @@ from coire_core.models.acquisition import AcquisitionStage
 from coire_core.models.jobs import JobKind, JobStage, JobStatus
 from coire_core.models.registry import EngineBackend, VisualCapability
 from coire_core.settings import Settings
-from coire_scheduler.acquisition import node_job_id, require_validated_backend
+from coire_scheduler import acquisition as scheduler_acquisition
+from coire_scheduler.acquisition import (
+    node_job_id,
+    replication_source_stage,
+    require_validated_backend,
+    reusable_stage_results,
+)
 from coire_scheduler.main import acquisition_dispatch_id
 
 
@@ -33,6 +39,23 @@ def test_acquisition_retry_gets_new_durable_workflow_id() -> None:
     assert acquisition_dispatch_id(workflow, 2) != str(workflow)
     assert acquisition_dispatch_id(workflow, 2) == acquisition_dispatch_id(workflow, 2)
     assert acquisition_dispatch_id(workflow, 3) != acquisition_dispatch_id(workflow, 2)
+
+
+def test_retry_replays_stale_mlx_noop_for_existing_variant() -> None:
+    source = "model.mcp-acceptance"
+    assert not reusable_stage_results(AcquisitionStage.CONVERT, source, [{"operation": "noop"}])
+    assert reusable_stage_results(
+        AcquisitionStage.CONVERT,
+        source,
+        [{"operation": "noop"}, {"manifest_sha256": "a" * 64}],
+    )
+    assert reusable_stage_results(AcquisitionStage.CONVERT, None, [{"operation": "noop"}])
+
+
+def test_replication_uses_materialized_variant_when_pull_was_skipped() -> None:
+    assert replication_source_stage(True, "model.mcp-acceptance") is AcquisitionStage.CONVERT
+    assert replication_source_stage(True, None) is AcquisitionStage.PULL
+    assert replication_source_stage(False, None) is AcquisitionStage.CONVERT
 
 
 def test_visual_publication_requires_matching_backend_and_measured_capability() -> None:
@@ -83,3 +106,54 @@ async def test_wait_tolerates_initial_node_job_visibility_lag() -> None:
 
     assert result["stage"] == JobStage.DONE.value
     assert get_job.await_count == 2
+
+
+async def test_existing_mlx_variant_materializes_new_slug_before_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = datetime.now(UTC)
+    submitted = AsyncMock(
+        return_value=JobStatus(
+            job_id=uuid.uuid4(),
+            kind=JobKind.CONVERT,
+            slug="model.fabric-acceptance",
+            stage=JobStage.DONE,
+            manifest_sha256="a" * 64,
+            started_at=now,
+            updated_at=now,
+        ).model_dump(mode="json")
+    )
+    held = AsyncMock()
+    released = AsyncMock()
+    finished = AsyncMock()
+    monkeypatch.setattr(scheduler_acquisition, "_submit_command", submitted)
+    monkeypatch.setattr(scheduler_acquisition, "_hold_conversion_memory", held)
+    monkeypatch.setattr(scheduler_acquisition, "_release_conversion_memory", released)
+    monkeypatch.setattr(scheduler_acquisition, "_finish_stage", finished)
+    workflow_id = uuid.uuid4()
+    context = {
+        "origin": "coire-edge-b",
+        "origin_id": uuid.uuid4(),
+        "attempt": 1,
+        "memory_estimate_bytes": 1024,
+        "total_bytes": 2048,
+        "repo_id": "test/model",
+        "revision": "a" * 40,
+        "variant_id": str(uuid.uuid4()),
+        "source_variant_slug": "model.mcp-acceptance",
+        "variant_slug": "model.fabric-acceptance",
+        "recipe": {"name": "fabric-acceptance", "precision": "4bit", "bits": 4},
+    }
+
+    await scheduler_acquisition._run_command_stage(
+        workflow_id, AcquisitionStage.CONVERT, context, True, "model.raw"
+    )
+
+    assert submitted.await_args is not None
+    payload = submitted.await_args.kwargs["payload"]
+    assert payload["source_slug"] == "model.mcp-acceptance"
+    assert payload["target_slug"] == "model.fabric-acceptance"
+    assert payload["dequantize"] is True
+    held.assert_awaited_once()
+    released.assert_awaited_once()
+    finished.assert_awaited_once()

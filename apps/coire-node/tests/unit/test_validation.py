@@ -73,6 +73,23 @@ def test_simple_chat_template_is_valid_without_tool_capability(tmp_path: Path) -
         assert run_template_check(tmp_path) == (ValidationOutcome.NOT_APPLICABLE, None)
 
 
+def test_converted_chat_template_jinja_is_valid_without_tool_capability(tmp_path: Path) -> None:
+    (tmp_path / "tokenizer_config.json").write_text("{}")
+    (tmp_path / "chat_template.jinja").write_text("{{ message['content'] }}")
+
+    class PlainTokenizer:
+        def apply_chat_template(
+            self, conversation: object, *, tools: object, tokenize: bool
+        ) -> str:
+            assert isinstance(conversation, list)
+            return str(conversation[0]["content"])
+
+    tokenizer_utils = ModuleType("mlx_lm.tokenizer_utils")
+    tokenizer_utils.load = lambda path: PlainTokenizer()  # type: ignore[attr-defined]
+    with patch.dict(sys.modules, {"mlx_lm.tokenizer_utils": tokenizer_utils}):
+        assert run_template_check(tmp_path) == (ValidationOutcome.NOT_APPLICABLE, None)
+
+
 def _visual_files(path: Path) -> None:
     path.mkdir()
     (path / "config.json").write_text(

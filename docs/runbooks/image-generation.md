@@ -12,6 +12,11 @@ imports, set `COMPOSE_PROFILES=image-files` as well as `COIRE_IMAGE_ENABLED=true
 when running `deploy/compose/coire-up --build`. The flag alone leaves the private
 file worker outside the current Compose release, so input processing retries as
 `recipe worker unavailable`.
+For a same-node chat/image acceptance run, also set `COIRE_CHAT_ENABLED=true`.
+Pass all three values on every `coire-up` invocation during that run; Compose
+otherwise restores the documented disabled defaults and the Images catalog
+returns an empty list. Confirm the accepted job's `selected_node_id` and a
+ready chat instance on that exact node before treating it as mixed placement.
 
 The Studio `com.coire.node` LaunchDaemon must use `ProcessType=Standard` before
 testing the pinned ten-second classifier deadline. A Background job passes that
