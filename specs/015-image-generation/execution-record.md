@@ -1,5 +1,44 @@
 # Feature 015 execution record
 
+## Live control-plane generation and gallery — 2026-10-02
+
+Both installed Studio agents restarted into the current locked build. The base,
+compatible LoRA, Union 2.1 control, and SeedVR2 3B upscaler passed native
+validation on both local copies and were published through the audited admin
+API. Because the launchd agents still report the private data link down, the
+replica stores were copied by an operator over the verified Studio fabric and
+then rechecked by the acquisition workflow. This is native two-copy validation,
+not proof of unassisted replication. The 58 GB FLUX Fill acquisition and pinned
+classifier remain separate gates; the classifier's ten-second live smoke times
+out under the current workload despite its earlier standalone 2.68-second pass.
+
+The control plane was enabled temporarily for live acceptance with
+`COIRE_IMAGE_ENABLED=true`. A public API txt2img submission first exposed an
+SQLAlchemy flush-order foreign-key failure between the job and its queued
+event. After flushing the job row first, submission returned 202. Dispatch then
+exposed a client guard that incorrectly rejected input-free jobs before the
+node could journal them; it now permits an empty input manifest. The next
+attempt reached native generation but publication found that the scheduler
+had no mount for the API's image blob volume. Sharing that volume with the
+publisher resolved recovery without resubmitting the job. Job
+`01M3ZJV9X6H81X24H3Q699QGHP` finished `succeeded` with one 512×512 private
+PNG (265,070 bytes, pixel SHA-256
+`6f3b30b1d305e4a65ccd49c6434ae2c7f2195fd55811060ac61d96025ab92f4f`).
+The classifier result is `unknown` with `classifier_timeout`, so this does not
+pass the classifier gate.
+
+The live authenticated Images page displayed the published base and the real
+gallery card at 1024 and 1440 px in light and dark schemes, without horizontal
+overflow or page errors. The existing keyboard focus and accessibility-tree
+checks were repeated against the live gallery. Axe WCAG 2 A/AA and 2.1 A/AA
+found a low-contrast timestamp in light mode and a low-contrast destructive
+button in dark mode. Both colors were corrected; the same four scans now have
+zero violations and one incomplete check each. Screenshots remain outside the
+repository under `/tmp/coire-015-images-<width>-<scheme>.png`; the prompt was
+agent-written acceptance text, not user content. The browser accessibility
+tree and visible keyboard focus provide screen-reader semantic evidence; no
+spoken VoiceOver session was captured.
+
 ## Live acquisition, native Z-Image smoke, and browser acceptance — 2026-10-02
 
 A scoped, audited development API key was issued through the existing identity
