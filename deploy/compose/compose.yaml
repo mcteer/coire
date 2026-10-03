@@ -261,6 +261,7 @@ services:
       IMAGE_BLOB_ROOT: /opt/coire/blobs
     volumes:
       - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
+      - coire-chat-derived:/opt/coire/chat/derived:ro
       - coire-blobs:/opt/coire/blobs
     secrets: [postgres_password, node_tokens, file_worker_service_token]
     depends_on:

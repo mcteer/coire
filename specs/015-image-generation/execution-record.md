@@ -2334,3 +2334,25 @@ All ten jobs succeeded in 22.30–26.37 seconds. The trial job IDs are
 `01M3ZNTRYTH31NGZBCW6XVWWB1` and `01M3ZNVES1C0DYPQ4454P5DRKE`.
 This passes the ten-trial pixel and recipe portion of T084. The production
 cache and same-node chat/image benchmark portions remain open.
+
+The deployed warm-cache series then completed **20/20** more full-model jobs
+with the same prompt and environment, changing seed from 2001 through 2020.
+All twenty succeeded, produced distinct pixel digests, and recorded
+`cache_status=hit` plus `worker_residency=resident` in their durable progress
+events. Per-job elapsed time was about 19–22 seconds. The base's measured
+capability permits exactly four steps, so production step variation could not
+be tested on this asset; the local native tiny-model cache matrix covers step
+changes. Job IDs are the `image_jobs` rows with seeds 2001–2020 created during
+this run; their durable events were queried after the last job.
+
+A live SSE replay probe initially returned no frames. The route's preflight
+dependency retained a transaction and user-row lock for the lifetime of the
+stream, while replay polling attempted to lock that same row in a second
+session. The API logged the resulting database timeout. Commit `0a406e7`
+closes preflight before streaming and adds a contract assertion that its
+session scope cannot overlap the replay scope. After deployment, replay of
+`01M3ZNVES1C0DYPQ4454P5DRKE` returned all six queued/started/progress/done
+frames with `hit` and `resident` observations. The focused seven route
+contracts, Ruff and mypy passed; the complete Python suite on the preceding
+code checkpoint passed **1,895 tests, 149 skipped** against disposable
+PostgreSQL. Final-source CI is still running.
