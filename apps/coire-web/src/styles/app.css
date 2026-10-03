@@ -344,6 +344,7 @@ td {
     --accent: #8993f4;
     --accent-2: #2bb6a3;
     --accent-ink: #bfc5ff;
+    --bad-ink: #ff8f87;
     --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.24);
     --shadow-2: 0 10px 32px rgba(0, 0, 0, 0.26);
     --shadow-3: 0 16px 42px rgba(0, 0, 0, 0.32);
