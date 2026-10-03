@@ -13,6 +13,16 @@ when running `deploy/compose/coire-up --build`. The flag alone leaves the privat
 file worker outside the current Compose release, so input processing retries as
 `recipe worker unavailable`.
 
+The Studio `com.coire.node` LaunchDaemon must use `ProcessType=Standard` before
+testing the pinned ten-second classifier deadline. A Background job passes that
+QoS class to its CPU children: the same verified classifier took about 2.5 s
+from a normal Studio login process but returned `classifier_timeout` at 10 s
+under Background QoS. Reinstall the rendered plist from
+`deploy/launchd/com.coire.node.plist.template` with the node installer's
+privileged steps, restart the system LaunchDaemon, then retry the exact
+classifier acquisition and a real image job on both Studios. Changing a
+running agent's priority is temporary and does not update the boot service.
+
 ## Acquire and validate an image asset
 
 An active human admin submits `POST /api/v1/admin/image-assets` with a Hub `repo_id`,

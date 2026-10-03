@@ -2,6 +2,48 @@
 
 ## Live control-plane generation and gallery — 2026-10-02
 
+### Continuation: upscale, recipe and classifier scheduling
+
+The pinned SeedVR2 3B acquisition became ready after exact local two-copy
+validation and was published. A live public API 2× job
+`01M3ZK9ZZE11WNCDQ8ZAG21FBV` succeeded on Studio B and published one
+1024×1024 PNG (725,224 bytes, pixel SHA-256
+`329652bda9863f8eac6c6ae4f673b7cfb386609198899afa94856ccf0c64d04c`).
+The prior 512×512 job's node journal recorded `scratch_cleaned=true`; no
+output-named Studio file remained after transfer. Its private download grant
+redeemed once through the authenticated content route, yielding a 512×512 PNG
+with channel standard deviations 48.39, 77.90 and 74.80 and transfer SHA-256
+`81d60377cddd7895d7867d1f8df68e9041bfc203ddd4fbd902231b050433af20`.
+The PNG was uploaded as a recipe input and the file worker restored the model,
+mode, prompt, dimensions, steps, guidance and seed. Exact reproduction remained
+`runtime_environment_unverified` until repeated pixel comparisons are run.
+
+The recipe initially stayed `processing` because the development Compose
+release enabled image admission without its `image-files` profile. Enabling
+that private file worker completed processing; the compose README and runbook
+now name both switches. The upscale job remained queued while an older worker
+held a smaller reservation and a concurrent 58 GB FLUX Fill acquisition ran.
+After the idle worker stopped, a direct call to the production fenced dispatch
+path placed the queued job. This exposed DBOS recovery replaying hundreds of
+ordinary one-second sleeps from previous queue polls after each scheduler
+restart; the workflow now uses `DBOS.sleep_async` so completed waits are
+skipped on recovery. The live queued job completed; recovery under the new
+sleep has not yet been exercised because it was patched after that job.
+
+FLUX Fill's exact 58,056,239,932-byte selection passed native validation on
+both Studios after an operator fabric copy. It remains admin-only pending the
+gated non-commercial licence/publication decision. The pinned classifier
+remains failed: Studio A's local validation jobs completed, whereas Studio B's
+background-scheduled validation repeatedly hit `classifier_timeout`. On B,
+the same verified bytes and synthetic 64×64 input tagged `normal` in 2.56 s
+from a normal login process. Running that probe with `taskpolicy -b` reproduced
+the ten-second timeout, and resetting priority on the parent process did not
+remove the inherited child scheduling penalty. The launchd template now uses
+`ProcessType=Standard`; the installed root-owned plists have not yet been
+replaced, so neither classifier publication nor a normal gallery tag is
+claimed. The accepted temporary `taskpolicy` process change is not a boot
+configuration fix.
+
 Both installed Studio agents restarted into the current locked build. The base,
 compatible LoRA, Union 2.1 control, and SeedVR2 3B upscaler passed native
 validation on both local copies and were published through the audited admin
