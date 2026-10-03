@@ -12,14 +12,16 @@ NGINX = ROOT / "apps/coire-web/nginx/nginx.conf"
 API_IMAGE = ROOT / "apps/coire-api/docker/api.Dockerfile"
 
 
-def test_private_blob_volume_is_api_only_and_admission_defaults_off() -> None:
+def test_private_blob_volume_is_limited_to_api_and_publisher() -> None:
     config = yaml.safe_load(COMPOSE.read_text())
     services = config["services"]
     assert "coire-blobs" in config["volumes"]
     assert "coire-blobs:/opt/coire/blobs" in services["coire-api"]["volumes"]
+    assert "coire-blobs:/opt/coire/blobs" in services["coire-scheduler"]["volumes"]
+    assert services["coire-scheduler"]["environment"]["IMAGE_BLOB_ROOT"] == "/opt/coire/blobs"
     assert "--chown=65532:65532 /volume/blobs /opt/coire/blobs" in API_IMAGE.read_text()
     for name, service in services.items():
-        if name != "coire-api":
+        if name not in {"coire-api", "coire-scheduler"}:
             assert not any("coire-blobs:" in volume for volume in service.get("volumes", [])), name
     env = services["coire-api"]["environment"]
     assert env["IMAGE_ENABLED"] == "${COIRE_IMAGE_ENABLED:-false}"
