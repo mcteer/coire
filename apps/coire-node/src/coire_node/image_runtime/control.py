@@ -80,6 +80,17 @@ class _WorkerState:
             entry = self.jobs.get(self.key(binding))
             return entry[1] if entry else None
 
+    def prune_cleaned(self) -> None:
+        """Drop only generated attempts whose private scratch was removed by node cleanup."""
+        for key, (request, current) in list(self.jobs.items()):
+            if current.state != "generated" or key == self.active:
+                continue
+            attempt_dir = self.scratch_root / f"{request.job_id}-{request.attempt}-{request.fence}"
+            if attempt_dir.exists() or attempt_dir.is_symlink():
+                continue
+            del self.jobs[key]
+            self.cancel_events.pop(key, None)
+
     def update(self, key: _Key, **changes: object) -> None:
         with self.lock:
             request, current = self.jobs[key]
@@ -228,6 +239,8 @@ def create_worker_app(
                 or request.deadline_at <= datetime.now(UTC)
             ):
                 raise HTTPException(status.HTTP_409_CONFLICT, "worker binding unavailable")
+            if state.active is None and len(state.jobs) >= _MAX_RETAINED_JOBS:
+                state.prune_cleaned()
             if state.active is not None or len(state.jobs) >= _MAX_RETAINED_JOBS:
                 raise HTTPException(status.HTTP_409_CONFLICT, "worker busy")
             current = ImageWorkerStatus(

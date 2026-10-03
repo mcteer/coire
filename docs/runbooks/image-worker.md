@@ -239,3 +239,13 @@ and `CoireImageCancellationRecoveryFailures`. Reconcile the node journal and
 core staging for that attempt; do not submit a new generation attempt to clear
 the error. Keep `COIRE_IMAGE_ENABLED=false` to stop new admission while
 allowing pending cancellation and cleanup to finish.
+
+# Worker attempt retention
+
+The resident loopback worker retains at most 32 fenced attempt statuses. When
+that limit is reached, it reclaims generated attempts only after the node has
+removed their exact private scratch directories during acknowledged cleanup.
+An uncleared attempt stays available for retry and inspection. If the worker
+reports busy after 32 jobs, inspect `scratch_cleaned` in the node journal and
+the matching `image-scratch/<job>-<attempt>-<fence>` directory; resolve cleanup
+before unloading the exact worker through the authenticated node API.

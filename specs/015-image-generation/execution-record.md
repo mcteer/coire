@@ -2356,3 +2356,20 @@ frames with `hit` and `resident` observations. The focused seven route
 contracts, Ruff and mypy passed; the complete Python suite on the preceding
 code checkpoint passed **1,895 tests, 149 skipped** against disposable
 PostgreSQL. Final-source CI is still running.
+
+The first generation-input upload stayed `processing` because the scheduler
+could not read the normalized derivative produced by the file worker. The
+derivative volume was mounted on API and worker but absent from scheduler;
+commit `9aee7c5` adds it read-only. The previously pending input recovered to
+`ready` after the Compose restart, and a fresh control input also reached
+`ready`. A real 512 × 512 img2img job, `01M3ZPNWNZ0BPJMP8X44EYMP0D`, then
+succeeded with one private output in 17.97 seconds.
+
+The following LoRA attempt `01M3ZPPE8KZF8MKRJ4ABC1AAD5` remained reserving:
+the worker had retained 32 completed attempts and returned `worker busy` for
+every new `/job`. The owner cancelled it; the durable job became `cancelled`
+with zero outputs. The worker now reclaims only generated attempt records whose
+exact scratch directory was already removed by node cleanup. A contract run
+executes 33 jobs in one worker, preserving uncleared records and proving
+capacity returns after cleanup. Real Studio LoRA/control reruns remain pending
+the immutable node rollout.

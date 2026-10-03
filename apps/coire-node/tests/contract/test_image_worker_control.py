@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import threading
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -157,6 +158,32 @@ async def test_control_auth_replay_and_generated_manifest(tmp_path: Path) -> Non
         assert (
             await client.post("/status", json={"job_id": JOB, "attempt": 1, "fence": 3})
         ).status_code == 404
+
+
+async def test_worker_reuses_capacity_after_verified_scratch_cleanup(tmp_path: Path) -> None:
+    load, template = _requests()
+    pipeline = FakePipeline()
+    pipeline.release.set()
+    scratch = tmp_path / "scratch"
+    app = create_worker_app(load, pipeline, scratch, token=TOKEN, port=39181)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://worker",
+        headers={"Authorization": f"Bearer {TOKEN}"},
+    ) as client:
+        for index in range(33):
+            job_id = f"01J{index:023d}"
+            request = template.model_copy(update={"job_id": job_id})
+            response = await client.put("/job", json=request.model_dump(mode="json"))
+            assert response.status_code == 202, (index, response.text)
+            await _wait_status(
+                client,
+                ImageJobBinding(job_id=job_id, attempt=1, fence=2),
+                "generated",
+            )
+            if index < 32:
+                shutil.rmtree(scratch / f"{job_id}-1-2")
+        assert pipeline.calls == 33
 
 
 async def test_cancel_reports_terminal_only_after_worker_stops(tmp_path: Path) -> None:
