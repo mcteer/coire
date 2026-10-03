@@ -285,7 +285,9 @@ class NodeClient:
         return NodeImageJob.model_validate(body)
 
     async def reserve_image_inputs(self, node: str, command: NodeImageStartRequest) -> NodeImageJob:
-        if command.node != node or not command.inputs:
+        # Every attempt needs a durable node journal before the worker loads,
+        # including txt2img jobs with no uploaded inputs.
+        if command.node != node:
             raise ValueError("image input reservation differs from destination")
         _, body = await self._call(
             "PUT",
