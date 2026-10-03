@@ -198,6 +198,7 @@ class CapabilityProfile(BaseModel):
     parallel_tools: bool = False
     chat_template_present: bool = False
     visual_input: VisualCapability | None = None
+    compatible_base_model_id: uuid.UUID | None = None
     verified: bool = False
     """Set only by feature 017's harness evaluation. The router refuses unverified models for
     write-capable tasks, so this is never editable through the curation API."""
@@ -353,8 +354,15 @@ class Model(BaseModel):
                 raise ValueError("auxiliary image kind requires Studio auxiliary backend")
             if self.image_capability_profile is not None:
                 raise ValueError("auxiliary image kind cannot carry base capability")
+            if self.kind in {ModelKind.IMAGE_LORA, ModelKind.CONTROL_MODEL}:
+                if self.capability_profile.compatible_base_model_id is None:
+                    raise ValueError("LoRA and control assets require a compatible base model")
+            elif self.capability_profile.compatible_base_model_id is not None:
+                raise ValueError("this auxiliary kind cannot bind a base model")
         elif self.backend in {EngineBackend.MFLUX, EngineBackend.AUXILIARY}:
             raise ValueError("language_model backend cannot be image or auxiliary")
+        if self.kind not in AUXILIARY_IMAGE_KINDS and self.capability_profile.compatible_base_model_id:
+            raise ValueError("only auxiliary image assets can bind a base model")
         return self
 
 

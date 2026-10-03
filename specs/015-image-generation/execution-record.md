@@ -1,5 +1,59 @@
 # Feature 015 execution record
 
+## Live acquisition, native Z-Image smoke, and browser acceptance — 2026-10-02
+
+A scoped, audited development API key was issued through the existing identity
+service and stored in the login Keychain; its bearer is absent from this record.
+The live core at `192.168.4.10:8180` accepted admin image acquisition for
+`Tongyi-MAI/Z-Image-Turbo` at revision
+`f332072aa78be7aecdf3ee76d5c247082da564a6` ([Apache-2.0](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo)), and the pinned
+`Falconsai/nsfw_image_detection` classifier at revision
+`96cb0d0342c7afb80cab76ecc58b265fa44da256` ([Apache-2.0](https://huggingface.co/Falconsai/nsfw_image_detection)). Registry IDs are
+`48075b57-b6b9-48bf-9ace-9438405ccc3d` and
+`ee4fe044-b313-40c6-846e-785bfc186de4`. The initial requests exposed two
+intake defects: Diffusers uses root `model_index.json`, and nullable JSONB was
+encoding Python `None` as JSON null against a SQL-NULL check constraint. Both
+are fixed, with inspection and disposable PostgreSQL migration tests.
+
+Both Studios installed the corrected locked 87-wheel node build. Studio B
+downloaded and verified the 32,848,321,404-byte Z-Image selection and the
+343,237,214-byte classifier selection. A credential-free direct native
+validation of the pinned Z-Image store on Studio B passed txt2img and img2img
+at 512 px and four steps in 36.69 s; measured peak physical footprint was
+41,829,311,416 bytes, and the thumbnail digest was
+`f77bc11995eff08ed395a4b69de5c20ec9ee4ee0d3a306d88893acae986f3873`.
+The first native img2img smoke found that a flat source made the one-step
+transform look degenerate; the smoke now uses a deterministic textured source.
+A direct native classifier smoke passed in 2.68 s with 512,245,760 bytes peak
+RSS. The live classifier smoke initially exposed an acquisition UUID passed to
+an image-run ULID telemetry span; that is fixed. Publication and the full
+operator matrix remain pending live registry validation.
+
+The launchd node processes on both Studios report data-link `down` with
+`[Errno 65] No route to host` over `coire-edge-{a,b}.fabric:9401`, although
+`nc`, `httpx`, and a direct transfer from each Studio's SSH login process work.
+This is a process-context failure, not a missing listener or route. The
+reconciler correctly failed closed on direct node import. To continue native
+acceptance, the exact verified origin tree was copied over the same Studio
+fabric by operator SSH and the registry retry was asked to verify the local
+bytes; this does **not** count as passing the automated replication gate.
+Image admission remains disabled until publication and acceptance succeed.
+
+The live Images UI was exercised in headless Chromium at 1024 and 1440 px in
+both light and dark schemes; screenshots are outside the repo under
+`/tmp/coire-015-images-<width>-<scheme>.png` and
+`/tmp/coire-015-form-<width>-<scheme>.png`. The form screenshot used a
+browser-only synthetic model response; no generation request or user content
+was submitted. The empty and form states had no horizontal overflow or page
+errors. Keyboard Tab traversal exposed a visible solid focus outline and
+stable accessible names for import, form fields, tags, and navigation. The
+Chromium accessibility snapshot exposed the headings and named regions;
+axe-core WCAG 2 A/AA and 2.1 A/AA scans found zero violations in both schemes
+with and without the synthetic model. The browser run found an unstyled preset
+editor and import control; both now use responsive themed fields. This proves
+the browser's accessibility tree, not spoken VoiceOver output or a live
+generated-image gallery journey.
+
 ## Native scheduler-to-node cancellation timing — 2026-10-02
 
 The local tiny mflux test now starts a 100-step, 256-pixel real MLX generation,

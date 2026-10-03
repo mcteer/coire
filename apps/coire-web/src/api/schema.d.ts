@@ -2739,6 +2739,8 @@ export interface components {
              * @default false
              */
             chat_template_present: boolean;
+            /** Compatible Base Model Id */
+            compatible_base_model_id?: string | null;
             /** Context Window */
             context_window?: number | null;
             /**

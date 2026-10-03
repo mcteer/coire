@@ -76,8 +76,15 @@ def test_generation_base_requires_mflux_and_measured_profile_when_ready() -> Non
     "kind", ["image_lora", "control_model", "upscale_model", "image_classifier"]
 )
 def test_auxiliary_kinds_are_not_routable_engines(kind: str) -> None:
-    auxiliary = _model(kind=kind, backend="auxiliary")
+    binding = (
+        {"compatible_base_model_id": str(MODEL_ID)}
+        if kind in {"image_lora", "control_model"}
+        else {}
+    )
+    auxiliary = _model(kind=kind, backend="auxiliary", capability_profile=binding)
     assert auxiliary.backend is EngineBackend.AUXILIARY
+    if binding:
+        assert auxiliary.capability_profile.compatible_base_model_id == MODEL_ID
     with pytest.raises(ValidationError, match="backend"):
         _model(kind=kind, backend="mlx_lm")
     with pytest.raises(ValidationError, match="auxiliary"):
@@ -89,6 +96,25 @@ def test_auxiliary_kinds_are_not_routable_engines(kind: str) -> None:
                 "estimate_bytes": 1,
             }
         )
+
+
+def test_auxiliary_base_binding_is_kind_scoped() -> None:
+    for kind in ("image_lora", "control_model"):
+        with pytest.raises(ValidationError, match="compatible base"):
+            _model(kind=kind, backend="auxiliary")
+    for kind, backend, profile in (
+        ("language_model", "mlx_lm", {}),
+        ("image_model", "mflux", {"image_capability_profile": _capability()}),
+        ("image_classifier", "auxiliary", {}),
+        ("upscale_model", "auxiliary", {}),
+    ):
+        with pytest.raises(ValidationError, match="bind a base model"):
+            _model(
+                kind=kind,
+                backend=backend,
+                capability_profile={"compatible_base_model_id": str(MODEL_ID)},
+                **profile,
+            )
 
 
 def test_chat_listing_refuses_image_kind_even_if_service_selects_it() -> None:

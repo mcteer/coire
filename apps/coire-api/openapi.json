@@ -1746,6 +1746,18 @@
             "title": "Chat Template Present",
             "type": "boolean"
           },
+          "compatible_base_model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compatible Base Model Id"
+          },
           "context_window": {
             "anyOf": [
               {
