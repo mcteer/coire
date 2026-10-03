@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 
 import httpx
@@ -15,6 +14,8 @@ from .image_chat import (
     _gateway_overhead,
     _image,
     _node,
+    _node_identity,
+    image_environment_fingerprint,
     summarize,
 )
 
@@ -62,10 +63,28 @@ def test_report_percentiles_and_missing_evidence_are_explicit() -> None:
     } == set(incomplete.missing_evidence)
 
 
+def test_environment_fingerprint_distinguishes_identical_studios() -> None:
+    common = {
+        "memory_total_bytes": 1000,
+        "gpu_cores": 16,
+        "agent_version": "0.2.0",
+        "model_sha256": "a" * 64,
+    }
+    assert image_environment_fingerprint(node="coire-edge-a", **common) != (
+        image_environment_fingerprint(node="coire-edge-b", **common)
+    )
+
+
 async def test_probes_collect_stream_usage_fenced_progress_and_node_footprint() -> None:
     node = "coire-edge-b"
     model_sha = "a" * 64
-    fingerprint = hashlib.sha256(f"mflux-0.20.0\n{model_sha}\n{node}".encode()).hexdigest()
+    fingerprint = image_environment_fingerprint(
+        node=node,
+        memory_total_bytes=1000,
+        gpu_cores=16,
+        agent_version="0.2.0",
+        model_sha256=model_sha,
+    )
     polls = 0
 
     def responder(request: httpx.Request) -> httpx.Response:
@@ -110,6 +129,7 @@ async def test_probes_collect_stream_usage_fenced_progress_and_node_footprint() 
                             "memory_total_bytes": 1000,
                             "memory_free_bytes": 400,
                             "memory_committed_bytes": 500,
+                            "agent_version": "0.2.0",
                         },
                     }
                 ],
@@ -124,8 +144,16 @@ async def test_probes_collect_stream_usage_fenced_progress_and_node_footprint() 
         transport=httpx.MockTransport(responder),
     ) as client:
         chat = await _chat(client, "00000000-0000-0000-0000-000000000001", node)
-        image = await _image(client, "00000000-0000-0000-0000-000000000002", node)
+        image = await _image(
+            client,
+            "00000000-0000-0000-0000-000000000002",
+            node,
+            1000,
+            16,
+            "0.2.0",
+        )
         sampled_node = await _node(client, node)
+        assert await _node_identity(client, node) == (1000, "0.2.0")
         overhead = await _gateway_overhead(client)
     assert chat.completion_tokens == 4 and chat.first_token_ms >= 0
     assert image.succeeded and image.same_node and image.progress_steps == 2

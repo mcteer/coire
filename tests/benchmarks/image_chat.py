@@ -21,6 +21,8 @@ from pathlib import Path
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
+from coire_core.models.images import IMAGE_RUNTIME_VERSION
+
 
 class ChatSample(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -75,6 +77,24 @@ def _percentile(values: list[float], percentage: float) -> float | None:
     ordered = sorted(values)
     rank = math.ceil(percentage * len(ordered)) - 1
     return ordered[max(0, rank)]
+
+
+def _digest_values(values: list[object]) -> str:
+    return hashlib.sha256(json.dumps(values, separators=(",", ":")).encode()).hexdigest()
+
+
+def image_environment_fingerprint(
+    *,
+    node: str,
+    memory_total_bytes: int,
+    gpu_cores: int,
+    agent_version: str,
+    model_sha256: str,
+) -> str:
+    """Mirror the admission fingerprint so identical Studios cannot be confused."""
+    hardware = _digest_values([node, memory_total_bytes, gpu_cores])
+    runtime = _digest_values([agent_version, IMAGE_RUNTIME_VERSION])
+    return _digest_values([hardware, runtime, model_sha256])
 
 
 def summarize(
@@ -166,7 +186,14 @@ async def _chat(client: httpx.AsyncClient, model: str, node: str) -> ChatSample:
     )
 
 
-async def _image(client: httpx.AsyncClient, model: str, node: str) -> ImageSample:
+async def _image(
+    client: httpx.AsyncClient,
+    model: str,
+    node: str,
+    memory_total_bytes: int,
+    gpu_cores: int,
+    agent_version: str,
+) -> ImageSample:
     start = time.monotonic()
     response = await client.post(
         "/api/v1/images",
@@ -194,10 +221,17 @@ async def _image(client: httpx.AsyncClient, model: str, node: str) -> ImageSampl
             resolved = job.get("resolved")
             same_node = False
             if isinstance(resolved, dict):
-                expected = hashlib.sha256(
-                    f"{resolved['pipeline_version']}\n{resolved['model_sha256']}\n{node}".encode()
-                ).hexdigest()
-                same_node = resolved.get("environment_fingerprint") == expected
+                expected = image_environment_fingerprint(
+                    node=node,
+                    memory_total_bytes=memory_total_bytes,
+                    gpu_cores=gpu_cores,
+                    agent_version=agent_version,
+                    model_sha256=str(resolved["model_sha256"]),
+                )
+                same_node = (
+                    resolved.get("pipeline_version") == IMAGE_RUNTIME_VERSION
+                    and resolved.get("environment_fingerprint") == expected
+                )
             return ImageSample(
                 elapsed_seconds=time.monotonic() - start,
                 progress_steps=progress,
@@ -221,6 +255,16 @@ async def _node(client: httpx.AsyncClient, name: str) -> NodeSample:
         memory_used_bytes=int(status["memory_total_bytes"]) - int(status["memory_free_bytes"]),
         memory_committed_bytes=int(status["memory_committed_bytes"]),
     )
+
+
+async def _node_identity(client: httpx.AsyncClient, name: str) -> tuple[int, str]:
+    response = await client.get("/api/v1/admin/nodes")
+    response.raise_for_status()
+    node = next((item for item in response.json() if item.get("name") == name), None)
+    status = node.get("status") if isinstance(node, dict) else None
+    if not isinstance(status, dict):
+        raise ValueError("requested node has no fresh status")
+    return int(status["memory_total_bytes"]), str(status["agent_version"])
 
 
 async def _gateway_overhead(client: httpx.AsyncClient) -> float | None:
@@ -258,6 +302,7 @@ async def run(args: argparse.Namespace) -> MixedReport:
             trust_env=False,
         ) as admin,
     ):
+        memory_total_bytes, agent_version = await _node_identity(admin, args.node)
 
         async def chat_loop() -> None:
             while time.monotonic() - started < args.duration_seconds:
@@ -265,7 +310,16 @@ async def run(args: argparse.Namespace) -> MixedReport:
 
         async def image_loop() -> None:
             while time.monotonic() - started < args.duration_seconds:
-                images.append(await _image(client, str(args.image_model), args.node))
+                images.append(
+                    await _image(
+                        client,
+                        str(args.image_model),
+                        args.node,
+                        memory_total_bytes,
+                        args.gpu_cores,
+                        agent_version,
+                    )
+                )
 
         async def node_loop() -> None:
             while time.monotonic() - started < args.duration_seconds:
@@ -298,11 +352,14 @@ def main() -> None:
     parser.add_argument("--chat-model", type=uuid.UUID, required=True)
     parser.add_argument("--image-model", type=uuid.UUID, required=True)
     parser.add_argument("--node", choices=("coire-edge-a", "coire-edge-b"), required=True)
+    parser.add_argument("--gpu-cores", type=int, required=True)
     parser.add_argument("--duration-seconds", type=int, default=900)
     parser.add_argument("--report", type=Path, required=True)
     args = parser.parse_args()
     if args.duration_seconds < 1:
         parser.error("duration must be positive")
+    if args.gpu_cores < 0:
+        parser.error("gpu cores must be nonnegative")
     report = asyncio.run(run(args))
     args.report.write_text(report.model_dump_json(indent=2) + "\n")
     print(f"Benchmark report written to {args.report}")

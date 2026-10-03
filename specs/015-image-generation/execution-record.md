@@ -2372,4 +2372,24 @@ with zero outputs. The worker now reclaims only generated attempt records whose
 exact scratch directory was already removed by node cleanup. A contract run
 executes 33 jobs in one worker, preserving uncleared records and proving
 capacity returns after cleanup. Real Studio LoRA/control reruns remain pending
-the immutable node rollout.
+the node's safe idle unload of its already-running older worker process.
+
+The locked 87-wheel macOS arm64 build installed on **both** Studios into
+immutable `/opt/coire/envs/0.2.0-ad24c6084d18`. Each installer passed its
+native import/no-model smoke and flipped the `current` symlink; the existing
+user-owned launchd agent restarted after a TERM to its exact PID. Both
+control listeners returned `/ready` 200. Studio A's re-adopted verified text
+engine served one compatible four-token completion with HTTP 200 and one
+choice in 0.82 seconds. On A, the node loaded its verified local SmolVLM copy
+through its authenticated engine API, reached `ready`, answered a synthetic
+32-pixel red image with HTTP 200 and one choice in 6.37 seconds, and then
+reached `stopped` after an exact managed stop. The root-owned installed plists
+still retain Background QoS until their rendered Standard revisions are
+installed with host privileges; classifier validation remains unproven.
+
+The repeatable mixed benchmark initially computed image node identity from a
+string concatenation that differed from production admission's nested
+hardware/runtime/manifest hashes. It now takes the registered GPU core count
+and uses the exact fingerprint formula, including the node name. Its three
+focused tests pass, including a case where otherwise identical Studios yield
+different identities. The 15-minute real mixed workload remains open.

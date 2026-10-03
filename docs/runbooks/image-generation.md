@@ -383,6 +383,10 @@ fingerprint against the target. Write the content-free JSON report outside the
 repository, then attach its measurements to the execution record. The node
 memory-used reading is an aggregate footprint proxy; approval still requires
 the same-node process and no-swap checks in T084.
+Pass the target's registered GPU core count with `--gpu-cores`; the probe
+combines it with the live node name, memory and agent version to reproduce the
+placement fingerprint. An unknown or stale core count fails the same-node
+check instead of crediting a different Studio with the image run.
 
 After reviewing that 15-minute report, a live human admin may submit its
 content-free measurements to `POST /api/v1/admin/image-coexistence-profiles`.
