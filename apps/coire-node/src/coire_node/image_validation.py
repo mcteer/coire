@@ -778,7 +778,9 @@ def _validate_classifier(
         or result.classifier_revision != CLASSIFIER_REVISION
         or result.processor_sha256 is None
     ):
-        raise ImageValidationUnavailable("classifier smoke returned invalid evidence")
+        raise ImageValidationUnavailable(
+            f"classifier smoke returned invalid evidence: {result.safe_error or result.tag.value}"
+        )
     if measured_rss > reservation_bytes:
         raise ImageValidationUnavailable("classifier smoke exceeded reserved memory")
     return ImageAssetValidationResult(
