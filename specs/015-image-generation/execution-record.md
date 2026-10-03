@@ -9,12 +9,12 @@
 | Authorization and safety | Scoped keys and live entitlements, fenced cancellation, revoked grants, explicit-content denials, audited admin mutations and negative paths covered by contract/integration tests. A full-model running cancel finished and cleaned in 0.77 s; a queued LoRA job was owner-cancelled with zero output. A fresh pinned classifier tagged a live output `normal` with safe error null. | No policy bypass or publication of the admin-only fill asset. |
 | Replication and residency | Audited B-origin acquisition created identical verified B/A variant manifests without operator copying; Standard-QoS system agents, exact PID restart, safe worker idle unload and hold release observed. | B's outbound `.fabric` probe still fails with `EHOSTUNREACH`; A-initiated replication passes, reverse direction is not claimed. |
 | Determinism, cache, coexistence | Ten same-environment PNG/pixel and recipe round trips, twenty warm-cache runs, a 907-second same-node 4k chat plus image trial, audited profile and successful normal scheduler mixed job. | Approval is scoped to the measured B hardware/runtime/model/bounds and expires after 24 hours. |
-| Recovery, storage and rollback | Live owner tombstone/physical purge released exact quota bytes; simulated receipt, crash, lost cleanup and orphan guards; disposable populated Alembic upgrade/downgrade and paired live DB/blob snapshot restored to disposable services with matching PNG digest. | A production drain-before-rollback of the installed node version has not been performed. |
+| Recovery, storage and rollback | Live owner tombstone/physical purge released exact quota bytes; simulated receipt, crash, lost cleanup and orphan guards; disposable populated Alembic upgrade/downgrade and paired live DB/blob snapshot restored to disposable services with matching PNG digest. Studio B's image worker safely idle-unloaded and released its hold before an atomic switch to the prior immutable node environment, authenticated health check, and atomic return to the final environment with another health check. | Old-worker publication after a live rollback was not induced; fencing is covered by fault tests. |
 | Release gates | Final local Python, web, integration, migration, OpenAPI, Compose and affected scheduler image policy/scan/SBOM pass; previous remote CI passed. | Final-source remote CI awaits the one planned push of this branch. |
 
 This matrix reconciles the parent tasks: T084 is complete; T081 remains open
-until final-source remote CI; T083 remains open for B outbound fabric and an
-installed-version drain/rollback exercise. T085 records the exact proof and
+until final-source remote CI; T083 remains open for B outbound fabric and
+the reverse-direction replication claim. T085 records the exact proof and
 limits in this single PR; it does not silently credit T081 or T083.
 
 ## Measured coexistence and B-to-A replication — 2026-10-03
@@ -113,6 +113,19 @@ the restored PNG for `01M419BMRD7ZDQFSNSD2E16ZKQ` hashed to its database
 The disposable database and volume were removed. This proves a paired snapshot
 can be restored without touching the live control plane; old-worker fencing
 and operational drain-before-rollback remain separate checks.
+
+After job `01M419BMRD7ZDQFSNSD2E16ZKQ` completed, the B worker
+`11d6e78e-7c69-48c6-9682-ce19ebb4c022` reached `stopped` by the normal
+900-second idle sweeper, removed its private worker record, and released its
+image memory hold. No image job was nonterminal. The operator atomically moved
+`/opt/coire/envs/current` to prior immutable environment
+`0.2.0-f12d423ef70d` and TERM-restarted the exact nonroot node PID; authenticated
+health returned 200 and source inspection confirmed the prior validator.
+It then atomically returned `current` to final environment
+`0.2.0-7d58063707a3`, TERM-restarted the new PID, and verified authenticated
+health 200 and the final validator. The image instance stayed `stopped` with
+zero held reservation throughout. B's outbound data-link remained down after
+the forward restore, so the rollback exercise does not close that network gate.
 
 ## Operator same-node physical trial, not an approval — 2026-10-03
 
