@@ -145,6 +145,7 @@ class ImageProcessSupervisor:
         self.memory_total_bytes = memory_total_bytes or psutil.virtual_memory().total
         self.state_root = Path(settings.node_state_dir) / "image-workers"
         self.record_path = self.state_root / "worker.json"
+        self.stopped_path = self.state_root / "last-stopped.json"
         self.scratch_root = Path(settings.node_state_dir) / "image-scratch"
         self._lock = memory_lock or threading.RLock()
         self._record: ImageWorkerProcessRecord | None = None
@@ -296,6 +297,20 @@ class ImageProcessSupervisor:
                 ):
                     return self._last_stopped
                 if not self.record_path.exists():
+                    try:
+                        stopped = ImageWorkerLoadResult.model_validate_json(
+                            _read_private(self.stopped_path, 4096)
+                        )
+                    except (ImageWorkerBootstrapError, OSError, ValueError):
+                        raise ImageProcessUnavailable() from None
+                    if (
+                        stopped.instance_id == request.instance_id
+                        and stopped.state == "failed"
+                        and stopped.reserved_bytes == 0
+                        and stopped.safe_error == "worker_stopped"
+                    ):
+                        self._last_stopped = stopped
+                        return stopped
                     raise ImageProcessUnavailable()
                 try:
                     record = ImageWorkerProcessRecord.model_validate_json(
@@ -311,15 +326,16 @@ class ImageProcessSupervisor:
                         or _process_state(record) != "gone"
                     ):
                         raise ImageProcessUnavailable()
+                    result = ImageWorkerLoadResult(
+                        instance_id=request.instance_id,
+                        state="failed",
+                        reserved_bytes=0,
+                        safe_error="worker_stopped",
+                    )
+                    write_atomic(self.stopped_path, result.model_dump_json().encode("utf-8"))
                     _remove_private_state(self.record_path, record)
                 except (ImageWorkerBootstrapError, OSError, ValueError):
                     raise ImageProcessUnavailable() from None
-                result = ImageWorkerLoadResult(
-                    instance_id=request.instance_id,
-                    state="failed",
-                    reserved_bytes=0,
-                    safe_error="worker_stopped",
-                )
                 self._uncertain_reserved_bytes = 0
                 self._last_stopped = result
                 return result
@@ -340,13 +356,14 @@ class ImageProcessSupervisor:
                     state = self._await_death(record, deadline)
             if state != "gone":
                 raise ImageProcessUnavailable()
-            _remove_private_state(self.record_path, record)
             result = ImageWorkerLoadResult(
                 instance_id=request.instance_id,
                 state="failed",
                 reserved_bytes=0,
                 safe_error="worker_stopped",
             )
+            write_atomic(self.stopped_path, result.model_dump_json().encode("utf-8"))
+            _remove_private_state(self.record_path, record)
             self._record = None
             self._last_stopped = result
             return result

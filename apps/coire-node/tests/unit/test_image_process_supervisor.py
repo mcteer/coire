@@ -366,6 +366,16 @@ def test_stop_term_confirms_death_before_releasing_hold(
     assert not manager.record_path.exists()
     assert (scratch / "retained.png").read_bytes() == b"private"
     assert manager.stop(_unload(request)) == stopped
+    restarted = supervisor.ImageProcessSupervisor(
+        manager.settings, manager.store, lambda: 0, memory_total_bytes=10_000
+    )
+    assert restarted.stop(_unload(request)) == stopped
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        restarted.stop(
+            ImageWorkerUnloadRequest(
+                instance_id=uuid.uuid4(), reason="admin", requested_at=datetime.now(UTC)
+            )
+        )
 
 
 def test_stop_escalates_to_kill_within_grace(

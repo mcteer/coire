@@ -249,3 +249,12 @@ An uncleared attempt stays available for retry and inspection. If the worker
 reports busy after 32 jobs, inspect `scratch_cleaned` in the node journal and
 the matching `image-scratch/<job>-<attempt>-<fence>` directory; resolve cleanup
 before unloading the exact worker through the authenticated node API.
+
+# Idle unload across node restarts
+
+The node now persists the most recent exact `worker_stopped` proof in its
+private `image-workers/last-stopped.json`. If the scheduler times out after the
+worker has stopped, it can retry the same unload after a node-agent restart.
+The node returns that proof only for the matching instance ID. A missing proof
+keeps the core reservation draining for operator reconciliation; never release
+the hold from an absent process record alone.
