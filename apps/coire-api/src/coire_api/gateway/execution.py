@@ -216,7 +216,7 @@ async def track_stream(
                 first_token_ms = (perf_counter() - timing.request_started_at) * 1000
                 engine_ms = (timing.first_chunk_at - timing.upstream_started_at) * 1000
                 overhead_ms = max(first_token_ms - engine_ms, 0)
-                attributes = {"protocol": usage.protocol.value}
+                attributes = {"protocol": usage.protocol.value, "node": usage.node or "none"}
                 first_token_duration_ms.record(first_token_ms, attributes)
                 overhead_duration_ms.record(overhead_ms, attributes)
                 logger.info(

@@ -16,7 +16,8 @@ from opentelemetry import metrics, trace
 from pydantic import BaseModel, ConfigDict, Field
 
 from coire_core.models.acquisition import NodeValidateRequest, Reservation, ReservationRequest
-from coire_core.models.jobs import ChecksumManifest, JobKind, JobStatus
+from coire_core.models.image_worker import ImageAssetValidateRequest
+from coire_core.models.jobs import ChecksumManifest, JobKind, JobStatus, ModelPullRequest
 from coire_node.deps import JobsDep, ReservationsDep
 from coire_node.jobs import InsufficientSpace, JobConflict, JobSupervisor
 from coire_node.reservations import ReservationRefused
@@ -61,16 +62,6 @@ async def hold_reservation(
 async def release_reservation(reservation_id: uuid.UUID, reservations: ReservationsDep) -> Response:
     reservations.release(reservation_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
-
-
-class PullRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    job_id: uuid.UUID
-    repo_id: str
-    slug: str
-    revision: str = "main"
-    expected_total_bytes: int | None = None
 
 
 class ImportRequest(BaseModel):
@@ -142,14 +133,18 @@ def _start(jobs: JobSupervisor, response: Response, **kw: Any) -> JobStatus:
 
 
 @router.post("/pull", response_model=JobStatus)
-async def start_pull(request: PullRequest, response: Response, jobs: JobsDep) -> JobStatus:
+async def start_pull(request: ModelPullRequest, response: Response, jobs: JobsDep) -> JobStatus:
     return _start(
         jobs,
         response,
         job_id=request.job_id,
         kind=JobKind.PULL,
         slug=request.slug,
-        params={"repo_id": request.repo_id, "revision": request.revision},
+        params={
+            "repo_id": request.repo_id,
+            "revision": request.revision,
+            "model_kind": request.model_kind.value,
+        },
         expected_total_bytes=request.expected_total_bytes,
     )
 
@@ -229,6 +224,40 @@ async def start_validate(
             "reference_perplexity": request.reference_perplexity,
             "reference_variant_id": (
                 str(request.reference_variant_id) if request.reference_variant_id else None
+            ),
+        },
+    )
+
+
+@router.post("/image-validate", response_model=JobStatus)
+async def start_image_validate(
+    request: ImageAssetValidateRequest,
+    response: Response,
+    jobs: JobsDep,
+    reservations: ReservationsDep,
+) -> JobStatus:
+    reservation = reservations.get(request.reservation_id)
+    if reservation is None or reservation.state.value != "held":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "a held image validation reservation is required"
+        )
+    return _start(
+        jobs,
+        response,
+        job_id=request.job_id,
+        kind=JobKind.IMAGE_VALIDATE,
+        slug=request.slug,
+        params={
+            "model_id": str(request.model_id),
+            "model_kind": request.kind.value,
+            "source_revision": request.source_revision,
+            "manifest_sha256": request.manifest_sha256,
+            "reservation_id": str(request.reservation_id),
+            "reservation_bytes": reservation.memory_bytes,
+            "compatible_base": (
+                request.compatible_base.model_dump(mode="json")
+                if request.compatible_base is not None
+                else None
             ),
         },
     )

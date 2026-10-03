@@ -24,6 +24,7 @@ from coire_api.routes import (
     admin_evaluations,
     admin_failover,
     admin_identity,
+    admin_images,
     admin_ledger,
     admin_models,
     admin_nodes,
@@ -34,7 +35,11 @@ from coire_api.routes import (
     chat,
     failover,
     health,
+    image_inputs,
+    image_outputs,
+    images,
     instances,
+    internal_images,
     internal_ops,
     mcp_artifacts,
     me,
@@ -42,6 +47,7 @@ from coire_api.routes import (
     nodes,
     runs,
     v1,
+    v1_images,
     workspaces,
 )
 from coire_api.telemetry import configure_telemetry
@@ -97,6 +103,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         chat_maintenance = ChatMaintenance(settings)
         await chat_maintenance.start()
         app.state.chat_maintenance = chat_maintenance
+        from coire_api.images.maintenance import ImageOutputMaintenance
+
+        image_maintenance = ImageOutputMaintenance(settings)
+        await image_maintenance.start()
+        app.state.image_maintenance = image_maintenance
         from coire_api.failover.poller import build_poller
         from coire_api.failover.publication import CoreSnapshotService, configured_membership
 
@@ -123,6 +134,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await failover_poller.stop()
             if snapshot_service is not None:
                 await snapshot_service.stop()
+            await image_maintenance.stop()
             await chat_maintenance.stop()
             await reconciler.stop()
             await prober.stop()
@@ -148,6 +160,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(instances.router)
     app.include_router(nodes.router)
     app.include_router(models.router)
+    app.include_router(images.router)
+    app.include_router(image_inputs.router)
+    app.include_router(image_outputs.router)
     app.include_router(chat.router)
     app.include_router(runs.router)
     app.include_router(workspaces.router)
@@ -158,6 +173,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_evaluations.router)
     app.include_router(admin_ledger.router)
     app.include_router(admin_identity.router)
+    app.include_router(admin_images.router)
+    app.include_router(admin_images.jobs_router)
+    app.include_router(admin_images.workers_router)
+    app.include_router(admin_images.coexistence_router)
     app.include_router(admin_variants.router)
     app.include_router(admin_models.router)
     app.include_router(admin_nodes.router)
@@ -167,7 +186,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_failover.router)
     app.include_router(failover.router)
     app.include_router(internal_ops.router)
+    app.include_router(internal_images.router)
     app.include_router(v1.router)
+    app.include_router(v1_images.router)
+    from coire_api.images.openapi import install_image_event_openapi
+
+    install_image_event_openapi(app)
 
     @app.middleware("http")
     async def authenticate_application_request(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -179,6 +203,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             reset_principal,
         )
         from coire_api.identity.limits import MonthlyQuotaExceeded, RateLimitExceeded
+        from coire_api.images.transfer import require_node_credential
 
         anonymous_paths = {"/ready", "/health", "/failover/ready"}
         separately_authenticated_paths = {
@@ -188,6 +213,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "/api/v1/failover/snapshot",
             "/api/v1/failover/events",
         }
+        if request.url.path.startswith("/api/v1/internal/images/"):
+            node = request.headers.get("x-coire-node", "")
+            authorization = request.headers.get("authorization", "")
+            try:
+                require_node_credential(
+                    node,
+                    authorization.removeprefix("Bearer ")
+                    if authorization.startswith("Bearer ")
+                    else "",
+                    settings,
+                )
+            except CoireError:
+                return JSONResponse(
+                    status_code=401,
+                    headers={"WWW-Authenticate": "Bearer"},
+                    content={"detail": "node credential required"},
+                )
+            separately_authenticated_paths.add(request.url.path)
         try:
             principal = (
                 ANONYMOUS

@@ -7,10 +7,11 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ULID_PATTERN = r"^[0-9A-HJKMNP-TV-Z]{26}$"
 SHA256_PATTERN = r"^[a-f0-9]{64}$"
+SLUG_PATTERN = r"^[A-Za-z0-9_.-]+--[A-Za-z0-9_.-]+$"
 
 
 def _safe_basename(value: str) -> str:
@@ -243,3 +244,68 @@ def is_ulid(value: str) -> bool:
     """Whether an identifier follows the repository's ULID wire spelling."""
 
     return re.fullmatch(ULID_PATTERN, value) is not None
+
+
+class ImageFileProcessRequest(BaseModel):
+    """Separate isolated image operation; chat file commands cannot select it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1] = 1
+    job_id: str = Field(pattern=ULID_PATTERN)
+    input_id: uuid.UUID
+    source_sha256: str = Field(pattern=SHA256_PATTERN)
+    purpose: Literal["init", "mask", "control", "recipe"]
+    operation: Literal["normalize_image", "normalize_mask", "extract_recipe"]
+    byte_count: int = Field(ge=1, le=64 * 1024 * 1024)
+    output_id: uuid.UUID | None = None
+    deadline_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def operation_matches_purpose(self) -> ImageFileProcessRequest:
+        if self.purpose == "recipe":
+            if self.operation != "extract_recipe" or self.output_id is not None:
+                raise ValueError("recipe requires extract_recipe without output_id")
+        else:
+            expected = "normalize_mask" if self.purpose == "mask" else "normalize_image"
+            if self.operation != expected or self.output_id is None:
+                raise ValueError(f"{self.purpose} requires {expected} with output_id")
+            if self.byte_count > 10 * 1024 * 1024:
+                raise ValueError("byte_count exceeds 10 MiB generation input limit")
+        return self
+
+
+class ImageFileProcessResult(BaseModel):
+    """CPU parser output; recipe JSON is revalidated as untrusted settings by API."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1] = 1
+    job_id: str = Field(pattern=ULID_PATTERN)
+    input_id: uuid.UUID
+    operation: Literal["normalize_image", "normalize_mask", "extract_recipe"]
+    source_sha256: str = Field(pattern=SHA256_PATTERN)
+    output_id: uuid.UUID | None = None
+    normalized_sha256: str | None = Field(default=None, pattern=SHA256_PATTERN)
+    normalized_bytes: int | None = Field(default=None, ge=1, le=10 * 1024 * 1024)
+    width: int | None = Field(default=None, ge=1, le=4096)
+    height: int | None = Field(default=None, ge=1, le=4096)
+    recipe_json: str | None = Field(default=None, max_length=64 * 1024)
+
+    @model_validator(mode="after")
+    def result_matches_operation(self) -> ImageFileProcessResult:
+        normalized = (
+            self.output_id,
+            self.normalized_sha256,
+            self.normalized_bytes,
+            self.width,
+            self.height,
+        )
+        if self.operation == "extract_recipe":
+            if self.recipe_json is None or any(value is not None for value in normalized):
+                raise ValueError("recipe result requires only recipe_json")
+            if len(self.recipe_json.encode("utf-8")) > 64 * 1024:
+                raise ValueError("recipe_json exceeds 64 KiB")
+        elif self.recipe_json is not None or any(value is None for value in normalized):
+            raise ValueError("normalized result requires output digest, size and dimensions")
+        return self

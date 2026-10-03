@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
@@ -14,11 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.audit import write_audit
 from coire_api.db import (
     MemoryReservationRow,
+    ModelInstanceRow,
     NodeMemoryLedgerRow,
     NodeRow,
     RequestLeaseRow,
 )
 from coire_core.models.audit import AuditAction
+from coire_core.models.instance import InstanceState
 from coire_core.models.placement import (
     LedgerUpdate,
     MemoryLedger,
@@ -36,7 +38,11 @@ class LedgerNotFoundError(LookupError):
 meter = metrics.get_meter("coire.api.placement")
 ledger_drift = meter.create_gauge(
     "coire_placement_ledger_drift_ratio",
-    description="Measured model residency minus model reservations, divided by model reservations.",
+    description="Measured model and image residency minus their reservations, divided by those reservations.",
+)
+image_residency_unavailable = meter.create_gauge(
+    "coire_image_residency_measurement_unavailable",
+    description="One means an image reservation exists but a live model or image footprint cannot be measured.",
 )
 
 
@@ -48,12 +54,43 @@ def drift_ratio(*, reserved_bytes: int, measured_bytes: int | None) -> float | N
     return (measured_bytes - reserved_bytes) / reserved_bytes
 
 
+def resident_reservation_bytes(reservations: Sequence[MemoryReservationRow]) -> int:
+    """Match the model and image processes included in measured residency."""
+    return sum(
+        row.bytes
+        for row in reservations
+        if row.holder_type in (ReservationHolder.MODEL, ReservationHolder.IMAGE)
+    )
+
+
+def effective_occupied_bytes(
+    reservations: Sequence[MemoryReservationRow], measured_resident_bytes: int | None
+) -> int | None:
+    """Count physical overage once; an unmeasured held image process blocks admission."""
+    occupied = sum(row.bytes for row in reservations)
+    if measured_resident_bytes is None:
+        if any(row.holder_type is ReservationHolder.IMAGE for row in reservations):
+            return None
+        return occupied
+    return occupied + max(0, measured_resident_bytes - resident_reservation_bytes(reservations))
+
+
 @asynccontextmanager
 async def node_admission_lock(session: AsyncSession, node_id: uuid.UUID) -> AsyncIterator[None]:
     """Serialize admissions for one node for the lifetime of the transaction."""
-    key = int.from_bytes(node_id.bytes[:8], "big", signed=False) & ((1 << 63) - 1)
-    await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+    await lock_nodes_for_admission(session, [node_id])
     yield
+
+
+async def lock_nodes_for_admission(session: AsyncSession, node_ids: list[uuid.UUID]) -> None:
+    """Take transaction-scoped node locks before reading competing placement state."""
+    keys = [
+        int.from_bytes(item.bytes[:8], "big", signed=False) & ((1 << 63) - 1) for item in node_ids
+    ]
+    if len(set(node_ids)) != len(node_ids) or len(set(keys)) != len(keys):
+        raise ValueError("admission group contains duplicate node lock keys")
+    for key in sorted(keys):
+        await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
 
 
 @asynccontextmanager
@@ -61,16 +98,7 @@ async def node_admission_locks(
     session: AsyncSession, node_ids: list[uuid.UUID]
 ) -> AsyncIterator[None]:
     """Lock a group in stable order so competing sharded admissions cannot split or deadlock."""
-
-    def lock_key(item: uuid.UUID) -> int:
-        return int.from_bytes(item.bytes[:8], "big", signed=False) & ((1 << 63) - 1)
-
-    unique = sorted(set(node_ids), key=lock_key)
-    if len(unique) != len(node_ids):
-        raise ValueError("admission group contains duplicate nodes")
-    for node_id in unique:
-        key = lock_key(node_id)
-        await session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+    await lock_nodes_for_admission(session, node_ids)
     yield
 
 
@@ -173,10 +201,8 @@ async def project_ledgers(session: AsyncSession) -> list[MemoryLedger]:
         )
         reserved = sum(row.bytes for row in reservations)
         measured = ledger.measured_resident_bytes
-        model_reserved = sum(
-            row.bytes for row in reservations if row.holder_type is ReservationHolder.MODEL
-        )
-        drift = drift_ratio(reserved_bytes=model_reserved, measured_bytes=measured)
+        resident_reserved = resident_reservation_bytes(reservations)
+        drift = drift_ratio(reserved_bytes=resident_reserved, measured_bytes=measured)
         node = nodes[ledger.node_id]
         ledger_drift.set(drift if drift is not None else 0.0, {"node": node.name})
         result.append(
@@ -274,16 +300,38 @@ async def set_pin(
     actor: str,
 ) -> MemoryReservationRow:
     row = await session.get(MemoryReservationRow, reservation_id)
-    if row is None or row.holder_type is not ReservationHolder.MODEL:
+    if row is None or row.holder_type not in {ReservationHolder.MODEL, ReservationHolder.IMAGE}:
         raise LedgerNotFoundError
-    row.pinned = update.pinned
+    image_worker = row.holder_type is ReservationHolder.IMAGE
+    if image_worker:
+        async with node_admission_lock(session, row.node_id):
+            row = await session.get(
+                MemoryReservationRow, reservation_id, populate_existing=True, with_for_update=True
+            )
+            if row is None or row.state is not MemoryReservationState.HELD:
+                raise LedgerNotFoundError
+            try:
+                instance_id = uuid.UUID(row.holder_id)
+            except ValueError as exc:
+                raise LedgerNotFoundError from exc
+            instance = await session.get(ModelInstanceRow, instance_id)
+            if instance is None or instance.state is InstanceState.DRAINING:
+                raise LedgerNotFoundError
+            row.pinned = update.pinned
+        action = "image.worker.pin" if update.pinned else "image.worker.unpin"
+    else:
+        row.pinned = update.pinned
+        action = AuditAction.MODEL_PIN if update.pinned else AuditAction.MODEL_UNPIN
     await write_audit(
         session,
         actor=actor,
-        action=AuditAction.MODEL_PIN if update.pinned else AuditAction.MODEL_UNPIN,
+        action=action,
         target_type="memory_reservation",
         target_id=str(reservation_id),
-        detail={"pinned": update.pinned, "model_id": row.holder_id},
+        detail={
+            "pinned": update.pinned,
+            "instance_id" if image_worker else "model_id": row.holder_id,
+        },
     )
     return row
 
@@ -295,6 +343,17 @@ async def acquire_lease(
     *,
     ttl_seconds: float,
 ) -> RequestLeaseRow:
+    reservation = await session.get(MemoryReservationRow, reservation_id)
+    if reservation is None:
+        raise LedgerNotFoundError
+    # Share the transaction-scoped node lock with image dispatch and eviction.
+    # No lease may be inserted from a pre-lock (possibly stale) reservation.
+    await lock_nodes_for_admission(session, [reservation.node_id])
+    reservation = await session.get(
+        MemoryReservationRow, reservation_id, populate_existing=True, with_for_update=True
+    )
+    if reservation is None or reservation.state is not MemoryReservationState.HELD:
+        raise LedgerNotFoundError
     now = datetime.now(UTC)
     row = RequestLeaseRow(
         reservation_id=reservation_id,
@@ -302,9 +361,6 @@ async def acquire_lease(
         expires_at=now + timedelta(seconds=ttl_seconds),
     )
     session.add(row)
-    reservation = await session.get(MemoryReservationRow, reservation_id)
-    if reservation is None or reservation.state is not MemoryReservationState.HELD:
-        raise LedgerNotFoundError
     reservation.last_used_at = now
     await session.flush()
     return row
@@ -318,7 +374,8 @@ async def release_lease(session: AsyncSession, lease_id: uuid.UUID) -> None:
 
 async def refresh_lease(session: AsyncSession, lease_id: uuid.UUID, *, ttl_seconds: float) -> bool:
     row = await session.get(RequestLeaseRow, lease_id)
-    if row is None or row.released_at is not None:
+    now = datetime.now(UTC)
+    if row is None or row.released_at is not None or row.expires_at <= now or ttl_seconds <= 0:
         return False
-    row.expires_at = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
+    row.expires_at = now + timedelta(seconds=ttl_seconds)
     return True

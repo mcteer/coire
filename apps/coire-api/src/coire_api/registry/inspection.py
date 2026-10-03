@@ -5,10 +5,15 @@ from __future__ import annotations
 import re
 
 from coire_api.registry.placement import NodeView
+from coire_core.image_assets import (
+    has_control_union_layout,
+    has_seedvr2_3b_layout,
+    include_image_asset_path,
+)
 from coire_core.memory import runtime_reservation_bytes
 from coire_core.models.acquisition import FitDecision, InspectionResult, Precision, VariantRecipe
 from coire_core.models.jobs import RepoInspection
-from coire_core.models.registry import EngineBackend
+from coire_core.models.registry import AUXILIARY_IMAGE_KINDS, EngineBackend, ModelKind
 from coire_core.settings import Settings
 
 # These are architecture families supported by the pinned mlx-lm release. Matching is
@@ -29,7 +34,7 @@ SUPPORTED_ARCHITECTURE_FAMILIES = frozenset(
         "qwen35",
     }
 )
-SUPPORTED_VISUAL_ARCHITECTURE_FAMILIES = frozenset({"idefics3"})
+SUPPORTED_VISUAL_ARCHITECTURE_FAMILIES = frozenset({"idefics3", "qwen4exp"})
 VISUAL_PROCESSOR_FILES = frozenset(
     {
         "config.json",
@@ -39,6 +44,87 @@ VISUAL_PROCESSOR_FILES = frozenset(
         "tokenizer.json",
     }
 )
+_IMAGE_SAFE_SUFFIXES = frozenset(
+    {".safetensors", ".json", ".txt", ".model", ".tiktoken", ".md", ".yaml", ".yml"}
+)
+_IMAGE_SAFE_NAMES = frozenset({".gitattributes", "LICENSE", "LICENSE.txt"})
+
+
+def classify_image_inspection(repo: RepoInspection, kind: ModelKind) -> InspectionResult:
+    """Refuse unsafe image sources before an admin can start any weight transfer."""
+    if kind is not ModelKind.IMAGE_MODEL and kind not in AUXILIARY_IMAGE_KINDS:
+        raise ValueError("image asset kind required")
+    backend = EngineBackend.MFLUX if kind is ModelKind.IMAGE_MODEL else EngineBackend.AUXILIARY
+    rejection: str | None = None
+    selected: set[str] = set()
+    seen: set[str] = set()
+    if repo.gated:
+        rejection = "gated"
+    elif not re.fullmatch(r"[0-9a-f]{40}", repo.revision) or repo.revision == "0" * 40:
+        rejection = "unresolved_revision"
+    elif not repo.license_id or repo.license_id.lower() in {"other", "unknown"}:
+        rejection = "licence_unreviewed"
+    elif not repo.files or len(repo.files) > 4096:
+        rejection = "invalid_file_list"
+    else:
+        for item in repo.files:
+            path = item.path
+            parts = path.split("/")
+            if (
+                not path
+                or path.startswith("/")
+                or "\\" in path
+                or any(part in {"", ".", ".."} for part in parts)
+                or any(char in path for char in "*?[]")
+                or any(ord(char) < 32 or ord(char) == 127 for char in path)
+                or path in seen
+            ):
+                rejection = "unsafe_file_path"
+                break
+            seen.add(path)
+            if not include_image_asset_path(repo.repo_id, kind, path):
+                continue
+            if path.split("/")[-1] in _IMAGE_SAFE_NAMES or any(
+                path.endswith(suffix) for suffix in _IMAGE_SAFE_SUFFIXES
+            ):
+                selected.add(path)
+                if path.endswith(".safetensors") and (
+                    item.bytes <= 0
+                    or item.upstream_sha256 is None
+                    or not re.fullmatch(r"[0-9a-f]{64}", item.upstream_sha256)
+                ):
+                    rejection = "unverified_weight"
+                    break
+        if rejection is None and not any(path.endswith(".safetensors") for path in selected):
+            rejection = "missing_safetensors"
+        if (
+            rejection is None
+            and kind in {ModelKind.IMAGE_MODEL, ModelKind.CONTROL_MODEL, ModelKind.UPSCALE_MODEL}
+            and "config.json" not in selected
+            and not (kind is ModelKind.IMAGE_MODEL and "model_index.json" in selected)
+            and not (
+                kind is ModelKind.UPSCALE_MODEL and has_seedvr2_3b_layout(repo.repo_id, selected)
+            )
+            and not (
+                kind is ModelKind.CONTROL_MODEL and has_control_union_layout(repo.repo_id, selected)
+            )
+        ):
+            rejection = "missing_local_config"
+    return InspectionResult(
+        revision=repo.revision,
+        kind=kind,
+        architecture=repo.architecture,
+        source_format="safetensors",
+        backend=backend,
+        gated=repo.gated,
+        license_id=repo.license_id,
+        metadata_bytes=max(0, repo.total_bytes - repo.weight_bytes),
+        weight_bytes=repo.weight_bytes,
+        total_bytes=repo.total_bytes,
+        supported=rejection is None,
+        rejection_code=rejection,
+        rejection_detail=("image asset cannot be acquired" if rejection else None),
+    )
 
 
 def _family(architecture: str | None) -> str:

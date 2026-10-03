@@ -1,0 +1,341 @@
+"""Image node and worker commands are attempt-fenced registry-only messages."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from coire_core.models.image_worker import (
+    ImageAssetValidateRequest,
+    ImageTransferGrant,
+    ImageTransferReceipt,
+    ImageValidationBase,
+    ImageWorkerLoadRequest,
+    ImageWorkerLoadResult,
+    ImageWorkerOutputManifest,
+    ImageWorkerProcessConfig,
+    ImageWorkerProcessRecord,
+    ImageWorkerRunRequest,
+    NodeImageCleanupRequest,
+    NodeImageInputManifest,
+    NodeImageStartRequest,
+)
+from coire_core.models.images import (
+    ImageInputDigest,
+    ImageMode,
+    ImageSpec,
+    ResolvedImageSpec,
+    canonical_spec_hash,
+)
+from coire_core.models.registry import ModelKind
+
+MODEL = uuid.UUID("10000000-0000-0000-0000-000000000001")
+INSTANCE = uuid.UUID("20000000-0000-0000-0000-000000000001")
+OUTPUT = uuid.UUID("30000000-0000-0000-0000-000000000001")
+JOB = "01J00000000000000000000000"
+
+
+def test_auxiliary_validation_requires_an_exact_pinned_base_copy() -> None:
+    values = {
+        "job_id": uuid.uuid4(),
+        "model_id": uuid.uuid4(),
+        "slug": "org--adapter",
+        "kind": ModelKind.IMAGE_LORA,
+        "source_revision": "a" * 40,
+        "manifest_sha256": "b" * 64,
+        "reservation_id": uuid.uuid4(),
+    }
+    with pytest.raises(ValidationError, match="compatible base"):
+        ImageAssetValidateRequest.model_validate(values)
+    base = ImageValidationBase(
+        model_id=MODEL,
+        slug="org--base",
+        source_revision="c" * 40,
+        manifest_sha256="d" * 64,
+    )
+    assert (
+        ImageAssetValidateRequest.model_validate(
+            {**values, "compatible_base": base}
+        ).compatible_base
+        == base
+    )
+    with pytest.raises(ValidationError, match="compatible base"):
+        ImageAssetValidateRequest.model_validate(
+            {**values, "kind": ModelKind.IMAGE_MODEL, "compatible_base": base}
+        )
+
+
+def _resolved() -> ResolvedImageSpec:
+    spec = ImageSpec(
+        model_id=MODEL,
+        prompt="fox",
+        width=512,
+        height=512,
+        steps=20,
+        guidance=Decimal("3.25"),
+        seed=7,
+    )
+    return ResolvedImageSpec(
+        spec=spec,
+        seeds=(7,),
+        pipeline_version="mflux-0.20.0",
+        environment_fingerprint="a" * 64,
+        model_sha256="b" * 64,
+        spec_hash=canonical_spec_hash(spec),
+    )
+
+
+def _receipt(**overrides: object) -> ImageTransferReceipt:
+    values: dict[str, object] = {
+        "job_id": JOB,
+        "attempt": 1,
+        "fence": 1,
+        "node": "coire-edge-b",
+        "index": 0,
+        "output_id": OUTPUT,
+        "byte_count": 1024,
+        "sha256": "c" * 64,
+        "recipe_sha256": "d" * 64,
+        "verified_at": datetime.now(UTC),
+    }
+    values.update(overrides)
+    return ImageTransferReceipt.model_validate(values)
+
+
+def test_worker_output_manifest_is_bounded_and_path_free() -> None:
+    output = ImageWorkerOutputManifest(
+        index=0, byte_count=100, sha256="a" * 64, recipe_sha256="b" * 64
+    )
+    assert output.byte_count == 100
+    for changes in ({"path": "/private/output.png"}, {"byte_count": 64 * 1024 * 1024 + 1}):
+        with pytest.raises(ValidationError):
+            ImageWorkerOutputManifest.model_validate(output.model_dump() | changes)
+
+
+def test_worker_launch_config_rejects_untyped_paths_and_prompt(tmp_path: Path) -> None:
+    load = ImageWorkerLoadRequest(
+        slug="studio--z-image-turbo",
+        model_id=MODEL,
+        instance_id=INSTANCE,
+        manifest_sha256="a" * 64,
+        reservation_bytes=1024,
+        runtime_version="mflux-0.20.0",
+    )
+    values = {
+        "load": load.model_dump(mode="json"),
+        "store_dir": str(tmp_path / "store"),
+        "scratch_dir": str(tmp_path / "scratch"),
+        "token_file": str(tmp_path / "secret"),
+        "port": 39177,
+    }
+    assert ImageWorkerProcessConfig.model_validate(values).port == 39177
+    for changes in (
+        {"prompt": "private"},
+        {"store_dir": "../model"},
+        {"port": 0},
+        {"token_file": str(tmp_path / "store" / "secret")},
+    ):
+        with pytest.raises(ValidationError):
+            ImageWorkerProcessConfig.model_validate(values | changes)
+
+
+def test_worker_process_record_requires_matching_pid_port_and_reservation(tmp_path: Path) -> None:
+    load = ImageWorkerLoadRequest(
+        slug="studio--z-image-turbo",
+        model_id=MODEL,
+        instance_id=INSTANCE,
+        manifest_sha256="a" * 64,
+        reservation_bytes=1024,
+        runtime_version="mflux-0.20.0",
+    )
+    config = ImageWorkerProcessConfig(
+        load=load,
+        store_dir=tmp_path / "store",
+        scratch_dir=tmp_path / "scratch",
+        token_file=tmp_path / "secret",
+        port=9600,
+    )
+    ready = ImageWorkerLoadResult(
+        instance_id=INSTANCE,
+        state="starting",
+        pid=123,
+        process_create_time=1.0,
+        port=9600,
+        reserved_bytes=1024,
+    )
+    assert ImageWorkerProcessRecord(config=config, status=ready).status.pid == 123
+    for changes in ({"pid": None}, {"port": 9601}, {"reserved_bytes": 1}):
+        with pytest.raises(ValidationError):
+            ImageWorkerProcessRecord(config=config, status=ready.model_copy(update=changes))
+
+
+def test_worker_load_is_mflux_registry_only() -> None:
+    load = ImageWorkerLoadRequest(
+        slug="studio--z-image-turbo",
+        model_id=MODEL,
+        instance_id=INSTANCE,
+        manifest_sha256="a" * 64,
+        reservation_bytes=1024,
+        runtime_version="mflux-0.20.0",
+    )
+    assert load.backend == "mflux"
+    for override in (
+        {"backend": "mlx_lm"},
+        {"model_path": "/tmp/model"},
+        {"model_id": "org/model"},
+        {"slug": "../weights"},
+        {"slug": "studio--model\n"},
+    ):
+        with pytest.raises(ValidationError):
+            ImageWorkerLoadRequest.model_validate({**load.model_dump(), **override})
+
+
+def test_node_start_binds_uuid_ulid_model_and_fence() -> None:
+    request = NodeImageStartRequest(
+        job_id=JOB,
+        attempt=1,
+        fence=4,
+        node="coire-edge-b",
+        model_id=MODEL,
+        instance_id=INSTANCE,
+        resolved=_resolved(),
+        deadline_at=datetime.now(UTC) + timedelta(minutes=2),
+        reservation_bytes=1024,
+    )
+    assert request.resolved.spec.model_id == MODEL
+    for override in (
+        {"job_id": str(MODEL)},
+        {"attempt": 0},
+        {"fence": 0},
+        {"model_id": INSTANCE},
+        {"path": "/tmp/evil"},
+    ):
+        with pytest.raises(ValidationError):
+            NodeImageStartRequest.model_validate({**request.model_dump(), **override})
+
+
+def test_cleanup_rejects_mismatched_receipt_and_duplicate_index() -> None:
+    receipt = _receipt()
+    NodeImageCleanupRequest(
+        job_id=JOB, attempt=1, fence=1, node="coire-edge-b", receipts=(receipt,)
+    )
+    with pytest.raises(ValidationError, match="receipt"):
+        NodeImageCleanupRequest(
+            job_id=JOB, attempt=1, fence=2, node="coire-edge-b", receipts=(receipt,)
+        )
+    with pytest.raises(ValidationError, match="index"):
+        NodeImageCleanupRequest(
+            job_id=JOB,
+            attempt=1,
+            fence=1,
+            node="coire-edge-b",
+            receipts=(receipt, _receipt(output_id=uuid.uuid4())),
+        )
+    with pytest.raises(ValidationError, match="receipt"):
+        NodeImageCleanupRequest(
+            job_id=JOB, attempt=1, fence=1, node="coire-edge-a", receipts=(receipt,)
+        )
+
+
+def test_transfer_grant_is_bounded_to_node_attempt_and_expiry() -> None:
+    now = datetime.now(UTC)
+    grant = ImageTransferGrant(
+        job_id=JOB,
+        attempt=1,
+        fence=1,
+        node="coire-edge-b",
+        index=0,
+        expected_bytes=1024,
+        expected_sha256="a" * 64,
+        token="opaque-token",
+        issued_at=now,
+        expires_at=now + timedelta(minutes=1),
+    )
+    assert grant.node == "coire-edge-b"
+    with pytest.raises(ValidationError, match="expires_at"):
+        ImageTransferGrant.model_validate(
+            {**grant.model_dump(), "expires_at": now + timedelta(hours=1)}
+        )
+
+
+def test_worker_run_rejects_input_digest_substitution() -> None:
+    source = uuid.uuid4()
+    image = ImageSpec(
+        model_id=MODEL,
+        mode=ImageMode.IMG2IMG,
+        prompt="fox",
+        width=512,
+        height=512,
+        steps=20,
+        guidance=Decimal("3.25"),
+        seed=7,
+        init_image_id=source,
+        strength=Decimal("0.5"),
+    )
+    resolved = ResolvedImageSpec(
+        spec=image,
+        seeds=(7,),
+        pipeline_version="mflux-0.20.0",
+        environment_fingerprint="a" * 64,
+        model_sha256="b" * 64,
+        spec_hash=canonical_spec_hash(image),
+        inputs=(ImageInputDigest(input_id=source, sha256="c" * 64, width=512, height=512),),
+    )
+    manifest = NodeImageInputManifest(
+        input_id=source, purpose="init", sha256="c" * 64, byte_count=1024, width=512, height=512
+    )
+    ImageWorkerRunRequest(
+        job_id=JOB,
+        attempt=1,
+        fence=1,
+        instance_id=INSTANCE,
+        resolved=resolved,
+        inputs=(manifest,),
+        deadline_at=datetime.now(UTC),
+    )
+    with pytest.raises(ValidationError, match="inputs"):
+        ImageWorkerRunRequest.model_validate(
+            {
+                "job_id": JOB,
+                "attempt": 1,
+                "fence": 1,
+                "instance_id": INSTANCE,
+                "resolved": resolved,
+                "inputs": [{**manifest.model_dump(), "sha256": "d" * 64}],
+                "deadline_at": datetime.now(UTC),
+            }
+        )
+    with pytest.raises(ValidationError, match="purpose"):
+        ImageWorkerRunRequest.model_validate(
+            {
+                "job_id": JOB,
+                "attempt": 1,
+                "fence": 1,
+                "instance_id": INSTANCE,
+                "resolved": resolved,
+                "inputs": [{**manifest.model_dump(), "purpose": "mask"}],
+                "deadline_at": datetime.now(UTC),
+            }
+        )
+    wrong_size = resolved.model_copy(
+        update={
+            "inputs": (ImageInputDigest(input_id=source, sha256="c" * 64, width=256, height=512),)
+        }
+    )
+    with pytest.raises(ValidationError, match="dimensions"):
+        ImageWorkerRunRequest.model_validate(
+            {
+                "job_id": JOB,
+                "attempt": 1,
+                "fence": 1,
+                "instance_id": INSTANCE,
+                "resolved": wrong_size,
+                "inputs": [{**manifest.model_dump(), "width": 256}],
+                "deadline_at": datetime.now(UTC),
+            }
+        )

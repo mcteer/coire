@@ -89,6 +89,8 @@ class Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 self._send(400, {"detail": "invalid JSON"})
                 return
+        if "emit-stderr-after-adoption" in str(request.get("messages", "")):
+            print("fake engine request diagnostic", file=sys.stderr, flush=True)
         ready_at = _state["ready_at"]
         if time.monotonic() < (ready_at if isinstance(ready_at, float) else 0.0):
             self._send(503, {"detail": "model is still loading"})

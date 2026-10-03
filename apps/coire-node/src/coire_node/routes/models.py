@@ -8,8 +8,8 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from coire_core.models.files import SLUG_PATTERN
 from coire_core.models.jobs import JobErrorKind, RepoInspection
-from coire_core.models.registry import SLUG_PATTERN
 from coire_node import hub
 from coire_node.deps import EngineDep, GrantsDep, SettingsDep, StoreDep
 

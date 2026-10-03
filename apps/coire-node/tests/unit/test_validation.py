@@ -73,6 +73,23 @@ def test_simple_chat_template_is_valid_without_tool_capability(tmp_path: Path) -
         assert run_template_check(tmp_path) == (ValidationOutcome.NOT_APPLICABLE, None)
 
 
+def test_converted_chat_template_jinja_is_valid_without_tool_capability(tmp_path: Path) -> None:
+    (tmp_path / "tokenizer_config.json").write_text("{}")
+    (tmp_path / "chat_template.jinja").write_text("{{ message['content'] }}")
+
+    class PlainTokenizer:
+        def apply_chat_template(
+            self, conversation: object, *, tools: object, tokenize: bool
+        ) -> str:
+            assert isinstance(conversation, list)
+            return str(conversation[0]["content"])
+
+    tokenizer_utils = ModuleType("mlx_lm.tokenizer_utils")
+    tokenizer_utils.load = lambda path: PlainTokenizer()  # type: ignore[attr-defined]
+    with patch.dict(sys.modules, {"mlx_lm.tokenizer_utils": tokenizer_utils}):
+        assert run_template_check(tmp_path) == (ValidationOutcome.NOT_APPLICABLE, None)
+
+
 def _visual_files(path: Path) -> None:
     path.mkdir()
     (path / "config.json").write_text(
@@ -87,6 +104,10 @@ def _visual_files(path: Path) -> None:
 def test_visual_inventory_requires_local_complete_processor_and_weights(tmp_path: Path) -> None:
     model = tmp_path / "model"
     _visual_files(model)
+    assert inspect_local_variant(model) is None
+    (model / "config.json").write_text(
+        json.dumps({"architectures": ["Qwen4ExpForConditionalGeneration"]})
+    )
     assert inspect_local_variant(model) is None
     (model / "processor_config.json").unlink()
     assert (
@@ -110,17 +131,27 @@ def test_visual_smoke_uses_only_local_loader_and_fails_closed(tmp_path: Path) ->
     )
     mlx_pkg.core = mlx_core  # type: ignore[attr-defined]
     mlx_vlm = ModuleType("mlx_vlm")
-    load = MagicMock(return_value=(object(), object()))
+    loaded_model = SimpleNamespace(config={"model_type": "qwen4_exp"})
+    loaded_processor = object()
+    load = MagicMock(return_value=(loaded_model, loaded_processor))
+    apply_chat_template = MagicMock(return_value="<formatted-image-prompt>")
     generate = MagicMock(return_value=SimpleNamespace(text="The square is red."))
     mlx_vlm.load = load  # type: ignore[attr-defined]
+    mlx_vlm.apply_chat_template = apply_chat_template  # type: ignore[attr-defined]
     mlx_vlm.generate = generate  # type: ignore[attr-defined]
     with patch.dict(sys.modules, {"mlx": mlx_pkg, "mlx.core": mlx_core, "mlx_vlm": mlx_vlm}):
         outcome, failure, capability = run_visual_smoke(model)
     assert outcome is ValidationOutcome.PASS
     assert failure is None
     assert capability is not None and capability.verified
+    assert capability.max_image_pixels == 512 * 512
+    assert capability.max_encoded_bytes > 500_000
+    assert capability.encoder_memory_bytes == 0
     load.assert_called_once_with(str(model), trust_remote_code=False, strict=True)
-    assert "<image>" in generate.call_args.args[2]
+    apply_chat_template.assert_called_once_with(
+        loaded_processor, loaded_model.config, "Describe this image.", num_images=1
+    )
+    assert generate.call_args.args[2] == "<formatted-image-prompt>"
     assert generate.call_args.kwargs["image"].endswith("fixture.png")
 
     load.side_effect = RuntimeError("sensitive path")

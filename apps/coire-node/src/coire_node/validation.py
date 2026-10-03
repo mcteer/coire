@@ -134,6 +134,8 @@ def run_template_check(model_path: Path) -> tuple[ValidationOutcome, str | None]
         tokenizer = cast(_ChatTemplateTokenizer, load_tokenizer(model_path))
         template_config = json.loads((model_path / "tokenizer_config.json").read_text())
         template = template_config.get("chat_template")
+        if template is None and (model_path / "chat_template.jinja").is_file():
+            template = (model_path / "chat_template.jinja").read_text()
         if isinstance(template, list):
             template_text = "\n".join(
                 item.get("template", "") for item in template if isinstance(item, dict)

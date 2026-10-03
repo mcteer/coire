@@ -20,7 +20,7 @@ export function AppShell({
   onSignOut,
   children,
 }: {
-  view: "chat" | "admin";
+  view: "chat" | "images" | "admin";
   canAdmin?: boolean;
   tab?: AdminTab;
   setTab?: (tab: AdminTab) => void;
@@ -38,7 +38,12 @@ export function AppShell({
           <span className="logo">C</span>
           <b>Coire</b>
           <span className="muted">
-            / {view === "chat" ? "Chat" : "Admin / " + tabs.find(([id]) => id === tab)?.[1]}
+            /{" "}
+            {view === "chat"
+              ? "Chat"
+              : view === "images"
+                ? "Images"
+                : "Admin / " + tabs.find(([id]) => id === tab)?.[1]}
           </span>
         </div>
         <div className="chips">
@@ -82,6 +87,13 @@ export function AppShell({
           href="#chat"
         >
           Chat
+        </a>
+        <a
+          className={view === "images" ? "active" : ""}
+          aria-current={view === "images" ? "page" : undefined}
+          href="#images"
+        >
+          Images
         </a>
         {canAdmin && (
           <a

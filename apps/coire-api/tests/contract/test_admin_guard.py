@@ -18,7 +18,11 @@ from coire_api.app import create_app
 from coire_core.settings import Settings
 
 ADMIN_TOKEN = "admin-token-for-tests"
-PLACEHOLDERS = {"model_id": str(uuid.uuid4()), "engine_id": str(uuid.uuid4())}
+PLACEHOLDERS = {
+    "model_id": str(uuid.uuid4()),
+    "engine_id": str(uuid.uuid4()),
+    "preset_id": str(uuid.uuid4()),
+}
 
 
 @pytest.fixture

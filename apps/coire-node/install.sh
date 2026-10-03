@@ -101,13 +101,13 @@ export UV_NO_CACHE=1
 # brings its own rather than depending on what happens to be installed (research R5).
 say "provisioning CPython $PYTHON_VERSION"
 uv python install "$PYTHON_VERSION" >/dev/null
-# macOS Local Network privacy tracks the executable's code identity.  The uv-managed
-# interpreter starts unsigned; a stable ad-hoc identity gives macOS a consistent
-# identity for Local Network permission across node upgrades.
+NODE_PYTHON="$(uv python find "$PYTHON_VERSION")"
+# Keep uv's interpreter untouched. A distinct executable name and stable identity avoid
+# ambiguous python3.13 permission rows left by signing a previously registered path.
 if [[ "$(uname -s)" == "Darwin" ]]; then
-  NODE_PYTHON="$(uv python find "$PYTHON_VERSION")"
-  say "signing $NODE_PYTHON for Studio network access"
-  codesign --force --sign - --identifier com.coire.node.python "$NODE_PYTHON" >/dev/null
+  NODE_PYTHON="$("$NODE_PYTHON" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \
+    --network-python "$NODE_PYTHON")"
+  say "using dedicated Studio runtime $NODE_PYTHON"
 fi
 
 # --- exact locked wheel graph ---------------------------------------------
@@ -126,7 +126,7 @@ if [[ ! -r "$REQUIREMENTS" || ! -d "$WHEELHOUSE" || \
   echo "error: stage one core/node wheel and the locked node-wheels directory" >&2
   exit 2
 fi
-LOCK_ID="$(cat "$REQUIREMENTS" "${CORE_WHEELS[0]}" "${NODE_WHEELS[0]}" | shasum -a 256 | cut -c1-12)"
+LOCK_ID="$( { printf '%s\n' 'coire-node-runtime-v1'; cat "$REQUIREMENTS" "${CORE_WHEELS[0]}" "${NODE_WHEELS[0]}"; } | shasum -a 256 | cut -c1-12)"
 ENV_DIR="$PREFIX/envs/$AGENT_VERSION-$LOCK_ID"
 STAGING="$ENV_DIR.staging.$$"
 cleanup_stage() { [[ ! -e "$STAGING" ]] || rm -rf "$STAGING"; }
@@ -138,7 +138,7 @@ if [[ -e "$ENV_DIR" && ! -x "$ENV_DIR/bin/python3" ]]; then
 fi
 if [[ ! -x "$ENV_DIR/bin/python3" ]]; then
   say "creating isolated $ENV_DIR from locked wheels"
-  uv venv --python "$PYTHON_VERSION" "$STAGING" >/dev/null
+  uv venv --python "$NODE_PYTHON" "$STAGING" >/dev/null
   uv pip sync --python "$STAGING/bin/python3" --require-hashes --no-index \
     --find-links "$WHEELHOUSE" "$REQUIREMENTS" >/dev/null
   uv pip install --python "$STAGING/bin/python3" --no-index --no-deps \
@@ -176,6 +176,9 @@ echo "the remaining steps need sudo:"
 echo "  sudo cp $RENDERED $PLIST"
 echo "  sudo chown root:wheel $PLIST && sudo chmod 644 $PLIST"
 echo "  sudo launchctl bootout system/com.coire.node 2>/dev/null || true"
+echo "  # Wait for launchd to finish removing the old registration before bootstrap."
+echo '  for i in $(seq 1 30); do launchctl print system/com.coire.node >/dev/null 2>&1 || break; sleep 1; done'
+echo '  if launchctl print system/com.coire.node >/dev/null 2>&1; then echo "coire-node still registered" >&2; exit 1; fi'
 echo "  sudo launchctl bootstrap system $PLIST"
 echo
 echo "and the node token, in the SYSTEM keychain (the login keychain is locked at boot):"

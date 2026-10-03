@@ -1,0 +1,895 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (operation, outcome) (rate(coire_image_requests_total[5m]))",
+          "legendFormat": "{{operation}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Private image API operations",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind, outcome) (rate(coire_image_input_cleanup_total[5m]))",
+          "legendFormat": "{{kind}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Private image input cleanup",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(coire_image_input_purge_oldest_seconds)",
+          "legendFormat": "oldest pending input",
+          "refId": "A"
+        }
+      ],
+      "title": "Image input cleanup age",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (stage, outcome) (rate(coire_image_node_stages_total[5m]))",
+          "legendFormat": "{{stage}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Studio image worker stages",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(coire_image_purge_oldest_seconds)",
+          "legendFormat": "oldest pending purge",
+          "refId": "A"
+        }
+      ],
+      "title": "Private image blobs awaiting purge",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_transfer_recovery_total[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Image transfer recovery",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_cancellation_recovery_total[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Image cancellation recovery",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 56
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_purge_total{kind=\"output\"}[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Image output cleanup",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 64
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_observation_total[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Fenced image journal observation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_publication_total[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Whole-batch image publication",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 80
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_queue_expiration_total[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Overdue image queue reconciliation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 88
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind, outcome) (rate(coire_image_purge_total{kind=~\"transfer_temp|terminal_staging|orphan_staging\"}[5m]))",
+          "legendFormat": "{{kind}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Image transfer staging cleanup",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 96
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_node_stages_total{stage=\"classify\"}[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Studio image classification",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 104
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind, outcome) (rate(coire_image_validation_total[5m]))",
+          "legendFormat": "{{kind}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Reserved Studio image validation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 112
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (operation, outcome) (rate(coire_image_input_worker_total[5m]))",
+          "legendFormat": "{{operation}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Isolated image input processing",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 120
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_publication_total[5m]))",
+          "legendFormat": "publication {{outcome}} /s",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (outcome) (rate(coire_image_cancellation_recovery_total[5m]))",
+          "legendFormat": "cancellation {{outcome}} /s",
+          "refId": "B"
+        }
+      ],
+      "title": "Image terminal publication and cancellation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 128
+      },
+      "id": 17,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_dispatch_total[5m]))",
+          "legendFormat": "dispatch {{outcome}} /s",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (outcome) (rate(coire_image_queue_expiration_total[5m]))",
+          "legendFormat": "queue expiry {{outcome}} /s",
+          "refId": "B"
+        }
+      ],
+      "title": "Image placement and queue reconciliation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 136
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_cancellation_recovery_total[5m]))",
+          "legendFormat": "scheduler {{outcome}} /s",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (outcome) (rate(coire_image_node_stages_total{stage=\"cancel\"}[5m]))",
+          "legendFormat": "Studio {{outcome}} /s",
+          "refId": "B"
+        }
+      ],
+      "title": "Image cancellation and worker stops",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 144
+      },
+      "id": 19,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (operation, outcome) (rate(coire_image_requests_total{reason=\"storage\"}[5m]))",
+          "legendFormat": "{{operation}} {{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Image storage refusals",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 152
+      },
+      "id": 20,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (stage) (coire_image_node_cache_bytes)",
+          "legendFormat": "{{stage}} bytes",
+          "refId": "A"
+        }
+      ],
+      "title": "Studio image cache occupancy",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 160
+      },
+      "id": 21,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (stage, event) (rate(coire_image_node_cache_events_total[5m]))",
+          "legendFormat": "{{stage}} {{event}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Studio image cache traffic",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 168
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(coire_gateway_first_token_duration_ms_bucket[15m]))) and sum(increase(coire_image_dispatch_total{outcome=\"started\"}[15m])) > 0",
+          "legendFormat": "p95 ms while images start",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (node, le) (rate(coire_gateway_first_token_duration_ms_bucket{node=~\"coire-edge-.*\"}[5m]))) and sum(increase(coire_image_dispatch_total{outcome=\"started\"}[15m])) > 0",
+          "legendFormat": "{{node}} live p95 ms",
+          "refId": "B"
+        }
+      ],
+      "title": "Gateway chat first-token p95 during image activity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {"unit": "short"},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 176},
+      "id": 23,
+      "options": {
+        "legend": {"displayMode": "list", "placement": "bottom"}
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_latency_monitor_total[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Image coexistence live latency monitor",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 184},
+      "id": 24,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_worker_idle_unloads_total[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ],
+      "title": "Image worker idle unloads",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 192},
+      "id": 25,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "max(coire_image_quota_drift_bytes)",
+          "legendFormat": "largest stored-byte counter drift",
+          "refId": "A"
+        }
+      ],
+      "title": "Image stored quota reconciliation",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 200},
+      "id": 26,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum(increase(coire_image_output_integrity_failures_total[15m]))",
+          "legendFormat": "retained blob receipt failures",
+          "refId": "A"
+        }
+      ],
+      "title": "Image retained output integrity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 208},
+      "id": 27,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "max by (node) (coire_image_residency_measurement_unavailable)",
+          "legendFormat": "{{node}} unmeasurable (1=yes)",
+          "refId": "A"
+        }
+      ],
+      "title": "Image worker physical footprint unavailable",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 216},
+      "id": 28,
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(coire_image_cancellation_delay_seconds_bucket[5m])))",
+          "legendFormat": "cancel intent to cleanup proof p95",
+          "refId": "A"
+        }
+      ],
+      "title": "Image cancellation delay",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": [
+    "coire",
+    "image"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "title": "Coire Image",
+  "uid": "coire-image",
+  "version": 1
+}

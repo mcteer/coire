@@ -6,6 +6,7 @@ from coire_api.registry.inspection import classify_inspection
 from coire_api.registry.placement import NodeView
 from coire_core.models.jobs import RepoInspection
 from coire_core.models.node import Reachability
+from coire_core.models.registry import EngineBackend
 from coire_core.settings import Settings
 
 
@@ -54,3 +55,24 @@ def test_raw_and_mlx_sources_are_accepted_without_transferring_weights() -> None
     assert raw.supported and raw.source_format == "safetensors"
     assert mlx.supported and mlx.source_format == "mlx"
     assert raw.metadata_bytes == 100
+
+
+def test_qwen38_flash_next_uses_pinned_visual_engine() -> None:
+    repo = _repo(
+        architecture="Qwen4ExpForConditionalGeneration",
+        is_mlx_format=True,
+        files=[
+            {"path": path, "bytes": 1}
+            for path in (
+                "config.json",
+                "processor_config.json",
+                "preprocessor_config.json",
+                "tokenizer_config.json",
+                "tokenizer.json",
+                "model.safetensors",
+            )
+        ],
+    )
+    result = classify_inspection(repo, _nodes(), Settings())
+    assert result.supported
+    assert result.backend is EngineBackend.MLX_VLM

@@ -34,6 +34,7 @@ class UsageTracker:
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     model_id: uuid.UUID | None = None
     engine_id: uuid.UUID | None = None
+    node: str | None = None
     provider_source: ModelSource = ModelSource.STUDIO
     backend: EngineBackend | None = None
     prompt_tokens: int = 0
@@ -49,6 +50,7 @@ class UsageTracker:
         """Attach the registry-selected model and engine to once-only accounting."""
         self.model_id = resolved.model_id
         self.engine_id = resolved.engine_id
+        self.node = resolved.node
         self.provider_source = resolved.source
         self.backend = resolved.backend
 

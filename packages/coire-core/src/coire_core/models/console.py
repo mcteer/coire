@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from coire_core.models.files import ULID_PATTERN
 from coire_core.models.instance import ClusterState
 from coire_core.models.placement import MemoryLedger
 
@@ -86,6 +87,7 @@ class ConsoleEvent(BaseModel):
 class ActivityKind(StrEnum):
     JOB = "job"
     INSTANCE = "instance"
+    IMAGE_WORKER = "image_worker"
 
 
 class ActivityItem(BaseModel):
@@ -100,6 +102,32 @@ class ActivityItem(BaseModel):
     elapsed_seconds: float = Field(ge=0)
     progress_percent: float | None = Field(default=None, ge=0, le=100)
     failure_reason: str | None = None
+    can_stop: bool
+
+
+class ImageActivityItem(BaseModel):
+    """Separate ULID image-job projection; no prompt or storage path is exposed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    job_id: str = Field(pattern=ULID_PATTERN)
+    owner_id: uuid.UUID
+    model_id: uuid.UUID
+    state: Literal[
+        "queued",
+        "reserving",
+        "running",
+        "transferring",
+        "cancelling",
+        "cancelled",
+        "failed",
+        "succeeded",
+    ]
+    started_at: datetime
+    elapsed_seconds: float = Field(default=0, ge=0)
+    progress_step: int | None = Field(default=None, ge=0)
+    progress_total: int | None = Field(default=None, ge=1)
+    safe_failure_code: str | None = Field(default=None, max_length=100)
     can_stop: bool
 
 

@@ -93,6 +93,28 @@ services:
       CHAT_NORMALIZED_MAX_PIXELS: ${COIRE_CHAT_NORMALIZED_MAX_PIXELS:-4000000}
       CHAT_NORMALIZED_MAX_SIDE: ${COIRE_CHAT_NORMALIZED_MAX_SIDE:-2048}
       CHAT_PURGE_DEADLINE_HOURS: ${COIRE_CHAT_PURGE_DEADLINE_HOURS:-24}
+      IMAGE_ENABLED: ${COIRE_IMAGE_ENABLED:-false}
+      IMAGE_GENERATION_INPUT_MAX_BYTES: ${COIRE_IMAGE_GENERATION_INPUT_MAX_BYTES:-10485760}
+      IMAGE_RECIPE_INPUT_MAX_BYTES: ${COIRE_IMAGE_RECIPE_INPUT_MAX_BYTES:-67108864}
+      IMAGE_RECIPE_METADATA_MAX_BYTES: ${COIRE_IMAGE_RECIPE_METADATA_MAX_BYTES:-65536}
+      IMAGE_OUTPUT_MAX_BYTES: ${COIRE_IMAGE_OUTPUT_MAX_BYTES:-67108864}
+      IMAGE_MAX_OUTPUTS: ${COIRE_IMAGE_MAX_OUTPUTS:-4}
+      IMAGE_PENDING_PER_OWNER: ${COIRE_IMAGE_PENDING_PER_OWNER:-4}
+      IMAGE_PENDING_GLOBAL: ${COIRE_IMAGE_PENDING_GLOBAL:-32}
+      IMAGE_DAILY_OUTPUTS_PER_OWNER: ${COIRE_IMAGE_DAILY_OUTPUTS_PER_OWNER:-100}
+      IMAGE_OWNER_STORAGE_QUOTA_BYTES: ${COIRE_IMAGE_OWNER_STORAGE_QUOTA_BYTES:-5368709120}
+      IMAGE_GLOBAL_STORAGE_QUOTA_BYTES: ${COIRE_IMAGE_GLOBAL_STORAGE_QUOTA_BYTES:-53687091200}
+      IMAGE_DISK_SAFETY_FLOOR_BYTES: ${COIRE_IMAGE_DISK_SAFETY_FLOOR_BYTES:-2147483648}
+      IMAGE_WORKER_IDLE_TTL_S: ${COIRE_IMAGE_WORKER_IDLE_TTL_S:-900}
+      IMAGE_EVENT_RETENTION_HOURS: ${COIRE_IMAGE_EVENT_RETENTION_HOURS:-24}
+      IMAGE_OUTPUT_RETENTION_HOURS: ${COIRE_IMAGE_OUTPUT_RETENTION_HOURS:-}
+      IMAGE_COMPATIBLE_WAIT_S: ${COIRE_IMAGE_COMPATIBLE_WAIT_S:-90}
+      IMAGE_CANCEL_GRACE_S: ${COIRE_IMAGE_CANCEL_GRACE_S:-5}
+      IMAGE_PROMPT_CACHE_MAX_BYTES: ${COIRE_IMAGE_PROMPT_CACHE_MAX_BYTES:-268435456}
+      IMAGE_CONTROL_CACHE_MAX_BYTES: ${COIRE_IMAGE_CONTROL_CACHE_MAX_BYTES:-268435456}
+      IMAGE_BLOB_ROOT: /opt/coire/blobs
+      IMAGE_INPUT_ORIGINAL_ROOT: /opt/coire/chat/originals/images
+      IMAGE_INPUT_DERIVED_ROOT: /opt/coire/chat/derived/images
       CLOUDFLARE_ACCESS_ISSUER: ${CLOUDFLARE_ACCESS_ISSUER:-}
       CLOUDFLARE_ACCESS_AUDIENCE: ${CLOUDFLARE_ACCESS_AUDIENCE:-}
       NODE_INVENTORY_FILE: /app/nodes.yaml
@@ -112,6 +134,7 @@ services:
       - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
       - coire-chat-originals:/opt/coire/chat/originals
       - coire-chat-derived:/opt/coire/chat/derived:ro
+      - coire-blobs:/opt/coire/blobs
     secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key, openai_api_key, anthropic_api_key]
     depends_on:
       postgres: {condition: service_healthy}
@@ -228,7 +251,19 @@ services:
       MCP_ARTIFACT_RETENTION_HOURS: ${COIRE_MCP_ARTIFACT_RETENTION_HOURS:-168}
       FILE_WORKER_URL: http://coire-file-worker:8010
       FILE_WORKER_PROCESS_TIMEOUT_S: ${COIRE_FILE_WORKER_TIMEOUT_SECONDS:-30}
-    volumes: ["${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"]
+      IMAGE_ENABLED: ${COIRE_IMAGE_ENABLED:-false}
+      IMAGE_WORKER_IDLE_TTL_S: ${COIRE_IMAGE_WORKER_IDLE_TTL_S:-900}
+      IMAGE_PENDING_PER_OWNER: ${COIRE_IMAGE_PENDING_PER_OWNER:-4}
+      IMAGE_PENDING_GLOBAL: ${COIRE_IMAGE_PENDING_GLOBAL:-32}
+      IMAGE_DAILY_OUTPUTS_PER_OWNER: ${COIRE_IMAGE_DAILY_OUTPUTS_PER_OWNER:-100}
+      IMAGE_OWNER_STORAGE_QUOTA_BYTES: ${COIRE_IMAGE_OWNER_STORAGE_QUOTA_BYTES:-5368709120}
+      IMAGE_GLOBAL_STORAGE_QUOTA_BYTES: ${COIRE_IMAGE_GLOBAL_STORAGE_QUOTA_BYTES:-53687091200}
+      IMAGE_DISK_SAFETY_FLOOR_BYTES: ${COIRE_IMAGE_DISK_SAFETY_FLOOR_BYTES:-2147483648}
+      IMAGE_BLOB_ROOT: /opt/coire/blobs
+    volumes:
+      - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
+      - coire-chat-derived:/opt/coire/chat/derived:ro
+      - coire-blobs:/opt/coire/blobs
     secrets: [postgres_password, node_tokens, file_worker_service_token]
     depends_on:
       postgres: {condition: service_healthy}
@@ -243,7 +278,7 @@ services:
 
   # Opt-in until native Chat file admission, publication and purge are release-ready.
   coire-file-worker:
-    profiles: ["chat-files"]
+    profiles: ["chat-files", "image-files"]
     image: ${COIRE_REGISTRY:-}coire-file-worker:${COIRE_TAG:-dev}
     build:
       context: ../..
@@ -254,6 +289,8 @@ services:
       FILE_WORKER_OUTPUT_ROOT: /opt/coire/chat/derived
       FILE_WORKER_PROCESS_TIMEOUT_S: ${COIRE_FILE_WORKER_TIMEOUT_SECONDS:-30}
       FILE_WORKER_MAX_ACTIVE: 1
+      FILE_WORKER_IMAGE_INPUT_ROOT: /opt/coire/chat/originals/images
+      FILE_WORKER_IMAGE_OUTPUT_ROOT: /opt/coire/chat/derived/images
       OTLP_ENDPOINT: http://otel-collector:4317
     volumes:
       - coire-chat-originals:/opt/coire/chat/originals:ro
@@ -534,6 +571,7 @@ volumes:
   coire-grafana:
   coire-chat-originals:
   coire-chat-derived:
+  coire-blobs:
 
 secrets:
   # File-sourced from a 0700 directory outside the repository, written by coire-up from the

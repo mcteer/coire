@@ -21,7 +21,7 @@ from coire_api.db import (
     VariantCopyRow,
 )
 from coire_api.gateway.telemetry import tracer
-from coire_api.registry.service import published_ready_entitled
+from coire_api.registry.service import is_chat_backend, published_ready_entitled
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.registry import EngineBackend, ModelSource, ModelState, VisualCapability
@@ -50,6 +50,8 @@ class ResolvedModel:
 
 
 def _visible(model: ModelRow, principal: Principal) -> bool:
+    if not is_chat_backend(model):
+        return False
     if (model.source or "studio") != "studio":
         return published_ready_entitled(model, principal.entitlements)
     if principal.is_admin:

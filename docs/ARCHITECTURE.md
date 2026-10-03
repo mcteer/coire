@@ -291,25 +291,55 @@ Durability: agent runs and training jobs are DBOS workflows (Postgres-backed, ex
 
 No general chat, no image tools, no admin tools are exposed over MCP. Each tool call becomes an agent run, so it inherits the container sandbox, timeouts, and kill switch.
 
-## 6.1 Image generation subsystem (patterns borrowed from ComfyUI)
+## 6.1 Image generation subsystem
 
-ComfyUI is the reference for how an image service should behave, even though its engine (PyTorch on MPS) is slower than MLX-native `mflux` on this hardware and its free-form node graph is more than users of this platform should be handed. What Coire takes from it, and what it does instead:
+Feature 015 uses the versioned Pydantic `ImageSpec` in `coire-core` as its contract. A
+published registry model and its measured capability profile determine valid modes,
+dimensions, steps, dependencies and memory bounds. Admin presets are immutable
+revisions resolved before a job is queued. The native API returns a durable job
+receipt; the `/v1/images/generations` adapter maps only its supported OpenAI fields
+to the same validation and job path. User-provided model paths, graphs and code are
+never executable inputs.
 
-**A declarative spec is the contract, not a graph.** ComfyUI's real API is its "API-format" JSON — a graph of typed nodes — not the UI. Coire's equivalent is a typed Pydantic `ImageSpec`: `model` (registry id of an image model, e.g. Z-Image-Turbo 8-bit), `prompt`, `negative_prompt`, `width`, `height`, `steps`, `guidance`, `seed`, `n`, `loras: [{id, scale}]`, `init_image` + `strength` (img2img), `mask` (fill/inpaint), `control: {type: canny|depth, image, strength}`, `upscale: {model, factor}`, and `output: {format, embed_metadata}`. It is validated on submission with per-model bounds (Z-Image-Turbo defaults to 9 steps; max resolution per entitlement), rendered by the web UI as a form, and accepted verbatim by `POST /api/v1/images` — the OpenAI `/v1/images/generations` endpoint is a thin adapter that maps `size`/`quality`/`n` onto an `ImageSpec`. Arbitrary graphs and custom nodes are deliberately *not* exposed to users: every pipeline shape Coire supports is a fixed stage sequence (`encode → denoise → decode → post`), and new shapes arrive as code plus a spec version, not as user-uploaded node definitions. Admins get one graph-like affordance: **presets** — named, partially-filled `ImageSpec`s (a model, a LoRA stack, a style prompt prefix, step/guidance defaults) that appear in the picker like models do.
+Each Studio runs at most one resident, node-managed `mflux` image worker by default.
+Only coire-node starts or stops the bare engine, with a registry-resolved local model
+tree and a private authenticated loopback control route. Core runs no image model or
+Metal work. Image model, LoRA, control and upscaler assets enter through the audited
+admin acquisition pipeline and must have verified local copies before execution.
+An image job binds one node, instance, attempt, fence and execution lease; retries
+observe that journal and never regenerate an uncertain attempt.
 
-**Queue in front, single executor per node.** ComfyUI's `/prompt` returns a `prompt_id` and queue position and streams `status / executing / progress / executed / execution_error` over a websocket. Coire's image jobs go through the scheduler queue and return `job_id` + position immediately; progress streams over SSE from `/api/v1/images/{id}/events` with the same event vocabulary (`queued{position}`, `started{node}`, `progress{step, steps, preview?}`, `done{images}`, `error`), and `DELETE /api/v1/images/{id}` is ComfyUI's `/interrupt`. On each Studio the **image worker** is a resident `mflux` process managed by coire-node exactly like an `mlx_lm.server`: it holds the model (`ZImageTurbo(quantize=8)`) in memory, reserves its footprint in the ledger, obeys an idle TTL, and executes one spec at a time. Metal contention with LLM decoding is handled by the scheduler treating image jobs as short reservations serialised per node, and by preferring Studio B (image models are pinned there by default).
+The scheduler reserves resident and transient memory against the same node ledger
+used by chat. Studio B is preferred when eligible. Same-node image and chat work
+requires a current measured coexistence profile for the exact runtime, resident
+chat variants, image model, mode and bounds. Stale or failing latency, thermal or
+memory evidence stops new image dispatch. An image worker has a bounded idle TTL,
+and its cache cannot hold unaccounted user-derived bytes.
 
-**Cache by input signature.** ComfyUI re-executes only nodes whose input signature changed, which is why tweaking a seed doesn't re-encode the prompt. Coire's worker keeps a small LRU keyed the same way at stage granularity: text-encoder outputs keyed on `(model, prompt, negative_prompt)`, loaded LoRA-patched weights keyed on `(model, loras)`, control preprocessor outputs keyed on `(control.type, image hash)`. Two people iterating on the same preset share the prompt encoding; changing only `seed` or `steps` hits the denoiser directly. The LoRA-patch cache is bounded to one stack at a time because a patched copy of a 6B model is a real memory cost.
+Jobs persist ordered SSE events. A `done` event carries the entire published batch;
+an observer disconnect does not cancel the job. Cancellation and publication lock
+the same job row, so only one terminal outcome wins. The worker sends PNGs through
+short-lived node-bound grants to a private `coire-blobs` staging namespace on core.
+Each receipt is checked against its size, digest and canonical recipe. The batch
+becomes visible in one database transaction only after every receipt, current
+authorization and Studio scratch cleanup are proved. Gallery reads and downloads
+remain authenticated and owner-scoped; a download grant travels in a header, not a
+URL. Partial or uncertain transfers remain private for recovery.
 
-**Every image carries its own recipe.** ComfyUI embeds the workflow in the PNG so any output can be dragged back in and reproduced. Coire embeds the full resolved `ImageSpec` (including the effective seed, model variant, and LoRA versions) as PNG `tEXt`/EXIF metadata and stores the same JSON on the image row, so the gallery offers "reuse settings" and "regenerate with new seed" on any image, and an admin can audit exactly what produced it.
+Every PNG has one bounded, uncompressed `coire.image` iTXt recipe with exact resolved
+settings, component manifests, runtime fingerprint and pixel digest. Recipe-only
+imports accept a PNG up to 64 MiB and extract at most 64 KiB of metadata without
+decoding pixels; generation inputs have a separate 10 MiB cap. Reproduction promises
+identical pixels only for the same inputs, model versions, runtime and hardware.
+When an environment or retained input differs, the UI restores settings and reports
+that exact reproduction is unavailable.
 
-**Model folders become registry types.** ComfyUI's `checkpoints/`, `loras/`, `controlnet/`, `upscale_models/` directories map to registry kinds `image_model`, `image_lora`, `control_model`, `upscale_model`. All go through the same admin-only acquisition pipeline (§3.3, with `mflux`-specific validation: generate a fixed test prompt at a fixed seed and store the thumbnail), replicate to both Studios, and are published or entitled like language models. Image LoRAs trained elsewhere are imported here; training image LoRAs on the platform is backlog.
-
-**Outputs live on core, not in the worker's directory.** ComfyUI serves `/view` straight from its output folder; Coire's worker streams finished bytes back to coire-node → coire-api, which writes them to a `coire-blobs` volume on core (a MinIO container if you want S3 semantics, else a plain volume behind the API) under `user/{id}/images/{job_id}/{n}.png`, and serves them through authenticated, expiring URLs. Studios keep nothing after the job completes, which also keeps user content off the worker nodes.
-
-**Explicit content.** Generation for entitled users is unfiltered at the prompt and model level (no safety checker in the pipeline; `mflux` ships none). Each output row records the `explicit` entitlement under which it was produced; a lightweight NSFW classifier tags images for gallery filtering and for keeping such outputs out of shared or public views, never for blocking an entitled user's request. Non-entitled users get a model list without explicit-capable presets and a refusal at spec validation if a preset they can't use is named.
-
-What is deliberately not borrowed: the node editor and custom-node ecosystem (a code-execution surface on a public platform), PyTorch/MPS as the engine, and serving outputs from the worker's filesystem. If a model `mflux` doesn't support becomes important (a particular ControlNet or video model), the clean path is a second worker type behind the same `ImageSpec`, possibly a headless ComfyUI driven through its API-format JSON — an engine choice hidden behind the spec, not a change to the platform's contract.
+Explicit generation requires a live human entitlement and a personal key scope if
+using an API key. Admission and completion are audited. Prompts are not content
+filtered. A local Studio CPU classifier tags output for owner gallery filtering;
+unknown tags remain private. Its result never grants access or blocks an entitled
+generation. The detailed decision and constitutional boundaries are in
+[ADR-0011](adr/0011-image-generation-boundaries.md).
 
 ## 7. Identity, authorisation, and the explicit-content policy
 
@@ -404,7 +434,7 @@ and establishes the token set; features 007, 014, 015, and 016 inherit it.
 * **Core capacity.** The 24 GiB Mini hosts OrbStack control-plane services and no model or user runs. A 12 GiB OrbStack ceiling is a maximum, not a reservation. Actual headroom and desktop responsiveness must be measured with the enabled profiles; Prometheus defaults to bounded seven-day retention and historical diagnostics have explicit retention when enabled.
 * **Studio-side sandboxes.** Running user harnesses on the Studios costs each node a 16 GB slice and some CPU while a large model decodes. The slice is a ledger line item so it can be tuned (or set to zero on Studio A during a sharded run, routing all runs to B). If agent volume grows, the clean fix is a fourth Linux/Mac box dedicated to sandboxes, not moving them to core.
 * **Streaming through two proxies.** SSE passes cloudflared → nginx → coire-api → node. nginx needs `proxy_buffering off` and long read timeouts on `/v1` and `/mcp`, and Cloudflare's 100 s idle limit is why the gateway sends keep-alive comments while a model loads. Cap concurrent agent containers (start with 3); enable bounded historical diagnostics when their extra retention is useful.
-* **mflux and mlx-lm on the same node.** Both use Metal; concurrent image generation and decoding will contend. The scheduler serialises image jobs per node by default.
+* **mflux and mlx-lm on the same node.** Both use Metal; concurrent image generation and decoding contend. Image dispatch requires an exact, current measured coexistence profile for the resident chat combination and refuses unmeasured or regressing combinations. One image executor runs per Studio by default.
 * **DBOS vs Temporal.** DBOS workflows run in `coire-scheduler` and drive remote work through coire-node's HTTP API, which keeps the durable-execution boundary on core. Revisit only if you want workflow *workers* themselves on the Studios.
 * **Open: model roster.** Which specific coder, general, and sharded models to publish first — decide during feature 004 after benchmarking. Disk: two copies of everything means the roster is bounded by the smaller Studio's free SSD, so the admin console shows disk alongside memory.
 * **Open: embeddings/RAG.** The `general` agent's file retrieval needs an embedding model; not scoped in this draft.

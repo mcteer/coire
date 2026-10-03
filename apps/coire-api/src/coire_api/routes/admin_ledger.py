@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 
 from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
-from coire_api.db import ModelRow, ModelVariantRow, PlacementDecisionRow
+from coire_api.db import MemoryReservationRow, ModelRow, ModelVariantRow, PlacementDecisionRow
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.placement import service
 from coire_api.registry.visual_memory import require_supported_placement, reservation_bytes
+from coire_api.routes.admin_images import require_human_image_admin
 from coire_core.models.audit import AuditAction
 from coire_core.models.placement import (
     LedgerUpdate,
@@ -21,6 +22,7 @@ from coire_core.models.placement import (
     PlacementOccupant,
     PlacementRequest,
     PlacementState,
+    ReservationHolder,
 )
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin: placement"])
@@ -79,13 +81,19 @@ async def patch_ledger(
 async def patch_reservation(
     reservation_id: uuid.UUID,
     body: PinUpdate,
+    request: Request,
     principal: CurrentAdmin,
     session: SessionDep,
 ) -> None:
+    reservation = await session.get(MemoryReservationRow, reservation_id)
+    if reservation is not None and reservation.holder_type is ReservationHolder.IMAGE:
+        await require_human_image_admin(request, principal)
     try:
         await service.set_pin(session, reservation_id, body, actor=principal.subject or "admin")
     except service.LedgerNotFoundError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "no such model reservation") from exc
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, "no such model or image reservation"
+        ) from exc
     await session.commit()
 
 

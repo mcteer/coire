@@ -20,12 +20,14 @@ import logging
 import os
 import sys
 import time
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
 
+from coire_core.models.image_worker import ImageAssetValidateRequest
 from coire_core.models.jobs import (
     ChecksumManifest,
     JobErrorKind,
@@ -33,6 +35,7 @@ from coire_core.models.jobs import (
     JobStage,
     JobStatus,
 )
+from coire_core.models.registry import ModelKind
 from coire_core.net import DataFabricClient, FabricUnreachable
 from coire_node.store import Store, write_atomic
 
@@ -128,6 +131,7 @@ def run_pull(job: JobFile) -> int:
     slug = job.status.slug
     repo_id = job.params["repo_id"]
     revision = job.params.get("revision", "main")
+    model_kind = ModelKind(job.params.get("model_kind", ModelKind.LANGUAGE_MODEL))
     token = os.environ.get("HF_TOKEN") or None
 
     job.status.stage = JobStage.RESOLVING
@@ -140,12 +144,29 @@ def run_pull(job: JobFile) -> int:
         job.fail(exc.kind, str(exc))
         return EXIT_FAILED
 
-    job.status.bytes_total = inspection.total_bytes
-    job.status.files_total = len(inspection.files)
+    selected: tuple[str, ...] | None = None
+    if model_kind is not ModelKind.LANGUAGE_MODEL:
+        if inspection.revision != revision:
+            job.fail(JobErrorKind.VALIDATION_FAILED, "image revision changed during inspection")
+            return EXIT_FAILED
+        try:
+            selected = hub.image_asset_files(inspection, model_kind)
+        except ValueError as exc:
+            job.fail(JobErrorKind.VALIDATION_FAILED, str(exc))
+            return EXIT_FAILED
+        if inspection.license_id is None:
+            job.fail(JobErrorKind.VALIDATION_FAILED, "image asset has no declared licence")
+            return EXIT_FAILED
+
+    selected_files = [
+        item for item in inspection.files if selected is None or item.path in selected
+    ]
+    job.status.bytes_total = sum(item.bytes for item in selected_files)
+    job.status.files_total = len(selected_files)
     job.status.stage = JobStage.TRANSFERRING
     job.save(force=True)
 
-    required = inspection.total_bytes + int(job.params.get("disk_reserve_bytes", 0))
+    required = job.status.bytes_total + int(job.params.get("disk_reserve_bytes", 0))
     if store.free_bytes() < required:
         job.fail(
             JobErrorKind.DISK_FULL,
@@ -154,12 +175,20 @@ def run_pull(job: JobFile) -> int:
         return EXIT_FAILED
 
     try:
-        hub.snapshot(
-            repo_id,
-            revision=inspection.revision,
-            local_dir=store.path_for(slug),
-            token=token,
-        )
+        if selected is None:
+            hub.snapshot(
+                repo_id,
+                revision=inspection.revision,
+                local_dir=store.path_for(slug),
+                token=token,
+            )
+        else:
+            hub.snapshot_image_asset(
+                inspection,
+                model_kind,
+                local_dir=store.path_for(slug),
+                token=token,
+            )
     except hub.HubError as exc:
         # The partial download is deliberately kept: completed files are reused on retry
         # (research R5, per-file resume).
@@ -178,6 +207,11 @@ def run_pull(job: JobFile) -> int:
         upstream=upstream,
         on_progress=lambda n, i: _progress(job, n, i),
     )
+
+    if selected is not None and {item.path for item in manifest.files} != set(selected):
+        store.delete(slug)
+        job.fail(JobErrorKind.VALIDATION_FAILED, "image asset tree differs from selected manifest")
+        return EXIT_FAILED
 
     # Verify what we received against what Hugging Face said it would be. This is what makes
     # the origin copy *verified* rather than merely present, and it is the only check that can
@@ -490,12 +524,51 @@ def _progress(job: JobFile, delta: int, files_done: int) -> None:
 # --------------------------------------------------------------------------- entry point
 
 
+def run_image_validate(job: JobFile) -> int:
+    """Validate a pinned local image copy inside a credential-free acquisition worker."""
+    from coire_core.models.image_worker import ImageValidationBase
+    from coire_node.image_runtime.pipeline import ImagePipelineUnavailable
+    from coire_node.image_runtime.preflight import ImageCopyUnavailable
+    from coire_node.image_validation import ImageValidationUnavailable, validate_image_asset
+
+    request = ImageAssetValidateRequest(
+        job_id=job.status.job_id,
+        model_id=uuid.UUID(job.params["model_id"]),
+        slug=job.status.slug,
+        kind=ModelKind(job.params["model_kind"]),
+        source_revision=job.params["source_revision"],
+        manifest_sha256=job.params["manifest_sha256"],
+        reservation_id=uuid.UUID(job.params["reservation_id"]),
+        compatible_base=(
+            ImageValidationBase.model_validate(job.params["compatible_base"])
+            if job.params.get("compatible_base") is not None
+            else None
+        ),
+    )
+    job.status.stage = JobStage.RESOLVING
+    job.save(force=True)
+    try:
+        result = validate_image_asset(
+            _store(job), request, reservation_bytes=int(job.params["reservation_bytes"])
+        )
+    except (ImageValidationUnavailable, ImageCopyUnavailable, ImagePipelineUnavailable) as exc:
+        job.fail(JobErrorKind.VALIDATION_FAILED, str(exc))
+        return EXIT_FAILED
+    except Exception:
+        logger.exception("image validation worker failed job_id=%s", job.status.job_id)
+        job.fail(JobErrorKind.VALIDATION_FAILED, "image validation failed")
+        return EXIT_FAILED
+    job.finish(result=result.model_dump(mode="json"))
+    return EXIT_OK
+
+
 RUNNERS = {
     JobKind.PULL: run_pull,
     JobKind.IMPORT: run_import,
     JobKind.VERIFY: run_verify,
     JobKind.CONVERT: run_convert,
     JobKind.VALIDATE: run_validate,
+    JobKind.IMAGE_VALIDATE: run_image_validate,
     JobKind.CLEANUP: run_cleanup,
 }
 

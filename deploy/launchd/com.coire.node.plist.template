@@ -100,7 +100,10 @@
     <key>StandardErrorPath</key>
     <string>__PREFIX__/log/coire-node.err.log</string>
 
+    <!-- Native classifier and image workers inherit this job's scheduling class.
+         Background QoS makes the pinned 10-second CPU classifier miss its
+         deadline on a Studio even when the same local smoke passes normally. -->
     <key>ProcessType</key>
-    <string>Background</string>
+    <string>Standard</string>
 </dict>
 </plist>

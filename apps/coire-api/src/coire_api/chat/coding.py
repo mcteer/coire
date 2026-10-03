@@ -77,7 +77,7 @@ async def _coding_visual_inputs(
 ) -> tuple[WorkspaceVisualInput, ...]:
     if not body.attachments:
         return ()
-    if model.backend is not EngineBackend.MLX_VLM or model.visual_capability is None:
+    if model.backend != EngineBackend.MLX_VLM or model.visual_capability is None:
         raise ChatConflict("selected coding model cannot accept visual files")
     visual = VisualCapability.model_validate(model.visual_capability)
     if not visual.verified:

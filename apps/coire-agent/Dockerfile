@@ -39,7 +39,7 @@ RUN rm -rf /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13 \
            /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
            /app/.venv/bin/pip /app/.venv/bin/pip3 /app/.venv/bin/pip3.13
 
-FROM gcr.io/distroless/base-debian12:nonroot@sha256:7f0c72cd138b442ae0deeb69c08b1acf5525439ba251a49ad93c320a061567e5
+FROM gcr.io/distroless/base-debian13:nonroot@sha256:a0d70d6a97cd697d9362bc2aae4a6560dd65817e365d0043b07325a97975dc91
 
 COPY --from=builder \
      /usr/lib/aarch64-linux-gnu/libz.so.1 \

@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.metadata
 import importlib.util
 import logging
+import math
 import platform
 import re
 import shutil
@@ -20,10 +21,15 @@ import socket
 import subprocess
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
+from enum import StrEnum
 
 import psutil
 from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace
+from opentelemetry.trace import Span
 
 from coire_core.models.engine import EngineStatus
 from coire_core.models.jobs import JobStatus
@@ -37,6 +43,94 @@ _data_link_up = _meter.create_gauge("coire_data_link_up", description="Studio da
 _data_link_latency = _meter.create_histogram(
     "coire_data_link_latency_ms", unit="ms", description="Studio data-link connect latency"
 )
+
+_image_meter = otel_metrics.get_meter("coire.node.image")
+_image_tracer = trace.get_tracer("coire.node.image")
+image_stages_total = _image_meter.create_counter(
+    "coire_image_node_stages_total", unit="1", description="Studio image stage outcomes"
+)
+image_stage_seconds = _image_meter.create_histogram(
+    "coire_image_node_stage_seconds", unit="s", description="Studio image stage duration"
+)
+image_cache_bytes = _image_meter.create_gauge(
+    "coire_image_node_cache_bytes", unit="By", description="Studio image cache occupancy"
+)
+image_cache_events = _image_meter.create_counter(
+    "coire_image_node_cache_events_total",
+    unit="1",
+    description="Studio image cache hits, misses and evictions",
+)
+
+
+class ImageNodeStage(StrEnum):
+    JOURNAL = "journal"
+    STATUS = "status"
+    CANCEL = "cancel"
+    LAUNCH = "launch"
+    LOAD = "load"
+    PREPROCESS = "preprocess"
+    GENERATE = "generate"
+    UPSCALE = "upscale"
+    CLASSIFY = "classify"
+    TRANSFER = "transfer"
+    CLEANUP = "cleanup"
+
+
+class ImageNodeOutcome(StrEnum):
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+def record_image_cache(stage: str, event: str, occupancy_bytes: int) -> None:
+    """Record cache traffic without prompt, owner or source-image labels."""
+    if stage not in {"prompt", "control"} or event not in {"hit", "miss", "eviction", "store"}:
+        raise ValueError("unknown image cache label")
+    if occupancy_bytes < 0:
+        raise ValueError("negative image cache occupancy")
+    if event != "store":
+        image_cache_events.add(1, attributes={"stage": stage, "event": event})
+    image_cache_bytes.set(occupancy_bytes, attributes={"stage": stage})
+
+
+def record_image_stage(
+    stage: ImageNodeStage,
+    outcome: ImageNodeOutcome,
+    *,
+    duration_s: float | None = None,
+    job_id: str | None = None,
+) -> None:
+    """Only fixed stage/outcome labels reach node metrics."""
+    if not isinstance(stage, ImageNodeStage):
+        raise ValueError("unknown image stage")
+    if not isinstance(outcome, ImageNodeOutcome):
+        raise ValueError("unknown image outcome")
+    if duration_s is not None and (not math.isfinite(duration_s) or duration_s < 0):
+        raise ValueError("invalid image stage duration")
+    if job_id is not None and re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", job_id) is None:
+        raise ValueError("invalid image job identifier")
+    attributes = {"stage": stage.value, "outcome": outcome.value}
+    image_stages_total.add(1, attributes=attributes)
+    if duration_s is not None:
+        image_stage_seconds.record(duration_s, attributes=attributes)
+    logger.info(
+        "image stage",
+        extra={"image_stage": stage.value, "image_outcome": outcome.value, "job_id": job_id},
+    )
+
+
+@contextmanager
+def image_node_span(stage: ImageNodeStage, *, job_id: str | None = None) -> Iterator[Span]:
+    """Start a fixed-name Studio image span with an optional validated ULID."""
+    if not isinstance(stage, ImageNodeStage):
+        raise ValueError("unknown image stage")
+    if job_id is not None and re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", job_id) is None:
+        raise ValueError("invalid image job identifier")
+    with _image_tracer.start_as_current_span(f"coire.node.image.{stage.value}") as span:
+        if job_id is not None:
+            span.set_attribute("job_id", job_id)
+        yield span
+
 
 IOREG_TIMEOUT_S = 3.0
 _GPU_UTIL_RE = re.compile(rb'"Device Utilization %"\s*=\s*(\d+)')
@@ -123,17 +217,29 @@ class MetricsCollector:
         self._store: object | None = None
         self._jobs: object | None = None
         self._engines: object | None = None
+        self._image_workers: object | None = None
+        self._reservations: object | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         # Prime psutil's CPU deltas so the first real sample is meaningful, not 0.0.
         psutil.cpu_percent(interval=None)
         self._proc.cpu_percent(interval=None)
 
-    def attach(self, *, store: object, jobs: object, engines: object) -> None:
-        """Give the collector the feature-001 sources for its additive NodeStatus fields."""
+    def attach(
+        self,
+        *,
+        store: object,
+        jobs: object,
+        engines: object,
+        image_workers: object | None = None,
+        reservations: object | None = None,
+    ) -> None:
+        """Give the collector disjoint node memory holders for NodeStatus."""
         self._store = store
         self._jobs = jobs
         self._engines = engines
+        self._image_workers = image_workers
+        self._reservations = reservations
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
@@ -191,6 +297,7 @@ class MetricsCollector:
             jobs=self._job_statuses(),
             memory_budget_bytes=self._budget(),
             memory_committed_bytes=self._committed(),
+            image_worker_resident_bytes=self._image_resident(),
             store_free_bytes=self._store_free(),
             supported_backends=(
                 [EngineBackend.MLX_LM, EngineBackend.MLX_VLM]
@@ -255,9 +362,15 @@ class MetricsCollector:
         if self._engines is None:
             return 0
         try:
-            return int(self._engines.committed_bytes())  # type: ignore[attr-defined]
+            committed = int(self._engines.committed_bytes())  # type: ignore[attr-defined]
+            if self._image_workers is not None:
+                committed += int(self._image_workers.committed_bytes())  # type: ignore[attr-defined]
+            if self._reservations is not None:
+                committed += int(self._reservations.held_bytes())  # type: ignore[attr-defined]
+            return committed
         except Exception:
-            return 0
+            logger.exception("could not read complete node memory commitment")
+            return self._budget() or int(psutil.virtual_memory().total)
 
     def _store_free(self) -> int:
         if self._store is None:
@@ -266,6 +379,15 @@ class MetricsCollector:
             return int(self._store.free_bytes())  # type: ignore[attr-defined]
         except Exception:
             return 0
+
+    def _image_resident(self) -> int | None:
+        if self._image_workers is None:
+            return None
+        try:
+            return self._image_workers.measured_resident_bytes()  # type: ignore[attr-defined, no-any-return]
+        except Exception:
+            logger.exception("could not measure image worker physical footprint")
+            return None
 
     def latest(self, *, path: NodePath = NodePath.MESH) -> NodeStatus:
         with self._lock:

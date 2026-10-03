@@ -31,7 +31,11 @@ class Worker(Protocol):
 
 
 class SchedulerWorkers:
-    """Start once, unwind partial startup in reverse order, and stop cleanly."""
+    """Start once, unwind partial startup in reverse order, and stop cleanly.
+
+    Image placement stays on the DBOS poller in ``main``. These executors remain the
+    language, acquisition and shard command lanes.
+    """
 
     def __init__(self, settings: Settings) -> None:
         self.shutdown_timeout_s = settings.scheduler_shutdown_timeout_s
