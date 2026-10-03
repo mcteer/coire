@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from huggingface_hub.errors import EntryNotFoundError
 
 from coire_core.models.jobs import RepoFile, RepoInspection
 from coire_core.models.registry import ModelKind
@@ -249,3 +250,38 @@ def test_hub_inspection_carries_model_card_licence_without_weight_download(
     assert result.license_id == "apache-2.0"
     assert result.revision == "a" * 40
     assert downloaded == ["config.json", "tokenizer_config.json"]
+
+
+def test_seedvr2_empty_config_is_accepted_only_for_pinned_layout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    empty = tmp_path / "config.json"
+    empty.write_text("")
+
+    class FakeApi:
+        def __init__(self, **kwargs: object) -> None:
+            pass
+
+        def model_info(self, repo_id: str, **kwargs: object) -> SimpleNamespace:
+            return SimpleNamespace(
+                sha=REVISION,
+                tags=["license:apache-2.0"],
+                card_data={"license": "apache-2.0"},
+                siblings=[
+                    SimpleNamespace(
+                        rfilename=name, size=1024, lfs=SimpleNamespace(sha256=WEIGHT_SHA)
+                    )
+                    for name in ("seedvr2_ema_3b_fp16.safetensors", "ema_vae_fp16.safetensors")
+                ],
+            )
+
+    def fake_download(repo_id: str, filename: str, **kwargs: object) -> str:
+        if filename == "tokenizer_config.json":
+            raise EntryNotFoundError("missing")
+        return str(empty)
+
+    monkeypatch.setattr(hub, "HfApi", FakeApi)
+    monkeypatch.setattr(hub, "hf_hub_download", fake_download)
+    assert hub.inspect("numz/SeedVR2_comfyUI").license_id == "apache-2.0"
+    with pytest.raises(hub.HubError):
+        hub.inspect("other/upscaler")

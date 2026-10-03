@@ -29,6 +29,7 @@ from huggingface_hub.errors import (
 )
 
 from coire_core.image_assets import (
+    SEEDVR2_3B_REPO_ID,
     has_control_union_layout,
     has_seedvr2_3b_layout,
     include_image_asset_path,
@@ -176,7 +177,13 @@ def inspect(
                 token=token or None,
                 cache_dir=cache_dir,
             )
-            target.update(json.loads(Path(path).read_text()))
+            raw = Path(path).read_text()
+            if repo_id == SEEDVR2_3B_REPO_ID and filename == CONFIG_FILE and not raw.strip():
+                # The pinned 3B checkpoint repository publishes an empty config.json;
+                # the native loader uses its two named root safetensors instead.
+                logger.info("%s has an empty non-runtime config.json", repo_id)
+            else:
+                target.update(json.loads(raw))
         except EntryNotFoundError:
             logger.info("%s has no %s", repo_id, filename)
         except Exception as exc:
