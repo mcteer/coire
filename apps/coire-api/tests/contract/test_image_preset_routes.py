@@ -13,31 +13,42 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.exc import IntegrityError
 
 from coire_api.auth import Principal, PrincipalKind, require_admin
-from coire_api.db import UserRow, get_session
-from coire_api.images import admin_presets
+from coire_api.db import ApiKeyRow, UserRow, get_session
+from coire_api.images import admin_presets, coexistence
 from coire_api.routes import admin_images
 from coire_core.errors import CoireError
 from coire_core.models.auth import UserRole
-from coire_core.models.images import ImagePreset, ImageSubmitRequest
+from coire_core.models.images import ImageCoexistenceProfile, ImagePreset, ImageSubmitRequest
 from coire_core.settings import Settings
 
 OWNER = uuid.uuid4()
 ORIGIN = "https://coire.example.test"
 PRESET = uuid.uuid4()
 MODEL = uuid.uuid4()
+KEY = uuid.uuid4()
 
 
 class FakeSession:
-    def __init__(self, *, role: UserRole = UserRole.ADMIN, active: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        role: UserRole = UserRole.ADMIN,
+        active: bool = True,
+        key_scopes: list[str] | None = None,
+    ) -> None:
         self.role = role
         self.active = active
+        self.key_scopes = key_scopes if key_scopes is not None else ["admin", "images"]
         self.commits = 0
         self.rollbacks = 0
 
     async def get(self, model: type[object], identity: object, **kwargs: object) -> Any:
-        assert model is UserRow and identity == OWNER
         assert kwargs.get("with_for_update") is True
-        return UserRow(id=OWNER, role=self.role, active=self.active)
+        if model is UserRow:
+            assert identity == OWNER
+            return UserRow(id=OWNER, role=self.role, active=self.active)
+        assert model is ApiKeyRow and identity == KEY
+        return ApiKeyRow(id=KEY, user_id=OWNER, scopes=self.key_scopes)
 
     async def commit(self) -> None:
         self.commits += 1
@@ -55,6 +66,7 @@ def _app(
     app = FastAPI()
     app.state.settings = Settings(_secrets_dir="/nonexistent", chat_browser_origin=ORIGIN)  # type: ignore[call-arg]
     app.include_router(admin_images.router)
+    app.include_router(admin_images.coexistence_router)
     app.dependency_overrides[require_admin] = lambda: principal
 
     async def route_session():  # type: ignore[no-untyped-def]
@@ -82,6 +94,91 @@ def _app(
 
 def _human() -> Principal:
     return Principal(kind=PrincipalKind.ADMIN, user_id=OWNER, role=UserRole.ADMIN)
+
+
+def _scoped_key(*, scopes: frozenset[str] = frozenset({"admin", "images"})) -> Principal:
+    return Principal(
+        kind=PrincipalKind.API_KEY,
+        user_id=OWNER,
+        role=UserRole.ADMIN,
+        scopes=scopes,
+        api_key_id=KEY,
+        credential_version=1,
+    )
+
+
+@pytest.mark.parametrize(
+    "principal,role,key_scopes,expected",
+    [
+        (_scoped_key(), UserRole.ADMIN, ["admin", "images"], 201),
+        (_scoped_key(), UserRole.USER, ["admin", "images"], 403),
+        (_scoped_key(), UserRole.ADMIN, ["images"], 403),
+        (_scoped_key(scopes=frozenset({"admin"})), UserRole.ADMIN, ["admin"], 403),
+    ],
+)
+async def test_coexistence_accepts_only_live_scoped_admin_key(
+    principal: Principal,
+    role: UserRole,
+    key_scopes: list[str],
+    expected: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    audits: list[dict[str, object]] = []
+    session = FakeSession(role=role, key_scopes=key_scopes)
+
+    async def live(db: object, caller: Principal, **kwargs: object) -> uuid.UUID:
+        assert caller is principal
+        if "images" not in caller.scopes:
+            from coire_core.errors import ImageForbidden
+
+            raise ImageForbidden()
+        return OWNER
+
+    async def approve(db: object, caller: Principal, body: object) -> ImageCoexistenceProfile:
+        assert caller is principal
+        return ImageCoexistenceProfile.model_validate(
+            {
+                "id": str(uuid.uuid4()),
+                "profile_hash": "a" * 64,
+                "status": "approved",
+                "report": body,
+            }
+        )
+
+    monkeypatch.setattr(admin_images, "authorize_live_image_action", live)
+    monkeypatch.setattr(coexistence, "admit_coexistence_report", approve)
+    app = _app(principal, monkeypatch, session, audits)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=ORIGIN) as client:
+        response = await client.post(
+            "/api/v1/admin/image-coexistence-profiles",
+            json={
+                "node_id": str(uuid.uuid4()),
+                "image_model_id": str(MODEL),
+                "chat_variant_ids": [str(uuid.uuid4())],
+                "hardware_fingerprint": "a" * 64,
+                "runtime_fingerprint": "b" * 64,
+                "measured_bounds": {
+                    "max_width": 512,
+                    "max_height": 512,
+                    "max_steps": 4,
+                    "max_outputs": 1,
+                },
+                "duration_seconds": 900,
+                "prompt_tokens_max": 4096,
+                "first_token_p95_ms": 1000,
+                "gateway_overhead_p95_ms": 10,
+                "image_completed_count": 1,
+                "image_progress_observed": True,
+                "swap_observed": False,
+                "thermal_alarm": False,
+                "runtime_version": "mflux-0.20.0",
+                "measured_at": "2026-10-03T00:00:00Z",
+                "valid_until": "2026-10-04T00:00:00Z",
+            },
+        )
+    assert response.status_code == expected
+    assert session.commits == (1 if expected == 201 else 0)
+    assert len(audits) == (0 if expected == 201 else 1)
 
 
 def _body() -> dict[str, object]:

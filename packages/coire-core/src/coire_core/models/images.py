@@ -399,7 +399,7 @@ class ImageLatencyQueryResponse(BaseModel):
 
 
 class ImageCoexistenceReportRequest(BaseModel):
-    """Human-admin attested, same-node mixed-workload benchmark evidence."""
+    """Admin-attested, same-node mixed-workload benchmark evidence."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

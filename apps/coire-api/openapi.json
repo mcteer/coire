@@ -5341,7 +5341,7 @@
       },
       "ImageCoexistenceReportRequest": {
         "additionalProperties": false,
-        "description": "Human-admin attested, same-node mixed-workload benchmark evidence.",
+        "description": "Admin-attested, same-node mixed-workload benchmark evidence.",
         "properties": {
           "chat_variant_ids": {
             "items": {

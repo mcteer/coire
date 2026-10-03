@@ -4077,7 +4077,7 @@ export interface components {
         };
         /**
          * ImageCoexistenceReportRequest
-         * @description Human-admin attested, same-node mixed-workload benchmark evidence.
+         * @description Admin-attested, same-node mixed-workload benchmark evidence.
          */
         ImageCoexistenceReportRequest: {
             /** Chat Variant Ids */

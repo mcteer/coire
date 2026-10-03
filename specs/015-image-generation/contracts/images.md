@@ -65,7 +65,7 @@ exact-regeneration claims, but actual submit revalidates every dependency.
 | GET `/api/v1/admin/image-jobs` | `ImageJobPage`; admin inspection, bounded fields, audited access. |
 | GET `/api/v1/admin/image-jobs/{id}` | `ImageJobAdminView`; audit inspection, full stored recipe without direct unaudited content access. |
 | DELETE `/api/v1/admin/image-jobs/{id}` | Audited kill using same cancellation arbitration. |
-| POST `/api/v1/admin/image-coexistence-profiles` | `ImageCoexistenceReport -> ImageCoexistenceProfile`; audited human admin, exact runtime/model/bounds and benchmark evidence, reject missing/stale/failing latency or progress. |
+| POST `/api/v1/admin/image-coexistence-profiles` | `ImageCoexistenceReport -> ImageCoexistenceProfile`; audited live human admin or active admin's `admin`+`images` scoped API key, exact runtime/model/bounds and benchmark evidence, reject missing/stale/failing latency or progress. |
 | GET `/api/v1/admin/image-workers` | `ImageWorkerList`; node, model/instance, state, reserved/measured bytes, cache occupancy, active job, TTL. |
 | DELETE `/api/v1/admin/image-workers/{instance_id}` | Audited drain/cancel/unload; hold reservation until node confirms death. |
 

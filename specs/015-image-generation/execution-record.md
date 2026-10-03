@@ -1,5 +1,28 @@
 # Feature 015 execution record
 
+## Scoped coexistence operator access — 2026-10-03
+
+The admin image coexistence POST/DELETE routes now accept an active admin's
+`admin`+`images` scoped API key. The guard rechecks the live user role, key
+version, revocation state and both scopes, and keeps the existing audit actor
+and refusal rows. Browser human-admin mutations still require the exact
+configured Origin; image preset and explicit-content policy did not change.
+This removes the human session dependency for the agent-run benchmark approval.
+The scoped route contract has four allow/refuse cases; the focused image route
+and coexistence tests passed 18. The full non-integration Python suite passed
+1,876 tests with 18 skipped and 159 integration cases deselected; strict mypy
+passed 652 source files, Ruff and OpenAPI freshness passed, and 144 web tests,
+ESLint and TypeScript passed. The API image built and was installed into a
+healthy core release with image admission and the private image file worker
+enabled. The existing Keychain-backed development key received HTTP 200 from
+admin nodes and HTTP 422 `coexistence node unavailable` from a deliberately
+invalid but schema-valid report, confirming the new route accepted its scoped
+identity before validating evidence. The API image policy passed all seven
+rules after the standalone probe provided throwaway tmpfs mounts at the API's
+production data-volume paths; Trivy found zero high/critical findings and
+Syft generated an SPDX SBOM outside the repository. The measured benchmark
+remains to be verified.
+
 ## Native full-model cancellation and coexistence probe — 2026-10-03
 
 A real Studio B Z-Image job `01M3ZXBPQD50BC9F6W69WW3DS0` reached the node

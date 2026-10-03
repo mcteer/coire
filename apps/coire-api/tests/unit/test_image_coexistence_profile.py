@@ -240,7 +240,7 @@ async def test_admin_coexistence_route_uses_typed_report_and_no_store(
     principal = Principal(kind=PrincipalKind.ADMIN, user_id=uuid.uuid4())
     app = FastAPI()
     app.include_router(admin_images.coexistence_router)
-    app.dependency_overrides[admin_images.require_human_image_admin] = lambda: principal
+    app.dependency_overrides[admin_images.require_coexistence_admin] = lambda: principal
     committed = 0
 
     class Session:

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.audit import write_audit
 from coire_api.auth import CurrentAdmin, Principal, PrincipalKind, audit_actor
 from coire_api.db import (
+    ApiKeyRow,
     ImageExecutionLeaseRow,
     ImageJobRow,
     InstanceMemberRow,
@@ -96,13 +97,18 @@ async def _audit_refusal(principal: Principal, method: str, path: str) -> None:
         logger.exception("image preset refusal audit failed")
 
 
-async def require_human_image_admin(request: Request, principal: CurrentAdmin) -> Principal:
-    """Require a live human-admin row and exact browser mutation Origin."""
+async def _require_image_admin(
+    request: Request, principal: Principal, *, allow_scoped_key: bool
+) -> Principal:
+    """Recheck the admin account and, for coexistence, its scoped key."""
     settings = getattr(request.app.state, "settings", None) or get_settings()
     try:
         if (
             not principal.is_admin
-            or principal.kind not in _HUMAN_KINDS
+            or (
+                principal.kind not in _HUMAN_KINDS
+                and not (allow_scoped_key and principal.kind is PrincipalKind.API_KEY)
+            )
             or principal.user_id is None
         ):
             raise ImageForbidden()
@@ -119,6 +125,14 @@ async def require_human_image_admin(request: Request, principal: CurrentAdmin) -
             )
             if user is None or not user.active or user.role is not UserRole.ADMIN:
                 raise ImageForbidden()
+            if principal.kind is PrincipalKind.API_KEY:
+                if "admin" not in principal.scopes:
+                    raise ImageForbidden()
+                key = await session.get(
+                    ApiKeyRow, principal.api_key_id, populate_existing=True, with_for_update=True
+                )
+                if key is None or "admin" not in key.scopes:
+                    raise ImageForbidden()
     except ImageForbidden:
         await _audit_refusal(principal, request.method, request.url.path)
         record_image_request(
@@ -128,14 +142,25 @@ async def require_human_image_admin(request: Request, principal: CurrentAdmin) -
     return principal
 
 
+async def require_human_image_admin(request: Request, principal: CurrentAdmin) -> Principal:
+    """Require a live human admin and exact browser mutation Origin."""
+    return await _require_image_admin(request, principal, allow_scoped_key=False)
+
+
+async def require_coexistence_admin(request: Request, principal: CurrentAdmin) -> Principal:
+    """Accept a live human admin or a live admin's scoped image API key."""
+    return await _require_image_admin(request, principal, allow_scoped_key=True)
+
+
 HumanImageAdmin = Annotated[Principal, Depends(require_human_image_admin)]
+CoexistenceAdmin = Annotated[Principal, Depends(require_coexistence_admin)]
 
 
 @coexistence_router.post("", response_model=ImageCoexistenceProfile, status_code=201)
 async def approve_image_coexistence_profile(
     body: ImageCoexistenceReportRequest,
     request: Request,
-    principal: HumanImageAdmin,
+    principal: CoexistenceAdmin,
     session: SessionDep,
     response: Response,
 ) -> ImageCoexistenceProfile:
@@ -166,7 +191,7 @@ async def approve_image_coexistence_profile(
 async def invalidate_image_coexistence_profile(
     profile_id: uuid.UUID,
     request: Request,
-    principal: HumanImageAdmin,
+    principal: CoexistenceAdmin,
     session: SessionDep,
     response: Response,
 ) -> ImageCoexistenceProfile:
