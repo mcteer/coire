@@ -184,20 +184,30 @@ class NodeProber:
             ok = resp.status_code == 200
             if ok:
                 body = resp.json()
-                status = (
+                status: NodeStatus | NodeStatusV2 | None = (
                     NodeStatusV2.model_validate(body)
                     if body.get("path") == "control"
                     else NodeStatus.model_validate(body)
                 )
+                if status is not None and status.name != row.name:
+                    logger.warning(
+                        "probe of %s returned mismatched node name %s", row.name, status.name
+                    )
+                    ok = False
+                    status = None
             else:
                 status = None
-            if not ok:
+            if not ok and resp.status_code != 200:
                 logger.warning("probe of %s returned HTTP %d", row.name, resp.status_code)
         except Exception as exc:
             logger.warning("probe of %s failed: %s", row.name, exc)
             ok = False
 
         if ok:
+            assert status is not None
+            # Registration is one-time, but an immutable agent rollout changes
+            # the runtime fingerprint used by image coexistence admission.
+            row.agent_version = status.agent_version
             recovered = row.reachability in {Reachability.UNKNOWN, Reachability.UNREACHABLE}
             # A sharded rank failure is a semantic degradation, not a transport failure.
             # Successful /health probes must not erase it; a later successful group launch

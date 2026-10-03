@@ -28,7 +28,10 @@ def test_report_percentiles_and_missing_evidence_are_explicit() -> None:
         elapsed_seconds=900,
         chats=[
             ChatSample(
-                first_token_ms=100 + index * 10, decode_tokens_per_second=20, completion_tokens=4
+                first_token_ms=100 + index * 10,
+                decode_tokens_per_second=20,
+                completion_tokens=4,
+                prompt_tokens=3929,
             )
             for index in range(20)
         ],
@@ -40,6 +43,7 @@ def test_report_percentiles_and_missing_evidence_are_explicit() -> None:
     )
     assert report.first_token_p50_ms == 190
     assert report.first_token_p95_ms == 280
+    assert report.prompt_tokens_min == report.prompt_tokens_max == 3929
     assert report.images_on_requested_node
     assert report.peak_node_memory_used_bytes == 100
     assert report.missing_evidence == []
@@ -61,6 +65,26 @@ def test_report_percentiles_and_missing_evidence_are_explicit() -> None:
         "gateway_overhead",
         "same_node_image_placement",
     } == set(incomplete.missing_evidence)
+
+    short = summarize(
+        node="coire-edge-b",
+        started_at=started,
+        elapsed_seconds=900,
+        chats=[
+            ChatSample(
+                first_token_ms=100,
+                decode_tokens_per_second=20,
+                completion_tokens=4,
+                prompt_tokens=24,
+            )
+        ],
+        images=[ImageSample(elapsed_seconds=3, progress_steps=4, succeeded=True, same_node=True)],
+        nodes=[
+            NodeSample(thermal_state="normal", memory_used_bytes=100, memory_committed_bytes=80)
+        ],
+        gateway_overhead_p95_ms=12,
+    )
+    assert short.missing_evidence == ["full_length_chat_prompts"]
 
 
 def test_environment_fingerprint_distinguishes_identical_studios() -> None:
@@ -93,11 +117,12 @@ async def test_probes_collect_stream_usage_fenced_progress_and_node_footprint() 
             assert request.headers["Authorization"] == "Bearer user-key"
             assert request.read().decode().find('"coire_affinity_node":"coire-edge-b"') >= 0
             assert b'"stream_options":{"include_usage":true}' in request.content
+            assert request.content.count(b"blue ") == 3900
             return httpx.Response(
                 200,
                 text=(
                     'data: {"choices":[{"delta":{"content":"blue"}}]}\n\n'
-                    'data: {"usage":{"completion_tokens":4}}\n\n'
+                    'data: {"usage":{"completion_tokens":4,"prompt_tokens":3929}}\n\n'
                     "data: [DONE]\n\n"
                 ),
                 headers={"content-type": "text/event-stream"},
@@ -137,6 +162,8 @@ async def test_probes_collect_stream_usage_fenced_progress_and_node_footprint() 
             )
         if request.url.path == "/api/v1/query":
             assert "coire_gateway_overhead_duration_ms_milliseconds_bucket" in str(request.url)
+            assert 'node="coire-edge-b"' in request.url.params["query"]
+            assert 'protocol="openai"' in request.url.params["query"]
             return httpx.Response(200, json={"data": {"result": [{"value": [0, "12.5"]}]}})
         raise AssertionError(f"unexpected path {request.url.path}")
 
@@ -156,8 +183,9 @@ async def test_probes_collect_stream_usage_fenced_progress_and_node_footprint() 
         )
         sampled_node = await _node(client, node)
         assert await _node_identity(client, node) == (1000, "0.2.0")
-        overhead = await _gateway_overhead(client)
+        overhead = await _gateway_overhead(client, node)
     assert chat.completion_tokens == 4 and chat.first_token_ms >= 0
+    assert chat.prompt_tokens == 3929
     assert image.succeeded and image.same_node and image.progress_steps == 2
     assert sampled_node.memory_used_bytes == 600
     assert overhead == 12.5

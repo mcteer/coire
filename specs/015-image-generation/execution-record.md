@@ -1,5 +1,103 @@
 # Feature 015 execution record
 
+## Operator same-node physical trial, not an approval — 2026-10-03
+
+Studio A had a verified Z-Image Turbo copy and a ready Qwen2.5-Coder-1.5B
+instance. Its separate Qwen3.8 instance was drained through the audited
+`DELETE /api/v1/instances/{id}` path to leave enough node memory for the image
+worker reservation. The operator used the authenticated node worker/job APIs
+for image generation and the normal streamed gateway chat API pinned to Studio
+A. Each generated node job was fenced-cancelled and its scratch cleanup
+acknowledged, followed by a worker unload. The trial did not submit an image
+job through normal scheduler placement or create a coexistence approval.
+
+The 929.82-second report at `/tmp/coire-015-direct-mixed-report.json` (SHA-256
+`0177db1af65399eb15c7a710170ad32d62736c88d88e91a470440261472ac6d6`)
+recorded 795 streamed chat samples, first-token p50 432.76 ms and p95 806.40
+ms, median decode 93.35 tokens/s, and 24 generated four-step native images
+with 94 polled progress steps. All 24 node jobs reported scratch cleanup and
+worker unload HTTP 200; the driver reported zero errors. Node-scoped OpenAI
+gateway overhead p95 was 14.91 ms. Sampled swap usage stayed at 0 MiB;
+`pmset -g therm` reported no thermal or performance warning. The node's
+`thermal_state` API value remained `unknown`, so that field alone is not
+claimed as nominal. The benchmark used a short chat prompt.
+
+SC-006 covers chat prompts up to 4,000 tokens. A separate ten-request baseline
+with distinct 3,929-token prompts on the same resident chat model, without an
+image worker, returned first-token p95 1,585.78 ms; cached prompt tokens were
+14–17 on each request. This pairing cannot be approved for the 4,000-token
+bound from the short-prompt trial. T084 remains open for a qualifying pairing
+and a full measured prompt-length run. The audited approval route was not
+called, and ordinary mixed image admission remains fail-closed.
+The drained Qwen3.8 variant was restored through `POST /api/v1/instances` as
+instance `78d51a22-56b8-4077-a4f8-9b0107079723`, pinned to Studio A; it
+returned to `ready` on port 9501 after the benchmark.
+The published Qwen2.5-Coder-0.5B-Instruct-4bit `mcp-acceptance` variant has
+verified copies on both Studios. A new audited instance
+`1a297848-68cf-4aaa-8496-e59ffa9b1e35` reached `ready` pinned to Studio B.
+Ten distinct baseline streamed prompts on that instance had 3,955–3,963
+actual prompt tokens, only 24–26 cached tokens and first-token p95 **624.27
+ms** without an image worker. This is a candidate for the full same-node
+trial, not coexistence acceptance by itself.
+A first 907.41-second direct-node mixed trial on Studio B generated 23 native
+four-step images, observed 91 progress steps and completed 23 scratch cleanup
+acknowledgments and worker unloads. Its 213 successful chats used 3,954–3,965
+prompt tokens and had 1,014.70 ms first-token p95. However, the original
+development key exhausted its one-million-token monthly budget during the
+run: 599 chat and 125 node samples received quota HTTP 429, leaving the
+five-minute gateway metric `NaN`. The report
+`/tmp/coire-015-direct-mixed-report-b-quota-exhausted.json` has SHA-256
+`87a5b5a103d333ed24741186c1bd33ded909d5ebd932e1c716a03504b736d1cc`.
+This is diagnostic, not an approval. A new 10-million-token scoped benchmark
+key was issued through the audited `api_key.create` service path after
+authenticating the existing active admin key and stored in core Keychain; no
+credential was written to the repository. The full interval was rerun.
+The clean Studio B rerun lasted **907.80 seconds** and is preserved at
+`/tmp/coire-015-direct-mixed-report-b.json` (SHA-256
+`90cca30a89f3a5011f8d056de4a415dac2816d1ff5d6ff4c43861b311f661b24`).
+It has 703 successful streamed chats with 3,955–3,965 actual prompt tokens,
+first-token p50 **491.79 ms** and p95 **994.39 ms**, and median decode **268.60
+tokens/s**. Twenty-two native four-step image jobs generated on the same
+authenticated Studio B node endpoint, with 88 observed progress steps;
+all 22 scratch cleanups and worker unloads succeeded. Node-scoped OpenAI
+gateway overhead p95 was **14.74 ms**. The script recorded **zero errors**,
+zero sampled swap, and no `pmset` thermal or performance warning; the node
+API's thermal state remained `unknown`. The direct worker test bypassed
+ordinary scheduler image placement to measure the unapproved pairing and did
+not submit an approval. The temporary probe's copied resolved-spec metadata
+used Studio A's 80-GPU hardware fingerprint even though its actual endpoint,
+token, process, model instance and node samples were Studio B's 60-GPU host;
+that metadata is corrected for follow-up trials and must not be reused as
+the profile fingerprint. A live audited profile, scheduler path and post-reboot
+replication are still to be verified.
+
+During that work, the default Prometheus histogram boundaries were found to
+overestimate both the 20 ms gateway and 1,500 ms first-token thresholds. The
+API now configures edges at both thresholds; the benchmark query is scoped to
+the measured node and OpenAI protocol. The authenticated node health prober
+also refreshes the registered agent version after an immutable rollout rather
+than retaining the one-time registration value. Full non-integration/non-engine
+verification after those edits: Ruff format/check passed, strict mypy passed
+653 files, and 1,878 Python tests passed with two unrelated skips and 175
+integration/engine cases deselected. The short operator report is evidence,
+not a release-gate pass.
+The repeatable benchmark now sends a distinct near-4,000-token chat prompt on
+every request, records streamed prompt-token usage and marks any run with a
+sample outside 3,900–4,000 tokens as missing full-length evidence. Its report
+cannot silently present a passing short-prompt p95 as SC-006 evidence. The
+benchmark tests passed 3; the final-source non-integration/non-engine suite
+again passed 1,878 tests (2 skipped, 175 deselected), with Ruff and strict
+mypy green.
+The corrected API image rebuilt and deployed healthy after the trial. The
+registered node versions advanced from `0.1.0` to the authenticated live
+`0.2.0` on both Studios. The final API image passed `scripts/image-policy.sh`
+(no shell/package manager, UID 65532, read-only rootfs, arm64, exec entrypoint,
+digest-pinned bases, no core harness), Trivy high/critical exit 0, and Syft
+SPDX generation at `/tmp/coire-015-api-final.spdx.json`. The final-source
+simulated image integration selection passed 9 tests in 60.75 seconds.
+After deployment, a live streamed chat request exported both the new
+`le=1500.0` first-token and `le=20.0` gateway-overhead Prometheus buckets.
+
 ## Final-source simulated image integration — 2026-10-03
 
 `COIRE_INTEGRATION=1 uv run pytest -q -m integration` against

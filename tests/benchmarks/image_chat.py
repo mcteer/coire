@@ -30,6 +30,7 @@ class ChatSample(BaseModel):
     first_token_ms: float = Field(ge=0)
     decode_tokens_per_second: float = Field(ge=0)
     completion_tokens: int = Field(ge=1)
+    prompt_tokens: int = Field(ge=1)
 
 
 class ImageSample(BaseModel):
@@ -57,6 +58,8 @@ class MixedReport(BaseModel):
     started_at: datetime
     elapsed_seconds: float = Field(ge=0)
     chat_samples: int = Field(ge=0)
+    prompt_tokens_min: int | None = None
+    prompt_tokens_max: int | None = None
     first_token_p50_ms: float | None = None
     first_token_p95_ms: float | None = None
     decode_tokens_per_second_p50: float | None = None
@@ -112,6 +115,8 @@ def summarize(
         missing.append("15_minute_duration")
     if not chats:
         missing.append("chat_samples")
+    if chats and any(not 3900 <= item.prompt_tokens <= 4000 for item in chats):
+        missing.append("full_length_chat_prompts")
     if not images or not any(item.progress_steps > 0 for item in images):
         missing.append("image_progress")
     if not nodes:
@@ -125,6 +130,8 @@ def summarize(
         started_at=started_at,
         elapsed_seconds=elapsed_seconds,
         chat_samples=len(chats),
+        prompt_tokens_min=min((item.prompt_tokens for item in chats), default=None),
+        prompt_tokens_max=max((item.prompt_tokens for item in chats), default=None),
         first_token_p50_ms=_percentile([item.first_token_ms for item in chats], 0.50),
         first_token_p95_ms=_percentile([item.first_token_ms for item in chats], 0.95),
         decode_tokens_per_second_p50=(
@@ -149,12 +156,16 @@ async def _chat(client: httpx.AsyncClient, model: str, node: str) -> ChatSample:
     first: float | None = None
     last: float | None = None
     tokens: int | None = None
+    prompt_tokens: int | None = None
+    # A fresh leading nonce defeats prefix caching across samples. The repeated
+    # one-token word puts the measured request near the 4,000-token spec bound.
+    prompt = f"Trial {uuid.uuid4().hex}: " + "blue " * 3900
     async with client.stream(
         "POST",
         "/v1/chat/completions",
         json={
             "model": model,
-            "messages": [{"role": "user", "content": "Describe a blue square in one sentence."}],
+            "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 64,
             "stream": True,
             "stream_options": {"include_usage": True},
@@ -178,12 +189,15 @@ async def _chat(client: httpx.AsyncClient, model: str, node: str) -> ChatSample:
             usage = event.get("usage")
             if isinstance(usage, dict) and isinstance(usage.get("completion_tokens"), int):
                 tokens = usage["completion_tokens"]
-    if first is None or last is None or tokens is None or tokens < 1:
-        raise ValueError("chat stream lacks first token or usage evidence")
+                if isinstance(usage.get("prompt_tokens"), int):
+                    prompt_tokens = usage["prompt_tokens"]
+    if first is None or last is None or tokens is None or tokens < 1 or prompt_tokens is None:
+        raise ValueError("chat stream lacks first token or prompt/completion usage evidence")
     return ChatSample(
         first_token_ms=(first - start) * 1000,
         decode_tokens_per_second=(tokens - 1) / max(last - first, 0.001),
         completion_tokens=tokens,
+        prompt_tokens=prompt_tokens,
     )
 
 
@@ -268,10 +282,11 @@ async def _node_identity(client: httpx.AsyncClient, name: str) -> tuple[int, str
     return int(status["memory_total_bytes"]), str(status["agent_version"])
 
 
-async def _gateway_overhead(client: httpx.AsyncClient) -> float | None:
+async def _gateway_overhead(client: httpx.AsyncClient, node: str) -> float | None:
     query = (
         "histogram_quantile(0.95, sum by (le) "
-        "(rate(coire_gateway_overhead_duration_ms_milliseconds_bucket[5m])))"
+        "(rate(coire_gateway_overhead_duration_ms_milliseconds_bucket"
+        f'{{node="{node}",protocol="openai"}}[5m])))'
     )
     response = await client.get("/api/v1/query", params={"query": query})
     response.raise_for_status()
@@ -335,7 +350,7 @@ async def run(args: argparse.Namespace) -> MixedReport:
             group.create_task(image_loop())
             group.create_task(node_loop())
         async with httpx.AsyncClient(base_url=args.prometheus_url, trust_env=False) as prometheus:
-            overhead = await _gateway_overhead(prometheus)
+            overhead = await _gateway_overhead(prometheus, args.node)
     return summarize(
         node=args.node,
         started_at=started_at,

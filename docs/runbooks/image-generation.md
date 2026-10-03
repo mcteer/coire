@@ -370,6 +370,25 @@ image admission disabled until the installed daemon itself reports an up data
 link and an unassisted two-copy import passes. A manual fabric copy may help
 diagnose validation, but it does not pass the replication release gate. Record
 the exact OS policy and remediation in the cluster execution record.
+The Studio LaunchDaemon runs as `mcteer` through its `UserName` setting. On the
+macOS 27 lab hosts, the approved root-domain Ethernet exemption alone left
+that account's daemon at `Errno 65` after reboot. The same peer-only address
+in `mcteer`'s preference domain made Studio A's authenticated daemon probe
+report `ip_state=up`:
+
+```sh
+# On Studio A as mcteer (no sudo):
+defaults write com.apple.network.local-network AllowedEthernetLocalNetworkAddresses -array "192.168.100.12/32"
+# On Studio B as mcteer (no sudo):
+defaults write com.apple.network.local-network AllowedEthernetLocalNetworkAddresses -array "192.168.100.11/32"
+```
+
+Apply only the approved peer addresses. Restart each Studio and unlock its
+login account so the non-root daemon starts; check `/node/data-link` from both
+installed agents before acquisition. The preference is scoped to the account
+running the daemon; Apple documents that Local Network behavior can differ for
+`UserName` LaunchDaemons. A per-user `defaults read` confirms the stored value,
+while the authenticated node endpoint proves the effective connection.
 
 Disable new admission with `COIRE_IMAGE_ENABLED=false` through the documented compose
 configuration. Existing jobs still need cancellation or completion reconciliation;
@@ -393,6 +412,16 @@ fingerprint against the target. Write the content-free JSON report outside the
 repository, then attach its measurements to the execution record. The node
 memory-used reading is an aggregate footprint proxy; approval still requires
 the same-node process and no-swap checks in T084.
+Each chat sample uses a fresh leading nonce and a near-4,000-token prompt.
+The streamed usage must report 3,900–4,000 prompt tokens on every sample;
+`full_length_chat_prompts` in `missing_evidence` means the run cannot support
+SC-006, even if its latency values pass. The report includes the observed
+minimum and maximum prompt-token counts for review.
+Check the benchmark key's remaining monthly token budget before starting:
+hundreds of 4,000-token prompts can exhaust a one-million-token development
+key in minutes. An HTTP 429 or an absent/nonfinite five-minute Prometheus
+percentile invalidates that interval; use an audited scoped key with enough
+budget and repeat the full 15 minutes.
 Pass the target's registered GPU core count with `--gpu-cores`; the probe
 combines it with the live node name, memory and agent version to reproduce the
 placement fingerprint. An unknown or stale core count fails the same-node
@@ -429,6 +458,12 @@ for active image jobs on that node. Inspect `coire_image_latency_monitor_total`,
 span. No chat sample leaves the measured approval in place. An unavailable or
 malformed monitoring response withdraws approvals and requests the same fenced
 stop, then raises `CoireImageLatencyMonitorUnavailable` for investigation.
+The mixed-workload benchmark queries gateway overhead for the measured
+`node` and OpenAI protocol. Its Prometheus histogram has a 20 ms bucket edge,
+so the 20 ms acceptance threshold can be evaluated without interpolation
+across the default 10 to 25 ms bucket. The first-token histogram likewise has
+a 1,500 ms edge for the five-minute coexistence monitor; default buckets can
+overestimate a passing p95 and withdraw an approval incorrectly.
 An admin can invalidate one approved profile with
 `DELETE /api/v1/admin/image-coexistence-profiles/{profile_id}`; the audited
 invalidation takes effect on the next placement check. An already running
