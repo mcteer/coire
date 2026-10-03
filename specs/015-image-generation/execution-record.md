@@ -1,5 +1,43 @@
 # Feature 015 execution record
 
+## Standard-QoS system LaunchDaemons and live classifier — 2026-10-03
+
+Both Studio plists were installed root:wheel, mode 0644, with
+`ProcessType=Standard`. The immediate `bootout && bootstrap` sequence returned
+launchctl error 5 and left both system jobs absent. Temporary per-user
+recovery LaunchAgents restored authenticated listeners while the installed
+plists were checked. A later system-domain bootstrap registered both jobs;
+their first starts collided with the recovery listeners and exited 1. After
+booting out both recovery agents, launchd's KeepAlive started the system jobs:
+Studio A PID 86437 and Studio B PID 48107, each with exactly one
+`python3 -m coire_node` process, `state=running`, and an HTTP 401 from the
+unauthenticated `/node/health` listener. The core admin inventory again
+reported both nodes healthy. Recovery plist files were removed.
+
+The first live 512×512, four-step Z-Image txt2img request under the restored
+system context completed job `01M40ZKZ650D33YNRQDVGBCGCN` and published a
+218,573-byte private PNG. Its output tag was `normal` with no classifier
+diagnostic, unlike the previous `classifier_timeout` under Background QoS.
+This is a live production-model classifier pass; unattended replication and
+the 15-minute mixed benchmark remain open.
+
+The authenticated `/node/data-link` probe still reported `ip_state=down`
+and `[Errno 65] No route to host` from both Standard-QoS system agents.
+An SSH-login `route -n get 192.168.100.12` used `bridge0`, and an SSH-login
+`nc` connected to port 9401, so the underlying interface and peer listener
+were reachable outside the agent context. Changing `ProcessType` closed the
+classifier gate but did not close unattended Studio-to-Studio replication.
+
+The agent-owned output from that live job was then used for the retention
+check. Before deletion its database row was `published` with 218,573 stored
+bytes and both owner/global stored-byte counters were 14,451,218. Owner
+`DELETE /api/v1/image-outputs/e2bfd9f2-b540-411c-a6e4-669697cae0a2`
+returned 202, and the private metadata read immediately returned 404. The
+maintenance sweep set `purged_at`, and both stored-byte counters fell to
+14,232,645, exactly 218,573 bytes lower, with zero held bytes. This proves
+the live owner tombstone, physical purge acknowledgement and single release
+for this agent-owned generated artifact.
+
 ## Scoped coexistence operator access — 2026-10-03
 
 The admin image coexistence POST/DELETE routes now accept an active admin's

@@ -22,6 +22,16 @@ under Background QoS. Reinstall the rendered plist from
 privileged steps, restart the system LaunchDaemon, then retry the exact
 classifier acquisition and a real image job on both Studios. Changing a
 running agent's priority is temporary and does not update the boot service.
+After `bootout`, wait until `launchctl print system/com.coire.node` reports
+that the service is absent before `bootstrap`; an immediate reinstall returned
+launchctl error 5 on both Studios during acceptance. If that happens, check
+`plutil -lint /Library/LaunchDaemons/com.coire.node.plist` and root:wheel 0644
+ownership, then retry **bootstrap only** after the old service is absent.
+Do not repeat `bootout` against an absent job. Confirm `state=running`, one
+`python3 -m coire_node` process, and an authenticated `/node/health` response
+before resuming acquisition. An agent running as a user LaunchAgent can keep
+the listener available during recovery, but it does not meet the boot-without-login
+requirement; remove it once the system job is running.
 
 ## Acquire and validate an image asset
 

@@ -176,6 +176,9 @@ echo "the remaining steps need sudo:"
 echo "  sudo cp $RENDERED $PLIST"
 echo "  sudo chown root:wheel $PLIST && sudo chmod 644 $PLIST"
 echo "  sudo launchctl bootout system/com.coire.node 2>/dev/null || true"
+echo "  # Wait for launchd to finish removing the old registration before bootstrap."
+echo '  for i in $(seq 1 30); do launchctl print system/com.coire.node >/dev/null 2>&1 || break; sleep 1; done'
+echo '  if launchctl print system/com.coire.node >/dev/null 2>&1; then echo "coire-node still registered" >&2; exit 1; fi'
 echo "  sudo launchctl bootstrap system $PLIST"
 echo
 echo "and the node token, in the SYSTEM keychain (the login keychain is locked at boot):"
