@@ -1,5 +1,15 @@
 # Feature 015 execution record
 
+## Final-source simulated image integration — 2026-10-03
+
+`COIRE_INTEGRATION=1 uv run pytest -q -m integration` against
+`test_015_image_jobs.py`, `test_image_recovery.py`, and
+`test_image_contention.py` passed **9 tests in 61.72 seconds** on core with
+isolated test services. The draft PR's previous remote CI run was green for
+lint, unit/contract tests, engine/image-engine, integration, and affected image
+builds. These local changes remain unpushed; final-source CI evidence is still
+open in T081.
+
 ## Standard-QoS system LaunchDaemons and live classifier — 2026-10-03
 
 Both Studio plists were installed root:wheel, mode 0644, with
@@ -27,6 +37,20 @@ An SSH-login `route -n get 192.168.100.12` used `bridge0`, and an SSH-login
 `nc` connected to port 9401, so the underlying interface and peer listener
 were reachable outside the agent context. Changing `ProcessType` closed the
 classifier gate but did not close unattended Studio-to-Studio replication.
+
+To isolate the macOS process context, an ad-hoc-signed app bundle containing
+the same Python 3.13 runtime was launched as a one-shot user LaunchAgent on
+each Studio. The same Python 3.13 runtime reached the peer over `.fabric:9401`
+from an SSH login, but
+both launchd probes failed with `EHOSTUNREACH`, including a numeric-IP probe
+after DNS resolved to `192.168.100.12`. The operator enabled the newly visible
+"Coire Node Probe" entry in Privacy & Security > Local Network on each Studio.
+Fresh launchd runs still failed with `EHOSTUNREACH`; the system's network
+preference recorded the probe path with `DenyAll=false`. This is evidence of
+an unresolved macOS 27 launchd/network-policy interaction, not a successful
+permission repair. Neither the installed node plists nor global network or
+firewall settings were changed by the probe. Unattended replication remains
+unproven and the admission gate remains closed.
 
 The agent-owned output from that live job was then used for the retention
 check. Before deletion its database row was `published` with 218,573 stored
