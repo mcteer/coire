@@ -823,5 +823,7 @@ async def image_dispatch_step(job_id: str) -> bool:
 
 @DBOS.workflow(name="coire.image.dispatch", max_recovery_attempts=100)
 async def image_dispatch_workflow(job_id: str) -> None:
-    while not await image_dispatch_step(job_id):  # noqa: ASYNC110 - DBOS waits for a Studio
-        await asyncio.sleep(1)
+    while not await image_dispatch_step(job_id):
+        # A normal sleep replays once per prior queue poll after a scheduler
+        # restart. Durable sleep skips elapsed waits during DBOS recovery.
+        await DBOS.sleep_async(1)
