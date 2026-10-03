@@ -10,11 +10,11 @@
 | Replication and residency | Audited B-origin acquisition created identical verified B/A variant manifests without operator copying; Standard-QoS system agents, exact PID restart, safe worker idle unload and hold release observed. | B's outbound `.fabric` probe still fails with `EHOSTUNREACH`; A-initiated replication passes, reverse direction is not claimed. |
 | Determinism, cache, coexistence | Ten same-environment PNG/pixel and recipe round trips, twenty warm-cache runs, a 907-second same-node 4k chat plus image trial, audited profile and successful normal scheduler mixed job. | Approval is scoped to the measured B hardware/runtime/model/bounds and expires after 24 hours. |
 | Recovery, storage and rollback | Live owner tombstone/physical purge released exact quota bytes; simulated receipt, crash, lost cleanup and orphan guards; disposable populated Alembic upgrade/downgrade and paired live DB/blob snapshot restored to disposable services with matching PNG digest. Studio B's image worker safely idle-unloaded and released its hold before an atomic switch to the prior immutable node environment, authenticated health check, and atomic return to the final environment with another health check. | Old-worker publication after a live rollback was not induced; fencing is covered by fault tests. |
-| Release gates | Final local Python, web, integration, migration, OpenAPI, Compose and affected scheduler image policy/scan/SBOM pass; previous remote CI passed. | Final-source remote CI awaits the one planned push of this branch. |
+| Release gates | Final local Python, web, integration, migration, OpenAPI, Compose and affected scheduler image policy/scan/SBOM pass. [CI run 37138065561](https://github.com/mcteer/coire/actions/runs/37138065561) passed lint, tests, native engines, every image build/policy/scan/SBOM and full integration (124 passed, 35 skipped). | The closeout commit changes only this evidence and the task checkbox; the PR check status remains the merge gate. |
 
-This matrix reconciles the parent tasks: T083, T084 and T085 are complete for
+This matrix reconciles the parent tasks: T081–T085 are complete for
 spec 015's stated two-copy, mode, safety, residency, retention and rollback
-requirements. T081 remains open until final-source remote CI. Studio B's
+requirements. Studio B's
 reverse outbound fabric failure is recorded as a platform limitation; this
 feature makes no bidirectional replication claim.
 
@@ -64,15 +64,15 @@ for its outbound peer probe, although B can serve the verified A-initiated
 replica transfer and the signed Python process can reach A over the control
 network. The operator-approved host and per-user Ethernet exemption preferences
 are present for exact peer `/32` addresses after reboot. This asymmetric
-macOS Local Network result remains a cluster acceptance gap in T083; no
+macOS Local Network result remains a platform limitation; no
 bidirectional fabric claim is made. The same-node profile and scheduled job
 above do not depend on B-initiated peer traffic.
 
 The ten same-environment pixel/recipe trials and twenty warm-cache trials
 recorded below, together with the measured same-node profile and scheduled
 job, satisfy T084. The full-model T083 matrix closes with the classifier,
-paired restore and installed node rollback evidence recorded here; final-source
-CI remains T081.
+paired restore and installed node rollback evidence recorded here. Final-source
+CI passed in run `37138065561` on `8c8332c`.
 
 Final-source local gates after the acquisition/node fixes: Ruff format/check,
 strict mypy (653 source files), 1,885 non-integration Python tests passed
@@ -84,8 +84,9 @@ local PostgreSQL 17 container that was removed afterward. The final scheduler
 image passed `scripts/image-policy.sh`, Trivy high/critical scan (zero findings)
 and Syft SPDX export at `/tmp/coire-015-scheduler-final.spdx.json`. The policy
 script was corrected for macOS Bash 3.2's empty-array expansion; the API image
-also passed the corrected policy script. The final-source remote CI run is
-pending a single branch push.
+also passed the corrected policy script. Remote CI run `37138065561` passed
+all jobs, including the full disposable integration topology: 124 passed,
+35 skipped, 1,903 deselected in 20 minutes 40 seconds.
 
 Under the installed Standard-QoS node services, audited retry of the pinned
 Falconsai classifier model `ee4fe044-b313-40c6-846e-785bfc186de4` reached
@@ -95,7 +96,7 @@ allowed to unload before starting a fresh classifier-aware worker. Live job
 output. A subsequent LoRA job queued because its adapter footprint exceeded
 the existing worker's immutable memory hold; after the chat instance drained,
 the job still waited for the worker's idle unload. It was owner-cancelled while
-queued with zero output, preserving the memory and audit guards. Live LoRA,
+queued with zero output, preserving the memory and audit guards. Live LoRA
 and Canny generation had already passed in jobs `01M3ZRKGAA1PYHXM744697EXB1`
 and `01M3ZS9G060077EMD8HP7XCJ8W` below; this queued job adds no new pass.
 The prior native FLUX Fill smoke and the later safe installed-version rollback
@@ -115,7 +116,7 @@ the restored PNG for `01M419BMRD7ZDQFSNSD2E16ZKQ` hashed to its database
 `file_sha256` `4860bea4fa6365222f9c68e2b1d3e96ccea3c59da63bdd776d5b957dc1586dae`.
 The disposable database and volume were removed. This proves a paired snapshot
 can be restored without touching the live control plane; old-worker fencing
-and operational drain-before-rollback remain separate checks.
+after a live rollback remains a separate fault-tested check.
 
 After job `01M419BMRD7ZDQFSNSD2E16ZKQ` completed, the B worker
 `11d6e78e-7c69-48c6-9682-ce19ebb4c022` reached `stopped` by the normal
