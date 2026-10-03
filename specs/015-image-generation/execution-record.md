@@ -7,16 +7,58 @@
 | Native modes and assets | Two verified Studio copies and native validation for Z-Image, LoRA, Union Canny, SeedVR2 upscale and FLUX Fill; live public txt2img, img2img, LoRA, Canny and 2× upscale jobs published private PNGs. | FLUX Fill remains admin-only under its non-commercial licence; its real native fill smoke passed, but no public fill job is claimed. |
 | Compatible API and browser | OpenAI image contracts, URL/base64 flows, SSE replay, gallery/form keyboard and 1024/1440px light/dark checks; 144 web tests and zero reported axe A/AA violations. | No spoken VoiceOver capture. |
 | Authorization and safety | Scoped keys and live entitlements, fenced cancellation, revoked grants, explicit-content denials, audited admin mutations and negative paths covered by contract/integration tests. A full-model running cancel finished and cleaned in 0.77 s; a queued LoRA job was owner-cancelled with zero output. A fresh pinned classifier tagged a live output `normal` with safe error null. | No policy bypass or publication of the admin-only fill asset. |
-| Replication and residency | Audited B-origin acquisition created identical verified B/A variant manifests without operator copying; Standard-QoS system agents, exact PID restart, safe worker idle unload and hold release observed. | B's outbound `.fabric` probe still fails with `EHOSTUNREACH`; A-initiated replication passes, reverse direction is not claimed. |
+| Replication and residency | Audited B-origin acquisition created identical verified B/A variant manifests; both installed agents now report IP fabric up. B-initiated authenticated import repaired a missing config from A and verified the complete 289.6 MB manifest. Standard-QoS agents, safe worker idle unload and hold release observed. | RDMA remains reported degraded; this repair verifies the IP replication path. |
 | Determinism, cache, coexistence | Ten same-environment PNG/pixel and recipe round trips, twenty warm-cache runs, a 907-second same-node 4k chat plus image trial, audited profile and successful normal scheduler mixed job. | Approval is scoped to the measured B hardware/runtime/model/bounds and expires after 24 hours. |
 | Recovery, storage and rollback | Live owner tombstone/physical purge released exact quota bytes; simulated receipt, crash, lost cleanup and orphan guards; disposable populated Alembic upgrade/downgrade and paired live DB/blob snapshot restored to disposable services with matching PNG digest. Studio B's image worker safely idle-unloaded and released its hold before an atomic switch to the prior immutable node environment, authenticated health check, and atomic return to the final environment with another health check. | Old-worker publication after a live rollback was not induced; fencing is covered by fault tests. |
 | Release gates | Final local Python, web, integration, migration, OpenAPI, Compose and affected scheduler image policy/scan/SBOM pass. [CI run 37138065561](https://github.com/mcteer/coire/actions/runs/37138065561) passed lint, tests, native engines, every image build/policy/scan/SBOM and full integration (124 passed, 35 skipped). | The closeout commit changes only this evidence and the task checkbox; the PR check status remains the merge gate. |
 
 This matrix reconciles the parent tasks: T081–T085 are complete for
 spec 015's stated two-copy, mode, safety, residency, retention and rollback
-requirements. Studio B's
-reverse outbound fabric failure is recorded as a platform limitation; this
-feature makes no bidirectional replication claim.
+requirements. The subsequently requested Studio B outbound IP repair is verified
+below; earlier observations of asymmetric failure remain historical evidence.
+
+## Studio IP fabric identity repair — 2026-10-03
+
+Both Studios ran macOS 27.0 build `26A428`, the same node environment and the
+same Python signature. Read-only decoding of the NetworkExtension policy showed
+the concrete difference: A allowed `com.coire.node.python`, while B denied it.
+Two `python3.13` UI rows referenced the same interpreter path under old and signed
+identities. Toggling either row changed the older policy but left B's signed
+identity denied, despite both switches appearing enabled.
+
+The installer now creates a dedicated `coire-node-python` copy, assigns it a
+deterministic distinct Mach-O build UUID, signs it as `com.coire.node.runtime`,
+and selects it explicitly when creating the immutable venv. The shared uv Python
+is untouched. A renamed/re-signed copy alone retained the original build UUID
+and reproduced the identity collision; Apple TN3178/TN3179 document this risk.
+Both Studios now use `/opt/coire/envs/0.2.0-7d58063707a3-runtime-v1` with the
+same dedicated runtime UUID `64169D99-7A54-5644-9C97-605E9D8EDFBD`; the original
+interpreter UUID is `4C4C4480-5555-3144-A17C-C373D9442752`.
+Operator Local Network grants and node process restarts produced `ip_state=up`
+from both authenticated installed-daemon `/node/data-link` endpoints. No full
+service reload or additional network exemption was required for this result.
+
+B initiated node import job `7a5dc39d-1c13-4c4d-a956-d5ef98822f02` against A's
+data listener for the already registered, unused `fabric-acceptance-verified`
+variant. The test moved B's 863-byte config to a temporary backup, issued a
+five-minute export grant, and let the normal node import worker retrieve it.
+Existing matching weight files were reused. The worker hashed the complete
+289,601,531-byte copy and returned `done`, no error, manifest SHA-256
+`ab699c231233deb3053a3648906991bbb163e9466409e05718d67c1a22d00540`.
+The restored config matched its backup; the backup was removed and export grant
+revoked. An initial probe driver used the wrong terminal field and revoked its
+grant early, producing a failed HTTP 404 job; the corrected driver used `stage`
+and completed the transfer above.
+
+Both temporary GUI permission-probe LaunchAgents, their plists/logs, copied
+probe interpreters and intermediate UUID-collision binaries were removed.
+Older immutable environments remain available for rollback. macOS can retain
+stale UI permission rows; their displayed names are not evidence of the live
+daemon's identity. Leave the final runtime's permission enabled, and do not
+delete global NetworkExtension privacy state to remove stale rows.
+Installer tests: 13 passed, including source preservation, stable reuse,
+signing failure cleanup, malformed Mach-O rejection, wrong signing identity
+and build-UUID collision rejection. Ruff, strict mypy and Bash syntax passed.
 
 ## Measured coexistence and B-to-A replication — 2026-10-03
 

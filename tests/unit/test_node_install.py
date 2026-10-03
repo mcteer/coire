@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import platform
+import struct
 import subprocess
 import tomllib
 from pathlib import Path
@@ -54,6 +55,104 @@ def test_failed_smoke_keeps_previous_link_and_staged_environment(tmp_path: Path)
         installer.publish_environment(staged, target, current, verify=fail)
     assert current.resolve() == previous
     assert staged.is_dir() and not target.exists()
+
+
+def test_network_python_preserves_shared_interpreter_and_reuses_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer = _installer()
+    source = tmp_path / "python3.13"
+    original = struct.pack("<8I", 0xFEEDFACF, 0x0100000C, 0, 2, 1, 24, 0, 0)
+    original += struct.pack("<2I", 0x1B, 24) + bytes(range(16)) + b"executable code"
+    source.write_bytes(original)
+    source.chmod(0o755)
+    run = Mock(
+        return_value=subprocess.CompletedProcess([], 0, "", "Identifier=com.coire.node.runtime\n")
+    )
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    target = installer.network_python(source)
+    assert target.name == "coire-node-python"
+    assert source.read_bytes() == original
+    copied = target.read_bytes()
+    assert copied[:40] == original[:40] and copied[56:] == original[56:]
+    assert copied[40:56] != original[40:56]
+    assert target.stat().st_mode & 0o111
+    run.reset_mock()
+    assert installer.network_python(source) == target
+    assert all("--force" not in call.args[0] for call in run.call_args_list)
+
+
+def test_network_python_sign_failure_leaves_source_and_no_partial_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer = _installer()
+    source = tmp_path / "python3.13"
+    original = struct.pack("<8I", 0xFEEDFACF, 0x0100000C, 0, 2, 1, 24, 0, 0)
+    original += struct.pack("<2I", 0x1B, 24) + bytes(range(16))
+    source.write_bytes(original)
+    monkeypatch.setattr(
+        installer.subprocess, "run", Mock(side_effect=subprocess.CalledProcessError(1, "codesign"))
+    )
+    with pytest.raises(subprocess.CalledProcessError):
+        installer.network_python(source)
+    assert list(tmp_path.iterdir()) == [source]
+    assert source.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "contents", [b"short", bytes(32), struct.pack("<8I", 0xFEEDFACF, 0x0100000C, 0, 2, 1, 24, 0, 0)]
+)
+def test_network_python_rejects_malformed_binary_without_publishing(
+    tmp_path: Path, contents: bytes
+) -> None:
+    source = tmp_path / "python3.13"
+    source.write_bytes(contents)
+    with pytest.raises(ValueError):
+        _installer().network_python(source)
+    assert list(tmp_path.iterdir()) == [source]
+    assert source.read_bytes() == contents
+
+
+def test_network_python_rejects_existing_wrong_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer = _installer()
+    source = tmp_path / "python3.13"
+    source.write_bytes(b"shared")
+    target = tmp_path / "coire-node-python"
+    target.write_bytes(b"existing")
+    monkeypatch.setattr(
+        installer.subprocess,
+        "run",
+        Mock(return_value=subprocess.CompletedProcess([], 0, "", "Identifier=other\n")),
+    )
+    with pytest.raises(ValueError, match="signing identity"):
+        installer.network_python(source)
+    assert target.read_bytes() == b"existing"
+
+
+def test_network_python_rejects_signed_copy_with_shared_build_uuid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    installer = _installer()
+    source = tmp_path / "python3.13"
+    original = struct.pack("<8I", 0xFEEDFACF, 0x0100000C, 0, 2, 1, 24, 0, 0)
+    original += struct.pack("<2I", 0x1B, 24) + bytes(range(16))
+    source.write_bytes(original)
+    target = tmp_path / "coire-node-python"
+    target.write_bytes(original)
+    monkeypatch.setattr(
+        installer.subprocess,
+        "run",
+        Mock(
+            return_value=subprocess.CompletedProcess(
+                [], 0, "", "Identifier=com.coire.node.runtime\n"
+            )
+        ),
+    )
+    with pytest.raises(ValueError, match="build UUID"):
+        installer.network_python(source)
+    assert source.read_bytes() == target.read_bytes() == original
 
 
 def test_successful_smoke_moves_immutable_environment_before_link_flip(tmp_path: Path) -> None:

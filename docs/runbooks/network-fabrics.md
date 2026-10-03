@@ -37,9 +37,30 @@ If `GET /api/v1/admin/network/links/studios` reports `ip_state: down` with
 `[Errno 65] No route to host` while an SSH-launched process can reach the peer's
 `.fabric` address, check System Settings → Privacy & Security → Local Network on the
 affected Studio for a Coire or Python entry. The node installer signs its uv-managed
-Python interpreter with a stable ad-hoc identity. Restart `system/com.coire.node` after
+dedicated `coire-node-python` executable with the stable ad-hoc identity
+`com.coire.node.runtime`, leaving uv's shared interpreter untouched. Restart `system/com.coire.node` after
 an interpreter update and repeat the data-link probe. A successful SSH probe alone does
 not establish that the LaunchDaemon can reach the peer.
+
+Older installs signed the shared `python3.13` executable in place as
+`com.coire.node.python`. macOS may retain both its previous identity and its signed
+identity under two identical `python3.13` rows. On Studio B, either UI switch changed
+only the previous identity's policy while the signed identity remained denied. Do not
+use the switch appearance as proof of permission: verify the installed daemon's
+authenticated `/node/data-link`. Install the dedicated runtime and grant its distinctly
+named `coire-node-python` entry from the logged-in user's Local Network settings.
+The copied interpreter also receives a deterministic, distinct Mach-O build UUID
+before signing. Renaming and re-signing alone preserves Python's original UUID and
+can make macOS associate the copy with the previous identity; Apple's
+[TN3178](https://developer.apple.com/documentation/technotes/tn3178-checking-for-and-resolving-build-uuid-problems)
+and TN3179 document this UUID requirement. Only the copy's `LC_UUID` changes;
+uv's source interpreter and executable code remain untouched. Unsupported or malformed
+Mach-O files fail installation before publishing the runtime.
+The installer creates a new immutable environment, smoke-checks it, and atomically
+switches `envs/current`; rollback points that link at the previous environment and
+restarts the node. Existing older installs on other nodes can retain their working
+environment until the next planned upgrade. Apply the same runtime preparation on
+both Studios; permission grants remain per-host.
 
 If app permission is unavailable, [Apple's TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy) documents the
 `AllowedEthernetLocalNetworkAddresses` preference for a dedicated Ethernet subnet. It
