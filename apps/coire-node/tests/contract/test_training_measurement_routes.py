@@ -19,6 +19,9 @@ async def test_authenticated_control_mount_and_strict_probe_contract(
 ) -> None:
     # No model/input assets are supplied; exercise only CPU admission and HTTP auth.
     monkeypatch.setattr("coire_node.training.measurement.platform.node", lambda: "coire-edge-a")
+    monkeypatch.setattr("coire_node.training.measurement.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("coire_node.training.measurement.platform.machine", lambda: "arm64")
+    monkeypatch.setattr("coire_node.training.measurement.measurement_hook_available", lambda: True)
     _, dispatch = experiment()
     probe = dispatch.commands[0]
     journal = TrainingJournal(
@@ -54,6 +57,11 @@ async def test_authenticated_control_mount_and_strict_probe_contract(
         # Capability is code/inventory metadata; it never substitutes for a real collective.
         assert 1 in cap.json()["world_sizes"]
         assert cap.json()["measurement_checkpoint"] is True
+        monkeypatch.setattr("coire_node.training.measurement.platform.system", lambda: "Linux")
+        unsupported_cap = await client.get(cap_url, headers={"Authorization": "Bearer test-node"})
+        assert unsupported_cap.status_code == 200
+        assert unsupported_cap.json()["world_sizes"] == []
+        monkeypatch.setattr("coire_node.training.measurement.platform.system", lambda: "Darwin")
         app.state.settings.training_enabled = False
         disabled_cap = await client.get(cap_url, headers={"Authorization": "Bearer test-node"})
         assert disabled_cap.json()["world_sizes"] == []

@@ -2532,3 +2532,22 @@ Operator completion passed all image gates, source equivalence, authenticated se
 - `grafana` image: `sha256:caea5a9a4d87ee228bfaaf67bcf6b9a48c5ae184af3aeb7a47f15cce60f5b329`; all seven policy rules, zero CRITICAL vulnerabilities/secrets, SPDX generated.
 
 Private proof: `qualified-release-final.json`; restored metadata counts and archive SHA are included there. T121/T123/T124 are complete.
+
+
+### PR 91 Linux CI corrections (2026-10-07)
+
+Run 37659792777 exposed two host-dependent validation issues: Linux has no
+installed MLX callback class for strict subclass checking, and the measurement
+route contract assumed Darwin/arm64 plus an available checkpoint hook. Added a
+minimal pinned upstream callback type stub for static checking without importing
+MLX, and explicit platform/hook fixtures in the contract. The same contract now
+asserts Linux returns no supported world sizes. Runtime code and admission gates
+are unchanged (Constitution I, II, VII).
+
+Ruff format/check passed (1,523 files); strict mypy passed all 806 files, including
+a fresh Linux-platform check. The exact CI Python selection
+`uv run pytest -m "not integration" -q` passed: 2,601 passed, 37 skipped, 373
+deselected in 99.19 seconds. This selection includes unavailable engine/runtime
+cases; the completed real Studio gates remain recorded above. The focused
+measurement route contract passed. GitHub checks must pass on the pushed fix
+before squash merge; no check or branch protection is relaxed.

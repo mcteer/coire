@@ -67,6 +67,7 @@ strict = true
 warn_unreachable = true
 disallow_any_generics = true
 mypy_path = [
+    "typings",
     "tests",
     "packages/coire-core/src",
     "apps/coire-api/src",
