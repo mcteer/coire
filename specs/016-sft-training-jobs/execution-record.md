@@ -2558,3 +2558,12 @@ no installed MLX package otherwise reported two missing root exports. Added its
 upstream signature, retaining typed argument and tuple shapes. Fresh strict mypy
 checks for both local and Linux platforms pass all 806 files; Ruff format/check
 passes 1,524 files. No runtime change.
+
+Run 37661621888 passed Linux lint/test, image pinning, both Mac engine jobs
+and nineteen completed checks before the failover image exposed a missing web
+build input. Its web stage also embeds the training runbook, but lacked the
+`COPY` already present in coire-web's Dockerfile. Added the same build-stage
+copy, preserving the runtime image, routes and hardened policy (II-a, VII).
+The corrected full failover image built on local Linux ARM64, passed all seven
+image policy rules and Trivy's CRITICAL gate, and generated a private SPDX SBOM.
+The latest GitHub run must validate the complete head and integration before merge.
