@@ -136,7 +136,13 @@ def _verified_candidate(
                 and variant["state"] == "ready"
                 and int(variant["memory_estimate_bytes"]) <= min(available.values())
             ):
-                return model, variant
+                published = client.patch(
+                    f"/api/v1/admin/models/{model['id']}/variants/{variant['id']}",
+                    headers={**headers, "If-Match": variant["updated_at"]},
+                    json={"published": True, "is_default": True},
+                )
+                assert published.status_code == 200, published.text
+                return model, published.json()
     raise AssertionError("acquisition tests must provide a verified model fitting both Studios")
 
 

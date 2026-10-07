@@ -2567,3 +2567,21 @@ copy, preserving the runtime image, routes and hardened policy (II-a, VII).
 The corrected full failover image built on local Linux ARM64, passed all seven
 image policy rules and Trivy's CRITICAL gate, and generated a private SPDX SBOM.
 The latest GitHub run must validate the complete head and integration before merge.
+
+Run 37664647491 passed all sixteen image jobs, lint/test/pinning and both Mac
+engine jobs. Integration reported 333 passed and five failures: the standalone
+metric collector test hard-coded `:dev` although CI loads `:ci`; three gateway
+scenarios inherited cleared variant defaults from publication tests; the final
+fallback scenario inherited prior runtime groups. Fixed collector tag selection
+using the existing COIRE_TAG convention, published selected fixture variants as
+default through authenticated conditional admin mutations, and drained runtime
+through the existing fixture before the independent fallback scenario. Runtime
+code, registry identity resolution and gate assertions remain unchanged.
+
+Local metric export with COIRE_TAG=ci passed. Rebuilt current API/scheduler/
+migrate/CI-node images; isolated acquisition (raw, second variant, already-MLX),
+lifecycle and full sharding selection passed **7 tests, no skips, 253.26 seconds**.
+An initial narrow setup lacked the single-variant model and correctly created a
+smaller fallback instead of satisfying the no-fit assertion; it was interrupted
+and replaced by the complete setup above, not counted as passing. Ruff and
+strict mypy passed all 806 files. Constitution III/IV/V/VII remain enforced.

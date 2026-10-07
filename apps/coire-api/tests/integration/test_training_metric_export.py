@@ -50,7 +50,7 @@ def test_exported_names_and_bounded_labels(monkeypatch: pytest.MonkeyPatch) -> N
             "127.0.0.1::8889",
             "--mount",
             f"type=bind,src={root / 'deploy/observability/tests/training-collector.yaml'},dst=/test.yaml,readonly",
-            "coire-otel:dev",
+            f"coire-otel:{os.environ.get('COIRE_TAG', 'dev')}",
             "--config=/test.yaml",
         ],
         check=True,
