@@ -74,6 +74,16 @@ compose secrets. Gateway tuning variables and operational procedures are documen
 [`docs/runbooks/gateway.md`](../../docs/runbooks/gateway.md). Do not put credentials in this file,
 `.env`, an image, or a compose environment block.
 
+Native dataset analysis reads private registered sources from `COIRE_TRAINING_INPUT_API_URL`
+(default `http://coire-core.lab:8180`). The node supervisor verifies the origin against
+`COIRE_CORE_CONTROL_HOST`, requires both its Keychain-sourced node credential and an expiring
+analysis-bound header grant, verifies source size/digest, and supplies the CPU worker only
+generated local IDs. The worker receives no source grant or administrator credential.
+Dataset uploads reserve aggregate spool/source/index quota before multipart parsing. They require
+a finite Content-Length, refuse content encoding/transfer encoding, and use the configured
+analysis timeout as the whole-upload deadline. Keep `COIRE_TRAINING_ENABLED=false` until all
+feature-016 capability and release gates pass.
+
 Native Chat is gated by `COIRE_CHAT_ENABLED` (default `false` while feature 014 is incomplete).
 
 Image admission is reserved behind `COIRE_IMAGE_ENABLED` (default `false`). These values
@@ -276,3 +286,89 @@ than promotion. Set `FAILOVER_MEMBER_NAME` to this host's name (`coire-core`, `c
 than `FAILOVER_HEARTBEAT_LATENCY_BUDGET_MS` (default 50) is degraded. Three missed beats mark a
 peer unreachable. Changing any is a reviewed
 recovery operation. See `docs/runbooks/control-plane-failover.md` for activation and break-glass.
+
+## SFT training settings (feature 016 implementation)
+
+Training is default-off. These runtime environment names map directly to fields in
+`coire_core.settings.Settings`. Compose uses `COIRE_TRAINING_ENABLED`
+to set runtime `TRAINING_ENABLED`; enablement requires the feature's acceptance gates and
+compatible nodes. Route implementations do not establish deployed node/scheduler acceptance.
+Per-model capabilities may tighten these bounds. Raising a deadline or lowering an evidence
+floor beyond the listed protection is rejected by Settings validation.
+
+| Runtime variable | Default |
+| --- | --- |
+| `TRAINING_ENABLED` | `false` |
+| `TRAINING_DATASET_DIR` | `/opt/coire/training/datasets` (API-owned private original store) |
+| `TRAINING_INPUT_API_URL` | `http://coire-core.lab:8180`; Compose input `COIRE_TRAINING_INPUT_API_URL`, reachable by Studios over the existing control fabric |
+| `TRAINING_RECIPE_MAX_BYTES`, `TRAINING_YAML_MAX_DEPTH` | `65536`, `16` |
+| `TRAINING_DATASET_UPLOAD_MAX_BYTES`, `TRAINING_DATASET_MAX_ROWS` | `268435456`, `1000000` |
+| `TRAINING_DATASET_ROW_MAX_BYTES`, `TRAINING_DIAGNOSTIC_MAX_ROWS` | `1048576`, `100` |
+| `TRAINING_DATASET_QUOTA_BYTES`, `TRAINING_DATASET_DISK_FLOOR_BYTES` | `21474836480`, `2147483648` |
+| `TRAINING_STAGING_RETENTION_S` | `86400` |
+| `TRAINING_ANALYSIS_MEMORY_BYTES`, `TRAINING_ANALYSIS_TIMEOUT_S` | `1073741824`, `1800` |
+| `TRAINING_MIXTURE_MAX_SOURCES` | `16` |
+| `TRAINING_MAX_UPDATES`, `TRAINING_MAX_SEQUENCE_LENGTH` | `100000`, `8192` |
+| `TRAINING_MAX_BATCH_SIZE`, `TRAINING_MAX_ACCUMULATION_STEPS`, `TRAINING_MAX_ADAPTER_RANK` | `64`, `64`, `128` |
+| `TRAINING_MAX_PENDING_GLOBAL`, `TRAINING_MAX_PENDING_PER_ADMIN` | `8`, `4`; per-admin cannot exceed global |
+| `TRAINING_QUEUE_TIMEOUT_S`, `TRAINING_EXECUTION_TIMEOUT_S` | `86400`, `259200` (cumulative active execution) |
+| `TRAINING_CHECKPOINT_EVERY_UPDATES`, `TRAINING_CHECKPOINT_KEEP_LAST` | `100`, `3` |
+| `TRAINING_CHECKPOINT_QUOTA_BYTES`, `TRAINING_ARTIFACT_QUOTA_BYTES` | `21474836480` per job, `214748364800` per Studio |
+| `TRAINING_ARTIFACT_DISK_FLOOR_BYTES` | `21474836480` |
+| `TRAINING_EXECUTION_LEASE_S`, `TRAINING_LEASE_RENEW_S` | `30`, `10`; renew before expiry |
+| `TRAINING_CANCEL_GRACE_S`, `TRAINING_PAUSE_GRACE_S`, `TRAINING_WATCHDOG_INTERVAL_S` | `5`, `60`, `1` |
+| `TRAINING_TRANSFER_GRANT_S`, `TRAINING_MAX_RECOVERY_ATTEMPTS` | `60`, `3` |
+| `TRAINING_PROFILE_TTL_S`, `TRAINING_GUARD_INTERVAL_S` | `604800`, `5` |
+| `TRAINING_LATENCY_WINDOW_S`, `TRAINING_LATENCY_MIN_SAMPLES` | `300`, `30` per resident target |
+| `TRAINING_MEASUREMENT_MIN_REQUESTS`, `TRAINING_MEASUREMENT_PHASE_S` | `100`, `900` per target per baseline/mixed phase |
+| `TRAINING_TELEMETRY_FRESHNESS_S`, `TRAINING_CHAT_TTFT_LIMIT_S` | `60`, `1.5` |
+| `TRAINING_PROTECTIVE_COOLDOWN_S` | `60` |
+| `TRAINING_EVENT_RETENTION_S`, `TRAINING_EVENT_HEARTBEAT_S` | `604800`, `15` |
+| `TRAINING_LOG_MAX_BYTES`, `TRAINING_METRIC_PAGE_MAX` | `1048576`, `2000` |
+| `TRAINING_LIST_PAGE_DEFAULT`, `TRAINING_LIST_PAGE_MAX` | `25`, `100` |
+
+Core stores uploaded dataset bytes and metadata. All tokenization/model/Metal work and all
+checkpoint/adapter tensor storage remain on Studios; a ready artifact has verified Studio copies.
+This setting does not authorize dataset fetching, executable model code, adapter path inputs,
+or promotion of unverified adapters into write-capable runs.
+
+### Private training data and release packaging
+
+`coire-training-data` is a named core volume at `/opt/coire/training/datasets` in
+**only coire-api and coire-scheduler**, both UID/GID 65532 with read-only rootfs.
+Both images seed the empty mountpoint as 0700. API writes bounded UUID-keyed
+uploads; scheduler needs write access for staging/orphan/retention cleanup, not
+tokenization. No MCP/web/ops/file-worker/model process mounts this volume. Include
+it in a consistent private metadata+dataset backup; `docker compose down -v`
+would destroy it. Never place weights, checkpoints or serving adapters here.
+
+The shared `x-training-environment` maps the feature flag, fixed volume path,
+input API URL, upload/quota/staging/analysis/queue/execution limits into both
+services. Its listed `TRAINING_*` overrides are Compose inputs with identical
+names. Other runtime variables in the table retain typed defaults unless a
+reviewed deployment override explicitly supplies them; merely exporting an
+unreferenced host variable does not inject it into a container.
+
+API/scheduler images copy versioned `recipes/training/` and `recipes/images/`
+assets to `/app/.venv/recipes/`, the root resolved by the existing non-editable
+training loader. Production does not depend on the Git checkout or a recipe
+bind mount. Prometheus packages `training.yaml` as `rules/training.yml` to match
+the configured glob; diagnostics Grafana packages `jobs.json`.
+
+On core, `scripts/build-node-wheel.sh --local-only` builds core/node wheels,
+exports the locked graph and hashes all 87 compatible macOS arm64 dependency
+wheels (the count is evidence for the current lock, not an invariant). It does
+not contact a Studio or import MLX. Stage/install only through the documented
+node deployment workflow. The installer requires `--require-hashes --no-index`,
+checks dependencies, smokes offline entry points and exact training API/version
+hooks **on the Studio**, then flips a versioned environment symlink. A failure
+keeps the previous symlink. No smoke loads model/tokenizer assets; numerical
+and actual supervised restart/rollback acceptance are separate gates.
+
+Scheduler wiring needed: start `coire_scheduler.training_metrics.poll_training_metrics(stop)`
+after telemetry/database initialization, even with training disabled, and await
+it when the lifespan stop event is set. It defaults to a 5-second consistent
+read-only Postgres snapshot; failed polls retain the last successful timestamp.
+See [baseline wiring](../../docs/runbooks/sft-training.md#baseline-wiring).
+
+Tempo has a fixed 1 GiB container ceiling and a 768 MiB Go runtime memory budget (`GOMEMLIMIT`), leaving headroom for allocations outside the managed heap. Preserve the trace volume when restarting it; use exact trace IDs during workload diagnostics to avoid unnecessary broad searches.

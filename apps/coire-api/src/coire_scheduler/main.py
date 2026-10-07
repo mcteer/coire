@@ -22,6 +22,7 @@ from dbos import DBOS, SetWorkflowID
 from fastapi import FastAPI
 from opentelemetry import metrics
 from sqlalchemy import literal, select, union_all
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import (
     AcquisitionWorkflowRow,
@@ -83,6 +84,28 @@ def acquisition_dispatch_id(workflow_id: uuid.UUID, attempt: int) -> str:
     return str(workflow_id) if attempt == 1 else f"{workflow_id}:attempt:{attempt}"
 
 
+async def pending_placement_ids(session: AsyncSession) -> list[uuid.UUID]:
+    """Select load decisions; unload commands reconcile on their own lane."""
+    return list(
+        await session.scalars(
+            select(PlacementDecisionRow.id).where(
+                PlacementDecisionRow.state.in_(
+                    [
+                        PlacementState.REQUESTED,
+                        PlacementState.WAITING_FOR_DRAIN,
+                        PlacementState.EVICTING,
+                        PlacementState.RESERVING,
+                        PlacementState.LOADING,
+                    ]
+                ),
+                PlacementDecisionRow.policy.notin_(
+                    ["idle-ttl", "instance-drain", "training-drain"]
+                ),
+            )
+        )
+    )
+
+
 async def dispatch_queued(stop: asyncio.Event) -> None:
     settings = get_settings()
     backoff = PollBackoff(
@@ -115,24 +138,7 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
                 with SetWorkflowID(acquisition_dispatch_id(workflow_id, attempt)):
                     DBOS.start_workflow(acquisition_workflow, str(workflow_id))
             async with session_scope() as session:
-                placement_ids = list(
-                    (
-                        await session.execute(
-                            select(PlacementDecisionRow.id).where(
-                                PlacementDecisionRow.state.in_(
-                                    [
-                                        PlacementState.REQUESTED,
-                                        PlacementState.WAITING_FOR_DRAIN,
-                                        PlacementState.EVICTING,
-                                        PlacementState.RESERVING,
-                                        PlacementState.LOADING,
-                                    ]
-                                ),
-                                PlacementDecisionRow.policy.notin_(["idle-ttl", "instance-drain"]),
-                            )
-                        )
-                    ).scalars()
-                )
+                placement_ids = await pending_placement_ids(session)
             for decision_id in placement_ids:
                 with SetWorkflowID(f"placement-{decision_id}"):
                     DBOS.start_workflow(placement_workflow, str(decision_id))

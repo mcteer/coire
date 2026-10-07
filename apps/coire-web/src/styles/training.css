@@ -1,0 +1,37 @@
+.training-page { display: grid; grid-template-columns: 276px minmax(0, 1fr) 300px; gap: var(--s-5); margin-top: -66px; align-items: start; }
+.training-rail, .training-main, .training-side { padding: var(--s-4); min-width: 0; background: var(--glass-bg); }
+.training-rail { display: flex; flex-direction: column; gap: var(--s-3); position: sticky; top: 84px; max-height: calc(100vh - 210px); overflow: auto; }
+.training-main { padding: var(--s-5); }
+.training-main section + section, .training-main details, .training-card { margin-top: var(--s-4); }
+.training-page h1 { font-size: var(--text-xl); font-weight: 800; }
+.training-page h2 { font-size: var(--text-lg); }
+.training-page h3 { font-size: var(--text-sm); color: var(--ink-2); }
+.training-page .row { flex-wrap: wrap; }
+.training-page .mono, .training-page dd { overflow-wrap: anywhere; }
+.training-page pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; padding: var(--s-3); background: var(--surface-2); border-radius: var(--r-md); font-size: var(--text-sm); }
+.training-page summary { cursor: pointer; font-weight: 600; padding: var(--s-2) 0; }
+.training-page summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.training-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--s-3); }
+.training-fields { display: grid; gap: var(--s-3); border: 0; padding: 0; min-width: 0; }
+.training-fields label { display: grid; gap: var(--s-2); font-size: var(--text-sm); font-weight: 600; }
+.training-fields input, .training-fields select, .training-fields textarea { width: 100%; min-width: 0; background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: var(--r-md); padding: 9px 12px; }
+.training-fields input[type="checkbox"] { width: auto; justify-self: start; }
+.training-fields legend { font-weight: 700; padding: var(--s-3) 0; }
+.training-fields textarea { font-family: var(--font-mono); }
+.training-run-link { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--s-2); padding: var(--s-3); text-align: left; border: 0; background: transparent; color: var(--ink); border-radius: var(--r-lg); cursor: pointer; }
+.training-run-link small { grid-column: 1 / -1; color: var(--ink-2); }
+.training-run-link.selected { background: var(--surface); box-shadow: var(--shadow-1); }
+.training-new { margin-top: auto; }
+.training-spec-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--s-3); }
+.training-checkpoints { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.training-page progress { width: 100%; accent-color: var(--accent); height: 10px; }
+.training-page svg { width: 100%; max-height: 230px; }
+.training-axis { stroke: var(--divider); fill: none; }
+.training-train { stroke: var(--accent); fill: var(--surface); }
+.training-validation { stroke: var(--accent-2); fill: var(--surface); }
+.training-page svg text { font: 11px var(--font-mono); fill: var(--ink-2); }
+.training-page dt { font-weight: 700; margin-top: var(--s-2); }
+.training-page dd { margin-left: 0; }
+.training-page button:disabled { opacity: .6; cursor: not-allowed; }
+@media (max-width: 1200px) { .training-page { grid-template-columns: 220px minmax(0, 1fr); } .training-side { grid-column: 1 / -1; } .training-spec-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .training-page { grid-template-columns: minmax(0, 1fr); } .training-rail { position: static; max-height: 280px; } }

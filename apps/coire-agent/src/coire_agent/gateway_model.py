@@ -6,11 +6,14 @@ import asyncio
 import base64
 import os
 import stat
+import uuid
 from pathlib import Path
 
 import httpx
+from pydantic import TypeAdapter
 
 from coire_agent.profiles import get_profile
+from coire_core.models.adapters import InferenceTarget, ModelSelector
 from coire_core.models.harness import HarnessMessage, HarnessRunRequest
 
 CONTROL_IMAGE_ROOT = Path("/workspace/.coire/inputs")
@@ -66,14 +69,34 @@ async def _message_content(message: HarnessMessage) -> object:
 
 
 class GatewayTransport:
-    def __init__(self, *, gateway_url: str, token: str, model_id: str) -> None:
+    def __init__(
+        self,
+        *,
+        gateway_url: str,
+        token: str,
+        model_id: str,
+        target: InferenceTarget | None = None,
+        variant_id: uuid.UUID | None = None,
+    ) -> None:
         if not gateway_url.rstrip("/").endswith("/v1"):
             raise ValueError("gateway_url must name Coire's /v1 surface")
         self._url = gateway_url.rstrip("/")
         self._headers = {"Authorization": f"Bearer {token}"}
-        self._model_id = model_id
+        self._model_id = str(TypeAdapter(ModelSelector).validate_python(model_id))
+        if target is not None and variant_id is not None and variant_id != target.variant_id:
+            raise ValueError("transport variant differs from admitted target")
+        self._target = target
+        self._variant_id = target.variant_id if target else variant_id
+        if target is not None and model_id.split("@")[0] != str(target.model_id):
+            raise ValueError("transport selector differs from admitted target")
+        if target is not None and (("@" in model_id) != (target.adapter_id is not None)):
+            raise ValueError("transport selector does not match adapter identity")
 
     async def complete(self, messages: list[HarnessMessage], request: HarnessRunRequest) -> object:
+        if self._target != request.target or (
+            self._variant_id is not None and self._variant_id != request.variant_id
+        ):
+            raise ValueError("request differs from admitted transport target")
         profile = get_profile(request.profile, allow_ops=True)
         wire_messages = [
             {
@@ -89,6 +112,8 @@ class GatewayTransport:
         }
         if profile.stop_sequences:
             body["stop"] = profile.stop_sequences
+        if self._variant_id is not None:
+            body["coire_variant_id"] = str(self._variant_id)
         if request.thinking_token_limit:
             # Engines count hidden reasoning inside completion usage. A completion ceiling is
             # therefore the only portable hard cap across native and tagged reasoning models.
@@ -110,6 +135,8 @@ class GatewayTransport:
             ],
             "temperature": 0,
         }
+        if self._variant_id is not None:
+            body["coire_variant_id"] = str(self._variant_id)
         async with httpx.AsyncClient(base_url=self._url, timeout=None) as client:
             response = await client.post("/chat/completions", headers=self._headers, json=body)
             response.raise_for_status()

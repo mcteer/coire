@@ -11,3 +11,8 @@ def test_activity_union_and_stop_routes_are_admin_guarded_and_typed() -> None:
     cancel = document["paths"]["/api/v1/admin/jobs/{job_id}"]["delete"]
     assert cancel["security"] == [{"HTTPBearer": []}]
     assert "202" in cancel["responses"]
+    training = document["paths"]["/api/v1/admin/console/training-activity"]["get"]
+    assert training["security"] == [{"HTTPBearer": []}]
+    assert training["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/CursorPage_TrainingActivityItem_"
+    )

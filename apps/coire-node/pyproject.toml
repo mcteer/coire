@@ -11,6 +11,9 @@ dependencies = [
     "httpx>=0.28",
     # HPND. Decode bounded owner image inputs in the node journal on Linux CI and Studios.
     "pillow==12.3.0",
+    # Apache-2.0. Existing locked format reader validates checkpoint tensor headers
+    # before MLX allocation; also available to Linux artifact/recovery contract tests.
+    "safetensors==0.8.0",
     "opentelemetry-sdk>=1.29",
     "opentelemetry-exporter-otlp-proto-grpc>=1.29",
     # Feature 001 (research R1, R10): the engine and the Hugging Face client. mlx is

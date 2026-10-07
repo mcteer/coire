@@ -1,0 +1,4 @@
+{"text":"The sum of two and three is five."}
+{"text":"An immutable checkpoint preserves completed updates."}
+{"text":"A deterministic sampler resumes at the next unconsumed row."}
+{"text":"A model adapter is evaluated independently of its base."}

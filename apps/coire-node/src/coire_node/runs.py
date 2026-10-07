@@ -93,6 +93,29 @@ class RunManager:
             raise RunRuntimeError(
                 "run_variant_unverified", "write run requires harness verification"
             )
+        if command.target is not None and (
+            command.target.model_id != command.model_id
+            or command.target.variant_id != command.variant_id
+        ):
+            raise RunRuntimeError("run_target_invalid", "manifest target differs from run identity")
+        if command.public_selector is not None:
+            selector = str(command.public_selector)
+            if uuid.UUID(selector.split("@", 1)[0]) != command.model_id:
+                raise RunRuntimeError("run_target_invalid", "selector parent differs from manifest")
+            if ("@" in selector) != (
+                command.target is not None and command.target.adapter_id is not None
+            ):
+                raise RunRuntimeError(
+                    "run_target_invalid", "selector differs from adapter identity"
+                )
+        if (
+            command.target is not None
+            and command.target.adapter_id is not None
+            and command.public_selector is None
+        ):
+            raise RunRuntimeError(
+                "run_target_invalid", "adapter manifest requires registry selector"
+            )
         if (
             command.workspace_ref.startswith("mcp-")
             or (command.output_ref is not None and command.output_ref.startswith("mcp-out-"))
@@ -138,6 +161,12 @@ class RunManager:
                 f"COIRE_RUN_ID={command.run_id}",
                 f"COIRE_PROFILE={command.profile.value}",
                 f"COIRE_MODEL_ID={command.model_id}",
+                f"COIRE_PUBLIC_SELECTOR={command.public_selector or command.model_id}",
+                *(
+                    [f"COIRE_INFERENCE_TARGET={command.target.model_dump_json()}"]
+                    if command.target
+                    else []
+                ),
                 f"COIRE_VERIFIED_VARIANT_ID={command.variant_id}",
                 f"COIRE_HARNESS_VERIFIED={'true' if command.harness_verified else 'false'}",
                 "COIRE_API_URL=http://coire-gateway:8080/v1",

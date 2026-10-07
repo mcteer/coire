@@ -467,6 +467,10 @@ async def _chat_unmeasured(
 
 
 async def _image_busy(session: AsyncSession, node_id: uuid.UUID, model_id: uuid.UUID) -> bool:
+    from coire_api.placement.service import training_allows_work
+
+    if not await training_allows_work(session, [node_id]):
+        return True
     leased = await session.scalar(
         select(ImageExecutionLeaseRow.id)
         .where(

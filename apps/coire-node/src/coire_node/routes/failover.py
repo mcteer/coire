@@ -72,7 +72,10 @@ async def resident_engines(
     return [
         FailoverResidentEngine(engine_id=item.engine_id, slug=item.slug)
         for item in engines.statuses()
-        if item.engine_id is not None and item.slug is not None and item.state is EngineState.READY
+        if item.engine_id is not None
+        and item.slug is not None
+        and item.state is EngineState.READY
+        and (item.target is None or item.target.adapter_id is None)
     ]
 
 
@@ -143,7 +146,13 @@ async def relay_completion(
     if body.engine_id != engine_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "engine id mismatch")
     engine = engines.get(engine_id)
-    if engine is None or engine.state is not EngineState.READY or engine.slug != body.model_slug:
+    if (
+        engine is None
+        or engine.state is not EngineState.READY
+        or engine.slug != body.model_slug
+        or (engine.target is not None and engine.target.adapter_id is not None)
+        or "@" in str(body.request.model)
+    ):
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "resident engine is unavailable")
     model_path = str(store.path_for(engine.slug))
     payload = body.request.model_dump(mode="json", exclude_none=True)

@@ -9,6 +9,8 @@ from pathlib import PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
+from coire_core.models.adapters import InferenceTarget
+
 
 class McpToolName(StrEnum):
     RESEARCH = "research"
@@ -81,6 +83,17 @@ class ResearchInput(BaseModel):
     source: WorkspaceSource
     question: str = Field(min_length=1, max_length=100_000)
     model_id: uuid.UUID | None = None
+    target: InferenceTarget | None = None
+
+    @model_validator(mode="after")
+    def target_parent(self) -> ResearchInput:
+        if (
+            self.target is not None
+            and self.model_id is not None
+            and self.target.model_id != self.model_id
+        ):
+            raise ValueError("MCP exact target differs from selected parent")
+        return self
 
 
 class PlanInput(BaseModel):
@@ -90,6 +103,17 @@ class PlanInput(BaseModel):
     goal: str = Field(min_length=1, max_length=100_000)
     research_result_id: uuid.UUID | None = None
     model_id: uuid.UUID | None = None
+    target: InferenceTarget | None = None
+
+    @model_validator(mode="after")
+    def target_parent(self) -> PlanInput:
+        if (
+            self.target is not None
+            and self.model_id is not None
+            and self.target.model_id != self.model_id
+        ):
+            raise ValueError("MCP exact target differs from selected parent")
+        return self
 
 
 class ApplyInput(BaseModel):
@@ -99,9 +123,16 @@ class ApplyInput(BaseModel):
     plan_result_id: uuid.UUID | None = None
     plan: str | None = Field(default=None, min_length=1, max_length=100_000)
     model_id: uuid.UUID | None = None
+    target: InferenceTarget | None = None
 
     @model_validator(mode="after")
     def has_plan(self) -> ApplyInput:
+        if (
+            self.target is not None
+            and self.model_id is not None
+            and self.target.model_id != self.model_id
+        ):
+            raise ValueError("MCP exact target differs from selected parent")
         if (self.plan_result_id is None) == (self.plan is None):
             raise ValueError("exactly one plan_result_id or plan is required")
         return self
@@ -237,6 +268,7 @@ class McpCall(BaseModel):
     credential_id: uuid.UUID | None = None
     source: WorkspaceSource
     model_id: uuid.UUID
+    target: InferenceTarget | None = None
     run_id: uuid.UUID | None = None
     state: McpCallState
     failure_code: str | None = Field(default=None, max_length=64)

@@ -8,6 +8,7 @@
 #
 #   install.sh --wheel-dir DIR   install from wheels built on core by scripts/build-node-wheel.sh
 #   install.sh --dry-run         print every path that would be created, change nothing
+#   install.sh --wheel-dir DIR --stage-only   verify an immutable candidate without activating it
 #
 # One-time prerequisite, run by the operator:
 #   sudo mkdir -p /opt/coire && sudo chown "$USER" /opt/coire
@@ -21,6 +22,7 @@ PYTHON_VERSION="3.13"
 AGENT_VERSION="0.2.0"
 WHEEL_DIR=""
 DRY_RUN=0
+STAGE_ONLY=0
 NODE_NAME="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
 RUN_AGENT_IMAGE="${COIRE_RUN_AGENT_IMAGE:-}"
 RUN_RELAY_IMAGE="${COIRE_RUN_RELAY_IMAGE:-}"
@@ -30,6 +32,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --wheel-dir) WHEEL_DIR="$2"; shift 2 ;;
     --dry-run)   DRY_RUN=1; shift ;;
+    --stage-only) STAGE_ONLY=1; shift ;;
     --prefix)    PREFIX="$2"; shift 2 ;;
     -h|--help)   sed -n '2,16p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -126,7 +129,9 @@ if [[ ! -r "$REQUIREMENTS" || ! -d "$WHEELHOUSE" || \
   echo "error: stage one core/node wheel and the locked node-wheels directory" >&2
   exit 2
 fi
-LOCK_ID="$( { printf '%s\n' 'coire-node-runtime-v1'; cat "$REQUIREMENTS" "${CORE_WHEELS[0]}" "${NODE_WHEELS[0]}"; } | shasum -a 256 | cut -c1-12)"
+# The executable identity is part of the immutable environment, not just the wheel graph.
+# An older environment with the same wheels may still point at uv's shared Python.
+LOCK_ID="$( { printf '%s\n' 'coire-node-runtime-v2'; cat "$REQUIREMENTS" "${CORE_WHEELS[0]}" "${NODE_WHEELS[0]}" "$NODE_PYTHON"; } | shasum -a 256 | cut -c1-12)"
 ENV_DIR="$PREFIX/envs/$AGENT_VERSION-$LOCK_ID"
 STAGING="$ENV_DIR.staging.$$"
 cleanup_stage() { [[ ! -e "$STAGING" ]] || rm -rf "$STAGING"; }
@@ -138,7 +143,11 @@ if [[ -e "$ENV_DIR" && ! -x "$ENV_DIR/bin/python3" ]]; then
 fi
 if [[ ! -x "$ENV_DIR/bin/python3" ]]; then
   say "creating isolated $ENV_DIR from locked wheels"
-  uv venv --python "$NODE_PYTHON" "$STAGING" >/dev/null
+  # uv 0.12.7 canonicalizes a renamed executable inside its configured managed
+  # install root back to python3.13. Provisioning is complete; make this explicit
+  # interpreter request without that managed-install shortcut, then verify it.
+  env -u UV_PYTHON_INSTALL_DIR -u UV_PYTHON_BIN_DIR \
+    uv venv --python "$NODE_PYTHON" "$STAGING" >/dev/null
   uv pip sync --python "$STAGING/bin/python3" --require-hashes --no-index \
     --find-links "$WHEELHOUSE" "$REQUIREMENTS" >/dev/null
   uv pip install --python "$STAGING/bin/python3" --no-index --no-deps \
@@ -151,8 +160,14 @@ else
 fi
 
 # A failed import or CLI flag check leaves the previous active environment untouched.
+if [[ "$STAGE_ONLY" -eq 1 ]]; then
+  "$SMOKE_SOURCE/bin/python3" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \
+    --stage "$SMOKE_SOURCE" "$ENV_DIR" "$NODE_PYTHON"
+  say "verified immutable candidate $ENV_DIR; active link and launchd service unchanged"
+  exit 0
+fi
 "$SMOKE_SOURCE/bin/python3" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \
-  "$SMOKE_SOURCE" "$ENV_DIR" "$PREFIX/envs/current"
+  "$SMOKE_SOURCE" "$ENV_DIR" "$PREFIX/envs/current" "$NODE_PYTHON"
 
 say "flipped $PREFIX/envs/current -> $ENV_DIR"
 

@@ -34,7 +34,8 @@ class SchedulerWorkers:
     """Start once, unwind partial startup in reverse order, and stop cleanly.
 
     Image placement stays on the DBOS poller in ``main``. These executors remain the
-    language, acquisition and shard command lanes.
+    language, acquisition, shard and training command lanes, including training
+    reconciliation and baseline telemetry while new training is disabled.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -49,6 +50,11 @@ class SchedulerWorkers:
             ShardReconciler(settings),
             BenchmarkCommandExecutor(settings),
         ]
+        from coire_api.training.runtime import TrainingRuntimeWorker
+        from coire_scheduler.datasets import DatasetAnalysisExecutor
+
+        self.workers.append(TrainingRuntimeWorker(settings))
+        self.workers.append(DatasetAnalysisExecutor(settings))
         self.started: list[Worker] = []
 
     async def start(self) -> None:

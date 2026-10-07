@@ -257,7 +257,12 @@ def create_app(runtime: FailoverRuntime | None = None) -> FastAPI:
             if not _lease_serves(runtime.load_lease(), snapshot):
                 return _refuse("not_elected")
             try:
-                body = ChatCompletionRequest.model_validate(await request.json())
+                raw = await request.json()
+                if isinstance(raw, dict) and "@" in str(raw.get("model", "")):
+                    return _refuse("adapter_unavailable")
+                body = ChatCompletionRequest.model_validate(raw)
+                if not isinstance(body.model, UUID) or body.coire_variant_id is not None:
+                    return _refuse("exact_target_unavailable")
             except (ValidationError, ValueError) as exc:
                 raise HTTPException(
                     status.HTTP_422_UNPROCESSABLE_ENTITY, "invalid completion request"

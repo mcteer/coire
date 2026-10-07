@@ -19,7 +19,7 @@ def command() -> LinkProbeCommand:
 def test_probe_argv_is_fixed_two_host_launcher(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("COIRE_PROBE_COMMAND", raising=False)
     argv = build_probe_argv(command(), Path("/state/generated.json"))
-    assert argv[1:3] == ["-m", "mlx.launch"]
+    assert argv[1:3] == ["-c", "from mlx._distributed_utils.launch import main; main()"]
     assert "-n" not in argv
     assert argv.count("jaccl") == 2
     assert "coire_node.link_probe_worker" in argv
@@ -49,3 +49,10 @@ def test_probe_parser_accepts_rank_records_concatenated_by_launcher() -> None:
     result = runner._observation(ProbeTransport.JACCL, 0, output)
     assert result.outcome is ProbeOutcome.SUCCEEDED
     assert result.bandwidth_bytes_per_second == 90
+
+
+def test_probe_failure_is_bounded_and_does_not_expose_process_output() -> None:
+    runner = LinkProbeRunner(Settings(_secrets_dir="/nonexistent"))  # type: ignore[call-arg]
+    result = runner._observation(ProbeTransport.JACCL, 1, b"private diagnostic" * 1000)
+    assert result.outcome is ProbeOutcome.FAILED
+    assert result.reason == "probe incomplete: exit=1, observed_ranks=[]"

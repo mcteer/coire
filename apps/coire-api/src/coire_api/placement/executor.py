@@ -21,8 +21,9 @@ from coire_api.db import (
     session_scope,
 )
 from coire_api.instance.service import transition
-from coire_api.nodes_client import NodeClient, NodeError
+from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_api.polling import PollBackoff, wait_or_stop
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, PlacementState
@@ -201,6 +202,11 @@ class PlacementCommandExecutor:
                             event.outcome = "confirmed"
                 return {"state": status.state.value if status else "absent"}
             if operation == "load":
+                target = (
+                    InferenceTarget.model_validate(payload["target"])
+                    if payload.get("target") is not None
+                    else None
+                )
                 _, status = await client.start_engine(
                     node_name,
                     engine_id=row.engine_id,
@@ -212,11 +218,18 @@ class PlacementCommandExecutor:
                         else None
                     ),
                     backend=EngineBackend(str(payload.get("backend", "mlx_lm"))),
+                    target=target,
                 )
                 deadline = time.monotonic() + self.settings.gateway_wait_ceiling_s
                 while status.state is EngineState.STARTING and time.monotonic() < deadline:
                     await asyncio.sleep(self.settings.node_engine_health_interval_s)
                     status = await client.get_engine(node_name, row.engine_id)
+                if status.target != target:
+                    raise NodeError(
+                        NodeErrorKind.PROTOCOL,
+                        node_name,
+                        detail="engine exact target changed during readiness",
+                    )
                 if status.state is not EngineState.READY:
                     raise RuntimeError(
                         status.state_reason or f"engine entered {status.state.value}"

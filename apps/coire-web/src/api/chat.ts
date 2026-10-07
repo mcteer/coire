@@ -73,12 +73,18 @@ export function chatFilePreviewUrl(
   return `${filePath(conversationId, fileId)}/previews/${encodeURIComponent(assetId)}`;
 }
 
-export function listChatModels(
+export function chatPickerSupportsExactSelection(entry: ChatPickerEntry): boolean {
+  if (!entry.target?.adapter_id) return !entry.id.includes("@");
+  // An adapter UUID or parent model UUID is never an inference selector.
+  return entry.id.includes("@") && entry.id.split("@")[0] === entry.target.model_id;
+}
+
+export async function listChatModels(
   mode: "chat" | "code" = "chat",
   action: "chat" | "research" | "plan" | "apply" = "chat",
 ): Promise<ChatPickerResponse> {
-  if (mode === "chat") return api<ChatPickerResponse>("/api/v1/chat/models");
-  return api<ChatPickerResponse>(`/api/v1/chat/models?${new URLSearchParams({ mode, action })}`);
+  const response = await api<ChatPickerResponse>(mode === "chat" ? "/api/v1/chat/models" : `/api/v1/chat/models?${new URLSearchParams({ mode, action })}`);
+  return { ...response, data: response.data?.filter(chatPickerSupportsExactSelection) };
 }
 
 export function listRegisteredWorkspaces(): Promise<RegisteredWorkspace[]> {

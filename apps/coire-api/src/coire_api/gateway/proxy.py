@@ -13,6 +13,7 @@ from time import perf_counter
 from urllib.parse import urlparse
 
 import httpx
+from opentelemetry.propagate import inject
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,7 +59,11 @@ def init_engine_client() -> None:
     global _engine_client
     if _engine_client is None:
         _engine_client = httpx.AsyncClient(
-            limits=httpx.Limits(max_connections=32, max_keepalive_connections=8)
+            # Retire idle sockets before the node's five-second keepalive closes
+            # them near a fixed workload arrival. Do not replay failed streams.
+            limits=httpx.Limits(
+                max_connections=32, max_keepalive_connections=8, keepalive_expiry=1.0
+            )
         )
 
 
@@ -81,7 +86,11 @@ def _node_headers(engine_url: str, settings: Settings) -> dict[str, str]:
         return {}
     node = (parsed.hostname or "").split(".", 1)[0]
     token = settings.node_token_map.get(node, "")
-    return {"Authorization": f"Bearer {token}"} if token else {}
+    if not token:
+        return {}
+    headers = {"Authorization": f"Bearer {token}"}
+    inject(headers)
+    return headers
 
 
 async def _semaphore(engine_url: str, limit: int) -> asyncio.Semaphore:
@@ -146,6 +155,10 @@ async def _ensure_legacy_engine_hold(
 async def _ensure_legacy_engine_hold_locked(
     session: AsyncSession, engine: EngineProcessRow, holder_id: str
 ) -> None:
+    from coire_api.placement.service import training_allows_work
+
+    if not await training_allows_work(session, [engine.node_id]):
+        raise ChatModelUnavailable()
     await ensure_legacy_model_hold_locked(
         session, engine.node_id, uuid.UUID(holder_id), engine.estimate_bytes
     )
@@ -164,6 +177,9 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
     lease_ids: list[uuid.UUID] = []
     instance_id: uuid.UUID | None = None
     async with session_scope() as session:
+        from coire_api.training.gateway_measurements import authorize_measurement_lease
+
+        await authorize_measurement_lease(session, engine_url)
         if len(segments) > 2 and segments[2] == "shard-groups":
             group = await session.get(ShardGroupRow, target_id)
             if group is None:
@@ -248,6 +264,7 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                     with tracer.start_as_current_span("coire.gateway.lease_renewal"):
                         try:
                             async with session_scope() as session:
+                                await authorize_measurement_lease(session, engine_url)
                                 refreshed = [
                                     await refresh_lease(
                                         session,

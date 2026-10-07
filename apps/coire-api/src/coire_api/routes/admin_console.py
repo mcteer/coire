@@ -27,6 +27,7 @@ from coire_core.models.console import (
     ConsoleEventKind,
     ConsoleSnapshot,
     CursorPage,
+    TrainingActivityItem,
 )
 from coire_core.models.instance import TERMINAL_INSTANCE_STATES
 from coire_core.models.jobs import DownloadStage
@@ -141,6 +142,18 @@ async def console_activity(
     next_cursor = f"{page[-1].started_at.isoformat()}|{page[-1].id}" if len(items) > limit else None
     _activity_pages.add(1, {"has_next": str(next_cursor is not None).lower()})
     return CursorPage(items=page, next_cursor=next_cursor)
+
+
+@router.get("/console/training-activity", response_model=CursorPage[TrainingActivityItem])
+async def training_activity(
+    principal: CurrentAdmin,
+    session: SessionDep,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
+) -> CursorPage[TrainingActivityItem]:
+    from coire_api.console.training import project_training_activity
+
+    return await project_training_activity(session, principal, limit=limit, cursor=cursor)
 
 
 @router.get("/console/events", response_class=StreamingResponse)

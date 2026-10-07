@@ -101,7 +101,7 @@ def test_gpu_percent_parses_ioreg_output(monkeypatch: pytest.MonkeyPatch) -> Non
         stdout = b'"Device Utilization %"=41\n  "Device Utilization %" = 73\n'
 
     monkeypatch.setattr("coire_node.metrics.shutil.which", lambda _: "/usr/sbin/ioreg")
-    monkeypatch.setattr("coire_node.metrics.subprocess.run", lambda *a, **k: Out())
+    monkeypatch.setattr("coire_node.metrics.run_probe", lambda *a, **k: Out())
     assert m.read_gpu_percent() == 73.0
 
 
@@ -111,13 +111,49 @@ def test_gpu_percent_survives_ioreg_failure(monkeypatch: pytest.MonkeyPatch) -> 
     def boom(*a: Any, **k: Any) -> Any:
         raise OSError("ioreg exploded")
 
-    monkeypatch.setattr("coire_node.metrics.subprocess.run", boom)
+    monkeypatch.setattr("coire_node.metrics.run_probe", boom)
     assert m.read_gpu_percent() is None
 
 
 def test_thermal_state_unknown_when_unreadable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("coire_node.metrics.shutil.which", lambda _: None)
+    monkeypatch.setattr(m, "_read_process_thermal_level", lambda: None)
     assert m.read_thermal_state() is ThermalState.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    ("level", "expected"),
+    [
+        (0, ThermalState.NOMINAL),
+        (1, ThermalState.FAIR),
+        (2, ThermalState.SERIOUS),
+        (3, ThermalState.CRITICAL),
+        (4, ThermalState.UNKNOWN),
+        (None, ThermalState.UNKNOWN),
+    ],
+)
+def test_public_thermal_api_when_ioreg_field_is_absent(
+    monkeypatch: pytest.MonkeyPatch, level: int | None, expected: ThermalState
+) -> None:
+    class Out:
+        stdout = b'"IOPMrootDomain" = {}'
+
+    monkeypatch.setattr("coire_node.metrics.shutil.which", lambda _: "/usr/sbin/ioreg")
+    monkeypatch.setattr("coire_node.metrics.run_probe", lambda *a, **k: Out())
+    monkeypatch.setattr(m, "_read_process_thermal_level", lambda: level)
+    assert m.read_thermal_state() is expected
+
+
+def test_public_thermal_api_load_failure_remains_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("coire_node.metrics.platform.system", lambda: "Darwin")
+
+    def unavailable(path: str) -> None:
+        raise OSError("native library unavailable")
+
+    monkeypatch.setattr("coire_node.metrics.ctypes.CDLL", unavailable)
+    assert m._read_process_thermal_level() is None
 
 
 @pytest.mark.parametrize(
@@ -136,7 +172,7 @@ def test_thermal_state_maps_pressure_levels(
         stdout = f'"ThermalPressureLevel"={level}'.encode()
 
     monkeypatch.setattr("coire_node.metrics.shutil.which", lambda _: "/usr/sbin/ioreg")
-    monkeypatch.setattr("coire_node.metrics.subprocess.run", lambda *a, **k: Out())
+    monkeypatch.setattr("coire_node.metrics.run_probe", lambda *a, **k: Out())
     assert m.read_thermal_state() is expected
 
 

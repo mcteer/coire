@@ -10,17 +10,26 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from coire_api.db import MemoryReservationRow, NodeMemoryLedgerRow, NodeRow, create_engine
+from coire_api.db import (
+    MemoryReservationRow,
+    NodeMemoryLedgerRow,
+    NodeRow,
+    TrainingAttemptRow,
+    TrainingJobRow,
+    TrainingParticipantRow,
+    create_engine,
+)
 from coire_api.placement.service import (
     drift_ratio,
     image_residency_unavailable,
     ledger_drift,
 )
+from coire_api.training.telemetry import observed
 from coire_core.models.engine import LIVE_ENGINE_STATES, EngineState
 from coire_core.models.node import NodeStatus, NodeStatusV2, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
@@ -31,7 +40,10 @@ logger = logging.getLogger(__name__)
 
 
 def measured_node_residency(
-    status: NodeStatus | NodeStatusV2, *, image_reserved_bytes: int
+    status: NodeStatus | NodeStatusV2,
+    *,
+    image_reserved_bytes: int,
+    training_reserved_bytes: int = 0,
 ) -> int | None:
     """Include the image child's physical footprint without inventing an unknown value."""
     if any(
@@ -42,8 +54,19 @@ def measured_node_residency(
         return None
     if image_reserved_bytes > 0 and status.image_worker_resident_bytes is None:
         return None
-    return sum(engine.resident_bytes or 0 for engine in status.engines) + (
-        status.image_worker_resident_bytes or 0
+    training = getattr(status, "training", [])
+    if training_reserved_bytes and not training:
+        return None
+    if any(
+        attempt.liveness in {"running", "stopping", "unknown", "orphan"}
+        and attempt.footprint_bytes is None
+        for attempt in training
+    ):
+        return None
+    return (
+        sum(attempt.footprint_bytes or 0 for attempt in training if attempt.liveness != "stopped")
+        + sum(engine.resident_bytes or 0 for engine in status.engines)
+        + (status.image_worker_resident_bytes or 0)
     )
 
 
@@ -95,6 +118,7 @@ class NodeProber:
         finally:
             await engine.dispose()
 
+    @observed("coire.api.training.node_observation")
     async def _probe_once(self, maker: async_sessionmaker[AsyncSession]) -> None:
         tokens = self._settings.node_token_map
         async with maker() as session:
@@ -112,15 +136,56 @@ class NodeProber:
                         ledger.health_reason = (
                             None if status is not None else "node health probe failed"
                         )
-                        ledger.health_sampled_at = datetime.now(UTC)
+                        ledger.health_sampled_at = (
+                            status.sampled_at
+                            if status is not None and status.sampled_at.tzinfo is not None
+                            else None
+                        )
+                        if status is not None and (
+                            ledger.health_sampled_at is None
+                            or not datetime.now(UTC) - timedelta(seconds=60)
+                            <= ledger.health_sampled_at
+                            <= datetime.now(UTC)
+                        ):
+                            ledger.health, ledger.health_reason = (
+                                Reachability.UNKNOWN,
+                                "stale_health",
+                            )
                         if status is not None:
+                            for training in getattr(status, "training", []):
+                                participant = await session.scalar(
+                                    select(TrainingParticipantRow)
+                                    .join(
+                                        TrainingAttemptRow,
+                                        TrainingAttemptRow.id == TrainingParticipantRow.attempt_id,
+                                    )
+                                    .join(
+                                        TrainingJobRow,
+                                        TrainingJobRow.id == TrainingAttemptRow.job_id,
+                                    )
+                                    .where(
+                                        TrainingParticipantRow.node_id == row.id,
+                                        TrainingAttemptRow.id == training.attempt_id,
+                                        TrainingAttemptRow.fence == training.fence,
+                                        TrainingJobRow.fence == TrainingAttemptRow.fence,
+                                        TrainingAttemptRow.state.in_(
+                                            ["preparing", "running", "stopping", "unknown"]
+                                        ),
+                                    )
+                                )
+                                if participant is not None:
+                                    participant.footprint_bytes = training.footprint_bytes
                             resident_reserved = await session.scalar(
                                 select(
                                     func.coalesce(func.sum(MemoryReservationRow.bytes), 0)
                                 ).where(
                                     MemoryReservationRow.node_id == row.id,
                                     MemoryReservationRow.holder_type.in_(
-                                        (ReservationHolder.MODEL, ReservationHolder.IMAGE)
+                                        (
+                                            ReservationHolder.MODEL,
+                                            ReservationHolder.IMAGE,
+                                            ReservationHolder.TRAINING,
+                                        )
                                     ),
                                     MemoryReservationRow.state.in_(
                                         [
@@ -147,8 +212,49 @@ class NodeProber:
                                 )
                             )
                             ledger.measured_resident_bytes = measured_node_residency(
-                                status, image_reserved_bytes=int(image_reserved or 0)
+                                status,
+                                image_reserved_bytes=int(image_reserved or 0),
+                                training_reserved_bytes=int(
+                                    await session.scalar(
+                                        select(
+                                            func.coalesce(func.sum(MemoryReservationRow.bytes), 0)
+                                        ).where(
+                                            MemoryReservationRow.node_id == row.id,
+                                            MemoryReservationRow.holder_type
+                                            == ReservationHolder.TRAINING,
+                                            MemoryReservationRow.state.in_(
+                                                [
+                                                    MemoryReservationState.PENDING,
+                                                    MemoryReservationState.HELD,
+                                                    MemoryReservationState.RELEASING,
+                                                ]
+                                            ),
+                                        )
+                                    )
+                                    or 0
+                                ),
                             )
+                            swap = getattr(status, "swap_used_bytes", None)
+                            previous_swap = getattr(ledger, "swap_used_bytes", None)
+                            if hasattr(ledger, "swap_used_bytes"):
+                                ledger.swap_used_bytes = swap
+                            if (
+                                isinstance(swap, int)
+                                and isinstance(previous_swap, int)
+                                and swap > previous_swap
+                            ):
+                                ledger.health, ledger.health_reason = (
+                                    Reachability.DEGRADED,
+                                    "swap_growth",
+                                )
+                            if (
+                                ledger.measured_resident_bytes is not None
+                                and ledger.measured_resident_bytes > ledger.budget_bytes
+                            ):
+                                ledger.health, ledger.health_reason = (
+                                    Reachability.DEGRADED,
+                                    "memory_breach",
+                                )
                             image_residency_unavailable.set(
                                 int(
                                     int(image_reserved or 0) > 0

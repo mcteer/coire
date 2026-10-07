@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from coire_core.models.adapters import InferenceTarget, ModelSelector, validate_transport_target
 from coire_core.models.harness import PROFILE_TOOL_NAMES, ProfileName, TaskClass
 from coire_core.models.mcp import McpCallState, McpToolName
 
@@ -132,8 +133,19 @@ class RunTokenScope(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     permitted_model_ids: frozenset[uuid.UUID] = Field(min_length=1, max_length=16)
+    permitted_targets: tuple[InferenceTarget, ...] = Field(default=(), max_length=16)
     permitted_tools: frozenset[str] = Field(default_factory=frozenset, max_length=10)
     spend_limit_tokens: int = Field(ge=1, le=100_000_000)
+
+    @model_validator(mode="after")
+    def exact_target_scope(self) -> RunTokenScope:
+        if len(set(self.permitted_targets)) != len(self.permitted_targets):
+            raise ValueError("permitted exact targets must be unique")
+        if any(
+            target.model_id not in self.permitted_model_ids for target in self.permitted_targets
+        ):
+            raise ValueError("exact target parent must be in permitted_model_ids")
+        return self
 
 
 class AgentRunCreate(BaseModel):
@@ -141,6 +153,8 @@ class AgentRunCreate(BaseModel):
 
     profile: ProfileName
     primary_model_id: uuid.UUID
+    primary_target: InferenceTarget | None = None
+    permitted_targets: tuple[InferenceTarget, ...] = Field(default=(), max_length=16)
     workspace_ref: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
     task_class: TaskClass = TaskClass.WRITE
     prepared_request_id: uuid.UUID | None = None
@@ -158,6 +172,19 @@ class AgentRunCreate(BaseModel):
             raise ValueError("permitted_tools contains a tool outside the selected profile")
         if self.primary_model_id not in self.permitted_model_ids:
             raise ValueError("primary_model_id must be in permitted_model_ids")
+        RunTokenScope(
+            permitted_model_ids=self.permitted_model_ids,
+            permitted_targets=self.permitted_targets,
+            permitted_tools=self.permitted_tools,
+            spend_limit_tokens=self.spend_limit_tokens,
+        )
+        if self.primary_target is not None and (
+            self.primary_target.model_id != self.primary_model_id
+            or self.primary_target not in self.permitted_targets
+        ):
+            raise ValueError(
+                "primary exact target must match the parent and be explicitly permitted"
+            )
         return self
 
 
@@ -177,6 +204,7 @@ class AgentRun(BaseModel):
     profile: ProfileName
     primary_model_id: uuid.UUID
     primary_variant_id: uuid.UUID
+    primary_target: InferenceTarget | None = None
     node_id: uuid.UUID | None = None
     node_name: str | None = None
     container_id: str | None = Field(default=None, max_length=128)
@@ -188,6 +216,7 @@ class AgentRun(BaseModel):
     output_ref: str | None = None
     state: AgentRunState
     limits: RunLimits
+
     exit_code: int | None = None
     failure_code: str | None = Field(default=None, max_length=64)
     failure_detail: str | None = Field(default=None, max_length=500)
@@ -233,6 +262,8 @@ class RunContainerCreate(BaseModel):
     profile: ProfileName
     model_id: uuid.UUID
     variant_id: uuid.UUID
+    target: InferenceTarget | None = None
+    public_selector: ModelSelector | None = None
     harness_verified: bool = True
     image: str = Field(pattern=r"^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$")
     argv: list[str] = Field(min_length=1, max_length=32)
@@ -242,6 +273,11 @@ class RunContainerCreate(BaseModel):
     run_token: str = Field(min_length=32, max_length=512, repr=False)
     gateway_url: str = Field(pattern=r"^https?://[^\s]+/v1/?$")
     limits: RunLimits
+
+    @model_validator(mode="after")
+    def transport_subject_matches(self) -> RunContainerCreate:
+        validate_transport_target(self.model_id, self.variant_id, self.target, self.public_selector)
+        return self
 
 
 class RunContainerStatus(BaseModel):

@@ -23,9 +23,12 @@ from coire_api.db import (
     PlacementCommandRow,
     PlacementDecisionRow,
     RequestLeaseRow,
+    TrainingAdapterRow,
+    TrainingArtifactCopyRow,
     VariantCopyRow,
     session_scope,
 )
+from coire_api.instance.service import resolve_instance_target
 from coire_api.placement.service import (
     effective_occupied_bytes,
     ensure_ledgers,
@@ -80,6 +83,10 @@ class CapacityRefused(RuntimeError):
     def __init__(self, occupants: list[PlacementOccupant]) -> None:
         super().__init__("no eligible reservations can make enough room")
         self.occupants = occupants
+
+
+class ExactTargetUnconfirmed(RuntimeError):
+    """A live engine may exist; retain its counted hold until reconciliation."""
 
 
 def idle_eligible(
@@ -188,6 +195,39 @@ async def _candidate_nodes(
             )
         ).all()
     )
+    instance = await session.scalar(
+        select(ModelInstanceRow).where(ModelInstanceRow.placement_decision_id == decision.id)
+    )
+    if instance is not None and instance.adapter_id is not None:
+        adapter = await session.get(TrainingAdapterRow, instance.adapter_id)
+        if adapter is None:
+            return [], ["adapter is unavailable"]
+        selected = await resolve_instance_target(session, instance)
+        copies = (
+            await session.scalars(
+                select(TrainingArtifactCopyRow).where(
+                    TrainingArtifactCopyRow.adapter_id == instance.adapter_id,
+                    TrainingArtifactCopyRow.artifact_id == instance.adapter_id,
+                    TrainingArtifactCopyRow.state == "verified",
+                    TrainingArtifactCopyRow.manifest_sha256 == adapter.manifest_sha256,
+                    TrainingArtifactCopyRow.verified_at.is_not(None),
+                )
+            )
+        ).all()
+        eligible_nodes = {copy.node_id for copy in copies}
+        rows = [item for item in rows if item[0].id in eligible_nodes]
+        if selected.identity is None:
+            return [], ["exact adapter identity is unavailable"]
+        base_nodes = set(
+            await session.scalars(
+                select(VariantCopyRow.node_id).where(
+                    VariantCopyRow.variant_id == selected.identity.variant_id,
+                    VariantCopyRow.verified.is_(True),
+                    VariantCopyRow.manifest_sha256 == selected.identity.base_manifest_sha256,
+                )
+            )
+        )
+        rows = [item for item in rows if item[0].id in base_nodes]
     explicit = decision.policy.split(":", 1)[1] if decision.policy != "single:auto" else None
     if explicit is not None:
         rows = [item for item in rows if item[0].name == explicit]
@@ -290,6 +330,19 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                     .scalars()
                     .all()
                 )
+                # Smoke runs after trainer termination, with no inherited mixed
+                # workload permission. Unknown/releasing training still counts.
+                if (
+                    instance is not None
+                    and instance.adapter_id is not None
+                    and instance.id == uuid.uuid5(instance.adapter_id, "validation-smoke")
+                    and any(
+                        row.holder_type in {ReservationHolder.TRAINING, ReservationHolder.IMAGE}
+                        for row in reservations
+                    )
+                ):
+                    profile_refused = True
+                    continue
                 occupied = effective_occupied_bytes(reservations, ledger.measured_resident_bytes)
                 if occupied is None:
                     profile_refused = True
@@ -496,12 +549,17 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                     select(EngineProcessRow).where(
                         EngineProcessRow.node_id == node.id,
                         EngineProcessRow.model_id == model.id,
+                        EngineProcessRow.instance_id == (instance.id if instance else None),
+                        EngineProcessRow.variant_id == variant.id,
+                        EngineProcessRow.adapter_id == (instance.adapter_id if instance else None),
                     )
                 )
                 if engine is None:
                     engine = EngineProcessRow(
                         instance_id=instance.id if instance is not None else None,
                         model_id=model.id,
+                        variant_id=variant.id,
+                        adapter_id=instance.adapter_id if instance else None,
                         node_id=node.id,
                         port=0,
                         state=EngineState.STARTING,
@@ -511,6 +569,12 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                     session.add(engine)
                     await session.flush()
                 command_id = _command_id(decision_id, "load", engine.id)
+                identity = None
+                if instance is not None:
+                    selected = await resolve_instance_target(session, instance)
+                    identity = selected.identity
+                    if instance.adapter_id and identity is None:
+                        raise RuntimeError("exact adapter identity disappeared")
                 if await session.get(PlacementCommandRow, command_id) is None:
                     session.add(
                         PlacementCommandRow(
@@ -521,6 +585,9 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                             engine_id=engine.id,
                             operation="load",
                             payload={
+                                **(
+                                    {"target": identity.model_dump(mode="json")} if identity else {}
+                                ),
                                 "slug": variant.slug,
                                 "estimate_bytes": decision.required_bytes,
                                 "chat_template": (
@@ -531,7 +598,13 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                         )
                     )
                 decision.state = PlacementState.LOADING
-        await _wait_command(command_id)
+        command_result = await _wait_command(command_id)
+        if (
+            identity is not None
+            and identity.adapter_id is not None
+            and command_result.get("target") != identity.model_dump(mode="json")
+        ):
+            raise ExactTargetUnconfirmed("node engine did not acknowledge the exact adapter target")
         async with session_scope() as session:
             decision = await session.get(PlacementDecisionRow, decision_id)
             if decision is not None:
@@ -568,11 +641,32 @@ async def execute_placement(decision_id: str) -> None:
         parsed = uuid.UUID(decision_id)
         try:
             await _run_decision(parsed)
+        except ExactTargetUnconfirmed as exc:
+            span.record_exception(exc)
+            raise
         except Exception as exc:
             span.record_exception(exc)
             async with session_scope() as session:
                 decision = await session.get(PlacementDecisionRow, parsed)
                 if decision is not None:
+                    # A dispatched private smoke load can still own a live process.
+                    # Preserve the decision and counted hold for reconciliation.
+                    smoke_load = await session.scalar(
+                        select(PlacementCommandRow.id)
+                        .join(
+                            ModelInstanceRow, ModelInstanceRow.placement_decision_id == decision.id
+                        )
+                        .where(
+                            PlacementCommandRow.decision_id == decision.id,
+                            PlacementCommandRow.operation == "load",
+                            ModelInstanceRow.adapter_id.is_not(None),
+                        )
+                        .limit(1)
+                    )
+                    if smoke_load is not None:
+                        raise ExactTargetUnconfirmed(
+                            "adapter load needs node reconciliation"
+                        ) from exc
                     decision.state = PlacementState.FAILED
                     decision.refusal_code = type(exc).__name__.lower()[:64]
                     decision.refusal_detail = "placement failed; inspect the correlated trace"
@@ -586,12 +680,8 @@ async def execute_placement(decision_id: str) -> None:
                             select(MemoryReservationRow).where(
                                 MemoryReservationRow.node_id == decision.selected_node_id,
                                 MemoryReservationRow.holder_type == ReservationHolder.MODEL,
-                                MemoryReservationRow.holder_id.in_(
-                                    [
-                                        str(decision.model_id),
-                                        str(instance.id) if instance is not None else "",
-                                    ]
-                                ),
+                                MemoryReservationRow.holder_id
+                                == str(instance.id if instance is not None else decision.model_id),
                                 MemoryReservationRow.state == MemoryReservationState.PENDING,
                             )
                         )

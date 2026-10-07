@@ -10,6 +10,7 @@ Sampling happens on a background thread so a slow `ioreg` never blocks the event
 
 from __future__ import annotations
 
+import ctypes
 import importlib.metadata
 import importlib.util
 import logging
@@ -36,6 +37,8 @@ from coire_core.models.jobs import JobStatus
 from coire_core.models.link import LinkState, RdmaState, StudioDataLinkStatus
 from coire_core.models.node import NodePath, NodeStatus, ThermalState
 from coire_core.models.registry import EngineBackend
+from coire_core.models.training_node import NodeTrainingStatus
+from coire_node.native_probe import run_probe
 
 logger = logging.getLogger(__name__)
 _meter = otel_metrics.get_meter("coire.node.network")
@@ -136,6 +139,14 @@ IOREG_TIMEOUT_S = 3.0
 _GPU_UTIL_RE = re.compile(rb'"Device Utilization %"\s*=\s*(\d+)')
 
 
+def read_swap_used_bytes() -> int | None:
+    try:
+        used = psutil.swap_memory().used
+    except Exception:
+        return None
+    return used if type(used) is int and used >= 0 else None
+
+
 def read_gpu_percent() -> float | None:
     """GPU utilisation from IOAccelerator, or None when unavailable.
 
@@ -146,9 +157,8 @@ def read_gpu_percent() -> float | None:
     if ioreg is None:
         return None
     try:
-        out = subprocess.run(
+        out = run_probe(
             [ioreg, "-r", "-c", "IOAccelerator", "-d", "1", "-w", "0"],
-            capture_output=True,
             timeout=IOREG_TIMEOUT_S,
         )
     except (subprocess.SubprocessError, OSError) as exc:
@@ -160,15 +170,61 @@ def read_gpu_percent() -> float | None:
     return float(max(0, min(100, max(values))))
 
 
+def _read_process_thermal_level() -> int | None:
+    """Read Apple's public NSProcessInfo thermalState without a privileged helper.
+
+    NSInteger and object-returning objc_msgSend calls have distinct explicit
+    signatures; no variadic ABI or private IOKit field is assumed.
+    """
+    if platform.system() != "Darwin":
+        return None
+    try:
+        ctypes.CDLL("/System/Library/Frameworks/Foundation.framework/Foundation")
+        objc = ctypes.CDLL("/usr/lib/libobjc.A.dylib")
+        objc.objc_getClass.argtypes = [ctypes.c_char_p]
+        objc.objc_getClass.restype = ctypes.c_void_p
+        objc.sel_registerName.argtypes = [ctypes.c_char_p]
+        objc.sel_registerName.restype = ctypes.c_void_p
+        cls = objc.objc_getClass(b"NSProcessInfo")
+        if not cls:
+            return None
+        get_object = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p)(
+            ("objc_msgSend", objc)
+        )
+        get_integer = ctypes.CFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_void_p)(
+            ("objc_msgSend", objc)
+        )
+        info = get_object(cls, objc.sel_registerName(b"processInfo"))
+        if not info:
+            return None
+        return int(get_integer(info, objc.sel_registerName(b"thermalState")))
+    except (OSError, AttributeError, ValueError):
+        return None
+
+
 def read_thermal_state() -> ThermalState:
-    """Thermal pressure. UNKNOWN when it cannot be read — never guessed as nominal."""
+    """Thermal pressure. UNKNOWN when both actual OS readers are unavailable."""
+    pressure = _read_ioreg_thermal_state()
+    if pressure is not ThermalState.UNKNOWN:
+        return pressure
+    level = _read_process_thermal_level()
+    if level is None:
+        return ThermalState.UNKNOWN
+    return {
+        0: ThermalState.NOMINAL,
+        1: ThermalState.FAIR,
+        2: ThermalState.SERIOUS,
+        3: ThermalState.CRITICAL,
+    }.get(level, ThermalState.UNKNOWN)
+
+
+def _read_ioreg_thermal_state() -> ThermalState:
     ioreg = shutil.which("ioreg")
     if ioreg is None:
         return ThermalState.UNKNOWN
     try:
-        out = subprocess.run(
+        out = run_probe(
             [ioreg, "-r", "-n", "IOPMrootDomain", "-d", "1", "-w", "0"],
-            capture_output=True,
             timeout=IOREG_TIMEOUT_S,
         )
     except (subprocess.SubprocessError, OSError):
@@ -219,6 +275,8 @@ class MetricsCollector:
         self._engines: object | None = None
         self._image_workers: object | None = None
         self._reservations: object | None = None
+        self._training: object | None = None
+        self._measurements: object | None = None
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         # Prime psutil's CPU deltas so the first real sample is meaningful, not 0.0.
@@ -233,6 +291,8 @@ class MetricsCollector:
         engines: object,
         image_workers: object | None = None,
         reservations: object | None = None,
+        training: object | None = None,
+        measurements: object | None = None,
     ) -> None:
         """Give the collector disjoint node memory holders for NodeStatus."""
         self._store = store
@@ -240,6 +300,8 @@ class MetricsCollector:
         self._engines = engines
         self._image_workers = image_workers
         self._reservations = reservations
+        self._training = training
+        self._measurements = measurements
 
     # -- lifecycle ---------------------------------------------------------
     def start(self) -> None:
@@ -286,6 +348,7 @@ class MetricsCollector:
             thermal_state=read_thermal_state(),
             memory_total_bytes=vm.total,
             memory_free_bytes=vm.available,
+            swap_used_bytes=read_swap_used_bytes(),
             disk_total_bytes=du.total,
             disk_free_bytes=du.free,
             agent_cpu_percent=agent_cpu,
@@ -294,6 +357,7 @@ class MetricsCollector:
             path=NodePath.MESH,
             sampled_at=datetime.now(UTC),
             engines=self._engine_statuses(),
+            training=self._training_statuses(),
             jobs=self._job_statuses(),
             memory_budget_bytes=self._budget(),
             memory_committed_bytes=self._committed(),
@@ -335,11 +399,21 @@ class MetricsCollector:
     def _engine_statuses(self) -> list[EngineStatus]:
         if self._engines is None:
             return []
+
         try:
             return list(self._engines.statuses())  # type: ignore[attr-defined]
         except Exception:
             logger.exception("could not read engine statuses")
             return []
+
+    def _training_statuses(self) -> list[NodeTrainingStatus]:
+        result: list[NodeTrainingStatus] = []
+        for owner in (self._training, self._measurements):
+            if owner is not None:
+                result.extend(owner.statuses())  # type: ignore[attr-defined]
+        if len({item.attempt_id for item in result}) != len(result) or len(result) > 8:
+            raise RuntimeError("native ownership projection is conflicting or unbounded")
+        return result
 
     def _job_statuses(self) -> list[JobStatus]:
         if self._jobs is None:
@@ -367,6 +441,10 @@ class MetricsCollector:
                 committed += int(self._image_workers.committed_bytes())  # type: ignore[attr-defined]
             if self._reservations is not None:
                 committed += int(self._reservations.held_bytes())  # type: ignore[attr-defined]
+            if self._training is not None:
+                committed += int(self._training.committed_bytes())  # type: ignore[attr-defined]
+            if self._measurements is not None:
+                committed += int(self._measurements.committed_bytes())  # type: ignore[attr-defined]
             return committed
         except Exception:
             logger.exception("could not read complete node memory commitment")
@@ -417,13 +495,11 @@ class MetricsCollector:
         profiler = shutil.which("system_profiler")
         if profiler:
             try:
-                result = subprocess.run(
+                result = run_probe(
                     [profiler, "SPThunderboltDataType"],
-                    capture_output=True,
-                    text=True,
                     timeout=10,
                 )
-                text = result.stdout.lower()
+                text = result.stdout.decode("utf-8", "replace").lower()
                 if "rdma" in text and ("yes" in text or "enabled" in text):
                     rdma_state = RdmaState.UP
                 elif result.returncode == 0 and "thunderbolt" in text:

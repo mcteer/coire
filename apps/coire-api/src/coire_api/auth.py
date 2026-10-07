@@ -21,10 +21,11 @@ from typing import Annotated
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from opentelemetry import metrics, trace
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import ChatConversationRow
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.auth import ActorType, UserRole
 
 logger = logging.getLogger(__name__)
@@ -63,9 +64,22 @@ class Principal(BaseModel):
     credential_version: int | None = None
     run_id: uuid.UUID | None = None
     permitted_model_ids: frozenset[uuid.UUID] = frozenset()
+    permitted_targets: tuple[InferenceTarget, ...] = ()
     permitted_tools: frozenset[str] = frozenset()
     spend_limit_tokens: int | None = None
     spent_tokens: int = 0
+
+    @model_validator(mode="after")
+    def exact_run_scope(self) -> Principal:
+        if len(self.permitted_targets) > 16 or len(set(self.permitted_targets)) != len(
+            self.permitted_targets
+        ):
+            raise ValueError("exact principal targets must be bounded and unique")
+        if self.kind is PrincipalKind.RUN and any(
+            target.model_id not in self.permitted_model_ids for target in self.permitted_targets
+        ):
+            raise ValueError("exact principal target must belong to a permitted parent")
+        return self
 
     @property
     def is_admin(self) -> bool:

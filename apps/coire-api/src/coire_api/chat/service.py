@@ -126,7 +126,8 @@ async def picker(
         (
             await session.execute(
                 select(EngineProcessRow).where(
-                    EngineProcessRow.model_id.in_([model.id for model in visible])
+                    EngineProcessRow.model_id.in_([model.id for model in visible]),
+                    EngineProcessRow.adapter_id.is_(None),
                 )
             )
         )

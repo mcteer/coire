@@ -7,7 +7,7 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from coire_api.db import (
     EngineProcessRow,
@@ -25,6 +25,7 @@ from coire_api.placement.legacy import ensure_legacy_model_hold
 from coire_api.placement.service import node_admission_lock
 from coire_api.registry.visual_memory import require_supported_placement, reservation_bytes
 from coire_core.errors import ChatModelUnavailable
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import Reachability
@@ -39,9 +40,11 @@ class ModelLoadError(Exception):
 class LoadCoordinator:
     def __init__(self) -> None:
         self._lock = asyncio.Lock()
-        self._loads: dict[uuid.UUID, asyncio.Task[None]] = {}
+        self._loads: dict[uuid.UUID | InferenceTarget, asyncio.Task[None]] = {}
 
-    async def run(self, model_id: uuid.UUID, loader: Callable[[], Awaitable[None]]) -> None:
+    async def run(
+        self, model_id: uuid.UUID | InferenceTarget, loader: Callable[[], Awaitable[None]]
+    ) -> None:
         async with self._lock:
             task = self._loads.get(model_id)
             if task is None or task.done():
@@ -58,7 +61,11 @@ class LoadCoordinator:
 coordinator = LoadCoordinator()
 
 
-async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -> bool:
+async def _place_variant_if_available(
+    model_id: uuid.UUID,
+    settings: Settings,
+    target: InferenceTarget | None = None,
+) -> bool:
     """Use feature-004 placement for variant-backed models; return false for legacy rows."""
     instance_id: uuid.UUID | None = None
     async with session_scope() as session:
@@ -69,20 +76,35 @@ async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -
             select(ModelVariantRow)
             .where(
                 ModelVariantRow.model_id == model_id,
-                ModelVariantRow.is_default.is_(True),
+                ModelVariantRow.id == target.variant_id
+                if target
+                else ModelVariantRow.is_default.is_(True),
                 ModelVariantRow.validated.is_(True),
             )
             .limit(1)
         )
         if variant is None:
+            if target is not None:
+                raise ModelLoadError("exact variant is unavailable")
             return False
+        policy = "single:auto" if target and target.adapter_id else model.placement_policy
+        adapter_id = target.adapter_id if target else None
+        await session.execute(
+            select(
+                func.pg_advisory_xact_lock(
+                    func.hashtext(f"instance:{model_id}:{variant.id}:{adapter_id}:{policy}")
+                )
+            )
+        )
         try:
-            require_supported_placement(variant.backend, model.placement_policy)
+            require_supported_placement(variant.backend, policy)
         except ValueError as exc:
             raise ModelLoadError(str(exc)) from exc
         ready = await session.scalar(
             select(ModelInstanceRow.id).where(
                 ModelInstanceRow.model_id == model_id,
+                ModelInstanceRow.variant_id == variant.id,
+                ModelInstanceRow.adapter_id == adapter_id,
                 ModelInstanceRow.state == InstanceState.READY,
             )
         )
@@ -93,6 +115,8 @@ async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -
             .where(
                 ModelInstanceRow.model_id == model_id,
                 ModelInstanceRow.variant_id == variant.id,
+                ModelInstanceRow.adapter_id == adapter_id,
+                ModelInstanceRow.policy == policy,
                 ModelInstanceRow.state.in_(
                     [
                         InstanceState.REQUESTED,
@@ -109,7 +133,8 @@ async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -
             active = ModelInstanceRow(
                 model_id=model_id,
                 variant_id=variant.id,
-                policy=model.placement_policy,
+                adapter_id=adapter_id,
+                policy=policy,
                 state=InstanceState.REQUESTED,
             )
             session.add(active)
@@ -130,15 +155,21 @@ async def _place_variant_if_available(model_id: uuid.UUID, settings: Settings) -
     raise ModelLoadError("placement did not complete before the gateway wait ceiling")
 
 
-async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
+async def load_model(model_id: uuid.UUID | InferenceTarget, settings: Settings) -> None:
+    key = model_id
+    target = model_id if isinstance(model_id, InferenceTarget) else None
+    model_id = target.model_id if target else model_id
+    assert isinstance(model_id, uuid.UUID)
+
     async def _load() -> None:
-        if await _place_variant_if_available(model_id, settings):
+        if await _place_variant_if_available(model_id, settings, target):
             return
         async with session_scope() as session:
             existing = await session.scalar(
                 select(EngineProcessRow)
                 .where(
                     EngineProcessRow.model_id == model_id,
+                    EngineProcessRow.adapter_id.is_(None),
                     EngineProcessRow.state.in_([EngineState.STARTING, EngineState.READY]),
                 )
                 .limit(1)
@@ -147,7 +178,7 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
             if model is None:
                 raise ModelLoadError("model disappeared during load")
             required_bytes = reservation_bytes(model.memory_estimate_bytes, model.visual_capability)
-            target = (
+            copy_target = (
                 await session.execute(
                     select(ModelCopyRow, NodeRow)
                     .join(NodeRow, NodeRow.id == ModelCopyRow.node_id)
@@ -160,9 +191,9 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
                     .limit(1)
                 )
             ).one_or_none()
-            if target is None:
+            if copy_target is None:
                 raise ModelLoadError("no verified reachable model copy")
-            _, node = target
+            _, node = copy_target
             if existing is not None and existing.node_id != node.id:
                 hosting_node = await session.get(NodeRow, existing.node_id)
                 if hosting_node is None or hosting_node.reachability is not Reachability.HEALTHY:
@@ -177,6 +208,7 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
                         select(EngineProcessRow)
                         .where(
                             EngineProcessRow.model_id == model_id,
+                            EngineProcessRow.adapter_id.is_(None),
                             EngineProcessRow.node_id == node.id,
                             EngineProcessRow.state.in_([EngineState.STARTING, EngineState.READY]),
                         )
@@ -243,4 +275,4 @@ async def load_model(model_id: uuid.UUID, settings: Settings) -> None:
 
     with tracer.start_as_current_span("coire.gateway.load") as span:
         span.set_attribute("coire.model.id", str(model_id))
-        await coordinator.run(model_id, _load)
+        await coordinator.run(key, _load)

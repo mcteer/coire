@@ -14,13 +14,14 @@ from typing import Any
 
 from coire_core.models import LinkObservation, LinkProbeCommand, ProbeOutcome, ProbeTransport
 from coire_core.settings import Settings
+from coire_node.mlx_launch import launcher_argv
 
 MARKER = "COIRE_PROBE_RESULT "
 
 
 def build_probe_argv(command: LinkProbeCommand, hostfile: Path) -> list[str]:
     override = os.environ.get("COIRE_PROBE_COMMAND")
-    launcher = override.split(os.pathsep) if override else [sys.executable, "-m", "mlx.launch"]
+    launcher = override.split(os.pathsep) if override else launcher_argv(sys.executable)
     return [
         *launcher,
         "--backend",
@@ -110,6 +111,6 @@ class LinkProbeRunner:
             engine_version=str(first.get("engine_version", "unknown")),
             reason=None
             if succeeded
-            else f"probe exited {returncode}: {output[-512:].decode(errors='replace')}",
+            else f"probe incomplete: exit={returncode}, observed_ranks={sorted(records)}",
             observed_at=datetime.now(UTC),
         )

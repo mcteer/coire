@@ -13,6 +13,7 @@ WORKDIR /src
 COPY apps/coire-web/package.json apps/coire-web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY apps/coire-web/ ./
+COPY docs/runbooks/sft-training.md /docs/runbooks/sft-training.md
 RUN npm run build
 
 FROM docker.io/library/golang:1.26-bookworm@sha256:e8c859f5632dcfde7b32d2012b4351728f6437930887c2f6a91ea242459e5514 AS probe

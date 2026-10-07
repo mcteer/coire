@@ -46,7 +46,8 @@ async def list_models(principal: CurrentPrincipal, session: SessionDep) -> list[
         (
             await session.execute(
                 select(EngineProcessRow).where(
-                    EngineProcessRow.model_id.in_([m.id for m in visible])
+                    EngineProcessRow.model_id.in_([m.id for m in visible]),
+                    EngineProcessRow.adapter_id.is_(None),
                 )
             )
         )

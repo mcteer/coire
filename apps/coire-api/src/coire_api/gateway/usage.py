@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 
 from coire_api.auth import Principal
 from coire_api.db import UsageRecordRow, session_scope
@@ -34,6 +34,13 @@ class UsageTracker:
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     model_id: uuid.UUID | None = None
     engine_id: uuid.UUID | None = None
+    instance_id: uuid.UUID | None = None
+    first_token_at: datetime | None = None
+    first_token_duration_ms: float | None = None
+    reported_token_usage: bool = False
+    outcome: UsageOutcome | None = None
+    variant_id: uuid.UUID | None = None
+    adapter_id: uuid.UUID | None = None
     node: str | None = None
     provider_source: ModelSource = ModelSource.STUDIO
     backend: EngineBackend | None = None
@@ -50,6 +57,9 @@ class UsageTracker:
         """Attach the registry-selected model and engine to once-only accounting."""
         self.model_id = resolved.model_id
         self.engine_id = resolved.engine_id
+        self.instance_id = resolved.instance_id
+        self.variant_id = resolved.target.variant_id if resolved.target else None
+        self.adapter_id = resolved.target.adapter_id if resolved.target else None
         self.node = resolved.node
         self.provider_source = resolved.source
         self.backend = resolved.backend
@@ -59,6 +69,7 @@ class UsageTracker:
             if self._finished:
                 return
             self._finished = True
+            self.outcome = outcome
         attributes = {
             "protocol": self.protocol.value,
             "source": self.provider_source.value,
@@ -84,6 +95,11 @@ class UsageTracker:
             requested_model_id=self.requested_model_id,
             model_id=self.model_id,
             engine_id=self.engine_id,
+            instance_id=self.instance_id,
+            first_token_at=self.first_token_at,
+            first_token_duration_ms=self.first_token_duration_ms,
+            variant_id=self.variant_id,
+            adapter_id=self.adapter_id,
             protocol=self.protocol,
             prompt_tokens=self.prompt_tokens,
             completion_tokens=self.completion_tokens,
@@ -110,25 +126,31 @@ async def persist_usage(
     failure_code: str | None = None,
     reserved_tokens: int = 0,
     provider_source: ModelSource = ModelSource.STUDIO,
+    variant_id: uuid.UUID | None = None,
+    adapter_id: uuid.UUID | None = None,
+    instance_id: uuid.UUID | None = None,
+    first_token_at: datetime | None = None,
+    first_token_duration_ms: float | None = None,
 ) -> None:
     """Insert once even when the request task is being cancelled."""
 
     async def _write() -> None:
         finished_at = datetime.now(UTC)
         async with session_scope() as session:
-            exists = await session.scalar(
-                select(UsageRecordRow.id).where(UsageRecordRow.request_id == request_id)
-            )
-            if exists is not None:
-                return
-            session.add(
-                UsageRecordRow(
+            inserted = await session.scalar(
+                insert(UsageRecordRow)
+                .values(
                     request_id=request_id,
                     principal_kind=principal.kind.value,
                     principal_subject=principal.subject,
                     requested_model_id=requested_model_id,
                     model_id=model_id,
                     engine_id=engine_id,
+                    instance_id=instance_id,
+                    first_token_at=first_token_at,
+                    first_token_duration_ms=first_token_duration_ms,
+                    variant_id=variant_id,
+                    adapter_id=adapter_id,
                     protocol=protocol,
                     prompt_tokens=max(prompt_tokens, 0),
                     completion_tokens=max(completion_tokens, 0),
@@ -138,7 +160,11 @@ async def persist_usage(
                     started_at=started_at,
                     finished_at=finished_at,
                 )
+                .on_conflict_do_nothing(index_elements=[UsageRecordRow.request_id])
+                .returning(UsageRecordRow.id)
             )
+            if inserted is None:
+                return
             if principal.api_key_id is not None:
                 await settle_usage(
                     session,

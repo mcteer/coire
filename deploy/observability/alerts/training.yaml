@@ -1,0 +1,56 @@
+# Persisted reducer/emitter exists; scheduler lifespan wiring is required (see runbook).
+# Counters already in telemetry.py cannot identify unresolved stalls or recovery.
+# These gauges must be refreshed from durable state, including explicit zeroes when idle.
+groups:
+  - name: coire-training
+    interval: 15s
+    rules:
+      - alert: CoireTrainingBaselineUnavailable
+        expr: >-
+          absent(coire_training_snapshot_timestamp_seconds)
+          or max(time() - coire_training_snapshot_timestamp_seconds) > 60
+          or absent(coire_training_jobs)
+          or absent(coire_training_progress_oldest_seconds)
+          or absent(coire_training_recovery_oldest_seconds)
+          or absent(coire_training_checkpoint_pending_oldest_seconds)
+          or absent(coire_training_guard_overdue)
+        for: 1m
+        labels: {severity: critical, subject: training}
+        annotations:
+          summary: Training baseline state is missing or stale
+          runbook_url: /docs/runbooks/sft-training#baseline-wiring
+      - alert: CoireTrainingProgressStalled
+        expr: max(coire_training_progress_oldest_seconds) > 300
+        for: 1m
+        labels: {severity: warning, subject: training}
+        annotations:
+          summary: A running training attempt has no completed update for over five minutes
+          runbook_url: /docs/runbooks/sft-training#observe
+      - alert: CoireTrainingRecoveryUnresolved
+        expr: max(coire_training_recovery_oldest_seconds) > 60
+        for: 1m
+        labels: {severity: warning, subject: training}
+        annotations:
+          summary: Training recovery or process ownership remains unresolved
+          runbook_url: /docs/runbooks/sft-training#recover-and-fence
+      - alert: CoireTrainingCheckpointReplicationOverdue
+        expr: max(coire_training_checkpoint_pending_oldest_seconds) > 60
+        for: 0m
+        labels: {severity: critical, subject: training}
+        annotations:
+          summary: A training checkpoint has not obtained both verified copies within sixty seconds
+          runbook_url: /docs/runbooks/sft-training#checkpoints-and-retention
+      - alert: CoireTrainingProtectionOverdue
+        expr: sum(coire_training_guard_overdue) > 0
+        for: 0m
+        labels: {severity: critical, subject: training}
+        annotations:
+          summary: Training protection missed its pause or stop-proof deadline
+          runbook_url: /docs/runbooks/sft-training#kill-and-protect-chat
+      - alert: CoireTrainingMemoryDrift
+        expr: max(abs(coire_placement_ledger_drift_ratio)) > 0.10 and sum(coire_training_jobs{state=~"running|pausing|recovering|cancelling"}) > 0
+        for: 5m
+        labels: {severity: warning, subject: training}
+        annotations:
+          summary: Studio ledger drift exceeds ten percent while training holds may be active
+          runbook_url: /docs/runbooks/sft-training#kill-and-protect-chat

@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.files import ChatAttachment, ChatAttachmentSelection
 from coire_core.models.mcp import ApplyResult, McpToolName, PlanResult, ResearchResult
 from coire_core.models.registry import LoadState, ModelSource, Tag
@@ -25,6 +26,7 @@ class ChatPickerEntry(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: uuid.UUID
+    target: InferenceTarget | None = None
     source: ModelSource = ModelSource.STUDIO
     display_name: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
@@ -69,6 +71,7 @@ class ChatConversation(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     mode: Literal["chat", "code"] = "chat"
     selected_model_id: uuid.UUID | None = None
+    selected_target: InferenceTarget | None = None
     revision: int = Field(ge=1)
     active_turn_id: uuid.UUID | None = None
     created_at: datetime
@@ -106,6 +109,7 @@ class ChatMessage(BaseModel):
     text: str = Field(default="", max_length=512 * 1024)
     reasoning: str = Field(default="", max_length=512 * 1024)
     model_id: uuid.UUID | None = None
+    target: InferenceTarget | None = None
     model_display_name: str | None = Field(default=None, max_length=120)
     attachment_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)
     attachment_selections: list[ChatAttachmentSelection] = Field(

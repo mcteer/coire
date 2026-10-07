@@ -8,8 +8,9 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 
 from opentelemetry import metrics
-from sqlalchemy import func, select, text
+from sqlalchemy import event, func, inspect, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from coire_api.audit import write_audit
 from coire_api.db import (
@@ -59,7 +60,8 @@ def resident_reservation_bytes(reservations: Sequence[MemoryReservationRow]) -> 
     return sum(
         row.bytes
         for row in reservations
-        if row.holder_type in (ReservationHolder.MODEL, ReservationHolder.IMAGE)
+        if row.holder_type
+        in (ReservationHolder.MODEL, ReservationHolder.IMAGE, ReservationHolder.TRAINING)
     )
 
 
@@ -69,7 +71,10 @@ def effective_occupied_bytes(
     """Count physical overage once; an unmeasured held image process blocks admission."""
     occupied = sum(row.bytes for row in reservations)
     if measured_resident_bytes is None:
-        if any(row.holder_type is ReservationHolder.IMAGE for row in reservations):
+        if any(
+            row.holder_type in {ReservationHolder.IMAGE, ReservationHolder.TRAINING}
+            for row in reservations
+        ):
             return None
         return occupied
     return occupied + max(0, measured_resident_bytes - resident_reservation_bytes(reservations))
@@ -302,9 +307,15 @@ async def set_pin(
     row = await session.get(MemoryReservationRow, reservation_id)
     if row is None or row.holder_type not in {ReservationHolder.MODEL, ReservationHolder.IMAGE}:
         raise LedgerNotFoundError
+    await lock_nodes_for_admission(session, [row.node_id])
+    row = await session.get(
+        MemoryReservationRow, reservation_id, populate_existing=True, with_for_update=True
+    )
+    if row is None:
+        raise LedgerNotFoundError
     image_worker = row.holder_type is ReservationHolder.IMAGE
     if image_worker:
-        async with node_admission_lock(session, row.node_id):
+        if row is not None:
             row = await session.get(
                 MemoryReservationRow, reservation_id, populate_existing=True, with_for_update=True
             )
@@ -320,6 +331,19 @@ async def set_pin(
             row.pinned = update.pinned
         action = "image.worker.pin" if update.pinned else "image.worker.unpin"
     else:
+        try:
+            instance_id = uuid.UUID(row.holder_id)
+        except ValueError:
+            instance_id = None
+        instance = (
+            await session.get(ModelInstanceRow, instance_id, populate_existing=True)
+            if instance_id
+            else None
+        )
+        if row.state == MemoryReservationState.RELEASING or (
+            instance and instance.state == InstanceState.DRAINING
+        ):
+            raise LedgerNotFoundError
         row.pinned = update.pinned
         action = AuditAction.MODEL_PIN if update.pinned else AuditAction.MODEL_UNPIN
     await write_audit(
@@ -354,6 +378,21 @@ async def acquire_lease(
     )
     if reservation is None or reservation.state is not MemoryReservationState.HELD:
         raise LedgerNotFoundError
+    try:
+        instance_id = uuid.UUID(reservation.holder_id)
+    except ValueError:
+        instance_id = None
+    instance = (
+        await session.get(ModelInstanceRow, instance_id, populate_existing=True)
+        if instance_id
+        else None
+    )
+    if instance is not None and instance.state != InstanceState.READY:
+        raise LedgerNotFoundError
+    if not await training_allows_work(
+        session, [reservation.node_id], instance_id=instance.id if instance else None
+    ):
+        raise LedgerNotFoundError
     now = datetime.now(UTC)
     row = RequestLeaseRow(
         reservation_id=reservation_id,
@@ -379,3 +418,194 @@ async def refresh_lease(session: AsyncSession, lease_id: uuid.UUID, *, ttl_secon
         return False
     row.expires_at = now + timedelta(seconds=ttl_seconds)
     return True
+
+
+async def training_allows_work(
+    session: AsyncSession, node_ids: list[uuid.UUID], *, instance_id: uuid.UUID | None = None
+) -> bool:
+    """Reverse admission on the same ordered locks as training, pins and leases.
+
+    New accelerator loads/conversions/images cannot change an in-flight measured
+    resident multiset. Existing declared serving instances retain chat priority
+    while guards protect training. Under-sampled TTFT blocks new mixed training
+    and resume, not traffic needed to collect samples on protected residents.
+    """
+    await lock_nodes_for_admission(session, node_ids)
+    holds = list(
+        (
+            await session.scalars(
+                select(MemoryReservationRow).where(
+                    MemoryReservationRow.node_id.in_(node_ids),
+                    MemoryReservationRow.holder_type == ReservationHolder.TRAINING,
+                    MemoryReservationRow.state.in_(
+                        [
+                            MemoryReservationState.PENDING,
+                            MemoryReservationState.HELD,
+                            MemoryReservationState.RELEASING,
+                        ]
+                    ),
+                )
+            )
+        ).all()
+    )
+    if not holds:
+        return True
+    if instance_id is None:
+        return False
+    from coire_api.db import (
+        TrainingAttemptRow,
+        TrainingCommandRow,
+        TrainingJobRow,
+        TrainingMeasurementRow,
+        TrainingParticipantRow,
+        TrainingProfileRow,
+    )
+    from coire_core.models.training import TrainingMeasurementRequest, TrainingProfile
+    from coire_scheduler.training_guard import (
+        current_residents,
+        matching_profile,
+    )
+
+    for holder in {hold.holder_id for hold in holds}:
+        if holder.startswith("measurement:"):
+            measurement = await session.get(
+                TrainingMeasurementRow, uuid.UUID(holder.split(":", 1)[1])
+            )
+            if measurement is None or measurement.state != "running":
+                return False
+            request = TrainingMeasurementRequest.model_validate(measurement.request)
+            nodes = list(
+                (
+                    await session.scalars(select(NodeRow).where(NodeRow.name.in_(request.nodes)))
+                ).all()
+            )
+            residents = await current_residents(session, [node.id for node in nodes])
+            if (
+                request.mode != "coexistence"
+                or residents is None
+                or sorted(request.resident_targets, key=lambda item: str(item.instance_id))
+                != residents
+            ):
+                return False
+            if instance_id not in {item.instance_id for item in residents}:
+                return False
+            continue
+        attempt = await session.get(TrainingAttemptRow, holder, populate_existing=True)
+        job = (
+            await session.get(TrainingJobRow, attempt.job_id, populate_existing=True)
+            if attempt
+            else None
+        )
+        if (
+            attempt is None
+            or job is None
+            or attempt.state not in {"preparing", "running", "stopping", "unknown"}
+            or job.state not in {"reserving", "running", "pausing", "recovering", "cancelling"}
+        ):
+            return False
+        participants = (
+            await session.scalars(
+                select(TrainingParticipantRow).where(
+                    TrainingParticipantRow.attempt_id == attempt.id
+                )
+            )
+        ).all()
+        nodes = list(
+            (
+                await session.scalars(
+                    select(NodeRow).where(NodeRow.id.in_([p.node_id for p in participants]))
+                )
+            ).all()
+        )
+        residents = await current_residents(session, [node.id for node in nodes])
+        if residents is None or instance_id not in {item.instance_id for item in residents}:
+            return False
+        if await matching_profile(session, job, nodes, residents=residents) is None:
+            baseline = await session.get(
+                TrainingCommandRow,
+                uuid.uuid5(uuid.NAMESPACE_URL, f"coire:admission-evidence:{attempt.id}"),
+            )
+            profile_id = baseline.payload.get("profile_id") if baseline else None
+            approved = (
+                await session.get(TrainingProfileRow, uuid.UUID(profile_id))
+                if isinstance(profile_id, str)
+                else None
+            )
+            if approved is None:
+                return False
+            profile = TrainingProfile.model_validate(approved.profile)
+            # Invalidation/expiry cannot starve the exact already-admitted chat
+            # instance during training teardown. This does not authorize a new
+            # trainer, a new resident, or a healthy-latency claim.
+            if (
+                sorted(profile.request.resident_targets, key=lambda item: str(item.instance_id))
+                != residents
+                or set(profile.request.nodes) != {node.name for node in nodes}
+                or profile.report_sha256 != approved.report_sha256
+            ):
+                return False
+    return True
+
+
+@event.listens_for(Session, "before_flush")
+def fence_reverse_training_holds(
+    session: Session, flush_context: object, instances: object
+) -> None:
+    """Last-mile reverse gate for every ORM accelerator hold writer, not teardown.
+
+    SQLAlchemy's sync event runs inside the AsyncSession greenlet; database I/O
+    uses its existing adapted transaction connection. No I/O task or side effect
+    is spawned here. This covers legacy/direct load writers as well as scheduler
+    placements without changing their release/reconciliation lock semantics.
+    """
+    allocations = []
+    for row in session.new | session.dirty:
+        if (
+            not isinstance(row, MemoryReservationRow)
+            or row.holder_type
+            not in {ReservationHolder.MODEL, ReservationHolder.IMAGE, ReservationHolder.CONVERSION}
+            or row.state not in {MemoryReservationState.PENDING, MemoryReservationState.HELD}
+        ):
+            continue
+        history = inspect(row)
+        # Ordinary observation, pin changes and HELD acknowledgements are not
+        # new accelerator admission. Reactivation/increase is admission.
+        states = history.attrs.state.history.deleted
+        old_bytes = history.attrs.bytes.history.deleted
+        if (
+            row in session.new
+            or any(
+                state not in {MemoryReservationState.PENDING, MemoryReservationState.HELD}
+                for state in states
+            )
+            or (old_bytes and row.bytes > old_bytes[0])
+        ):
+            allocations.append(row)
+    node_ids = {row.node_id for row in allocations}
+    keys = sorted(
+        {int.from_bytes(node_id.bytes[:8], "big") & ((1 << 63) - 1) for node_id in node_ids}
+    )
+    for key in keys:
+        session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": key})
+    if (
+        node_ids
+        and session.scalar(
+            select(MemoryReservationRow.id)
+            .where(
+                MemoryReservationRow.node_id.in_(node_ids),
+                MemoryReservationRow.holder_type == ReservationHolder.TRAINING,
+                MemoryReservationRow.state.in_(
+                    [
+                        MemoryReservationState.PENDING,
+                        MemoryReservationState.HELD,
+                        MemoryReservationState.RELEASING,
+                    ]
+                ),
+            )
+            .limit(1)
+        )
+        is not None
+    ):
+        from coire_core.errors import TrainingConflict
+
+        raise TrainingConflict("New accelerator hold would change active training ownership")

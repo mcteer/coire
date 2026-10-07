@@ -9,7 +9,7 @@ from typing import Any
 
 from dbos import DBOS
 from opentelemetry import metrics, trace
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from coire_api.audit import write_audit
 from coire_api.db import (
@@ -102,19 +102,32 @@ async def _hold_conversion_memory(
         if ledger is None:
             raise RuntimeError("conversion node has no memory ledger")
         async with node_admission_lock(session, node_id):
-            held = await session.scalar(
-                select(func.coalesce(func.sum(MemoryReservationRow.bytes), 0)).where(
-                    MemoryReservationRow.node_id == node_id,
-                    MemoryReservationRow.state.in_(
-                        [
-                            MemoryReservationState.PENDING,
-                            MemoryReservationState.HELD,
-                            MemoryReservationState.RELEASING,
-                        ]
-                    ),
-                )
+            from coire_api.placement.service import training_allows_work
+
+            if not await training_allows_work(session, [node_id]):
+                raise RuntimeError("conversion is waiting for training ownership")
+            from coire_api.placement.service import effective_occupied_bytes
+
+            ledger = await session.get(
+                NodeMemoryLedgerRow, node_id, populate_existing=True, with_for_update=True
             )
-            if int(held or 0) + memory_bytes > ledger.budget_bytes:
+            assert ledger is not None
+            reservations = (
+                await session.scalars(
+                    select(MemoryReservationRow).where(
+                        MemoryReservationRow.node_id == node_id,
+                        MemoryReservationRow.state.in_(
+                            [
+                                MemoryReservationState.PENDING,
+                                MemoryReservationState.HELD,
+                                MemoryReservationState.RELEASING,
+                            ]
+                        ),
+                    )
+                )
+            ).all()
+            occupied = effective_occupied_bytes(reservations, ledger.measured_resident_bytes)
+            if occupied is None or occupied + memory_bytes > ledger.budget_bytes:
                 raise RuntimeError("conversion is waiting for authoritative memory capacity")
             row = await session.scalar(
                 select(MemoryReservationRow).where(

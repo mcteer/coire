@@ -28,6 +28,48 @@ class CoireError(Exception):
         )
 
 
+class TrainingNotFound(CoireError):
+    code = "training_not_found"
+    title = "Training resource not found"
+    status = 404
+
+
+class TrainingForbidden(CoireError):
+    code = "training_forbidden"
+    title = "Training access denied"
+    status = 403
+
+
+class TrainingConflict(CoireError):
+    code = "training_conflict"
+    title = "Training state conflict"
+    status = 409
+
+
+class TrainingValidationError(CoireError):
+    code = "training_validation_error"
+    title = "Invalid training input"
+    status = 422
+
+
+class TrainingUploadTooLarge(CoireError):
+    code = "training_upload_too_large"
+    title = "Training input exceeds its size bound"
+    status = 413
+
+
+class TrainingQuotaExceeded(CoireError):
+    code = "training_quota_exceeded"
+    title = "Training quota exceeded"
+    status = 429
+
+
+class TrainingUnavailable(CoireError):
+    code = "training_unavailable"
+    title = "Training dependency unavailable"
+    status = 503
+
+
 class ChatNotFound(CoireError):
     code = "chat_not_found"
     title = "Chat item not found"

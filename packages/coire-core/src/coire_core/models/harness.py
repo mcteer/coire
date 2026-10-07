@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from coire_core.models.adapters import InferenceTarget, ModelSelector, validate_transport_target
 from coire_core.models.conversation import ImagePart
 from coire_core.models.mcp import McpToolName
 from coire_core.models.registry import (
@@ -101,6 +102,7 @@ class HarnessRunRequest(BaseModel):
 
     profile: ProfileName
     variant_id: uuid.UUID
+    target: InferenceTarget | None = None
     task_class: TaskClass
     coding_mode: McpToolName | None = None
     coding_call_id: uuid.UUID | None = None
@@ -113,6 +115,8 @@ class HarnessRunRequest(BaseModel):
 
     @model_validator(mode="after")
     def coding_mode_matches_task_class(self) -> HarnessRunRequest:
+        if self.target is not None and self.target.variant_id != self.variant_id:
+            raise ValueError("harness target differs from the requested variant")
         if (self.coding_mode is None) != (self.coding_call_id is None):
             raise ValueError("coding mode and call ID must be supplied together")
         if self.coding_mode is not None:
@@ -156,6 +160,7 @@ class HarnessRunResult(BaseModel):
     run_id: uuid.UUID
     profile: ProfileName
     variant_id: uuid.UUID
+    target: InferenceTarget | None = None
     output: dict[str, Any]
     reasoning: str | None = None
     retries: int = Field(default=0, ge=0)
@@ -175,11 +180,25 @@ class HarnessEvaluationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     variant_id: uuid.UUID
+    target: InferenceTarget | None = None
+
+    @model_validator(mode="after")
+    def evaluated_variant_matches(self) -> HarnessEvaluationRequest:
+        if self.target is not None and self.target.variant_id != self.variant_id:
+            raise ValueError("evaluation target must match its exact variant")
+        return self
 
 
 class HarnessEvaluationTarget(HarnessEvaluationRequest):
     model_id: uuid.UUID
     capability_profile: CapabilityProfile
+    target: InferenceTarget | None = None
+    public_selector: ModelSelector | None = None
+
+    @model_validator(mode="after")
+    def transport_subject_matches(self) -> HarnessEvaluationTarget:
+        validate_transport_target(self.model_id, self.variant_id, self.target, self.public_selector)
+        return self
 
 
 class HarnessEvaluationSubmission(HarnessEvaluationRequest):
@@ -197,6 +216,7 @@ class HarnessEvaluation(BaseModel):
 
     id: uuid.UUID
     variant_id: uuid.UUID
+    target: InferenceTarget | None = None
     scores: CategoryScores
     overall_score: float = Field(ge=0, le=1)
     verdict: EvaluationVerdict

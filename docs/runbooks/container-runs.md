@@ -51,6 +51,13 @@ pull those exact references on each Studio before enabling submissions. Create
 `/opt/coire/workspaces/<opaque-ref>/.coire/request.json` as the platform user; callers never supply a
 host path.
 
+For an already staged training runtime, `activate-training-node.py` accepts paired
+`--agent-image` and `--relay-image` digest references. Its default dry run validates
+both pins and preserves unrelated service settings. `--apply` backs up the current
+service configuration and performs reconciliation with rollback on failure. Configure
+the core broker with the same pins only after both Studio health responses report
+`run_images_configured=true`.
+
 To roll back, stop new submissions, kill active runs, wait for reconciliation to report no managed
 containers, deploy the prior node wheel/plist with the prior two image digests, and restart
 `com.coire.node`. Database migration 0011 can be downgraded only after all run/token/command rows

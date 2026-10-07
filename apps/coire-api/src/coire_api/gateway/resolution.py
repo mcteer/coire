@@ -20,16 +20,15 @@ from coire_api.db import (
     ShardGroupRow,
     VariantCopyRow,
 )
+from coire_api.gateway.targets import ModelNotFoundError as ModelNotFoundError
+from coire_api.gateway.targets import resolve_target
 from coire_api.gateway.telemetry import tracer
 from coire_api.registry.service import is_chat_backend, published_ready_entitled
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.registry import EngineBackend, ModelSource, ModelState, VisualCapability
 from coire_core.models.sharding import ShardGroupState
-
-
-class ModelNotFoundError(Exception):
-    """Externally uniform refusal for missing or invisible models."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +46,8 @@ class ResolvedModel:
     provider_model_id: str | None = None
     max_output_tokens: int | None = None
     daily_token_budget: int | None = None
+    target: InferenceTarget | None = None
+    instance_id: uuid.UUID | None = None
 
 
 def _visible(model: ModelRow, principal: Principal) -> bool:
@@ -61,10 +62,17 @@ def _visible(model: ModelRow, principal: Principal) -> bool:
 
 async def resolve_model(
     session: AsyncSession,
-    requested_id: uuid.UUID,
+    requested_id: uuid.UUID | str,
     principal: Principal,
     affinity_node: str | None = None,
+    *,
+    variant_id: uuid.UUID | None = None,
+    instance_id: uuid.UUID | None = None,
 ) -> ResolvedModel:
+    selected = await resolve_target(session, requested_id, principal, variant_id)
+    requested_id = selected.model.id
+    adapter_id = selected.adapter.id if selected.adapter else None
+    exact_variant = selected.variant.id if selected.variant else None
     with tracer.start_as_current_span("coire.gateway.resolve") as span:
         span.set_attribute("coire.model.requested_id", str(requested_id))
         if (
@@ -74,7 +82,7 @@ async def resolve_model(
             span.set_attribute("coire.gateway.resolution", "run_scope_refused")
             raise ModelNotFoundError
         model = await session.get(ModelRow, requested_id)
-        if model is None or not _visible(model, principal):
+        if model is None:
             span.set_attribute("coire.gateway.resolution", "refused")
             raise ModelNotFoundError
         backend = EngineBackend(model.backend)
@@ -86,6 +94,8 @@ async def resolve_model(
         span.set_attribute("coire.model.id", str(model.id))
 
     if (model.source or "studio") != "studio":
+        if instance_id is not None:
+            raise ModelNotFoundError
         return ResolvedModel(
             model_id=model.id,
             slug=model.slug,
@@ -113,7 +123,11 @@ async def resolve_model(
             EngineProcessRow.model_id == model.id,
             EngineProcessRow.state == EngineState.READY,
             ModelInstanceRow.state == InstanceState.READY,
+            ModelInstanceRow.adapter_id == adapter_id,
+            EngineProcessRow.adapter_id == adapter_id,
+            ModelInstanceRow.variant_id == exact_variant,
             VariantCopyRow.verified.is_(True),
+            ModelInstanceRow.id == instance_id if instance_id is not None else literal(True),
         )
         .order_by(
             case((NodeRow.name == affinity_node, 0), else_=1) if affinity_node else literal(0),
@@ -141,9 +155,13 @@ async def resolve_model(
             .where(
                 ModelInstanceRow.model_id == model.id,
                 ModelInstanceRow.state == InstanceState.READY,
+                ModelInstanceRow.adapter_id.is_(None),
+                ModelInstanceRow.variant_id == exact_variant,
+                literal(adapter_id is None),
                 ShardGroupRow.state == ShardGroupState.READY,
                 InstanceMemberRow.rank_healthy.is_(True),
                 VariantCopyRow.verified.is_(True),
+                ModelInstanceRow.id == instance_id if instance_id is not None else literal(True),
             )
             .order_by(ModelInstanceRow.in_flight, ModelInstanceRow.created_at.desc())
             .limit(1)
@@ -184,8 +202,25 @@ async def resolve_model(
             f"http://{node.name}.lab:9400/node/shard-groups/{group.id}/proxy",
             backend,
             visual_capability,
+            target=selected.identity,
+            instance_id=_instance.id,
         )
     if target is None:
+        if instance_id is not None:
+            raise ModelNotFoundError
+        if selected.variant is not None or adapter_id is not None or variant_id is not None:
+            return ResolvedModel(
+                model.id,
+                model.slug,
+                model.context_window,
+                None,
+                None,
+                None,
+                None,
+                backend,
+                visual_capability,
+                target=selected.identity,
+            )
         # Feature 001 rows have no ModelVariant and therefore cannot be represented by an
         # instance until their acquisition record is upgraded. Keep the one-release gateway
         # read path while all newly acquired variants route exclusively through instances.
@@ -200,6 +235,7 @@ async def resolve_model(
                 .where(
                     EngineProcessRow.model_id == model.id,
                     EngineProcessRow.instance_id.is_(None),
+                    EngineProcessRow.adapter_id.is_(None),
                     EngineProcessRow.state == EngineState.READY,
                     ModelCopyRow.verified.is_(True),
                 )
@@ -242,15 +278,25 @@ async def resolve_model(
         f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
         backend,
         visual_capability,
+        target=selected.identity,
+        instance_id=_instance.id,
     )
 
 
-async def retry_after_seconds(session: AsyncSession, model_id: uuid.UUID, *, fallback: int) -> int:
+async def retry_after_seconds(
+    session: AsyncSession,
+    model_id: uuid.UUID | str,
+    *,
+    fallback: int,
+    target: InferenceTarget | None = None,
+) -> int:
     """Return the most recent measured warm-up, falling back only before one exists."""
     measured = await session.scalar(
         select(EngineProcessRow.load_seconds)
         .where(
-            EngineProcessRow.model_id == model_id,
+            EngineProcessRow.model_id == (target.model_id if target else model_id),
+            EngineProcessRow.adapter_id == (target.adapter_id if target else None),
+            EngineProcessRow.variant_id == target.variant_id if target else literal(True),
             EngineProcessRow.load_seconds.is_not(None),
         )
         .order_by(EngineProcessRow.started_at.desc())

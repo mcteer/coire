@@ -13,6 +13,7 @@ from coire_agent.coding import CodingWorkspace, run_coding
 from coire_agent.gateway_model import GatewayTransport
 from coire_agent.harness import Harness
 from coire_agent.pydantic_runtime import OUTPUT_TYPES
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.harness import HarnessRunRequest, ProfileName
 
 REQUEST_PATH = Path("/workspace/.coire/request.json")
@@ -42,6 +43,19 @@ async def execute(
     model_id = uuid.UUID(env["COIRE_MODEL_ID"])
     verified_variant_id = uuid.UUID(env["COIRE_VERIFIED_VARIANT_ID"])
     request = load_request(request_path)
+    target = (
+        InferenceTarget.model_validate_json(env["COIRE_INFERENCE_TARGET"])
+        if env.get("COIRE_INFERENCE_TARGET")
+        else None
+    )
+    if request.target is None and target is not None and target.adapter_id is None:
+        # UUID-only workspace requests remain compatible with newly frozen base grants.
+        request = request.model_copy(update={"target": target})
+    if request.target != target or (
+        target is not None
+        and (target.model_id != model_id or target.variant_id != verified_variant_id)
+    ):
+        raise ValueError("workspace target differs from admitted exact target")
     if request.profile is not profile:
         raise ValueError("workspace profile differs from admitted run")
     if request.variant_id != verified_variant_id:
@@ -54,13 +68,18 @@ async def execute(
     transport = GatewayTransport(
         gateway_url=env["COIRE_API_URL"],
         token=env["COIRE_RUN_TOKEN"],
-        model_id=str(model_id),
+        model_id=env.get("COIRE_PUBLIC_SELECTOR", str(model_id)),
+        target=target,
+        variant_id=verified_variant_id if target else None,
     )
 
     async def verified(candidate: uuid.UUID) -> bool:
         return (
             candidate == verified_variant_id and env.get("COIRE_HARNESS_VERIFIED", "true") == "true"
         )
+
+    async def verified_target(candidate: InferenceTarget) -> bool:
+        return candidate == target and env.get("COIRE_HARNESS_VERIFIED", "false") == "true"
 
     async def repair(invalid: str, error: str) -> str:
         return await transport.complete_repair(invalid=invalid, error=error)
@@ -69,6 +88,7 @@ async def execute(
         transport,
         repair=repair,
         verify_variant=verified,
+        verify_target=verified_target,
         retry_limit=int(env.get("COIRE_HARNESS_RETRY_LIMIT", "2")),
         tool_byte_cap=int(env.get("COIRE_HARNESS_TOOL_OUTPUT_BYTE_CAP", "16384")),
     )

@@ -36,7 +36,9 @@ def build_shard_argv(
 ) -> list[str]:
     """Build fixed bare-engine argv; request bodies cannot supply paths or flags."""
     prefix = os.environ.get("COIRE_SHARD_COMMAND")
-    launcher = prefix.split(os.pathsep) if prefix else [sys.executable, "-m", "mlx.launch"]
+    from coire_node.mlx_launch import launcher_argv
+
+    launcher = prefix.split(os.pathsep) if prefix else launcher_argv(sys.executable)
     argv = [
         *launcher,
         "--hostfile",

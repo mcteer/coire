@@ -93,11 +93,18 @@ def network_python(source: Path) -> Path:
 
 
 def smoke(python: Path) -> None:
+    offline = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "WANDB_API_KEY"}
+    }
+    offline.update(HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1", WANDB_MODE="disabled")
     subprocess.run(
         [str(python), "-c", "import coire_core, coire_node, mlx_lm, mlx_vlm, mflux"],
         check=True,
         timeout=30,
         stdout=subprocess.DEVNULL,
+        env=offline,
     )
     for module in ("mlx_lm.server", "mlx_vlm.server"):
         subprocess.run(
@@ -105,6 +112,7 @@ def smoke(python: Path) -> None:
             check=True,
             timeout=30,
             stdout=subprocess.DEVNULL,
+            env=offline,
         )
     # Import the pinned native entry point without loading weights or contacting the Hub.
     subprocess.run(
@@ -112,7 +120,58 @@ def smoke(python: Path) -> None:
         check=True,
         timeout=30,
         stdout=subprocess.DEVNULL,
+        env=offline,
     )
+    # Validate the exact bare API hooks without loading any model/tokenizer assets.
+    subprocess.run(
+        [
+            str(python),
+            "-c",
+            (
+                "import inspect; from importlib.metadata import version; "
+                "from mlx_lm.tuner.trainer import train, evaluate; "
+                "from mlx_lm.tuner.utils import linear_to_lora_layers; "
+                "import yaml, safetensors; "
+                "import coire_node.training.worker, coire_node.training.analysis_worker; "
+                "assert version('mlx') == '0.32.2'; "
+                "assert version('mlx-lm') == '0.31.3'; "
+                "assert {'model', 'optimizer', 'train_dataset', 'loss', 'training_callback'} "
+                "<= set(inspect.signature(train).parameters); "
+                "assert callable(evaluate) and callable(linear_to_lora_layers)"
+            ),
+        ],
+        check=True,
+        timeout=30,
+        stdout=subprocess.DEVNULL,
+        env=offline,
+    )
+
+
+def stage_environment(
+    source: Path,
+    target: Path,
+    *,
+    verify: Callable[[Path], None] = smoke,
+    expected_python: Path | None = None,
+) -> None:
+    """Verify/install an immutable candidate without selecting or starting it."""
+    if not source.is_dir() or not (source / "bin/python3").is_file():
+        raise ValueError("node environment is incomplete")
+    if expected_python is not None and (
+        not expected_python.is_file()
+        or (source / "bin/python3").resolve(strict=True) != expected_python.resolve(strict=True)
+    ):
+        raise ValueError("node environment interpreter identity differs from the selected runtime")
+    verify(source / "bin/python3")
+    if source != target:
+        if target.exists():
+            raise FileExistsError("immutable node environment already exists")
+        os.replace(source, target)
+        directory = os.open(target.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
 
 
 def publish_environment(
@@ -121,15 +180,10 @@ def publish_environment(
     current: Path,
     *,
     verify: Callable[[Path], None] = smoke,
+    expected_python: Path | None = None,
 ) -> None:
     """Keep the prior link on any smoke failure; never mutate an active environment."""
-    if not source.is_dir() or not (source / "bin/python3").is_file():
-        raise ValueError("node environment is incomplete")
-    verify(source / "bin/python3")
-    if source != target:
-        if target.exists():
-            raise FileExistsError("immutable node environment already exists")
-        os.replace(source, target)
+    stage_environment(source, target, verify=verify, expected_python=expected_python)
     temporary = current.with_name(f".current.{os.getpid()}")
     try:
         os.symlink(target, temporary)
@@ -139,9 +193,19 @@ def publish_environment(
 
 
 if __name__ == "__main__":
+    if len(sys.argv) in {4, 5} and sys.argv[1] == "--stage":
+        stage_environment(
+            Path(sys.argv[2]),
+            Path(sys.argv[3]),
+            expected_python=Path(sys.argv[4]) if len(sys.argv) == 5 else None,
+        )
+        raise SystemExit(0)
     if len(sys.argv) == 3 and sys.argv[1] == "--network-python":
         print(network_python(Path(sys.argv[2])))
         raise SystemExit(0)
-    if len(sys.argv) != 4:
-        raise SystemExit("usage: install_runtime.py SOURCE TARGET CURRENT")
-    publish_environment(*(Path(value) for value in sys.argv[1:]))
+    if len(sys.argv) not in {4, 5}:
+        raise SystemExit("usage: install_runtime.py SOURCE TARGET CURRENT [EXPECTED_PYTHON]")
+    publish_environment(
+        *(Path(value) for value in sys.argv[1:4]),
+        expected_python=Path(sys.argv[4]) if len(sys.argv) == 5 else None,
+    )

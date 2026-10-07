@@ -26,6 +26,7 @@ from typing import Any
 import httpx
 
 from coire_core.models.acquisition import Reservation, ReservationRequest, VariantRecipe
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileResult
 from coire_core.models.image_worker import (
     ImageAssetValidateRequest,
@@ -70,6 +71,11 @@ from coire_core.models.sharding import (
     ShardCapabilityResult,
     ShardGroupCommand,
     ShardGroupStatus,
+)
+from coire_core.models.training_node import (
+    NodeAnalysisCancelRequest,
+    NodeDatasetAnalysisRequest,
+    NodeDatasetAnalysisStatus,
 )
 from coire_core.net import ControlClient, FabricUnreachable
 from coire_core.settings import Settings
@@ -243,6 +249,41 @@ class NodeClient:
         return resp.status_code, body
 
     # -- resident image worker and fenced attempts -------------------------
+    async def start_dataset_analysis(
+        self, node: str, command: NodeDatasetAnalysisRequest
+    ) -> NodeDatasetAnalysisStatus:
+        if command.input_grant.node != node:
+            raise ValueError("dataset grant node differs from client destination")
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/training/analyses",
+            json=command.model_dump(mode="json"),
+            expect=(202,),
+            request_timeout_s=120.0,
+        )
+        return NodeDatasetAnalysisStatus.model_validate(body)
+
+    async def dataset_analysis_status(
+        self, node: str, analysis_id: uuid.UUID
+    ) -> NodeDatasetAnalysisStatus:
+        _, body = await self._call(
+            "GET", node, f"/node/training/analyses/{analysis_id}", expect=(200,)
+        )
+        return NodeDatasetAnalysisStatus.model_validate(body)
+
+    async def cancel_dataset_analysis(
+        self, node: str, command: NodeAnalysisCancelRequest
+    ) -> NodeDatasetAnalysisStatus:
+        _, body = await self._call(
+            "POST",
+            node,
+            f"/node/training/analyses/{command.analysis_id}/cancel",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return NodeDatasetAnalysisStatus.model_validate(body)
+
     async def load_image_worker(
         self, node: str, command: ImageWorkerLoadRequest
     ) -> ImageWorkerLoadResult:
@@ -647,6 +688,7 @@ class NodeClient:
         vision_cache_size: int | None = None,
         max_num_seqs: int | None = None,
         max_kv_size: int | None = None,
+        target: InferenceTarget | None = None,
     ) -> tuple[bool, EngineStatus]:
         """Returns `(already_running, status)`.
 
@@ -675,10 +717,16 @@ class NodeClient:
                 "vision_cache_size": vision_cache_size,
                 "max_num_seqs": max_num_seqs,
                 "max_kv_size": max_kv_size,
+                **({"target": target.model_dump(mode="json")} if target else {}),
             },
             expect=(200, 202),
         )
-        return status == 200, EngineStatus.model_validate(body)
+        engine_status = EngineStatus.model_validate(body)
+        if engine_status.target != target:
+            raise NodeError(
+                NodeErrorKind.PROTOCOL, node, detail="engine exact target acknowledgment differs"
+            )
+        return status == 200, engine_status
 
     async def get_engine(self, node: str, engine_id: uuid.UUID) -> EngineStatus:
         _, body = await self._call("GET", node, f"/node/engines/{engine_id}", expect=(200,))
