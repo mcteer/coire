@@ -2551,3 +2551,10 @@ deselected in 99.19 seconds. This selection includes unavailable engine/runtime
 cases; the completed real Studio gates remain recorded above. The focused
 measurement route contract passed. GitHub checks must pass on the pushed fix
 before squash merge; no check or branch protection is relaxed.
+
+The first follow-up run (37660927539) required the pinned root `mlx_lm.load`
+export in addition to its callback submodule: namespace discovery on a host with
+no installed MLX package otherwise reported two missing root exports. Added its
+upstream signature, retaining typed argument and tuple shapes. Fresh strict mypy
+checks for both local and Linux platforms pass all 806 files; Ruff format/check
+passes 1,524 files. No runtime change.
