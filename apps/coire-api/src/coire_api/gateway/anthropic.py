@@ -56,7 +56,7 @@ def to_openai_payload(body: AnthropicMessagesRequest, *, model_path: str) -> dic
     return payload
 
 
-def from_openai_response(body: dict[str, object], *, model: uuid.UUID) -> dict[str, object]:
+def from_openai_response(body: dict[str, object], *, model: uuid.UUID | str) -> dict[str, object]:
     choices = body.get("choices")
     choice = choices[0] if isinstance(choices, list) and choices else {}
     message = choice.get("message", {}) if isinstance(choice, dict) else {}
@@ -83,7 +83,7 @@ def _event(name: str, data: dict[str, Any]) -> bytes:
 
 
 async def from_openai_stream(
-    source: AsyncIterator[bytes], *, model: uuid.UUID
+    source: AsyncIterator[bytes], *, model: uuid.UUID | str
 ) -> AsyncIterator[bytes]:
     message_id = f"msg_{uuid.uuid4().hex}"
     output_tokens = 0

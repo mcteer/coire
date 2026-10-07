@@ -235,6 +235,13 @@ async def test_draining_worker_blocks_new_image_placement() -> None:
         def __init__(self) -> None:
             self.queries: list[str] = []
 
+        async def execute(self, statement: object, parameters: object) -> None:
+            assert "pg_advisory_xact_lock" in str(statement)
+
+        async def scalars(self, statement: object) -> SimpleNamespace:
+            assert "memory_reservations" in str(statement)
+            return SimpleNamespace(all=lambda: [])
+
         async def scalar(self, statement: object) -> object | None:
             self.queries.append(str(statement))
             return "draining-instance" if len(self.queries) == 2 else None

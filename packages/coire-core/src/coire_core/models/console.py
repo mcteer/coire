@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from coire_core.models.files import ULID_PATTERN
 from coire_core.models.instance import ClusterState
 from coire_core.models.placement import MemoryLedger
+from coire_core.models.training import TrainingJobState
 
 
 class CursorPage[T](BaseModel):
@@ -31,6 +32,7 @@ class ConsoleCapabilities(BaseModel):
     identity: bool = True
     audit: bool = True
     ask: bool = True
+    training: bool = False
 
 
 class ConsoleAlert(BaseModel):
@@ -129,6 +131,26 @@ class ImageActivityItem(BaseModel):
     progress_total: int | None = Field(default=None, ge=1)
     safe_failure_code: str | None = Field(default=None, max_length=100)
     can_stop: bool
+
+
+class TrainingActivityItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    job_id: str = Field(pattern=ULID_PATTERN)
+    owner_id: uuid.UUID
+    model_id: uuid.UUID
+    variant_id: uuid.UUID
+    state: TrainingJobState
+    completed_update: int = Field(ge=0)
+    total_updates: int = Field(ge=1)
+    reserved_bytes: int = Field(ge=0)
+    can_stop: bool
+    safe_reason: str | None = Field(default=None, max_length=64)
+    version: int = Field(ge=1)
+    adapter_slug: str = Field(min_length=1, max_length=63)
+    started_at: datetime
+    latest_train_loss: float | None = None
+    latest_validation_loss: float | None = None
 
 
 class AskStatus(StrEnum):

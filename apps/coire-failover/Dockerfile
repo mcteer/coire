@@ -11,6 +11,7 @@ WORKDIR /src
 COPY apps/coire-web/package.json apps/coire-web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY apps/coire-web/ ./
+COPY docs/runbooks/sft-training.md /docs/runbooks/sft-training.md
 RUN npm run build
 
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm-slim@sha256:531f855bda2c73cd6ef67d56b733b357cea384185b3022bd09f05e002cd144ca AS builder

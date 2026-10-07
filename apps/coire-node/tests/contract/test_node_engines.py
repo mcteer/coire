@@ -215,7 +215,9 @@ class TestStart:
         assert "HF_TOKEN" not in env, "an engine has no business authenticating to the Hub"
         assert env["PATH"] == "/usr/bin"
 
-    def test_a_chat_template_is_passed_as_a_file_never_inline(self, engine_agent: Agent) -> None:
+    def test_registry_template_is_stored_beside_copy_and_passed_as_content(
+        self, engine_agent: Agent
+    ) -> None:
         from coire_node.engines import build_engine_argv, engine_command
 
         template = "{{ messages[0].content }}"
@@ -225,10 +227,10 @@ class TestStart:
             model_path=str(engine_agent.store.path_for(SLUG)),
             host="127.0.0.1",
             port=9500,
-            chat_template_path=str(path),
+            chat_template_content=template,
         )
-        assert argv[argv.index("--chat-template") + 1] == str(path)
-        assert template not in " ".join(argv), "the template must not appear inline"
+        assert argv[argv.index("--chat-template") + 1] == template
+        assert str(path) not in argv, "pinned bare serving interprets the flag as content"
         assert path.read_text() == template
         # Beside the copy, so a template change never makes a verified copy look corrupt.
         manifest = engine_agent.store.read_manifest(SLUG)

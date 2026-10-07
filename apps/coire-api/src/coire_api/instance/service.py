@@ -9,7 +9,23 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.audit import write_audit
-from coire_api.db import InstanceMemberRow, InstanceTransitionRow, ModelInstanceRow, NodeRow
+from coire_api.auth import ADMIN
+from coire_api.db import (
+    EngineProcessRow,
+    InstanceMemberRow,
+    InstanceTransitionRow,
+    MemoryReservationRow,
+    ModelInstanceRow,
+    NodeRow,
+    TrainingAdapterRow,
+)
+from coire_api.gateway.targets import (
+    ModelNotFoundError,
+    RegistryTarget,
+    resolve_target,
+    resolve_validation_target,
+)
+from coire_core.models.engine import EngineState
 from coire_core.models.instance import (
     InstanceMember,
     InstanceState,
@@ -17,6 +33,7 @@ from coire_core.models.instance import (
     ModelInstance,
 )
 from coire_core.models.node import Reachability
+from coire_core.models.placement import MemoryReservationState, ReservationHolder
 
 ALLOWED_TRANSITIONS: dict[InstanceState, frozenset[InstanceState]] = {
     InstanceState.REQUESTED: frozenset({InstanceState.RESERVING, InstanceState.FAILED}),
@@ -32,6 +49,18 @@ ALLOWED_TRANSITIONS: dict[InstanceState, frozenset[InstanceState]] = {
 
 class InvalidInstanceTransition(ValueError):
     pass
+
+
+async def resolve_instance_target(session: AsyncSession, row: ModelInstanceRow) -> RegistryTarget:
+    """Only persisted private smoke intent may select a pre-ready adapter."""
+    adapter = await session.get(TrainingAdapterRow, row.adapter_id) if row.adapter_id else None
+    if row.adapter_id is not None and adapter is None:
+        raise ModelNotFoundError
+    if adapter is not None and adapter.state in {"validating", "replicating"}:
+        return await resolve_validation_target(session, row.id)
+    return await resolve_target(
+        session, adapter.selector if adapter else row.model_id, ADMIN, row.variant_id
+    )
 
 
 async def append_initial_transition(session: AsyncSession, row: ModelInstanceRow) -> None:
@@ -64,6 +93,33 @@ async def transition(
         return row
     if target not in ALLOWED_TRANSITIONS[row.state]:
         raise InvalidInstanceTransition(f"cannot transition {row.state.value} to {target.value}")
+    if target is InstanceState.READY and row.adapter_id is not None:
+        # A smoke instance is ordinary accounted inference, never a base-only hold.
+        await resolve_instance_target(session, row)
+        members = list(
+            await session.scalars(
+                select(InstanceMemberRow).where(InstanceMemberRow.instance_id == row.id)
+            )
+        )
+        member = members[0] if len(members) == 1 else None
+        hold = await session.get(MemoryReservationRow, member.reservation_id) if member else None
+        engine = await session.get(EngineProcessRow, member.engine_id) if member else None
+        if (
+            member is None
+            or hold is None
+            or hold.holder_type is not ReservationHolder.MODEL
+            or hold.holder_id != str(row.id)
+            or hold.node_id != member.node_id
+            or hold.state is not MemoryReservationState.HELD
+            or engine is None
+            or engine.instance_id != row.id
+            or engine.model_id != row.model_id
+            or engine.variant_id != row.variant_id
+            or engine.adapter_id != row.adapter_id
+            or engine.node_id != member.node_id
+            or engine.state is not EngineState.READY
+        ):
+            raise InvalidInstanceTransition("exact adapter engine and instance hold are required")
     sequence = await session.scalar(
         select(func.coalesce(func.max(InstanceTransitionRow.sequence), 0)).where(
             InstanceTransitionRow.instance_id == instance_id
@@ -130,7 +186,14 @@ async def project_instance(session: AsyncSession, row: ModelInstanceRow) -> Mode
         for item in member_rows
     ):
         effective = InstanceState.FAILED
+    identity = None
+    try:
+        selected = await resolve_instance_target(session, row)
+        identity = selected.identity
+    except ModelNotFoundError:
+        pass  # Terminal instances remain inspectable after registry retirement.
     return ModelInstance(
+        target=identity,
         id=row.id,
         model_id=row.model_id,
         variant_id=row.variant_id,

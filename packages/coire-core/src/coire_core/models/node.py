@@ -23,6 +23,7 @@ from coire_core.models.harness import HarnessRunRequest, TaskClass
 from coire_core.models.jobs import JobStatus
 from coire_core.models.mcp import WorkspaceSource
 from coire_core.models.registry import EngineBackend
+from coire_core.models.training_node import NodeTrainingStatus
 
 MESH_SUBNET = IPv4Network("192.168.100.0/24")
 """The unrouted Thunderbolt mesh. See docs/adr/0002 and ARCHITECTURE.md 2.1."""
@@ -276,6 +277,7 @@ class NodeStatus(BaseModel):
     thermal_state: ThermalState = ThermalState.UNKNOWN
     memory_total_bytes: int
     memory_free_bytes: int
+    swap_used_bytes: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
     disk_total_bytes: int
     disk_free_bytes: int
     agent_cpu_percent: float
@@ -289,6 +291,9 @@ class NodeStatus(BaseModel):
     """Every engine the agent owns, including orphans — with per-process CPU and resident
     memory, which is what makes FR-013 "per-process" rather than "whole node"."""
     jobs: list[JobStatus] = Field(default_factory=list)
+    training: list[NodeTrainingStatus] = Field(
+        default_factory=list, max_length=8, exclude_if=lambda value: not value
+    )
     memory_budget_bytes: int = 0
     memory_committed_bytes: int = 0
     """Disjoint engine, image-worker and acquisition holds; not measured footprint."""
@@ -312,6 +317,7 @@ class NodeStatusV2(BaseModel):
     thermal_state: ThermalState = ThermalState.UNKNOWN
     memory_total_bytes: int = Field(gt=0)
     memory_free_bytes: int = Field(ge=0)
+    swap_used_bytes: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
     disk_total_bytes: int = Field(gt=0)
     disk_free_bytes: int = Field(ge=0)
     agent_cpu_percent: float = Field(ge=0)
@@ -321,6 +327,9 @@ class NodeStatusV2(BaseModel):
     sampled_at: datetime
     engines: list[EngineStatus] = Field(default_factory=list)
     jobs: list[JobStatus] = Field(default_factory=list)
+    training: list[NodeTrainingStatus] = Field(
+        default_factory=list, max_length=8, exclude_if=lambda value: not value
+    )
     memory_budget_bytes: int = Field(default=0, ge=0)
     memory_committed_bytes: int = Field(default=0, ge=0)
     image_worker_resident_bytes: int | None = Field(default=None, ge=0)

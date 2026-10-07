@@ -10,12 +10,13 @@ import { useConversation } from "../hooks/useConversation";
 import { AskCoire } from "./admin/AskCoire";
 import "../styles/chat.css";
 
-export function Chat({ ownerId, isAdmin = false }: { ownerId: string; isAdmin?: boolean }) {
-  return <ChatSession key={ownerId} ownerId={ownerId} isAdmin={isAdmin} />;
+export function Chat({ ownerId, isAdmin = false, requestedTarget }: { ownerId: string; isAdmin?: boolean; requestedTarget?: string }) {
+  return <ChatSession key={`${ownerId}:${requestedTarget ?? ""}`} ownerId={ownerId} isAdmin={isAdmin} requestedTarget={requestedTarget} />;
 }
 
-function ChatSession({ ownerId, isAdmin }: { ownerId: string; isAdmin: boolean }) {
+function ChatSession({ ownerId, isAdmin, requestedTarget }: { ownerId: string; isAdmin: boolean; requestedTarget?: string }) {
   const [platformMode, setPlatformMode] = useState(false);
+  const [exactConfirmed, setExactConfirmed] = useState(false);
   const chat = useConversation(ownerId);
   const latestCodeTurn = chat.turns.filter((turn) => turn.action !== "chat").at(-1);
   if (!chat.available)
@@ -54,6 +55,12 @@ function ChatSession({ ownerId, isAdmin }: { ownerId: string; isAdmin: boolean }
         <AskCoire />
       </main>
     );
+  if (requestedTarget && !exactConfirmed) {
+    const exact = chat.models.find((model) => model.id === requestedTarget && model.target?.adapter_id);
+    return <main className="chat-page"><section className="panel glass"><h1>Exact adapter selection</h1><p className="mono">{requestedTarget}</p>
+      {chat.loading ? <p role="status">Checking entitled registry targets…</p> : exact ? <><p>{exact.display_name} · {exact.verified ? "independently verified" : "unverified — write tasks unavailable"}</p><button className="button" onClick={() => { chat.setSelectedId(exact.id); setExactConfirmed(true); }}>Use this exact registered adapter</button></> : <p role="alert">This exact adapter is unavailable in the native Chat picker. Its publication, entitlement or native routing capability must be available before selection. No base model has been substituted.</p>}
+      <a href="#chat">Back to Chat</a></section></main>;
+  }
   return (
     <main className="chat-page">
       <div className="chat-topline">

@@ -39,7 +39,9 @@ from coire_api.db import (
     ModelCopyRow,
     ModelInstanceRow,
     ModelRow,
+    ModelVariantRow,
     NodeRow,
+    PlacementCommandRow,
     create_engine,
 )
 from coire_api.instance import service as instance_service
@@ -47,6 +49,7 @@ from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_api.placement.service import node_admission_lock
 from coire_api.registry import image_acquisition, service
 from coire_core.models.acquisition import ReservationRequest
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.audit import AuditAction, AuditOutcome
 from coire_core.models.engine import (
     LIVE_ENGINE_STATES,
@@ -63,7 +66,7 @@ from coire_core.models.image_worker import (
 from coire_core.models.instance import InstanceState
 from coire_core.models.jobs import ChecksumManifest, DownloadStage, JobKind, JobStage, JobStatus
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
-from coire_core.models.registry import CopyRole, ModelKind, ModelState
+from coire_core.models.registry import CopyRole, EngineBackend, ModelKind, ModelState
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -86,6 +89,63 @@ ACTOR = "reconciler"
 # observe 404 between the control-plane row being inserted and the node accepting the request.
 # Keep this grace bounded so a genuinely lost startup is still failed on a later pass.
 ENGINE_START_GRACE_S = 30.0
+
+
+async def engine_reconcile_expectation(
+    session: AsyncSession, engine: EngineProcessRow
+) -> ReconcileExpectation | None:
+    """Reconcile the immutable dispatched load, not a parent-model approximation."""
+    if engine.model_id is None:
+        return None  # An unregistered orphan has no authoritative adoption identity.
+    with tracer.start_as_current_span("coire.api.training.engine_reconcile_identity"):
+        load = await session.scalar(
+            select(PlacementCommandRow)
+            .where(
+                PlacementCommandRow.engine_id == engine.id, PlacementCommandRow.operation == "load"
+            )
+            .order_by(PlacementCommandRow.created_at.desc(), PlacementCommandRow.id.desc())
+            .limit(1)
+        )
+        backend = EngineBackend(engine.backend or "mlx_lm")
+        target = None
+        if load is not None:
+            slug = load.payload.get("slug")
+            if EngineBackend(str(load.payload.get("backend", "mlx_lm"))) is not backend:
+                raise ValueError("Recorded engine backend identity differs")
+            if load.payload.get("target") is not None:
+                target = InferenceTarget.model_validate(load.payload["target"])
+                if (target.model_id, target.variant_id, target.adapter_id) != (
+                    engine.model_id,
+                    engine.variant_id,
+                    engine.adapter_id,
+                ):
+                    raise ValueError("Recorded engine target identity differs")
+            elif engine.adapter_id is not None:
+                raise ValueError("Recorded adapter engine identity is missing")
+        elif engine.adapter_id is not None:
+            raise ValueError("Adapter engine has no immutable load identity")
+        else:
+            # Legacy base/sharded launches predate exact targets and placement commands.
+            variant = (
+                await session.get(ModelVariantRow, engine.variant_id)
+                if engine.variant_id is not None
+                else None
+            )
+            model = await session.get(ModelRow, engine.model_id) if variant is None else None
+            slug = (
+                variant.slug if variant is not None else model.slug if model is not None else None
+            )
+        if not isinstance(slug, str) or not slug:
+            raise ValueError("Registered engine slug identity is missing")
+        return ReconcileExpectation(
+            engine_id=engine.id,
+            slug=slug,
+            backend=backend,
+            target=target,
+            port=engine.port,
+            pid=engine.pid,
+            process_create_time=engine.process_create_time,
+        )
 
 
 class RegistryReconciler:
@@ -724,16 +784,21 @@ class RegistryReconciler:
                 .scalars()
                 .all()
             )
-            expected = [
-                ReconcileExpectation(
-                    engine_id=r.id,
-                    slug="",
-                    port=r.port,
-                    pid=r.pid,
-                    process_create_time=r.process_create_time,
-                )
-                for r in rows
-            ]
+            expected = []
+            for persisted_engine in rows:
+                try:
+                    expectation = await engine_reconcile_expectation(session, persisted_engine)
+                except ValueError:
+                    logger.warning(
+                        "engine reconciliation identity unavailable",
+                        extra={
+                            "instance_id": str(persisted_engine.instance_id),
+                            "engine_id": str(persisted_engine.id),
+                        },
+                    )
+                    continue  # Missing identity is not authority to adopt or release a hold.
+                if expectation is not None:
+                    expected.append(expectation)
             try:
                 result = await client.reconcile(node.name, ReconcileRequest(expected=expected))
             except NodeError as exc:
@@ -742,9 +807,19 @@ class RegistryReconciler:
                 continue
 
             by_id = {r.id: r for r in rows}
+            expected_by_id = {e.engine_id: e for e in expected}
             for adopted in result.adopted:
                 row = by_id.get(adopted.engine_id) if adopted.engine_id else None
-                if row is not None:
+                expectation = expected_by_id.get(adopted.engine_id) if adopted.engine_id else None
+                if (
+                    row is not None
+                    and expectation is not None
+                    and (
+                        adopted.slug == expectation.slug
+                        and adopted.backend == expectation.backend
+                        and adopted.target == expectation.target
+                    )
+                ):
                     row.state = adopted.state
                     row.pid = adopted.pid
                     row.process_create_time = adopted.process_create_time

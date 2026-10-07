@@ -13,7 +13,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal, PrincipalKind
-from coire_api.db import AgentRunRow, RunTokenRow
+from coire_api.db import AgentRunRow, EntitlementRow, RunTokenRow, UserRow
+from coire_api.evaluations import target_is_write_verified
+from coire_core.models.harness import TaskClass
 from coire_core.models.runs import TERMINAL_RUN_STATES, AgentRunState, RunTokenScope
 
 RUN_TOKEN_PATTERN = re.compile(r"^coire_run_([A-Za-z0-9_-]{12})_([A-Za-z0-9_-]{43})$")
@@ -39,6 +41,20 @@ def verify_material(secret_hash: str, presented_secret: str) -> bool:
         return False
 
 
+def validate_run_scope(run: AgentRunRow, scope: RunTokenScope) -> None:
+    if run.primary_model_id not in scope.permitted_model_ids:
+        raise InvalidRunToken("primary model is not permitted")
+    if scope.permitted_targets and not any(
+        target.model_id == run.primary_model_id
+        and target.variant_id == run.primary_variant_id
+        and target.adapter_id == run.primary_adapter_id
+        for target in scope.permitted_targets
+    ):
+        raise InvalidRunToken("primary exact target is not permitted")
+    if run.primary_adapter_id is not None and not scope.permitted_targets:
+        raise InvalidRunToken("adapter requires exact target scope")
+
+
 async def mint_run_token(
     session: AsyncSession,
     run: AgentRunRow,
@@ -46,6 +62,7 @@ async def mint_run_token(
     *,
     ttl_seconds: int,
 ) -> tuple[RunTokenRow, str]:
+    validate_run_scope(run, scope)
     existing = await session.scalar(select(RunTokenRow).where(RunTokenRow.run_id == run.id))
     if existing is not None:
         raise InvalidRunToken("run token already minted")
@@ -74,6 +91,7 @@ async def rotate_run_token(
     A retry first observes the node. If no container exists, rotating this row makes any token
     from an ambiguous prior create attempt invalid before a replacement is sent.
     """
+    validate_run_scope(run, scope)
     row = await session.scalar(
         select(RunTokenRow).where(RunTokenRow.run_id == run.id).with_for_update()
     )
@@ -111,15 +129,37 @@ async def authenticate_run_token(session: AsyncSession, presented: str) -> Princ
     if row.expires_at <= now:
         raise InvalidRunToken("expired")
     scope = RunTokenScope.model_validate(row.scope)
+    validate_run_scope(run, scope)
     if row.spent_tokens >= scope.spend_limit_tokens:
         raise InvalidRunToken("spend_exhausted")
+    entitlements: frozenset[str] = frozenset()
+    if scope.permitted_targets:
+        owner = await session.get(UserRow, run.requester_user_id)
+        if owner is None or not owner.active:
+            raise InvalidRunToken("requester_inactive")
+        entitlements = frozenset(
+            (
+                await session.scalars(
+                    select(EntitlementRow.name).where(
+                        EntitlementRow.user_id == run.requester_user_id,
+                        EntitlementRow.revoked_at.is_(None),
+                    )
+                )
+            ).all()
+        )
+        if run.task_class is TaskClass.WRITE:
+            for target in scope.permitted_targets:
+                if not await target_is_write_verified(session, target):
+                    raise InvalidRunToken("target_unverified")
     return Principal(
         kind=PrincipalKind.RUN,
         subject=str(run.id),
         user_id=run.requester_user_id,
+        entitlements=entitlements,
         scopes=frozenset({"chat"}),
         run_id=run.id,
         permitted_model_ids=scope.permitted_model_ids,
+        permitted_targets=scope.permitted_targets,
         permitted_tools=scope.permitted_tools,
         spend_limit_tokens=scope.spend_limit_tokens,
         spent_tokens=row.spent_tokens,

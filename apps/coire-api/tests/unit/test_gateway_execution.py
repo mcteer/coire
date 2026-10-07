@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
-from time import perf_counter
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock
@@ -62,12 +61,23 @@ def test_text_payload_adapters_keep_registry_path_private_and_preserve_content()
 def test_shared_usage_binds_only_registry_resolved_identity() -> None:
     model_id = uuid.uuid4()
     engine_id = uuid.uuid4()
+    instance_id = uuid.uuid4()
     usage = UsageTracker(ANONYMOUS, "caller-model", GatewayProtocol.OPENAI)
     usage.bind_resolution(
-        ResolvedModel(model_id, "registry", None, "/owned/model", engine_id, None, None)
+        ResolvedModel(
+            model_id,
+            "registry",
+            None,
+            "/owned/model",
+            engine_id,
+            None,
+            None,
+            instance_id=instance_id,
+        )
     )
     assert usage.model_id == model_id
     assert usage.engine_id == engine_id
+    assert usage.instance_id == instance_id
     assert usage.node is None
     assert usage.requested_model_id == "caller-model"
 
@@ -247,20 +257,23 @@ async def test_cancelled_stream_finishes_usage_once(monkeypatch: pytest.MonkeyPa
 async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyPatch) -> None:
     from coire_api.gateway import execution
 
-    recorded: list[tuple[str, dict[str, str]]] = []
+    recorded: list[tuple[str, float, dict[str, str]]] = []
     monkeypatch.setattr(
         execution,
         "first_token_duration_ms",
-        SimpleNamespace(record=lambda _value, attrs: recorded.append(("first", attrs))),
+        SimpleNamespace(record=lambda value, attrs: recorded.append(("first", value, attrs))),
     )
     monkeypatch.setattr(
         execution,
         "overhead_duration_ms",
-        SimpleNamespace(record=lambda _value, attrs: recorded.append(("overhead", attrs))),
+        SimpleNamespace(record=lambda value, attrs: recorded.append(("overhead", value, attrs))),
     )
 
     async def source() -> AsyncIterator[bytes]:
-        yield b'data: {"choices":[]}\n\n'
+        yield b': keepalive\n\ndata: {"choices":[{"delta":{"role":"assistant","content":""}}]}\n\n'
+        assert usage.first_token_at is None
+        yield b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'
+        yield b'data: {"choices":[{"delta":{"content":"there"}}]}\n\n'
         yield b"data: [DONE]\n\n"
 
     usage = UsageTracker(ANONYMOUS, str(uuid.uuid4()), GatewayProtocol.OPENAI)
@@ -269,15 +282,37 @@ async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyP
         return None
 
     monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist)
-    timing = StreamTiming()
+    timing = StreamTiming(request_started_at=10.0, upstream_started_at=10.05, first_chunk_at=10.06)
+    monkeypatch.setattr(execution, "perf_counter", lambda: 10.25)
     usage.node = "coire-edge-b"
-    timing.upstream_started_at = perf_counter()
-    timing.first_chunk_at = perf_counter()
-    assert len([chunk async for chunk in track_stream(source(), usage, timing=timing)]) == 2
-    assert recorded == [
-        ("first", {"protocol": "openai", "node": "coire-edge-b"}),
-        ("overhead", {"protocol": "openai", "node": "coire-edge-b"}),
-    ]
+    assert len([chunk async for chunk in track_stream(source(), usage, timing=timing)]) == 4
+    assert usage.first_token_at is not None
+    assert usage.first_token_duration_ms == 250
+    assert [item[0] for item in recorded] == ["first", "overhead"]
+    assert recorded[0][1] == 250
+    assert recorded[1][1] == pytest.approx(50)
+    assert all(item[2] == {"protocol": "openai", "node": "coire-edge-b"} for item in recorded)
+
+
+async def test_role_keepalive_usage_only_stream_has_no_first_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    saved: list[dict[str, object]] = []
+
+    async def persist(**kwargs: object) -> None:
+        saved.append(kwargs)
+
+    monkeypatch.setattr("coire_api.gateway.usage.persist_usage", persist)
+
+    async def source() -> AsyncIterator[bytes]:
+        yield b': ping\n\ndata: {"choices":[{"delta":{"role":"assistant","content":""}}]}\n\n'
+        yield b'data: {"choices":[],"usage":{"prompt_tokens":4,"completion_tokens":0}}\n\n'
+        yield b"data: [DONE]\n\n"
+
+    tracker = UsageTracker(ANONYMOUS, "test", GatewayProtocol.OPENAI)
+    _ = [chunk async for chunk in track_stream(source(), tracker, timing=StreamTiming())]
+    assert saved[0]["first_token_at"] is None
+    assert saved[0]["first_token_duration_ms"] is None
 
 
 async def test_disconnect_closes_upstream_before_return(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -318,7 +353,7 @@ async def test_cold_stream_close_cancels_pending_load(
             cancelled.set()
 
     monkeypatch.setattr(v1, "_load_and_resolve", never_ready)
-    body = SimpleNamespace(model=uuid.uuid4(), coire_affinity_node=None)
+    body = SimpleNamespace(model=uuid.uuid4(), coire_affinity_node=None, coire_variant_id=None)
     settings = SimpleNamespace(gateway_keepalive_interval_s=0.01)
     usage = UsageTracker(ANONYMOUS, str(body.model), GatewayProtocol.OPENAI)
     cold = v1._openai_cold_stream if protocol == "openai" else v1._anthropic_cold_stream

@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator
+from contextlib import AsyncExitStack
 
 import httpx
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
+from opentelemetry import trace
+from opentelemetry.propagate import extract
 
 from coire_core.models.engine import (
     EngineStartRequest,
@@ -22,6 +26,7 @@ from coire_node.deps import EngineDep, StoreDep
 from coire_node.engines import BackendMismatch, BudgetExceeded, CopyMissing, NoFreePort
 
 logger = logging.getLogger(__name__)
+tracer = trace.get_tracer("coire.node.engine.proxy")
 router = APIRouter(prefix="/node/engines", tags=["engines"])
 _proxy_client: httpx.AsyncClient | None = None
 
@@ -56,6 +61,7 @@ async def start_engine(
         existing, engine_status = engines.start(
             engine_id=request.engine_id,
             slug=request.slug,
+            target=request.target,
             estimate_bytes=request.estimate_bytes,
             chat_template=request.chat_template,
             backend=request.backend,
@@ -79,7 +85,7 @@ async def start_engine(
 
 @router.post("/reconcile", response_model=ReconcileResult)
 async def reconcile(request: ReconcileRequest, engines: EngineDep) -> ReconcileResult:
-    return engines.reconcile(request)
+    return await asyncio.to_thread(engines.reconcile, request)
 
 
 @router.get("/{engine_id}", response_model=EngineStatus)
@@ -92,10 +98,17 @@ async def get_engine(engine_id: uuid.UUID, engines: EngineDep) -> EngineStatus:
 
 @router.post("/{engine_id}/proxy/v1/chat/completions")
 async def proxy_chat_completion(
-    engine_id: uuid.UUID, request: EngineChatRequest, engines: EngineDep, store: StoreDep
+    engine_id: uuid.UUID,
+    request: EngineChatRequest,
+    engines: EngineDep,
+    store: StoreDep,
+    transport_request: Request,
 ) -> Response:
     """Carry one authenticated gateway request to a loopback-only bare engine."""
-    engine = engines.get(engine_id)
+    parent = extract(transport_request.headers)
+    with tracer.start_as_current_span("coire.node.engine.proxy.lookup", context=parent) as span:
+        span.set_attribute("engine_id", str(engine_id))
+        engine = await asyncio.to_thread(engines.get, engine_id)
     if engine is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such engine")
     if engine.state is not EngineState.READY:
@@ -109,6 +122,22 @@ async def proxy_chat_completion(
     # receive the node-local absolute path. Resolve it only after matching the running
     # engine's immutable slug so no caller-controlled path can cross this boundary.
     payload["model"] = expected_model
+    payload.pop("adapter", None)
+    payload.pop("adapter_path", None)
+    if engine.target is not None and engine.target.adapter_id is not None:
+        try:
+            with tracer.start_as_current_span(
+                "coire.node.engine.proxy.adapter", context=parent
+            ) as span:
+                span.set_attribute("engine_id", str(engine_id))
+                adapter_path = await asyncio.to_thread(
+                    engines.adapter_path, engine.target, engine.slug, verify=False
+                )
+        except CopyMissing as exc:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "adapter artifact unavailable"
+            ) from exc
+        payload["adapters"] = str(adapter_path)
     if not request.stream:
         try:
             response = await _engine_client().post(url, json=payload, timeout=300)
@@ -119,10 +148,16 @@ async def proxy_chat_completion(
 
     async def relay() -> AsyncIterator[bytes]:
         timeout = httpx.Timeout(300, read=None)
-        async with _engine_client().stream("POST", url, json=payload, timeout=timeout) as response:
-            response.raise_for_status()
-            async for chunk in response.aiter_bytes():
-                yield chunk
+        with tracer.start_as_current_span("coire.node.engine.proxy.stream", context=parent) as span:
+            span.set_attribute("engine_id", str(engine_id))
+            async with AsyncExitStack() as stack:
+                with tracer.start_as_current_span("coire.node.engine.proxy.headers"):
+                    response = await stack.enter_async_context(
+                        _engine_client().stream("POST", url, json=payload, timeout=timeout)
+                    )
+                response.raise_for_status()
+                async for chunk in response.aiter_bytes():
+                    yield chunk
 
     return StreamingResponse(
         relay(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}

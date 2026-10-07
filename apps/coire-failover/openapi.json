@@ -1,6 +1,10 @@
 {
   "components": {
     "schemas": {
+      "AdapterSelector": {
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}@[a-z0-9][a-z0-9-]{0,62}$",
+        "type": "string"
+      },
       "FailoverStatus": {
         "additionalProperties": false,
         "properties": {
@@ -71,6 +75,30 @@
       "GatewayModel": {
         "additionalProperties": false,
         "properties": {
+          "coire_adapter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Adapter Id"
+          },
+          "coire_base_model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Base Model Id"
+          },
           "coire_context_window": {
             "anyOf": [
               {
@@ -114,14 +142,29 @@
             "title": "Coire Tags",
             "type": "array"
           },
+          "coire_variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Variant Id"
+          },
+          "coire_verified": {
+            "default": false,
+            "title": "Coire Verified",
+            "type": "boolean"
+          },
           "created": {
             "title": "Created",
             "type": "integer"
           },
           "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
+            "$ref": "#/components/schemas/ModelSelector"
           },
           "object": {
             "const": "model",
@@ -179,6 +222,17 @@
         },
         "title": "HTTPValidationError",
         "type": "object"
+      },
+      "ModelSelector": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "$ref": "#/components/schemas/AdapterSelector"
+          }
+        ]
       },
       "ModelSource": {
         "enum": [

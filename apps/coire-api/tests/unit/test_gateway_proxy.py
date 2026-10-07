@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import EngineProcessRow, MemoryReservationRow, NodeMemoryLedgerRow
@@ -295,6 +296,9 @@ async def test_node_proxy_refuses_unreserved_engine_inference(
         async def scalar(self, statement: object) -> None:
             return None
 
+        async def scalars(self, statement: object) -> SimpleNamespace:
+            return SimpleNamespace(all=lambda: [])
+
     @asynccontextmanager
     async def sessions() -> AsyncIterator[Session]:
         yield Session()
@@ -404,3 +408,71 @@ async def test_legacy_engine_hold_is_bounded_and_excludes_image_worker() -> None
     ]
     with pytest.raises(ChatModelUnavailable):
         await proxy._ensure_legacy_engine_hold(cast(AsyncSession, session), engine, str(model_id))
+
+
+async def test_gateway_replaces_idle_connections_before_peer_retirement() -> None:
+    import asyncio
+
+    import httpx
+
+    from coire_api.gateway import proxy
+
+    writers: set[asyncio.StreamWriter] = set()
+    handlers: set[asyncio.Task[object]] = set()
+
+    async def peer(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        task = asyncio.current_task()
+        assert task is not None
+        handlers.add(task)
+        writers.add(writer)
+        try:
+            await reader.readuntil(b"\r\n\r\n")
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+            await writer.drain()
+            # Simulate a peer retiring an idle socket at the next arrival: the
+            # socket still looks open to the pool, but no response can be sent.
+            await reader.readuntil(b"\r\n\r\n")
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            writers.discard(writer)
+            handlers.discard(task)
+
+    server = await asyncio.start_server(peer, "127.0.0.1", 0)
+    url = f"http://127.0.0.1:{server.sockets[0].getsockname()[1]}/"
+    await proxy.close_engine_client()
+    try:
+        async with httpx.AsyncClient() as default_pool:
+            assert (await default_pool.get(url)).status_code == 200
+            await asyncio.sleep(1.1)
+            with pytest.raises(httpx.RemoteProtocolError):
+                await default_pool.get(url)
+        assert (await proxy._client().get(url)).status_code == 200
+        await asyncio.sleep(1.1)
+        assert (await proxy._client().get(url)).status_code == 200
+    finally:
+        await proxy.close_engine_client()
+        server.close()
+        await server.wait_closed()
+        for writer in list(writers):
+            writer.close()
+        await asyncio.gather(*handlers, return_exceptions=True)
+
+
+def test_owned_node_headers_preserve_gateway_trace_context() -> None:
+    from opentelemetry import trace
+    from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
+
+    from coire_api.gateway.proxy import _node_headers
+
+    context = SpanContext(
+        trace_id=0x1234, span_id=0x5678, is_remote=False, trace_flags=TraceFlags(TraceFlags.SAMPLED)
+    )
+    settings = Settings(node_tokens=SecretStr('{"coire-edge-b":"test-token"}'))
+    with trace.use_span(NonRecordingSpan(context)):
+        headers = _node_headers("http://coire-edge-b.lab:9400/node/engines/fixture", settings)
+    assert headers["Authorization"] == "Bearer test-token"
+    assert headers["traceparent"] == "00-00000000000000000000000000001234-0000000000005678-01"
+    assert _node_headers("http://127.0.0.1:9500", settings) == {}

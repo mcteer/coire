@@ -22,6 +22,7 @@ from coire_api.db import (
     PlacementDecisionRow,
     RequestLeaseRow,
     ShardGroupRow,
+    TrainingArtifactCopyRow,
     session_scope,
 )
 from coire_api.instance.service import transition
@@ -86,6 +87,12 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                 candidate = await session.get(ModelInstanceRow, instance_id)
                 if candidate is not None and candidate.policy.startswith("image:"):
                     return
+                if (
+                    candidate is not None
+                    and candidate.adapter_id is not None
+                    and candidate.policy.startswith("sharded:")
+                ):
+                    raise RuntimeError("adapter instances are single-node only")
                 sharded = candidate is not None and candidate.policy.startswith("sharded:")
             if not sharded:
                 await _wait_for_fallback_teardown(instance_id)
@@ -141,11 +148,25 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                     else None
                 )
                 if decision is None:
+                    adapter_bytes = 0
+                    if instance.adapter_id is not None:
+                        adapter_bytes = int(
+                            await session.scalar(
+                                select(func.max(TrainingArtifactCopyRow.total_bytes)).where(
+                                    TrainingArtifactCopyRow.adapter_id == instance.adapter_id,
+                                    TrainingArtifactCopyRow.state == "verified",
+                                )
+                            )
+                            or 0
+                        )
+                        if adapter_bytes <= 0:
+                            raise RuntimeError("verified adapter artifact copy is unavailable")
                     decision = PlacementDecisionRow(
                         model_id=instance.model_id,
                         variant_id=instance.variant_id,
                         policy=instance.policy,
-                        required_bytes=reservation_bytes(
+                        required_bytes=adapter_bytes
+                        + reservation_bytes(
                             variant.memory_estimate_bytes, variant.visual_capability
                         ),
                         state=PlacementState.REQUESTED,
@@ -229,6 +250,9 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                     .where(
                         EngineProcessRow.node_id == decision.selected_node_id,
                         EngineProcessRow.model_id == instance.model_id,
+                        EngineProcessRow.instance_id == instance.id,
+                        EngineProcessRow.adapter_id == instance.adapter_id,
+                        EngineProcessRow.variant_id == instance.variant_id,
                         EngineProcessRow.state == EngineState.READY,
                     )
                     .order_by(EngineProcessRow.started_at.desc())

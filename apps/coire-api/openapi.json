@@ -244,6 +244,240 @@
         "title": "ActorType",
         "type": "string"
       },
+      "AdapterCurationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          }
+        },
+        "required": [
+          "expected_version",
+          "visibility"
+        ],
+        "title": "AdapterCurationRequest",
+        "type": "object"
+      },
+      "AdapterDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "base_manifest_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "base_variant_id": {
+            "format": "uuid",
+            "title": "Base Variant Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evaluation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "objective": {
+            "const": "sft",
+            "default": "sft",
+            "title": "Objective",
+            "type": "string"
+          },
+          "parameterization": {
+            "enum": [
+              "lora",
+              "qlora",
+              "dora"
+            ],
+            "title": "Parameterization",
+            "type": "string"
+          },
+          "required_entitlements": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Required Entitlements",
+            "type": "array"
+          },
+          "resolved_spec_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "selector": {
+            "$ref": "#/components/schemas/AdapterSelector"
+          },
+          "slug": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "source_checkpoint_id": {
+            "format": "uuid",
+            "title": "Source Checkpoint Id",
+            "type": "string"
+          },
+          "source_job_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AdapterState"
+          },
+          "verified": {
+            "default": false,
+            "title": "Verified",
+            "type": "boolean"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility",
+            "default": "admin_only"
+          }
+        },
+        "required": [
+          "id",
+          "model_id",
+          "base_variant_id",
+          "slug",
+          "selector",
+          "state",
+          "base_manifest_sha256",
+          "source_job_id",
+          "source_checkpoint_id",
+          "resolved_spec_sha256",
+          "parameterization",
+          "version",
+          "created_at"
+        ],
+        "title": "AdapterDetail",
+        "type": "object"
+      },
+      "AdapterPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdapterDetail"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AdapterPage",
+        "type": "object"
+      },
+      "AdapterReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_id": {
+            "format": "uuid",
+            "title": "Adapter Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/AdapterState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "adapter_id",
+          "state",
+          "version"
+        ],
+        "title": "AdapterReceipt",
+        "type": "object"
+      },
+      "AdapterRetireRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "AdapterRetireRequest",
+        "type": "object"
+      },
+      "AdapterSelector": {
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}@[a-z0-9][a-z0-9-]{0,62}$",
+        "type": "string"
+      },
+      "AdapterSlug": {
+        "maxLength": 63,
+        "minLength": 1,
+        "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+        "type": "string"
+      },
+      "AdapterState": {
+        "enum": [
+          "validating",
+          "replicating",
+          "ready",
+          "failed",
+          "retired"
+        ],
+        "title": "AdapterState",
+        "type": "string"
+      },
       "AgentRun": {
         "additionalProperties": false,
         "properties": {
@@ -409,6 +643,16 @@
             "title": "Primary Model Id",
             "type": "string"
           },
+          "primary_target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "primary_variant_id": {
             "format": "uuid",
             "title": "Primary Variant Id",
@@ -515,6 +759,15 @@
             "type": "array",
             "uniqueItems": true
           },
+          "permitted_targets": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/InferenceTarget"
+            },
+            "maxItems": 16,
+            "title": "Permitted Targets",
+            "type": "array"
+          },
           "permitted_tools": {
             "items": {
               "type": "string"
@@ -540,6 +793,16 @@
             "format": "uuid",
             "title": "Primary Model Id",
             "type": "string"
+          },
+          "primary_target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "profile": {
             "$ref": "#/components/schemas/ProfileName"
@@ -636,6 +899,18 @@
             ],
             "title": "Coire Affinity Node"
           },
+          "coire_variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Variant Id"
+          },
           "coire_wait_for_model": {
             "default": true,
             "title": "Coire Wait For Model",
@@ -709,9 +984,7 @@
             "title": "Metadata"
           },
           "model": {
-            "format": "uuid",
-            "title": "Model",
-            "type": "string"
+            "$ref": "#/components/schemas/ModelSelector"
           },
           "output_config": {
             "anyOf": [
@@ -1656,6 +1929,29 @@
         "title": "Body_upload_chat_file_api_v1_chat_conversations__conversation_id__files_post",
         "type": "object"
       },
+      "Body_upload_dataset_api_v1_admin_datasets_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "metadata": {
+            "contentMediaType": "application/json",
+            "contentSchema": {
+              "$ref": "#/components/schemas/DatasetUploadRequest"
+            },
+            "title": "Metadata",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metadata",
+          "file"
+        ],
+        "title": "Body_upload_dataset_api_v1_admin_datasets_post",
+        "type": "object"
+      },
       "Body_upload_image_input_api_v1_image_inputs_post": {
         "properties": {
           "byte_count": {
@@ -2104,6 +2400,18 @@
             ],
             "title": "Coire Affinity Node"
           },
+          "coire_variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Variant Id"
+          },
           "coire_wait_for_model": {
             "default": true,
             "title": "Coire Wait For Model",
@@ -2130,9 +2438,7 @@
             "type": "array"
           },
           "model": {
-            "format": "uuid",
-            "title": "Model",
-            "type": "string"
+            "$ref": "#/components/schemas/ModelSelector"
           },
           "response_format": {
             "anyOf": [
@@ -2284,6 +2590,16 @@
               }
             ],
             "title": "Selected Model Id"
+          },
+          "selected_target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "title": {
             "maxLength": 120,
@@ -2857,6 +3173,16 @@
             "title": "Role",
             "type": "string"
           },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "text": {
             "default": "",
             "maxLength": 524288,
@@ -3010,6 +3336,16 @@
             "maxItems": 10,
             "title": "Tags",
             "type": "array"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "verified": {
             "default": false,
@@ -3706,6 +4042,127 @@
         "title": "ChatUsage",
         "type": "object"
       },
+      "CheckpointDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fence": {
+            "minimum": 1.0,
+            "title": "Fence",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "manifest_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "state": {
+            "enum": [
+              "staging",
+              "replicating",
+              "committed",
+              "corrupt",
+              "purging",
+              "purged"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "total_bytes": {
+            "minimum": 1.0,
+            "title": "Total Bytes",
+            "type": "integer"
+          },
+          "update": {
+            "minimum": 0.0,
+            "title": "Update",
+            "type": "integer"
+          },
+          "verified_nodes": {
+            "items": {
+              "$ref": "#/components/schemas/StudioName"
+            },
+            "maxItems": 2,
+            "title": "Verified Nodes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "job_id",
+          "attempt_id",
+          "fence",
+          "update",
+          "manifest_sha256",
+          "total_bytes",
+          "state",
+          "created_at"
+        ],
+        "title": "CheckpointDetail",
+        "type": "object"
+      },
+      "CheckpointPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CheckpointDetail"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CheckpointPage",
+        "type": "object"
+      },
+      "CheckpointPromotionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_slug": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version",
+          "adapter_slug"
+        ],
+        "title": "CheckpointPromotionRequest",
+        "type": "object"
+      },
       "ClusterNodeState": {
         "additionalProperties": false,
         "properties": {
@@ -3973,6 +4430,11 @@
             "default": true,
             "title": "Models",
             "type": "boolean"
+          },
+          "training": {
+            "default": false,
+            "title": "Training",
+            "type": "boolean"
           }
         },
         "title": "ConsoleCapabilities",
@@ -4162,6 +4624,675 @@
         ],
         "title": "CursorPage[ImageActivityItem]",
         "type": "object"
+      },
+      "CursorPage_TrainingActivityItem_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingActivityItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CursorPage[TrainingActivityItem]",
+        "type": "object"
+      },
+      "DatasetAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetDiagnostic"
+            },
+            "maxItems": 100,
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "duplicate_rows": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Duplicate Rows",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "invalid_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Invalid Count",
+            "type": "integer"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "role_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "system",
+                "user",
+                "assistant",
+                "tool"
+              ]
+            },
+            "title": "Role Counts",
+            "type": "object"
+          },
+          "row_count": {
+            "default": 0,
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "runtime_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "template_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tokenizer_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "tokens": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TokenDistribution"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "dataset_id",
+          "model_id",
+          "variant_id",
+          "state",
+          "created_at"
+        ],
+        "title": "DatasetAnalysis",
+        "type": "object"
+      },
+      "DatasetAnalysisReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_id": {
+            "format": "uuid",
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "analysis_id",
+          "state"
+        ],
+        "title": "DatasetAnalysisReceipt",
+        "type": "object"
+      },
+      "DatasetAnalyzeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "variant_id"
+        ],
+        "title": "DatasetAnalyzeRequest",
+        "type": "object"
+      },
+      "DatasetDeleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "DatasetDeleteRequest",
+        "type": "object"
+      },
+      "DatasetDeletionReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "retired",
+              "purged"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "state",
+          "version"
+        ],
+        "title": "DatasetDeletionReceipt",
+        "type": "object"
+      },
+      "DatasetDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "diagnostics": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetDiagnostic"
+            },
+            "maxItems": 100,
+            "title": "Diagnostics",
+            "type": "array"
+          },
+          "format": {
+            "$ref": "#/components/schemas/DatasetFormat"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "invalid_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Invalid Count",
+            "type": "integer"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/DatasetProvenance"
+          },
+          "row_count": {
+            "maximum": 1000000.0,
+            "minimum": 0.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "source_bytes": {
+            "maximum": 268435456.0,
+            "minimum": 0.0,
+            "title": "Source Bytes",
+            "type": "integer"
+          },
+          "source_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "split_manifest_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "split_seed": {
+            "$ref": "#/components/schemas/Seed"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DatasetState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "format",
+          "state",
+          "provenance",
+          "source_bytes",
+          "row_count",
+          "split_seed",
+          "version",
+          "created_at"
+        ],
+        "title": "DatasetDetail",
+        "type": "object"
+      },
+      "DatasetDiagnostic": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "invalid_json",
+              "invalid_schema",
+              "unsupported_image",
+              "invalid_tools",
+              "overlength",
+              "zero_target",
+              "invalid_utf8",
+              "row_too_large",
+              "template_incompatible"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "field": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_.\\[\\]-]+$",
+            "title": "Field",
+            "type": "string"
+          },
+          "row": {
+            "$ref": "#/components/schemas/PositiveCount"
+          }
+        },
+        "required": [
+          "row",
+          "field",
+          "code"
+        ],
+        "title": "DatasetDiagnostic",
+        "type": "object"
+      },
+      "DatasetFormat": {
+        "enum": [
+          "text",
+          "prompt_completion",
+          "conversation"
+        ],
+        "title": "DatasetFormat",
+        "type": "string"
+      },
+      "DatasetMixture": {
+        "additionalProperties": false,
+        "properties": {
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetSource"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Datasets",
+            "type": "array"
+          },
+          "epoch_samples": {
+            "maximum": 16000000.0,
+            "minimum": 1.0,
+            "title": "Epoch Samples",
+            "type": "integer"
+          },
+          "mixture_strategy": {
+            "default": "weighted",
+            "enum": [
+              "weighted",
+              "sequential"
+            ],
+            "title": "Mixture Strategy",
+            "type": "string"
+          },
+          "replacement": {
+            "default": false,
+            "title": "Replacement",
+            "type": "boolean"
+          },
+          "seed": {
+            "$ref": "#/components/schemas/Seed",
+            "default": 0
+          }
+        },
+        "required": [
+          "datasets",
+          "epoch_samples"
+        ],
+        "title": "DatasetMixture",
+        "type": "object"
+      },
+      "DatasetPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetDetail"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "DatasetPage",
+        "type": "object"
+      },
+      "DatasetProvenance": {
+        "additionalProperties": false,
+        "properties": {
+          "license_note": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "License Note",
+            "type": "string"
+          },
+          "source": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "license_note"
+        ],
+        "title": "DatasetProvenance",
+        "type": "object"
+      },
+      "DatasetReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/DatasetState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "state",
+          "version"
+        ],
+        "title": "DatasetReceipt",
+        "type": "object"
+      },
+      "DatasetSource": {
+        "additionalProperties": false,
+        "properties": {
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "mixture_proportion": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Mixture Proportion",
+            "type": "number"
+          },
+          "sample_count": {
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "split": {
+            "const": "train",
+            "default": "train",
+            "title": "Split",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "sample_count",
+          "mixture_proportion"
+        ],
+        "title": "DatasetSource",
+        "type": "object"
+      },
+      "DatasetState": {
+        "enum": [
+          "uploading",
+          "validating",
+          "analyzing",
+          "ready",
+          "analysis_failed",
+          "failed",
+          "retired",
+          "purged"
+        ],
+        "title": "DatasetState",
+        "type": "string"
+      },
+      "DatasetUploadRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_model_id": {
+            "format": "uuid",
+            "title": "Analysis Model Id",
+            "type": "string"
+          },
+          "analysis_variant_id": {
+            "format": "uuid",
+            "title": "Analysis Variant Id",
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/DatasetFormat"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/DatasetProvenance"
+          },
+          "split_seed": {
+            "$ref": "#/components/schemas/Seed",
+            "default": 0
+          },
+          "validation_fraction": {
+            "default": 0.05,
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Validation Fraction",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "format",
+          "provenance",
+          "analysis_model_id",
+          "analysis_variant_id"
+        ],
+        "title": "DatasetUploadRequest",
+        "type": "object"
+      },
+      "DatasetValidationSources": {
+        "additionalProperties": false,
+        "properties": {
+          "dataset_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Dataset Ids",
+            "type": "array"
+          },
+          "max_batches": {
+            "default": 25,
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Max Batches",
+            "type": "integer"
+          },
+          "seed": {
+            "$ref": "#/components/schemas/Seed",
+            "default": 0
+          },
+          "split": {
+            "const": "validation",
+            "default": "validation",
+            "title": "Split",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dataset_ids"
+        ],
+        "title": "DatasetValidationSources",
+        "type": "object"
+      },
+      "Digest": {
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
       },
       "ElectionVoteGrant": {
         "additionalProperties": false,
@@ -4529,6 +5660,30 @@
       "GatewayModel": {
         "additionalProperties": false,
         "properties": {
+          "coire_adapter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Adapter Id"
+          },
+          "coire_base_model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Base Model Id"
+          },
           "coire_context_window": {
             "anyOf": [
               {
@@ -4572,14 +5727,29 @@
             "title": "Coire Tags",
             "type": "array"
           },
+          "coire_variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Variant Id"
+          },
+          "coire_verified": {
+            "default": false,
+            "title": "Coire Verified",
+            "type": "boolean"
+          },
           "created": {
             "title": "Created",
             "type": "integer"
           },
           "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
+            "$ref": "#/components/schemas/ModelSelector"
           },
           "object": {
             "const": "model",
@@ -4678,6 +5848,16 @@
           "scores": {
             "$ref": "#/components/schemas/CategoryScores"
           },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "variant_id": {
             "format": "uuid",
             "title": "Variant Id",
@@ -4725,6 +5905,16 @@
           "scores": {
             "$ref": "#/components/schemas/CategoryScores"
           },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "variant_id": {
             "format": "uuid",
             "title": "Variant Id",
@@ -4754,6 +5944,26 @@
             "format": "uuid",
             "title": "Model Id",
             "type": "string"
+          },
+          "public_selector": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelSelector"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "variant_id": {
             "format": "uuid",
@@ -7752,9 +8962,68 @@
         "title": "ImageWorkerLoadResult",
         "type": "object"
       },
+      "InferenceTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adapter Id"
+          },
+          "adapter_manifest_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "base_manifest_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "variant_id",
+          "base_manifest_sha256"
+        ],
+        "title": "InferenceTarget",
+        "type": "object"
+      },
       "InstanceCreate": {
         "additionalProperties": false,
         "properties": {
+          "adapter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adapter Id"
+          },
           "affinity_node_id": {
             "anyOf": [
               {
@@ -7783,6 +9052,16 @@
               }
             ],
             "title": "Policy"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "variant_id": {
             "format": "uuid",
@@ -7973,6 +9252,29 @@
           "precondition"
         ],
         "title": "InstanceUnloadAction",
+        "type": "object"
+      },
+      "LearningRateSchedule": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "default": "constant",
+            "enum": [
+              "constant",
+              "warmup_linear"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "warmup_updates": {
+            "default": 0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Warmup Updates",
+            "type": "integer"
+          }
+        },
+        "title": "LearningRateSchedule",
         "type": "object"
       },
       "LedgerUpdate": {
@@ -8758,6 +10060,16 @@
           "state": {
             "$ref": "#/components/schemas/InstanceState"
           },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "transitioned_at": {
             "format": "date-time",
             "title": "Transitioned At",
@@ -8933,6 +10245,17 @@
         ],
         "title": "ModelPinAction",
         "type": "object"
+      },
+      "ModelSelector": {
+        "anyOf": [
+          {
+            "format": "uuid",
+            "type": "string"
+          },
+          {
+            "$ref": "#/components/schemas/AdapterSelector"
+          }
+        ]
       },
       "ModelSource": {
         "enum": [
@@ -9575,6 +10898,43 @@
         ],
         "title": "NodeRole",
         "type": "string"
+      },
+      "NodeTrainingLeaseSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "active_leases": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "maxProperties": 256,
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Active Leases",
+            "type": "object"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "node": {
+            "$ref": "#/components/schemas/StudioName"
+          },
+          "sampled_at": {
+            "format": "date-time",
+            "title": "Sampled At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "node",
+          "sampled_at",
+          "expires_at",
+          "active_leases"
+        ],
+        "title": "NodeTrainingLeaseSnapshot",
+        "type": "object"
       },
       "NodeV2": {
         "additionalProperties": false,
@@ -10961,6 +12321,10 @@
         "title": "PlanStep",
         "type": "object"
       },
+      "PositiveCount": {
+        "minimum": 1.0,
+        "type": "integer"
+      },
       "Precision": {
         "enum": [
           "bf16",
@@ -11286,6 +12650,39 @@
         "title": "ReservationHolder",
         "type": "string"
       },
+      "ResolvedDatasetInput": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_id": {
+            "format": "uuid",
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "analysis_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "source_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "split_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "analysis_id",
+          "source_sha256",
+          "split_sha256",
+          "analysis_sha256"
+        ],
+        "title": "ResolvedDatasetInput",
+        "type": "object"
+      },
       "ResolvedImageSpec": {
         "additionalProperties": false,
         "description": "Immutable execution facts; no owner, path, URL or secret field exists.",
@@ -11380,6 +12777,67 @@
           "spec_hash"
         ],
         "title": "ResolvedImageSpec",
+        "type": "object"
+      },
+      "ResolvedTrainingSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "base_manifest_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedDatasetInput"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Datasets",
+            "type": "array"
+          },
+          "enable_thinking": {
+            "title": "Enable Thinking",
+            "type": "boolean"
+          },
+          "resource_envelope": {
+            "$ref": "#/components/schemas/TrainingResourceEnvelope"
+          },
+          "runtime_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "sampler_version": {
+            "const": "coire-sampler-v1",
+            "default": "coire-sampler-v1",
+            "title": "Sampler Version",
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/TrainingSpec"
+          },
+          "template_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "tokenizer_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "worker_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Worker Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spec",
+          "base_manifest_sha256",
+          "datasets",
+          "tokenizer_sha256",
+          "template_sha256",
+          "enable_thinking",
+          "runtime_sha256",
+          "worker_version",
+          "resource_envelope"
+        ],
+        "title": "ResolvedTrainingSpec",
         "type": "object"
       },
       "RunActivity": {
@@ -11594,6 +13052,11 @@
         },
         "title": "RunResourceUsage",
         "type": "object"
+      },
+      "Seed": {
+        "maximum": 4294967295.0,
+        "minimum": 0.0,
+        "type": "integer"
       },
       "ServiceHealth": {
         "additionalProperties": false,
@@ -11882,6 +13345,10 @@
         "title": "StudioLinkProjection",
         "type": "object"
       },
+      "StudioName": {
+        "pattern": "^coire-edge-[ab]$",
+        "type": "string"
+      },
       "Tag": {
         "description": "The picker's grouping vocabulary (ARCHITECTURE.md section 3.2).",
         "enum": [
@@ -11893,6 +13360,45 @@
         ],
         "title": "Tag",
         "type": "string"
+      },
+      "TargetLatencyMeasurement": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_p95_seconds": {
+            "minimum": 0.0,
+            "title": "Baseline P95 Seconds",
+            "type": "number"
+          },
+          "baseline_requests": {
+            "minimum": 0.0,
+            "title": "Baseline Requests",
+            "type": "integer"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "mixed_p95_seconds": {
+            "minimum": 0.0,
+            "title": "Mixed P95 Seconds",
+            "type": "number"
+          },
+          "mixed_requests": {
+            "minimum": 0.0,
+            "title": "Mixed Requests",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instance_id",
+          "baseline_requests",
+          "mixed_requests",
+          "baseline_p95_seconds",
+          "mixed_p95_seconds"
+        ],
+        "title": "TargetLatencyMeasurement",
+        "type": "object"
       },
       "TaskClass": {
         "enum": [
@@ -11957,6 +13463,240 @@
         "title": "TestSummary",
         "type": "object"
       },
+      "TextCompletionChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "finish_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "stop",
+                  "length",
+                  "content_filter"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finish Reason"
+          },
+          "index": {
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "logprobs": {
+            "title": "Logprobs",
+            "type": "null"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text",
+          "index",
+          "finish_reason"
+        ],
+        "title": "TextCompletionChoice",
+        "type": "object"
+      },
+      "TextCompletionRequest": {
+        "additionalProperties": false,
+        "description": "Single-prompt text compatibility, rendered as one canonical user turn.",
+        "properties": {
+          "coire_affinity_node": {
+            "anyOf": [
+              {
+                "pattern": "^coire-[a-z0-9-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Affinity Node"
+          },
+          "coire_variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coire Variant Id"
+          },
+          "coire_wait_for_model": {
+            "default": true,
+            "title": "Coire Wait For Model",
+            "type": "boolean"
+          },
+          "max_tokens": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Tokens"
+          },
+          "model": {
+            "$ref": "#/components/schemas/ModelSelector"
+          },
+          "prompt": {
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "stop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop"
+          },
+          "stream": {
+            "default": false,
+            "title": "Stream",
+            "type": "boolean"
+          },
+          "stream_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EngineStreamOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "temperature": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature"
+          },
+          "top_p": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Top P"
+          }
+        },
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "title": "TextCompletionRequest",
+        "type": "object"
+      },
+      "TextCompletionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/TextCompletionChoice"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "created": {
+            "title": "Created",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "object": {
+            "const": "text_completion",
+            "default": "text_completion",
+            "title": "Object",
+            "type": "string"
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TextCompletionUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "created",
+          "model",
+          "choices"
+        ],
+        "title": "TextCompletionResponse",
+        "type": "object"
+      },
+      "TextCompletionUsage": {
+        "additionalProperties": false,
+        "properties": {
+          "completion_tokens": {
+            "minimum": 0.0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "minimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "total_tokens": {
+            "minimum": 0.0,
+            "title": "Total Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens"
+        ],
+        "title": "TextCompletionUsage",
+        "type": "object"
+      },
       "ThermalState": {
         "enum": [
           "nominal",
@@ -11968,6 +13708,59 @@
         "title": "ThermalState",
         "type": "string"
       },
+      "TokenDistribution": {
+        "additionalProperties": false,
+        "properties": {
+          "histogram": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Histogram",
+            "type": "array"
+          },
+          "maximum": {
+            "minimum": 0.0,
+            "title": "Maximum",
+            "type": "integer"
+          },
+          "minimum": {
+            "minimum": 0.0,
+            "title": "Minimum",
+            "type": "integer"
+          },
+          "p50": {
+            "minimum": 0.0,
+            "title": "P50",
+            "type": "integer"
+          },
+          "p95": {
+            "minimum": 0.0,
+            "title": "P95",
+            "type": "integer"
+          },
+          "upper_bounds": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Upper Bounds",
+            "type": "array"
+          }
+        },
+        "required": [
+          "minimum",
+          "maximum",
+          "p50",
+          "p95",
+          "histogram",
+          "upper_bounds"
+        ],
+        "title": "TokenDistribution",
+        "type": "object"
+      },
       "ToolCalling": {
         "enum": [
           "none",
@@ -11976,6 +13769,1929 @@
         ],
         "title": "ToolCalling",
         "type": "string"
+      },
+      "TrainingActivityItem": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_slug": {
+            "maxLength": 63,
+            "minLength": 1,
+            "title": "Adapter Slug",
+            "type": "string"
+          },
+          "can_stop": {
+            "title": "Can Stop",
+            "type": "boolean"
+          },
+          "completed_update": {
+            "minimum": 0.0,
+            "title": "Completed Update",
+            "type": "integer"
+          },
+          "job_id": {
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+            "title": "Job Id",
+            "type": "string"
+          },
+          "latest_train_loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Train Loss"
+          },
+          "latest_validation_loss": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Validation Loss"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "reserved_bytes": {
+            "minimum": 0.0,
+            "title": "Reserved Bytes",
+            "type": "integer"
+          },
+          "safe_reason": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Safe Reason"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TrainingJobState"
+          },
+          "total_updates": {
+            "minimum": 1.0,
+            "title": "Total Updates",
+            "type": "integer"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "owner_id",
+          "model_id",
+          "variant_id",
+          "state",
+          "completed_update",
+          "total_updates",
+          "reserved_bytes",
+          "can_stop",
+          "version",
+          "adapter_slug",
+          "started_at"
+        ],
+        "title": "TrainingActivityItem",
+        "type": "object"
+      },
+      "TrainingCheckpointEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_id": {
+            "format": "uuid",
+            "title": "Checkpoint Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "checkpoint",
+            "default": "checkpoint",
+            "title": "Kind",
+            "type": "string"
+          },
+          "manifest_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "update": {
+            "minimum": 0.0,
+            "title": "Update",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "checkpoint_id",
+          "update",
+          "manifest_sha256"
+        ],
+        "title": "TrainingCheckpointEvent",
+        "type": "object"
+      },
+      "TrainingCommandReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "command_id": {
+            "format": "uuid",
+            "title": "Command Id",
+            "type": "string"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TrainingJobState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command_id",
+          "job_id",
+          "state",
+          "version"
+        ],
+        "title": "TrainingCommandReceipt",
+        "type": "object"
+      },
+      "TrainingControlRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "TrainingControlRequest",
+        "type": "object"
+      },
+      "TrainingData": {
+        "additionalProperties": false,
+        "properties": {
+          "loss_policy": {
+            "default": "final_assistant",
+            "enum": [
+              "all_tokens",
+              "final_assistant"
+            ],
+            "title": "Loss Policy",
+            "type": "string"
+          },
+          "train": {
+            "$ref": "#/components/schemas/DatasetMixture"
+          },
+          "validation": {
+            "$ref": "#/components/schemas/DatasetValidationSources"
+          }
+        },
+        "required": [
+          "train",
+          "validation"
+        ],
+        "title": "TrainingData",
+        "type": "object"
+      },
+      "TrainingDeleteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "TrainingDeleteRequest",
+        "type": "object"
+      },
+      "TrainingDeletionReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "job_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "state": {
+            "enum": [
+              "retired",
+              "purged"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "state"
+        ],
+        "title": "TrainingDeletionReceipt",
+        "type": "object"
+      },
+      "TrainingEvaluation": {
+        "additionalProperties": false,
+        "properties": {
+          "at_end": {
+            "default": true,
+            "title": "At End",
+            "type": "boolean"
+          },
+          "loss_every_updates": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Loss Every Updates",
+            "type": "integer"
+          }
+        },
+        "title": "TrainingEvaluation",
+        "type": "object"
+      },
+      "TrainingEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "minimum": 1.0,
+            "title": "Id",
+            "type": "integer"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "kind": {
+            "enum": [
+              "state",
+              "progress",
+              "checkpoint",
+              "recovery",
+              "terminal",
+              "reset"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "$ref": "#/components/schemas/TrainingEventPayload"
+          },
+          "state_version": {
+            "minimum": 1.0,
+            "title": "State Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "job_id",
+          "state_version",
+          "occurred_at",
+          "kind",
+          "payload"
+        ],
+        "title": "TrainingEvent",
+        "type": "object"
+      },
+      "TrainingEventPayload": {
+        "discriminator": {
+          "mapping": {
+            "checkpoint": "#/components/schemas/TrainingCheckpointEvent",
+            "progress": "#/components/schemas/TrainingProgressEvent",
+            "recovery": "#/components/schemas/TrainingRecoveryEvent",
+            "reset": "#/components/schemas/TrainingResetEvent",
+            "state": "#/components/schemas/TrainingStateEvent",
+            "terminal": "#/components/schemas/TrainingStateEvent"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TrainingStateEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TrainingProgressEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TrainingCheckpointEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TrainingRecoveryEvent"
+          },
+          {
+            "$ref": "#/components/schemas/TrainingResetEvent"
+          }
+        ]
+      },
+      "TrainingId": {
+        "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+        "type": "string"
+      },
+      "TrainingJobDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adapter Id"
+          },
+          "attempt_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "completed_update": {
+            "default": 0,
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Completed Update",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "intent_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "latest_checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Checkpoint Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reproducible": {
+            "default": true,
+            "title": "Reproducible",
+            "type": "boolean"
+          },
+          "resolved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedTrainingSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "source_yaml": {
+            "maxLength": 65536,
+            "title": "Source Yaml",
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/TrainingSpec"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TrainingJobState"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "source_yaml",
+          "source_sha256",
+          "intent_sha256",
+          "spec",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "TrainingJobDetail",
+        "type": "object"
+      },
+      "TrainingJobPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingJobDetail"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TrainingJobPage",
+        "type": "object"
+      },
+      "TrainingJobReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "events_path": {
+            "pattern": "^/api/v1/admin/training/jobs/[0-9A-HJKMNP-TV-Z]{26}/events$",
+            "title": "Events Path",
+            "type": "string"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/TrainingJobState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "job_id",
+          "version",
+          "state",
+          "events_path"
+        ],
+        "title": "TrainingJobReceipt",
+        "type": "object"
+      },
+      "TrainingJobSnapshot": {
+        "additionalProperties": false,
+        "description": "Content-free reconnect state; original recipes remain on the authenticated detail route.",
+        "properties": {
+          "adapter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adapter Id"
+          },
+          "completed_update": {
+            "minimum": 0.0,
+            "title": "Completed Update",
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "latest_checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Checkpoint Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/TrainingJobState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "completed_update"
+        ],
+        "title": "TrainingJobSnapshot",
+        "type": "object"
+      },
+      "TrainingJobState": {
+        "enum": [
+          "queued",
+          "preflighting",
+          "reserving",
+          "running",
+          "pausing",
+          "paused",
+          "recovering",
+          "finalizing",
+          "cancelling",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "TrainingJobState",
+        "type": "string"
+      },
+      "TrainingMeasurementPhase": {
+        "additionalProperties": false,
+        "properties": {
+          "failures": {
+            "minimum": 0.0,
+            "title": "Failures",
+            "type": "integer"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "baseline",
+              "mixed"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "samples": {
+            "additionalProperties": {
+              "items": {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Samples",
+            "type": "object"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "workload_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          }
+        },
+        "required": [
+          "phase",
+          "workload_sha256",
+          "started_at",
+          "finished_at",
+          "samples",
+          "failures"
+        ],
+        "title": "TrainingMeasurementPhase",
+        "type": "object"
+      },
+      "TrainingMeasurementPrompt": {
+        "additionalProperties": false,
+        "properties": {
+          "input_tokens": {
+            "maximum": 4000.0,
+            "minimum": 1.0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "text": {
+            "maxLength": 16384,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "tokens_by_instance": {
+            "additionalProperties": {
+              "maximum": 4000.0,
+              "minimum": 1.0,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "format": "uuid"
+            },
+            "title": "Tokens By Instance",
+            "type": "object"
+          }
+        },
+        "required": [
+          "text",
+          "input_tokens"
+        ],
+        "title": "TrainingMeasurementPrompt",
+        "type": "object"
+      },
+      "TrainingMeasurementPromptSet": {
+        "additionalProperties": false,
+        "description": "Studio-tokenized workload; core retains bounded text, never a tokenizer.",
+        "properties": {
+          "prompts": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingMeasurementPrompt"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Prompts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "prompts"
+        ],
+        "title": "TrainingMeasurementPromptSet",
+        "type": "object"
+      },
+      "TrainingMeasurementReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "measurement_id": {
+            "format": "uuid",
+            "title": "Measurement Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "inconclusive"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "measurement_id",
+          "state"
+        ],
+        "title": "TrainingMeasurementReceipt",
+        "type": "object"
+      },
+      "TrainingMeasurementRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "enum": [
+              "memory",
+              "coexistence"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/StudioName"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Nodes",
+            "type": "array"
+          },
+          "prompts": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingMeasurementPromptSet"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resident_targets": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingResidentTarget"
+            },
+            "maxItems": 32,
+            "title": "Resident Targets",
+            "type": "array"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/TrainingSpec"
+          },
+          "workload": {
+            "$ref": "#/components/schemas/TrainingMeasurementWorkload"
+          }
+        },
+        "required": [
+          "spec",
+          "nodes",
+          "workload",
+          "mode"
+        ],
+        "title": "TrainingMeasurementRequest",
+        "type": "object"
+      },
+      "TrainingMeasurementResult": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_updates": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Completed Updates",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "memory_evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingMemoryEvidence"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "node_report_sha256": {
+            "items": {
+              "$ref": "#/components/schemas/Digest"
+            },
+            "maxItems": 2,
+            "title": "Node Report Sha256",
+            "type": "array"
+          },
+          "peak_memory_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Peak Memory Bytes",
+            "type": "integer"
+          },
+          "phases": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingMeasurementPhase"
+            },
+            "maxItems": 2,
+            "title": "Phases",
+            "type": "array"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "report_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "$ref": "#/components/schemas/TrainingMeasurementRequest"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "inconclusive"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "swap_growth_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Swap Growth Bytes",
+            "type": "integer"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/TargetLatencyMeasurement"
+            },
+            "maxItems": 32,
+            "title": "Targets",
+            "type": "array"
+          },
+          "thermal_ok": {
+            "default": false,
+            "title": "Thermal Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "request",
+          "state",
+          "created_at"
+        ],
+        "title": "TrainingMeasurementResult",
+        "type": "object"
+      },
+      "TrainingMeasurementWorkload": {
+        "additionalProperties": false,
+        "properties": {
+          "arrival_interval_ms": {
+            "maximum": 60000.0,
+            "minimum": 1.0,
+            "title": "Arrival Interval Ms",
+            "type": "integer"
+          },
+          "concurrency_per_target": {
+            "maximum": 16.0,
+            "minimum": 1.0,
+            "title": "Concurrency Per Target",
+            "type": "integer"
+          },
+          "max_input_tokens": {
+            "default": 4000,
+            "maximum": 4000.0,
+            "minimum": 4000.0,
+            "title": "Max Input Tokens",
+            "type": "integer"
+          },
+          "max_output_tokens": {
+            "maximum": 1024.0,
+            "minimum": 1.0,
+            "title": "Max Output Tokens",
+            "type": "integer"
+          },
+          "query_version": {
+            "const": "coire-ttft-v1",
+            "default": "coire-ttft-v1",
+            "title": "Query Version",
+            "type": "string"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/Digest"
+          }
+        },
+        "required": [
+          "sha256",
+          "concurrency_per_target",
+          "arrival_interval_ms",
+          "max_output_tokens"
+        ],
+        "title": "TrainingMeasurementWorkload",
+        "type": "object"
+      },
+      "TrainingMemoryEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "base_manifest_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "completed_updates": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Completed Updates",
+            "type": "integer"
+          },
+          "measured_at": {
+            "format": "date-time",
+            "title": "Measured At",
+            "type": "string"
+          },
+          "measurement_id": {
+            "format": "uuid",
+            "title": "Measurement Id",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingNodeMemoryEvidence"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Nodes",
+            "type": "array"
+          },
+          "resource_envelope": {
+            "$ref": "#/components/schemas/TrainingResourceEnvelope"
+          },
+          "runtime_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "template_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "tokenizer_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "training_config_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "title": "Valid Until",
+            "type": "string"
+          },
+          "worker_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Worker Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "measurement_id",
+          "training_config_sha256",
+          "base_manifest_sha256",
+          "tokenizer_sha256",
+          "template_sha256",
+          "runtime_sha256",
+          "worker_version",
+          "completed_updates",
+          "resource_envelope",
+          "nodes",
+          "measured_at",
+          "valid_until"
+        ],
+        "title": "TrainingMemoryEvidence",
+        "type": "object"
+      },
+      "TrainingMetricPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingMetricSample"
+            },
+            "maxItems": 2000,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TrainingMetricPage",
+        "type": "object"
+      },
+      "TrainingMetricSample": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "footprint_bytes": {
+            "minimum": 0.0,
+            "title": "Footprint Bytes",
+            "type": "integer"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "kind": {
+            "enum": [
+              "train",
+              "validation"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "learning_rate": {
+            "minimum": 0.0,
+            "title": "Learning Rate",
+            "type": "number"
+          },
+          "loss": {
+            "title": "Loss",
+            "type": "number"
+          },
+          "peak_bytes": {
+            "minimum": 0.0,
+            "title": "Peak Bytes",
+            "type": "integer"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "rolled_back": {
+            "default": false,
+            "title": "Rolled Back",
+            "type": "boolean"
+          },
+          "tokens": {
+            "minimum": 0.0,
+            "title": "Tokens",
+            "type": "integer"
+          },
+          "tokens_per_second": {
+            "minimum": 0.0,
+            "title": "Tokens Per Second",
+            "type": "number"
+          },
+          "update": {
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Update",
+            "type": "integer"
+          },
+          "updates_per_second": {
+            "minimum": 0.0,
+            "title": "Updates Per Second",
+            "type": "number"
+          }
+        },
+        "required": [
+          "job_id",
+          "attempt_id",
+          "update",
+          "kind",
+          "loss",
+          "learning_rate",
+          "tokens",
+          "tokens_per_second",
+          "updates_per_second",
+          "footprint_bytes",
+          "peak_bytes",
+          "recorded_at"
+        ],
+        "title": "TrainingMetricSample",
+        "type": "object"
+      },
+      "TrainingModel": {
+        "additionalProperties": false,
+        "properties": {
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "variant_id"
+        ],
+        "title": "TrainingModel",
+        "type": "object"
+      },
+      "TrainingNodeMemoryEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "hardware_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "node": {
+            "$ref": "#/components/schemas/StudioName"
+          },
+          "peak_footprint_bytes": {
+            "minimum": 1.0,
+            "title": "Peak Footprint Bytes",
+            "type": "integer"
+          },
+          "swap_growth_bytes": {
+            "minimum": 0.0,
+            "title": "Swap Growth Bytes",
+            "type": "integer"
+          },
+          "thermal_ok": {
+            "title": "Thermal Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "node",
+          "hardware_sha256",
+          "peak_footprint_bytes",
+          "swap_growth_bytes",
+          "thermal_ok"
+        ],
+        "title": "TrainingNodeMemoryEvidence",
+        "type": "object"
+      },
+      "TrainingOptimizer": {
+        "additionalProperties": false,
+        "properties": {
+          "accumulation_steps": {
+            "default": 1,
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Accumulation Steps",
+            "type": "integer"
+          },
+          "batch_size": {
+            "default": 1,
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Batch Size",
+            "type": "integer"
+          },
+          "beta1": {
+            "default": 0.9,
+            "exclusiveMaximum": 1.0,
+            "minimum": 0.0,
+            "title": "Beta1",
+            "type": "number"
+          },
+          "beta2": {
+            "default": 0.999,
+            "exclusiveMaximum": 1.0,
+            "minimum": 0.0,
+            "title": "Beta2",
+            "type": "number"
+          },
+          "epsilon": {
+            "default": 1e-08,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Epsilon",
+            "type": "number"
+          },
+          "learning_rate": {
+            "default": 1e-05,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Learning Rate",
+            "type": "number"
+          },
+          "max_sequence_length": {
+            "default": 2048,
+            "maximum": 8192.0,
+            "minimum": 2.0,
+            "title": "Max Sequence Length",
+            "type": "integer"
+          },
+          "name": {
+            "default": "adamw",
+            "enum": [
+              "adam",
+              "adamw"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/LearningRateSchedule"
+          },
+          "updates": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Updates",
+            "type": "integer"
+          },
+          "weight_decay": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Weight Decay",
+            "type": "number"
+          }
+        },
+        "required": [
+          "updates"
+        ],
+        "title": "TrainingOptimizer",
+        "type": "object"
+      },
+      "TrainingOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_slug": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "checkpoint_every_updates": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Checkpoint Every Updates",
+            "type": "integer"
+          },
+          "keep_last_checkpoints": {
+            "default": 3,
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Keep Last Checkpoints",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "adapter_slug"
+        ],
+        "title": "TrainingOutput",
+        "type": "object"
+      },
+      "TrainingParameterization": {
+        "additionalProperties": false,
+        "properties": {
+          "dropout": {
+            "default": 0.0,
+            "exclusiveMaximum": 1.0,
+            "minimum": 0.0,
+            "title": "Dropout",
+            "type": "number"
+          },
+          "kind": {
+            "default": "lora",
+            "enum": [
+              "lora",
+              "qlora",
+              "dora"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "num_layers": {
+            "default": 1,
+            "maximum": 256.0,
+            "minimum": 1.0,
+            "title": "Num Layers",
+            "type": "integer"
+          },
+          "rank": {
+            "default": 8,
+            "maximum": 128.0,
+            "minimum": 1.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "scale": {
+            "default": 20.0,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1024.0,
+            "title": "Scale",
+            "type": "number"
+          },
+          "target_modules": {
+            "items": {
+              "maxLength": 128,
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Target Modules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "target_modules"
+        ],
+        "title": "TrainingParameterization",
+        "type": "object"
+      },
+      "TrainingPlacement": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "default": "single",
+            "enum": [
+              "single",
+              "data_parallel"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "preferred_node": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StudioName"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "TrainingPlacement",
+        "type": "object"
+      },
+      "TrainingProfile": {
+        "additionalProperties": false,
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "invalidated_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "request": {
+            "$ref": "#/components/schemas/TrainingMeasurementRequest"
+          }
+        },
+        "required": [
+          "id",
+          "report_sha256",
+          "request",
+          "expires_at"
+        ],
+        "title": "TrainingProfile",
+        "type": "object"
+      },
+      "TrainingProfilePage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingProfile"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TrainingProfilePage",
+        "type": "object"
+      },
+      "TrainingProgressEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "progress",
+            "default": "progress",
+            "title": "Kind",
+            "type": "string"
+          },
+          "metric": {
+            "$ref": "#/components/schemas/TrainingMetricSample"
+          }
+        },
+        "required": [
+          "metric"
+        ],
+        "title": "TrainingProgressEvent",
+        "type": "object"
+      },
+      "TrainingReason": {
+        "enum": [
+          "capacity_busy",
+          "impossible_fit",
+          "analysis_pending",
+          "invalid_input",
+          "unauthorized",
+          "profile_missing",
+          "profile_expired",
+          "insufficient_samples",
+          "latency_breach",
+          "thermal_breach",
+          "memory_breach",
+          "lease_expired",
+          "node_unreachable",
+          "rank_failed",
+          "checkpoint_invalid",
+          "replication_failed",
+          "disk_full",
+          "runtime_mismatch",
+          "queue_timeout",
+          "execution_timeout",
+          "recovery_exhausted",
+          "admin_pause",
+          "cancelled",
+          "internal"
+        ],
+        "type": "string"
+      },
+      "TrainingRecipe": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "parameterization": {
+            "enum": [
+              "lora",
+              "qlora",
+              "dora"
+            ],
+            "title": "Parameterization",
+            "type": "string"
+          },
+          "required_bindings": {
+            "items": {
+              "enum": [
+                "model_id",
+                "variant_id",
+                "dataset_id",
+                "adapter_slug"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Required Bindings",
+            "type": "array"
+          },
+          "template_yaml": {
+            "maxLength": 65536,
+            "title": "Template Yaml",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "parameterization",
+          "template_yaml",
+          "required_bindings"
+        ],
+        "title": "TrainingRecipe",
+        "type": "object"
+      },
+      "TrainingRecipePage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingRecipe"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "TrainingRecipePage",
+        "type": "object"
+      },
+      "TrainingRecoveryEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "recovery",
+            "default": "recovery",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/TrainingReason"
+          },
+          "resume_update": {
+            "minimum": 0.0,
+            "title": "Resume Update",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "reason",
+          "resume_update"
+        ],
+        "title": "TrainingRecoveryEvent",
+        "type": "object"
+      },
+      "TrainingReplayPage": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "minimum": 0.0,
+            "title": "Cursor",
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingEvent"
+            },
+            "maxItems": 100,
+            "title": "Events",
+            "type": "array"
+          },
+          "reset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingJobSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "events",
+          "cursor"
+        ],
+        "title": "TrainingReplayPage",
+        "type": "object"
+      },
+      "TrainingResetEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "reset",
+            "default": "reset",
+            "title": "Kind",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/TrainingJobSnapshot"
+          }
+        },
+        "required": [
+          "snapshot"
+        ],
+        "title": "TrainingResetEvent",
+        "type": "object"
+      },
+      "TrainingResidentTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          }
+        },
+        "required": [
+          "instance_id",
+          "target"
+        ],
+        "title": "TrainingResidentTarget",
+        "type": "object"
+      },
+      "TrainingResourceEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "activation_bytes": {
+            "minimum": 1.0,
+            "title": "Activation Bytes",
+            "type": "integer"
+          },
+          "adapter_bytes": {
+            "minimum": 1.0,
+            "title": "Adapter Bytes",
+            "type": "integer"
+          },
+          "buffer_bytes": {
+            "minimum": 0.0,
+            "title": "Buffer Bytes",
+            "type": "integer"
+          },
+          "checkpoint_bytes": {
+            "minimum": 1.0,
+            "title": "Checkpoint Bytes",
+            "type": "integer"
+          },
+          "evidence_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "optimizer_bytes": {
+            "minimum": 1.0,
+            "title": "Optimizer Bytes",
+            "type": "integer"
+          },
+          "safety_bytes": {
+            "minimum": 1.0,
+            "title": "Safety Bytes",
+            "type": "integer"
+          },
+          "weight_bytes": {
+            "minimum": 1.0,
+            "title": "Weight Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weight_bytes",
+          "adapter_bytes",
+          "optimizer_bytes",
+          "activation_bytes",
+          "buffer_bytes",
+          "safety_bytes",
+          "checkpoint_bytes",
+          "evidence_sha256"
+        ],
+        "title": "TrainingResourceEnvelope",
+        "type": "object"
+      },
+      "TrainingSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TrainingData"
+          },
+          "eval": {
+            "$ref": "#/components/schemas/TrainingEvaluation"
+          },
+          "model": {
+            "$ref": "#/components/schemas/TrainingModel"
+          },
+          "objective": {
+            "const": "sft",
+            "default": "sft",
+            "title": "Objective",
+            "type": "string"
+          },
+          "optim": {
+            "$ref": "#/components/schemas/TrainingOptimizer"
+          },
+          "output": {
+            "$ref": "#/components/schemas/TrainingOutput"
+          },
+          "parameterization": {
+            "$ref": "#/components/schemas/TrainingParameterization"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/TrainingPlacement"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "$ref": "#/components/schemas/Seed",
+            "default": 0
+          }
+        },
+        "required": [
+          "model",
+          "data",
+          "parameterization",
+          "optim",
+          "output"
+        ],
+        "title": "TrainingSpec",
+        "type": "object"
+      },
+      "TrainingStateEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "state",
+              "terminal"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/TrainingJobState"
+          }
+        },
+        "required": [
+          "kind",
+          "state"
+        ],
+        "title": "TrainingStateEvent",
+        "type": "object"
+      },
+      "TrainingSubmission": {
+        "additionalProperties": false,
+        "properties": {
+          "form_spec": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preview_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_kind": {
+            "default": "yaml",
+            "enum": [
+              "yaml",
+              "form"
+            ],
+            "title": "Source Kind",
+            "type": "string"
+          },
+          "source_yaml": {
+            "maxLength": 65536,
+            "minLength": 1,
+            "title": "Source Yaml",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_yaml"
+        ],
+        "title": "TrainingSubmission",
+        "type": "object"
+      },
+      "TrainingValidation": {
+        "additionalProperties": false,
+        "properties": {
+          "intent_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "ready_to_run": {
+            "default": false,
+            "title": "Ready To Run",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingReason"
+            },
+            "maxItems": 32,
+            "title": "Reasons",
+            "type": "array"
+          },
+          "resolved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ResolvedTrainingSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "spec": {
+            "$ref": "#/components/schemas/TrainingSpec"
+          }
+        },
+        "required": [
+          "spec",
+          "intent_sha256"
+        ],
+        "title": "TrainingValidation",
+        "type": "object"
       },
       "User": {
         "additionalProperties": false,
@@ -12610,6 +16326,404 @@
         ]
       }
     },
+    "/api/v1/admin/adapters": {
+      "get": {
+        "operationId": "list_adapters_api_v1_admin_adapters_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdapterPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Adapters",
+        "tags": [
+          "admin:adapters"
+        ]
+      }
+    },
+    "/api/v1/admin/adapters/{adapter_id}": {
+      "delete": {
+        "operationId": "retire_api_v1_admin_adapters__adapter_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "adapter_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Adapter Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdapterRetireRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdapterReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retire",
+        "tags": [
+          "admin:adapters"
+        ]
+      },
+      "get": {
+        "operationId": "get_adapter_api_v1_admin_adapters__adapter_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "adapter_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Adapter Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdapterDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Adapter",
+        "tags": [
+          "admin:adapters"
+        ]
+      },
+      "patch": {
+        "operationId": "curate_api_v1_admin_adapters__adapter_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "adapter_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Adapter Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdapterCurationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdapterDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Curate",
+        "tags": [
+          "admin:adapters"
+        ]
+      }
+    },
+    "/api/v1/admin/adapters/{adapter_id}/retire": {
+      "post": {
+        "operationId": "retire_detail_api_v1_admin_adapters__adapter_id__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "adapter_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Adapter Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdapterRetireRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdapterDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retire Detail",
+        "tags": [
+          "admin:adapters"
+        ]
+      }
+    },
     "/api/v1/admin/audit": {
       "get": {
         "description": "Read the audit log. There is no route that writes, edits or deletes one.",
@@ -13197,6 +17311,520 @@
         ]
       }
     },
+    "/api/v1/admin/console/training-activity": {
+      "get": {
+        "operationId": "training_activity_api_v1_admin_console_training_activity_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_TrainingActivityItem_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Training Activity",
+        "tags": [
+          "admin: console"
+        ]
+      }
+    },
+    "/api/v1/admin/dataset-analyses/{analysis_id}": {
+      "get": {
+        "operationId": "analysis_detail_api_v1_admin_dataset_analyses__analysis_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "analysis_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Analysis Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetAnalysis"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Analysis Detail",
+        "tags": [
+          "admin:datasets"
+        ]
+      }
+    },
+    "/api/v1/admin/datasets": {
+      "get": {
+        "operationId": "list_datasets_api_v1_admin_datasets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Datasets",
+        "tags": [
+          "admin:datasets"
+        ]
+      },
+      "post": {
+        "operationId": "upload_dataset_api_v1_admin_datasets_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_dataset_api_v1_admin_datasets_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Dataset",
+        "tags": [
+          "admin:datasets"
+        ]
+      }
+    },
+    "/api/v1/admin/datasets/{dataset_id}": {
+      "delete": {
+        "operationId": "delete_dataset_api_v1_admin_datasets__dataset_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetDeletionReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Dataset",
+        "tags": [
+          "admin:datasets"
+        ]
+      },
+      "get": {
+        "operationId": "get_dataset_api_v1_admin_datasets__dataset_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Dataset",
+        "tags": [
+          "admin:datasets"
+        ]
+      }
+    },
+    "/api/v1/admin/datasets/{dataset_id}/analyze": {
+      "post": {
+        "operationId": "analyze_api_v1_admin_datasets__dataset_id__analyze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DatasetAnalyzeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetAnalysisReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Analyze",
+        "tags": [
+          "admin:datasets"
+        ]
+      }
+    },
     "/api/v1/admin/engines": {
       "get": {
         "operationId": "list_engines_api_v1_admin_engines_get",
@@ -13459,6 +18087,23 @@
             }
           },
           {
+            "in": "query",
+            "name": "adapter_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Adapter Id"
+            }
+          },
+          {
             "in": "header",
             "name": "x-api-key",
             "required": false,
@@ -13586,6 +18231,23 @@
               "format": "uuid",
               "title": "Variant Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "adapter_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Adapter Id"
             }
           },
           {
@@ -17052,6 +21714,1120 @@
         "summary": "Kill Run",
         "tags": [
           "admin: runs"
+        ]
+      }
+    },
+    "/api/v1/admin/training/checkpoints/{checkpoint_id}/promote": {
+      "post": {
+        "operationId": "promote_api_v1_admin_training_checkpoints__checkpoint_id__promote_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "checkpoint_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Checkpoint Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckpointPromotionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdapterReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Promote",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/jobs": {
+      "get": {
+        "operationId": "list_jobs_api_v1_admin_training_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TrainingJobState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingJobPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Jobs",
+        "tags": [
+          "admin:training"
+        ]
+      },
+      "post": {
+        "operationId": "submit_job_api_v1_admin_training_jobs_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingSubmission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingJobReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Job",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/jobs/{job_id}": {
+      "delete": {
+        "operationId": "delete_job_api_v1_admin_training_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingDeletionReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Job",
+        "tags": [
+          "admin:training"
+        ]
+      },
+      "get": {
+        "operationId": "get_job_api_v1_admin_training_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingJobDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Job",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/jobs/{job_id}/checkpoints": {
+      "get": {
+        "operationId": "checkpoints_api_v1_admin_training_jobs__job_id__checkpoints_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckpointPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Checkpoints",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/jobs/{job_id}/events": {
+      "get": {
+        "operationId": "events_api_v1_admin_training_jobs__job_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingReplayPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Events",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/jobs/{job_id}/metrics": {
+      "get": {
+        "operationId": "metrics_api_v1_admin_training_jobs__job_id__metrics_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 2000,
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingMetricPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Metrics",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/jobs/{job_id}/{operation}": {
+      "post": {
+        "operationId": "control_api_v1_admin_training_jobs__job_id___operation__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "operation",
+            "required": true,
+            "schema": {
+              "enum": [
+                "pause",
+                "resume",
+                "cancel"
+              ],
+              "title": "Operation",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingControlRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingCommandReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Control",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/measurements": {
+      "post": {
+        "operationId": "measure_api_v1_admin_training_measurements_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "idempotency-key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingMeasurementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingMeasurementReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Measure",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/measurements/{measurement_id}": {
+      "get": {
+        "operationId": "measurement_api_v1_admin_training_measurements__measurement_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "measurement_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Measurement Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingMeasurementResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Measurement",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/profiles": {
+      "get": {
+        "operationId": "profiles_api_v1_admin_training_profiles_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingProfilePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Profiles",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/recipes": {
+      "get": {
+        "operationId": "recipes_api_v1_admin_training_recipes_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingRecipePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recipes",
+        "tags": [
+          "admin:training"
+        ]
+      }
+    },
+    "/api/v1/admin/training/validate": {
+      "post": {
+        "operationId": "validate_training_api_v1_admin_training_validate_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingSubmission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingValidation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validate Training",
+        "tags": [
+          "admin:training"
         ]
       }
     },
@@ -20923,6 +26699,148 @@
         ]
       }
     },
+    "/api/v1/internal/training/datasets/{dataset_id}/content": {
+      "get": {
+        "operationId": "source_content_api_v1_internal_training_datasets__dataset_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dataset_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Dataset Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-coire-node",
+            "required": true,
+            "schema": {
+              "title": "X-Coire-Node",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-coire-dataset-grant",
+            "required": true,
+            "schema": {
+              "title": "X-Coire-Dataset-Grant",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": true,
+            "schema": {
+              "title": "Authorization",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Source Content",
+        "tags": [
+          "internal:training"
+        ]
+      }
+    },
+    "/api/v1/internal/training/nodes/{node}/leases": {
+      "get": {
+        "operationId": "training_node_leases_api_v1_internal_training_nodes__node__leases_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "node",
+            "required": true,
+            "schema": {
+              "title": "Node",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-coire-node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Coire-Node"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeTrainingLeaseSnapshot"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Training Node Leases",
+        "tags": [
+          "internal:training"
+        ]
+      }
+    },
     "/api/v1/mcp/artifacts/{artifact_id}": {
       "get": {
         "operationId": "download_artifact_api_v1_mcp_artifacts__artifact_id__get",
@@ -21876,6 +27794,70 @@
           }
         ],
         "summary": "Chat Completions",
+        "tags": [
+          "compatible"
+        ]
+      }
+    },
+    "/v1/completions": {
+      "post": {
+        "operationId": "text_completions_v1_completions_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TextCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextCompletionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Text Completions",
         "tags": [
           "compatible"
         ]

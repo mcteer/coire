@@ -11,20 +11,27 @@ from functools import partial
 
 from opentelemetry import metrics, trace
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import (
     AgentRunRow,
+    EntitlementRow,
     McpCallRow,
     ModelRow,
     ModelVariantRow,
     NodeRow,
     RunCommandRow,
+    TrainingAdapterRow,
+    UserRow,
     session_scope,
 )
+from coire_api.evaluations import target_is_write_verified
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.polling import PollBackoff, wait_or_stop
 from coire_api.run_tokens import rotate_run_token
+from coire_api.runs import authorize_run_target, run_target
 from coire_api.workspaces import resolve_source
+from coire_core.models.auth import UserRole
 from coire_core.models.conversation import ImagePart
 from coire_core.models.harness import HarnessRunRequest, ProfileName, TaskClass
 from coire_core.models.mcp import WorkspaceSource
@@ -254,6 +261,9 @@ class RunCommandExecutor:
                 run_limits = RunLimits.model_validate(run.limits)
                 span.set_attribute("run_id", str(run_id))
                 span.set_attribute("node", node_name)
+                target = run_target(run)
+                if operation is RunOperation.START:
+                    await self._authorize_execution(session, run)
 
             # The wait route is intentionally a blocking node operation. Its HTTP
             # budget must cover the admitted run timeout; otherwise a healthy long
@@ -277,6 +287,8 @@ class RunCommandExecutor:
                             "state": existing.state,
                             "hardened": True,
                         }
+                    async with session_scope() as session:
+                        await self._authorize_execution(session, run)
                     if not self.settings.run_agent_image:
                         raise RuntimeError("COIRE_RUN_AGENT_IMAGE must be digest-pinned")
                     prepared = None
@@ -304,6 +316,7 @@ class RunCommandExecutor:
                                 harness_request=HarnessRunRequest(
                                     profile=ProfileName(run.profile),
                                     variant_id=run.primary_variant_id,
+                                    target=target,
                                     task_class=run.task_class,
                                     coding_mode=mcp_call.tool,
                                     coding_call_id=mcp_call.id,
@@ -334,13 +347,18 @@ class RunCommandExecutor:
                         if locked.state is AgentRunState.KILL_REQUESTED:
                             raise RuntimeError("run kill requested before container creation")
                         variant = await session.get(ModelVariantRow, locked.primary_variant_id)
+                        await self._authorize_execution(session, locked)
                         if (
                             variant is None
                             or not variant.validated
                             or not variant.published
                             or (
                                 locked.task_class is TaskClass.WRITE
-                                and not variant.harness_verified
+                                and not (
+                                    await target_is_write_verified(session, target)
+                                    if target
+                                    else variant.harness_verified
+                                )
                             )
                         ):
                             raise RuntimeError("run variant is no longer eligible")
@@ -358,12 +376,22 @@ class RunCommandExecutor:
                                 max(self.settings.run_token_ttl_s, limits.timeout_seconds),
                             ),
                         )
+                        selector: uuid.UUID | str = locked.primary_model_id
+                        if target and target.adapter_id:
+                            adapter = await session.get(TrainingAdapterRow, target.adapter_id)
+                            if adapter is None:
+                                raise RuntimeError("run adapter disappeared")
+                            selector = adapter.selector
                         create = RunContainerCreate(
                             run_id=run_id,
                             profile=ProfileName(locked.profile),
                             model_id=locked.primary_model_id,
                             variant_id=locked.primary_variant_id,
-                            harness_verified=variant.harness_verified,
+                            target=target,
+                            public_selector=selector,
+                            harness_verified=await target_is_write_verified(session, target)
+                            if target
+                            else variant.harness_verified,
                             image=self.settings.run_agent_image,
                             argv=["-m", "coire_agent"],
                             workspace_ref=locked.workspace_ref,
@@ -400,3 +428,46 @@ class RunCommandExecutor:
                         await call
                     return {"removed": True}
             raise RuntimeError(f"unsupported run operation {operation.value}")
+
+    async def _authorize_execution(self, session: AsyncSession, run: AgentRunRow) -> None:
+        user = await session.get(UserRow, run.requester_user_id)
+        model = await session.get(ModelRow, run.primary_model_id)
+        entitlements = set(
+            (
+                await session.scalars(
+                    select(EntitlementRow.name).where(
+                        EntitlementRow.user_id == run.requester_user_id,
+                        EntitlementRow.revoked_at.is_(None),
+                    )
+                )
+            ).all()
+        )
+        is_admin = user is not None and user.role is UserRole.ADMIN
+        if (
+            user is None
+            or not user.active
+            or model is None
+            or model.state.value != "ready"
+            or (
+                not is_admin
+                and (
+                    model.visibility.value != "published"
+                    or not set(model.entitlement).issubset(entitlements)
+                )
+            )
+        ):
+            raise RuntimeError("run requester no longer authorized")
+        target = run_target(run)
+        if target is not None:
+            await authorize_run_target(session, target, run.task_class, is_admin, entitlements)
+        elif run.primary_adapter_id is not None:
+            raise RuntimeError("adapter run is missing exact grants")
+        else:
+            variant = await session.get(ModelVariantRow, run.primary_variant_id)
+            if (
+                variant is None
+                or not variant.validated
+                or not variant.published
+                or (run.task_class is TaskClass.WRITE and not variant.harness_verified)
+            ):
+                raise RuntimeError("run variant is no longer eligible")

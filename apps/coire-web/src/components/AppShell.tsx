@@ -20,7 +20,7 @@ export function AppShell({
   onSignOut,
   children,
 }: {
-  view: "chat" | "images" | "admin";
+  view: "chat" | "images" | "training" | "admin";
   canAdmin?: boolean;
   tab?: AdminTab;
   setTab?: (tab: AdminTab) => void;
@@ -41,8 +41,10 @@ export function AppShell({
             /{" "}
             {view === "chat"
               ? "Chat"
-              : view === "images"
-                ? "Images"
+               : view === "images"
+                 ? "Images"
+                 : view === "training"
+                   ? "Training"
                 : "Admin / " + tabs.find(([id]) => id === tab)?.[1]}
           </span>
         </div>
@@ -84,14 +86,15 @@ export function AppShell({
         <a
           className={view === "chat" ? "active" : ""}
           aria-current={view === "chat" ? "page" : undefined}
-          href="#chat"
+          href="/#chat"
         >
           Chat
         </a>
+        {canAdmin && <a className={view === "training" ? "active" : ""} aria-current={view === "training" ? "page" : undefined} href="/#training">Training</a>}
         <a
           className={view === "images" ? "active" : ""}
           aria-current={view === "images" ? "page" : undefined}
-          href="#images"
+          href="/#images"
         >
           Images
         </a>
@@ -99,7 +102,7 @@ export function AppShell({
           <a
             className={view === "admin" ? "active" : ""}
             aria-current={view === "admin" ? "page" : undefined}
-            href="#admin/overview"
+            href="/#admin/overview"
           >
             Admin
           </a>

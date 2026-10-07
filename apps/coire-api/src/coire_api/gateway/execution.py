@@ -10,8 +10,9 @@ import asyncio
 import json
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from datetime import UTC, datetime
 from time import monotonic, perf_counter
 
 from fastapi import Request
@@ -122,26 +123,42 @@ def streaming_response(source: AsyncIterator[bytes], usage: UsageTracker) -> Str
     return UsageStreamingResponse(source, usage)
 
 
-def _record_usage_frame(data_lines: list[bytes], usage: UsageTracker) -> None:
+def _record_usage_frame(data_lines: list[bytes], usage: UsageTracker) -> bool:
     if not data_lines:
-        return
+        return False
     raw = b"\n".join(data_lines)
     if raw == b"[DONE]":
-        return
+        return False
     try:
         event = json.loads(raw)
         if not isinstance(event, dict):
-            return
+            return False
+        choices = event.get("choices", [])
+        has_content = (
+            any(
+                isinstance(choice, dict)
+                and isinstance(choice.get("delta"), dict)
+                and isinstance(choice["delta"].get("content"), str)
+                and bool(choice["delta"]["content"])
+                for choice in choices
+            )
+            if isinstance(choices, list)
+            else False
+        )
         reported = event.get("usage") or {}
         if isinstance(reported, dict) and reported:
             usage.prompt_tokens = int(reported.get("prompt_tokens", usage.prompt_tokens))
             usage.completion_tokens = int(
                 reported.get("completion_tokens", usage.completion_tokens)
             )
-        elif event.get("choices", [{}])[0].get("delta", {}).get("content"):
+            usage.reported_token_usage = (
+                "prompt_tokens" in reported and "completion_tokens" in reported
+            )
+        elif has_content:
             usage.completion_tokens += 1
+        return has_content
     except (ValueError, TypeError, KeyError, IndexError, AttributeError):
-        pass
+        return False
 
 
 async def _credential_is_active(principal: Principal) -> bool:
@@ -162,7 +179,7 @@ async def track_stream(
     request: Request | None = None,
     timing: StreamTiming | None = None,
     stop_signal: asyncio.Event | None = None,
-) -> AsyncIterator[bytes]:
+) -> AsyncGenerator[bytes]:
     """Forward bytes unchanged while accounting for complete, possibly fragmented SSE frames."""
     first_observed = False
     credential_checked_at = 0.0
@@ -178,6 +195,7 @@ async def track_stream(
     )
     try:
         async for chunk in source:
+            chunk_received_at = perf_counter()
             if request is not None and await request.is_disconnected():
                 await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
                 return
@@ -206,34 +224,44 @@ async def track_stream(
                         )
                         yield f"data: {error}\n\ndata: [DONE]\n\n".encode()
                         return
-            if (
-                not first_observed
-                and timing is not None
-                and timing.upstream_started_at is not None
-                and timing.first_chunk_at is not None
-            ):
-                first_observed = True
-                first_token_ms = (perf_counter() - timing.request_started_at) * 1000
-                engine_ms = (timing.first_chunk_at - timing.upstream_started_at) * 1000
-                overhead_ms = max(first_token_ms - engine_ms, 0)
-                attributes = {"protocol": usage.protocol.value, "node": usage.node or "none"}
-                first_token_duration_ms.record(first_token_ms, attributes)
-                overhead_duration_ms.record(overhead_ms, attributes)
-                logger.info(
-                    "gateway first token request_id=%s model_id=%s engine_id=%s "
-                    "first_token_ms=%.2f gateway_overhead_ms=%.2f",
-                    usage.request_id,
-                    usage.model_id,
-                    usage.engine_id,
-                    first_token_ms,
-                    overhead_ms,
-                )
             line_buffer += chunk
             while b"\n" in line_buffer:
                 line, line_buffer = line_buffer.split(b"\n", 1)
                 line = line.removesuffix(b"\r")
                 if not line:
-                    _record_usage_frame(data_lines, usage)
+                    content = _record_usage_frame(data_lines, usage)
+                    if content and not first_observed:
+                        first_observed = True
+                        observed = perf_counter()
+                        usage.first_token_at = datetime.now(UTC)
+                        first_token_ms = max(
+                            (observed - timing.request_started_at) * 1000
+                            if timing is not None
+                            else (usage.first_token_at - usage.started_at).total_seconds() * 1000,
+                            0,
+                        )
+                        usage.first_token_duration_ms = first_token_ms
+                        attributes = {
+                            "protocol": usage.protocol.value,
+                            "node": usage.node or "none",
+                        }
+                        first_token_duration_ms.record(first_token_ms, attributes)
+                        if timing is not None and timing.upstream_started_at is not None:
+                            engine_ms = (chunk_received_at - timing.upstream_started_at) * 1000
+                            overhead_duration_ms.record(
+                                max(first_token_ms - engine_ms, 0), attributes
+                            )
+                        logger.info(
+                            "gateway first content token",
+                            extra={
+                                "request_id": str(usage.request_id),
+                                "model_id": str(usage.model_id),
+                                "engine_id": str(usage.engine_id),
+                                "instance_id": str(usage.instance_id),
+                                "user_id": str(usage.principal.user_id),
+                                "first_token_ms": first_token_ms,
+                            },
+                        )
                     data_lines.clear()
                 elif line.startswith(b"data:"):
                     data_lines.append(line[5:].lstrip(b" "))

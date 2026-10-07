@@ -345,6 +345,7 @@ class ModelVariantRow(Base):
     __table_args__ = (
         UniqueConstraint("model_id", "name", name="uq_model_variants_model_name"),
         UniqueConstraint("slug", name="uq_model_variants_slug"),
+        UniqueConstraint("id", "model_id", name="uq_variant_identity_model"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -381,6 +382,10 @@ class HarnessEvaluationRow(Base):
     variant_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("model_variants.id", ondelete="CASCADE"), index=True
     )
+    adapter_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_adapters.id", ondelete="RESTRICT"), nullable=True
+    )
+    subject_manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     scores: Mapped[dict[str, object]] = mapped_column(JSONB)
     overall_score: Mapped[float] = mapped_column(Float)
     verdict: Mapped[EvaluationVerdict] = mapped_column(
@@ -408,6 +413,9 @@ class AgentRunRow(Base):
     )
     primary_variant_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("model_variants.id", ondelete="RESTRICT"), index=True
+    )
+    primary_adapter_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_adapters.id", ondelete="RESTRICT"), nullable=True
     )
     node_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("nodes.id", ondelete="SET NULL"), nullable=True, index=True
@@ -471,6 +479,9 @@ class RegisteredWorkspaceRow(Base):
 
 class McpCallRow(Base):
     __tablename__ = "mcp_calls"
+    target: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     tool: Mapped[McpToolName] = mapped_column(_enum(McpToolName, "mcp_tool_name"))
@@ -709,6 +720,7 @@ class NodeMemoryLedgerRow(Base):
     budget_bytes: Mapped[int] = mapped_column(BigInteger)
     sandbox_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     measured_resident_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    swap_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     cpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     thermal_state: Mapped[str | None] = mapped_column(String(16), nullable=True)
     health: Mapped[Reachability] = mapped_column(_enum(Reachability, "reachability"))
@@ -844,6 +856,9 @@ class ModelInstanceRow(Base):
     # Image bases execute the registry model directly; language instances still require a variant.
     variant_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("model_variants.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    adapter_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_adapters.id", ondelete="RESTRICT"), nullable=True
     )
     placement_decision_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("placement_decisions.id", ondelete="SET NULL"), nullable=True
@@ -1051,6 +1066,12 @@ class EngineProcessRow(Base):
     # correspond to any model this registry knows (spec FR-015).
     model_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("models.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="RESTRICT"), nullable=True
+    )
+    adapter_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_adapters.id", ondelete="RESTRICT"), nullable=True
     )
     node_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("nodes.id", ondelete="CASCADE"), index=True
@@ -1285,6 +1306,7 @@ class UsageRecordRow(Base):
     __table_args__ = (
         Index("ix_usage_records_model_started", "model_id", "started_at"),
         Index("ix_usage_records_principal_started", "principal_subject", "started_at"),
+        Index("ix_usage_records_instance_first_token", "instance_id", "first_token_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -1297,6 +1319,17 @@ class UsageRecordRow(Base):
     )
     engine_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("engine_processes.id", ondelete="SET NULL"), nullable=True
+    )
+    instance_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_instances.id", ondelete="SET NULL"), nullable=True
+    )
+    first_token_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_token_duration_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
+    variant_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="SET NULL"), nullable=True
+    )
+    adapter_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_adapters.id", ondelete="RESTRICT"), nullable=True
     )
     protocol: Mapped[GatewayProtocol] = mapped_column(_enum(GatewayProtocol, "gateway_protocol"))
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -1333,6 +1366,9 @@ class ProviderBudgetReservationRow(Base):
 
 class ChatConversationRow(Base):
     __tablename__ = "chat_conversations"
+    selected_target: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     __table_args__ = (
         Index("ix_chat_conversations_owner_updated", "owner_user_id", "updated_at", "id"),
         Index("ix_chat_conversations_purge", "deleted_at", "purged_at"),
@@ -1361,6 +1397,9 @@ class ChatConversationRow(Base):
 
 class ChatMessageRow(Base):
     __tablename__ = "chat_messages"
+    target: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     __table_args__ = (
         UniqueConstraint("conversation_id", "position", name="uq_chat_message_position"),
         CheckConstraint("position >= 1", name="ck_chat_message_position"),
@@ -1387,6 +1426,9 @@ class ChatMessageRow(Base):
 
 class ChatTurnRow(Base):
     __tablename__ = "chat_turns"
+    target: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     __table_args__ = (
         UniqueConstraint("conversation_id", "client_request_id", name="uq_chat_turn_request"),
         Index(
@@ -1921,3 +1963,540 @@ class ImageCoexistenceProfileRow(Base):
     valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# --------------------------------------------------------------------------- feature 016
+
+
+class TrainingDatasetRevisionRow(Base):
+    __tablename__ = "training_dataset_revisions"
+    __table_args__ = (
+        CheckConstraint(
+            "version >= 1 AND source_bytes >= 0 AND row_count >= 0",
+            name="ck_training_dataset_bounds",
+        ),
+        CheckConstraint(
+            "state IN ('uploading','validating','analyzing','ready','analysis_failed','failed','retired','purged')",
+            name="ck_training_dataset_state",
+        ),
+        Index("ix_training_dataset_owner_created", "owner_user_id", "created_at", "id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    name: Mapped[str] = mapped_column(String(120))
+    format: Mapped[str] = mapped_column(String(32))
+    state: Mapped[str] = mapped_column(String(32), server_default="uploading")
+    source_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_bytes: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    storage_key: Mapped[str] = mapped_column(String(128), unique=True)
+    provenance: Mapped[dict[str, object]] = mapped_column(JSONB)
+    row_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    split_seed: Mapped[int] = mapped_column(BigInteger)
+    validation_fraction: Mapped[float] = mapped_column(Float)
+    split_manifest: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    split_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    safe_failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    diagnostics: Mapped[list[dict[str, object]]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
+    invalid_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TrainingDatasetAnalysisRow(Base):
+    __tablename__ = "training_dataset_analyses"
+    __table_args__ = (
+        UniqueConstraint(
+            "dataset_id", "identity_sha256", "command_id", name="uq_training_analysis_identity"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_dataset_revisions.id", ondelete="RESTRICT")
+    )
+    model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="RESTRICT"))
+    variant_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_variants.id", ondelete="RESTRICT")
+    )
+    command_id: Mapped[uuid.UUID] = mapped_column()
+    identity_sha256: Mapped[str] = mapped_column(String(64))
+    tokenizer_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    template_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    runtime_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    state: Mapped[str] = mapped_column(String(16), server_default="queued")
+    result: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    safe_failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TrainingJobRow(Base):
+    __tablename__ = "training_jobs"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "idempotency_key", name="uq_training_job_owner_key"),
+        UniqueConstraint("model_id", "output_slug", name="uq_training_output_namespace"),
+        ForeignKeyConstraint(
+            ["base_variant_id", "model_id"],
+            ["model_variants.id", "model_variants.model_id"],
+            name="fk_training_job_exact_base",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "version >= 1 AND fence >= 0 AND completed_update >= 0", name="ck_training_job_bounds"
+        ),
+        CheckConstraint(
+            "state IN ('queued','preflighting','reserving','running','pausing','paused','recovering','finalizing','cancelling','succeeded','failed','cancelled')",
+            name="ck_training_job_state",
+        ),
+        Index("ix_training_jobs_owner_created", "owner_user_id", "created_at", "id"),
+        Index("ix_training_jobs_state_queue", "state", "queue_deadline_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    originating_key_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL"), nullable=True
+    )
+    originating_key_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="RESTRICT"))
+    base_variant_id: Mapped[uuid.UUID] = mapped_column()
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    output_slug: Mapped[str] = mapped_column(String(63))
+    source_yaml: Mapped[str] = mapped_column(Text)
+    source_sha256: Mapped[str] = mapped_column(String(64))
+    intent_sha256: Mapped[str] = mapped_column(String(64))
+    submitted_spec: Mapped[dict[str, object]] = mapped_column(JSONB)
+    resolved_spec: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    resolved_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    authorization_snapshot: Mapped[dict[str, object]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
+    state: Mapped[str] = mapped_column(String(16), server_default="queued")
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    fence: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    completed_update: Mapped[int] = mapped_column(Integer, server_default="0")
+    recovery_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    cumulative_execution_seconds: Mapped[float] = mapped_column(Float, server_default="0")
+    pause_origin: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    safe_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    queue_deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    execution_deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    latest_checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "training_checkpoints.id",
+            name="fk_training_latest_checkpoint",
+            use_alter=True,
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    adapter_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "training_adapters.id",
+            name="fk_training_final_adapter",
+            use_alter=True,
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    next_event_sequence: Mapped[int] = mapped_column(BigInteger, server_default="1")
+    reproducible: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TrainingAttemptRow(Base):
+    __tablename__ = "training_attempts"
+    __table_args__ = (
+        UniqueConstraint("job_id", "generation", name="uq_training_attempt_generation"),
+        UniqueConstraint("job_id", "fence", name="uq_training_attempt_fence"),
+        CheckConstraint(
+            "generation >= 1 AND fence >= 1 AND world_size IN (1,2)",
+            name="ck_training_attempt_bounds",
+        ),
+        Index(
+            "uq_training_attempt_active",
+            "job_id",
+            unique=True,
+            postgresql_where=text("state IN ('preparing','running','stopping','unknown')"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("training_jobs.id", ondelete="RESTRICT"))
+    generation: Mapped[int] = mapped_column(Integer)
+    fence: Mapped[int] = mapped_column(BigInteger)
+    world_size: Mapped[int] = mapped_column(Integer)
+    runtime_sha256: Mapped[str] = mapped_column(String(64))
+    resume_checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "training_checkpoints.id",
+            name="fk_training_resume_checkpoint",
+            use_alter=True,
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    state: Mapped[str] = mapped_column(String(16))
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TrainingParticipantRow(Base):
+    __tablename__ = "training_participants"
+    __table_args__ = (
+        UniqueConstraint("attempt_id", "rank", name="uq_training_participant_rank"),
+        UniqueConstraint("attempt_id", "node_id", name="uq_training_participant_node"),
+        CheckConstraint("rank IN (0,1)", name="ck_training_participant_rank"),
+        CheckConstraint(
+            "stopped_at IS NULL OR stop_proof IS NOT NULL",
+            name="ck_training_participant_stop_proof",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("training_attempts.id", ondelete="RESTRICT"))
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="RESTRICT"))
+    rank: Mapped[int] = mapped_column(Integer)
+    reservation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("memory_reservations.id", ondelete="RESTRICT")
+    )
+    disk_reservation_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    command_id: Mapped[uuid.UUID] = mapped_column()
+    request_sha256: Mapped[str] = mapped_column(String(64))
+    spawn_nonce: Mapped[uuid.UUID] = mapped_column()
+    pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    process_create_time: Mapped[float | None] = mapped_column(Float, nullable=True)
+    footprint_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    stop_proof: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TrainingCheckpointRow(Base):
+    __tablename__ = "training_checkpoints"
+    __table_args__ = (
+        UniqueConstraint(
+            "job_id", "attempt_id", "completed_update", name="uq_training_checkpoint_update"
+        ),
+        CheckConstraint(
+            "fence >= 1 AND completed_update >= 0 AND total_bytes > 0",
+            name="ck_training_checkpoint_bounds",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[str] = mapped_column(ForeignKey("training_jobs.id", ondelete="RESTRICT"))
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("training_attempts.id", ondelete="RESTRICT"))
+    fence: Mapped[int] = mapped_column(BigInteger)
+    completed_update: Mapped[int] = mapped_column(Integer)
+    manifest_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    manifest: Mapped[dict[str, object]] = mapped_column(JSONB)
+    total_bytes: Mapped[int] = mapped_column(BigInteger)
+    state: Mapped[str] = mapped_column(String(16), server_default="staging")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TrainingAdapterRow(Base):
+    __tablename__ = "training_adapters"
+    __table_args__ = (
+        UniqueConstraint("model_id", "slug", name="uq_training_adapter_model_slug"),
+        ForeignKeyConstraint(
+            ["base_variant_id", "model_id"],
+            ["model_variants.id", "model_variants.model_id"],
+            name="fk_training_adapter_exact_base",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "version >= 1 AND (NOT verified OR evaluation_id IS NOT NULL)",
+            name="ck_training_adapter_verification",
+        ),
+        CheckConstraint(
+            "visibility <> 'published' OR (state = 'ready' AND manifest_sha256 IS NOT NULL)",
+            name="ck_training_adapter_publication",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    model_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("models.id", ondelete="RESTRICT"))
+    base_variant_id: Mapped[uuid.UUID] = mapped_column()
+    source_job_id: Mapped[str] = mapped_column(ForeignKey("training_jobs.id", ondelete="RESTRICT"))
+    source_checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_checkpoints.id", ondelete="RESTRICT"), nullable=True
+    )
+    slug: Mapped[str] = mapped_column(String(63))
+    selector: Mapped[str] = mapped_column(String(100), unique=True)
+    base_manifest_sha256: Mapped[str] = mapped_column(String(64))
+    manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    resolved_spec_sha256: Mapped[str] = mapped_column(String(64))
+    parameterization: Mapped[str] = mapped_column(String(16))
+    objective: Mapped[str] = mapped_column(String(16), server_default="sft")
+    state: Mapped[str] = mapped_column(String(16), server_default="validating")
+    visibility: Mapped[str] = mapped_column(String(16), server_default="admin_only")
+    verified: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    evaluation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "harness_evaluations.id",
+            name="fk_training_adapter_evaluation",
+            use_alter=True,
+            ondelete="RESTRICT",
+        ),
+        nullable=True,
+    )
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    metadata_record: Mapped[dict[str, object]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
+    required_entitlements: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TrainingArtifactCopyRow(Base):
+    __tablename__ = "training_artifact_copies"
+    __table_args__ = (
+        UniqueConstraint("artifact_id", "node_id", name="uq_training_artifact_copy_node"),
+        CheckConstraint(
+            "(checkpoint_id IS NOT NULL AND adapter_id IS NULL) OR (adapter_id IS NOT NULL AND checkpoint_id IS NULL)",
+            name="ck_training_artifact_subject",
+        ),
+        CheckConstraint("total_bytes > 0", name="ck_training_artifact_copy_bytes"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    artifact_id: Mapped[uuid.UUID] = mapped_column()
+    checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_checkpoints.id", ondelete="RESTRICT"), nullable=True
+    )
+    adapter_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_adapters.id", ondelete="RESTRICT"), nullable=True
+    )
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="RESTRICT"))
+    manifest_sha256: Mapped[str] = mapped_column(String(64))
+    storage_key: Mapped[str] = mapped_column(String(128))
+    total_bytes: Mapped[int] = mapped_column(BigInteger)
+    state: Mapped[str] = mapped_column(String(16), server_default="pending")
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cleanup_receipt: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+
+
+class TrainingDatasetReferenceRow(Base):
+    __tablename__ = "training_dataset_references"
+
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("training_jobs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_dataset_revisions.id", ondelete="RESTRICT"), primary_key=True
+    )
+    analysis_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_dataset_analyses.id", ondelete="RESTRICT")
+    )
+    source_sha256: Mapped[str] = mapped_column(String(64))
+    split_sha256: Mapped[str] = mapped_column(String(64))
+
+
+class TrainingEventRow(Base):
+    __tablename__ = "training_events"
+    __table_args__ = (
+        CheckConstraint("sequence >= 1 AND state_version >= 1", name="ck_training_event_sequence"),
+    )
+
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("training_jobs.id", ondelete="RESTRICT"), primary_key=True
+    )
+    sequence: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    attempt_id: Mapped[str | None] = mapped_column(
+        ForeignKey("training_attempts.id", ondelete="RESTRICT"), nullable=True
+    )
+    fence: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    state_version: Mapped[int] = mapped_column(Integer)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class TrainingMetricRow(Base):
+    __tablename__ = "training_metrics"
+    __table_args__ = (
+        UniqueConstraint(
+            "job_id", "attempt_id", "completed_update", "kind", name="uq_training_metric_update"
+        ),
+        CheckConstraint(
+            "completed_update >= 0 AND kind IN ('train','validation')",
+            name="ck_training_metric_kind",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[str] = mapped_column(ForeignKey("training_jobs.id", ondelete="RESTRICT"))
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("training_attempts.id", ondelete="RESTRICT"))
+    completed_update: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))
+    loss: Mapped[float] = mapped_column(Float)
+    metric: Mapped[dict[str, object]] = mapped_column(JSONB)
+    rolled_back: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class TrainingMeasurementRow(Base):
+    __tablename__ = "training_measurements"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    request: Mapped[dict[str, object]] = mapped_column(JSONB)
+    state: Mapped[str] = mapped_column(String(16), server_default="queued")
+    report: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    report_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TrainingProfileRow(Base):
+    __tablename__ = "training_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    measurement_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_measurements.id", ondelete="RESTRICT")
+    )
+    report_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    identity_sha256: Mapped[str] = mapped_column(String(64), index=True)
+    profile: Mapped[dict[str, object]] = mapped_column(JSONB)
+    valid_until: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    invalidated_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TrainingCommandRow(Base):
+    __tablename__ = "training_commands"
+    __table_args__ = (
+        UniqueConstraint(
+            "actor_user_id", "idempotency_key", "operation", name="uq_training_command_actor_key"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    operation: Mapped[str] = mapped_column(String(64))
+    subject_id: Mapped[str] = mapped_column(String(128))
+    request_sha256: Mapped[str] = mapped_column(String(64))
+    job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("training_jobs.id", ondelete="RESTRICT"), nullable=True
+    )
+    attempt_id: Mapped[str | None] = mapped_column(
+        ForeignKey("training_attempts.id", ondelete="RESTRICT"), nullable=True
+    )
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    receipt: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    state: Mapped[str] = mapped_column(String(16), server_default="pending")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TrainingEvictionIntentRow(Base):
+    __tablename__ = "training_eviction_intents"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("training_attempts.id", ondelete="RESTRICT"))
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_instances.id", ondelete="RESTRICT")
+    )
+    reservation_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("memory_reservations.id", ondelete="RESTRICT")
+    )
+    target: Mapped[dict[str, object]] = mapped_column(JSONB)
+    prior_policy: Mapped[str] = mapped_column(String(64))
+    prior_version: Mapped[str] = mapped_column(String(128))
+    restoration_state: Mapped[str] = mapped_column(String(16), server_default="pending")
+
+
+class TrainingStorageReservationRow(Base):
+    __tablename__ = "training_storage_reservations"
+    __table_args__ = (CheckConstraint("bytes > 0", name="ck_training_storage_positive"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("nodes.id", ondelete="RESTRICT"), nullable=True
+    )
+    subject_id: Mapped[str] = mapped_column(String(128))
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    state: Mapped[str] = mapped_column(String(16), server_default="held")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TrainingDatasetGrantRow(Base):
+    __tablename__ = "training_dataset_grants"
+    __table_args__ = (
+        CheckConstraint(
+            "(analysis_id IS NULL) <> (attempt_id IS NULL)",
+            name="ck_training_dataset_grant_subject",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    secret_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="RESTRICT"))
+    dataset_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_dataset_revisions.id", ondelete="RESTRICT")
+    )
+    analysis_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_dataset_analyses.id", ondelete="RESTRICT"), nullable=True
+    )
+    attempt_id: Mapped[str | None] = mapped_column(
+        ForeignKey("training_attempts.id", ondelete="RESTRICT"), nullable=True
+    )
+    source_sha256: Mapped[str] = mapped_column(String(64))
+    max_bytes: Mapped[int] = mapped_column(BigInteger)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TrainingTransferGrantRow(Base):
+    __tablename__ = "training_transfer_grants"
+    __table_args__ = (
+        CheckConstraint(
+            "source_node_id <> destination_node_id AND fence >= 1",
+            name="ck_training_transfer_scope",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    secret_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    source_node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="RESTRICT"))
+    destination_node_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("nodes.id", ondelete="RESTRICT")
+    )
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("training_attempts.id", ondelete="RESTRICT"))
+    fence: Mapped[int] = mapped_column(BigInteger)
+    artifact_id: Mapped[uuid.UUID] = mapped_column()
+    manifest_sha256: Mapped[str] = mapped_column(String(64))
+    file_ids: Mapped[list[str]] = mapped_column(JSONB)
+    max_bytes: Mapped[int] = mapped_column(BigInteger)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

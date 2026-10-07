@@ -157,6 +157,23 @@ def test_vision_backend_survives_agent_re_adoption(
         )
     )
     monkeypatch.setattr("coire_node.engines._alive", lambda *_args, **_kwargs: True)
+
+    class OwnedProcess:
+        def __init__(self, pid: int) -> None:
+            assert pid == 9999999
+
+        def cmdline(self) -> list[str]:
+            return [
+                "python",
+                "-m",
+                "mlx_vlm.server",
+                "--model",
+                str(agent.store.path_for(slug)),
+                "--port",
+                "9500",
+            ]
+
+    monkeypatch.setattr("coire_node.engines.psutil.Process", OwnedProcess)
     monkeypatch.setattr(agent.engines, "_sample", lambda _engine: None)
     try:
         adopted = agent.engines.adopt_from_state()
@@ -168,7 +185,9 @@ def test_vision_backend_survives_agent_re_adoption(
         agent.close()
 
 
+@pytest.mark.parametrize("alive", [True, False])
 def test_unowned_vision_process_is_reported_as_vision_orphan(
+    alive: bool,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -196,10 +215,12 @@ def test_unowned_vision_process_is_reported_as_vision_orphan(
         "coire_node.engines.psutil.process_iter", lambda _fields: [FakePsutilProcess()]
     )
     monkeypatch.setattr(agent.engines, "_sample", lambda _engine: None)
+    monkeypatch.setattr("coire_node.engines._alive", lambda *args, **kwargs: alive)
     try:
         orphans = agent.engines.find_orphans()
-        assert len(orphans) == 1
-        assert orphans[0].backend is EngineBackend.MLX_VLM
+        assert len(orphans) == int(alive)
+        if alive:
+            assert orphans[0].backend is EngineBackend.MLX_VLM
     finally:
         agent.close()
 

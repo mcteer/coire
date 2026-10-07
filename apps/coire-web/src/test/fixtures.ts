@@ -24,6 +24,7 @@ export function consoleSnapshot(overrides: Partial<ConsoleSnapshot> = {}): Conso
       identity: true,
       audit: true,
       ask: true,
+      training: false,
     },
     cluster: { observed_at: observedAt, nodes: [], instances: [], studio_link: null },
     ledgers: [],

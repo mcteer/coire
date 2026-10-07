@@ -56,7 +56,13 @@ def _candidate(
         ).json()
         for variant in variants:
             if variant["validated"] and variant["state"] == "ready":
-                return model, variant
+                published = client.patch(
+                    f"/api/v1/admin/models/{model['id']}/variants/{variant['id']}",
+                    headers={**headers, "If-Match": variant["updated_at"]},
+                    json={"published": True, "is_default": True},
+                )
+                assert published.status_code == 200, published.text
+                return model, published.json()
     raise AssertionError("acquisition scenarios must provide a verified model")
 
 
@@ -465,6 +471,7 @@ def test_rank_failure_creates_one_smaller_survivor_fallback(
         # The preceding no-fit scenario deliberately leaves the failed rank degraded. Model
         # an operator-confirmed recovery after the healthy node endpoint is back before testing
         # the independent bounded-fallback branch.
+        drain_runtime(client, admin_headers)
         _sql_value(
             "UPDATE nodes SET reachability='healthy'::reachability "
             "WHERE name IN ('coire-edge-a','coire-edge-b'); "

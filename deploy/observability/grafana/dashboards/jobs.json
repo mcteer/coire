@@ -1,0 +1,343 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": false,
+  "links": [
+    {
+      "title": "Durable admin training history",
+      "url": "/api/v1/admin/training/jobs",
+      "type": "link",
+      "targetBlank": false
+    },
+    {
+      "title": "Training operations and pending gates",
+      "url": "/docs/runbooks/sft-training",
+      "type": "link",
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "type": "text",
+      "title": "Training history with diagnostics ON / OFF",
+      "options": {
+        "mode": "markdown",
+        "content": "**Diagnostics OFF:** Grafana itself may be unavailable. Prometheus and Alertmanager remain baseline services; progress, loss samples, checkpoint lineage and security/mutation audit must remain durable. Use authenticated [job history](/api/v1/admin/training/jobs). Select a returned job ID to read `/api/v1/admin/training/jobs/{job_id}/metrics`, `/events` and `/checkpoints`; paginate all results. IDs belong in authorized API history, never metric labels.\n\n**Diagnostics ON:** this dashboard shows aggregates; use local Tempo/Loki for trace/log attribution if those destinations are enabled. Prometheus is not a loss-history database. No data means unknown, not zero or healthy.\n\n**Release status:** full hardware matrix, diagnostics-on/off delivery and baseline snapshot instrumentation are pending; feature 016 is not complete. [Baseline wiring and gates](/docs/runbooks/sft-training#baseline-wiring)."
+      }
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (state) (coire_training_jobs)",
+          "legendFormat": "{{state}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Persisted snapshot gauge; requires scheduler polling task. Distinguish queue reasons in authenticated job detail; event counters are not queue depth.",
+      "title": "Training queue and durable states",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 15
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(coire_training_progress_oldest_seconds)",
+          "legendFormat": "oldest running progress",
+          "refId": "A"
+        },
+        {
+          "expr": "max(coire_training_recovery_oldest_seconds)",
+          "legendFormat": "oldest unresolved recovery/ownership",
+          "refId": "B"
+        }
+      ],
+      "description": "Recovery includes uncertain process ownership; no other job's progress can clear this oldest-age signal. Unknown ownership age is a conservative attempt-creation bound.",
+      "title": "Attempt stalls and recovery uncertainty",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(coire_training_checkpoint_pending_oldest_seconds)",
+          "legendFormat": "oldest pending two-copy commit",
+          "refId": "A"
+        }
+      ],
+      "description": "Durable means independently verified full common bundle on both Studios and fenced metadata commit. Inspect per-copy status through job checkpoints API.",
+      "title": "Checkpoint replication and commit age",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (reason) (coire_training_guard_overdue)",
+          "legendFormat": "{{reason}} overdue",
+          "refId": "A"
+        }
+      ],
+      "description": "Persisted guard gauge requires all-rank stop proof. Insufficient/stale latency samples block admission but are not fabricated latency breaches.",
+      "title": "Chat / memory protection deadline failures",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(abs(coire_placement_ledger_drift_ratio))",
+          "legendFormat": "Studio ledger drift",
+          "refId": "A"
+        }
+      ],
+      "description": "Existing placement gauge; training footprint inclusion still needs verification. Drift alone is not a no-swap measurement or coexistence approval.",
+      "title": "Shared memory ledger drift",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(coire_training_events_total[5m]))",
+          "legendFormat": "{{kind}} events/s",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (kind) (rate(coire_training_metric_samples_total[5m]))",
+          "legendFormat": "{{kind}} samples/s",
+          "refId": "B"
+        }
+      ],
+      "description": "Actual telemetry helper counters. Sample counts do not represent loss values, job counts, recovery success or checkpoint durability. Durable losses retain attempt/update boundaries.",
+      "title": "Persisted event and loss-sample activity",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 55
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "max(time() - coire_training_snapshot_timestamp_seconds)",
+          "legendFormat": "durable snapshot age",
+          "refId": "A"
+        }
+      ],
+      "description": "Baseline poll must run even when training is disabled. Missing data is unknown; CoireTrainingBaselineUnavailable alerts independently of diagnostic storage.",
+      "title": "Baseline observation freshness",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 63
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (phase, reason) (increase(coire_training_workload_failures_total[5m]))",
+          "legendFormat": "{{phase}} / {{reason}}",
+          "refId": "A"
+        }
+      ],
+      "description": "Any failed request makes the strict phase inconclusive. Reasons distinguish occupied concurrency, completion timeouts, identity mismatch and completion errors; prompts and exception contents are excluded.",
+      "title": "Gateway measurement failures",
+      "type": "timeseries"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": [
+    "coire",
+    "jobs",
+    "training"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "title": "Coire Jobs / Training",
+  "uid": "coire-jobs",
+  "version": 1
+}

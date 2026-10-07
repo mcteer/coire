@@ -20,17 +20,18 @@ test("lists shipped activity, omits agent controls, and confirms stop", async ()
     failure_reason: null,
     can_stop: true,
   };
-  const fetchMock = vi
-    .fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = String(input);
-      if (path === `/api/v1/instances/${item.id}` && init?.method === "DELETE") {
-        return new Response(JSON.stringify(item), { status: 202 });
-      }
-      if (path === "/api/v1/admin/image-jobs?limit=50") {
-        return new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 });
-      }
-      return new Response(JSON.stringify({ items: [item], next_cursor: null }), { status: 200 });
-    });
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = String(input);
+    if (path === "/api/v1/admin/console/training-activity?limit=25")
+      return new Response(JSON.stringify({ items: [], next_cursor: null }));
+    if (path === `/api/v1/instances/${item.id}` && init?.method === "DELETE") {
+      return new Response(JSON.stringify(item), { status: 202 });
+    }
+    if (path === "/api/v1/admin/image-jobs?limit=50") {
+      return new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ items: [item], next_cursor: null }), { status: 200 });
+  });
   vi.stubGlobal("fetch", fetchMock);
   render(<ActivityPage />);
   const stop = await screen.findByRole("button", { name: "Stop 00000000" });
@@ -60,6 +61,8 @@ test("shows admin image jobs and confirms a fenced kill", async () => {
   };
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
+    if (path === "/api/v1/admin/console/training-activity?limit=25")
+      return new Response(JSON.stringify({ items: [], next_cursor: null }));
     if (path === `/api/v1/admin/image-jobs/${job.job_id}` && init?.method === "DELETE") {
       return new Response(JSON.stringify({ ...job, state: "cancelling" }), { status: 202 });
     }
@@ -96,6 +99,8 @@ test("offers worker unload on image instances through the audited admin route", 
   };
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const path = String(input);
+    if (path === "/api/v1/admin/console/training-activity?limit=25")
+      return new Response(JSON.stringify({ items: [], next_cursor: null }));
     if (path === `/api/v1/admin/image-workers/${instance.id}` && init?.method === "DELETE") {
       return new Response(JSON.stringify({ instance_id: instance.id, state: "failed" }), {
         status: 200,

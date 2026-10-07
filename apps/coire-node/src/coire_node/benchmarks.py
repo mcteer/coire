@@ -12,6 +12,7 @@ from pathlib import Path
 
 from coire_core.models import BenchmarkCommand, BenchmarkMeasurement
 from coire_core.settings import Settings
+from coire_node.mlx_launch import launcher_argv
 from coire_node.store import Store
 
 AVERAGE = re.compile(r"Averages:.*generation_tps=([0-9]+(?:\.[0-9]+)?)")
@@ -38,7 +39,7 @@ def build_benchmark_argv(
     if command.placement == "single:coire-edge-a":
         return (override.split(os.pathsep) if override else []) + benchmark
     mode = command.placement.rsplit(":", 1)[1]
-    launcher = override.split(os.pathsep) if override else [python, "-m", "mlx.launch"]
+    launcher = override.split(os.pathsep) if override else launcher_argv(python)
     assert hostfile is not None
     argv = [
         *launcher,

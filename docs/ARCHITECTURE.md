@@ -13,7 +13,7 @@ Decisions confirmed in the design session:
 | Topology | Mac Mini ("core") is the control node; Studios are the workers | Studios never run Postgres; during a core outage, one elected Studio may run only a stateless inference frontend behind the authenticated edge. Both Studios hold a fixed memory slice for this tier and user agent sandboxes. |
 | Control-plane packaging | API, MCP server, and web frontend run as OrbStack containers on core, alongside Postgres and observability | Nothing on core runs natively except OrbStack; the whole control plane is one `docker compose` project |
 | What core may never do | Core hosts **no language models** and runs **no agent harness except `ops`** — the one that talks to models elsewhere to do the platform's own operational work | The admin model is a pinned small model on a Studio; user-facing harnesses (`coding`, `general`, `image`) run as containers on the Studios, brokered by the node agent |
-| Training scope (v1) | LoRA/QLoRA/DoRA adapters; objectives SFT (`mlx_lm.lora`) and DPO/ORPO (`mlx-lm-lora`), single-Studio or data-parallel across both; see §8.1 | No distributed full fine-tuning; `training` is a first-class job type with `parameterization` × `objective` |
+| Training scope (016) | SFT LoRA/QLoRA/DoRA adapters using bare mlx-lm APIs, single-Studio and two-rank data parallel; see §8.1 | Preference objectives are feature 018; supported configurations have real training/recovery/serving and cluster acceptance evidence; unmeasured combinations remain refused. |
 | Exposure | Public internet via Cloudflare Tunnel + Cloudflare Access | Identity is OIDC at the edge; app-level API keys for programmatic use; rate limits and abuse controls are in scope from day one |
 | Inference engine | Bare `mlx_lm.server` for text and bare `mlx_vlm.server` for supported visual models (no inference wrappers) | Coire-node owns process lifecycle, placement, and unloading; visual serving is single-Studio initially. |
 | Method | GitHub Spec Kit, spec-driven | Constitution + one spec per feature; see `ROADMAP.md` |
@@ -357,34 +357,70 @@ Every service is instrumented with OpenTelemetry. FastAPI and Pydantic AI use th
 
 ## 8.1 Post-training: SFT and preference optimisation
 
-Training is modelled as two independent choices, because that is how the methods actually compose:
+Feature 016 is **implemented and accepted for its supported matrix; configuration defaults off**. Its
+binding scope is [the SFT spec](../specs/016-sft-training-jobs/spec.md), not the later
+preference/evaluation roadmap. [ADR-0012](adr/0012-sft-training-boundaries.md) and
+[the runbook](runbooks/sft-training.md) record runtime boundaries and remaining gates.
 
-| Axis | Values | Meaning |
-|---|---|---|
-| `parameterization` | `lora` (default), `dora`, `qlora` (LoRA on a quantised base), `full` (later) | which weights are trained and how much memory that costs |
-| `objective` | `sft`, `dpo`, `orpo`, `grpo` (later) | what loss is optimised: imitate demonstrations, or prefer chosen over rejected responses |
+* **Immutable intent.** Strict `TrainingSpec` covers model, data, `objective=sft`,
+  parameterization, optimizer, held-out-loss evaluation, output, placement and seed.
+  Store original YAML separately from normalized/resolved settings and immutable
+  registry identities. `recipes/training/` contains LoRA, QLoRA and DoRA templates;
+  registry model/variant/dataset/output bindings must replace template values.
+* **Private uploaded data.** Only admin-uploaded UTF-8 JSONL text, prompt/completion
+  and text/tool conversations are accepted. Core performs bounded schema/hash/split
+  work and stores originals on `coire-training-data`, mounted only by API/scheduler.
+  Studios own tokenizer-specific CPU analysis. No Hub dataset loader, user code or
+  chat-history extraction. Exact duplicates stay in one deterministic split;
+  mixtures specify immutable sources/quotas/RNG rather than a merged corpus.
+* **Rendering parity.** Shared `Conversation` serialization performs no model work.
+  Native Studio training/analysis and bare serving use the same upstream message
+  processing/chat-template primitives with fixed tokenizer/template/tools/thinking
+  identities. Completed-turn tokens must match; serving's generation suffix and
+  training's supervised-loss mask are explicit differences. Core has no tokenizer.
+* **Bare runtime.** Node-owned native workers call `linear_to_lora_layers()` and
+  unchanged `mlx_lm.tuner.trainer.train()`/`evaluate()`. The lock pins MLX 0.32.2
+  and mlx-lm 0.31.3. No loop fork, wrapper, remote code or automatic weight pull.
+  LoRA and DoRA use supported dense unquantized bases; QLoRA uses an acquired
+  affine 4-bit/group-64 base. Unsupported combinations fail before launch.
+* **Recorded capability matrix.** Single-node dense LoRA/DoRA and affine QLoRA have actual
+  train, pause/resume, mirrored-checkpoint and serving evidence. Two-node QLoRA has
+  common-checkpoint, both-rank loss and physical link recovery evidence. Two-node
+  LoRA/DoRA remain unmeasured; they have no approved supported profile. Image/train
+  exclusion passed in both directions, and eviction reload respects a newer pin.
+  Sustained mixed chat passed the exact Studio-B 15-minute baseline/mixed profile:
+  180 requests per resident/phase, zero failures/swap and mixed p95 below 0.49 seconds.
+  Other configurations still require their own passing exact profile. Injected
+  thermal/memory/latency guards stopped owned trainers within 2.33 seconds; stale
+  samples refused new admission without declaring a healthy measurement.
+* **Capacity and chat priority.** Scheduler owns durable fenced intent and shared
+  ordered node locks. Reserve the full base/optimizer/activation/buffer envelope on
+  each rank, protect pins/leases, and exclude same-node image training overlap.
+  Mixed chat requires current exact measured evidence. Breaches checkpoint-pause
+  within 60 seconds or stop; cancellation has a five-second target. Unknown
+  liveness keeps holds counted until every owned process has stop/fence proof.
+* **Full checkpoints.** Save trainable tensors, optimizer/schedule, current RNG,
+  sampler cursor and runtime/input digests at completed optimizer updates.
+  Atomic manifests and independently verified complete copies on both Studios
+  precede the fenced durable commit. A scheduler/node restart re-adopts live owned
+  processes; resume restores full state, never weights-only scratch saves.
+  Two-rank execution uses node-owned `mlx.launch`/JACCL over the declared data fabric.
+* **Exact serving and verification.** Validated mirrored artifacts become immutable,
+  initially admin-only/unverified adapters. Registry-issued base@adapter targets
+  select dedicated bare servers, never silently fall back to base. Exact-pair
+  harness verification (§5.1) gates write-capable use. Adapter failover, sharded
+  adapter serving and fusion/export are outside 016.
+* **Durable history and baseline.** Attempt-aware loss/progress lives in Postgres,
+  independently of diagnostics. Prometheus exposes only bounded state/reason
+  aggregates, oldest unresolved ages and snapshot freshness. Jobs panels link to
+  authenticated history; alerts survive disabled Grafana/Loki/Tempo. The baseline
+  polling helper runs in the scheduler lifespan, including when new training is disabled.
 
-A `training` job therefore carries `base_model` (registry id), `parameterization`, `objective`, `dataset` (a registered dataset with a validated schema), hyperparameters, and an optional `init_adapter` so a DPO run can continue from an SFT adapter — the standard post-training recipe is SFT → DPO on the same adapter. Engines: `mlx_lm.lora` for `sft` (native; chat, completions, text, and tools formats); the community `mlx-lm-lora` package for `dpo`/`orpo`/`cpo`/`grpo`, pinned and smoke-tested in the versioned node env exactly like the engines, with a fallback plan of a small in-house DPO trainer on mlx-lm's `Trainer` if that dependency stalls. Both produce adapters that `mlx_lm.server --adapter-path` serves and `mlx_lm.fuse` can merge. DPO holds a frozen reference copy of the base alongside the policy; the job's memory estimate is therefore roughly 2× base weights plus activations, which the scheduler reserves like any model load (evicting idle inference models and reloading them afterwards).
-
-Datasets are first-class registry objects: `type: sft | preference`, a JSONL schema check on upload, row counts, a train/valid split, and provenance (uploaded file, or exported from Coire's own feedback). Rows of a `preference` dataset are `{prompt, chosen, rejected}` where `prompt` may be a full message list.
-
-**The chat UI as a preference-data source.** The platform already sees every prompt and response, so it can collect what DPO needs without a labelling tool: thumbs up/down on any message; "regenerate" producing a second candidate and a one-click "this one is better" comparison (the losing response becomes `rejected`); and an admin-only pairwise review queue. Feedback rows are stored with user, model, adapter, and conversation ids, and an admin exports them as a `preference` dataset filtered by model, date, tag, or user — so a "coder" adapter can be improved from real coding-session comparisons on that same model. Users are told in the UI that feedback may be used to improve models on this platform, and feedback capture can be disabled per user.
-
-### 8.1.1 Shape of the training subsystem (patterns borrowed from Oumi)
-
-Oumi is a good reference for how a training tool should be *organised*, even though its engines (PyTorch, TRL, FSDP, vLLM, cloud launchers) are the wrong ones for this lab. The patterns worth copying, and how Coire adopts each:
-
-* **One declarative config per run.** Oumi drives everything from a `TrainingConfig` YAML with `model`, `data`, `training`, `peft` sections. Coire's training job is likewise a single Pydantic `TrainingSpec` (`model`, `data`, `objective`, `parameterization`, `optim`, `eval`, `output`) that is validated on submission, stored verbatim on the job row, and can be re-submitted to reproduce a run. The admin UI is a form over that schema; the CLI accepts the same YAML; nothing about a run lives only in UI state. Recipes (`recipes/sft-lora-coder.yaml`, `recipes/dpo-from-feedback.yaml`) are versioned in the repo and seeded into the console as templates.
-* **A canonical conversation object.** Oumi normalises every dataset into `Conversation` objects and lets the model's chat template render them at train time. Coire does the same: `coire-core` defines `Conversation`/`Message` (with tool calls, images, and a `metadata` bag), every dataset loader emits it, and the chat-template rendering used in training is the identical function the gateway uses at inference — so a model never sees a different format in training than in serving. `preference` rows are `{prompt: Conversation, chosen: Message, rejected: Message}`.
-* **Dataset mixtures, not single files.** `data.train.datasets` is a list with `sample_count` and `mixture_proportion` per entry plus a `mixture_strategy`, so a run can blend your own feedback export with a public instruction set without materialising a merged file. Splits and seeds are explicit for reproducibility.
-* **Registry-by-decorator for extension points.** Oumi registers datasets, models, and judges with a decorator so users add a class rather than fork the tool. Coire keeps four small registries: dataset loaders (JSONL variants, HF datasets, Coire feedback export), objectives (`sft`, `dpo`, `orpo`, later `grpo`), reward functions/verifiers (needed the day GRPO arrives — unit-test pass rate for code, exact-match for structured tasks), and judges (an LLM-as-judge that uses a platform model via the gateway). Each is a `@registry.register("name")` on a class with a Pydantic config.
-* **Evaluation as a first-class verb.** Oumi ships `oumi evaluate` (LM-harness suites, custom evaluators, judges) and `oumi analyze` for dataset statistics. Coire gets `coire eval` with three suite types — the harness capability suite from §5.1, task suites (a small lm-eval-style set of coding and instruction benchmarks runnable in minutes on a Studio), and judge suites (pairwise or rubric scoring by a stronger platform model) — plus `coire data analyze` (token-length histograms, role balance, duplicate and near-duplicate detection, contamination check against eval sets) run automatically on dataset upload. A `TrainingSpec.eval` block schedules evaluations at checkpoints, and the resulting adapter row stores before/after scores so publishing is a comparison, not a guess.
-* **Checkpoints and resume.** Every N steps the adapter and optimizer state are written to the node's job directory; a job interrupted by eviction, a node restart, or an admin pause resumes from the last checkpoint through the DBOS workflow rather than starting over. Checkpoints are visible in the console and any of them can be promoted to an adapter.
-* **Launcher abstraction.** Oumi separates *what* to train from *where* (local vs. cloud). Coire's equivalent is the placement scheduler: the spec says `placement: single | data_parallel`, and the scheduler picks the Studio(s), builds the `mlx.launch` hostfile if needed, and reserves memory. The training code never knows which machine it is on.
-
-What is deliberately not borrowed: PyTorch/TRL trainers, FSDP/DeepSpeed, cloud job launchers, and vLLM/SGLang inference. Coire's backends stay `mlx_lm.lora` and `mlx-lm-lora`, hidden behind the `objective` registry so a future MLX-native DPO in mlx-lm itself can replace the community package without touching a spec.
-
-Outputs: every training run produces an `adapter` registry row (base model, objective, dataset, metrics, loss curves in Prometheus, eval results) that can be published to the picker as `model@adapter`, pinned, or fused into a new model record. The harness evaluation gate in §5.1 runs against `model@adapter`, so a DPO'd coder still has to earn `verified` before `apply` will use it.
+Feature 017 adds task/judge comparisons; its UI area must say unavailable today.
+Feature 018 separately specifies preference objectives, feedback consent/export and
+adapter initialization. Neither feature authorizes new dependencies or executable
+dataset/objective plugins in 016. Numerical, real process-restart, two-rank,
+coexistence, replication and rollback gates remain required before enablement.
 
 ## 9. Upgrades and operations
 

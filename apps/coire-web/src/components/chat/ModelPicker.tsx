@@ -1,4 +1,4 @@
-import type { ChatPickerEntry } from "../../api/chat";
+import { chatPickerSupportsExactSelection, type ChatPickerEntry } from "../../api/chat";
 
 function contextLabel(value: number | null | undefined): string {
   if (value == null) return "Context unknown";
@@ -39,10 +39,11 @@ export function ModelPicker({
                 key={model.id}
                 className={"chat-model glass " + (selectedId === model.id ? "selected" : "")}
                 aria-pressed={selectedId === model.id}
-                disabled={disabled}
+                disabled={disabled || !chatPickerSupportsExactSelection(model)}
                 onClick={() => onSelect(model.id)}
               >
                 <strong>{model.display_name}</strong>
+                {model.target?.adapter_id && <small className="mono">Exact adapter · {model.target.variant_id} · {model.verified ? "independently verified" : "unverified — no write tasks"}</small>}
                 <small>
                   {model.source === "studio"
                     ? "Studio"

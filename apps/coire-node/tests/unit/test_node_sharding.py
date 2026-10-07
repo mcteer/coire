@@ -38,7 +38,7 @@ def test_shard_argv_is_bare_fixed_and_uses_data_hosts(monkeypatch: pytest.Monkey
         model_path="/opt/coire/models/coire--qwen-4bit",
         hostfile_path="/state/hosts.json",
     )
-    assert argv[1:3] == ["-m", "mlx.launch"]
+    assert argv[1:3] == ["-c", "from mlx._distributed_utils.launch import main; main()"]
     assert "jaccl" in argv and "mlx_lm.server" in argv
     assert "-n" not in argv
     assert "MLX_METAL_FAST_SYNCH=1" in argv

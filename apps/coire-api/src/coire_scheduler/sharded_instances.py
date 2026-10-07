@@ -207,6 +207,10 @@ async def _execute_sharded_launch(instance_id: uuid.UUID) -> None:
         await transition(session, instance.id, InstanceState.RESERVING, reason="two-node admission")
         eviction_command_ids: list[uuid.UUID] = []
         async with node_admission_locks(session, [node.id for node in nodes]):
+            from coire_api.placement.service import training_allows_work
+
+            if not await training_allows_work(session, [node.id for node in nodes]):
+                raise RuntimeError("sharded placement is waiting for training ownership")
             figures: list[str] = []
             plans: dict[uuid.UUID, AdmissionPlan] = {}
             now = datetime.now(UTC)
@@ -244,7 +248,22 @@ async def _execute_sharded_launch(instance_id: uuid.UUID) -> None:
                     .scalars()
                     .all()
                 )
-                reserved = sum(row.bytes for row in node_reservations)
+                from coire_api.placement.service import effective_occupied_bytes
+
+                if ledger is not None:
+                    ledger = await session.get(
+                        NodeMemoryLedgerRow, node.id, populate_existing=True, with_for_update=True
+                    )
+                occupied = (
+                    effective_occupied_bytes(node_reservations, ledger.measured_resident_bytes)
+                    if ledger
+                    else None
+                )
+                reserved = (
+                    occupied
+                    if occupied is not None
+                    else sum(row.bytes for row in node_reservations)
+                )
                 candidates = [
                     Candidate(
                         reservation_id=row.id,
@@ -259,7 +278,7 @@ async def _execute_sharded_launch(instance_id: uuid.UUID) -> None:
                     and row.state is MemoryReservationState.HELD
                 ]
                 try:
-                    if ledger is None:
+                    if ledger is None or occupied is None:
                         raise CapacityRefused([])
                     plans[node.id] = plan_admission(
                         NodeCapacity(budget_bytes=ledger.budget_bytes, reserved_bytes=reserved),

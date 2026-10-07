@@ -1,0 +1,216 @@
+rule_files:
+  - ../alerts/training.yaml
+evaluation_interval: 15s
+tests:
+  - name: healthy-idle-snapshot-does-not-alert
+    interval: 15s
+    input_series:
+      - {series: coire_training_snapshot_timestamp_seconds, values: '0+15x24'}
+      - {series: 'coire_training_jobs{state="running"}', values: '0+0x24'}
+      - {series: coire_training_progress_oldest_seconds, values: '0+0x24'}
+      - {series: coire_training_recovery_oldest_seconds, values: '0+0x24'}
+      - {series: coire_training_checkpoint_pending_oldest_seconds, values: '0+0x24'}
+      - {series: coire_training_guard_overdue, values: '0+0x24'}
+    alert_rule_test:
+      - {eval_time: 6m, alertname: CoireTrainingBaselineUnavailable, exp_alerts: []}
+      - {eval_time: 6m, alertname: CoireTrainingProgressStalled, exp_alerts: []}
+      - {eval_time: 6m, alertname: CoireTrainingRecoveryUnresolved, exp_alerts: []}
+      - {eval_time: 6m, alertname: CoireTrainingCheckpointReplicationOverdue, exp_alerts: []}
+      - {eval_time: 6m, alertname: CoireTrainingProtectionOverdue, exp_alerts: []}
+  - name: fresh-heartbeat-cannot-hide-missing-guard-instrumentation
+    interval: 15s
+    input_series:
+      - {series: coire_training_snapshot_timestamp_seconds, values: '0+15x8'}
+      - {series: 'coire_training_jobs{state="running"}', values: '0+0x8'}
+      - {series: coire_training_progress_oldest_seconds, values: '0+0x8'}
+      - {series: coire_training_recovery_oldest_seconds, values: '0+0x8'}
+      - {series: coire_training_checkpoint_pending_oldest_seconds, values: '0+0x8'}
+      - {series: coire_training_guard_overdue, values: '_ _ _ _ _ 0+0x3'}
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: CoireTrainingBaselineUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: training}
+            exp_annotations:
+              summary: Training baseline state is missing or stale
+              runbook_url: /docs/runbooks/sft-training#baseline-wiring
+      - {eval_time: 1m15s, alertname: CoireTrainingBaselineUnavailable, exp_alerts: []}
+  # Thresholds are strict; pending duration is not firing. Zero clears, not disappearance.
+  - name: progress-stall-fires-and-clears
+    interval: 15s
+    input_series:
+      - series: coire_training_progress_oldest_seconds
+        values: '300 301+0x5 0+0x4'
+    alert_rule_test:
+      - {eval_time: 0m, alertname: CoireTrainingProgressStalled, exp_alerts: []}
+      - {eval_time: 1m, alertname: CoireTrainingProgressStalled, exp_alerts: []}
+      - eval_time: 1m15s
+        alertname: CoireTrainingProgressStalled
+        exp_alerts:
+          - exp_labels: {severity: warning, subject: training}
+            exp_annotations:
+              summary: A running training attempt has no completed update for over five minutes
+              runbook_url: /docs/runbooks/sft-training#observe
+      - {eval_time: 1m45s, alertname: CoireTrainingProgressStalled, exp_alerts: []}
+  - name: recovery-uncertainty-fires-and-clears
+    interval: 15s
+    input_series:
+      - series: coire_training_recovery_oldest_seconds
+        values: '60 61+0x5 0+0x4'
+    alert_rule_test:
+      - {eval_time: 0m, alertname: CoireTrainingRecoveryUnresolved, exp_alerts: []}
+      - {eval_time: 1m, alertname: CoireTrainingRecoveryUnresolved, exp_alerts: []}
+      - eval_time: 1m15s
+        alertname: CoireTrainingRecoveryUnresolved
+        exp_alerts:
+          - exp_labels: {severity: warning, subject: training}
+            exp_annotations:
+              summary: Training recovery or process ownership remains unresolved
+              runbook_url: /docs/runbooks/sft-training#recover-and-fence
+      - {eval_time: 1m45s, alertname: CoireTrainingRecoveryUnresolved, exp_alerts: []}
+  - name: checkpoint-deadline-fires-and-clears
+    interval: 15s
+    input_series:
+      - series: coire_training_checkpoint_pending_oldest_seconds
+        values: '60 61 0'
+    alert_rule_test:
+      - {eval_time: 0m, alertname: CoireTrainingCheckpointReplicationOverdue, exp_alerts: []}
+      - eval_time: 15s
+        alertname: CoireTrainingCheckpointReplicationOverdue
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: training}
+            exp_annotations:
+              summary: A training checkpoint has not obtained both verified copies within sixty seconds
+              runbook_url: /docs/runbooks/sft-training#checkpoints-and-retention
+      - {eval_time: 30s, alertname: CoireTrainingCheckpointReplicationOverdue, exp_alerts: []}
+  - name: guard-deadline-fires-and-clears-with-bounded-aggregation
+    interval: 15s
+    input_series:
+      - series: 'coire_training_guard_overdue{reason="memory_breach"}'
+        values: '0 1 0'
+      - series: 'coire_training_guard_overdue{reason="latency_breach"}'
+        values: '0 1 0'
+    alert_rule_test:
+      - {eval_time: 0m, alertname: CoireTrainingProtectionOverdue, exp_alerts: []}
+      - eval_time: 15s
+        alertname: CoireTrainingProtectionOverdue
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: training}
+            exp_annotations:
+              summary: Training protection missed its pause or stop-proof deadline
+              runbook_url: /docs/runbooks/sft-training#kill-and-protect-chat
+      - {eval_time: 30s, alertname: CoireTrainingProtectionOverdue, exp_alerts: []}
+  - name: memory-drift-requires-training-and-clears
+    interval: 15s
+    input_series:
+      - series: coire_placement_ledger_drift_ratio
+        values: '0.11+0x24'
+      - series: 'coire_training_jobs{state="running"}'
+        values: '0 1+0x21 0+0x2'
+    alert_rule_test:
+      - {eval_time: 0m, alertname: CoireTrainingMemoryDrift, exp_alerts: []}
+      - {eval_time: 5m, alertname: CoireTrainingMemoryDrift, exp_alerts: []}
+      - eval_time: 5m15s
+        alertname: CoireTrainingMemoryDrift
+        exp_alerts:
+          - exp_labels: {severity: warning, subject: training}
+            exp_annotations:
+              summary: Studio ledger drift exceeds ten percent while training holds may be active
+              runbook_url: /docs/runbooks/sft-training#kill-and-protect-chat
+      - {eval_time: 5m45s, alertname: CoireTrainingMemoryDrift, exp_alerts: []}
+  - name: absolute-memory-drift-strict-ten-percent-threshold
+    interval: 15s
+    input_series:
+      - series: coire_placement_ledger_drift_ratio
+        values: '-0.10+0x20 -0.11+0x20'
+      - series: 'coire_training_jobs{state="recovering"}'
+        values: '1+0x41'
+    alert_rule_test:
+      - {eval_time: 5m, alertname: CoireTrainingMemoryDrift, exp_alerts: []}
+      - {eval_time: 10m, alertname: CoireTrainingMemoryDrift, exp_alerts: []}
+      - eval_time: 10m15s
+        alertname: CoireTrainingMemoryDrift
+        exp_alerts:
+          - exp_labels: {severity: warning, subject: training}
+            exp_annotations:
+              summary: Studio ledger drift exceeds ten percent while training holds may be active
+              runbook_url: /docs/runbooks/sft-training#kill-and-protect-chat
+  - name: missing-baseline-fires-even-with-diagnostics-off-and-clears-on-idle-snapshot
+    interval: 15s
+    input_series:
+      - {series: coire_training_snapshot_timestamp_seconds, values: '_ _ _ _ _ 75+15x8'}
+      - {series: 'coire_training_jobs{state="running"}', values: '_ _ _ _ _ 0+0x8'}
+      - {series: coire_training_progress_oldest_seconds, values: '_ _ _ _ _ 0+0x8'}
+      - {series: coire_training_recovery_oldest_seconds, values: '_ _ _ _ _ 0+0x8'}
+      - {series: coire_training_checkpoint_pending_oldest_seconds, values: '_ _ _ _ _ 0+0x8'}
+      - {series: coire_training_guard_overdue, values: '_ _ _ _ _ 0+0x8'}
+    alert_rule_test:
+      - {eval_time: 45s, alertname: CoireTrainingBaselineUnavailable, exp_alerts: []}
+      - eval_time: 1m
+        alertname: CoireTrainingBaselineUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: training}
+            exp_annotations:
+              summary: Training baseline state is missing or stale
+              runbook_url: /docs/runbooks/sft-training#baseline-wiring
+      - {eval_time: 1m15s, alertname: CoireTrainingBaselineUnavailable, exp_alerts: []}
+  - name: stale-baseline-fires-and-clears-after-refresh
+    interval: 15s
+    input_series:
+      - {series: coire_training_snapshot_timestamp_seconds, values: '0+0x9 150+15x8'}
+      - {series: 'coire_training_jobs{state="running"}', values: '0+0x18'}
+      - {series: coire_training_progress_oldest_seconds, values: '0+0x18'}
+      - {series: coire_training_recovery_oldest_seconds, values: '0+0x18'}
+      - {series: coire_training_checkpoint_pending_oldest_seconds, values: '0+0x18'}
+      - {series: coire_training_guard_overdue, values: '0+0x18'}
+    alert_rule_test:
+      - {eval_time: 1m, alertname: CoireTrainingBaselineUnavailable, exp_alerts: []}
+      - {eval_time: 2m, alertname: CoireTrainingBaselineUnavailable, exp_alerts: []}
+      - eval_time: 2m15s
+        alertname: CoireTrainingBaselineUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: training}
+            exp_annotations:
+              summary: Training baseline state is missing or stale
+              runbook_url: /docs/runbooks/sft-training#baseline-wiring
+      - {eval_time: 2m30s, alertname: CoireTrainingBaselineUnavailable, exp_alerts: []}
+  - name: lease-and-cancel-proof-violations-clear-only-when-both-resolve
+    interval: 15s
+    input_series:
+      - {series: 'coire_training_guard_overdue{reason="lease_expired"}', values: '1 0 0'}
+      - {series: 'coire_training_guard_overdue{reason="cancel"}', values: '1 1 0'}
+    alert_rule_test:
+      - eval_time: 0s
+        alertname: CoireTrainingProtectionOverdue
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: training}
+            exp_annotations:
+              summary: Training protection missed its pause or stop-proof deadline
+              runbook_url: /docs/runbooks/sft-training#kill-and-protect-chat
+      - eval_time: 15s
+        alertname: CoireTrainingProtectionOverdue
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: training}
+            exp_annotations:
+              summary: Training protection missed its pause or stop-proof deadline
+              runbook_url: /docs/runbooks/sft-training#kill-and-protect-chat
+      - {eval_time: 30s, alertname: CoireTrainingProtectionOverdue, exp_alerts: []}
+  - name: fresh-second-emitter-cannot-mask-stale-first-emitter
+    interval: 15s
+    input_series:
+      - {series: 'coire_training_snapshot_timestamp_seconds{instance="old"}', values: '0+0x9 150'}
+      - {series: 'coire_training_snapshot_timestamp_seconds{instance="fresh"}', values: '0+15x10'}
+      - {series: 'coire_training_jobs{state="running"}', values: '0+0x10'}
+      - {series: coire_training_progress_oldest_seconds, values: '0+0x10'}
+      - {series: coire_training_recovery_oldest_seconds, values: '0+0x10'}
+      - {series: coire_training_checkpoint_pending_oldest_seconds, values: '0+0x10'}
+      - {series: 'coire_training_guard_overdue{reason="cancel"}', values: '0+0x10'}
+    alert_rule_test:
+      - eval_time: 2m15s
+        alertname: CoireTrainingBaselineUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: training}
+            exp_annotations:
+              summary: Training baseline state is missing or stale
+              runbook_url: /docs/runbooks/sft-training#baseline-wiring
+      - {eval_time: 2m30s, alertname: CoireTrainingBaselineUnavailable, exp_alerts: []}

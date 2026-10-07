@@ -12,6 +12,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from coire_core.models.adapters import InferenceTarget, ModelSelector
 from coire_core.models.registry import ModelSource
 
 
@@ -59,7 +60,7 @@ OpenAIContentPart = Annotated[OpenAITextPart | OpenAIImagePart, Field(discrimina
 class GatewayModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id: uuid.UUID
+    id: ModelSelector
     object: Literal["model"] = "model"
     created: int
     owned_by: Literal["coire"] = "coire"
@@ -68,6 +69,10 @@ class GatewayModel(BaseModel):
     coire_tags: list[str] = Field(default_factory=list)
     coire_description: str | None = None
     coire_context_window: int | None = Field(default=None, ge=1)
+    coire_base_model_id: uuid.UUID | None = None
+    coire_variant_id: uuid.UUID | None = None
+    coire_adapter_id: uuid.UUID | None = None
+    coire_verified: bool = False
 
 
 class GatewayModelList(BaseModel):
@@ -125,7 +130,8 @@ class EngineStreamOptions(BaseModel):
 class ChatCompletionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: uuid.UUID
+    model: ModelSelector
+    coire_variant_id: uuid.UUID | None = None
     messages: list[ChatMessage] = Field(min_length=1)
     stream: bool = False
     stream_options: EngineStreamOptions | None = None
@@ -140,6 +146,52 @@ class ChatCompletionRequest(BaseModel):
     coire_affinity_node: str | None = Field(default=None, pattern=r"^coire-[a-z0-9-]+$")
 
 
+class TextCompletionRequest(BaseModel):
+    """Single-prompt text compatibility, rendered as one canonical user turn."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    model: ModelSelector
+    prompt: str = Field(min_length=1)
+    max_tokens: int | None = Field(default=None, ge=1)
+    stream: bool = False
+    stream_options: EngineStreamOptions | None = None
+    temperature: float | None = Field(default=None, ge=0)
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    stop: str | list[str] | None = None
+    coire_variant_id: uuid.UUID | None = None
+    coire_wait_for_model: bool = True
+    coire_affinity_node: str | None = Field(default=None, pattern=r"^coire-[a-z0-9-]+$")
+
+
+class TextCompletionChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str
+    index: int = Field(ge=0)
+    finish_reason: Literal["stop", "length", "content_filter"] | None
+    logprobs: None = None
+
+
+class TextCompletionUsage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    prompt_tokens: int = Field(ge=0)
+    completion_tokens: int = Field(ge=0)
+    total_tokens: int = Field(ge=0)
+
+
+class TextCompletionResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    object: Literal["text_completion"] = "text_completion"
+    created: int
+    model: str
+    choices: list[TextCompletionChoice]
+    usage: TextCompletionUsage | None = None
+
+
 class AnthropicMessage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -150,7 +202,8 @@ class AnthropicMessage(BaseModel):
 class AnthropicMessagesRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    model: uuid.UUID
+    model: ModelSelector
+    coire_variant_id: uuid.UUID | None = None
     max_tokens: int = Field(ge=1)
     messages: list[AnthropicMessage] = Field(min_length=1)
     system: str | list[dict[str, Any]] | None = None
@@ -213,6 +266,7 @@ class UsageRecord(BaseModel):
     requested_model_id: str
     model_id: uuid.UUID | None
     engine_id: uuid.UUID | None
+    target: InferenceTarget | None = None
     protocol: GatewayProtocol
     prompt_tokens: int = Field(ge=0)
     completion_tokens: int = Field(ge=0)

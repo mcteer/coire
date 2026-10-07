@@ -33,6 +33,24 @@ x-python-health: &python-health
   retries: 3
   start_period: 10s
 
+# Shared upload/dispatch/cleanup limits; no additional service or network.
+x-training-environment: &training-environment
+  TRAINING_ENABLED: ${COIRE_TRAINING_ENABLED:-false}
+  TRAINING_DATASET_DIR: /opt/coire/training/datasets
+  TRAINING_INPUT_API_URL: ${COIRE_TRAINING_INPUT_API_URL:-http://coire-core.lab:8180}
+  TRAINING_DATASET_UPLOAD_MAX_BYTES: ${TRAINING_DATASET_UPLOAD_MAX_BYTES:-268435456}
+  TRAINING_DATASET_MAX_ROWS: ${TRAINING_DATASET_MAX_ROWS:-1000000}
+  TRAINING_DATASET_ROW_MAX_BYTES: ${TRAINING_DATASET_ROW_MAX_BYTES:-1048576}
+  TRAINING_DATASET_QUOTA_BYTES: ${TRAINING_DATASET_QUOTA_BYTES:-21474836480}
+  TRAINING_DATASET_DISK_FLOOR_BYTES: ${TRAINING_DATASET_DISK_FLOOR_BYTES:-2147483648}
+  TRAINING_STAGING_RETENTION_S: ${TRAINING_STAGING_RETENTION_S:-86400}
+  TRAINING_ANALYSIS_MEMORY_BYTES: ${TRAINING_ANALYSIS_MEMORY_BYTES:-1073741824}
+  TRAINING_ANALYSIS_TIMEOUT_S: ${TRAINING_ANALYSIS_TIMEOUT_S:-1800}
+  TRAINING_MAX_PENDING_GLOBAL: ${TRAINING_MAX_PENDING_GLOBAL:-8}
+  TRAINING_MAX_PENDING_PER_ADMIN: ${TRAINING_MAX_PENDING_PER_ADMIN:-4}
+  TRAINING_QUEUE_TIMEOUT_S: ${TRAINING_QUEUE_TIMEOUT_S:-86400}
+  TRAINING_EXECUTION_TIMEOUT_S: ${TRAINING_EXECUTION_TIMEOUT_S:-259200}
+
 services:
   # ---------------------------------------------------------------- ingress
   coire-web:
@@ -70,6 +88,7 @@ services:
       dockerfile: apps/coire-api/docker/api.Dockerfile
     networks: [coire-edge, coire-db, coire-internal, coire-telemetry]
     environment:
+      <<: *training-environment
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
       MCP_ENABLED: ${COIRE_MCP_ENABLED:-false}
@@ -135,6 +154,7 @@ services:
       - coire-chat-originals:/opt/coire/chat/originals
       - coire-chat-derived:/opt/coire/chat/derived:ro
       - coire-blobs:/opt/coire/blobs
+      - coire-training-data:/opt/coire/training/datasets
     secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key, openai_api_key, anthropic_api_key]
     depends_on:
       postgres: {condition: service_healthy}
@@ -239,6 +259,7 @@ services:
     # The only service on coire-docker, and it reaches the socket solely through the proxy.
     networks: [coire-edge, coire-db, coire-internal, coire-docker, coire-telemetry, coire-file-processing]
     environment:
+      <<: *training-environment
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
       DOCKER_HOST: tcp://docker-socket-proxy:2375
@@ -264,6 +285,7 @@ services:
       - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
       - coire-chat-derived:/opt/coire/chat/derived:ro
       - coire-blobs:/opt/coire/blobs
+      - coire-training-data:/opt/coire/training/datasets
     secrets: [postgres_password, node_tokens, file_worker_service_token]
     depends_on:
       postgres: {condition: service_healthy}
@@ -497,6 +519,7 @@ services:
       dockerfile: deploy/compose/tempo.Dockerfile
     command: ["-config.file=/etc/tempo/tempo.yml", "-config.expand-env=true"]
     environment:
+      GOMEMLIMIT: 768MiB
       COIRE_TRACE_RETENTION: ${COIRE_TRACE_RETENTION:-48h}
       COIRE_TRACE_INGESTION_BPS: ${COIRE_TRACE_INGESTION_BPS:-50000}
     networks: [coire-telemetry]
@@ -504,7 +527,7 @@ services:
     user: "10001:10001"
     <<: *hardening
     pids_limit: 128
-    mem_limit: 512m
+    mem_limit: 1g
     cpus: "1.0"
     healthcheck:
       test: ["CMD", "/healthcheck", "http://127.0.0.1:3200/ready"]
@@ -572,6 +595,7 @@ volumes:
   coire-chat-originals:
   coire-chat-derived:
   coire-blobs:
+  coire-training-data:
 
 secrets:
   # File-sourced from a 0700 directory outside the repository, written by coire-up from the

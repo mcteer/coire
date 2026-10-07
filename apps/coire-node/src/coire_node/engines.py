@@ -42,6 +42,7 @@ import psutil
 from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace
 
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import (
     LIVE_ENGINE_STATES,
     BudgetRefused,
@@ -110,7 +111,8 @@ def build_engine_argv(
     model_path: str,
     host: str,
     port: int,
-    chat_template_path: str | None = None,
+    chat_template_content: str | None = None,
+    adapter_path: str | None = None,
 ) -> list[str]:
     """The exact command line an engine is started with.
 
@@ -129,8 +131,12 @@ def build_engine_argv(
         "--log-level",
         "INFO",
     ]
-    if chat_template_path:
-        argv += ["--chat-template", chat_template_path]
+    if chat_template_content:
+        if len(chat_template_content.encode("utf-8")) > 64 * 1024:
+            raise ValueError("chat template exceeds its registry byte bound")
+        argv += ["--chat-template", chat_template_content]
+    if adapter_path is not None:
+        argv += ["--adapter-path", adapter_path]
     return argv
 
 
@@ -210,8 +216,10 @@ class _Engine:
         chat_template_sha256: str | None = None,
         backend: EngineBackend = EngineBackend.MLX_LM,
         stderr_path: Path | None = None,
+        target: InferenceTarget | None = None,
     ) -> None:
         self.engine_id = engine_id
+        self.target = target
         self.slug = slug
         self.port = port
         self.estimate_bytes = estimate_bytes
@@ -236,6 +244,7 @@ class _Engine:
     def status(self) -> EngineStatus:
         return EngineStatus(
             engine_id=self.engine_id,
+            target=self.target,
             slug=self.slug,
             backend=self.backend,
             port=self.port,
@@ -263,6 +272,7 @@ class _Engine:
     def record(self) -> dict[str, Any]:
         return {
             "engine_id": str(self.engine_id) if self.engine_id else None,
+            "target": self.target.model_dump(mode="json") if self.target else None,
             "slug": self.slug,
             "port": self.port,
             "pid": self.pid,
@@ -417,13 +427,17 @@ class EngineManager:
         vision_cache_size: int | None = None,
         max_num_seqs: int | None = None,
         max_kv_size: int | None = None,
+        target: InferenceTarget | None = None,
     ) -> tuple[bool, EngineStatus]:
         """Start an engine, or return the one already serving this model.
 
         Returns `(already_running, status)`.
         """
         with self._lock:
-            existing = self._serving(slug)
+            existing = self._engines.get(str(engine_id))
+            if existing is not None and (existing.slug != slug or existing.target != target):
+                raise BackendMismatch("engine identity already binds another target")
+            existing = self._serving(slug, target, engine_id if target else None)
             if existing is not None:
                 if existing.backend is not backend:
                     raise BackendMismatch("model is already served by another backend")
@@ -433,6 +447,9 @@ class EngineManager:
             manifest = self._store.read_manifest(slug)
             if not self._store.exists(slug) or manifest is None:
                 raise CopyMissing(f"no verified copy of {slug} on this node")
+            adapter_path = self.adapter_path(target, slug) if target else None
+            if adapter_path is not None and backend is not EngineBackend.MLX_LM:
+                raise BackendMismatch("adapter serving requires the text backend")
             if backend is EngineBackend.MLX_VLM:
                 from coire_node.visual_validation import inspect_local_variant
 
@@ -454,9 +471,8 @@ class EngineManager:
 
             port = self._allocate_port()
             template_digest = None
-            template_path = None
             if chat_template:
-                template_path = str(self._store.write_template(slug, chat_template))
+                self._store.write_template(slug, chat_template)
                 template_digest = hashlib.sha256(chat_template.encode()).hexdigest()
 
             model_path = str(self._store.path_for(slug))
@@ -475,7 +491,8 @@ class EngineManager:
                     model_path=model_path,
                     host=self._address,
                     port=port,
-                    chat_template_path=template_path,
+                    chat_template_content=chat_template,
+                    adapter_path=str(adapter_path) if adapter_path else None,
                 )
             )
             env = build_engine_env(dict(os.environ))
@@ -499,6 +516,7 @@ class EngineManager:
 
             engine = _Engine(
                 engine_id=engine_id,
+                target=target,
                 slug=slug,
                 port=port,
                 estimate_bytes=estimate_bytes,
@@ -521,7 +539,61 @@ class EngineManager:
         ).start()
         return False, engine.status()
 
-    def _serving(self, slug: str) -> _Engine | None:
+    def adapter_path(
+        self,
+        target: InferenceTarget,
+        slug: str,
+        *,
+        verify: bool = True,
+    ) -> Path | None:
+        """Resolve immutable IDs exclusively inside the verified node stores."""
+        manifest = self._store.read_manifest(slug)
+        if manifest is None or manifest.sha256() != target.base_manifest_sha256:
+            raise CopyMissing("exact base manifest differs from the local copy")
+        if target.adapter_id is None:
+            return None
+        from coire_core.models.training_node import TrainingArtifactManifest
+        from coire_node.store import sha256_file
+
+        root = Path(self._settings.node_state_dir) / "training" / "artifacts"
+        directory = root / str(target.adapter_id)
+        try:
+            if any(path.is_symlink() for path in (root.parent, root, directory)):
+                raise ValueError("linked artifact store")
+            manifest_path = directory / "manifest.json"
+            if manifest_path.is_symlink() or manifest_path.stat().st_size > 1024 * 1024:
+                raise ValueError("unsafe artifact manifest")
+            artifact = TrainingArtifactManifest.model_validate_json(manifest_path.read_bytes())
+            if (
+                artifact.kind != "adapter"
+                or artifact.artifact_id != target.adapter_id
+                or artifact.canonical_sha256() != target.adapter_manifest_sha256
+            ):
+                raise ValueError("artifact identity differs")
+            if {entry.name for entry in artifact.files} != {
+                "adapters.safetensors",
+                "adapter_config.json",
+            }:
+                raise ValueError("unsupported serving artifact files")
+            for entry in artifact.files:
+                path = directory / entry.name
+                if (
+                    path.is_symlink()
+                    or not path.is_file()
+                    or path.stat().st_size != entry.bytes
+                    or (verify and sha256_file(path) != entry.sha256)
+                ):
+                    raise ValueError("artifact file differs")
+        except (OSError, ValueError) as exc:
+            raise CopyMissing("exact adapter artifact is unavailable or differs") from exc
+        return directory
+
+    def _serving(
+        self,
+        slug: str,
+        target: InferenceTarget | None = None,
+        engine_id: uuid.UUID | None = None,
+    ) -> _Engine | None:
         """An engine that is actually serving, or about to.
 
         `stopping` is deliberately excluded. FR-019 makes a duplicate load a no-op returning
@@ -531,7 +603,11 @@ class EngineManager:
         budget while they overlap, and draining proper is feature 005.
         """
         for engine in self._engines.values():
-            if engine.slug == slug and engine.state in (
+            if (
+                engine.slug == slug
+                and engine.target == target
+                and (engine_id is None or engine.engine_id == engine_id)
+            ) and engine.state in (
                 EngineState.STARTING,
                 EngineState.READY,
             ):
@@ -616,6 +692,12 @@ class EngineManager:
                         "max_tokens": 1,
                         "temperature": 0.0,
                     }
+                    if engine.target is not None and engine.target.adapter_id is not None:
+                        assert engine.slug is not None
+                        payload["model"] = str(self._store.path_for(engine.slug))
+                        payload["adapters"] = str(
+                            self.adapter_path(engine.target, engine.slug, verify=False)
+                        )
                     if engine.backend is EngineBackend.MLX_VLM:
                         # mlx-vlm's chat endpoint requires the model field even when
                         # --model already preloaded the local verified store copy.
@@ -834,15 +916,37 @@ class EngineManager:
             pid = record.get("pid")
             create_time = record.get("create_time")
             slug = record.get("slug")
+            try:
+                target = (
+                    InferenceTarget.model_validate(record["target"])
+                    if record.get("target")
+                    else None
+                )
+                adapter_path = self.adapter_path(target, slug) if target and slug else None
+            except (ValueError, CopyMissing):
+                logger.warning("exact engine artifact unavailable; leaving process unadopted")
+                continue
             needle = str(self._store.path_for(slug)) if slug else None
             if not _alive(pid, create_time, needle=needle):
                 logger.warning(
                     "engine %s (pid %s) is gone; not adopting", record.get("engine_id"), pid
                 )
                 continue
+            try:
+                argv = psutil.Process(pid).cmdline()
+                if needle is not None and argv[argv.index("--model") + 1] != needle:
+                    continue
+                if adapter_path is not None:
+                    if argv[argv.index("--adapter-path") + 1] != str(adapter_path):
+                        continue
+                elif "--adapter-path" in argv:
+                    continue
+            except (ValueError, IndexError, psutil.Error):
+                continue
             engine = _Engine(
                 engine_id=uuid.UUID(record["engine_id"]) if record.get("engine_id") else None,
                 slug=slug,
+                target=target,
                 port=record["port"],
                 estimate_bytes=record.get("estimate_bytes", 0),
                 pid=pid,
@@ -877,7 +981,8 @@ class EngineManager:
 
     def find_orphans(self) -> list[EngineStatus]:
         """Engine processes running on this node that the agent does not own."""
-        known = {e.pid for e in self._engines.values() if e.pid}
+        with self._lock:
+            known = {e.pid for e in self._engines.values() if e.pid}
         marker = str(self._store.root)
         orphans: list[EngineStatus] = []
         for proc in psutil.process_iter(["pid", "cmdline", "create_time"]):
@@ -912,12 +1017,19 @@ class EngineManager:
             )
             engine.state_reason = "running but not owned by this agent"
             self._sample(engine)
-            orphans.append(engine.status())
-            self._engines.setdefault(str(engine.engine_id), engine)
+            with self._lock:
+                # A concurrent start may have claimed this PID during the inventory scan.
+                if any(e.pid == engine.pid for e in self._engines.values()):
+                    continue
+                if not _alive(engine.pid, engine.create_time, needle=marker):
+                    continue
+                orphans.append(engine.status())
+                self._engines.setdefault(str(engine.engine_id), engine)
         return orphans
 
     def reconcile(self, request: ReconcileRequest) -> ReconcileResult:
         """Compare what the registry expects against what is running (spec FR-015)."""
+        discovered = self.find_orphans()
         with self._lock:
             expected_ids = {str(e.engine_id) for e in request.expected}
             adopted: list[EngineStatus] = []
@@ -926,7 +1038,25 @@ class EngineManager:
             for expectation in request.expected:
                 key = str(expectation.engine_id)
                 engine = self._engines.get(key)
-                if engine is not None and _alive(engine.pid, engine.create_time):
+                if (
+                    engine is not None
+                    and _alive(engine.pid, engine.create_time)
+                    and (
+                        engine.target != expectation.target
+                        or engine.slug != expectation.slug
+                        or engine.backend != expectation.backend
+                    )
+                ):
+                    engine.state = EngineState.ORPHAN
+                    engine.state_reason = "registry expectation differs from the owned exact target"
+                    continue
+                if (
+                    engine is not None
+                    and engine.target == expectation.target
+                    and engine.slug == expectation.slug
+                    and engine.backend == expectation.backend
+                    and _alive(engine.pid, engine.create_time)
+                ):
                     adopted.append(engine.status())
                     continue
                 if engine is not None and engine.state in (
@@ -953,7 +1083,7 @@ class EngineManager:
                 )
             ]
             known_pids = {x.pid for x in orphans}
-            orphans.extend(o for o in self.find_orphans() if o.pid not in known_pids)
+            orphans.extend(o for o in discovered if o.pid not in known_pids)
             self._persist()
             return ReconcileResult(adopted=adopted, dead=dead, orphans=orphans)
 

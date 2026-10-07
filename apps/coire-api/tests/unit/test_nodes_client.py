@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import ReconcileRequest
 from coire_core.models.harness import ProfileName
 from coire_core.models.image_worker import (
@@ -34,6 +35,55 @@ from coire_core.settings import Settings
 
 JOB_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 NOW = datetime.now(UTC).isoformat()
+
+
+@pytest.mark.parametrize("acknowledgment", ["exact", "missing", "different"])
+async def test_engine_start_preserves_and_confirms_exact_target(acknowledgment: str) -> None:
+    target = InferenceTarget(
+        model_id=uuid.uuid4(),
+        variant_id=uuid.uuid4(),
+        adapter_id=uuid.uuid4(),
+        base_manifest_sha256="a" * 64,
+        adapter_manifest_sha256="b" * 64,
+    )
+    engine_id = uuid.uuid4()
+    response: dict[str, object] = {
+        "engine_id": str(engine_id),
+        "slug": "registry--variant",
+        "port": 9500,
+        "state": "starting",
+        "started_at": NOW,
+    }
+    if acknowledgment != "missing":
+        response["target"] = (
+            target.model_dump(mode="json")
+            if acknowledgment == "exact"
+            else target.model_copy(update={"adapter_id": uuid.uuid4()}).model_dump(mode="json")
+        )
+    client, seen = _client(lambda _: _json(response, 202))
+    try:
+        if acknowledgment == "exact":
+            existing, observed = await client.start_engine(
+                "coire-edge-a",
+                engine_id=engine_id,
+                slug="registry--variant",
+                estimate_bytes=1024,
+                target=target,
+            )
+            assert not existing and observed.target == target
+        else:
+            with pytest.raises(NodeError) as refused:
+                await client.start_engine(
+                    "coire-edge-a",
+                    engine_id=engine_id,
+                    slug="registry--variant",
+                    estimate_bytes=1024,
+                    target=target,
+                )
+            assert refused.value.kind is NodeErrorKind.PROTOCOL
+        assert json.loads(seen[0].content)["target"] == target.model_dump(mode="json")
+    finally:
+        await client.aclose()
 
 
 async def test_image_transfer_client_uses_exact_node_command_and_typed_result() -> None:

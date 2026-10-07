@@ -150,6 +150,73 @@ class Settings(BaseSettings):
     gateway_inline_visual_enabled: bool = False
     provider_chat_enabled: bool = False
 
+    # --- administrator SFT training; default-off until runtime/acceptance gates ---
+    training_enabled: bool = False
+    training_dataset_dir: str = "/opt/coire/training/datasets"
+    training_input_api_url: str = "http://coire-core.lab:8180"
+    training_recipe_max_bytes: int = Field(default=64 * 1024, ge=1, le=64 * 1024)
+    training_yaml_max_depth: int = Field(default=16, ge=1, le=16)
+    training_dataset_upload_max_bytes: int = Field(default=256 * 1024**2, ge=1, le=256 * 1024**2)
+    training_dataset_max_rows: int = Field(default=1_000_000, ge=2, le=1_000_000)
+    training_dataset_row_max_bytes: int = Field(default=1024**2, ge=1, le=1024**2)
+    training_diagnostic_max_rows: int = Field(default=100, ge=1, le=100)
+    training_dataset_quota_bytes: int = Field(default=20 * 1024**3, ge=1, le=20 * 1024**3)
+    training_dataset_disk_floor_bytes: int = Field(default=2 * 1024**3, ge=2 * 1024**3)
+    training_staging_retention_s: int = Field(default=86400, ge=1, le=86400)
+    training_analysis_memory_bytes: int = Field(default=1024**3, ge=128 * 1024**2, le=1024**3)
+    training_analysis_timeout_s: int = Field(default=1800, ge=1, le=1800)
+    training_mixture_max_sources: int = Field(default=16, ge=1, le=16)
+    training_max_updates: int = Field(default=100_000, ge=1, le=100_000)
+    training_max_sequence_length: int = Field(default=8192, ge=2, le=8192)
+    training_max_batch_size: int = Field(default=64, ge=1, le=64)
+    training_max_accumulation_steps: int = Field(default=64, ge=1, le=64)
+    training_max_adapter_rank: int = Field(default=128, ge=1, le=128)
+    training_max_pending_global: int = Field(default=8, ge=1, le=8)
+    training_max_pending_per_admin: int = Field(default=4, ge=1, le=4)
+    training_queue_timeout_s: int = Field(default=86400, ge=1, le=86400)
+    training_execution_timeout_s: int = Field(default=72 * 3600, ge=1, le=72 * 3600)
+    training_checkpoint_every_updates: int = Field(default=100, ge=1, le=100_000)
+    training_checkpoint_keep_last: int = Field(default=3, ge=1, le=3)
+    training_checkpoint_quota_bytes: int = Field(default=20 * 1024**3, ge=1, le=20 * 1024**3)
+    training_artifact_quota_bytes: int = Field(default=200 * 1024**3, ge=1, le=200 * 1024**3)
+    training_artifact_disk_floor_bytes: int = Field(default=20 * 1024**3, ge=20 * 1024**3)
+    training_execution_lease_s: int = Field(default=30, ge=3, le=30)
+    training_lease_renew_s: int = Field(default=10, ge=1, le=10)
+    training_cancel_grace_s: float = Field(default=5.0, gt=0, le=5.0)
+    training_pause_grace_s: float = Field(default=60.0, gt=0, le=60.0)
+    training_watchdog_interval_s: float = Field(default=1.0, gt=0, le=1.0)
+    training_transfer_grant_s: int = Field(default=60, ge=1, le=60)
+    training_max_recovery_attempts: int = Field(default=3, ge=1, le=3)
+    training_profile_ttl_s: int = Field(default=7 * 86400, ge=1, le=7 * 86400)
+    training_guard_interval_s: float = Field(default=5.0, gt=0, le=5.0)
+    training_latency_window_s: int = Field(default=300, ge=300, le=300)
+    training_latency_min_samples: int = Field(default=30, ge=30)
+    training_measurement_min_requests: int = Field(default=100, ge=100)
+    training_measurement_phase_s: int = Field(default=900, ge=900)
+    training_telemetry_freshness_s: int = Field(default=60, ge=1, le=60)
+    training_chat_ttft_limit_s: float = Field(default=1.5, gt=0, le=1.5)
+    training_protective_cooldown_s: int = Field(default=60, ge=60)
+    training_event_retention_s: int = Field(default=7 * 86400, ge=1, le=7 * 86400)
+    training_event_heartbeat_s: int = Field(default=15, ge=1, le=15)
+    training_log_max_bytes: int = Field(default=1024**2, ge=1, le=1024**2)
+    training_metric_page_max: int = Field(default=2000, ge=1, le=2000)
+    training_list_page_default: int = Field(default=25, ge=1, le=100)
+    training_list_page_max: int = Field(default=100, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def training_limits_are_consistent(self) -> Settings:
+        if self.training_lease_renew_s >= self.training_execution_lease_s:
+            raise ValueError("training lease renewal must precede expiry")
+        if self.training_max_pending_per_admin > self.training_max_pending_global:
+            raise ValueError("per-admin training limit cannot exceed global limit")
+        if self.training_checkpoint_quota_bytes > self.training_artifact_quota_bytes:
+            raise ValueError("per-job checkpoints cannot exceed the Studio artifact quota")
+        if self.training_list_page_default > self.training_list_page_max:
+            raise ValueError("default training page cannot exceed maximum page")
+        if self.training_dataset_row_max_bytes > self.training_dataset_upload_max_bytes:
+            raise ValueError("training row bound cannot exceed upload bound")
+        return self
+
     # --- private native chat and CPU file worker -----------------------
     chat_enabled: bool = False
     chat_default_model_id: uuid.UUID | None = None

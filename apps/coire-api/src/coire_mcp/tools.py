@@ -22,6 +22,7 @@ from coire_api.db import (
 )
 from coire_api.registry.service import is_chat_backend
 from coire_core.errors import ChatNotFound
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.harness import PROFILE_MODEL_TAGS, ProfileName, TaskClass
 from coire_core.models.mcp import (
     ApplyInput,
@@ -105,7 +106,12 @@ async def _execute(
     owner_id = mcp_calls.require_mcp_owner(principal)
     task_class = TaskClass.WRITE if tool is McpToolName.APPLY else TaskClass.READ
     try:
-        model_id = await _choose_model(principal, payload.model_id, task_class)
+        if payload.target is not None:
+            if payload.model_id is not None and payload.model_id != payload.target.model_id:
+                raise ValueError("MCP target differs from requested model")
+            model_id = payload.target.model_id
+        else:
+            model_id = await _choose_model(principal, payload.model_id, task_class)
     except ValueError as exc:
         raise ToolError(str(exc)) from exc
     started = asyncio.get_running_loop().time()
@@ -133,6 +139,8 @@ async def _execute(
                     AgentRunCreate(
                         profile=ProfileName.CODING,
                         primary_model_id=model_id,
+                        primary_target=payload.target,
+                        permitted_targets=(payload.target,) if payload.target else (),
                         workspace_ref=f"pending-{call.id.hex}",
                         task_class=task_class,
                         prepared_request_id=call.id,
@@ -247,9 +255,12 @@ def register_tools(server: MCPServer[object]) -> None:
         name="research", description="Answer a repository question with file and line citations"
     )
     async def research(
-        source: WorkspaceSource, question: str, model_id: uuid.UUID | None = None
+        source: WorkspaceSource,
+        question: str,
+        model_id: uuid.UUID | None = None,
+        target: InferenceTarget | None = None,
     ) -> ResearchResult:
-        input = ResearchInput(source=source, question=question, model_id=model_id)
+        input = ResearchInput(source=source, question=question, model_id=model_id, target=target)
         return ResearchResult.model_validate(
             await _execute(McpToolName.RESEARCH, input, input.question)
         )
@@ -260,12 +271,14 @@ def register_tools(server: MCPServer[object]) -> None:
         goal: str,
         research_result_id: uuid.UUID | None = None,
         model_id: uuid.UUID | None = None,
+        target: InferenceTarget | None = None,
     ) -> PlanResult:
         input = PlanInput(
             source=source,
             goal=goal,
             research_result_id=research_result_id,
             model_id=model_id,
+            target=target,
         )
         principal = bound_principal()
         prior = ""
@@ -304,12 +317,14 @@ def register_tools(server: MCPServer[object]) -> None:
         plan_result_id: uuid.UUID | None = None,
         plan: str | None = None,
         model_id: uuid.UUID | None = None,
+        target: InferenceTarget | None = None,
     ) -> ApplyResult:
         input = ApplyInput(
             source=source,
             plan_result_id=plan_result_id,
             plan=plan,
             model_id=model_id,
+            target=target,
         )
         principal = bound_principal()
         plan_text = input.plan

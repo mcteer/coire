@@ -8,6 +8,8 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from coire_core.models.adapters import InferenceTarget
+
 
 class UserRole(StrEnum):
     ADMIN = "admin"
@@ -147,6 +149,7 @@ class AuthPrincipal(BaseModel):
     entitlements: frozenset[str] = frozenset()
     api_key_id: uuid.UUID | None = None
     credential_version: int | None = None
+    permitted_targets: tuple[InferenceTarget, ...] = Field(default=(), max_length=16)
 
     @property
     def is_admin(self) -> bool:

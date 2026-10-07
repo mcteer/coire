@@ -6,8 +6,9 @@ import uuid
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.node import Reachability, ThermalState
 from coire_core.models.placement import MemoryReservation
 from coire_core.models.sharding import StudioLinkProjection
@@ -32,11 +33,31 @@ class InstanceCreate(BaseModel):
 
     model_id: uuid.UUID
     variant_id: uuid.UUID
+    target: InferenceTarget | None = None
+    adapter_id: uuid.UUID | None = None
     policy: str | None = Field(
         default=None,
         pattern=r"^(single:(auto|coire-[a-z0-9-]+)|pinned:coire-[a-z0-9-]+|sharded:(tp|pp))$",
     )
     affinity_node_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def exact_instance_target(self) -> InstanceCreate:
+        if self.target is not None:
+            if self.target.model_id != self.model_id or self.target.variant_id != self.variant_id:
+                raise ValueError("instance target must match its parent and variant")
+            if self.adapter_id is not None and self.adapter_id != self.target.adapter_id:
+                raise ValueError("instance adapter differs from exact target")
+        if (
+            (
+                self.adapter_id is not None
+                or (self.target is not None and self.target.adapter_id is not None)
+            )
+            and self.policy
+            and self.policy.startswith("sharded:")
+        ):
+            raise ValueError("adapter instances are single-node only")
+        return self
 
 
 class InstanceMember(BaseModel):
@@ -69,6 +90,7 @@ class ModelInstance(BaseModel):
     id: uuid.UUID
     model_id: uuid.UUID
     variant_id: uuid.UUID
+    target: InferenceTarget | None = None
     placement_decision_id: uuid.UUID | None = None
     policy: str
     state: InstanceState

@@ -25,6 +25,10 @@ dev = [
     "types-jsonschema>=4.23",
     "openai>=3.6.0",
     "anthropic>=1.2.0",
+    # BSD-3-Clause / Apache-2.0. Existing locked libraries declared directly for
+    # cross-platform synthetic CPU safetensors/checkpoint tests; no model runs on core.
+    "numpy==2.5.2",
+    "safetensors==0.8.0",
 ]
 
 # ---------------------------------------------------------------- ruff
@@ -63,6 +67,8 @@ strict = true
 warn_unreachable = true
 disallow_any_generics = true
 mypy_path = [
+    "typings",
+    "tests",
     "packages/coire-core/src",
     "apps/coire-api/src",
     "apps/coire-node/src",
@@ -87,7 +93,7 @@ ignore_missing_imports = true
 # ---------------------------------------------------------------- pytest
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-pythonpath = ["apps/coire-agent/ops"]
+pythonpath = ["apps/coire-agent/ops", "tests"]
 # No collector exists in a test run, and the exporter's retry chatter drowns real output.
 # Export is verified by the integration suite, which does have one.
 testpaths = [

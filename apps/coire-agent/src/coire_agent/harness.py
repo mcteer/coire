@@ -28,6 +28,7 @@ from coire_agent.telemetry import (
 from coire_agent.telemetry import (
     truncations as truncation_counter,
 )
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.harness import (
     HarnessMessage,
     HarnessRunRequest,
@@ -60,6 +61,7 @@ class Harness:
         summarize: SummaryFn | None = None,
         repair: RepairFn | None = None,
         verify_variant: VerificationFn | None = None,
+        verify_target: Callable[[InferenceTarget], Awaitable[bool]] | None = None,
         retry_limit: int = 2,
         tool_byte_cap: int = 16_384,
     ) -> None:
@@ -68,6 +70,7 @@ class Harness:
         self._summarize = summarize
         self._repair = repair
         self._verify_variant = verify_variant
+        self._verify_target = verify_target
         self._retry_limit = retry_limit
         self._tool_byte_cap = tool_byte_cap
 
@@ -78,9 +81,17 @@ class Harness:
         *,
         reported_prompt_tokens: int = 0,
     ) -> HarnessRunResult:
-        if request.task_class is TaskClass.WRITE and (
-            self._verify_variant is None or not await self._verify_variant(request.variant_id)
-        ):
+        verified = True
+        if request.task_class is TaskClass.WRITE:
+            verified = (
+                (self._verify_target is not None and await self._verify_target(request.target))
+                if request.target is not None
+                else (
+                    self._verify_variant is not None
+                    and await self._verify_variant(request.variant_id)
+                )
+            )
+        if not verified:
             raise UnverifiedWriteError(
                 f"variant {request.variant_id} is not harness-verified for write tasks"
             )
@@ -132,6 +143,7 @@ class Harness:
             run_id=uuid.uuid4(),
             profile=request.profile,
             variant_id=request.variant_id,
+            target=request.target,
             output=validated.model_dump(mode="json"),
             reasoning=reasoning,
             retries=retries,

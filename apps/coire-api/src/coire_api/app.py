@@ -20,7 +20,10 @@ from coire_api import __version__
 from coire_api.db import dispose_engine, init_engine, session_scope
 from coire_api.routes import (
     admin_acquisitions,
+    admin_adapters,
     admin_console,
+    admin_dataset_analyses,
+    admin_datasets,
     admin_evaluations,
     admin_failover,
     admin_identity,
@@ -31,6 +34,7 @@ from coire_api.routes import (
     admin_ops,
     admin_runs,
     admin_sharding,
+    admin_training,
     admin_variants,
     chat,
     failover,
@@ -41,6 +45,7 @@ from coire_api.routes import (
     instances,
     internal_images,
     internal_ops,
+    internal_training,
     mcp_artifacts,
     me,
     models,
@@ -170,6 +175,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(me.router)
     app.include_router(admin_acquisitions.router)
     app.include_router(admin_console.router)
+    app.include_router(admin_datasets.router)
+    app.include_router(admin_training.router)
+    app.include_router(admin_adapters.router)
+    app.include_router(admin_dataset_analyses.router)
     app.include_router(admin_evaluations.router)
     app.include_router(admin_ledger.router)
     app.include_router(admin_identity.router)
@@ -187,6 +196,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(failover.router)
     app.include_router(internal_ops.router)
     app.include_router(internal_images.router)
+    app.include_router(internal_training.router)
     app.include_router(v1.router)
     app.include_router(v1_images.router)
     from coire_api.images.openapi import install_image_event_openapi
@@ -213,7 +223,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "/api/v1/failover/snapshot",
             "/api/v1/failover/events",
         }
-        if request.url.path.startswith("/api/v1/internal/images/"):
+        if request.url.path.startswith(("/api/v1/internal/images/", "/api/v1/internal/training/")):
             node = request.headers.get("x-coire-node", "")
             authorization = request.headers.get("authorization", "")
             try:
@@ -359,6 +369,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         """Account malformed inference requests before returning FastAPI's normal 422."""
+        if request.url.path.startswith(
+            (
+                "/api/v1/admin/datasets",
+                "/api/v1/admin/dataset-analyses",
+                "/api/v1/admin/training",
+                "/api/v1/admin/adapters",
+                "/api/v1/internal/training",
+            )
+        ):
+            from coire_core.errors import TrainingValidationError
+
+            problem = TrainingValidationError("Training request fields are invalid").to_problem()
+            return JSONResponse(
+                status_code=422,
+                media_type="application/problem+json",
+                content=problem.model_copy(update={"instance": request.url.path}).model_dump(
+                    mode="json", exclude_none=True
+                ),
+            )
         protocol = {
             "/v1/chat/completions": "openai",
             "/v1/messages": "anthropic",

@@ -38,6 +38,7 @@ htmlcov/
 
 # --- Node / Vite (apps/coire-web) ---
 node_modules/
+.pnpm-store/
 apps/coire-web/dist/
 apps/coire-web/.vite/
 *.tsbuildinfo
@@ -56,6 +57,8 @@ yarn-error.log*
 *.gguf
 *.npz
 /outputs/
+/data/
+/blobs/
 /generated/
 /workspaces/
 /run-results/
@@ -73,6 +76,8 @@ tmp/
 # --- Editors / tooling ---
 .idea/
 *.swp
+*.tmp
+Thumbs.db
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json

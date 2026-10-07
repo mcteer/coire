@@ -70,6 +70,7 @@ ro_mounts=(--tmpfs /tmp --tmpfs /run)
 if [[ "${IMAGE%%:*}" == *coire-api ]]; then
   ro_mounts+=(--tmpfs /opt/coire/blobs:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700)
   ro_mounts+=(--tmpfs /opt/coire/chat/originals:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700)
+  ro_mounts+=(--tmpfs /opt/coire/training/datasets:rw,nosuid,nodev,uid=65532,gid=65532,mode=0700)
 fi
 RO_CID="$(docker run -d --read-only "${ro_mounts[@]}" "$IMAGE" 2>/dev/null)"
 if [[ -n "$RO_CID" ]]; then

@@ -10,11 +10,39 @@ from coire_core.settings import Settings
 from coire_scheduler.workers import SchedulerWorkers
 
 
-def test_scheduler_declares_seven_workers() -> None:
+@pytest.mark.parametrize("enabled", [False, True])
+def test_scheduler_preserves_training_recovery_workers(enabled: bool) -> None:
+    from coire_api.training.runtime import TrainingRuntimeWorker
+    from coire_scheduler.datasets import DatasetAnalysisExecutor
+
     settings = Settings(_secrets_dir="/none")  # type: ignore[call-arg]
+    settings.training_enabled = enabled
     supervisor = SchedulerWorkers(settings)
-    assert len(supervisor.workers) == 7
+    assert len(supervisor.workers) == 9
+    assert any(isinstance(worker, TrainingRuntimeWorker) for worker in supervisor.workers)
+    assert any(isinstance(worker, DatasetAnalysisExecutor) for worker in supervisor.workers)
     assert supervisor.kill_executor.external_kill_scan is True
+
+
+@pytest.mark.asyncio
+async def test_disabled_dataset_worker_still_polls_and_can_restart(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_scheduler.datasets import DatasetAnalysisExecutor
+
+    worker = DatasetAnalysisExecutor(Settings(training_enabled=False))
+    scanned = asyncio.Event()
+
+    async def scan() -> None:
+        scanned.set()
+
+    monkeypatch.setattr(worker, "pass_once", scan)
+    for _ in range(2):
+        scanned.clear()
+        await worker.start()
+        await asyncio.wait_for(scanned.wait(), 1)
+        await worker.stop()
+        assert worker.task is None
 
 
 @pytest.mark.asyncio

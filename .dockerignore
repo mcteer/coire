@@ -1,7 +1,9 @@
 .git/
 .github/
 specs/
-docs/
+docs/**
+!docs/runbooks/
+!docs/runbooks/sft-training.md
 tests/
 **/tests/
 **/node_modules/
@@ -19,3 +21,11 @@ Dockerfile*
 workspaces/
 run-results/
 .DS_Store
+.pnpm-store/
+models/
+adapters/
+checkpoints/
+data/
+blobs/
+outputs/
+coverage/

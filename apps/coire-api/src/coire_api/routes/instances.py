@@ -22,9 +22,11 @@ from coire_api.db import (
     ModelVariantRow,
     NodeMemoryLedgerRow,
     NodeRow,
+    TrainingAdapterRow,
     session_scope,
 )
 from coire_api.deps import SessionDep, SettingsDep
+from coire_api.gateway.targets import ModelNotFoundError, resolve_target
 from coire_api.instance import service
 from coire_api.placement.service import project_ledgers
 from coire_api.sharding import link_projection
@@ -60,11 +62,29 @@ async def create_instance(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such model")
     if variant is None or variant.model_id != model.id or not variant.validated:
         raise HTTPException(status.HTTP_409_CONFLICT, "variant is not verified for this model")
-    policy = body.policy or model.placement_policy
+    adapter_id = body.adapter_id or (body.target.adapter_id if body.target else None)
+    adapter = await session.get(TrainingAdapterRow, adapter_id) if adapter_id else None
+    try:
+        selected = await resolve_target(
+            session, adapter.selector if adapter else model.id, principal, variant.id
+        )
+    except ModelNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "target not found") from exc
+    if adapter_id and (
+        adapter is None or selected.adapter is None or selected.adapter.id != adapter_id
+    ):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "target not found")
+    if body.target is not None and body.target != selected.identity:
+        raise HTTPException(status.HTTP_409_CONFLICT, "target manifest differs from registry")
+    policy = body.policy or ("single:auto" if adapter_id else model.placement_policy)
+    if adapter_id and policy.startswith("sharded:"):
+        raise HTTPException(status.HTTP_409_CONFLICT, "adapter instances are single-node only")
     # Serialize the cold-key lookup without forbidding multiple ready instances later.
     await session.execute(
         select(
-            func.pg_advisory_xact_lock(func.hashtext(f"instance:{model.id}:{variant.id}:{policy}"))
+            func.pg_advisory_xact_lock(
+                func.hashtext(f"instance:{model.id}:{variant.id}:{adapter_id}:{policy}")
+            )
         )
     )
     row = await session.scalar(
@@ -72,6 +92,7 @@ async def create_instance(
         .where(
             ModelInstanceRow.model_id == model.id,
             ModelInstanceRow.variant_id == variant.id,
+            ModelInstanceRow.adapter_id == adapter_id,
             ModelInstanceRow.policy == policy,
             ModelInstanceRow.state.in_(ACTIVE_STATES),
         )
@@ -82,6 +103,7 @@ async def create_instance(
         row = ModelInstanceRow(
             model_id=model.id,
             variant_id=variant.id,
+            adapter_id=adapter_id,
             policy=policy,
             state=InstanceState.REQUESTED,
         )
