@@ -8,7 +8,7 @@ from sqlalchemy import and_, or_, select
 
 from coire_api.db import TrainingAdapterRow, session_scope
 from coire_api.routes.admin_training import enabled
-from coire_api.training.adapters import adapter_detail, curate_adapter
+from coire_api.training.adapters import adapter_evaluation_detail, curate_adapter
 from coire_api.training.authorization import CurrentTrainingAdmin
 from coire_api.training.service import decode_page_cursor, encode_page_cursor
 from coire_core.errors import TrainingNotFound, TrainingValidationError
@@ -32,7 +32,7 @@ async def list_adapters(
 ) -> AdapterPage:
     enabled(request)
     async with session_scope() as session:
-        statement = select(TrainingAdapterRow)
+        statement = select(TrainingAdapterRow).where(TrainingAdapterRow.purpose != "evaluation")
         if cursor is not None:
             created_at, identity = decode_page_cursor(cursor, "adapters")
             try:
@@ -58,7 +58,7 @@ async def list_adapters(
             ).all()
         )
         return AdapterPage(
-            items=[adapter_detail(row) for row in rows[:limit]],
+            items=[await adapter_evaluation_detail(session, row) for row in rows[:limit]],
             next_cursor=encode_page_cursor(
                 "adapters", rows[limit - 1].created_at, str(rows[limit - 1].id)
             )
@@ -74,9 +74,9 @@ async def get_adapter(
     enabled(request)
     async with session_scope() as session:
         row = await session.get(TrainingAdapterRow, adapter_id)
-        if row is None:
+        if row is None or row.purpose == "evaluation":
             raise TrainingNotFound()
-        return adapter_detail(row)
+        return await adapter_evaluation_detail(session, row)
 
 
 @router.patch("/{adapter_id}", response_model=AdapterDetail)

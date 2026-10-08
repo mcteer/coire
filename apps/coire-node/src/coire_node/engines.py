@@ -34,6 +34,7 @@ import time
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, BinaryIO
 
@@ -217,9 +218,11 @@ class _Engine:
         backend: EngineBackend = EngineBackend.MLX_LM,
         stderr_path: Path | None = None,
         target: InferenceTarget | None = None,
+        engine_version: str | None = None,
     ) -> None:
         self.engine_id = engine_id
         self.target = target
+        self.engine_version = engine_version
         self.slug = slug
         self.port = port
         self.estimate_bytes = estimate_bytes
@@ -273,6 +276,7 @@ class _Engine:
         return {
             "engine_id": str(self.engine_id) if self.engine_id else None,
             "target": self.target.model_dump(mode="json") if self.target else None,
+            "engine_version": self.engine_version,
             "slug": self.slug,
             "port": self.port,
             "pid": self.pid,
@@ -433,6 +437,22 @@ class EngineManager:
 
         Returns `(already_running, status)`.
         """
+        # Visual preflight hashes the entire verified copy. Keep that I/O out
+        # of the lifecycle lock so collection and cancellation remain live
+        # while large models are checked. Admission is rechecked below before
+        # any process is spawned.
+        verified_manifest_sha256: str | None = None
+        if backend is EngineBackend.MLX_VLM:
+            from coire_node.visual_validation import inspect_local_variant
+
+            manifest = self._store.read_manifest(slug)
+            if not self._store.exists(slug) or manifest is None:
+                raise CopyMissing(f"no verified copy of {slug} on this node")
+            if inspect_local_variant(self._store.path_for(slug)) is not None:
+                raise CopyMissing(f"visual copy of {slug} is incomplete or linked")
+            if self._store.verify_against(slug, manifest):
+                raise CopyMissing(f"visual copy of {slug} differs from its manifest")
+            verified_manifest_sha256 = manifest.sha256()
         with self._lock:
             existing = self._engines.get(str(engine_id))
             if existing is not None and (existing.slug != slug or existing.target != target):
@@ -447,17 +467,14 @@ class EngineManager:
             manifest = self._store.read_manifest(slug)
             if not self._store.exists(slug) or manifest is None:
                 raise CopyMissing(f"no verified copy of {slug} on this node")
+            if (
+                verified_manifest_sha256 is not None
+                and manifest.sha256() != verified_manifest_sha256
+            ):
+                raise CopyMissing(f"visual copy of {slug} changed during verification")
             adapter_path = self.adapter_path(target, slug) if target else None
             if adapter_path is not None and backend is not EngineBackend.MLX_LM:
                 raise BackendMismatch("adapter serving requires the text backend")
-            if backend is EngineBackend.MLX_VLM:
-                from coire_node.visual_validation import inspect_local_variant
-
-                if inspect_local_variant(self._store.path_for(slug)) is not None:
-                    raise CopyMissing(f"visual copy of {slug} is incomplete or linked")
-                if self._store.verify_against(slug, manifest):
-                    raise CopyMissing(f"visual copy of {slug} differs from its manifest")
-
             committed = self.committed_bytes() + self._additional_committed_bytes()
             budget = self.budget_bytes()
             if committed + estimate_bytes > budget:
@@ -496,6 +513,16 @@ class EngineManager:
                 )
             )
             env = build_engine_env(dict(os.environ))
+            spawn_version = None
+            if backend is EngineBackend.MLX_LM and engine_command(self._settings) == list(
+                DEFAULT_ENGINE_COMMAND
+            ):
+                with contextlib.suppress(PackageNotFoundError):
+                    spawn_version = version("mlx-lm")
+
+            if backend is EngineBackend.MLX_VLM:
+                with contextlib.suppress(PackageNotFoundError):
+                    spawn_version = version("mlx-vlm")
 
             stderr_path, stderr_file = self._new_stderr_file()
             try:
@@ -524,10 +551,15 @@ class EngineManager:
                 chat_template_sha256=template_digest,
                 backend=backend,
                 stderr_path=stderr_path,
+                engine_version=spawn_version,
             )
             engine.proc = proc
             with contextlib.suppress(psutil.Error):
                 engine.create_time = psutil.Process(proc.pid).create_time()
+            # Publish a real footprint before the starting engine becomes visible
+            # to health collection. Unknown residency must still fail closed, but
+            # a known child should not wait for the next health-loop interval.
+            self._sample(engine)
             self._engines[str(engine_id)] = engine
             self._persist()
             logger.info(
@@ -884,6 +916,32 @@ class EngineManager:
             engine = self._engines.get(str(engine_id))
             return engine.status() if engine else None
 
+    def attested_engine_version(
+        self,
+        engine_id: uuid.UUID,
+        target: InferenceTarget,
+        template_override: str | None = None,
+        *,
+        backend: EngineBackend | None = None,
+    ) -> str | None:
+        with self._lock:
+            engine = self._engines.get(str(engine_id))
+            if (
+                engine is None
+                or engine.state is not EngineState.READY
+                or engine.target != target
+                or (backend is not None and engine.backend is not backend)
+                or engine.chat_template_sha256
+                != (
+                    hashlib.sha256(template_override.encode()).hexdigest()
+                    if template_override
+                    else None
+                )
+                or not _alive(engine.pid, engine.create_time)
+            ):
+                return None
+            return engine.engine_version
+
     # -- persistence and adoption -----------------------------------------
     def _persist(self) -> None:
         records = [
@@ -948,6 +1006,7 @@ class EngineManager:
                 slug=slug,
                 target=target,
                 port=record["port"],
+                engine_version=record.get("engine_version"),
                 estimate_bytes=record.get("estimate_bytes", 0),
                 pid=pid,
                 create_time=create_time,

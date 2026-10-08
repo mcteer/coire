@@ -214,6 +214,11 @@ async def place_run(run_id_text: str) -> None:
                 AgentRunState.KILLED,
             }:
                 return
+            if pending.purpose == "evaluation" and pending.node_id is not None:
+                from coire_api.evaluation.execution import authorize_evaluation_child
+
+                await authorize_evaluation_child(session, pending)
+                return
         node_id = await choose_studio(run_id)
         if node_id is not None:
             async with session_scope() as session:

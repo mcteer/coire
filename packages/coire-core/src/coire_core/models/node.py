@@ -19,11 +19,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from coire_core.models.engine import EngineStatus
+from coire_core.models.evaluation import EvaluationCapabilities
 from coire_core.models.harness import HarnessRunRequest, TaskClass
 from coire_core.models.jobs import JobStatus
 from coire_core.models.mcp import WorkspaceSource
 from coire_core.models.registry import EngineBackend
-from coire_core.models.training_node import NodeTrainingStatus
+from coire_core.models.training_node import NodeTrainingCapabilities, NodeTrainingStatus
 
 MESH_SUBNET = IPv4Network("192.168.100.0/24")
 """The unrouted Thunderbolt mesh. See docs/adr/0002 and ARCHITECTURE.md 2.1."""
@@ -336,3 +337,9 @@ class NodeStatusV2(BaseModel):
     store_free_bytes: int = Field(default=0, ge=0)
     supported_backends: list[EngineBackend] = Field(default_factory=lambda: [EngineBackend.MLX_LM])
     run_images_configured: bool = False
+    evaluation: EvaluationCapabilities | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    training_capabilities: NodeTrainingCapabilities | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )

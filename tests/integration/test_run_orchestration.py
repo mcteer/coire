@@ -221,7 +221,38 @@ def prepare_verified_model(client: httpx.Client, admin_headers: dict[str, str]) 
             "engine_version": "fake-mlx-lm",
         },
     )
-    assert evaluation.status_code == 201, evaluation.text
+    # 017 refuses caller-supplied verification scores. These lifecycle tests
+    # start with a historical, already-qualified v1 fixture; they do not prove
+    # new evaluation execution (the real-engine gate covers that separately).
+    assert evaluation.status_code == 409, evaluation.text
+    legacy_id, legacy_variant = uuid.uuid4(), uuid.UUID(variant_id)
+    subprocess.run(
+        [
+            "docker",
+            "exec",
+            "coire-it-postgres-1",
+            "psql",
+            "-U",
+            "coire",
+            "-d",
+            "coire",
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            "INSERT INTO harness_evaluations "
+            "(id,variant_id,scores,overall_score,verdict,harness_version,engine_version,diagnostics,run_at) "
+            f"VALUES ('{legacy_id}','{legacy_variant}',"
+            '\'{"tool_calling":1,"structured_output":1,"edit_application":1,"long_context":1}\','
+            "1,'passed','integration-legacy-v1','fake-mlx-lm','[]','2020-01-01T00:00:00Z'); "
+            "UPDATE model_variants SET harness_verified=true, "
+            f"harness_verified_at='2020-01-01T00:00:00Z' WHERE id='{legacy_variant}'",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    history = client.get(f"/api/v1/admin/harness-evaluations/{legacy_id}", headers=admin_headers)
+    assert history.status_code == 200, history.text
+    assert history.json()["harness_version"] == "integration-legacy-v1"
     variants = client.get(f"/api/v1/admin/models/{model_id}/variants", headers=admin_headers).json()
     variant = next(item for item in variants if item["id"] == variant_id)
     publication = client.patch(

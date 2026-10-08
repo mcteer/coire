@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from coire_core.models.adapters import InferenceTarget, ModelSelector, validate_transport_target
+from coire_core.models.evaluation import EvaluationRuntime
 from coire_core.models.harness import PROFILE_TOOL_NAMES, ProfileName, TaskClass
 from coire_core.models.mcp import McpCallState, McpToolName
 
@@ -258,6 +259,8 @@ class RunContainerCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    purpose: Literal["harness", "evaluation"] = "harness"
+    evaluation_runtime: EvaluationRuntime | None = None
     run_id: uuid.UUID
     profile: ProfileName
     model_id: uuid.UUID
@@ -277,6 +280,17 @@ class RunContainerCreate(BaseModel):
     @model_validator(mode="after")
     def transport_subject_matches(self) -> RunContainerCreate:
         validate_transport_target(self.model_id, self.variant_id, self.target, self.public_selector)
+        if self.purpose == "evaluation":
+            if (
+                self.task_class is not TaskClass.READ
+                or self.target is None
+                or self.evaluation_runtime is None
+                or self.workspace_ref != f"eval-{self.run_id}"
+                or self.output_ref != f"eval-output-{self.run_id}"
+            ):
+                raise ValueError("evaluation container requires exact READ workspace and runtime")
+        elif self.evaluation_runtime is not None:
+            raise ValueError("evaluation runtime is only permitted on internal evaluations")
         return self
 
 

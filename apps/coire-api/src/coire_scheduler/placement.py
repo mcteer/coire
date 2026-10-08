@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from dbos import DBOS
 from opentelemetry import metrics, trace
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import (
     EngineProcessRow,
@@ -263,6 +264,16 @@ async def _candidate_nodes(
         ):
             reasons.append(f"{node.name}: health sample is stale")
     return eligible, reasons
+
+
+async def confirmed_evictions(session: AsyncSession, decision_id: uuid.UUID) -> list[str]:
+    """A restart may replan after unloading; the confirmed receipts survive it."""
+    values = await session.scalars(
+        select(EvictionEventRow.reservation_id)
+        .where(EvictionEventRow.decision_id == decision_id, EvictionEventRow.outcome == "confirmed")
+        .order_by(EvictionEventRow.created_at, EvictionEventRow.lru_rank, EvictionEventRow.id)
+    )
+    return list(dict.fromkeys(str(value) for value in values))
 
 
 async def _run_decision(decision_id: uuid.UUID) -> None:
@@ -610,7 +621,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             if decision is not None:
                 required_bytes = decision.required_bytes
                 decision.state = PlacementState.READY
-                decision.evicted_reservation_ids = [str(item) for item in plan.evictions]
+                decision.evicted_reservation_ids = await confirmed_evictions(session, decision_id)
                 decision.updated_at = datetime.now(UTC)
         admissions.add(1, {"node": node.name, "outcome": "ready"})
         reserved_gauge.set(required_bytes, {"node": node.name})

@@ -4,6 +4,8 @@ import { terminalTrainingState } from "../../hooks/useTrainingJob";
 import { ConfirmAction } from "../ConfirmAction";
 export function TrainingControls({ job, onChange }: { job: TrainingJob; onChange: () => Promise<void> }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [pending, setPending] = useState("");
+  const evaluationPending = (job.evaluation_groups ?? []).some((link) => link.origin === "training_checkpoint" && link.trigger_phase !== "complete" && link.pause_owner !== "released");
+  const evaluationOwned = evaluationPending && job.reason === "evaluation_pending";
   const action = async (operation: "pause" | "resume" | "cancel" | "delete") => {
     if (busy) return;
     setBusy(true); setError("");
@@ -17,12 +19,14 @@ export function TrainingControls({ job, onChange }: { job: TrainingJob; onChange
   return <section aria-label="Training controls">
     <div className="row">
       {job.state === "running" && <button className="button ghost" disabled={busy} onClick={() => void action("pause")}>Pause</button>}
-      {job.state === "paused" && <button className="button ghost" disabled={busy} onClick={() => void action("resume")}>Resume</button>}
+      {job.state === "paused" && <button className="button ghost" disabled={busy || evaluationPending} onClick={() => void action("resume")}>Resume</button>}
+      {evaluationOwned && ["paused", "pausing"].includes(job.state) && <button className="button ghost" disabled={busy} onClick={() => void action("pause")}>Keep paused after evaluation</button>}
       {!terminalTrainingState(job.state) && job.state !== "cancelling" && <ConfirmAction label="Stop" target={job.spec.output.adapter_slug} onConfirm={() => action("cancel")}/>}
       {terminalTrainingState(job.state) && <ConfirmAction label="Delete job" target={job.id} onConfirm={() => action("delete")}/>}
     </div>
     {pending && !terminalTrainingState(job.state) && <p role="status">{pending}</p>}
-    {job.state === "paused" && <p>{job.reason === "admin_pause" ? "Administrator pause: explicit Resume is required." : "Protective pause: automatic resume requires cooldown and fresh, valid admission evidence."}</p>}
+    {job.state === "paused" && <p>{evaluationOwned ? "Evaluation pause: cleanup must finish before training can resume with fresh admission evidence." : job.reason === "admin_pause" ? "Administrator pause: explicit Resume is required." : "Protective pause: automatic resume requires cooldown and fresh, valid admission evidence."}</p>}
+    {evaluationPending && !evaluationOwned && <p>Evaluation cleanup must finish before an explicit Resume is available.</p>}
     {["recovering", "cancelling", "pausing"].includes(job.state) && <p>Process liveness or checkpoint commitment is not yet confirmed. Capacity stays reserved until stop / fencing is proved.</p>}
     {error && <p role="alert" className="error">{error}</p>}
   </section>;

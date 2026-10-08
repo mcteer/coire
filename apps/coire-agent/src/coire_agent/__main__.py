@@ -10,10 +10,13 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from coire_agent.coding import CodingWorkspace, run_coding
+from coire_agent.evaluation import execute_phase
+from coire_agent.evaluation_inputs import read_previous_outputs
 from coire_agent.gateway_model import GatewayTransport
 from coire_agent.harness import Harness
 from coire_agent.pydantic_runtime import OUTPUT_TYPES
 from coire_core.models.adapters import InferenceTarget
+from coire_core.models.evaluation import EvaluationRuntime, EvaluationWorkload
 from coire_core.models.harness import HarnessRunRequest, ProfileName
 
 REQUEST_PATH = Path("/workspace/.coire/request.json")
@@ -22,11 +25,14 @@ SEPARATE_RESULT_PATH = Path("/coire-output/result.json")
 MAX_REQUEST_BYTES = 2 * 1024**2
 
 
-def load_request(path: Path = REQUEST_PATH) -> HarnessRunRequest:
+def load_request(path: Path = REQUEST_PATH) -> HarnessRunRequest | EvaluationWorkload:
     size = path.stat().st_size
     if size <= 0 or size > MAX_REQUEST_BYTES:
         raise ValueError("harness request size is invalid")
-    return HarnessRunRequest.model_validate(json.loads(path.read_bytes()))
+    data = json.loads(path.read_bytes())
+    if isinstance(data, dict) and data.get("kind") == "evaluation":
+        return EvaluationWorkload.model_validate(data)
+    return HarnessRunRequest.model_validate(data)
 
 
 async def execute(
@@ -48,6 +54,53 @@ async def execute(
         if env.get("COIRE_INFERENCE_TARGET")
         else None
     )
+    if isinstance(request, EvaluationWorkload):
+        if (
+            request.run_id != run_id
+            or request.target.target != target
+            or request.target.target.model_id != model_id
+            or request.target.target.variant_id != verified_variant_id
+            or env.get("COIRE_OUTPUT_DIR") != str(result_path.parent)
+            or env.get("COIRE_RUN_PURPOSE") != "evaluation"
+        ):
+            raise ValueError("evaluation workload differs from admitted run")
+        actual_runtime = EvaluationRuntime.model_validate_json(env["COIRE_EVALUATION_RUNTIME"])
+        transport = GatewayTransport(
+            gateway_url=env["COIRE_API_URL"],
+            token=env["COIRE_RUN_TOKEN"],
+            model_id=env.get("COIRE_PUBLIC_SELECTOR", str(model_id)),
+            target=target,
+            variant_id=verified_variant_id,
+        )
+        prior_outputs = (
+            await asyncio.to_thread(read_previous_outputs, request, request_path.parent / "inputs")
+            if request.phase == "judge" and request.input_files
+            else None
+        )
+        if request.pressure is not None:
+            from coire_agent.evaluation_pressure import execute_pressure
+
+            evaluation_result = await execute_pressure(
+                request,
+                transport.complete_evaluation,
+                runtime=actual_runtime,
+                stop_path=request_path.parent / "measurement-stop.json",
+                prior_outputs=prior_outputs,
+                input_root=request_path.parent / "inputs",
+            )
+        else:
+            evaluation_result = await execute_phase(
+                request,
+                transport.complete_evaluation,
+                runtime=actual_runtime,
+                prior_outputs=prior_outputs,
+                input_root=request_path.parent / "inputs",
+            )
+        result_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        temporary = result_path.with_suffix(".json.tmp")
+        temporary.write_text(evaluation_result.model_dump_json(), encoding="utf-8")
+        temporary.replace(result_path)
+        return
     if request.target is None and target is not None and target.adapter_id is None:
         # UUID-only workspace requests remain compatible with newly frozen base grants.
         request = request.model_copy(update={"target": target})

@@ -45,7 +45,7 @@ from coire_core.models.datasets import DatasetAnalysis, DatasetAnalysisBinding, 
 from coire_core.models.registry import ModelState
 from coire_core.models.training import (
     TERMINAL_TRAINING_STATES,
-    ResolvedTrainingSpec,
+    ResolvedTrainingSpecDocument,
     TrainingCommandReceipt,
     TrainingControlRequest,
     TrainingJobDetail,
@@ -53,6 +53,7 @@ from coire_core.models.training import (
     TrainingJobState,
     TrainingStateEvent,
     TrainingSubmission,
+    parse_resolved_training_spec,
 )
 from coire_core.models.training_node import TrainingPrepareRequest
 from coire_core.settings import Settings, get_settings
@@ -99,7 +100,9 @@ def decode_page_cursor(cursor: str, scope: str) -> tuple[datetime, str]:
         raise TrainingValidationError("Invalid, expired or foreign page cursor") from None
 
 
-async def recheck_training_base(session: AsyncSession, resolved: ResolvedTrainingSpec) -> None:
+async def recheck_training_base(
+    session: AsyncSession, resolved: ResolvedTrainingSpecDocument
+) -> None:
     """Recheck mutable authority over immutable inputs at every execution boundary."""
     model = await session.get(
         ModelRow, resolved.spec.model.model_id, populate_existing=True, with_for_update=True
@@ -134,7 +137,9 @@ async def recheck_training_base(session: AsyncSession, resolved: ResolvedTrainin
         raise TrainingConflict("Immutable base copies changed")
 
 
-async def recheck_training_inputs(session: AsyncSession, resolved: ResolvedTrainingSpec) -> None:
+async def recheck_training_inputs(
+    session: AsyncSession, resolved: ResolvedTrainingSpecDocument
+) -> None:
     await recheck_training_base(session, resolved)
     train_hashes: set[str] = set()
     validation_hashes: set[str] = set()
@@ -292,9 +297,12 @@ async def job_detail(session: AsyncSession, job_id: str) -> TrainingJobDetail:
             TrainingAttemptRow.job_id == job.id, TrainingAttemptRow.fence == job.fence
         )
     )
+    from coire_api.evaluation.links import for_job
+
     return TrainingJobDetail.model_validate(
         {
             "id": job.id,
+            "evaluation_groups": await for_job(session, job.id),
             "version": job.version,
             "state": job.state,
             "source_yaml": job.source_yaml,
@@ -320,7 +328,7 @@ async def submit_training(
     submission: TrainingSubmission,
     key: str,
     *,
-    resolved: ResolvedTrainingSpec | None = None,
+    resolved: ResolvedTrainingSpecDocument | None = None,
     global_limit: int = 8,
     owner_limit: int = 4,
     settings: Settings | None = None,
@@ -350,7 +358,9 @@ async def submit_training(
         from coire_api.training.specs import resolve_submission
         from coire_core.errors import TrainingUnavailable
 
-        validation = await resolve_submission(session, submission, settings=config)
+        validation = await resolve_submission(
+            session, submission, settings=config, principal=principal
+        )
         if not validation.ready_to_run or validation.resolved is None:
             raise TrainingUnavailable(
                 "Training preflight is unavailable: " + ",".join(validation.reasons)
@@ -523,6 +533,17 @@ async def control_training(
     if operation == "resume":
         if state is not TrainingJobState.PAUSED:
             raise TrainingConflict("Only a paused job may resume")
+        if job.evaluation_pause_trigger_id is not None:
+            from coire_api.db import TrainingEvaluationTriggerRow
+
+            obligation = await session.get(
+                TrainingEvaluationTriggerRow, job.evaluation_pause_trigger_id
+            )
+            if obligation is not None and obligation.phase != "complete":
+                raise TrainingConflict(
+                    "Evaluation cleanup must complete before training can resume"
+                )
+            job.evaluation_pause_trigger_id = None
         await authorize_live_training_action(
             session, Principal.model_validate(job.authorization_snapshot)
         )
@@ -536,9 +557,7 @@ async def control_training(
             raise TrainingConflict("Old trainers have not been proved stopped")
         if job.resolved_spec is None:
             raise TrainingConflict("Resolved training inputs are missing")
-        await recheck_training_inputs(
-            session, ResolvedTrainingSpec.model_validate(job.resolved_spec)
-        )
+        await recheck_training_inputs(session, parse_resolved_training_spec(job.resolved_spec))
         from coire_api.training.checkpoints import recovery_checkpoint
 
         checkpoint = await recovery_checkpoint(session, job)
@@ -556,9 +575,18 @@ async def control_training(
         )
         job.execution_deadline_at = job.queue_deadline_at + timedelta(seconds=remaining)
     elif operation == "pause":
-        if state not in {TrainingJobState.RUNNING, TrainingJobState.QUEUED}:
+        overriding_evaluation = job.pause_origin == "evaluation" and state in {
+            TrainingJobState.PAUSING,
+            TrainingJobState.PAUSED,
+        }
+        if (
+            state not in {TrainingJobState.RUNNING, TrainingJobState.QUEUED}
+            and not overriding_evaluation
+        ):
             raise TrainingConflict("Job cannot pause in its current state")
-        job.state = "paused" if state is TrainingJobState.QUEUED else "pausing"
+        job.state = (
+            "paused" if state in {TrainingJobState.QUEUED, TrainingJobState.PAUSED} else "pausing"
+        )
         job.pause_origin, job.safe_reason = "admin", "admin_pause"
     else:
         active = await session.scalar(

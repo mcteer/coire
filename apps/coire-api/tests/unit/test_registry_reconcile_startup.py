@@ -7,7 +7,7 @@ from typing import cast
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.db import EngineProcessRow, NodeRow
+from coire_api.db import EngineProcessRow, NodeRow, PlacementCommandRow
 from coire_api.nodes_client import NodeClient
 from coire_api.registry.reconciler import ENGINE_START_GRACE_S, RegistryReconciler
 from coire_core.models.engine import EngineState, ReconcileResult
@@ -49,6 +49,9 @@ async def test_node_reconcile_defers_only_transient_startup_miss(
             return self.rows
 
     class Session:
+        async def scalar(self, query: object) -> object | None:
+            return None
+
         async def execute(self, query: object) -> Results:
             return Results([node] if "FROM nodes" in str(query) else [engine])
 
@@ -73,3 +76,49 @@ async def test_node_reconcile_defers_only_transient_startup_miss(
     assert ENGINE_START_GRACE_S < 31
     assert engine.state is expected
     assert failures == ([] if expected is EngineState.STARTING else [engine.id])
+
+
+@pytest.mark.parametrize(
+    "state,age,expected",
+    [
+        ("running", 64, True),
+        ("running", 601, False),
+        ("succeeded", 64, False),
+        ("failed", 64, False),
+        ("pending", 64, False),
+    ],
+)
+async def test_checksum_preflight_deferral_is_bounded_by_actual_load_command(
+    state: str, age: int, expected: bool
+) -> None:
+    engine = EngineProcessRow(
+        id=uuid.uuid4(),
+        node_id=uuid.uuid4(),
+        port=9500,
+        state=EngineState.STARTING,
+        started_at=datetime.now(UTC) - timedelta(seconds=64),
+    )
+    command = PlacementCommandRow(
+        id=uuid.uuid4(),
+        decision_id=uuid.uuid4(),
+        engine_id=engine.id,
+        node_id=engine.node_id,
+        operation="load",
+        state=state,
+        updated_at=datetime.now(UTC) - timedelta(seconds=age),
+    )
+
+    class Session:
+        async def scalar(self, query: object) -> PlacementCommandRow:
+            sql = str(query)
+            assert "placement_commands.engine_id" in sql
+            assert "placement_commands.node_id" in sql
+            assert "placement_commands.operation" in sql
+            return command
+
+    reconciler = RegistryReconciler(Settings(_secrets_dir="/none"))  # type: ignore[call-arg]
+    assert (
+        await reconciler._engine_start_in_flight(cast(AsyncSession, Session()), engine) is expected
+    )
+    engine.state = EngineState.READY
+    assert not await reconciler._engine_start_in_flight(cast(AsyncSession, Session()), engine)

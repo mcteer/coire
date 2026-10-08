@@ -7,6 +7,7 @@ import os
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 import yaml
@@ -55,6 +56,9 @@ pytestmark = [
 JOB = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 ATTEMPT = "01ARZ3NDEKTSV4RRFFQ69G5FAW"
 DIGEST = "a" * 64
+LEGACY_RESOLVED = (
+    Path(__file__).resolve().parents[4] / "tests/fixtures/evaluations/legacy_training/resolved.json"
+).read_bytes()
 
 
 @pytest.fixture
@@ -1229,7 +1233,9 @@ async def test_simulated_checkpoint_mirror_commits_and_keeps_grant_secrets_out_o
     from coire_api import db
     from coire_api.db import TrainingArtifactCopyRow, TrainingCommandRow
     from coire_api.nodes_client import NodeError, NodeErrorKind
+    from coire_api.training.service import payload_digest
     from coire_api.training_executor import TrainingNodeClient, mirror_checkpoint
+    from coire_core.models.training import ResolvedTrainingSpec
     from coire_core.models.training_node import (
         TrainingArtifactGrantIssued,
         TrainingArtifactGrantRequest,
@@ -1244,6 +1250,14 @@ async def test_simulated_checkpoint_mirror_commits_and_keeps_grant_secrets_out_o
         job = await session.get(TrainingJobRow, JOB)
         node = await session.scalar(select(NodeRow).where(NodeRow.name == "coire-edge-a"))
         assert job is not None and node is not None
+        # Committed checkpoints belong to resolved jobs. Keep this v1 mirror
+        # fixture complete when the shared commit reducer inspects declarations.
+        resolved = ResolvedTrainingSpec.model_validate_json(LEGACY_RESOLVED)
+        resolved.spec.model.model_id = job.model_id
+        resolved.spec.model.variant_id = job.base_variant_id
+        job.resolved_spec = resolved.model_dump(mode="json")
+        job.resolved_sha256 = payload_digest(resolved)
+        item = item.model_copy(update={"resolved_spec_sha256": job.resolved_sha256})
         job.authorization_snapshot = Principal(
             kind=PrincipalKind.USER, user_id=job.owner_user_id, role=UserRole.ADMIN
         ).model_dump(mode="json")

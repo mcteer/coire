@@ -17,6 +17,7 @@ from coire_api.db import (
     TrainingProfileRow,
     session_scope,
 )
+from coire_api.evaluation.telemetry import mutation_scope
 from coire_api.training.authorization import CurrentTrainingAdmin, authorize_live_training_action
 from coire_api.training.checkpoints import checkpoint_detail
 from coire_api.training.events import current_job, metric_page, replay_events
@@ -28,7 +29,7 @@ from coire_api.training.service import (
     job_detail,
     submit_training,
 )
-from coire_api.training.specs import resolve_submission, training_recipes
+from coire_api.training.specs import parse_submission, resolve_submission, training_recipes
 from coire_core.errors import (
     TrainingConflict,
     TrainingForbidden,
@@ -59,6 +60,7 @@ from coire_core.models.training import (
     TrainingRecipePage,
     TrainingReplayPage,
     TrainingResetEvent,
+    TrainingSpecV2,
     TrainingSubmission,
     TrainingValidation,
 )
@@ -76,9 +78,18 @@ async def validate_training(
     request: Request, body: TrainingSubmission, principal: CurrentTrainingAdmin
 ) -> TrainingValidation:
     enabled(request)
-    async with session_scope() as session:
+    scope = (
+        mutation_scope(session_scope, principal, "evaluation.training.validate", "training")
+        if isinstance(
+            parse_submission(body, settings=request.app.state.settings).spec, TrainingSpecV2
+        )
+        else session_scope()
+    )
+    async with scope as session:
         await authorize_live_training_action(session, principal)
-        return await resolve_submission(session, body, settings=request.app.state.settings)
+        return await resolve_submission(
+            session, body, settings=request.app.state.settings, principal=principal
+        )
 
 
 @router.get("/recipes", response_model=TrainingRecipePage)
@@ -95,7 +106,14 @@ async def submit_job(
     idempotency_key: Annotated[str, Header(min_length=1, max_length=128)],
 ) -> TrainingJobReceipt:
     enabled(request)
-    async with session_scope() as session:
+    scope = (
+        mutation_scope(session_scope, principal, "evaluation.training.submit", "training")
+        if isinstance(
+            parse_submission(body, settings=request.app.state.settings).spec, TrainingSpecV2
+        )
+        else session_scope()
+    )
+    async with scope as session:
         return await submit_training(
             session, principal, body, idempotency_key, settings=request.app.state.settings
         )

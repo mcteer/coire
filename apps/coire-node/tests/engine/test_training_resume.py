@@ -34,11 +34,15 @@ def test_current_key_restores_subsequent_draws_and_original_seed_does_not(
 
 @pytest.mark.parametrize("trial", [0, 1, 2])
 @pytest.mark.parametrize("mixture", [False, True], ids=["single", "mixture"])
+@pytest.mark.parametrize(
+    "evaluation_pause", [False, True], ids=["ordinary-pause", "evaluation-pause"]
+)
 def test_bare_trainer_completed_update_full_state_resume(
     training_model: Path,
     tmp_path: Path,
     trial: int,
     mixture: bool,
+    evaluation_pause: bool,
     training_kind: Literal["lora", "qlora", "dora"],
 ) -> None:
     """The unchanged trainer must unwind and continue a 32-update trajectory."""
@@ -133,7 +137,7 @@ def test_bare_trainer_completed_update_full_state_resume(
         sampler: TrainingSampler,
         *,
         offset: int,
-        pause: bool,
+        pause_at: int | None,
         label: str,
     ) -> list[dict[str, Any]]:
         observations: list[dict[str, Any]] = []
@@ -166,7 +170,7 @@ def test_bare_trainer_completed_update_full_state_resume(
                         "sampler": sampler.snapshot(),
                     }
                 )
-                if pause and update == 4:
+                if pause_at is not None and update == pause_at:
                     state = CheckpointWorkerState(
                         job_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
                         attempt_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -186,6 +190,40 @@ def test_bare_trainer_completed_update_full_state_resume(
                         optimizer.state,
                     )
                     checkpoints.append(manifest.artifact_id)
+                    if evaluation_pause:
+                        from datetime import UTC, datetime, timedelta
+
+                        from coire_core.models.training_node import (
+                            CheckpointCommitAcknowledgementV2,
+                            EvaluationCheckpointPause,
+                            parse_checkpoint_acknowledgement,
+                        )
+                        from coire_node.training.worker import checkpoint_decision_action
+
+                        decision = CheckpointCommitAcknowledgementV2(
+                            command_id=uuid.uuid4(),
+                            job_id=state.job_id,
+                            attempt_id=state.attempt_id,
+                            fence=state.fence,
+                            request_sha256="e" * 64,
+                            node="coire-edge-a",
+                            rank=0,
+                            world_size=1,
+                            lease_expires_at=datetime.now(UTC) + timedelta(seconds=30),
+                            checkpoint_id=manifest.artifact_id,
+                            manifest_sha256=manifest.canonical_sha256(),
+                            update=update,
+                            committed_update=update,
+                            job_version=2,
+                            evaluation_pause=EvaluationCheckpointPause(
+                                trigger_id=uuid.uuid4(), pause_command_id=uuid.uuid4()
+                            ),
+                        )
+                        replay = parse_checkpoint_acknowledgement(decision.model_dump(mode="json"))
+                        assert (
+                            checkpoint_decision_action(replay, "continue", spec_version=2)
+                            == "pause"
+                        )
                     raise Paused()
 
         args = TrainingArgs(
@@ -197,7 +235,7 @@ def test_bare_trainer_completed_update_full_state_resume(
             max_seq_length=8,
             adapter_file=str(tmp_path / f"{label}-scratch.safetensors"),
         )
-        if pause:
+        if pause_at is not None:
             with pytest.raises(Paused):
                 train(
                     runtime.model,
@@ -227,7 +265,7 @@ def test_bare_trainer_completed_update_full_state_resume(
         make_optimizer(),
         make_sampler(),
         offset=0,
-        pause=False,
+        pause_at=None,
         label="baseline",
     )
     interrupted = run(
@@ -235,7 +273,7 @@ def test_bare_trainer_completed_update_full_state_resume(
         make_optimizer(),
         make_sampler(),
         offset=0,
-        pause=True,
+        pause_at=4,
         label="interrupted",
     )
     restored = store.restore(
@@ -252,7 +290,31 @@ def test_bare_trainer_completed_update_full_state_resume(
     getter = cast(Callable[[], dict[str, Any]], runtime.model.trainable_parameters)
     for key, value in flatten(getter()):
         np.testing.assert_array_equal(np.array(value), interrupted[-1]["weights"][key])
-    continued = run(runtime, optimizer, sampler, offset=4, pause=False, label="resumed")
+    continued = run(
+        runtime,
+        optimizer,
+        sampler,
+        offset=4,
+        pause_at=12 if evaluation_pause else None,
+        label="resumed",
+    )
+    if evaluation_pause:
+        assert len(checkpoints) == 2 and continued[-1]["update"] == 12
+        # A second declared evaluation boundary restores into another fresh
+        # trainer rather than retaining live optimizer/sampler/RNG objects.
+        second = store.restore(
+            checkpoints[1],
+            expected_runtime_sha256="c" * 64,
+            expected_resolved_spec_sha256="d" * 64,
+        )
+        runtime = load_sft_runtime(source, seed=777)
+        optimizer, sampler = make_optimizer(), make_sampler()
+        apply_restored_checkpoint(second, runtime, optimizer, sampler, expected_optimizer=settings)
+        assert sampler.snapshot() == continued[-1]["sampler"]
+        assert capture_mlx_rng_key() == continued[-1]["rng"]
+        continued += run(
+            runtime, optimizer, sampler, offset=12, pause_at=None, label="second-resume"
+        )
     assert len(continued) == 32
     for expected, actual in zip(baseline[4:], continued, strict=True):
         assert expected["update"] == actual["update"]

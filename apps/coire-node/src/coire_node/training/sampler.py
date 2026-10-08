@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from coire_core.errors import TrainingConflict, TrainingValidationError
 from coire_core.models.datasets import TokenizedTrainingExample
 from coire_core.models.training_node import MixtureSamplerState, SftBatch, SingleSourceSamplerState
+from coire_core.training_sampling import mixture_epoch_order
 from coire_node.training.datasets import IndexedTrainingSource, index_training_source
 
 type SamplerState = SingleSourceSamplerState | MixtureSamplerState
@@ -152,29 +153,6 @@ class IndexedExamples(Sequence[TokenizedTrainingExample]):
         raise IndexError(index)
 
 
-class _CounterRandom:
-    """Versioned platform-independent unbiased integer draws and Fisher-Yates shuffle."""
-
-    def __init__(self, key: bytes) -> None:
-        self.key = key
-        self.counter = 0
-
-    def below(self, bound: int) -> int:
-        limit = 2**256 - (2**256 % bound)
-        while True:
-            value = int.from_bytes(
-                hashlib.sha256(self.key + self.counter.to_bytes(16, "big")).digest()
-            )
-            self.counter += 1
-            if value < limit:
-                return value % bound
-
-    def shuffle(self, values: list[int]) -> None:
-        for index in range(len(values) - 1, 0, -1):
-            other = self.below(index + 1)
-            values[index], values[other] = values[other], values[index]
-
-
 class MixtureSampler:
     """Deterministic global stream with strided, disjoint rank assignment.
 
@@ -278,21 +256,13 @@ class MixtureSampler:
         self.last_batch_references: tuple[tuple[uuid.UUID, int], ...] = ()
 
     def _epoch_order(self, epoch: int) -> list[tuple[int, int]]:
-        order: list[tuple[int, int]] = []
-        for index, source in enumerate(self.sources):
-            rng = _CounterRandom(f"{self.identity_sha256}:{epoch}:source:{index}".encode())
-            pool = list(range(len(source.rows)))
-            if self.replacement:
-                draws = [rng.below(len(pool)) for _ in range(source.quota)]
-            else:
-                rng.shuffle(pool)
-                draws = pool[: source.quota]
-            order.extend((index, row) for row in draws)
-        if self.strategy == "weighted":
-            positions = list(range(len(order)))
-            _CounterRandom(f"{self.identity_sha256}:{epoch}:interleave".encode()).shuffle(positions)
-            order = [order[position] for position in positions]
-        return order
+        return mixture_epoch_order(
+            self.identity_sha256,
+            epoch,
+            [(len(source.rows), source.quota) for source in self.sources],
+            strategy=self.strategy,
+            replacement=self.replacement,
+        )
 
     def next_batch(self) -> SftBatch:
         epoch, cursor, order = self.epoch, self.cursor, self._order

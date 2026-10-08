@@ -404,14 +404,14 @@ def test_result_is_bound_to_worker_envelope_and_pinned_bytes(
 
 
 def tokenizer_assets(
-    tmp_path: Path, tokenizer_config: dict[str, Any]
+    tmp_path: Path, tokenizer_config: dict[str, Any], model_config: dict[str, Any] | None = None
 ) -> tuple[Path, DatasetAnalysisBinding]:
     from coire_core.models.jobs import ChecksumManifest, ManifestFile
 
     root = tmp_path / "synthetic--base"
     root.mkdir()
     files = {
-        "config.json": json.dumps({"model_type": "qwen2"}).encode(),
+        "config.json": json.dumps(model_config or {"model_type": "qwen2"}).encode(),
         "tokenizer_config.json": json.dumps(tokenizer_config).encode(),
         "tokenizer.json": b"{}",
         "model.safetensors": b"must-not-open-weight-file",
@@ -491,3 +491,70 @@ def test_inert_tokenizer_loader_never_opens_weights_and_forces_local_safe_kwargs
         "tokenizer_config_extra": {"trust_remote_code": False, "local_files_only": True}
     }
     assert len(tokenizer_sha) == len(template_sha) == len(runtime_sha) == 64
+
+
+def test_evaluation_tokenizer_accepts_serving_only_architecture_without_widening_sft(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+    from types import ModuleType, SimpleNamespace
+
+    from coire_node.training.datasets import load_evaluation_tokenizer
+
+    root, binding = tokenizer_assets(
+        tmp_path,
+        {"tokenizer_class": "Qwen2Tokenizer"},
+        {"model_type": "qwen4_exp", "per_module_quantization": "x" * 80_000},
+    )
+    module = ModuleType("mlx_lm.tokenizer_utils")
+    calls: list[dict[str, Any]] = []
+
+    def load(path: Path, **kwargs: Any) -> Any:
+        assert path == root
+        calls.append(kwargs)
+        return SimpleNamespace(chat_template="inert-serving-template")
+
+    module.__dict__["load"] = load
+    monkeypatch.setitem(sys.modules, "mlx_lm", ModuleType("mlx_lm"))
+    monkeypatch.setitem(sys.modules, "mlx_lm.tokenizer_utils", module)
+    monkeypatch.setattr("coire_node.training.datasets.platform.node", lambda: "coire-edge-a.lab")
+    monkeypatch.setattr("coire_node.training.datasets.platform.system", lambda: "Darwin")
+    monkeypatch.setattr("coire_node.training.datasets.version", lambda _name: "test-runtime")
+    original_open = Path.open
+
+    def safe_open(path: Path, *args: Any, **kwargs: Any) -> Any:
+        assert path.name != "model.safetensors", "evaluation opened model weights"
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", safe_open)
+    load_evaluation_tokenizer(
+        root, base_manifest_sha256=binding.base_manifest_sha256, template_override=None
+    )
+    assert calls == [
+        {"tokenizer_config_extra": {"trust_remote_code": False, "local_files_only": True}}
+    ]
+    with pytest.raises(TrainingValidationError):
+        load_analysis_tokenizer(root, binding)
+    assert len(calls) == 1, "SFT must reject before importing its tokenizer"
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        {"model_type": "qwen4_exp", "auto_map": {"AutoModel": "custom.code"}},
+        {"model_type": "qwen4_exp", "model_file": "custom.py"},
+        {"model_type": "qwen4_exp", "padding": "x" * (1024**2)},
+    ],
+)
+def test_evaluation_tokenizer_rejects_executable_or_oversized_serving_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, config: dict[str, Any]
+) -> None:
+    from coire_node.training.datasets import load_evaluation_tokenizer
+
+    root, binding = tokenizer_assets(tmp_path, {"tokenizer_class": "Qwen2Tokenizer"}, config)
+    monkeypatch.setattr("coire_node.training.datasets.platform.node", lambda: "coire-edge-a.lab")
+    monkeypatch.setattr("coire_node.training.datasets.platform.system", lambda: "Darwin")
+    with pytest.raises(TrainingValidationError):
+        load_evaluation_tokenizer(
+            root, base_manifest_sha256=binding.base_manifest_sha256, template_override=None
+        )

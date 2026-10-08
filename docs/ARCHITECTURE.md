@@ -416,7 +416,19 @@ preference/evaluation roadmap. [ADR-0012](adr/0012-sft-training-boundaries.md) a
   authenticated history; alerts survive disabled Grafana/Loki/Tempo. The baseline
   polling helper runs in the scheduler lifespan, including when new training is disabled.
 
-Feature 017 adds task/judge comparisons; its UI area must say unavailable today.
+Feature 017 adds durable task/judge comparisons and independent result history.
+Its implementation branch includes submission, history, provenance and checkpoint
+score points. All 70 task gates, including real checkpoint/coexistence and drained
+Core rollback acceptance, passed; admission remains default-off and node collection
+CPU/RSS retains an explicit operational limitation in the execution record. Core
+persists metadata and coordinates authenticated node work. Fixed scoring/input
+scanning and generation run in Studio agent containers with exact READ grants
+and no tools. Only declared v2 recipes create task/judge obligations. Final
+obligations commit with the ready adapter; checkpoint obligations commit with
+the full mirrored checkpoint and fenced pause. Both-rank trainer stop and owned
+cleanup precede fresh training admission for resume. Task/judge scores do not
+change harness verification, and judges must use a distinct model/base artifact.
+See [evaluation operations](runbooks/evaluations.md).
 Feature 018 separately specifies preference objectives, feedback consent/export and
 adapter initialization. Neither feature authorizes new dependencies or executable
 dataset/objective plugins in 016. Numerical, real process-restart, two-rank,

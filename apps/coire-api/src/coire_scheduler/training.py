@@ -23,9 +23,11 @@ from coire_api.training.service import payload_digest, recheck_training_inputs
 from coire_api.training.telemetry import observed
 from coire_core.errors import TrainingConflict
 from coire_core.models.placement import MemoryReservationState
-from coire_core.models.training import ResolvedTrainingSpec
+from coire_core.models.training import parse_resolved_training_spec
 from coire_core.models.training_node import (
+    CheckpointAcknowledgementDocument,
     CheckpointCommitAcknowledgement,
+    CheckpointCommitAcknowledgementV2,
     NodeTrainingEvent,
     NodeTrainingStatus,
     TrainingLeaseRenewal,
@@ -61,7 +63,7 @@ async def enqueue_attempt_commands(
         or job.execution_deadline_at <= datetime.now(UTC)
     ):
         raise TrainingConflict("Attempt no longer has execution authority")
-    resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+    resolved = parse_resolved_training_spec(job.resolved_spec)
     if payload_digest(resolved) != job.resolved_sha256:
         raise TrainingConflict("Resolved execution identity changed")
     await recheck_training_inputs(session, resolved)
@@ -284,9 +286,7 @@ async def enqueue_controls(
         await authorize_live_training_action(
             session, Principal.model_validate(job.authorization_snapshot)
         )
-        await recheck_training_inputs(
-            session, ResolvedTrainingSpec.model_validate(job.resolved_spec)
-        )
+        await recheck_training_inputs(session, parse_resolved_training_spec(job.resolved_spec))
         if job.state not in {"running", "reserving", "pausing"} or job.execution_deadline_at <= now:
             raise TrainingConflict("Execution authority cannot be renewed")
         expiry = min(now + timedelta(seconds=30), job.execution_deadline_at)
@@ -566,7 +566,7 @@ async def enqueue_checkpoint_acknowledgements(
         if prior is not None:
             rows.append(prior)
             continue
-        request = CheckpointCommitAcknowledgement.model_validate(
+        request: CheckpointAcknowledgementDocument = CheckpointCommitAcknowledgement.model_validate(
             {
                 "command_id": identity,
                 "job_id": job.id,
@@ -582,6 +582,36 @@ async def enqueue_checkpoint_acknowledgements(
                 "update": checkpoint.completed_update,
             }
         )
+        from coire_api.evaluation.training import ensure_checkpoint_trigger
+        from coire_core.models.training import ResolvedTrainingSpecV2
+        from coire_core.models.training_node import EvaluationCheckpointPause
+        from coire_core.settings import get_settings
+
+        resolved = parse_resolved_training_spec(job.resolved_spec)
+        if isinstance(resolved, ResolvedTrainingSpecV2):
+            trigger = await ensure_checkpoint_trigger(
+                session, job, checkpoint, settings=get_settings()
+            )
+            pause = None
+            if (
+                trigger is not None
+                and trigger.pause_version == job.version
+                and job.pause_origin == "evaluation"
+                and job.evaluation_pause_trigger_id == trigger.id
+            ):
+                pause = EvaluationCheckpointPause(
+                    trigger_id=trigger.id,
+                    pause_command_id=uuid.uuid5(trigger.id, "evaluation-pause"),
+                )
+            request = CheckpointCommitAcknowledgementV2.model_validate(
+                {
+                    **request.model_dump(mode="json"),
+                    "schema_version": 2,
+                    "committed_update": checkpoint.completed_update,
+                    "job_version": job.version,
+                    "evaluation_pause": pause.model_dump(mode="json") if pause else None,
+                }
+            )
         row = TrainingCommandRow(
             id=identity,
             actor_user_id=job.owner_user_id,
@@ -675,7 +705,7 @@ async def advance_training(session: AsyncSession, job_id: str) -> None:
         from coire_api.db import TrainingCheckpointRow
 
         checkpoint = await session.get(TrainingCheckpointRow, job.latest_checkpoint_id)
-        resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+        resolved = parse_resolved_training_spec(job.resolved_spec)
         if (
             checkpoint is not None
             and checkpoint.state == "committed"
@@ -751,7 +781,7 @@ async def advance_training(session: AsyncSession, job_id: str) -> None:
                         state="succeeded",
                     )
                 )
-        resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+        resolved = parse_resolved_training_spec(job.resolved_spec)
         names = (
             [resolved.spec.placement.preferred_node]
             if resolved.spec.placement.preferred_node

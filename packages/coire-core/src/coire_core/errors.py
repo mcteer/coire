@@ -184,3 +184,61 @@ class ImageStorageUnavailable(CoireError):
     code = "image_storage_unavailable"
     title = "Image storage unavailable"
     status = 507
+
+
+class EvaluationNotFound(CoireError):
+    code = "evaluation_not_found"
+    title = "Evaluation resource not found"
+    status = 404
+
+
+class EvaluationForbidden(CoireError):
+    code = "evaluation_forbidden"
+    title = "Evaluation requires an active admin owner"
+    status = 403
+
+
+class EvaluationConflict(CoireError):
+    code = "evaluation_conflict"
+    title = "Evaluation state conflict"
+    status = 409
+
+
+class EvaluationSelfJudge(EvaluationConflict):
+    code = "evaluation_self_judge"
+    title = "Judge cannot evaluate its own base model"
+
+
+class EvaluationExecutionRequired(EvaluationConflict):
+    code = "evaluation_execution_required"
+    title = "Submit a platform execution at /api/v1/admin/evaluations"
+
+
+class EvaluationValidationError(CoireError):
+    code = "evaluation_validation_error"
+    title = "Invalid evaluation request"
+    status = 422
+
+
+class EvaluationDisabled(CoireError):
+    code = "evaluation_admission_disabled"
+    title = "New evaluation admission is disabled"
+    status = 503
+
+
+class EvaluationUnavailable(CoireError):
+    code = "evaluation_unavailable"
+    title = "Evaluation runtime unavailable"
+    status = 503
+
+
+class EvaluationQuotaExceeded(CoireError):
+    code = "evaluation_quota_exceeded"
+    title = "Evaluation queue or evidence quota exhausted"
+    status = 429
+
+
+class EvaluationEvidenceGone(CoireError):
+    code = "evaluation_evidence_expired"
+    title = "Raw evaluation evidence is unavailable"
+    status = 410

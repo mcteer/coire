@@ -136,6 +136,7 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     stream_options: EngineStreamOptions | None = None
     max_tokens: int | None = Field(default=None, ge=1)
+    seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
     temperature: float | None = Field(default=None, ge=0)
     top_p: float | None = Field(default=None, ge=0, le=1)
     stop: str | list[str] | None = None
@@ -237,6 +238,7 @@ class EngineChatRequest(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1)
     temperature: float | None = Field(default=None, ge=0)
     top_p: float | None = Field(default=None, ge=0, le=1)
+    seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
     stop: str | list[str] | None = None
     tools: list[dict[str, Any]] | None = None
     tool_choice: Any = None

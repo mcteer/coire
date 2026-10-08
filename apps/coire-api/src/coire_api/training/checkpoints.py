@@ -194,6 +194,10 @@ async def commit_checkpoint(
     )
     assert checkpoint is not None
     if checkpoint.state == "committed":
+        from coire_api.evaluation.training import ensure_checkpoint_trigger
+        from coire_core.settings import get_settings
+
+        await ensure_checkpoint_trigger(session, job, checkpoint, settings=get_settings())
         return checkpoint
     await current_attempt(session, job, checkpoint.attempt_id, checkpoint.fence)
     manifest = TrainingArtifactManifest.model_validate(checkpoint.manifest)
@@ -225,6 +229,10 @@ async def commit_checkpoint(
         attempt_id=checkpoint.attempt_id,
         fence=checkpoint.fence,
     )
+    from coire_api.evaluation.training import ensure_checkpoint_trigger
+    from coire_core.settings import get_settings
+
+    await ensure_checkpoint_trigger(session, job, checkpoint, settings=get_settings())
     return checkpoint
 
 

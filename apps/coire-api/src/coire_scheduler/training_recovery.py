@@ -162,6 +162,24 @@ async def record_stop_proof(
             job.state, job.safe_reason = "recovering", "rank_failed"
         job.version += 1
         job.updated_at = now
+        if (
+            job.state == "paused"
+            and job.pause_origin == "evaluation"
+            and job.evaluation_pause_trigger_id is not None
+        ):
+            from coire_api.db import TrainingEvaluationTriggerRow
+
+            trigger = await session.get(
+                TrainingEvaluationTriggerRow, job.evaluation_pause_trigger_id, with_for_update=True
+            )
+            if (
+                trigger is not None
+                and trigger.pause_version == job.version - 1
+                and trigger.checkpoint_id == job.latest_checkpoint_id
+                and trigger.fence == job.fence
+            ):
+                trigger.pause_version = job.version
+                trigger.phase = "preparing_adapter"
         await append_event(
             session,
             job.id,

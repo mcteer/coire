@@ -8,10 +8,20 @@ import uuid
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, Field, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BeforeValidator,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 from coire_core.models.adapters import InferenceTarget
 from coire_core.models.datasets import DatasetMixture, DatasetValidationSources
+from coire_core.models.evaluation import EvaluationTarget
+from coire_core.models.evaluation_links import EvaluationGroupLink
+from coire_core.models.training_evaluation import ResolvedTrainingSuite, TrainingSuiteSchedule
 from coire_core.models.training_types import (
     AdapterSlug,
     Digest,
@@ -139,10 +149,76 @@ class TrainingSpec(TrainingWire):
         return hashlib.sha256(payload).hexdigest()
 
 
+class TrainingEvaluationV2(TrainingEvaluation):
+    suites: list[TrainingSuiteSchedule] = Field(min_length=1, max_length=4)
+
+
+class TrainingSpecV2(TrainingWire):
+    schema_version: Literal[2] = 2
+    model: TrainingModel
+    data: TrainingData
+    objective: Literal["sft"] = "sft"
+    parameterization: TrainingParameterization
+    optim: TrainingOptimizer
+    eval: TrainingEvaluationV2
+    output: TrainingOutput
+    placement: TrainingPlacement = Field(default_factory=TrainingPlacement)
+    seed: Seed = 0
+
+    @model_validator(mode="after")
+    def complete_global_batches(self) -> TrainingSpecV2:
+        if self.placement.mode == "data_parallel" and self.optim.batch_size % 2:
+            raise ValueError("data-parallel global batch must be divisible by two")
+        if self.data.train.epoch_samples % self.optim.batch_size:
+            raise ValueError("epoch samples must be divisible by global batch size")
+        schedules = self.eval.suites
+        if len({(item.suite_id, item.suite_version) for item in schedules}) != len(schedules):
+            raise ValueError("training evaluation suites must be unique")
+        updates = {update for item in schedules for update in item.checkpoint_updates}
+        if len(updates) > 32 or any(
+            update >= self.optim.updates or update % self.output.checkpoint_every_updates
+            for update in updates
+        ):
+            raise ValueError("suite checkpoints must be recoverable pre-final updates")
+        return self
+
+    def canonical_sha256(self) -> str:
+        payload = json.dumps(
+            self.model_dump(mode="json"),
+            sort_keys=True,
+            ensure_ascii=False,
+            allow_nan=False,
+            separators=(",", ":"),
+        ).encode()
+        return hashlib.sha256(payload).hexdigest()
+
+
+def _default_training_version(value: object) -> object:
+    if isinstance(value, dict) and "schema_version" not in value:
+        return {**value, "schema_version": 1}
+    return value
+
+
+def _numeric_version_schema(schema: dict[str, object]) -> None:
+    """Keep numeric version constants without string-only OpenAPI mappings."""
+    schema.pop("discriminator", None)
+
+
+type TrainingSpecDocument = Annotated[
+    TrainingSpec | TrainingSpecV2,
+    Field(discriminator="schema_version", json_schema_extra=_numeric_version_schema),
+    BeforeValidator(_default_training_version),
+]
+
+
+def parse_training_spec(value: object) -> TrainingSpec | TrainingSpecV2:
+    return TypeAdapter(TrainingSpecDocument).validate_python(value)
+
+
 class TrainingSubmission(TrainingWire):
     source_yaml: str = Field(min_length=1, max_length=65536)
     source_kind: Literal["yaml", "form"] = "yaml"
-    form_spec: TrainingSpec | None = None
+    form_spec: TrainingSpecDocument | None = None
     preview_sha256: Digest | None = None
 
     @field_validator("source_yaml")
@@ -168,7 +244,7 @@ class ParsedTrainingSubmission(TrainingWire):
     source_kind: Literal["yaml", "form"]
     source_sha256: Digest
     intent_sha256: Digest
-    spec: TrainingSpec
+    spec: TrainingSpecDocument
 
 
 class ResolvedDatasetInput(TrainingWire):
@@ -214,6 +290,45 @@ class ResolvedTrainingSpec(TrainingWire):
     resource_envelope: TrainingResourceEnvelope
 
 
+class ResolvedTrainingSpecV2(TrainingWire):
+    spec: TrainingSpecV2
+    base_manifest_sha256: Digest
+    datasets: list[ResolvedDatasetInput] = Field(min_length=1, max_length=32)
+    tokenizer_sha256: Digest
+    template_sha256: Digest
+    enable_thinking: bool
+    runtime_sha256: Digest
+    worker_version: str = Field(min_length=1, max_length=64)
+    sampler_version: Literal["coire-sampler-v1"] = "coire-sampler-v1"
+    resource_envelope: TrainingResourceEnvelope
+
+    evaluations: list[ResolvedTrainingSuite] = Field(min_length=1, max_length=4)
+    evaluation_base: EvaluationTarget
+
+    @model_validator(mode="after")
+    def complete_suites(self) -> ResolvedTrainingSpecV2:
+        if [item.schedule for item in self.evaluations] != self.spec.eval.suites:
+            raise ValueError("resolved evaluation schedule differs from immutable intent")
+        base = self.evaluation_base
+        if (
+            base.target.model_id != self.spec.model.model_id
+            or base.target.variant_id != self.spec.model.variant_id
+            or base.target.adapter_id is not None
+            or base.target.base_manifest_sha256 != self.base_manifest_sha256
+            or base.runtime.tokenizer_sha256 != self.tokenizer_sha256
+            or base.runtime.template_sha256 != self.template_sha256
+        ):
+            raise ValueError("evaluation base differs from the frozen training identity")
+        return self
+
+
+type ResolvedTrainingSpecDocument = ResolvedTrainingSpec | ResolvedTrainingSpecV2
+
+
+def parse_resolved_training_spec(value: object) -> ResolvedTrainingSpecDocument:
+    return TypeAdapter(ResolvedTrainingSpecDocument).validate_python(value)
+
+
 class TrainingJobState(StrEnum):
     QUEUED = "queued"
     PREFLIGHTING = "preflighting"
@@ -255,6 +370,7 @@ type TrainingReason = Literal[
     "execution_timeout",
     "recovery_exhausted",
     "admin_pause",
+    "evaluation_pending",
     "cancelled",
     "internal",
 ]
@@ -320,14 +436,17 @@ class TrainingMetricPage(TrainingWire):
 
 
 class TrainingJobDetail(TrainingWire):
+    evaluation_groups: list[EvaluationGroupLink] = Field(
+        default_factory=list, max_length=100, exclude_if=lambda value: not value
+    )
     id: TrainingId
     version: int = Field(ge=1)
     state: TrainingJobState
     source_yaml: str = Field(max_length=65536)
     source_sha256: Digest
     intent_sha256: Digest
-    spec: TrainingSpec
-    resolved: ResolvedTrainingSpec | None = None
+    spec: TrainingSpecDocument
+    resolved: ResolvedTrainingSpecDocument | None = None
     attempt_id: TrainingId | None = None
     completed_update: int = Field(default=0, ge=0, le=100_000)
     latest_checkpoint_id: uuid.UUID | None = None
@@ -428,9 +547,9 @@ class TrainingMetricCursor(TrainingWire):
 
 
 class TrainingValidation(TrainingWire):
-    spec: TrainingSpec
+    spec: TrainingSpecDocument
     intent_sha256: Digest
-    resolved: ResolvedTrainingSpec | None = None
+    resolved: ResolvedTrainingSpecDocument | None = None
     ready_to_run: bool = False
     reasons: list[TrainingReason] = Field(default_factory=list, max_length=32)
 
@@ -489,9 +608,16 @@ class TrainingRecipe(TrainingWire):
     version: int = Field(ge=1)
     parameterization: Literal["lora", "qlora", "dora"]
     template_yaml: str = Field(max_length=65536)
-    required_bindings: list[Literal["model_id", "variant_id", "dataset_id", "adapter_slug"]] = (
-        Field(min_length=1, max_length=4)
-    )
+    required_bindings: list[
+        Literal[
+            "model_id",
+            "variant_id",
+            "dataset_id",
+            "adapter_slug",
+            "task_suite_id",
+            "judge_suite_id",
+        ]
+    ] = Field(min_length=1, max_length=6)
 
 
 class TrainingRecipePage(TrainingWire):

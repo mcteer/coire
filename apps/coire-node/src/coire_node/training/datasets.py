@@ -200,11 +200,45 @@ def analyze_source(
 def load_analysis_tokenizer(
     model_path: Path, binding: DatasetAnalysisBinding
 ) -> tuple[ChatTokenizer, str, str, str]:
+    # Training keeps its established architecture and 64 KiB configuration gate.
+    # Evaluation only reads the inert tokenizer for an already acquired serving
+    # target; it must not inherit the narrower supported SFT model matrix.
+    if platform.node().lower().split(".", 1)[0] == "coire-core" or platform.system() != "Darwin":
+        raise TrainingValidationError("Tokenizer analysis is restricted to Studios")
+    from coire_node.training.objectives import APPROVED_ARCHITECTURES, _read_config
+
+    if not model_path.is_absolute() or model_path.is_symlink() or not model_path.is_dir():
+        raise TrainingValidationError("Analysis requires a local acquired tokenizer")
+    config = _read_config(model_path / "config.json")
+    if config.get("model_type") not in APPROVED_ARCHITECTURES:
+        raise TrainingValidationError("Executable or unapproved analysis tokenizer configuration")
+    return load_evaluation_tokenizer(
+        model_path,
+        base_manifest_sha256=binding.base_manifest_sha256,
+        template_override=binding.template_override,
+    )
+
+
+def _evaluation_model_config(path: Path) -> dict[str, object]:
+    """Bounded inert serving metadata; never a model loader or executable config."""
+    if not path.is_file() or path.is_symlink() or path.stat().st_size > 1024**2:
+        raise TrainingValidationError("Evaluation model configuration is missing or oversized")
+    try:
+        value = json.loads(path.read_bytes())
+    except (ValueError, UnicodeError, RecursionError):
+        raise TrainingValidationError("Evaluation model configuration is invalid") from None
+    if not isinstance(value, dict):
+        raise TrainingValidationError("Evaluation model configuration must be an object")
+    return value
+
+
+def load_evaluation_tokenizer(
+    model_path: Path, *, base_manifest_sha256: str, template_override: str | None
+) -> tuple[ChatTokenizer, str, str, str]:
     """Verified inert assets and built-in tokenizer classes only; no mlx-lm model loader."""
     if platform.node().lower().split(".", 1)[0] == "coire-core" or platform.system() != "Darwin":
         raise TrainingValidationError("Tokenizer analysis is restricted to Studios")
     from coire_node.training.objectives import (
-        APPROVED_ARCHITECTURES,
         APPROVED_TOKENIZERS,
         APPROVED_TOOL_PARSERS,
         _read_config,
@@ -223,7 +257,7 @@ def load_analysis_tokenizer(
     if (
         manifest.slug != model_path.name
         or manifest.total_bytes != sum(entry.bytes for entry in manifest.files)
-        or hashlib.sha256(manifest.canonical_bytes()).hexdigest() != binding.base_manifest_sha256
+        or hashlib.sha256(manifest.canonical_bytes()).hexdigest() != base_manifest_sha256
     ):
         raise TrainingValidationError("Analysis base manifest differs from registry binding")
     listed = {entry.path: entry for entry in manifest.files}
@@ -263,13 +297,12 @@ def load_analysis_tokenizer(
             and ".cache" not in path.relative_to(model_path).parts
         ):
             raise TrainingValidationError("Analysis model tree has unacquired assets")
-    config = _read_config(model_path / "config.json")
+    config = _evaluation_model_config(model_path / "config.json")
     token_config = _read_config(model_path / "tokenizer_config.json")
     if (
         config.get("model_file") is not None
         or config.get("auto_map")
         or not isinstance(config.get("model_type"), str)
-        or config.get("model_type") not in APPROVED_ARCHITECTURES
         or token_config.get("auto_map")
         or not isinstance(token_config.get("tokenizer_class"), str)
         or token_config.get("tokenizer_class") not in APPROVED_TOKENIZERS
@@ -295,8 +328,8 @@ def load_analysis_tokenizer(
     tokenizer = load(
         model_path, tokenizer_config_extra={"trust_remote_code": False, "local_files_only": True}
     )
-    if binding.template_override is not None:
-        tokenizer.chat_template = binding.template_override
+    if template_override is not None:
+        tokenizer.chat_template = template_override
     template = tokenizer.chat_template
     if not isinstance(template, str) or not template:
         raise TrainingValidationError(

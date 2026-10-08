@@ -279,6 +279,14 @@
             "title": "Created At",
             "type": "string"
           },
+          "evaluation_groups": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationGroupLink"
+            },
+            "maxItems": 100,
+            "title": "Evaluation Groups",
+            "type": "array"
+          },
           "evaluation_id": {
             "anyOf": [
               {
@@ -2451,6 +2459,19 @@
               }
             ],
             "title": "Response Format"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 4294967295.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
           },
           "stop": {
             "anyOf": [
@@ -5367,6 +5388,2176 @@
         "title": "EngineStreamOptions",
         "type": "object"
       },
+      "EvaluationCaseScore": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "passed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Passed"
+          },
+          "rubric": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JudgeRubricOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "subject_index": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Subject Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "case_id",
+          "subject_index"
+        ],
+        "title": "EvaluationCaseScore",
+        "type": "object"
+      },
+      "EvaluationComparison": {
+        "additionalProperties": false,
+        "properties": {
+          "comparable": {
+            "title": "Comparable",
+            "type": "boolean"
+          },
+          "delta": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": -1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta"
+          },
+          "left_result_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "format": "uuid",
+                "type": "string"
+              }
+            ],
+            "title": "Left Result Id"
+          },
+          "left_score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Left Score"
+          },
+          "left_subject": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Left Subject",
+            "type": "integer"
+          },
+          "pairwise": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationPairwiseCase"
+            },
+            "maxItems": 32,
+            "title": "Pairwise",
+            "type": "array"
+          },
+          "reasons": {
+            "items": {
+              "enum": [
+                "outcome",
+                "suite",
+                "cases",
+                "scorer",
+                "decoding",
+                "runtime",
+                "tokenizer",
+                "template",
+                "capability",
+                "judge",
+                "legacy_provenance"
+              ],
+              "type": "string"
+            },
+            "maxItems": 16,
+            "title": "Reasons",
+            "type": "array"
+          },
+          "right_result_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "format": "uuid",
+                "type": "string"
+              }
+            ],
+            "title": "Right Result Id"
+          },
+          "right_score": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Right Score"
+          },
+          "right_subject": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Right Subject",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "left_result_id",
+          "right_result_id",
+          "left_subject",
+          "right_subject",
+          "comparable"
+        ],
+        "title": "EvaluationComparison",
+        "type": "object"
+      },
+      "EvaluationContamination": {
+        "additionalProperties": false,
+        "properties": {
+          "algorithm": {
+            "const": "input-exact-v1",
+            "default": "input-exact-v1",
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "case_ids": {
+            "items": {
+              "$ref": "#/components/schemas/AdapterSlug"
+            },
+            "maxItems": 32,
+            "title": "Case Ids",
+            "type": "array"
+          },
+          "checked_cases": {
+            "default": 0,
+            "maximum": 32.0,
+            "minimum": 0.0,
+            "title": "Checked Cases",
+            "type": "integer"
+          },
+          "data_sha256": {
+            "items": {
+              "$ref": "#/components/schemas/Digest"
+            },
+            "maxItems": 32,
+            "title": "Data Sha256",
+            "type": "array"
+          },
+          "hit_count": {
+            "default": 0,
+            "maximum": 32.0,
+            "minimum": 0.0,
+            "title": "Hit Count",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no_training_context",
+                  "input_missing",
+                  "unsupported_format",
+                  "not_task_suite"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "selected_rows": {
+            "default": 0,
+            "maximum": 16000000.0,
+            "minimum": 0.0,
+            "title": "Selected Rows",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "clean",
+              "overlap",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "EvaluationContamination",
+        "type": "object"
+      },
+      "EvaluationControl": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "EvaluationControl",
+        "type": "object"
+      },
+      "EvaluationEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_cases": {
+            "default": 0,
+            "maximum": 64.0,
+            "minimum": 0.0,
+            "title": "Completed Cases",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "evaluation_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "kind": {
+            "enum": [
+              "state",
+              "progress",
+              "terminal",
+              "reset"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationPhase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sequence": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationRunDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/EvaluationState"
+          },
+          "version": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "evaluation_id",
+          "kind",
+          "state",
+          "version",
+          "created_at"
+        ],
+        "title": "EvaluationEvent",
+        "type": "object"
+      },
+      "EvaluationEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "availability": {
+            "default": "present",
+            "enum": [
+              "present",
+              "expired",
+              "missing"
+            ],
+            "title": "Availability",
+            "type": "string"
+          },
+          "bytes": {
+            "maximum": 8388608.0,
+            "minimum": 1.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "sha256": {
+            "$ref": "#/components/schemas/Digest"
+          }
+        },
+        "required": [
+          "id",
+          "sha256",
+          "bytes",
+          "expires_at"
+        ],
+        "title": "EvaluationEvidence",
+        "type": "object"
+      },
+      "EvaluationGeneration": {
+        "additionalProperties": false,
+        "properties": {
+          "max_tokens": {
+            "default": 512,
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Max Tokens",
+            "type": "integer"
+          },
+          "seed": {
+            "$ref": "#/components/schemas/Seed",
+            "default": 0
+          },
+          "stop": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 4,
+            "title": "Stop",
+            "type": "array"
+          },
+          "temperature": {
+            "default": 0,
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Temperature",
+            "type": "number"
+          },
+          "top_p": {
+            "default": 1,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Top P",
+            "type": "number"
+          }
+        },
+        "title": "EvaluationGeneration",
+        "type": "object"
+      },
+      "EvaluationGroupDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "origin": {
+            "enum": [
+              "manual",
+              "training_checkpoint",
+              "training_final",
+              "measurement"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRunDetail"
+            },
+            "maxItems": 8,
+            "title": "Runs",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "training_job_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "update": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Update"
+          }
+        },
+        "required": [
+          "id",
+          "origin",
+          "state",
+          "created_at"
+        ],
+        "title": "EvaluationGroupDetail",
+        "type": "object"
+      },
+      "EvaluationGroupEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "group_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "kind": {
+            "enum": [
+              "state",
+              "terminal",
+              "reset"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sequence": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationGroupDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sequence",
+          "group_id",
+          "kind",
+          "state",
+          "created_at"
+        ],
+        "title": "EvaluationGroupEvent",
+        "type": "object"
+      },
+      "EvaluationGroupLink": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "completed_update": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Update"
+          },
+          "fence": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fence"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "origin": {
+            "enum": [
+              "manual",
+              "training_final",
+              "training_checkpoint",
+              "measurement"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "pause_owner": {
+            "anyOf": [
+              {
+                "enum": [
+                  "evaluation",
+                  "admin",
+                  "protective",
+                  "released"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Owner"
+          },
+          "result_ids": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingId"
+            },
+            "maxItems": 4,
+            "title": "Result Ids",
+            "type": "array"
+          },
+          "resume_disposition": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resume Disposition"
+          },
+          "run_ids": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingId"
+            },
+            "maxItems": 4,
+            "title": "Run Ids",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "trigger_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Id"
+          },
+          "trigger_phase": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending_pause",
+                  "pending_admission",
+                  "preparing_adapter",
+                  "evaluating",
+                  "cleaning_adapter",
+                  "resume_pending",
+                  "complete"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Phase"
+          }
+        },
+        "required": [
+          "origin",
+          "state"
+        ],
+        "title": "EvaluationGroupLink",
+        "type": "object"
+      },
+      "EvaluationGroupReplayPage": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "minimum": 0.0,
+            "title": "Cursor",
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationGroupEvent"
+            },
+            "maxItems": 1000,
+            "title": "Events",
+            "type": "array"
+          },
+          "reset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationGroupDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "cursor"
+        ],
+        "title": "EvaluationGroupReplayPage",
+        "type": "object"
+      },
+      "EvaluationLatency": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_p95_seconds": {
+            "minimum": 0.0,
+            "title": "Baseline P95 Seconds",
+            "type": "number"
+          },
+          "baseline_requests": {
+            "minimum": 0.0,
+            "title": "Baseline Requests",
+            "type": "integer"
+          },
+          "failures": {
+            "minimum": 0.0,
+            "title": "Failures",
+            "type": "integer"
+          },
+          "gateway_p95_seconds": {
+            "minimum": 0.0,
+            "title": "Gateway P95 Seconds",
+            "type": "number"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "mixed_p95_seconds": {
+            "minimum": 0.0,
+            "title": "Mixed P95 Seconds",
+            "type": "number"
+          },
+          "mixed_requests": {
+            "minimum": 0.0,
+            "title": "Mixed Requests",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "instance_id",
+          "baseline_requests",
+          "mixed_requests",
+          "baseline_p95_seconds",
+          "mixed_p95_seconds",
+          "gateway_p95_seconds",
+          "failures"
+        ],
+        "title": "EvaluationLatency",
+        "type": "object"
+      },
+      "EvaluationMeasurement": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "profile_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "$ref": "#/components/schemas/EvaluationMeasurementRequest"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "swap_growth_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Swap Growth Bytes",
+            "type": "integer"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationLatency"
+            },
+            "maxItems": 32,
+            "title": "Targets",
+            "type": "array"
+          },
+          "thermal_ok": {
+            "default": false,
+            "title": "Thermal Ok",
+            "type": "boolean"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "request",
+          "created_at"
+        ],
+        "title": "EvaluationMeasurement",
+        "type": "object"
+      },
+      "EvaluationMeasurementDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "profile_invalidated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Invalidated At"
+          },
+          "profile_invalidated_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profile_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profile_status": {
+            "enum": [
+              "unqualified",
+              "qualified",
+              "expired",
+              "invalidated"
+            ],
+            "title": "Profile Status",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "report_sha256": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Digest"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request": {
+            "$ref": "#/components/schemas/EvaluationMeasurementRequest"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "swap_growth_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Swap Growth Bytes",
+            "type": "integer"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationLatency"
+            },
+            "maxItems": 32,
+            "title": "Targets",
+            "type": "array"
+          },
+          "thermal_ok": {
+            "default": false,
+            "title": "Thermal Ok",
+            "type": "boolean"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "request",
+          "created_at",
+          "profile_status"
+        ],
+        "title": "EvaluationMeasurementDetail",
+        "type": "object"
+      },
+      "EvaluationMeasurementRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "arrival_interval_ms": {
+            "default": 1000,
+            "maximum": 60000.0,
+            "minimum": 1.0,
+            "title": "Arrival Interval Ms",
+            "type": "integer"
+          },
+          "concurrency": {
+            "default": 1,
+            "maximum": 16.0,
+            "minimum": 1.0,
+            "title": "Concurrency",
+            "type": "integer"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/EvaluationSubmission"
+          },
+          "max_input_tokens": {
+            "const": 4000,
+            "default": 4000,
+            "title": "Max Input Tokens",
+            "type": "integer"
+          },
+          "max_output_tokens": {
+            "default": 64,
+            "maximum": 1024.0,
+            "minimum": 1.0,
+            "title": "Max Output Tokens",
+            "type": "integer"
+          },
+          "node": {
+            "$ref": "#/components/schemas/StudioName"
+          },
+          "prompt_set_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "requests_per_phase": {
+            "default": 100,
+            "maximum": 2000.0,
+            "minimum": 100.0,
+            "title": "Requests Per Phase",
+            "type": "integer"
+          },
+          "resident_targets": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationResident"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Resident Targets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "evaluation",
+          "node",
+          "resident_targets",
+          "prompt_set_sha256"
+        ],
+        "title": "EvaluationMeasurementRequest",
+        "type": "object"
+      },
+      "EvaluationOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "completion_tokens": {
+            "maximum": 4096.0,
+            "minimum": 0.0,
+            "title": "Completion Tokens",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "minimum": 0.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "subject_index": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Subject Index",
+            "type": "integer"
+          },
+          "text": {
+            "maxLength": 16384,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "case_id",
+          "subject_index",
+          "text",
+          "prompt_tokens",
+          "completion_tokens"
+        ],
+        "title": "EvaluationOutput",
+        "type": "object"
+      },
+      "EvaluationPairwiseCase": {
+        "additionalProperties": false,
+        "properties": {
+          "case_id": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "first": {
+            "$ref": "#/components/schemas/JudgePairwiseOutput"
+          },
+          "first_order": {
+            "enum": [
+              "AB",
+              "BA"
+            ],
+            "title": "First Order",
+            "type": "string"
+          },
+          "preferred_subject": {
+            "anyOf": [
+              {
+                "enum": [
+                  0,
+                  1
+                ],
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Subject"
+          },
+          "second": {
+            "$ref": "#/components/schemas/JudgePairwiseOutput"
+          }
+        },
+        "required": [
+          "case_id",
+          "first_order",
+          "first",
+          "second",
+          "preferred_subject"
+        ],
+        "title": "EvaluationPairwiseCase",
+        "type": "object"
+      },
+      "EvaluationPhase": {
+        "enum": [
+          "base",
+          "candidate",
+          "judge",
+          "harness",
+          "contamination",
+          "cleanup"
+        ],
+        "type": "string"
+      },
+      "EvaluationReason": {
+        "enum": [
+          "model_unavailable",
+          "judge_unavailable",
+          "authorization_revoked",
+          "malformed_judge",
+          "invalid_evidence",
+          "runtime_mismatch",
+          "evidence_unavailable",
+          "capacity_busy",
+          "capacity_timeout",
+          "admission_disabled",
+          "execution_timeout",
+          "latency_breach",
+          "memory_breach",
+          "thermal_breach",
+          "telemetry_stale",
+          "cancelled",
+          "internal"
+        ],
+        "type": "string"
+      },
+      "EvaluationReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "events_path": {
+            "pattern": "^/api/v1/admin/evaluations/[0-9A-HJKMNP-TV-Z]{26}/events$",
+            "title": "Events Path",
+            "type": "string"
+          },
+          "group_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/EvaluationState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "group_id",
+          "state",
+          "version",
+          "events_path"
+        ],
+        "title": "EvaluationReceipt",
+        "type": "object"
+      },
+      "EvaluationReplayPage": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "minimum": 0.0,
+            "title": "Cursor",
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationEvent"
+            },
+            "maxItems": 1000,
+            "title": "Events",
+            "type": "array"
+          },
+          "reset": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationRunDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "cursor"
+        ],
+        "title": "EvaluationReplayPage",
+        "type": "object"
+      },
+      "EvaluationResident": {
+        "additionalProperties": false,
+        "properties": {
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          }
+        },
+        "required": [
+          "instance_id",
+          "target"
+        ],
+        "title": "EvaluationResident",
+        "type": "object"
+      },
+      "EvaluationResult": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregates": {
+            "items": {
+              "anyOf": [
+                {
+                  "maximum": 1.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Aggregates",
+            "type": "array"
+          },
+          "cases": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCaseScore"
+            },
+            "maxItems": 64,
+            "title": "Cases",
+            "type": "array"
+          },
+          "contamination": {
+            "$ref": "#/components/schemas/EvaluationContamination"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "harness_evaluation_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Harness Evaluation Id"
+          },
+          "harness_verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "passed",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Harness Verdict"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "outcome": {
+            "enum": [
+              "succeeded",
+              "failed",
+              "timed_out",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "pairwise": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationPairwiseCase"
+            },
+            "maxItems": 32,
+            "title": "Pairwise",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "run_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationTarget"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Subjects",
+            "type": "array"
+          },
+          "suite": {
+            "$ref": "#/components/schemas/EvaluationSuite"
+          }
+        },
+        "required": [
+          "id",
+          "run_id",
+          "outcome",
+          "subjects",
+          "suite",
+          "aggregates",
+          "contamination",
+          "started_at",
+          "finished_at",
+          "result_sha256"
+        ],
+        "title": "EvaluationResult",
+        "type": "object"
+      },
+      "EvaluationRunDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Id"
+          },
+          "cleanup_state": {
+            "default": "none",
+            "enum": [
+              "none",
+              "pending",
+              "unresolved",
+              "complete"
+            ],
+            "title": "Cleanup State",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "events_path": {
+            "pattern": "^/api/v1/admin/evaluations/[0-9A-HJKMNP-TV-Z]{26}/events$",
+            "title": "Events Path",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationEvidence"
+            },
+            "maxItems": 8,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "execution_deadline": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Deadline"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "group_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "owner_user_id": {
+            "format": "uuid",
+            "title": "Owner User Id",
+            "type": "string"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationPhase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "queue_deadline": {
+            "format": "date-time",
+            "title": "Queue Deadline",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "source_run_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "state": {
+            "$ref": "#/components/schemas/EvaluationState"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationTarget"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Subjects",
+            "type": "array"
+          },
+          "suite": {
+            "$ref": "#/components/schemas/EvaluationSuite"
+          },
+          "training_job_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "update": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Update"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "group_id",
+          "state",
+          "version",
+          "events_path",
+          "suite",
+          "subjects",
+          "owner_user_id",
+          "queue_deadline",
+          "created_at"
+        ],
+        "title": "EvaluationRunDetail",
+        "type": "object"
+      },
+      "EvaluationRunPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationRunDetail"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EvaluationRunPage",
+        "type": "object"
+      },
+      "EvaluationRuntime": {
+        "additionalProperties": false,
+        "properties": {
+          "capability_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "engine_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Engine Version",
+            "type": "string"
+          },
+          "harness_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Harness Version",
+            "type": "string"
+          },
+          "runtime_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "template_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "tokenizer_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          }
+        },
+        "required": [
+          "engine_version",
+          "harness_version",
+          "runtime_sha256",
+          "tokenizer_sha256",
+          "template_sha256",
+          "capability_sha256"
+        ],
+        "title": "EvaluationRuntime",
+        "type": "object"
+      },
+      "EvaluationState": {
+        "enum": [
+          "queued",
+          "preparing",
+          "reserving",
+          "running",
+          "collecting",
+          "cancelling",
+          "succeeded",
+          "failed",
+          "timed_out",
+          "cancelled"
+        ],
+        "title": "EvaluationState",
+        "type": "string"
+      },
+      "EvaluationSubject": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adapter Id"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model_id",
+          "variant_id"
+        ],
+        "title": "EvaluationSubject",
+        "type": "object"
+      },
+      "EvaluationSubmission": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_engine_version": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Engine Version"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationSubject"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Subjects",
+            "type": "array"
+          },
+          "suite_id": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "suite_version": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Suite Version",
+            "type": "integer"
+          },
+          "training_job_id": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TrainingId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "suite_id",
+          "suite_version",
+          "subjects"
+        ],
+        "title": "EvaluationSubmission",
+        "type": "object"
+      },
+      "EvaluationSuite": {
+        "additionalProperties": false,
+        "properties": {
+          "content_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "generation": {
+            "$ref": "#/components/schemas/EvaluationGeneration"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "judge_generation": {
+            "$ref": "#/components/schemas/EvaluationGeneration"
+          },
+          "registered_at": {
+            "format": "date-time",
+            "title": "Registered At",
+            "type": "string"
+          },
+          "registered_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registered By"
+          },
+          "registry_version": {
+            "default": 1,
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Registry Version",
+            "type": "integer"
+          },
+          "retired": {
+            "default": false,
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "suite_id": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "template": {
+            "$ref": "#/components/schemas/EvaluationSuiteTemplate"
+          },
+          "timeout_seconds": {
+            "maximum": 1800.0,
+            "minimum": 60.0,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          },
+          "version": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "suite_id",
+          "version",
+          "template",
+          "generation",
+          "timeout_seconds",
+          "content_sha256",
+          "registered_at"
+        ],
+        "title": "EvaluationSuite",
+        "type": "object"
+      },
+      "EvaluationSuitePage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationSuite"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EvaluationSuitePage",
+        "type": "object"
+      },
+      "EvaluationSuiteRegistration": {
+        "additionalProperties": false,
+        "properties": {
+          "generation": {
+            "$ref": "#/components/schemas/EvaluationGeneration"
+          },
+          "judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationSubject"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "judge_generation": {
+            "$ref": "#/components/schemas/EvaluationGeneration"
+          },
+          "suite_id": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "template_id": {
+            "$ref": "#/components/schemas/TemplateId"
+          },
+          "template_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Template Version",
+            "type": "integer"
+          },
+          "timeout_seconds": {
+            "default": 900,
+            "maximum": 1800.0,
+            "minimum": 60.0,
+            "title": "Timeout Seconds",
+            "type": "integer"
+          },
+          "version": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "suite_id",
+          "version",
+          "template_id"
+        ],
+        "title": "EvaluationSuiteRegistration",
+        "type": "object"
+      },
+      "EvaluationSuiteTemplate": {
+        "additionalProperties": false,
+        "properties": {
+          "case_count": {
+            "maximum": 32.0,
+            "minimum": 1.0,
+            "title": "Case Count",
+            "type": "integer"
+          },
+          "cases_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "content_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SuiteKind"
+          },
+          "license": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "License",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/SuiteMode"
+          },
+          "scorer_version": {
+            "const": "coire-evaluation-v1",
+            "default": "coire-evaluation-v1",
+            "title": "Scorer Version",
+            "type": "string"
+          },
+          "template_id": {
+            "$ref": "#/components/schemas/TemplateId"
+          },
+          "template_version": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Template Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "template_id",
+          "template_version",
+          "kind",
+          "mode",
+          "content_sha256",
+          "cases_sha256",
+          "case_count",
+          "license"
+        ],
+        "title": "EvaluationSuiteTemplate",
+        "type": "object"
+      },
+      "EvaluationTarget": {
+        "additionalProperties": false,
+        "properties": {
+          "capability_profile": {
+            "$ref": "#/components/schemas/CapabilityProfile"
+          },
+          "context_window": {
+            "minimum": 256.0,
+            "title": "Context Window",
+            "type": "integer"
+          },
+          "display_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "engine_backend": {
+            "$ref": "#/components/schemas/EngineBackend",
+            "default": "mlx_lm"
+          },
+          "public_selector": {
+            "$ref": "#/components/schemas/ModelSelector"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/EvaluationRuntime"
+          },
+          "target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          },
+          "template_override": {
+            "anyOf": [
+              {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Override"
+          },
+          "variant_slug": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Slug"
+          }
+        },
+        "required": [
+          "target",
+          "public_selector",
+          "capability_profile",
+          "context_window",
+          "runtime",
+          "display_name"
+        ],
+        "title": "EvaluationTarget",
+        "type": "object"
+      },
+      "EvaluationTemplatePage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationSuiteTemplate"
+            },
+            "maxItems": 32,
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "EvaluationTemplatePage",
+        "type": "object"
+      },
       "EvaluationVerdict": {
         "enum": [
           "passed",
@@ -5375,6 +7566,155 @@
         ],
         "title": "EvaluationVerdict",
         "type": "string"
+      },
+      "EvaluationWorkerResult": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_id": {
+            "format": "uuid",
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "cases_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "contamination": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationContamination"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluation_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "fence": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Fence",
+            "type": "integer"
+          },
+          "finished_at": {
+            "format": "date-time",
+            "title": "Finished At",
+            "type": "string"
+          },
+          "harness_scores": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CategoryScores"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "harness_verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationVerdict"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "outcome": {
+            "enum": [
+              "succeeded",
+              "failed",
+              "timed_out",
+              "cancelled"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "outputs": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationOutput"
+            },
+            "maxItems": 64,
+            "title": "Outputs",
+            "type": "array"
+          },
+          "pairwise": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationPairwiseCase"
+            },
+            "maxItems": 32,
+            "title": "Pairwise",
+            "type": "array"
+          },
+          "phase": {
+            "$ref": "#/components/schemas/EvaluationPhase"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "request_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "run_id": {
+            "format": "uuid",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/EvaluationRuntime"
+          },
+          "scores": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationCaseScore"
+            },
+            "maxItems": 64,
+            "title": "Scores",
+            "type": "array"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          },
+          "suite_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          },
+          "workload_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Workload Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evaluation_id",
+          "attempt_id",
+          "run_id",
+          "fence",
+          "phase",
+          "request_sha256",
+          "suite_sha256",
+          "cases_sha256",
+          "runtime",
+          "target",
+          "outcome",
+          "started_at",
+          "finished_at"
+        ],
+        "title": "EvaluationWorkerResult",
+        "type": "object"
       },
       "FailoverAccessVerifier": {
         "additionalProperties": false,
@@ -9254,6 +11594,55 @@
         "title": "InstanceUnloadAction",
         "type": "object"
       },
+      "JudgePairwiseOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "winner": {
+            "enum": [
+              "A",
+              "B",
+              "tie"
+            ],
+            "title": "Winner",
+            "type": "string"
+          }
+        },
+        "required": [
+          "winner"
+        ],
+        "title": "JudgePairwiseOutput",
+        "type": "object"
+      },
+      "JudgeRubricOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "clarity": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Clarity",
+            "type": "integer"
+          },
+          "correctness": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Correctness",
+            "type": "integer"
+          },
+          "instruction_adherence": {
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Instruction Adherence",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "correctness",
+          "instruction_adherence",
+          "clarity"
+        ],
+        "title": "JudgeRubricOutput",
+        "type": "object"
+      },
       "LearningRateSchedule": {
         "additionalProperties": false,
         "properties": {
@@ -12840,6 +15229,108 @@
         "title": "ResolvedTrainingSpec",
         "type": "object"
       },
+      "ResolvedTrainingSpecDocument": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ResolvedTrainingSpec"
+          },
+          {
+            "$ref": "#/components/schemas/ResolvedTrainingSpecV2"
+          }
+        ]
+      },
+      "ResolvedTrainingSpecV2": {
+        "additionalProperties": false,
+        "properties": {
+          "base_manifest_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedDatasetInput"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Datasets",
+            "type": "array"
+          },
+          "enable_thinking": {
+            "title": "Enable Thinking",
+            "type": "boolean"
+          },
+          "evaluation_base": {
+            "$ref": "#/components/schemas/EvaluationTarget"
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedTrainingSuite"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Evaluations",
+            "type": "array"
+          },
+          "resource_envelope": {
+            "$ref": "#/components/schemas/TrainingResourceEnvelope"
+          },
+          "runtime_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "sampler_version": {
+            "const": "coire-sampler-v1",
+            "default": "coire-sampler-v1",
+            "title": "Sampler Version",
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/TrainingSpecV2"
+          },
+          "template_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "tokenizer_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "worker_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Worker Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spec",
+          "base_manifest_sha256",
+          "datasets",
+          "tokenizer_sha256",
+          "template_sha256",
+          "enable_thinking",
+          "runtime_sha256",
+          "worker_version",
+          "resource_envelope",
+          "evaluations",
+          "evaluation_base"
+        ],
+        "title": "ResolvedTrainingSpecV2",
+        "type": "object"
+      },
+      "ResolvedTrainingSuite": {
+        "additionalProperties": false,
+        "properties": {
+          "schedule": {
+            "$ref": "#/components/schemas/TrainingSuiteSchedule"
+          },
+          "suite": {
+            "$ref": "#/components/schemas/EvaluationSuite"
+          }
+        },
+        "required": [
+          "schedule",
+          "suite"
+        ],
+        "title": "ResolvedTrainingSuite",
+        "type": "object"
+      },
       "RunActivity": {
         "additionalProperties": false,
         "description": "Bounded content-free tool lifecycle receipt from one user run.",
@@ -13349,6 +15840,25 @@
         "pattern": "^coire-edge-[ab]$",
         "type": "string"
       },
+      "SuiteKind": {
+        "enum": [
+          "harness",
+          "task",
+          "judge"
+        ],
+        "title": "SuiteKind",
+        "type": "string"
+      },
+      "SuiteMode": {
+        "enum": [
+          "capability",
+          "deterministic",
+          "rubric",
+          "pairwise"
+        ],
+        "title": "SuiteMode",
+        "type": "string"
+      },
       "Tag": {
         "description": "The picker's grouping vocabulary (ARCHITECTURE.md section 3.2).",
         "enum": [
@@ -13406,6 +15916,15 @@
           "write"
         ],
         "title": "TaskClass",
+        "type": "string"
+      },
+      "TemplateId": {
+        "enum": [
+          "harness-capability",
+          "task-coding-instructions",
+          "judge-rubric",
+          "judge-pairwise"
+        ],
         "type": "string"
       },
       "TestStatus": {
@@ -13788,6 +16307,14 @@
             "title": "Completed Update",
             "type": "integer"
           },
+          "evaluation_groups": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationGroupLink"
+            },
+            "maxItems": 100,
+            "title": "Evaluation Groups",
+            "type": "array"
+          },
           "job_id": {
             "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
             "title": "Job Id",
@@ -14040,6 +16567,37 @@
         "title": "TrainingEvaluation",
         "type": "object"
       },
+      "TrainingEvaluationV2": {
+        "additionalProperties": false,
+        "properties": {
+          "at_end": {
+            "default": true,
+            "title": "At End",
+            "type": "boolean"
+          },
+          "loss_every_updates": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Loss Every Updates",
+            "type": "integer"
+          },
+          "suites": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingSuiteSchedule"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Suites",
+            "type": "array"
+          }
+        },
+        "required": [
+          "suites"
+        ],
+        "title": "TrainingEvaluationV2",
+        "type": "object"
+      },
       "TrainingEvent": {
         "additionalProperties": false,
         "properties": {
@@ -14169,6 +16727,14 @@
             "title": "Created At",
             "type": "string"
           },
+          "evaluation_groups": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationGroupLink"
+            },
+            "maxItems": 100,
+            "title": "Evaluation Groups",
+            "type": "array"
+          },
           "id": {
             "$ref": "#/components/schemas/TrainingId"
           },
@@ -14205,7 +16771,7 @@
           "resolved": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ResolvedTrainingSpec"
+                "$ref": "#/components/schemas/ResolvedTrainingSpecDocument"
               },
               {
                 "type": "null"
@@ -14221,7 +16787,7 @@
             "type": "string"
           },
           "spec": {
-            "$ref": "#/components/schemas/TrainingSpec"
+            "$ref": "#/components/schemas/TrainingSpecDocument"
           },
           "state": {
             "$ref": "#/components/schemas/TrainingJobState"
@@ -15299,6 +17865,7 @@
           "execution_timeout",
           "recovery_exhausted",
           "admin_pause",
+          "evaluation_pending",
           "cancelled",
           "internal"
         ],
@@ -15325,11 +17892,13 @@
                 "model_id",
                 "variant_id",
                 "dataset_id",
-                "adapter_slug"
+                "adapter_slug",
+                "task_suite_id",
+                "judge_suite_id"
               ],
               "type": "string"
             },
-            "maxItems": 4,
+            "maxItems": 6,
             "minItems": 1,
             "title": "Required Bindings",
             "type": "array"
@@ -15576,6 +18145,68 @@
         "title": "TrainingSpec",
         "type": "object"
       },
+      "TrainingSpecDocument": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/TrainingSpec"
+          },
+          {
+            "$ref": "#/components/schemas/TrainingSpecV2"
+          }
+        ]
+      },
+      "TrainingSpecV2": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TrainingData"
+          },
+          "eval": {
+            "$ref": "#/components/schemas/TrainingEvaluationV2"
+          },
+          "model": {
+            "$ref": "#/components/schemas/TrainingModel"
+          },
+          "objective": {
+            "const": "sft",
+            "default": "sft",
+            "title": "Objective",
+            "type": "string"
+          },
+          "optim": {
+            "$ref": "#/components/schemas/TrainingOptimizer"
+          },
+          "output": {
+            "$ref": "#/components/schemas/TrainingOutput"
+          },
+          "parameterization": {
+            "$ref": "#/components/schemas/TrainingParameterization"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/TrainingPlacement"
+          },
+          "schema_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "$ref": "#/components/schemas/Seed",
+            "default": 0
+          }
+        },
+        "required": [
+          "model",
+          "data",
+          "parameterization",
+          "optim",
+          "eval",
+          "output"
+        ],
+        "title": "TrainingSpecV2",
+        "type": "object"
+      },
       "TrainingStateEvent": {
         "additionalProperties": false,
         "properties": {
@@ -15614,7 +18245,7 @@
           "form_spec": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/TrainingSpec"
+                "$ref": "#/components/schemas/TrainingSpecDocument"
               },
               {
                 "type": "null"
@@ -15653,6 +18284,34 @@
         "title": "TrainingSubmission",
         "type": "object"
       },
+      "TrainingSuiteSchedule": {
+        "additionalProperties": false,
+        "properties": {
+          "checkpoint_updates": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 32,
+            "title": "Checkpoint Updates",
+            "type": "array"
+          },
+          "suite_id": {
+            "$ref": "#/components/schemas/AdapterSlug"
+          },
+          "suite_version": {
+            "maximum": 2147483647.0,
+            "minimum": 1.0,
+            "title": "Suite Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "suite_id",
+          "suite_version"
+        ],
+        "title": "TrainingSuiteSchedule",
+        "type": "object"
+      },
       "TrainingValidation": {
         "additionalProperties": false,
         "properties": {
@@ -15675,7 +18334,7 @@
           "resolved": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ResolvedTrainingSpec"
+                "$ref": "#/components/schemas/ResolvedTrainingSpecDocument"
               },
               {
                 "type": "null"
@@ -15683,7 +18342,7 @@
             ]
           },
           "spec": {
-            "$ref": "#/components/schemas/TrainingSpec"
+            "$ref": "#/components/schemas/TrainingSpecDocument"
           }
         },
         "required": [
@@ -18012,6 +20671,1547 @@
         "summary": "Get Engine",
         "tags": [
           "admin: cluster"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-comparisons": {
+      "get": {
+        "operationId": "compare_results_api_v1_admin_evaluation_comparisons_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "left_result_id",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TrainingId"
+                },
+                {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              ],
+              "title": "Left Result Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "right_result_id",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TrainingId"
+                },
+                {
+                  "format": "uuid",
+                  "type": "string"
+                }
+              ],
+              "title": "Right Result Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "left_subject",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Left Subject",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "right_subject",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 1,
+              "minimum": 0,
+              "title": "Right Subject",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationComparison"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Compare Results",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-groups/{group_id}": {
+      "get": {
+        "operationId": "get_group_api_v1_admin_evaluation_groups__group_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationGroupDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Group",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-groups/{group_id}/events": {
+      "get": {
+        "operationId": "group_events_api_v1_admin_evaluation_groups__group_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "group_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Group Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 19,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationGroupReplayPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Group Events",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-measurements": {
+      "post": {
+        "operationId": "measure_api_v1_admin_evaluation_measurements_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationMeasurementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationMeasurement"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Measure",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-measurements/{measurement_id}": {
+      "get": {
+        "operationId": "get_measurement_api_v1_admin_evaluation_measurements__measurement_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "measurement_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Measurement Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationMeasurementDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Measurement",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-measurements/{measurement_id}/cancel": {
+      "post": {
+        "operationId": "cancel_measurement_api_v1_admin_evaluation_measurements__measurement_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "measurement_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Measurement Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationControl"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationMeasurement"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Measurement",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-suite-templates": {
+      "get": {
+        "operationId": "list_templates_api_v1_admin_evaluation_suite_templates_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationTemplatePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Templates",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-suites": {
+      "get": {
+        "operationId": "list_suites_api_v1_admin_evaluation_suites_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "retired",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Retired"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSuitePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Suites",
+        "tags": [
+          "admin:evaluations"
+        ]
+      },
+      "post": {
+        "operationId": "register_suite_api_v1_admin_evaluation_suites_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationSuiteRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSuite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Register Suite",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-suites/{suite_id}/versions/{version}": {
+      "get": {
+        "operationId": "get_suite_api_v1_admin_evaluation_suites__suite_id__versions__version__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suite_id",
+            "required": true,
+            "schema": {
+              "maxLength": 63,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "Suite Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSuite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Suite",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluation-suites/{suite_id}/versions/{version}/retire": {
+      "post": {
+        "operationId": "retire_suite_api_v1_admin_evaluation_suites__suite_id__versions__version__retire_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suite_id",
+            "required": true,
+            "schema": {
+              "maxLength": 63,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+              "title": "Suite Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "title": "Version",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationControl"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationSuite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retire Suite",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluations": {
+      "get": {
+        "operationId": "list_runs_api_v1_admin_evaluations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/EvaluationState"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "variant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Variant Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "adapter_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Adapter Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "training_job_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TrainingId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Training Job Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TrainingId"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Runs",
+        "tags": [
+          "admin:evaluations"
+        ]
+      },
+      "post": {
+        "operationId": "submit_run_api_v1_admin_evaluations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationSubmission"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Run",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluations/{run_id}": {
+      "get": {
+        "operationId": "get_run_api_v1_admin_evaluations__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Run",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluations/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancel_run_api_v1_admin_evaluations__run_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationControl"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel Run",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluations/{run_id}/events": {
+      "get": {
+        "operationId": "replay_events_api_v1_admin_evaluations__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "last-event-id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 19,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationReplayPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Replay Events",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluations/{run_id}/evidence/{evidence_id}": {
+      "get": {
+        "operationId": "get_evidence_api_v1_admin_evaluations__run_id__evidence__evidence_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Evidence",
+        "tags": [
+          "admin:evaluations"
+        ]
+      }
+    },
+    "/api/v1/admin/evaluations/{run_id}/rerun": {
+      "post": {
+        "operationId": "rerun_api_v1_admin_evaluations__run_id__rerun_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationControl"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rerun",
+        "tags": [
+          "admin:evaluations"
         ]
       }
     },

@@ -25,6 +25,7 @@ COPY deploy/observability/alerts/control-plane-efficiency.yaml /etc/prometheus/r
 COPY deploy/observability/alerts/chat.yaml /etc/prometheus/rules/chat.yml
 COPY deploy/observability/alerts/image.yaml /etc/prometheus/rules/image.yml
 COPY deploy/observability/alerts/training.yaml /etc/prometheus/rules/training.yml
+COPY deploy/observability/alerts/evaluations.yaml /etc/prometheus/rules/evaluations.yml
 COPY --from=build /src/web/ui /web/ui
 COPY --from=build --chown=65534:65534 /data/prometheus /prometheus
 USER 65534:65534

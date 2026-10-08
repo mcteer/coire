@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from yaml.events import (
     AliasEvent,
@@ -22,21 +22,25 @@ from yaml.events import (
 )
 from yaml.nodes import MappingNode
 
+from coire_api.auth import Principal
 from coire_core.errors import TrainingUploadTooLarge, TrainingValidationError
+from coire_core.models.evaluation import EvaluationTarget
 from coire_core.models.training import (
     ParsedTrainingSubmission,
     TrainingReason,
     TrainingRecipePage,
-    TrainingSpec,
+    TrainingSpecDocument,
     TrainingSubmission,
     TrainingValidation,
+    parse_training_spec,
 )
+from coire_core.models.training_evaluation import ResolvedTrainingSuite
 from coire_core.settings import Settings, get_settings
 
 _TAGS = frozenset(
     "tag:yaml.org,2002:" + name for name in ("str", "int", "float", "bool", "null", "map", "seq")
 )
-_SCHEMA = TrainingSpec.model_json_schema()
+_SCHEMA = TypeAdapter(TrainingSpecDocument).json_schema()
 _FIELD_NAMES = frozenset(_SCHEMA.get("properties", {})) | frozenset(
     name for schema in _SCHEMA.get("$defs", {}).values() for name in schema.get("properties", {})
 )
@@ -118,7 +122,7 @@ def _safe_fields(error: ValidationError) -> str:
     return ", ".join(locations)
 
 
-def parse_spec(source: str, *, settings: Settings | None = None) -> TrainingSpec:
+def parse_spec(source: str, *, settings: Settings | None = None) -> TrainingSpecDocument:
     config = settings or get_settings()
     _bounded_source(source, config)
     try:
@@ -133,7 +137,7 @@ def parse_spec(source: str, *, settings: Settings | None = None) -> TrainingSpec
     if not isinstance(value, dict):
         raise TrainingValidationError("Recipe must be a mapping")
     try:
-        return TrainingSpec.model_validate(value)
+        return parse_training_spec(value)
     except ValidationError as error:
         raise TrainingValidationError("Invalid training fields: " + _safe_fields(error)) from None
 
@@ -183,9 +187,14 @@ def parse_submission(
     )
 
 
-def training_config_digest(spec: TrainingSpec) -> str:
+def training_config_digest(spec: TrainingSpecDocument) -> str:
     value = spec.model_dump(mode="json")
     value["output"].pop("adapter_slug")
+    if spec.schema_version == 2:
+        # Suite work is serialized outside the trainer. Preserve the exact v1
+        # configuration identity used by existing held-out loss/resource profiles.
+        value["schema_version"] = 1
+        value["eval"].pop("suites")
     return hashlib.sha256(
         json.dumps(
             value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
@@ -194,24 +203,29 @@ def training_config_digest(spec: TrainingSpec) -> str:
 
 
 def training_recipes() -> TrainingRecipePage:
-    """Read only the three shipped versioned assets, never a caller-chosen path."""
+    """Read only the shipped versioned assets, never a caller-chosen path."""
     from coire_core.models.training import TrainingRecipe, TrainingRecipePage
 
     # Source and packaged deployments may supply these same read-only repository assets.
     root = Path(__file__).resolve().parents[5] / "recipes" / "training"
     items = []
-    for kind in ("lora", "qlora", "dora"):
-        path = root / f"sft-{kind}.yaml"
+    for asset, kind in (
+        ("lora", "lora"),
+        ("qlora", "qlora"),
+        ("dora", "dora"),
+        ("evaluated", "lora"),
+    ):
+        bindings = ["model_id", "variant_id", "dataset_id", "adapter_slug"]
+        if asset == "evaluated":
+            bindings.extend(["task_suite_id", "judge_suite_id"])
+        path = root / f"sft-{asset}.yaml"
         try:
             with path.open("rb") as stream:
                 data = stream.read(65537)
             if len(data) > 65536:
                 raise ValueError()
             source = data.decode("utf-8")
-            if not all(
-                "${" + binding + "}" in source
-                for binding in ("model_id", "variant_id", "dataset_id", "adapter_slug")
-            ):
+            if not all("${" + binding + "}" in source for binding in bindings):
                 raise ValueError()
             # Validate template structure using inert synthetic IDs, not runnable registry IDs.
             example = source
@@ -219,6 +233,9 @@ def training_recipes() -> TrainingRecipePage:
                 example = example.replace(
                     "${" + binding + "}", "00000000-0000-4000-8000-000000000001"
                 )
+            example = example.replace("${task_suite_id}", "template-task").replace(
+                "${judge_suite_id}", "template-rubric"
+            )
             parsed = parse_spec(example.replace("${adapter_slug}", "template-validation"))
             if parsed.parameterization.kind != kind:
                 raise ValueError()
@@ -229,11 +246,11 @@ def training_recipes() -> TrainingRecipePage:
         items.append(
             TrainingRecipe.model_validate(
                 {
-                    "id": f"sft-{kind}",
+                    "id": f"sft-{asset}",
                     "version": 1,
                     "parameterization": kind,
                     "template_yaml": source,
-                    "required_bindings": ["model_id", "variant_id", "dataset_id", "adapter_slug"],
+                    "required_bindings": bindings,
                 }
             )
         )
@@ -241,7 +258,11 @@ def training_recipes() -> TrainingRecipePage:
 
 
 async def resolve_submission(
-    session: AsyncSession, submission: TrainingSubmission, *, settings: Settings | None = None
+    session: AsyncSession,
+    submission: TrainingSubmission,
+    *,
+    settings: Settings | None = None,
+    principal: Principal | None = None,
 ) -> TrainingValidation:
     """Resolve only registry inputs and recorded, strict, current measured evidence."""
     from sqlalchemy import select
@@ -266,7 +287,10 @@ async def resolve_submission(
     from coire_core.models.training import (
         ResolvedDatasetInput,
         ResolvedTrainingSpec,
+        ResolvedTrainingSpecDocument,
+        ResolvedTrainingSpecV2,
         TrainingMeasurementResult,
+        TrainingSpecV2,
         TrainingValidation,
     )
 
@@ -304,6 +328,21 @@ async def resolve_submission(
     base = digests["coire-edge-a"]
     if not isinstance(base, str) or re.fullmatch(r"[a-f0-9]{64}", base) is None:
         raise TrainingConflict("Training base has no immutable manifest identity")
+    declarations: list[ResolvedTrainingSuite] = []
+    evaluation_base: EvaluationTarget | None = None
+    if isinstance(spec, TrainingSpecV2):
+        from coire_api.evaluation.training import resolve_declarations
+        from coire_core.errors import TrainingForbidden
+
+        if principal is None:
+            raise TrainingForbidden("Evaluated training requires current human authority")
+        evaluation_base, declarations = await resolve_declarations(
+            session,
+            principal,
+            spec,
+            base_manifest_sha256=base,
+            settings=settings or get_settings(),
+        )
     inputs = []
     results = []
     splits = {}
@@ -510,19 +549,24 @@ async def resolve_submission(
             and spec.placement.preferred_node not in report.request.nodes
         ):
             continue
-        resolved = ResolvedTrainingSpec.model_validate(
-            {
-                "spec": spec,
-                "base_manifest_sha256": base,
-                "datasets": inputs,
-                "tokenizer_sha256": identity_result.tokenizer_sha256,
-                "template_sha256": identity_result.template_sha256,
-                "runtime_sha256": evidence.runtime_sha256,
-                "enable_thinking": False,
-                "worker_version": evidence.worker_version,
-                "resource_envelope": evidence.resource_envelope,
-            }
-        )
+        payload = {
+            "spec": spec,
+            "base_manifest_sha256": base,
+            "datasets": inputs,
+            "tokenizer_sha256": identity_result.tokenizer_sha256,
+            "template_sha256": identity_result.template_sha256,
+            "runtime_sha256": evidence.runtime_sha256,
+            "enable_thinking": False,
+            "worker_version": evidence.worker_version,
+            "resource_envelope": evidence.resource_envelope,
+        }
+        resolved: ResolvedTrainingSpecDocument
+        if isinstance(spec, TrainingSpecV2):
+            resolved = ResolvedTrainingSpecV2.model_validate(
+                {**payload, "evaluations": declarations, "evaluation_base": evaluation_base}
+            )
+        else:
+            resolved = ResolvedTrainingSpec.model_validate(payload)
         await recheck_training_inputs(session, resolved)
         return TrainingValidation(
             spec=spec, intent_sha256=parsed.intent_sha256, resolved=resolved, ready_to_run=True

@@ -1,5 +1,13 @@
 # SFT training operations
 
+Feature 017 declared evaluation procedures are in
+[Durable evaluations](evaluations.md). Existing v1 recipes retain their held-out
+loss behavior. Evaluation-owned checkpoint pauses require complete stop/cleanup
+proof before resume and fresh training admission. Use “Keep paused after
+evaluation” for an explicit administrator override; do not manually release
+uncertain reservations or checkpoint pins. Evaluation scores do not rewrite
+training success or grant user WRITE verification.
+
 Feature: [016 specification](../../specs/016-sft-training-jobs/spec.md),
 [plan](../../specs/016-sft-training-jobs/plan.md),
 [execution evidence](../../specs/016-sft-training-jobs/execution-record.md),

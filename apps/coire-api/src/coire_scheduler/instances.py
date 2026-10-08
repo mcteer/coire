@@ -112,11 +112,14 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                     raise
                 return
             async with session_scope() as session:
-                instance = await session.get(ModelInstanceRow, instance_id)
+                instance = await session.get(
+                    ModelInstanceRow, instance_id, with_for_update=True, populate_existing=True
+                )
                 if instance is None or instance.state in {
                     InstanceState.READY,
                     InstanceState.DRAINING,
                     InstanceState.STOPPED,
+                    InstanceState.FAILED,
                 }:
                     return
                 if instance.variant_id is None:

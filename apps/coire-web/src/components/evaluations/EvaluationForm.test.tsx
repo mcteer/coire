@@ -1,0 +1,46 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, expect, test, vi } from "vitest";
+import * as api from "../../api/evaluations";
+import * as training from "../../api/training";
+import type { EvaluationSuite } from "../../api/evaluations";
+import { EvaluationForm } from "./EvaluationForm";
+vi.mock("../training/RegistryBinding", () => ({ RegistryBinding: ({ onChange }: { onChange: (model: string, variant: string) => void }) => <button type="button" onClick={() => onChange("model", "variant")}>Bind exact model</button> }));
+afterEach(() => vi.restoreAllMocks());
+const suite = { suite_id: "task", version: 1, template: { kind: "task", mode: "deterministic" }, retired: false } as unknown as EvaluationSuite;
+test("submission is explicit, retry reuses its operation key, and no judge override is offered", async () => {
+  vi.spyOn(api, "listEvaluationSuites").mockResolvedValue({ items: [suite] });
+  vi.spyOn(training, "listAdapters").mockResolvedValue({ items: [] });
+  const submit = vi.spyOn(api, "submitEvaluation").mockRejectedValueOnce(new Error("transport uncertain")).mockResolvedValue({ id: "run", group_id: "group", version: 1, state: "queued", events_path: "/events" });
+  const accepted = vi.fn(); render(<EvaluationForm onSubmitted={accepted}/>);
+  await screen.findByRole("option", { name: /task version 1/ });
+  fireEvent.change(screen.getByLabelText("Registered evaluation suite"), { target: { value: "task:1" } });
+  fireEvent.click(screen.getByRole("button", { name: "Bind exact model" }));
+  fireEvent.click(screen.getByRole("button", { name: "Submit evaluation" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("transport uncertain");
+  fireEvent.click(screen.getByRole("button", { name: "Submit evaluation" }));
+  await waitFor(() => expect(accepted).toHaveBeenCalledWith("run"));
+  expect(submit.mock.calls[0]?.[1]).toEqual(submit.mock.calls[1]?.[1]);
+  expect(submit.mock.calls[0]?.[0]).toEqual({ suite_id: "task", suite_version: 1, subjects: [{ model_id: "model", variant_id: "variant", adapter_id: null }] });
+  expect(screen.queryByLabelText("Judge model")).not.toBeInTheDocument();
+});
+test("same-model judge is refused before mutation", async () => {
+  vi.spyOn(api, "listEvaluationSuites").mockResolvedValue({ items: [{ ...suite, judge: { target: { model_id: "model" }, runtime: { engine_version: "test" }, public_selector: "judge" } } as unknown as EvaluationSuite] });
+  vi.spyOn(training, "listAdapters").mockResolvedValue({ items: [] });
+  const submit = vi.spyOn(api, "submitEvaluation"); render(<EvaluationForm onSubmitted={vi.fn()}/>);
+  await screen.findByRole("option", { name: /task version 1/ });
+  fireEvent.change(screen.getByLabelText("Registered evaluation suite"), { target: { value: "task:1" } });
+  fireEvent.click(screen.getByRole("button", { name: "Bind exact model" }));
+  expect(screen.getByRole("alert")).toHaveTextContent("cannot evaluate its own");
+  expect(screen.getByRole("button", { name: "Submit evaluation" })).toBeDisabled(); expect(submit).not.toHaveBeenCalled();
+});
+test("an in-flight submission freezes the exact registry binding", async () => {
+  vi.spyOn(api, "listEvaluationSuites").mockResolvedValue({ items: [suite] });
+  vi.spyOn(training, "listAdapters").mockResolvedValue({ items: [] });
+  vi.spyOn(api, "submitEvaluation").mockImplementation(() => new Promise(() => {}));
+  render(<EvaluationForm onSubmitted={vi.fn()}/>);
+  await screen.findByRole("option", { name: /task version 1/ });
+  fireEvent.change(screen.getByLabelText("Registered evaluation suite"), { target: { value: "task:1" } });
+  fireEvent.click(screen.getByRole("button", { name: "Bind exact model" }));
+  fireEvent.click(screen.getByRole("button", { name: "Submit evaluation" }));
+  expect(screen.getByRole("button", { name: "Bind exact model" })).toBeDisabled();
+});

@@ -53,6 +53,15 @@ class Settings(BaseSettings):
         """
         return (init_settings, file_secret_settings, env_settings, dotenv_settings)
 
+    # Evaluation admission is independent from recovery/cleanup.
+    evaluations_enabled: bool = False
+    evaluation_max_active_groups: int = Field(default=1, ge=1, le=1)
+    evaluation_max_pending_runs: int = Field(default=100, ge=1, le=100)
+    evaluation_queue_timeout_seconds: int = Field(default=3600, ge=60, le=86_400)
+    evaluation_timeout_seconds: int = Field(default=900, ge=60, le=1800)
+    evaluation_evidence_retention_days: int = Field(default=7, ge=1, le=30)
+    evaluation_evidence_quota_bytes: int = Field(default=1024**3, ge=8 * 1024**2, le=10 * 1024**3)
+
     # --- database -------------------------------------------------------
     postgres_host: str = "postgres"
     postgres_port: int = 5432

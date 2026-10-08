@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal
 from coire_api.db import (
+    EvaluationCheckpointPinRow,
     NodeRow,
     TrainingAdapterRow,
     TrainingArtifactCopyRow,
@@ -27,6 +28,7 @@ from coire_core.models.training import (
     TERMINAL_TRAINING_STATES,
     TrainingDeleteRequest,
     TrainingDeletionReceipt,
+    parse_resolved_training_spec,
 )
 from coire_core.models.training_node import (
     TrainingArtifactDeleteRequest,
@@ -127,6 +129,21 @@ async def retention_candidates(
             )
         ).all()
     )
+    pinned.update(
+        (
+            await session.scalars(
+                select(EvaluationCheckpointPinRow.checkpoint_id)
+                .join(
+                    TrainingCheckpointRow,
+                    TrainingCheckpointRow.id == EvaluationCheckpointPinRow.checkpoint_id,
+                )
+                .where(
+                    TrainingCheckpointRow.job_id == job_id,
+                    EvaluationCheckpointPinRow.released_at.is_(None),
+                )
+            )
+        ).all()
+    )
     retained_bytes = 0
     candidates = []
     for index, row in enumerate(rows):
@@ -215,14 +232,13 @@ async def record_deletion(
 async def enqueue_checkpoint_cleanup(session: AsyncSession, job_id: str) -> list[uuid.UUID]:
     """Fence both-copy retirement with the same job lock used by resume/promotion."""
     from coire_api.training.service import payload_digest
-    from coire_core.models.training import ResolvedTrainingSpec
 
     job = await session.get(TrainingJobRow, job_id, populate_existing=True, with_for_update=True)
     if job is None:
         raise TrainingConflict("Cleanup job is unavailable")
     if job.resolved_spec is None:
         return []
-    resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+    resolved = parse_resolved_training_spec(job.resolved_spec)
     candidates = await retention_candidates(
         session,
         job.id,
@@ -260,6 +276,11 @@ async def enqueue_checkpoint_cleanup(session: AsyncSession, job_id: str) -> list
                     TrainingCheckpointRow.job_id == job.id,
                     TrainingCheckpointRow.state.in_(
                         ["committed", "corrupt", "staging", "replicating"]
+                    ),
+                    TrainingCheckpointRow.id.notin_(
+                        select(EvaluationCheckpointPinRow.checkpoint_id).where(
+                            EvaluationCheckpointPinRow.released_at.is_(None)
+                        )
                     ),
                 )
             )

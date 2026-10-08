@@ -425,6 +425,8 @@ class AgentRunRow(Base):
     task_class: Mapped[TaskClass] = mapped_column(
         _enum(TaskClass, "run_task_class"), default=TaskClass.WRITE
     )
+    purpose: Mapped[str] = mapped_column(String(16), server_default="harness")
+    evaluation_attempt_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     prepared_request_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     output_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
     token_scope: Mapped[dict[str, object]] = mapped_column(JSONB)
@@ -2086,6 +2088,7 @@ class TrainingJobRow(Base):
     completed_update: Mapped[int] = mapped_column(Integer, server_default="0")
     recovery_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
     cumulative_execution_seconds: Mapped[float] = mapped_column(Float, server_default="0")
+    evaluation_pause_trigger_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
     pause_origin: Mapped[str | None] = mapped_column(String(16), nullable=True)
     safe_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     queue_deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -2230,6 +2233,12 @@ class TrainingAdapterRow(Base):
             "visibility <> 'published' OR (state = 'ready' AND manifest_sha256 IS NOT NULL)",
             name="ck_training_adapter_publication",
         ),
+        CheckConstraint(
+            "(purpose = 'serving' AND evaluation_trigger_id IS NULL) OR "
+            "(purpose = 'evaluation' AND evaluation_trigger_id IS NOT NULL "
+            "AND visibility = 'admin_only' AND NOT verified)",
+            name="ck_training_adapter_evaluation_purpose",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -2245,6 +2254,10 @@ class TrainingAdapterRow(Base):
     manifest_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     resolved_spec_sha256: Mapped[str] = mapped_column(String(64))
     parameterization: Mapped[str] = mapped_column(String(16))
+    purpose: Mapped[str] = mapped_column(String(16), server_default="serving")
+    evaluation_trigger_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_evaluation_triggers.id", ondelete="RESTRICT"), nullable=True
+    )
     objective: Mapped[str] = mapped_column(String(16), server_default="sft")
     state: Mapped[str] = mapped_column(String(16), server_default="validating")
     visibility: Mapped[str] = mapped_column(String(16), server_default="admin_only")
@@ -2500,3 +2513,296 @@ class TrainingTransferGrantRow(Base):
     max_bytes: Mapped[int] = mapped_column(BigInteger)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EvaluationSuiteRow(Base):
+    __tablename__ = "evaluation_suites"
+    __table_args__ = (
+        UniqueConstraint("suite_id", "version", name="uq_evaluation_suite_version"),
+        CheckConstraint("version >= 1", name="ck_evaluation_suite_version"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    suite_id: Mapped[str] = mapped_column(String(64))
+    version: Mapped[int] = mapped_column(Integer)
+    registry_version: Mapped[int] = mapped_column(Integer, server_default="1")
+    definition: Mapped[dict[str, object]] = mapped_column(JSONB)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=True
+    )
+    attribution: Mapped[str] = mapped_column(String(64), server_default="admin")
+    retired: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationMutationRow(Base):
+    __tablename__ = "evaluation_mutations"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_user_id", "operation", "key_sha256", name="uq_evaluation_mutation_key"
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    operation: Mapped[str] = mapped_column(String(128))
+    key_sha256: Mapped[str] = mapped_column(String(64))
+    request_sha256: Mapped[str] = mapped_column(String(64))
+    response: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationGroupRow(Base):
+    __tablename__ = "evaluation_groups"
+    __table_args__ = (
+        CheckConstraint("next_event_sequence >= 1", name="ck_evaluation_group_sequence"),
+        CheckConstraint(
+            "origin IN ('manual','training_final','training_checkpoint','measurement')",
+            name="ck_evaluation_group_origin",
+        ),
+    )
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    origin: Mapped[str] = mapped_column(String(32))
+    job_id: Mapped[str | None] = mapped_column(
+        ForeignKey("training_jobs.id", ondelete="RESTRICT"), nullable=True
+    )
+    checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_checkpoints.id", ondelete="RESTRICT"), nullable=True
+    )
+    completed_update: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    subjects: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    next_event_sequence: Mapped[int] = mapped_column(BigInteger, server_default="1")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationRunRow(Base):
+    __tablename__ = "evaluation_runs"
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_user_id", "idempotency_key_sha256", name="uq_evaluation_run_idempotency"
+        ),
+        CheckConstraint(
+            "version >= 1 AND fence >= 1 AND evidence_reserved_bytes >= 0 AND evidence_reserved_bytes <= 8388608",
+            name="ck_evaluation_run_bounds",
+        ),
+        CheckConstraint(
+            "state IN ('queued','preparing','reserving','running','collecting','cancelling','succeeded','failed','timed_out','cancelled')",
+            name="ck_evaluation_run_state",
+        ),
+        Index("ix_evaluation_runs_dispatch", "state", "created_at"),
+    )
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    group_id: Mapped[str] = mapped_column(ForeignKey("evaluation_groups.id", ondelete="RESTRICT"))
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    suite_row_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("evaluation_suites.id", ondelete="RESTRICT")
+    )
+    suite_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
+    subjects: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    source_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("evaluation_runs.id", ondelete="RESTRICT"), nullable=True
+    )
+    measurement_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("evaluation_measurements.id", ondelete="RESTRICT"), nullable=True
+    )
+    authorization_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
+    next_event_sequence: Mapped[int] = mapped_column(BigInteger, server_default="1")
+    request_sha256: Mapped[str] = mapped_column(String(64))
+    idempotency_key_sha256: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(String(16), server_default="queued")
+    phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    fence: Mapped[int] = mapped_column(BigInteger, server_default="1")
+    cleanup_state: Mapped[str] = mapped_column(String(16), server_default="complete")
+    safe_failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    evidence_reserved_bytes: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    data_snapshot: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    queue_deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    execution_deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    started_deadline_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EvaluationAttemptRow(Base):
+    __tablename__ = "evaluation_attempts"
+    __table_args__ = (
+        UniqueConstraint("run_id", "phase", "ordinal", name="uq_evaluation_attempt_phase"),
+        CheckConstraint("ordinal >= 1 AND fence >= 1", name="ck_evaluation_attempt_fence"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[str] = mapped_column(ForeignKey("evaluation_runs.id", ondelete="RESTRICT"))
+    phase: Mapped[str] = mapped_column(String(32))
+    ordinal: Mapped[int] = mapped_column(Integer)
+    fence: Mapped[int] = mapped_column(BigInteger)
+    agent_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"), unique=True, nullable=True
+    )
+    node_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("nodes.id", ondelete="RESTRICT"), nullable=True
+    )
+    instance_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_instances.id", ondelete="RESTRICT"), nullable=True
+    )
+    target_sha256: Mapped[str] = mapped_column(String(64))
+    profile_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("evaluation_coexistence_profiles.id", ondelete="RESTRICT"), nullable=True
+    )
+    owns_instance: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    sandbox_reservation_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("memory_reservations.id", ondelete="RESTRICT"), nullable=True
+    )
+    lease_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("request_leases.id", ondelete="RESTRICT"), nullable=True
+    )
+    resident_lease_ids: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    workload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    workspace_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    output_ref: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    collected_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    state: Mapped[str] = mapped_column(String(16), server_default="pending")
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationResultRow(Base):
+    __tablename__ = "evaluation_results"
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("evaluation_runs.id", ondelete="RESTRICT"), unique=True
+    )
+    fence: Mapped[int] = mapped_column(BigInteger)
+    result: Mapped[dict[str, object]] = mapped_column(JSONB)
+    result_sha256: Mapped[str] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationEvidenceRow(Base):
+    __tablename__ = "evaluation_evidence"
+    __table_args__ = (
+        CheckConstraint("bytes >= 0 AND bytes <= 8388608", name="ck_evaluation_evidence_bytes"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[str] = mapped_column(ForeignKey("evaluation_runs.id", ondelete="RESTRICT"))
+    attempt_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("evaluation_attempts.id", ondelete="RESTRICT")
+    )
+    storage_key: Mapped[str] = mapped_column(String(128), unique=True)
+    sha256: Mapped[str] = mapped_column(String(64))
+    bytes: Mapped[int] = mapped_column(BigInteger)
+    availability: Mapped[str] = mapped_column(String(16), server_default="present")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    pin_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TrainingEvaluationTriggerRow(Base):
+    __tablename__ = "training_evaluation_triggers"
+    __table_args__ = (
+        UniqueConstraint(
+            "job_id",
+            "boundary_kind",
+            "completed_update",
+            "schedule_sha256",
+            name="uq_training_evaluation_boundary",
+        ),
+        CheckConstraint(
+            "completed_update >= 1 AND fence >= 1", name="ck_training_evaluation_boundary"
+        ),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    job_id: Mapped[str] = mapped_column(ForeignKey("training_jobs.id", ondelete="RESTRICT"))
+    checkpoint_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_checkpoints.id", ondelete="RESTRICT"), nullable=True
+    )
+    boundary_kind: Mapped[str] = mapped_column(String(16))
+    completed_update: Mapped[int] = mapped_column(Integer)
+    schedule_sha256: Mapped[str] = mapped_column(String(64))
+    schedules: Mapped[list[dict[str, object]]] = mapped_column(JSONB)
+    group_id: Mapped[str | None] = mapped_column(
+        ForeignKey("evaluation_groups.id", ondelete="RESTRICT"), nullable=True, unique=True
+    )
+    phase: Mapped[str] = mapped_column(String(32), server_default="pending_pause")
+    fence: Mapped[int] = mapped_column(BigInteger)
+    pause_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resume_disposition: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EvaluationCheckpointPinRow(Base):
+    __tablename__ = "evaluation_checkpoint_pins"
+    __table_args__ = (
+        UniqueConstraint("trigger_id", "checkpoint_id", name="uq_evaluation_checkpoint_pin"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    trigger_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_evaluation_triggers.id", ondelete="RESTRICT")
+    )
+    checkpoint_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_checkpoints.id", ondelete="RESTRICT")
+    )
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class EvaluationEventRow(Base):
+    __tablename__ = "evaluation_events"
+    __table_args__ = (UniqueConstraint("run_id", "sequence", name="uq_evaluation_event_sequence"),)
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[str] = mapped_column(ForeignKey("evaluation_runs.id", ondelete="RESTRICT"))
+    sequence: Mapped[int] = mapped_column(BigInteger)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationGroupEventRow(Base):
+    __tablename__ = "evaluation_group_events"
+    __table_args__ = (
+        UniqueConstraint("group_id", "sequence", name="uq_evaluation_group_event_sequence"),
+        CheckConstraint("sequence >= 1", name="ck_evaluation_group_event_sequence"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    group_id: Mapped[str] = mapped_column(ForeignKey("evaluation_groups.id", ondelete="RESTRICT"))
+    sequence: Mapped[int] = mapped_column(BigInteger)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationMeasurementRow(Base):
+    __tablename__ = "evaluation_measurements"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    request: Mapped[dict[str, object]] = mapped_column(JSONB)
+    authorization_snapshot: Mapped[dict[str, object]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
+    execution: Mapped[dict[str, object]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    version: Mapped[int] = mapped_column(Integer, server_default="1")
+    deadline_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()")
+    )
+    state: Mapped[str] = mapped_column(String(16), server_default="queued")
+    report: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    report_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class EvaluationCoexistenceProfileRow(Base):
+    __tablename__ = "evaluation_coexistence_profiles"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    measurement_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("evaluation_measurements.id", ondelete="RESTRICT"), unique=True
+    )
+    fingerprint_sha256: Mapped[str] = mapped_column(String(64))
+    report_sha256: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    invalidated_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)

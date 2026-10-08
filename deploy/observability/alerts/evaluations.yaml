@@ -1,0 +1,30 @@
+groups:
+  - name: coire-evaluations
+    interval: 15s
+    rules:
+      - alert: CoireEvaluationBaselineUnavailable
+        expr: >-
+          absent(coire_evaluation_snapshot_timestamp_seconds)
+          or time() - max(coire_evaluation_snapshot_timestamp_seconds) > 60
+          or absent(coire_evaluation_runs)
+          or absent(coire_evaluation_cleanup_overdue_seconds)
+          or absent(coire_evaluation_pending_oldest_seconds)
+        for: 1m
+        labels: {severity: critical, subject: evaluation}
+        annotations:
+          summary: Evaluation baseline state is missing or stale
+          runbook_url: /docs/runbooks/evaluations#observe
+      - alert: CoireEvaluationCleanupUnresolved
+        expr: max(coire_evaluation_cleanup_overdue_seconds) > 60
+        for: 0m
+        labels: {severity: critical, subject: evaluation}
+        annotations:
+          summary: Evaluation cleanup remains unresolved after its execution deadline
+          runbook_url: /docs/runbooks/evaluations#kill-and-recover
+      - alert: CoireEvaluationAdmissionStalled
+        expr: max(coire_evaluation_pending_oldest_seconds) > 3600
+        for: 1m
+        labels: {severity: warning, subject: evaluation}
+        annotations:
+          summary: An evaluation has waited for admission for over one hour
+          runbook_url: /docs/runbooks/evaluations#observe

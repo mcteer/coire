@@ -1,0 +1,80 @@
+{
+  "kind": "evaluation",
+  "workload_version": 1,
+  "evaluation_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "attempt_id": "00000000-0000-0000-0000-000000000013",
+  "run_id": "00000000-0000-0000-0000-000000000014",
+  "fence": 1,
+  "phase": "base",
+  "suite": {
+    "suite_id": "task-local",
+    "version": 1,
+    "registry_version": 1,
+    "template": {
+      "template_id": "task-coding-instructions",
+      "template_version": 1,
+      "kind": "task",
+      "mode": "deterministic",
+      "content_sha256": "5386b65f95820daf9bb3de64d3d6b15e7af9f9d43f6df9194868c667484a301e",
+      "cases_sha256": "4203f154775fb5b0e9801ef3bc689627c8389749ee45d5a1bfd57a741270bb15",
+      "scorer_version": "coire-evaluation-v1",
+      "case_count": 16,
+      "license": "Project-authored fixtures; no third-party benchmark data"
+    },
+    "generation": {
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "seed": 0,
+      "max_tokens": 512,
+      "stop": []
+    },
+    "timeout_seconds": 900,
+    "judge": null,
+    "judge_generation": {
+      "temperature": 0.0,
+      "top_p": 1.0,
+      "seed": 0,
+      "max_tokens": 512,
+      "stop": []
+    },
+    "content_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "retired": false,
+    "registered_at": "2026-10-07T00:00:00Z",
+    "registered_by": null
+  },
+  "target": {
+    "target": {
+      "model_id": "00000000-0000-0000-0000-000000000011",
+      "variant_id": "00000000-0000-0000-0000-000000000012",
+      "adapter_id": null,
+      "base_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "adapter_manifest_sha256": null
+    },
+    "public_selector": "00000000-0000-0000-0000-000000000011",
+    "capability_profile": {
+      "tool_calling": "none",
+      "structured_output": "none",
+      "context_window": null,
+      "reasoning": "none",
+      "parallel_tools": false,
+      "chat_template_present": false,
+      "visual_input": null,
+      "compatible_base_model_id": null,
+      "verified": false
+    },
+    "context_window": 16384,
+    "runtime": {
+      "engine_version": "0.31.3",
+      "harness_version": "0.1.0",
+      "runtime_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "tokenizer_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "template_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "capability_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    },
+    "display_name": "Synthetic fixture"
+  },
+  "subject_index": 0,
+  "deadline": "2030-01-01T00:00:00Z",
+  "previous_outputs": [],
+  "input_files": []
+}

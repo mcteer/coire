@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal, PrincipalKind
 from coire_api.db import (
+    AgentRunRow,
     EngineProcessRow,
+    EvaluationAttemptRow,
     InstanceMemberRow,
     ModelCopyRow,
     ModelInstanceRow,
@@ -70,6 +72,17 @@ async def resolve_model(
     instance_id: uuid.UUID | None = None,
 ) -> ResolvedModel:
     selected = await resolve_target(session, requested_id, principal, variant_id)
+    evaluation_bound = False
+    if principal.kind is PrincipalKind.RUN and principal.run_id is not None:
+        child = await session.get(AgentRunRow, principal.run_id)
+        if child is not None and child.purpose == "evaluation":
+            attempt = await session.get(EvaluationAttemptRow, child.evaluation_attempt_id)
+            if attempt is None or attempt.agent_run_id != child.id or attempt.instance_id is None:
+                raise ModelNotFoundError
+            if instance_id is not None and instance_id != attempt.instance_id:
+                raise ModelNotFoundError
+            instance_id = attempt.instance_id
+            evaluation_bound = True
     requested_id = selected.model.id
     adapter_id = selected.adapter.id if selected.adapter else None
     exact_variant = selected.variant.id if selected.variant else None
@@ -206,6 +219,8 @@ async def resolve_model(
             instance_id=_instance.id,
         )
     if target is None:
+        if evaluation_bound:
+            raise ModelNotFoundError
         if instance_id is not None:
             raise ModelNotFoundError
         if selected.variant is not None or adapter_id is not None or variant_id is not None:

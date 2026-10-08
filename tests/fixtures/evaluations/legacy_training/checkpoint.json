@@ -1,0 +1,62 @@
+{
+  "artifact_id": "10000000-0000-4000-8000-000000000001",
+  "attempt_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "fence": 1,
+  "files": [
+    {
+      "bytes": 1,
+      "id": "adapter",
+      "name": "adapter.safetensors",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "bytes": 1,
+      "id": "optimizer",
+      "name": "optimizer.safetensors",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "bytes": 1,
+      "id": "state",
+      "name": "state.json",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "job_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "kind": "checkpoint",
+  "ranks": [
+    {
+      "adapter_file_id": "adapter",
+      "adapter_tensors": [
+        {
+          "dtype": "float32",
+          "key": "lora_a",
+          "shape": [
+            1,
+            1
+          ]
+        }
+      ],
+      "optimizer_file_id": "optimizer",
+      "optimizer_tensors": [
+        {
+          "dtype": "float32",
+          "key": "moment",
+          "shape": [
+            1,
+            1
+          ]
+        }
+      ],
+      "rank": 0,
+      "state_file_id": "state",
+      "update": 8
+    }
+  ],
+  "resolved_spec_sha256": "d4cf7edb2cfa919f36495fb7b1f383be9a356729d24bc96e967c4b99a4fd4ad2",
+  "runtime_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "schema_version": 1,
+  "total_bytes": 3,
+  "update": 8,
+  "world_size": 1
+}

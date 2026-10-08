@@ -12,6 +12,7 @@ from coire_api.training.service import payload_digest
 from coire_core.errors import TrainingConflict
 from coire_core.models import training_node
 from coire_core.models.training_node import (
+    CheckpointAcknowledgementDocument,
     CheckpointCommitAcknowledgement,
     NodeTrainingEventPage,
     NodeTrainingStatus,
@@ -44,6 +45,7 @@ from coire_core.models.training_node import (
     TrainingStartRequest,
     TrainingStopReceipt,
     TrainingStopRequest,
+    parse_checkpoint_acknowledgement,
 )
 from coire_scheduler.training import observe_training, reduce_command_receipt
 from coire_scheduler.training_recovery import record_stop_proof
@@ -158,7 +160,11 @@ async def dispatch_training_command(command_id: uuid.UUID, client: "TrainingNode
             "node.training.lease": TrainingLeaseRenewal,
             "node.training.checkpoint-commit": CheckpointCommitAcknowledgement,
         }
-        request = types[operation].model_validate(payload)
+        request = (
+            parse_checkpoint_acknowledgement(payload)
+            if operation == "node.training.checkpoint-commit"
+            else types[operation].model_validate(payload)
+        )
         if (
             request.command_id != command_id
             or request.node != row.subject_id
@@ -206,7 +212,7 @@ async def dispatch_training_command(command_id: uuid.UUID, client: "TrainingNode
             assert row is not None
             row.receipt, row.state = stopped.model_dump(mode="json"), "succeeded"
     elif operation == "node.training.checkpoint-commit":
-        acknowledgement = CheckpointCommitAcknowledgement.model_validate(payload)
+        acknowledgement = parse_checkpoint_acknowledgement(payload)
         status = await client.acknowledge_checkpoint(acknowledgement)
         async with session_scope() as session:
             row = await session.get(TrainingCommandRow, command_id, with_for_update=True)
@@ -387,7 +393,7 @@ class TrainingNodeClient(NodeClient):
         return status
 
     async def acknowledge_checkpoint(
-        self, command: CheckpointCommitAcknowledgement
+        self, command: CheckpointAcknowledgementDocument
     ) -> NodeTrainingStatus:
         _, body = await self._call(
             "POST",

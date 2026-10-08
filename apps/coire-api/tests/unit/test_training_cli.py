@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 from string import Template
 from typing import Any
@@ -16,7 +16,6 @@ import yaml
 from coire_api import cli
 from coire_api.training.specs import parse_spec
 from coire_core.errors import TrainingValidationError
-from coire_core.models.harness import HarnessEvaluationSubmission
 from coire_core.models.training import TrainingMeasurementRequest
 
 MODEL = uuid.UUID("11111111-1111-4111-8111-111111111111")
@@ -525,7 +524,7 @@ def test_seed_templates_require_real_bindings_and_then_parse(kind: str) -> None:
 
 
 @pytest.mark.parametrize("exact_adapter", [True, False, None])
-def test_evaluation_actual_http_generations_preserve_exact_subject(
+def test_evaluation_durable_submission_preserves_exact_subject(
     monkeypatch: pytest.MonkeyPatch, exact_adapter: bool | None
 ) -> None:
     target = {
@@ -546,12 +545,6 @@ def test_evaluation_actual_http_generations_preserve_exact_subject(
         )
     generations: list[httpx.Request] = []
     submission: list[dict[str, Any]] = []
-    contents = [
-        '{"name":"read_file","arguments":{}}',
-        '{"answer":"ok"}',
-        "--- a/note.txt\n+++ b/note.txt\n+coire-eval",
-        "coire-context-sentinel-7419",
-    ]
 
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["Authorization"] == "Bearer private-token"
@@ -561,36 +554,38 @@ def test_evaluation_actual_http_generations_preserve_exact_subject(
                 {"adapter_id": str(ADAPTER)} if exact_adapter else {}
             )
             return httpx.Response(200, json=context)
-        if request.url.path == "/v1/chat/completions":
-            generations.append(request)
-            payload = body(request)
-            assert payload["model"] == (f"{MODEL}@test-adapter" if exact_adapter else str(MODEL))
-            assert payload["coire_variant_id"] == str(VARIANT)
-            return httpx.Response(
-                200, json={"choices": [{"message": {"content": contents[len(generations) - 1]}}]}
-            )
-        assert request.url.path == f"{ROOT}/harness-evaluations"
+        assert request.url.path == f"{ROOT}/evaluations"
         submitted = body(request)
-        HarnessEvaluationSubmission.model_validate(submitted)
-        assert submitted["target"] == (target if exact_adapter is not None else None)
+        from coire_core.models.evaluation import EvaluationSubmission
+
+        EvaluationSubmission.model_validate(submitted)
+        assert submitted["subjects"] == [
+            {
+                "model_id": str(MODEL),
+                "variant_id": str(VARIANT),
+                "adapter_id": str(ADAPTER) if exact_adapter else None,
+            }
+        ]
+        assert submitted["expected_engine_version"] == "pinned"
         submission.append(submitted)
         return httpx.Response(
-            201, json={**submitted, "id": str(CHECKPOINT), "overall_score": 1.0, "run_at": NOW}
+            202,
+            json={
+                "id": JOB,
+                "group_id": JOB,
+                "state": "queued",
+                "version": 1,
+                "events_path": f"{ROOT}/evaluations/{JOB}/events",
+            },
         )
 
-    factory: Callable[..., httpx.Client] = httpx.Client
-    transport = httpx.MockTransport(handler)
-    with factory(transport=transport) as client:
-        monkeypatch.setattr("coire_api.cli.httpx.get", client.get)
-        monkeypatch.setattr("coire_api.cli.httpx.post", client.post)
-        monkeypatch.setattr(
-            "coire_api.cli.httpx.Client", lambda **kwargs: factory(transport=transport, **kwargs)
-        )
-        argv = [*PREFIX, "eval", "harness", str(VARIANT), "--engine-version", "pinned"]
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        monkeypatch.setattr("coire_api.cli.httpx.request", client.request)
+        argv = [*PREFIX, "eval", "harness", str(VARIANT), "--engine-version", "pinned", "--no-wait"]
         if exact_adapter:
             argv += ["--adapter", str(ADAPTER)]
         assert cli.main(argv) == 0
-    assert len(generations) == 4 and len(submission) == 1
+    assert not generations and len(submission) == 1
 
 
 def event(sequence: int, kind: str = "state", state: str = "running") -> dict[str, Any]:
@@ -831,33 +826,26 @@ def test_requested_adapter_cannot_use_legacy_context(wire: Any) -> None:
     replies.append(
         (200, {"variant_id": str(VARIANT), "model_id": str(MODEL), "capability_profile": {}})
     )
-    assert cli.main([*PREFIX, "eval", "harness", str(VARIANT), "--adapter", str(ADAPTER)]) == 1
+    assert cli.main([*PREFIX, "eval", "harness", str(VARIANT), "--adapter", str(ADAPTER)]) == 2
     assert len(calls) == 1
 
 
-def test_suite_infrastructure_diagnostics_do_not_include_exception_content(
+def test_evaluation_transport_diagnostics_do_not_include_exception_content(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    from coire_core.models.harness import EvaluationVerdict, HarnessEvaluationTarget
-    from coire_core.models.registry import CapabilityProfile
+    def fail(*args: object, **kwargs: object) -> httpx.Response:
+        raise httpx.ReadTimeout("private-token private-row /private/path")
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ReadTimeout("private-token private-row /private/path", request=request)
-
-    factory = httpx.Client
-    monkeypatch.setattr(
-        "coire_api.cli.httpx.Client",
-        lambda **kwargs: factory(transport=httpx.MockTransport(handler), **kwargs),
+    monkeypatch.setattr("coire_api.cli.httpx.request", fail)
+    assert cli.main([*PREFIX, "eval", "harness", str(VARIANT)]) == 2
+    output = capsys.readouterr().err
+    assert "ReadTimeout" in output
+    assert (
+        "private-token" not in output
+        and "private-row" not in output
+        and "/private/path" not in output
     )
-    _, verdict, diagnostics = cli._run_suite(
-        "https://core.test",
-        {"Authorization": "Bearer private-token"},
-        HarnessEvaluationTarget(
-            variant_id=VARIANT, model_id=MODEL, capability_profile=CapabilityProfile()
-        ),
-    )
-    assert verdict is EvaluationVerdict.INFRASTRUCTURE_ERROR
-    assert diagnostics == ["infrastructure: ReadTimeout"]
 
 
 @pytest.mark.parametrize(
@@ -901,5 +889,5 @@ def test_adapter_context_without_public_pair_is_rejected(wire: Any) -> None:
             },
         )
     )
-    assert cli.main([*PREFIX, "eval", "harness", str(VARIANT), "--adapter", str(ADAPTER)]) == 1
+    assert cli.main([*PREFIX, "eval", "harness", str(VARIANT), "--adapter", str(ADAPTER)]) == 2
     assert len(calls) == 1

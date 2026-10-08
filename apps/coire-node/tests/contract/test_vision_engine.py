@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import uuid
@@ -9,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -27,7 +29,55 @@ from coire_node.engines import (
     build_engine_env,
     build_vision_argv,
 )
-from coire_node.testing.harness import Agent
+from coire_node.testing.harness import TOKEN, Agent
+
+
+@pytest.mark.asyncio
+async def test_visual_checksum_preflight_keeps_authenticated_health_live(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = Agent(tmp_path / "node")
+    slug = "fake--vision"
+    _seed(agent, slug)
+    (agent.store.path_for(slug) / "model.safetensors").write_bytes(b"corrupt")
+    entered, release = threading.Event(), threading.Event()
+    verify = agent.store.verify_against
+
+    def slow_verify(*args: Any, **kwargs: Any) -> list[str]:
+        entered.set()
+        assert release.wait(5)
+        return verify(*args, **kwargs)
+
+    monkeypatch.setattr(agent.store, "verify_against", slow_verify)
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=agent.app()),
+            base_url="http://node",
+            headers={"Authorization": f"Bearer {TOKEN}"},
+        ) as client:
+            pending = asyncio.create_task(
+                client.post(
+                    "/node/engines",
+                    json={
+                        "engine_id": str(uuid.uuid4()),
+                        "slug": slug,
+                        "estimate_bytes": 1024,
+                        "backend": "mlx_vlm",
+                    },
+                )
+            )
+            try:
+                assert await asyncio.to_thread(entered.wait, 2)
+                health = await asyncio.wait_for(client.get("/node/health"), 1)
+                assert health.status_code == 200
+            finally:
+                release.set()
+                response = await pending
+            assert response.status_code == 404
+            assert agent.engines.statuses() == []
+    finally:
+        release.set()
+        agent.close()
 
 
 def _seed(agent: Agent, slug: str) -> None:
@@ -104,6 +154,7 @@ def test_vision_process_records_backend_and_rejects_wrong_backend(
         return FakeProcess()
 
     monkeypatch.setattr("coire_node.engines.subprocess.Popen", popen)
+    monkeypatch.setattr("coire_node.engines.version", lambda package: f"installed-{package}")
     monkeypatch.setattr(agent.engines, "_await_ready", lambda _key: None)
     try:
         engine_id = uuid.uuid4()
@@ -117,6 +168,9 @@ def test_vision_process_records_backend_and_rejects_wrong_backend(
         )
         assert not existing
         assert status.backend is EngineBackend.MLX_VLM
+        assert (
+            agent.engines._engines[str(engine_id)].record()["engine_version"] == "installed-mlx-vlm"
+        )
         assert captured["argv"][2] == "mlx_vlm.server"
         assert captured["argv"][4] == str(agent.store.path_for(slug))
         assert captured["env"]["HF_HUB_OFFLINE"] == "1"

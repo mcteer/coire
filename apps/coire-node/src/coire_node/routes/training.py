@@ -12,7 +12,8 @@ from opentelemetry import metrics, trace
 
 from coire_core.errors import TrainingConflict, TrainingValidationError
 from coire_core.models.training_node import (
-    CheckpointCommitAcknowledgement,
+    CheckpointAcknowledgementDocument,
+    CheckpointCommitAcknowledgementV2,
     NodeAnalysisCancelRequest,
     NodeDatasetAnalysisRequest,
     NodeDatasetAnalysisStatus,
@@ -54,7 +55,9 @@ def native(request: Request, *, mutation: bool = False) -> TrainingSupervisor:
     return cast(TrainingSupervisor, value)
 
 
-def scope(attempt_id: str, command: TrainingCommand, request: Request) -> None:
+def scope(
+    attempt_id: str, command: TrainingCommand | CheckpointCommitAcknowledgementV2, request: Request
+) -> None:
     if command.attempt_id != attempt_id or command.node != request.app.state.settings.node_name:
         raise HTTPException(409, "training control identity differs")
     logger.info(
@@ -171,7 +174,7 @@ async def stop(
 
 @router.post("/attempts/{attempt_id}/checkpoint-commit", response_model=NodeTrainingStatus)
 async def checkpoint_commit(
-    attempt_id: TrainingId, command: CheckpointCommitAcknowledgement, request: Request
+    attempt_id: TrainingId, command: CheckpointAcknowledgementDocument, request: Request
 ) -> NodeTrainingStatus:
     scope(attempt_id, command, request)
     supervisor = native(request)

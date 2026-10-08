@@ -16,6 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coire_api.db import (
     AgentRunRow,
     EntitlementRow,
+    EvaluationAttemptRow,
+    EvaluationEvidenceRow,
     McpCallRow,
     ModelRow,
     ModelVariantRow,
@@ -25,6 +27,9 @@ from coire_api.db import (
     UserRow,
     session_scope,
 )
+from coire_api.evaluation.evidence import EvidenceStore, persist_collected
+from coire_api.evaluation.execution import authorize_evaluation_child
+from coire_api.evaluation.validation import parse_worker_result, validate_worker_result
 from coire_api.evaluations import target_is_write_verified
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.polling import PollBackoff, wait_or_stop
@@ -33,6 +38,13 @@ from coire_api.runs import authorize_run_target, run_target
 from coire_api.workspaces import resolve_source
 from coire_core.models.auth import UserRole
 from coire_core.models.conversation import ImagePart
+from coire_core.models.evaluation import (
+    EvaluationInputReceipt,
+    EvaluationWorkload,
+    EvaluationWorkspacePrepare,
+    EvaluationWorkspaceReceipt,
+    canonical_digest,
+)
 from coire_core.models.harness import HarnessRunRequest, ProfileName, TaskClass
 from coire_core.models.mcp import WorkspaceSource
 from coire_core.models.node import WorkspacePrepareRequest, WorkspaceVisualInput
@@ -203,12 +215,28 @@ class RunCommandExecutor:
                     )
 
     async def _failed(self, command_id: uuid.UUID, exc: Exception) -> None:
-        logger.exception("run command failed command_id=%s", command_id, exc_info=exc)
         async with session_scope() as session:
             row = await session.get(RunCommandRow, command_id)
             if row is not None:
+                child = await session.get(AgentRunRow, row.run_id)
+                evaluation = child is not None and child.purpose == "evaluation"
+                if evaluation:
+                    logger.error(
+                        "evaluation run command failed",
+                        extra={
+                            "command_id": str(command_id),
+                            "run_id": str(row.run_id),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                else:
+                    logger.exception("run command failed command_id=%s", command_id, exc_info=exc)
                 node_detail = exc.body.get("detail") if isinstance(exc, NodeError) else None
                 node_code = node_detail.get("code") if isinstance(node_detail, dict) else None
+                if evaluation:
+                    node_code = (
+                        exc.kind.value if isinstance(exc, NodeError) else type(exc).__name__.lower()
+                    )
                 row.state = RunCommandState.FAILED
                 row.detail = {
                     "failure_code": str(node_code or type(exc).__name__.lower())[:64],
@@ -240,7 +268,9 @@ class RunCommandExecutor:
             await asyncio.sleep(0.5)
 
     async def _execute(self, command_id: uuid.UUID) -> dict[str, object]:
-        with tracer.start_as_current_span("coire.api.run.command") as span:
+        with tracer.start_as_current_span(
+            "coire.api.run.command", record_exception=False, set_status_on_exception=False
+        ) as span:
             span.set_attribute("command_id", str(command_id))
             async with session_scope() as session:
                 command = await session.get(RunCommandRow, command_id)
@@ -292,7 +322,109 @@ class RunCommandExecutor:
                     if not self.settings.run_agent_image:
                         raise RuntimeError("COIRE_RUN_AGENT_IMAGE must be digest-pinned")
                     prepared = None
-                    if run.prepared_request_id is not None:
+                    evaluation_prepared: EvaluationWorkspaceReceipt | None = None
+                    evaluation_workload: EvaluationWorkload | None = None
+                    if run.purpose == "evaluation":
+                        async with session_scope() as session:
+                            evaluation_workload = await authorize_evaluation_child(session, run)
+                        evaluation_prepared = await client.prepare_evaluation_workspace(
+                            node_name,
+                            EvaluationWorkspacePrepare(
+                                workload=evaluation_workload,
+                                request_sha256=canonical_digest(evaluation_workload),
+                            ),
+                        )
+                        if (
+                            evaluation_prepared.run_id != run_id
+                            or evaluation_prepared.attempt_id != evaluation_workload.attempt_id
+                            or evaluation_prepared.fence != evaluation_workload.fence
+                            or evaluation_prepared.request_sha256
+                            != canonical_digest(evaluation_workload)
+                        ):
+                            raise RuntimeError("Studio evaluation workspace identity differs")
+                        for declared in evaluation_workload.input_files:
+                            if declared.purpose in {"training_source", "training_state"}:
+                                continue
+                            if declared.purpose == "split_manifest":
+                                from coire_api.evaluation.inputs import split_input
+
+                                async with session_scope() as session:
+                                    data = await split_input(
+                                        session, evaluation_workload, declared.name
+                                    )
+                                await client.stage_evaluation_input(
+                                    node_name,
+                                    EvaluationInputReceipt(
+                                        run_id=run_id,
+                                        request_sha256=canonical_digest(evaluation_workload),
+                                        name=declared.name,
+                                        sha256=declared.sha256,
+                                        bytes=declared.bytes,
+                                    ),
+                                    data,
+                                )
+                                continue
+                            if (
+                                declared.purpose != "previous_outputs"
+                                or not declared.name.startswith("evidence-")
+                                or not declared.name.endswith(".json")
+                            ):
+                                raise RuntimeError(
+                                    "evaluation input requires an owned evidence reference"
+                                )
+                            evidence_id = uuid.UUID(declared.name[len("evidence-") : -len(".json")])
+                            async with session_scope() as session:
+                                evidence_row = await session.get(EvaluationEvidenceRow, evidence_id)
+                                if (
+                                    evidence_row is None
+                                    or evidence_row.run_id != evaluation_workload.evaluation_id
+                                    or evidence_row.availability != "present"
+                                    or evidence_row.expires_at <= datetime.now(UTC)
+                                    or evidence_row.sha256 != declared.sha256
+                                    or evidence_row.bytes != declared.bytes
+                                ):
+                                    raise RuntimeError("evaluation input evidence is unavailable")
+                                data = await EvidenceStore(self.settings).read(
+                                    evidence_row.id, evidence_row.sha256
+                                )
+                            await client.stage_evaluation_input(
+                                node_name,
+                                EvaluationInputReceipt(
+                                    run_id=run_id,
+                                    request_sha256=canonical_digest(evaluation_workload),
+                                    name=declared.name,
+                                    sha256=declared.sha256,
+                                    bytes=declared.bytes,
+                                ),
+                                data,
+                            )
+                        if evaluation_workload.training is not None:
+                            from coire_api.evaluation.inputs import mint_inputs
+
+                            async with session_scope() as session:
+                                grants = await mint_inputs(
+                                    session, evaluation_workload, node_name, self.settings
+                                )
+                            receipts = await client.stage_evaluation_training_inputs(
+                                node_name, grants
+                            )
+                            expected_inputs = {
+                                item.name: (item.sha256, item.bytes)
+                                for item in evaluation_workload.input_files
+                                if item.purpose in {"training_source", "training_state"}
+                            }
+                            if (
+                                len(receipts) != len(expected_inputs)
+                                or {
+                                    item.name: (item.sha256, item.bytes)
+                                    for item in receipts
+                                    if item.run_id == run_id
+                                    and item.request_sha256 == canonical_digest(evaluation_workload)
+                                }
+                                != expected_inputs
+                            ):
+                                raise RuntimeError("Studio training input receipts differ")
+                    elif run.prepared_request_id is not None:
                         async with session_scope() as session:
                             mcp_call = await session.get(McpCallRow, run.prepared_request_id)
                             model = await session.get(ModelRow, run.primary_model_id)
@@ -351,7 +483,7 @@ class RunCommandExecutor:
                         if (
                             variant is None
                             or not variant.validated
-                            or not variant.published
+                            or (locked.purpose != "evaluation" and not variant.published)
                             or (
                                 locked.task_class is TaskClass.WRITE
                                 and not (
@@ -362,6 +494,9 @@ class RunCommandExecutor:
                             )
                         ):
                             raise RuntimeError("run variant is no longer eligible")
+                        if evaluation_prepared is not None:
+                            locked.workspace_ref = evaluation_prepared.workspace_ref
+                            locked.output_ref = evaluation_prepared.output_ref
                         if prepared is not None:
                             locked.workspace_ref = prepared.workspace_ref
                             locked.output_ref = prepared.output_ref
@@ -383,6 +518,10 @@ class RunCommandExecutor:
                                 raise RuntimeError("run adapter disappeared")
                             selector = adapter.selector
                         create = RunContainerCreate(
+                            purpose="evaluation" if locked.purpose == "evaluation" else "harness",
+                            evaluation_runtime=evaluation_workload.target.runtime
+                            if evaluation_workload
+                            else None,
                             run_id=run_id,
                             profile=ProfileName(locked.profile),
                             model_id=locked.primary_model_id,
@@ -419,7 +558,27 @@ class RunCommandExecutor:
                         with suppress(asyncio.CancelledError):
                             await polling
                 if operation is RunOperation.COLLECT:
-                    return (await client.collect_run(node_name, run_id)).model_dump(mode="json")
+                    collected = await client.collect_run(node_name, run_id)
+                    if run.purpose == "evaluation":
+                        async with session_scope() as session:
+                            attempt = await session.get(
+                                EvaluationAttemptRow,
+                                run.evaluation_attempt_id,
+                            )
+                            if attempt is None or attempt.agent_run_id != run_id:
+                                raise RuntimeError("evaluation collection ownership differs")
+                            worker = parse_worker_result(collected.result)
+                            validate_worker_result(
+                                EvaluationWorkload.model_validate(attempt.workload), worker
+                            )
+                            evidence_id = await persist_collected(
+                                session, attempt.id, worker, self.settings
+                            )
+                        return {
+                            "run_id": str(run_id),
+                            "result": {"evaluation_evidence_id": str(evidence_id)},
+                        }
+                    return collected.model_dump(mode="json")
                 if operation in {RunOperation.REMOVE, RunOperation.KILL}:
                     call = client.remove_run(node_name, run_id, kill=operation is RunOperation.KILL)
                     if operation is RunOperation.KILL:
@@ -430,6 +589,9 @@ class RunCommandExecutor:
             raise RuntimeError(f"unsupported run operation {operation.value}")
 
     async def _authorize_execution(self, session: AsyncSession, run: AgentRunRow) -> None:
+        if run.purpose == "evaluation":
+            await authorize_evaluation_child(session, run)
+            return
         user = await session.get(UserRow, run.requester_user_id)
         model = await session.get(ModelRow, run.primary_model_id)
         entitlements = set(

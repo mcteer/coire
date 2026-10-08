@@ -15,6 +15,7 @@ from typing import Any
 
 from coire_core.errors import TrainingConflict, TrainingValidationError
 from coire_core.models.training_node import (
+    CheckpointCommitAcknowledgementV2,
     NodeTrainingEvent,
     NodeTrainingEventPage,
     TrainingCommand,
@@ -22,7 +23,7 @@ from coire_core.models.training_node import (
 )
 
 
-def command_digest(command: TrainingCommand) -> str:
+def command_digest(command: TrainingCommand | CheckpointCommitAcknowledgementV2) -> str:
     """Compare every field, including the advertised digest and execution lease."""
     value = command.model_dump(mode="json")
     # Transport grants are ephemeral credentials, not durable command intent.
@@ -98,7 +99,12 @@ class TrainingJournal:
             (json.dumps(value, sort_keys=True, allow_nan=False), value["attempt_id"]),
         )
 
-    def accept(self, command: TrainingCommand, *, require_lease: bool = True) -> str | None:
+    def accept(
+        self,
+        command: TrainingCommand | CheckpointCommitAcknowledgementV2,
+        *,
+        require_lease: bool = True,
+    ) -> str | None:
         """Within a transaction: fence before replay, never let replay widen authority."""
         command = type(command).model_validate(command.model_dump(mode="json"))
         if command.node != self.node:
@@ -125,7 +131,9 @@ class TrainingJournal:
         )
         return None
 
-    def receipt(self, command: TrainingCommand, encoded: str) -> None:
+    def receipt(
+        self, command: TrainingCommand | CheckpointCommitAcknowledgementV2, encoded: str
+    ) -> None:
         self.db.execute(
             "UPDATE commands SET receipt=? WHERE id=?", (encoded, str(command.command_id))
         )
@@ -328,7 +336,9 @@ class TrainingJournal:
             self.receipt(command, "prepared")
             return value
 
-    def scoped(self, command: TrainingCommand) -> dict[str, Any]:
+    def scoped(
+        self, command: TrainingCommand | CheckpointCommitAcknowledgementV2
+    ) -> dict[str, Any]:
         value = self.get(command.attempt_id)
         prepared = TrainingPrepareRequest.model_validate(value["prepare"])
         if isinstance(command, TrainingPrepareRequest) and command_digest(

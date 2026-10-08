@@ -37,7 +37,8 @@ from coire_core.models.datasets import (
 )
 from coire_core.models.training import TrainingMetricSample, TrainingOptimizer, TrainingReason
 from coire_core.models.training_node import (
-    CheckpointCommitAcknowledgement,
+    CheckpointAcknowledgementDocument,
+    CheckpointCommitAcknowledgementV2,
     CheckpointWorkerState,
     NodeCheckpointPayload,
     NodeControlPayload,
@@ -49,6 +50,7 @@ from coire_core.models.training_node import (
     TrainingPrepareRequest,
     TrainingStartReceipt,
     TrainingStartRequest,
+    parse_checkpoint_acknowledgement,
 )
 from coire_core.models.training_types import TrainingId
 from coire_core.training_data import compile_mixture, normalize_row, split_digest
@@ -499,8 +501,27 @@ def compile_samples(
         )
 
 
+def checkpoint_decision_action(
+    acknowledgement: CheckpointAcknowledgementDocument, local: str, *, spec_version: int
+) -> str:
+    if acknowledgement.schema_version != spec_version:
+        raise TrainingConflict("Checkpoint acknowledgment does not match negotiated recipe version")
+    if local in {"kill", "cancel"}:
+        return local
+    if (
+        isinstance(acknowledgement, CheckpointCommitAcknowledgementV2)
+        and acknowledgement.evaluation_pause is not None
+    ):
+        return "pause"
+    return local
+
+
 class PausedAtCheckpoint(Exception):
     """Upstream propagates this callback unwind after a committed full update."""
+
+    def __init__(self, reason: TrainingReason | None = None) -> None:
+        super().__init__("Training stopped at a complete checkpoint")
+        self.reason = reason
 
 
 def restore_for_attempt(
@@ -695,7 +716,7 @@ def run_sft(
     scratch: Path,
     completed_update: int = 0,
     emit: Callable[[NodeTrainingEvent], None],
-    commit: Callable[[TrainingArtifactManifest], CheckpointCommitAcknowledgement | None],
+    commit: Callable[[TrainingArtifactManifest], CheckpointAcknowledgementDocument | None],
     control: Callable[[], str],
     footprint: Callable[[], int],
     checkpoint: Callable[[CheckpointWorkerState, dict[str, Any], Any], TrainingArtifactManifest]
@@ -909,7 +930,7 @@ def run_sft(
                 event(NodeCheckpointPayload(manifest=manifest))
                 acknowledgement = commit(manifest)
                 if acknowledgement is not None:
-                    acknowledgement = CheckpointCommitAcknowledgement.model_validate(
+                    acknowledgement = parse_checkpoint_acknowledgement(
                         acknowledgement.model_dump(mode="json")
                     )
                     valid_ack = (
@@ -939,11 +960,20 @@ def run_sft(
                     )
                 # Every rank must finish the SAME commit before callback unwind; a
                 # pause arriving on one rank must not leave its peer in the next step.
-                action = collective.action(control()) if collective is not None else control()
+                assert acknowledgement is not None
+                local = checkpoint_decision_action(
+                    acknowledgement, control(), spec_version=spec.schema_version
+                )
+                action = collective.action(local) if collective is not None else local
                 if action in {"kill", "cancel"}:
                     raise TrainingConflict("Rank authority ended after common checkpoint commit")
                 if action == "pause":
-                    raise PausedAtCheckpoint()
+                    raise PausedAtCheckpoint(
+                        "evaluation_pending"
+                        if isinstance(acknowledgement, CheckpointCommitAcknowledgementV2)
+                        and acknowledgement.evaluation_pause is not None
+                        else None
+                    )
 
     accumulation = settings.accumulation_steps
     remaining = (settings.updates - completed_update) * accumulation
@@ -987,14 +1017,14 @@ def resolved_digest(prepared: TrainingPrepareRequest) -> str:
 
 def wait_checkpoint_commit(
     channel: PrivateControl, manifest: TrainingArtifactManifest
-) -> CheckpointCommitAcknowledgement | None:
+) -> CheckpointAcknowledgementDocument | None:
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         if channel.poll() in {"cancel", "kill"}:
             return None
         try:
-            result = CheckpointCommitAcknowledgement.model_validate_json(
-                channel.read(f"commit-{manifest.artifact_id}.json")
+            result = parse_checkpoint_acknowledgement(
+                json.loads(channel.read(f"commit-{manifest.artifact_id}.json"))
             )
         except FileNotFoundError:
             time.sleep(0.1)
@@ -1171,7 +1201,7 @@ def execute_native(
             guardian=guardian,
         )
         return 0
-    except PausedAtCheckpoint:
+    except PausedAtCheckpoint as paused:
         journal.append_event(
             NodeTrainingEvent(
                 sequence=journal.next_sequence(prepared.attempt_id),
@@ -1180,7 +1210,9 @@ def execute_native(
                 fence=prepared.fence,
                 update=journal.get(prepared.attempt_id).get("update", 0),
                 recorded_at=datetime.now(UTC),
-                payload=NodeControlPayload(kind="stopped", reason=channel.pause_reason),
+                payload=NodeControlPayload(
+                    kind="stopped", reason=paused.reason or channel.pause_reason
+                ),
             )
         )
         return 0

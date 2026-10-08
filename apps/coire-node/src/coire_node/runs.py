@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 from opentelemetry import trace
 
+from coire_core.models.evaluation import EvaluationWorkload, EvaluationWorkspaceReceipt
 from coire_core.models.harness import TaskClass
 from coire_core.models.runs import (
     RUN_ACTIVITY_MAX_BYTES,
@@ -32,6 +33,7 @@ from coire_core.models.runs import (
 )
 from coire_core.settings import Settings
 from coire_node.docker_api import DockerAPI, DockerAPIError
+from coire_node.evaluations import EvaluationWorkspaceManager
 from coire_node.workspaces import WorkspaceManager
 
 RUN_LABEL = "com.coire.agent-run"
@@ -55,6 +57,7 @@ class RunManager:
         self.settings = settings
         self.docker = docker
         self.workspaces = WorkspaceManager(settings)
+        self.evaluations = EvaluationWorkspaceManager(settings)
         self._create_locks: dict[uuid.UUID, asyncio.Lock] = {}
 
     @staticmethod
@@ -127,6 +130,24 @@ class RunManager:
                 "run_workspace_invalid", "MCP workspace and output must match the run ID"
             )
         workspace = self.workspace(command.workspace_ref)
+        if command.purpose == "evaluation":
+            self.evaluations.validate_inputs(command.run_id)
+            receipt = EvaluationWorkspaceReceipt.model_validate_json(
+                self.evaluations._read(workspace / ".coire" / "receipt.json", 8192)
+            )
+            workload = EvaluationWorkload.model_validate_json(
+                self.evaluations._read(workspace / ".coire" / "request.json", 256 * 1024)
+            )
+            if (
+                workload.run_id != command.run_id
+                or workload.target.target != command.target
+                or workload.target.runtime != command.evaluation_runtime
+            ):
+                raise RunRuntimeError("run_workspace_invalid", "evaluation command scope differs")
+            if receipt.run_id != command.run_id or receipt.output_ref != command.output_ref:
+                raise RunRuntimeError(
+                    "run_workspace_invalid", "evaluation workspace ownership differs"
+                )
         binds = [f"{workspace}:/workspace:{'ro' if command.task_class is TaskClass.READ else 'rw'}"]
         if command.workspace_ref.startswith("mcp-"):
             control = workspace / ".coire"
@@ -159,6 +180,12 @@ class RunManager:
             "Cmd": command.argv,
             "Env": [
                 f"COIRE_RUN_ID={command.run_id}",
+                f"COIRE_RUN_PURPOSE={command.purpose}",
+                *(
+                    [f"COIRE_EVALUATION_RUNTIME={command.evaluation_runtime.model_dump_json()}"]
+                    if command.evaluation_runtime
+                    else []
+                ),
                 f"COIRE_PROFILE={command.profile.value}",
                 f"COIRE_MODEL_ID={command.model_id}",
                 f"COIRE_PUBLIC_SELECTOR={command.public_selector or command.model_id}",

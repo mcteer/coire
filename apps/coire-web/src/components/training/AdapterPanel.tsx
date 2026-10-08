@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { curateAdapter, listAdapters, retireAdapter, type Adapter } from "../../api/training";
+import { EvaluationGroups } from "../evaluations/EvaluationGroups";
 import { ConfirmAction } from "../ConfirmAction";
 export function AdapterPanel() {
   const [rows, setRows] = useState<Adapter[] | null>(null), [error, setError] = useState(""), [busy, setBusy] = useState(false), [cursor, setCursor] = useState<string | null>(null);
@@ -14,7 +15,7 @@ export function AdapterPanel() {
       {adapter.state === "ready" && <div className="row"><button className="button ghost" disabled={busy} onClick={() => void action(() => curateAdapter(adapter, adapter.visibility === "published" ? "admin_only" : "published", crypto.randomUUID()))}>{adapter.visibility === "published" ? "Unpublish" : "Publish"}</button><a href={`#chat/target/${encodeURIComponent(adapter.selector)}`} className="button ghost">Select exact adapter in Chat</a></div>}
       {adapter.state !== "retired" && <ConfirmAction label="Retire" target={adapter.slug} onConfirm={() => action(() => retireAdapter(adapter, crypto.randomUUID()))}/>}
       <p>Publication requires base readiness, publication and entitlements. Verification never inherits from the base.</p>
-      <p>Before / after task and judge comparisons unavailable (feature 017).</p>
+      <EvaluationGroups links={adapter.evaluation_groups ?? []}/>
     </article>)}
     {cursor && <button className="button ghost" onClick={() => void listAdapters(cursor).then((page) => { setRows((old) => [...(old ?? []), ...page.items]); setCursor(page.next_cursor ?? null); }).catch((e) => setError(String(e)))}>Load older adapters</button>}
   </section>;

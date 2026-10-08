@@ -1,0 +1,65 @@
+rule_files:
+  - ../alerts/evaluations.yaml
+evaluation_interval: 15s
+tests:
+  - name: idle-disabled-admission-reports-healthy-zeroes
+    interval: 15s
+    input_series:
+      - {series: coire_evaluation_snapshot_timestamp_seconds, values: '0+15x24'}
+      - {series: 'coire_evaluation_runs{state="queued"}', values: '0+0x24'}
+      - {series: coire_evaluation_cleanup_overdue_seconds, values: '0+0x24'}
+      - {series: coire_evaluation_pending_oldest_seconds, values: '0+0x24'}
+    alert_rule_test:
+      - {eval_time: 6m, alertname: CoireEvaluationBaselineUnavailable, exp_alerts: []}
+      - {eval_time: 6m, alertname: CoireEvaluationCleanupUnresolved, exp_alerts: []}
+      - {eval_time: 6m, alertname: CoireEvaluationAdmissionStalled, exp_alerts: []}
+  - name: cleanup-deadline-alert-clears-on-proven-cleanup
+    interval: 15s
+    input_series:
+      - {series: coire_evaluation_cleanup_overdue_seconds, values: '60 61 0'}
+    alert_rule_test:
+      - {eval_time: 0m, alertname: CoireEvaluationCleanupUnresolved, exp_alerts: []}
+      - eval_time: 15s
+        alertname: CoireEvaluationCleanupUnresolved
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: evaluation}
+            exp_annotations:
+              summary: Evaluation cleanup remains unresolved after its execution deadline
+              runbook_url: /docs/runbooks/evaluations#kill-and-recover
+      - {eval_time: 30s, alertname: CoireEvaluationCleanupUnresolved, exp_alerts: []}
+  - name: absent-baseline-alerts-with-diagnostics-off
+    interval: 15s
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: CoireEvaluationBaselineUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: evaluation}
+            exp_annotations:
+              summary: Evaluation baseline state is missing or stale
+              runbook_url: /docs/runbooks/evaluations#observe
+  - name: restart-retained-old-series-does-not-hide-fresh-baseline
+    interval: 15s
+    input_series:
+      - {series: 'coire_evaluation_snapshot_timestamp_seconds{exported_instance="old"}', values: '0+0x24'}
+      - {series: 'coire_evaluation_snapshot_timestamp_seconds{exported_instance="current"}', values: '0+15x24'}
+      - {series: 'coire_evaluation_runs{state="queued"}', values: '0+0x24'}
+      - {series: coire_evaluation_cleanup_overdue_seconds, values: '0+0x24'}
+      - {series: coire_evaluation_pending_oldest_seconds, values: '0+0x24'}
+    alert_rule_test:
+      - {eval_time: 4m, alertname: CoireEvaluationBaselineUnavailable, exp_alerts: []}
+  - name: all-retained-baselines-stale-still-alerts
+    interval: 15s
+    input_series:
+      - {series: 'coire_evaluation_snapshot_timestamp_seconds{exported_instance="old"}', values: '0+0x24'}
+      - {series: 'coire_evaluation_snapshot_timestamp_seconds{exported_instance="current"}', values: '30+0x24'}
+      - {series: 'coire_evaluation_runs{state="queued"}', values: '0+0x24'}
+      - {series: coire_evaluation_cleanup_overdue_seconds, values: '0+0x24'}
+      - {series: coire_evaluation_pending_oldest_seconds, values: '0+0x24'}
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: CoireEvaluationBaselineUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical, subject: evaluation}
+            exp_annotations:
+              summary: Evaluation baseline state is missing or stale
+              runbook_url: /docs/runbooks/evaluations#observe
