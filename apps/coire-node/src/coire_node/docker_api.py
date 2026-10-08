@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -103,6 +104,17 @@ class DockerAPI:
             expected=(204, 304, 404),
             params={"t": timeout_s},
         )
+
+    async def inspect_image(self, image: str) -> dict[str, Any] | None:
+        response = await self._request(
+            "GET", f"/images/{quote(image, safe='')}/json", expected=(200, 404)
+        )
+        if response.status_code == 404:
+            return None
+        body = response.json()
+        if not isinstance(body, dict):
+            raise DockerAPIError(502, "inspect image", "non-object response")
+        return body
 
     async def inspect_container(self, container_id: str) -> dict[str, Any] | None:
         response = await self._request(

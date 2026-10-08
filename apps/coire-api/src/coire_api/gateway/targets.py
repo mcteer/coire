@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal, PrincipalKind
 from coire_api.db import (
+    AgentRunRow,
     ModelInstanceRow,
     ModelRow,
     ModelVariantRow,
@@ -26,6 +27,7 @@ from coire_core.models.acquisition import VariantState
 from coire_core.models.adapters import PAIR_PATTERN, InferenceTarget
 from coire_core.models.auth import UserRole
 from coire_core.models.registry import ModelState
+from coire_core.models.training import parse_resolved_training_spec
 
 
 class ModelNotFoundError(Exception):
@@ -103,6 +105,21 @@ async def resolve_target(
                 or not set(adapter.required_entitlements).issubset(principal.entitlements)
             ):
                 raise ModelNotFoundError
+            if adapter.purpose == "evaluation":
+                if principal.kind is not PrincipalKind.RUN or principal.run_id is None:
+                    raise ModelNotFoundError
+                child = await session.get(AgentRunRow, principal.run_id)
+                if child is None or child.purpose != "evaluation":
+                    raise ModelNotFoundError
+                from coire_api.evaluation.execution import authorize_evaluation_child
+                from coire_core.errors import CoireError
+
+                try:
+                    workload = await authorize_evaluation_child(session, child)
+                except CoireError:
+                    raise ModelNotFoundError from None
+                if workload.target.target.adapter_id != adapter.id:
+                    raise ModelNotFoundError
             variant_id = adapter.base_variant_id
         if (model.source or "studio") != "studio":
             if variant_id is not None or principal.kind is PrincipalKind.RUN:
@@ -174,7 +191,6 @@ async def resolve_validation_target(
     from coire_api.training.service import payload_digest, recheck_training_base
     from coire_core.errors import CoireError
     from coire_core.models.instance import InstanceState
-    from coire_core.models.training import ResolvedTrainingSpec
     from coire_core.models.training_node import TrainingArtifactManifest
     from coire_core.settings import get_settings
 
@@ -206,7 +222,7 @@ async def resolve_validation_target(
             authority = Principal.model_validate(adapter.metadata_record.get("authority"))
             await authorize_live_training_action(session, authority)
             job = await current_job(session, adapter.source_job_id, lock=True)
-            resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+            resolved = parse_resolved_training_spec(job.resolved_spec)
             await recheck_training_base(session, resolved)
             adapter = await session.get(
                 TrainingAdapterRow,
@@ -227,6 +243,16 @@ async def resolve_validation_target(
                 or adapter.selector != f"{adapter.model_id}@{adapter.slug}"
             ):
                 raise ModelNotFoundError
+            if adapter.purpose == "evaluation":
+                from coire_api.evaluation.training import require_checkpoint_pause
+                from coire_core.errors import TrainingConflict
+
+                if adapter.evaluation_trigger_id is None:
+                    raise ModelNotFoundError
+                try:
+                    await require_checkpoint_pause(session, job, adapter.evaluation_trigger_id)
+                except TrainingConflict:
+                    raise ModelNotFoundError from None
             manifest = TrainingArtifactManifest.model_validate(
                 adapter.metadata_record.get("manifest")
             )

@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, ConfigDict, Field, model_validator
 
+from coire_core.models.evaluation_links import EvaluationGroupLink
 from coire_core.models.registry import Visibility
 from coire_core.models.training_types import AdapterSlug, Digest, TrainingId, TrainingWire
 
@@ -59,6 +60,9 @@ def validate_transport_target(
 
 
 class AdapterDetail(TrainingWire):
+    evaluation_groups: list[EvaluationGroupLink] = Field(
+        default_factory=list, max_length=100, exclude_if=lambda value: not value
+    )
     id: uuid.UUID
     model_id: uuid.UUID
     base_variant_id: uuid.UUID

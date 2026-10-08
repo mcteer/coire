@@ -15,6 +15,18 @@
       "url": "/docs/runbooks/sft-training",
       "type": "link",
       "targetBlank": false
+    },
+    {
+      "title": "Durable evaluation history",
+      "url": "/#training/evaluations",
+      "type": "link",
+      "targetBlank": false
+    },
+    {
+      "title": "Evaluation operations",
+      "url": "/docs/runbooks/evaluations",
+      "type": "link",
+      "targetBlank": false
     }
   ],
   "panels": [
@@ -322,6 +334,146 @@
       "description": "Any failed request makes the strict phase inconclusive. Reasons distinguish occupied concurrency, completion timeouts, identity mismatch and completion errors; prompts and exception contents are excluded.",
       "title": "Gateway measurement failures",
       "type": "timeseries"
+    },
+    {
+      "id": 10,
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 71
+      },
+      "type": "timeseries",
+      "title": "Evaluation outcomes",
+      "description": "Durable state remains observable with diagnostics and evaluation admission disabled. Missing data is unknown. See /docs/runbooks/evaluations.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (state) (coire_evaluation_runs)",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 79
+      },
+      "type": "timeseries",
+      "title": "Evaluation cleanup past deadline",
+      "description": "Durable state remains observable with diagnostics and evaluation admission disabled. Missing data is unknown. See /docs/runbooks/evaluations.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(coire_evaluation_cleanup_overdue_seconds)",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 87
+      },
+      "type": "timeseries",
+      "title": "Evaluation queue age",
+      "description": "Durable state remains observable with diagnostics and evaluation admission disabled. Missing data is unknown. See /docs/runbooks/evaluations.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(coire_evaluation_pending_oldest_seconds)",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 95
+      },
+      "type": "timeseries",
+      "title": "Evaluation baseline freshness",
+      "description": "Durable state remains observable with diagnostics and evaluation admission disabled. Missing data is unknown. See /docs/runbooks/evaluations.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - max(coire_evaluation_snapshot_timestamp_seconds)",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
     }
   ],
   "schemaVersion": 39,

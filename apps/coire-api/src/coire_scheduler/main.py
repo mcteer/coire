@@ -28,11 +28,15 @@ from coire_api.db import (
     AcquisitionWorkflowRow,
     AgentRunRow,
     ChatFileProcessingRow,
+    EvaluationEvidenceRow,
+    EvaluationMeasurementRow,
+    EvaluationRunRow,
     ImageInputRow,
     ImageJobRow,
     ModelInstanceRow,
     PlacementDecisionRow,
     RunCommandRow,
+    TrainingEvaluationTriggerRow,
     dispose_engine,
     init_engine,
     session_scope,
@@ -47,6 +51,9 @@ from coire_core.models.runs import AgentRunState, RunCommandState, RunOperation
 from coire_core.settings import get_settings
 from coire_scheduler.acquisition import acquisition_workflow
 from coire_scheduler.dbos_runtime import DBOSRuntime
+from coire_scheduler.evaluation_checkpoints import checkpoint_workflow
+from coire_scheduler.evaluation_measurements import measurement_workflow
+from coire_scheduler.evaluations import evaluation_workflow, final_evaluation_trigger_workflow
 from coire_scheduler.files import (
     file_processing_workflow,
     purge_deleted_file_outputs,
@@ -351,6 +358,102 @@ async def dispatch_queued(stop: asyncio.Event) -> None:
         await wait_or_stop(stop, delay)
 
 
+async def dispatch_evaluations(stop: asyncio.Event) -> None:
+    """Recovery, cancellation and expiry run even while new admission is disabled."""
+    from coire_api.evaluation.evidence import EvidenceStore, expire
+    from coire_core.models.evaluation import TERMINAL_EVALUATION_STATES
+
+    settings = get_settings()
+    while not stop.is_set():
+        try:
+            async with session_scope() as session:
+                triggers = (
+                    await session.scalars(
+                        select(TrainingEvaluationTriggerRow)
+                        .where(
+                            TrainingEvaluationTriggerRow.phase != "complete",
+                        )
+                        .order_by(
+                            TrainingEvaluationTriggerRow.created_at,
+                            TrainingEvaluationTriggerRow.id,
+                        )
+                        .limit(100)
+                    )
+                ).all()
+            for trigger in triggers:
+                workflow = (
+                    final_evaluation_trigger_workflow
+                    if trigger.boundary_kind == "final"
+                    else checkpoint_workflow
+                )
+                with SetWorkflowID(f"training-{trigger.boundary_kind}-evaluation-{trigger.id}"):
+                    DBOS.start_workflow(workflow, str(trigger.id))
+            async with session_scope() as session:
+                rows = (
+                    await session.scalars(
+                        select(EvaluationRunRow)
+                        .where(
+                            (
+                                EvaluationRunRow.state.notin_(
+                                    [state.value for state in TERMINAL_EVALUATION_STATES]
+                                )
+                            )
+                            | (EvaluationRunRow.cleanup_state != "complete")
+                        )
+                        .order_by(EvaluationRunRow.created_at, EvaluationRunRow.id)
+                        .limit(100)
+                    )
+                ).all()
+                ids = [row.id for row in rows]
+            for run_id in ids:
+                with SetWorkflowID(f"evaluation-{run_id}"):
+                    DBOS.start_workflow(evaluation_workflow, run_id)
+            async with session_scope() as session:
+                now = datetime.now(UTC)
+                due = await session.scalar(
+                    select(EvaluationEvidenceRow.id)
+                    .where(
+                        EvaluationEvidenceRow.availability == "present",
+                        EvaluationEvidenceRow.expires_at <= now,
+                    )
+                    .limit(1)
+                )
+                if due is not None:
+                    await expire(session, EvidenceStore(settings), now=now)
+                from coire_api.evaluation.cleanup import sweep_completed_pins
+
+                await sweep_completed_pins(session, now=now)
+                from coire_api.evaluation.measurements import release_measurement_leases
+
+                measurements = (
+                    await session.scalars(
+                        select(EvaluationMeasurementRow)
+                        .where(
+                            EvaluationMeasurementRow.state.in_(["queued", "running"])
+                            | (
+                                EvaluationMeasurementRow.execution[
+                                    "cleanup"
+                                ].astext.is_distinct_from("complete")
+                            )
+                        )
+                        .order_by(EvaluationMeasurementRow.created_at)
+                        .limit(100)
+                    )
+                ).all()
+                measurement_ids = [
+                    str(row.id) for row in measurements if row.state in {"queued", "running"}
+                ]
+                for measurement in measurements:
+                    if measurement.state in {"succeeded", "failed", "cancelled"}:
+                        await release_measurement_leases(session, measurement)
+            for identity in measurement_ids:
+                with SetWorkflowID(f"evaluation-measurement-{identity}"):
+                    DBOS.start_workflow(measurement_workflow, identity)
+        except Exception as exc:
+            logger.error("evaluation dispatch failed error_type=%s", type(exc).__name__)
+        await wait_or_stop(stop, 1.0)
+
+
 async def dispatch_image_cancels(stop: asyncio.Event) -> None:
     """Notice committed cancel intent promptly without speeding every acquisition scan."""
     settings = get_settings()
@@ -477,6 +580,14 @@ def create_app() -> FastAPI:
             await workers.start()
             background.append(
                 asyncio.create_task(dispatch_queued(stop), name="acquisition-dispatcher")
+            )
+            background.append(
+                asyncio.create_task(dispatch_evaluations(stop), name="evaluation-dispatcher")
+            )
+            from coire_scheduler.evaluation_metrics import poll_evaluation_metrics
+
+            background.append(
+                asyncio.create_task(poll_evaluation_metrics(stop), name="evaluation-baseline")
             )
             background.append(
                 asyncio.create_task(dispatch_image_cancels(stop), name="image-cancel-dispatcher")

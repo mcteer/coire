@@ -28,6 +28,20 @@ import httpx
 from coire_core.models.acquisition import Reservation, ReservationRequest, VariantRecipe
 from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import EngineStatus, ReconcileRequest, ReconcileResult
+from coire_core.models.evaluation import (
+    EvaluationCapabilities,
+    EvaluationIdentityRequest,
+    EvaluationInputReceipt,
+    EvaluationPressureStop,
+    EvaluationProbePrepare,
+    EvaluationProbePrepared,
+    EvaluationRuntime,
+    EvaluationTrainingInputsReceipt,
+    EvaluationWorkspaceCleanup,
+    EvaluationWorkspacePrepare,
+    EvaluationWorkspaceReceipt,
+)
+from coire_core.models.evaluation_inputs import EvaluationTrainingInputsRequest
 from coire_core.models.image_worker import (
     ImageAssetValidateRequest,
     ImageJobBinding,
@@ -208,9 +222,12 @@ class NodeClient:
         content: bytes | None = None,
         expect: tuple[int, ...] = (200, 202, 204),
         request_timeout_s: float | None = None,
+        request_sha256: str | None = None,
     ) -> tuple[int, dict[str, Any]]:
         try:
             headers = self._headers(node)
+            if request_sha256 is not None:
+                headers["X-Coire-Request-Sha256"] = request_sha256
             if content is not None:
                 headers["Content-Type"] = "application/octet-stream"
             resp = await self._control.request(
@@ -749,6 +766,102 @@ class NodeClient:
         return ReconcileResult.model_validate(body)
 
     # -- ephemeral runs ----------------------------------------------------
+    async def evaluation_capabilities(self, node: str) -> EvaluationCapabilities:
+        _, body = await self._call("GET", node, "/node/evaluations/capabilities")
+        return EvaluationCapabilities.model_validate(body)
+
+    async def prepare_evaluation_probes(
+        self, node: str, command: EvaluationProbePrepare
+    ) -> EvaluationProbePrepared:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/evaluations/probes",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        result = EvaluationProbePrepared.model_validate(body)
+        if (
+            result.measurement_id != command.measurement_id
+            or result.prompt_set_sha256 != command.prompt_set_sha256
+        ):
+            raise ValueError("evaluation probe receipt differs")
+        return result
+
+    async def stop_evaluation_pressure(self, node: str, command: EvaluationPressureStop) -> None:
+        await self._call(
+            "POST",
+            node,
+            f"/node/evaluations/workspaces/{command.run_id}/pressure-stop",
+            json=command.model_dump(mode="json"),
+            expect=(204,),
+        )
+
+    async def evaluation_identity(
+        self, node: str, command: EvaluationIdentityRequest
+    ) -> EvaluationRuntime:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/evaluations/identity",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return EvaluationRuntime.model_validate(body)
+
+    async def prepare_evaluation_workspace(
+        self, node: str, command: EvaluationWorkspacePrepare
+    ) -> EvaluationWorkspaceReceipt:
+        _, body = await self._call(
+            "POST",
+            node,
+            "/node/evaluations/workspaces",
+            json=command.model_dump(mode="json"),
+            expect=(201,),
+        )
+        return EvaluationWorkspaceReceipt.model_validate(body)
+
+    async def stage_evaluation_input(
+        self, node: str, receipt: EvaluationInputReceipt, data: bytes
+    ) -> EvaluationInputReceipt:
+        if len(data) != receipt.bytes or hashlib.sha256(data).hexdigest() != receipt.sha256:
+            raise ValueError("evaluation input differs from declared digest")
+        _, body = await self._call(
+            "PUT",
+            node,
+            f"/node/evaluations/workspaces/{receipt.run_id}/inputs/{receipt.name}",
+            content=data,
+            request_sha256=receipt.request_sha256,
+            expect=(200,),
+        )
+        observed = EvaluationInputReceipt.model_validate(body)
+        if observed != receipt:
+            raise ValueError("node evaluation input receipt differs")
+        return observed
+
+    async def stage_evaluation_training_inputs(
+        self, node: str, command: EvaluationTrainingInputsRequest
+    ) -> list[EvaluationInputReceipt]:
+        _, body = await self._call(
+            "POST",
+            node,
+            f"/node/evaluations/workspaces/{command.run_id}/training-inputs",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        return EvaluationTrainingInputsReceipt.model_validate(body).items
+
+    async def cleanup_evaluation_workspace(
+        self, node: str, command: EvaluationWorkspaceCleanup
+    ) -> None:
+        await self._call(
+            "POST",
+            node,
+            f"/node/evaluations/workspaces/{command.run_id}/cleanup",
+            json=command.model_dump(mode="json"),
+            expect=(204,),
+        )
+
     async def prepare_workspace(
         self, node: str, command: WorkspacePrepareRequest
     ) -> WorkspacePrepareResult:

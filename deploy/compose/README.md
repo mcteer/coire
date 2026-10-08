@@ -299,6 +299,10 @@ floor beyond the listed protection is rejected by Settings validation.
 | Runtime variable | Default |
 | --- | --- |
 | `TRAINING_ENABLED` | `false` |
+| `EVALUATIONS_ENABLED` | `false`; Compose input `COIRE_EVALUATIONS_ENABLED` enables new evaluation admission only |
+| `EVALUATION_MAX_ACTIVE_GROUPS`, `EVALUATION_MAX_PENDING_RUNS` | `1`, `100`; active concurrency cannot be increased |
+| `EVALUATION_QUEUE_TIMEOUT_SECONDS`, `EVALUATION_TIMEOUT_SECONDS` | `3600`, `900`; bounded acceptance and execution deadlines |
+| `EVALUATION_EVIDENCE_RETENTION_DAYS`, `EVALUATION_EVIDENCE_QUOTA_BYTES` | `7`, `1073741824`; private evidence expires independently of immutable scores |
 | `TRAINING_DATASET_DIR` | `/opt/coire/training/datasets` (API-owned private original store) |
 | `TRAINING_INPUT_API_URL` | `http://coire-core.lab:8180`; Compose input `COIRE_TRAINING_INPUT_API_URL`, reachable by Studios over the existing control fabric |
 | `TRAINING_RECIPE_MAX_BYTES`, `TRAINING_YAML_MAX_DEPTH` | `65536`, `16` |
@@ -326,6 +330,20 @@ floor beyond the listed protection is rejected by Settings validation.
 | `TRAINING_EVENT_RETENTION_S`, `TRAINING_EVENT_HEARTBEAT_S` | `604800`, `15` |
 | `TRAINING_LOG_MAX_BYTES`, `TRAINING_METRIC_PAGE_MAX` | `1048576`, `2000` |
 | `TRAINING_LIST_PAGE_DEFAULT`, `TRAINING_LIST_PAGE_MAX` | `25`, `100` |
+
+Evaluation evidence uses the `evaluation-evidence/` namespace inside the existing
+API/scheduler `coire-training-data` volume at `/opt/coire/training/datasets`. There
+is no additional volume or mount audience. The parent and namespace require mode
+0700, evidence files mode 0600, and every run is limited to 8 MiB. Registered
+dataset-input grants continue to address only the registered source bytes;
+evaluation evidence is read through the authenticated admin evidence route.
+Scores, identities and provenance remain in PostgreSQL after evidence expiry.
+
+Leave evaluation admission disabled until the migration, matching Studio node and
+agent images, and release acceptance gates pass. Disabling admission does not stop
+reconciliation, cancellation, orphan cleanup, evidence expiry or pin recovery.
+Recipes with declarations retain durable evaluation obligations while admission
+is disabled; expired obligations record a failure rather than disappearing.
 
 Core stores uploaded dataset bytes and metadata. All tokenization/model/Metal work and all
 checkpoint/adapter tensor storage remain on Studios; a ready artifact has verified Studio copies.

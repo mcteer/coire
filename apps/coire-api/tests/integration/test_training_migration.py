@@ -208,10 +208,13 @@ async def test_final_adapter_identity_cannot_be_overwritten(connection: AsyncCon
 async def test_actual_revision_upgrade_downgrade_guard_and_roundtrip(
     connection: AsyncConnection, training_postgres_url: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    await connection.run_sync(Base.metadata.drop_all)
-    await connection.commit()
     url = make_url(training_postgres_url)
     assert url.database == "training_test" and url.host == "127.0.0.1" and url.password is not None
+    # This is the asserted disposable database. Migration fixtures must clear
+    # stamps, enums and trigger functions as well as metadata-owned tables.
+    await connection.execute(text("DROP SCHEMA public CASCADE"))
+    await connection.execute(text("CREATE SCHEMA public"))
+    await connection.commit()
     for name, value in {
         "POSTGRES_HOST": url.host,
         "POSTGRES_PORT": str(url.port),
@@ -239,9 +242,14 @@ async def test_actual_revision_upgrade_downgrade_guard_and_roundtrip(
     names = await connection.run_sync(lambda conn: inspect(conn).get_table_names())
     assert "training_jobs" in names
     for name, table in Base.metadata.tables.items():
-        if name.startswith("training_"):
+        if name.startswith("training_") and name != "training_evaluation_triggers":
             columns = await connection.run_sync(column_names, name)
-            assert columns == set(table.columns.keys())
+            # Feature 0031 is frozen; additive 0032 columns are tested by its own migration.
+            later_columns = {
+                "training_jobs": {"evaluation_pause_trigger_id"},
+                "training_adapters": {"purpose", "evaluation_trigger_id"},
+            }.get(name, set())
+            assert columns == set(table.columns.keys()) - later_columns
     await seed_job(connection)
     with pytest.raises(RuntimeError, match="live training"):
         await asyncio.to_thread(command.downgrade, config, "0030_image_output_retention")

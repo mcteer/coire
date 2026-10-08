@@ -409,7 +409,9 @@ async def authorized_input_source(
         )
     )
     if measurement is None:
-        raise TrainingNotFound()
+        from coire_api.evaluation.inputs import authorized_source as authorized_evaluation_source
+
+        return await authorized_evaluation_source(session, dataset_id, node_name, secret)
     from coire_api.training.measurements import authorized_measurement_source
 
     return await authorized_measurement_source(session, dataset_id, node_name, secret)

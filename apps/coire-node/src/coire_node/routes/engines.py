@@ -58,7 +58,8 @@ async def start_engine(
 ) -> EngineStatus:
     """Start an engine, or return the one already serving this model (spec FR-019)."""
     try:
-        existing, engine_status = engines.start(
+        existing, engine_status = await asyncio.to_thread(
+            engines.start,
             engine_id=request.engine_id,
             slug=request.slug,
             target=request.target,

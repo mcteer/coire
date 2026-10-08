@@ -7,11 +7,11 @@ import json
 import uuid
 from typing import Annotated, Literal
 
-from pydantic import AwareDatetime, Field, JsonValue, model_validator
+from pydantic import AwareDatetime, Field, JsonValue, TypeAdapter, model_validator
 
 from coire_core.models.datasets import DatasetAnalysis, DatasetAnalysisBinding, SplitManifest
 from coire_core.models.training import (
-    ResolvedTrainingSpec,
+    ResolvedTrainingSpecDocument,
     TrainingMetricSample,
     TrainingOptimizer,
     TrainingReason,
@@ -20,6 +20,19 @@ from coire_core.models.training import (
 from coire_core.models.training_types import Digest, StudioName, TrainingId, TrainingWire
 
 type MeasurementThermalState = Literal["nominal", "fair", "serious", "critical", "unknown"]
+
+
+class NodeTrainingCapabilities(TrainingWire):
+    spec_versions: list[Literal[1, 2]] = Field(default=[1], min_length=1, max_length=2)
+    evaluation_checkpoint_ack_versions: list[Literal[1]] = Field(default_factory=list, max_length=1)
+
+    @model_validator(mode="after")
+    def coherent_versions(self) -> NodeTrainingCapabilities:
+        if len(set(self.spec_versions)) != len(self.spec_versions):
+            raise ValueError("training spec versions must be unique")
+        if self.evaluation_checkpoint_ack_versions and 2 not in self.spec_versions:
+            raise ValueError("evaluation acknowledgment requires training v2")
+        return self
 
 
 class TrainingCommand(TrainingWire):
@@ -181,7 +194,7 @@ class TrainingRankComponentManifest(TrainingWire):
 
 
 class TrainingPrepareRequest(TrainingCommand):
-    resolved: ResolvedTrainingSpec
+    resolved: ResolvedTrainingSpecDocument
     reservation_id: uuid.UUID
     disk_reservation_id: uuid.UUID
     resume_manifest_sha256: Digest | None = None
@@ -476,6 +489,51 @@ class CheckpointCommitAcknowledgement(TrainingCommand):
     checkpoint_id: uuid.UUID
     manifest_sha256: Digest
     update: int = Field(strict=True, ge=0, le=100_000)
+
+
+class EvaluationCheckpointPause(TrainingWire):
+    trigger_id: uuid.UUID
+    pause_command_id: uuid.UUID
+    pause_origin: Literal["evaluation"] = "evaluation"
+
+
+class CheckpointCommitAcknowledgementV2(TrainingWire):
+    schema_version: Literal[2] = 2
+    command_id: uuid.UUID
+    job_id: TrainingId
+    attempt_id: TrainingId
+    fence: int = Field(strict=True, ge=1)
+    request_sha256: Digest
+    node: StudioName
+    rank: int = Field(strict=True, ge=0, le=1)
+    world_size: Literal[1, 2]
+    lease_expires_at: AwareDatetime
+    checkpoint_id: uuid.UUID
+    manifest_sha256: Digest
+    update: int = Field(strict=True, ge=0, le=100_000)
+    committed_update: int = Field(strict=True, ge=0, le=100_000)
+    job_version: int = Field(strict=True, ge=1, le=2**31 - 1)
+    evaluation_pause: EvaluationCheckpointPause | None = None
+
+    @model_validator(mode="after")
+    def common_boundary(self) -> CheckpointCommitAcknowledgementV2:
+        if self.rank >= self.world_size or (
+            self.world_size == 2
+            and self.node != ("coire-edge-a" if self.rank == 0 else "coire-edge-b")
+        ):
+            raise ValueError("Evaluation decision has an invalid rank mapping")
+        if self.committed_update != self.update:
+            raise ValueError("Evaluation decision differs from the committed update")
+        return self
+
+
+type CheckpointAcknowledgementDocument = (
+    CheckpointCommitAcknowledgement | CheckpointCommitAcknowledgementV2
+)
+
+
+def parse_checkpoint_acknowledgement(value: object) -> CheckpointAcknowledgementDocument:
+    return TypeAdapter(CheckpointAcknowledgementDocument).validate_python(value)
 
 
 class TrainingArtifactGrantRequest(TrainingWire):
@@ -816,7 +874,7 @@ class TrainingAdapterExtractRequest(TrainingWire):
     attempt_id: TrainingId
     fence: int = Field(strict=True, ge=1)
     node: StudioName
-    resolved: ResolvedTrainingSpec
+    resolved: ResolvedTrainingSpecDocument
     disk_reservation_id: uuid.UUID
     max_bytes: int = Field(strict=True, ge=1, le=20 * 1024**3)
     deadline: AwareDatetime

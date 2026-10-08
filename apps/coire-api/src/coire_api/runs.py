@@ -97,7 +97,7 @@ async def project_run(session: AsyncSession, row: AgentRunRow) -> AgentRun:
         exit_code=row.exit_code,
         failure_code=row.failure_code,
         failure_detail=row.failure_detail,
-        result=row.result,
+        result=None if row.purpose == "evaluation" else row.result,
         resource_usage=RunResourceUsage.model_validate(row.resource_usage or {}),
         requested_at=row.requested_at,
         updated_at=row.updated_at,

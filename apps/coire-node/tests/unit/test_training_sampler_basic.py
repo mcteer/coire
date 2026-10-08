@@ -68,3 +68,23 @@ def test_restore_refuses_different_inputs_and_corrupt_permutation() -> None:
         sampler().restore(state.model_copy(update={"dataset_sha256": "c" * 64}))
     with pytest.raises(TrainingValidationError):
         sampler().restore(state.model_copy(update={"permutation": [0, 0, 1, 2]}))
+
+
+def test_evaluation_single_source_replay_matches_cursor_and_rejects_changed_seed() -> None:
+    from coire_core.training_sampling import consumed_single_rows
+
+    original = sampler()
+    expected: set[int] = set()
+    original.next_batch()
+    expected.update(original.snapshot().permutation[:2])
+    state = original.snapshot()
+    assert consumed_single_rows(state, seed=0, rows=[1, 2, 3, 4]) == {
+        index + 1 for index in expected
+    }
+    with pytest.raises(ValueError, match="boundary"):
+        consumed_single_rows(state, seed=1, rows=[1, 2, 3, 4])
+    for _ in range(6):
+        expected.update(index - 1 for index in original.next_batch().source_rows)
+    assert consumed_single_rows(original.snapshot(), seed=0, rows=[1, 2, 3, 4]) == {
+        index + 1 for index in expected
+    }

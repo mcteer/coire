@@ -61,6 +61,9 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+LABEL com.coire.evaluation.workload="1" \
+      com.coire.harness.version="0.1.0"
+
 USER 65532:65532
 WORKDIR /app
 

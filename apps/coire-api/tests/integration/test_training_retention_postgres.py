@@ -17,11 +17,13 @@ from test_training_transactions import manifest as checkpoint_manifest
 from training_measurement_fixtures import ATTEMPT, JOB
 
 from coire_api.db import (
+    EvaluationCheckpointPinRow,
     NodeRow,
     TrainingArtifactCopyRow,
     TrainingAttemptRow,
     TrainingCheckpointRow,
     TrainingCommandRow,
+    TrainingEvaluationTriggerRow,
     TrainingJobRow,
     TrainingParticipantRow,
     TrainingStorageReservationRow,
@@ -90,6 +92,47 @@ async def seed(database: RuntimeDatabase, *, keep: int = 3) -> list[uuid.UUID]:
         job.latest_checkpoint_id = identities[-1]
         await session.flush()
     return identities
+
+
+async def test_evaluation_pin_survives_retention_until_safe_release(
+    runtime_db: RuntimeDatabase,
+) -> None:
+    identities = await seed(runtime_db, keep=1)
+    factory, _ = runtime_db
+    async with factory.begin() as session:
+        trigger = TrainingEvaluationTriggerRow(
+            id=uuid.uuid4(),
+            job_id=JOB,
+            checkpoint_id=identities[0],
+            boundary_kind="checkpoint",
+            completed_update=1,
+            schedule_sha256="a" * 64,
+            schedules=[],
+            phase="evaluating",
+            fence=1,
+            deadline_at=datetime.now(UTC),
+        )
+        session.add(trigger)
+        await session.flush()
+        pin = EvaluationCheckpointPinRow(trigger_id=trigger.id, checkpoint_id=identities[0])
+        session.add(pin)
+        await session.flush()
+        candidates = await retention_candidates(session, JOB, keep=1, byte_limit=3)
+        assert identities[0] not in {item.id for item in candidates}
+        commands = await enqueue_checkpoint_cleanup(session, JOB)
+        for command in (
+            await session.scalars(
+                select(TrainingCommandRow).where(TrainingCommandRow.id.in_(commands))
+            )
+        ).all():
+            request = TrainingArtifactDeleteRequest.model_validate(command.payload)
+            assert request.expected_manifest is not None
+            assert request.expected_manifest.artifact_id != identities[0]
+        pin.released_at = datetime.now(UTC)
+        await session.flush()
+        assert identities[0] in {
+            item.id for item in await retention_candidates(session, JOB, keep=1)
+        }
 
 
 async def test_cleanup_keeps_latest_and_resume_reference_even_after_progress_rewind(

@@ -180,6 +180,9 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
         from coire_api.training.gateway_measurements import authorize_measurement_lease
 
         await authorize_measurement_lease(session, engine_url)
+        from coire_api.evaluation.gateway_measurements import authorize_probe_lease
+
+        await authorize_probe_lease(session, engine_url)
         if len(segments) > 2 and segments[2] == "shard-groups":
             group = await session.get(ShardGroupRow, target_id)
             if group is None:
@@ -265,6 +268,7 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
                         try:
                             async with session_scope() as session:
                                 await authorize_measurement_lease(session, engine_url)
+                                await authorize_probe_lease(session, engine_url)
                                 refreshed = [
                                     await refresh_lease(
                                         session,

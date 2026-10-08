@@ -58,6 +58,10 @@ async def resolve_instance_target(session: AsyncSession, row: ModelInstanceRow) 
         raise ModelNotFoundError
     if adapter is not None and adapter.state in {"validating", "replicating"}:
         return await resolve_validation_target(session, row.id)
+    if adapter is not None and adapter.purpose == "evaluation":
+        from coire_api.evaluation.execution import resolve_checkpoint_instance_target
+
+        return await resolve_checkpoint_instance_target(session, row)
     return await resolve_target(
         session, adapter.selector if adapter else row.model_id, ADMIN, row.variant_id
     )

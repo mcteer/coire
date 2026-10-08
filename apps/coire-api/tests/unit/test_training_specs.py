@@ -99,3 +99,69 @@ def test_error_does_not_echo_an_unknown_key_or_source_snippet() -> None:
     with pytest.raises(TrainingValidationError) as error:
         parse_spec(SOURCE + sensitive + ": value\n")
     assert sensitive not in error.value.detail
+
+
+def test_v2_recipe_schedules_change_intent_but_not_training_measurement_configuration() -> None:
+    import json
+    from pathlib import Path
+
+    import yaml
+
+    from coire_api.training.specs import training_config_digest
+    from coire_core.models.training import TrainingSpecV2, parse_training_spec
+
+    fixture = (
+        Path(__file__).resolve().parents[4]
+        / "tests/fixtures/evaluations/legacy_training/recipe.json"
+    )
+    original = json.loads(fixture.read_bytes())
+    original["output"]["checkpoint_every_updates"] = 8
+    baseline = parse_training_spec(original)
+    evaluated = {
+        **original,
+        "schema_version": 2,
+        "eval": {
+            **original["eval"],
+            "suites": [
+                {"suite_id": "task-recovery", "suite_version": 1, "checkpoint_updates": [8]}
+            ],
+        },
+    }
+    submission = parse_submission(TrainingSubmission(source_yaml=yaml.safe_dump(evaluated)))
+    assert isinstance(submission.spec, TrainingSpecV2)
+    assert training_config_digest(submission.spec) == training_config_digest(baseline)
+    changed = {
+        **evaluated,
+        "eval": {
+            **evaluated["eval"],
+            "suites": [
+                {"suite_id": "task-recovery", "suite_version": 1, "checkpoint_updates": [16]}
+            ],
+        },
+    }
+    other = parse_submission(TrainingSubmission(source_yaml=yaml.safe_dump(changed)))
+    assert other.intent_sha256 != submission.intent_sha256
+    assert training_config_digest(other.spec) == training_config_digest(submission.spec)
+
+
+def test_evaluated_recipe_catalog_declares_all_required_suite_bindings() -> None:
+    from string import Template
+
+    from coire_api.training.specs import training_recipes
+
+    recipe = next(item for item in training_recipes().items if item.id == "sft-evaluated")
+    assert recipe.parameterization == "lora"
+    assert {"task_suite_id", "judge_suite_id"} <= set(recipe.required_bindings)
+    bound = Template(recipe.template_yaml).substitute(
+        model_id="00000000-0000-4000-8000-000000000001",
+        variant_id="00000000-0000-4000-8000-000000000002",
+        dataset_id="00000000-0000-4000-8000-000000000003",
+        adapter_slug="evaluated",
+        task_suite_id="task",
+        judge_suite_id="rubric",
+    )
+    parsed = parse_spec(bound)
+    from coire_core.models.training import TrainingSpecV2
+
+    assert isinstance(parsed, TrainingSpecV2)
+    assert len(parsed.eval.suites) == 2

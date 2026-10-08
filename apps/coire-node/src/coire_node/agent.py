@@ -41,6 +41,7 @@ from coire_core.models.acquisition import ReservationRequest, ReservationState
 from coire_core.models.engine import EngineState
 from coire_core.models.node import NetworkPath, NodePath, NodeStatus, NodeStatusV2
 from coire_core.models.training_node import (
+    NodeTrainingCapabilities,
     TrainingAdapterExtractRequest,
     TrainingArtifactImportRequest,
     TrainingArtifactManifest,
@@ -60,6 +61,7 @@ from coire_node.link_probes import LinkProbeRunner
 from coire_node.reservations import ReservationLedger, TrainingDiskBudget
 from coire_node.routes import benchmarks as benchmark_routes
 from coire_node.routes import engines as engines_routes
+from coire_node.routes import evaluations as evaluations_routes
 from coire_node.routes import export as export_routes
 from coire_node.routes import failover as failover_routes
 from coire_node.routes import image_jobs as image_jobs_routes
@@ -555,6 +557,11 @@ def create_app(
                         "run_images_configured": bool(
                             settings.run_agent_image and settings.run_relay_image
                         ),
+                        "training_capabilities": NodeTrainingCapabilities(
+                            spec_versions=[1, 2], evaluation_checkpoint_ack_versions=[1]
+                        ).model_dump(mode="json")
+                        if training is not None
+                        else None,
                     }
                 )
             return status_value
@@ -585,6 +592,7 @@ def create_app(
         app.include_router(benchmark_routes.router, dependencies=guard)
         app.include_router(runs_routes.router, dependencies=guard)
         app.include_router(workspaces_routes.router, dependencies=guard)
+        app.include_router(evaluations_routes.router, dependencies=guard)
         # Failover's separately scoped credential has access only to resident metadata and
         # this inference relay. It cannot use the broad node-registration credential.
         if listener in (NetworkPath.CONTROL, NodePath.MESH):

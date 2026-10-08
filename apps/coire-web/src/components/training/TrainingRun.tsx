@@ -1,3 +1,5 @@
+import { EvaluationGroups } from "../evaluations/EvaluationGroups";
+import { CheckpointEvaluations } from "./CheckpointEvaluations";
 import { useTrainingJob } from "../../hooks/useTrainingJob";
 import { TrainingControls } from "./TrainingControls";
 import { Checkpoints } from "./Checkpoints";
@@ -52,7 +54,8 @@ export function TrainingRun({ id }: { id: string }) {
     <p className="mono">Measured memory envelope: {memory === null ? "Unavailable" : `${(memory / 1024 ** 3).toFixed(2)} GiB per Studio`}</p>
     {!job.reproducible && <p className="error">Inputs purged or unavailable: this historical run is no longer reproducible.</p>}
     <TrainingLoss metrics={metrics}/><Checkpoints job={job} checkpoints={checkpoints} onChange={refresh}/>
-    <section className="training-card"><h3>Evaluation comparisons</h3><p>Base versus adapter task / judge comparisons unavailable — feature 017. Training evaluates held-out loss only; independent exact-target harness verification remains required for write-capable tasks.</p></section>
+    <CheckpointEvaluations currentCheckpoint={job.latest_checkpoint_id} links={job.evaluation_groups ?? []}/>
+    <EvaluationGroups links={(job.evaluation_groups ?? []).filter((link) => link.origin !== "training_checkpoint")}/>
     <details><summary>Immutable original YAML · {job.source_sha256}</summary><pre className="mono">{job.source_yaml}</pre></details>
     <details><summary>Immutable resolved settings / runtime / input identities</summary>{job.resolved ? <pre className="mono">{JSON.stringify(job.resolved, null, 2)}</pre> : <p>Resolution pending; runtime and measured capacity are unavailable.</p>}</details>
   </section>;

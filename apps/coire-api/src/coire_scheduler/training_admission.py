@@ -41,7 +41,10 @@ from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import Reachability
 from coire_core.models.placement import MemoryReservationState, PlacementState, ReservationHolder
-from coire_core.models.training import ResolvedTrainingSpec, TrainingProfile
+from coire_core.models.training import (
+    TrainingProfile,
+    parse_resolved_training_spec,
+)
 
 
 async def admission_state(
@@ -219,7 +222,7 @@ async def persist_victim_drains(
             model_id=job.model_id,
             variant_id=job.base_variant_id,
             policy="training-drain",
-            required_bytes=ResolvedTrainingSpec.model_validate(
+            required_bytes=parse_resolved_training_spec(
                 job.resolved_spec
             ).resource_envelope.memory_bytes,
             state=PlacementState.EVICTING,
@@ -315,7 +318,7 @@ async def admit_training(
         return None
     if job.resolved_spec is None:
         raise TrainingConflict("Training requires measured full-envelope preflight")
-    resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+    resolved = parse_resolved_training_spec(job.resolved_spec)
     await recheck_training_inputs(session, resolved)
     expected = 2 if resolved.spec.placement.mode == "data_parallel" else 1
     if len(nodes) != expected or len({n.id for n in nodes}) != expected:

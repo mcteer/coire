@@ -34,9 +34,9 @@ from coire_core.errors import TrainingConflict, TrainingQuotaExceeded
 from coire_core.models.engine import EngineState, EngineStatus
 from coire_core.models.instance import InstanceState
 from coire_core.models.training import (
-    ResolvedTrainingSpec,
     TrainingProfile,
     TrainingReason,
+    parse_resolved_training_spec,
 )
 from coire_core.models.training_node import (
     TrainingAdapterExtractRequest,
@@ -105,7 +105,12 @@ class TrainingRuntime:
 
     @observed("coire.scheduler.training.runtime.extract")
     async def extract_final_adapter(
-        self, checkpoint_id: uuid.UUID, adapter_id: uuid.UUID, command_id: uuid.UUID
+        self,
+        checkpoint_id: uuid.UUID,
+        adapter_id: uuid.UUID,
+        command_id: uuid.UUID,
+        *,
+        evaluation_trigger_id: uuid.UUID | None = None,
     ) -> TrainingArtifactManifest | None:
         async with session_scope() as session:
             checkpoint = await session.get(TrainingCheckpointRow, checkpoint_id)
@@ -116,7 +121,7 @@ class TrainingRuntime:
                 session, Principal.model_validate(job.authorization_snapshot)
             )
             job = await current_job(session, checkpoint.job_id, lock=True)
-            resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+            resolved = parse_resolved_training_spec(job.resolved_spec)
             await recheck_training_base(session, resolved)
             checkpoint_manifest = TrainingArtifactManifest.model_validate(checkpoint.manifest)
             if (
@@ -127,13 +132,28 @@ class TrainingRuntime:
                 or checkpoint_manifest.runtime_sha256 != resolved.runtime_sha256
             ):
                 raise TrainingConflict("Final checkpoint immutable identity changed")
+            if evaluation_trigger_id is not None:
+                from coire_api.evaluation.training import require_checkpoint_pause
+
+                trigger = await require_checkpoint_pause(session, job, evaluation_trigger_id)
+                if trigger.checkpoint_id != checkpoint_id or adapter_id != uuid.uuid5(
+                    trigger.id, "checkpoint-adapter"
+                ):
+                    raise TrainingConflict("Internal extraction differs from the owned checkpoint")
             attempt = await session.get(TrainingAttemptRow, checkpoint.attempt_id)
             if (
-                job.state != "finalizing"
+                (
+                    job.state != "finalizing"
+                    if evaluation_trigger_id is None
+                    else job.state != "paused"
+                )
                 or job.fence != checkpoint.fence
                 or checkpoint.state != "committed"
                 or checkpoint.purged_at is not None
-                or checkpoint.completed_update != resolved.spec.optim.updates
+                or (
+                    evaluation_trigger_id is None
+                    and checkpoint.completed_update != resolved.spec.optim.updates
+                )
                 or attempt is None
                 or attempt.state != "stopped"
                 or await verified_nodes(
@@ -143,7 +163,16 @@ class TrainingRuntime:
             ):
                 raise TrainingConflict("Final extraction authority ended")
             row = await session.get(TrainingCommandRow, command_id, with_for_update=True)
-            if row is None or row.operation != "training.final.extract" or row.job_id != job.id:
+            if (
+                row is None
+                or row.operation
+                != (
+                    "training.final.extract"
+                    if evaluation_trigger_id is None
+                    else "training.evaluation.extract"
+                )
+                or row.job_id != job.id
+            ):
                 raise TrainingConflict("Final extraction intent is missing")
             if row.payload.get("adapter_id") != str(adapter_id) or row.payload.get(
                 "checkpoint_id"
@@ -243,13 +272,17 @@ class TrainingRuntime:
                 session, Principal.model_validate(adapter.metadata_record.get("authority"))
             )
             job = await current_job(session, adapter.source_job_id, lock=True)
-            await recheck_training_base(
-                session, ResolvedTrainingSpec.model_validate(job.resolved_spec)
-            )
+            await recheck_training_base(session, parse_resolved_training_spec(job.resolved_spec))
             adapter = await session.get(
                 TrainingAdapterRow, adapter_id, populate_existing=True, with_for_update=True
             )
             assert adapter is not None
+            if adapter.purpose == "evaluation":
+                from coire_api.evaluation.training import require_checkpoint_pause
+
+                if adapter.evaluation_trigger_id is None:
+                    raise TrainingConflict("Internal adapter trigger identity is unavailable")
+                await require_checkpoint_pause(session, job, adapter.evaluation_trigger_id)
             if adapter.state not in {"validating", "replicating", "ready"} or (
                 adapter.metadata_record.get("automatic") is True and job.state != "finalizing"
             ):
@@ -347,6 +380,15 @@ class TrainingRuntime:
                                     and job.state != "finalizing"
                                 ):
                                     raise TrainingConflict("Adapter replication was cancelled")
+                                if adapter.purpose == "evaluation":
+                                    from coire_api.evaluation.training import (
+                                        require_checkpoint_pause,
+                                    )
+
+                                    assert adapter.evaluation_trigger_id is not None
+                                    await require_checkpoint_pause(
+                                        session, job, adapter.evaluation_trigger_id
+                                    )
                                 prior = await session.get(TrainingCommandRow, import_id)
                                 if prior is None:
                                     session.add(

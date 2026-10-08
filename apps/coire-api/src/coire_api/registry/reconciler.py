@@ -160,6 +160,28 @@ class RegistryReconciler:
         self.node_statuses: dict[str, object] = {}
         """Last status per node, shared with the admin views so they need no extra round trip."""
 
+    async def _engine_start_in_flight(self, session: AsyncSession, row: EngineProcessRow) -> bool:
+        """A missing PID is expected during a bounded dispatched checksum preflight."""
+        if row.state is not EngineState.STARTING:
+            return False
+        now = datetime.now(UTC)
+        if (now - row.started_at).total_seconds() < ENGINE_START_GRACE_S:
+            return True
+        command = await session.scalar(
+            select(PlacementCommandRow)
+            .where(
+                PlacementCommandRow.engine_id == row.id,
+                PlacementCommandRow.node_id == row.node_id,
+                PlacementCommandRow.operation == "load",
+            )
+            .order_by(PlacementCommandRow.created_at.desc(), PlacementCommandRow.id.desc())
+            .limit(1)
+        )
+        if command is None or command.state != "running":
+            return False
+        age = (now - command.updated_at).total_seconds()
+        return 0 <= age < self._settings.gateway_wait_ceiling_s
+
     # -- lifecycle ---------------------------------------------------------
     async def start(self) -> None:
         self._stopping.clear()
@@ -725,11 +747,7 @@ class RegistryReconciler:
                 status = await client.get_engine(node.name, row.id)
             except NodeError as exc:
                 if exc.kind is NodeErrorKind.NOT_FOUND:
-                    if (
-                        row.state is EngineState.STARTING
-                        and (datetime.now(UTC) - row.started_at).total_seconds()
-                        < ENGINE_START_GRACE_S
-                    ):
+                    if await self._engine_start_in_flight(session, row):
                         logger.debug(
                             "engine %s is still starting on %s; deferring transient 404",
                             row.id,
@@ -832,10 +850,7 @@ class RegistryReconciler:
                 # Reconciliation may overlap a newly dispatched engine create. The row is
                 # persisted before the node accepts the process, so a transient "dead"
                 # observation has the same startup grace as a transient status 404.
-                if (
-                    row.state is EngineState.STARTING
-                    and (datetime.now(UTC) - row.started_at).total_seconds() < ENGINE_START_GRACE_S
-                ):
+                if await self._engine_start_in_flight(session, row):
                     logger.debug(
                         "engine %s is still starting on %s; deferring transient reconcile miss",
                         row.id,

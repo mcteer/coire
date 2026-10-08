@@ -62,6 +62,7 @@ export const deleteDataset = (dataset: Dataset, key: string) =>
   );
 
 export type TrainingSpec = components["schemas"]["TrainingSpec"];
+export type TrainingSpecDocument = TrainingSpec | components["schemas"]["TrainingSpecV2"];
 export type TrainingSubmission = components["schemas"]["TrainingSubmission"];
 export type TrainingValidation = components["schemas"]["TrainingValidation"];
 export type TrainingJob = components["schemas"]["TrainingJobDetail"];
@@ -151,7 +152,7 @@ export const retireAdapter = (adapter: Adapter, key: string) =>
   );
 
 /** JSON is a YAML 1.2 subset: preserves all scalar types without a second parser. */
-export const trainingYaml = (spec: TrainingSpec): string => JSON.stringify(spec, null, 2) + "\n";
+export const trainingYaml = (spec: TrainingSpecDocument): string => JSON.stringify(spec, null, 2) + "\n";
 export const listTrainingRecipes = () =>
   api<components["schemas"]["TrainingRecipePage"]>(`${trainingPath}/recipes`);
 export const submitTraining = (body: TrainingSubmission, key: string) =>

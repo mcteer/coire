@@ -83,8 +83,15 @@ async def test_versioned_recipes_are_unbound_and_all_public_contracts_are_regist
     assert response.status_code == 200
     recipes = response.json()["items"]
     assert {recipe["parameterization"] for recipe in recipes} == {"lora", "qlora", "dora"}
+    assert {recipe["id"] for recipe in recipes} == {
+        "sft-lora",
+        "sft-qlora",
+        "sft-dora",
+        "sft-evaluated",
+    }
     for recipe in recipes:
-        assert recipe["version"] == 1 and len(recipe["required_bindings"]) == 4
+        assert recipe["version"] == 1
+        assert len(recipe["required_bindings"]) == (6 if recipe["id"] == "sft-evaluated" else 4)
         with pytest.raises(TrainingValidationError):
             parse_spec(recipe["template_yaml"])
     paths = app.openapi()["paths"]

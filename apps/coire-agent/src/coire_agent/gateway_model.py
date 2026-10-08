@@ -14,6 +14,8 @@ from pydantic import TypeAdapter
 
 from coire_agent.profiles import get_profile
 from coire_core.models.adapters import InferenceTarget, ModelSelector
+from coire_core.models.evaluation import EvaluationGatewayResponse, EvaluationGeneration
+from coire_core.models.gateway import ChatCompletionRequest, ChatMessage
 from coire_core.models.harness import HarnessMessage, HarnessRunRequest
 
 CONTROL_IMAGE_ROOT = Path("/workspace/.coire/inputs")
@@ -122,6 +124,46 @@ class GatewayTransport:
             response = await client.post("/chat/completions", headers=self._headers, json=body)
             response.raise_for_status()
             return response.json()["choices"][0]["message"]["content"]
+
+    async def complete_evaluation(
+        self, system: str, prompt: str, generation: EvaluationGeneration
+    ) -> tuple[str, int, int]:
+        if self._target is None:
+            raise ValueError("evaluation requires an exact target")
+        body = ChatCompletionRequest(
+            model=self._model_id,
+            coire_variant_id=self._target.variant_id,
+            messages=[
+                ChatMessage(role="system", content=system),
+                ChatMessage(role="user", content=prompt),
+            ],
+            temperature=generation.temperature,
+            top_p=generation.top_p,
+            seed=generation.seed,
+            max_tokens=generation.max_tokens,
+            stop=generation.stop or None,
+        )
+        async with (
+            httpx.AsyncClient(base_url=self._url, timeout=None) as client,
+            client.stream(
+                "POST",
+                "/chat/completions",
+                headers=self._headers,
+                json=body.model_dump(mode="json", exclude_none=True),
+            ) as response,
+        ):
+            response.raise_for_status()
+            content = bytearray()
+            async for chunk in response.aiter_bytes():
+                content.extend(chunk)
+                if len(content) > 128 * 1024:
+                    raise ValueError("evaluation gateway response exceeds bound")
+        result = EvaluationGatewayResponse.model_validate_json(content)
+        return (
+            result.choices[0].message.content,
+            result.usage.prompt_tokens,
+            result.usage.completion_tokens,
+        )
 
     async def complete_repair(self, *, invalid: str, error: str) -> str:
         body = {

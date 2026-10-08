@@ -253,6 +253,7 @@ export function DataPage({ kind }: { kind: "models" | "instances" }) {
   return (
     <main className="panel glass">
       <h2>{kind === "models" ? "Model roster" : "Instances"}</h2>
+      {kind === "models" && <a href="#training/evaluations">Evaluate registered models</a>}
       {kind === "models" && (
         <form className="row" onSubmit={acquire}>
           <div className="field">
@@ -1130,7 +1131,7 @@ export function App() {
     [hash, setHash] = useState(() => location.hash);
   const admin = hash.startsWith("#admin");
   const images = hash === "#images";
-  const training = hash === "#training" || hash.startsWith("#training/run/");
+  const training = hash === "#training" || hash === "#training/evaluations" || hash.startsWith("#training/run/");
   const trainingRunbook = location.pathname === "/docs/runbooks/sft-training";
   const requested = hash.replace("#admin/", "");
   const tab: AdminTab = (

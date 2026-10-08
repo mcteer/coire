@@ -22,7 +22,7 @@ from coire_api.training.telemetry import observed
 from coire_core.errors import TrainingValidationError
 from coire_core.models.console import CursorPage, TrainingActivityItem
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
-from coire_core.models.training import TERMINAL_TRAINING_STATES, TrainingSpec
+from coire_core.models.training import TERMINAL_TRAINING_STATES, parse_training_spec
 from coire_core.models.training_types import TrainingId
 
 
@@ -105,11 +105,14 @@ async def project_training_activity(
         reservations = dict(reservation_rows.tuples().all())
     items = []
     for row in selected:
-        spec = TrainingSpec.model_validate(row.submitted_spec)
+        from coire_api.evaluation.links import for_job
+
+        spec = parse_training_spec(row.submitted_spec)
         items.append(
             TrainingActivityItem.model_validate(
                 {
                     "job_id": row.id,
+                    "evaluation_groups": await for_job(session, row.id),
                     "owner_id": row.owner_user_id,
                     "model_id": row.model_id,
                     "variant_id": row.base_variant_id,

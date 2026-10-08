@@ -448,7 +448,11 @@ def test_unverified_tiny_model_reads_but_cannot_apply(
                     "engine_version": "fake-mlx-lm",
                 },
             )
-            assert evaluated.status_code == 201, evaluated.text
+            assert evaluated.status_code == 409, evaluated.text
+            # Loose scores cannot qualify a model in 017. Restore the historical
+            # fixture qualified by prepare_verified_model; actual new execution
+            # is exercised by the separate real-engine evaluation gate.
+            set_verified(True)
             applied = _call(
                 client,
                 key,

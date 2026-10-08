@@ -35,12 +35,12 @@ from coire_core.models.gateway import UsageOutcome
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.training import (
-    ResolvedTrainingSpec,
     TrainingMeasurementRequest,
     TrainingMeasurementResult,
     TrainingProfile,
     TrainingReason,
     TrainingResidentTarget,
+    parse_resolved_training_spec,
 )
 
 
@@ -231,7 +231,7 @@ async def matching_profile(
     from coire_api.training.specs import training_config_digest
     from coire_core.settings import get_settings
 
-    resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+    resolved = parse_resolved_training_spec(job.resolved_spec)
     if payload_digest(resolved) != job.resolved_sha256:
         return None
     now = datetime.now(UTC)
@@ -473,8 +473,20 @@ async def resume_profile(
         async with session_scope() as owned:
             return await resume_profile(job_id, session=owned)
     job = await session.get(TrainingJobRow, job_id)
-    if job is None or job.pause_origin != "protective" or job.state != "paused":
+    if job is None or job.pause_origin not in {"protective", "evaluation"} or job.state != "paused":
         return None
+    if job.pause_origin == "evaluation":
+        from coire_api.evaluation.training import require_checkpoint_pause
+        from coire_core.errors import TrainingConflict
+
+        if job.evaluation_pause_trigger_id is None:
+            return None
+        try:
+            trigger = await require_checkpoint_pause(session, job, job.evaluation_pause_trigger_id)
+        except TrainingConflict:
+            return None
+        if trigger.phase != "resume_pending":
+            return None
     attempt = await session.scalar(
         select(TrainingAttemptRow)
         .where(TrainingAttemptRow.job_id == job_id)

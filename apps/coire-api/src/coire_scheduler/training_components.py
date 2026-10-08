@@ -31,7 +31,7 @@ from coire_api.training.events import current_attempt, current_job
 from coire_api.training.service import payload_digest
 from coire_api.training.telemetry import observed
 from coire_core.errors import TrainingConflict, TrainingForbidden
-from coire_core.models.training import ResolvedTrainingSpec
+from coire_core.models.training import parse_resolved_training_spec
 from coire_core.models.training_node import (
     NodeTrainingEvent,
     TrainingArtifactGrantRefresh,
@@ -70,7 +70,7 @@ async def component_authority(
     )
     job = await current_job(session, component.job_id, lock=True)
     attempt = await current_attempt(session, job, component.attempt_id, component.fence)
-    resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+    resolved = parse_resolved_training_spec(job.resolved_spec)
     if (
         attempt.world_size != 2
         or component.world_size != 2

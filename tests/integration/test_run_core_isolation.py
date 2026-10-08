@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE = (REPO / "deploy/compose/compose.yaml").read_text()
 
@@ -29,3 +31,14 @@ def test_api_and_scheduler_have_no_raw_or_remote_studio_docker_socket() -> None:
         assert "ssh://" not in section
     scheduler = service_section("coire-scheduler")
     assert "DOCKER_HOST: tcp://docker-socket-proxy:2375" in scheduler
+
+
+def test_offline_evaluation_asset_guard_refuses_core_before_file_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+
+    from coire_node.testing.training import offline_training_model
+
+    monkeypatch.setattr("coire_node.testing.training.platform.node", lambda: "coire-core.lab")
+    with pytest.raises(ValueError, match="Constitution II"):
+        offline_training_model("/models/never-read")

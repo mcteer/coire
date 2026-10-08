@@ -24,7 +24,7 @@ from opentelemetry import metrics, trace
 from coire_core.errors import TrainingConflict, TrainingValidationError
 from coire_core.models.training import TrainingReason
 from coire_core.models.training_node import (
-    CheckpointCommitAcknowledgement,
+    CheckpointAcknowledgementDocument,
     DatasetInputGrant,
     NodeTrainingStatus,
     TrainingInputsRequest,
@@ -717,11 +717,16 @@ class TrainingSupervisor:
         finally:
             await asyncio.to_thread(source_path.unlink, missing_ok=True)
 
-    async def acknowledge_checkpoint(self, command: CheckpointCommitAcknowledgement) -> None:
+    async def acknowledge_checkpoint(self, command: CheckpointAcknowledgementDocument) -> None:
         async with self.lock:
             with self.journal.transaction():
                 replay = self.journal.accept(command)
                 value = self.journal.scoped(command)
+                prepared = TrainingPrepareRequest.model_validate(value["prepare"])
+                if command.schema_version != prepared.resolved.spec.schema_version:
+                    raise TrainingConflict(
+                        "Checkpoint decision differs from negotiated training version"
+                    )
                 if replay is not None:
                     return
                 from coire_node.training.checkpoints import CheckpointStore

@@ -1,5 +1,15 @@
 # Coire web UI — design specification ("Glass")
 
+Feature 017 extends Training with an Evaluation runs view linked from the model
+roster and adapter/job surfaces. Show durable evaluation state independently of
+training state and harness verification. Result details retain frozen suite,
+exact runtime/judge identity, contamination and expired-evidence labels. Failed
+or incompatible results have no numeric aggregate/delta; pairwise preferences
+show both orders and win/tie/loss counts separately from independent quality.
+Checkpoint points retain their original attempt/update/fence after rollback and
+show current pause owner and resume disposition. Resume is disabled while
+evaluation cleanup remains unresolved; administrators can keep training paused.
+
 This document, `tokens.css`, and the five files in `mockups/` are the source of truth for `apps/coire-web`. When code and mockup disagree, the mockup wins on look and the architecture doc wins on behaviour. Build components from the tokens; never hard-code a colour, radius, or shadow that already has a token.
 
 The mockups are static 1440×900 frames with sample data. Their CSS is intentionally flat and inline so it is easy to read; the app should reimplement it as React components with the same measurements, not copy the files wholesale. Model names, numbers, and conversations in the mockups are placeholders.

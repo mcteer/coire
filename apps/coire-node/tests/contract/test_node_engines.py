@@ -83,6 +83,25 @@ def test_engine_argv_can_bind_loopback_only() -> None:
     assert not any(value.endswith(".fabric") or value.endswith(".mesh") for value in argv)
 
 
+def test_starting_engine_reports_actual_residency_before_health_loop(tmp_path: Path) -> None:
+    agent = Agent(tmp_path, node_engine_command=fake_engine_command(delay=30))
+    try:
+        seed(agent)
+        _, status = agent.engines.start(
+            engine_id=uuid.uuid4(), slug=SLUG, estimate_bytes=64 * 1024**2
+        )
+        assert status.state is EngineState.STARTING
+        assert status.pid is not None
+        assert psutil.Process(status.pid).is_running()
+        assert status.resident_bytes is not None
+        assert status.resident_bytes >= 0
+        observed = agent.engines.statuses()
+        assert len(observed) == 1
+        assert observed[0].resident_bytes == status.resident_bytes
+    finally:
+        agent.close()
+
+
 def kill_stray_engines() -> None:
     """Kill every fake engine this test session started.
 
@@ -247,16 +266,22 @@ class TestStart:
         assert str(engine_agent.store.path_for(SLUG)) in cmdline
         assert f"--port {ready.port}" in cmdline
 
+    @pytest.mark.parametrize("seed", [None, 0, 2**32 - 1])
     def test_authenticated_node_proxy_is_the_engine_network_boundary(
-        self, engine_agent: Agent
+        self, engine_agent: Agent, seed: int | None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # Each TestClient owns a distinct event loop; do not reuse its async
+        # connection pool in the next parameterized application instance.
+        monkeypatch.setattr("coire_node.routes.engines._proxy_client", None)
         engine_id = uuid.uuid4()
         engine_agent.engines.start(engine_id=engine_id, slug=SLUG, estimate_bytes=1024)
         wait_state(engine_agent, engine_id, EngineState.READY)
-        payload = {
+        payload: dict[str, object] = {
             "model": str(engine_agent.store.path_for(SLUG)),
             "messages": [{"role": "user", "content": "hello"}],
         }
+        if seed is not None:
+            payload["seed"] = seed
         with TestClient(engine_agent.app()) as anonymous:
             assert (
                 anonymous.post(

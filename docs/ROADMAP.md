@@ -121,6 +121,13 @@ invalidates old proposals, and unavailable-model turns use the deterministic rea
 *Done when:* an SFT LoRA trains from a recipe YAML and from the UI, survives a mid-run node restart by resuming from checkpoint, and is usable as `model@adapter` in `/v1/chat/completions` with its loss curve on the Jobs dashboard.
 
 **014a · evaluation verbs** — "`coire eval` with harness, task, and judge suites (judge = platform model via the gateway); `TrainingSpec.eval` checkpoint scheduling; before/after scores on adapter rows; console comparison view."
+*Implementation status (spec 017):* Implemented with 70/70 tasks qualified on `feat/017-evaluation-verbs`; review prepared.
+Version 2 recipes opt into declared task/judge suites with optional checkpoint
+updates and mandatory final obligations; version 1 keeps held-out loss only.
+Admission remains default-off. Tiny-model, real-Studio coexistence, checkpoint
+recovery and drained rollback gates passed; node collection CPU/RSS remains an
+explicit operational limitation in the execution record. No broader enablement
+or passing collection-budget claim is made.
 *Done when:* an adapter row shows base vs. adapter scores for at least one task suite and one judge suite, produced automatically at the end of a training run.
 
 **014b · preference optimisation (DPO/ORPO) & feedback capture** — "`preference` dataset type; `objective=dpo|orpo` jobs via pinned `mlx-lm-lora` (in-house DPO trainer as fallback) with `init_adapter` chaining from an SFT adapter and 2× base memory reservation; chat UI thumbs, regenerate-and-compare, and admin pairwise review queue writing feedback rows; admin export of feedback → preference dataset with filters; per-user feedback opt-out and disclosure."

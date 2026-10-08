@@ -42,6 +42,14 @@ def verify_material(secret_hash: str, presented_secret: str) -> bool:
 
 
 def validate_run_scope(run: AgentRunRow, scope: RunTokenScope) -> None:
+    if run.purpose == "evaluation" and (
+        run.task_class is not TaskClass.READ
+        or run.evaluation_attempt_id is None
+        or scope.permitted_tools
+        or len(scope.permitted_targets) != 1
+        or scope.permitted_model_ids != frozenset({run.primary_model_id})
+    ):
+        raise InvalidRunToken("evaluation requires one exact READ phase grant without tools")
     if run.primary_model_id not in scope.permitted_model_ids:
         raise InvalidRunToken("primary model is not permitted")
     if scope.permitted_targets and not any(
@@ -128,6 +136,14 @@ async def authenticate_run_token(session: AsyncSession, presented: str) -> Princ
         raise InvalidRunToken("revoked")
     if row.expires_at <= now:
         raise InvalidRunToken("expired")
+    if run.purpose == "evaluation":
+        from coire_api.evaluation.execution import authorize_evaluation_child
+        from coire_core.errors import CoireError
+
+        try:
+            await authorize_evaluation_child(session, run)
+        except CoireError as error:
+            raise InvalidRunToken("evaluation_authorization_revoked") from error
     scope = RunTokenScope.model_validate(row.scope)
     validate_run_scope(run, scope)
     if row.spent_tokens >= scope.spend_limit_tokens:
@@ -199,6 +215,14 @@ async def charge_run_token(session: AsyncSession, run_id: uuid.UUID, tokens: int
 async def run_token_is_active(session: AsyncSession, run_id: uuid.UUID) -> bool:
     row = await session.scalar(select(RunTokenRow).where(RunTokenRow.run_id == run_id))
     run = await session.get(AgentRunRow, run_id)
+    if run is not None and run.purpose == "evaluation":
+        from coire_api.evaluation.execution import authorize_evaluation_child
+        from coire_core.errors import CoireError
+
+        try:
+            await authorize_evaluation_child(session, run)
+        except CoireError:
+            return False
     now = datetime.now(UTC)
     return bool(
         row is not None

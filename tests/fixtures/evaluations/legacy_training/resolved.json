@@ -1,0 +1,102 @@
+{
+  "base_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "datasets": [
+    {
+      "analysis_id": "10000000-0000-4000-8000-000000000003",
+      "analysis_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "dataset_id": "10000000-0000-4000-8000-000000000003",
+      "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "split_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ],
+  "enable_thinking": false,
+  "resource_envelope": {
+    "activation_bytes": 30,
+    "adapter_bytes": 10,
+    "buffer_bytes": 0,
+    "checkpoint_bytes": 100,
+    "evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "optimizer_bytes": 20,
+    "safety_bytes": 10,
+    "weight_bytes": 100
+  },
+  "runtime_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "sampler_version": "coire-sampler-v1",
+  "spec": {
+    "data": {
+      "loss_policy": "final_assistant",
+      "train": {
+        "datasets": [
+          {
+            "dataset_id": "10000000-0000-4000-8000-000000000003",
+            "mixture_proportion": 1.0,
+            "sample_count": 8,
+            "split": "train"
+          }
+        ],
+        "epoch_samples": 8,
+        "mixture_strategy": "weighted",
+        "replacement": false,
+        "seed": 0
+      },
+      "validation": {
+        "dataset_ids": [
+          "10000000-0000-4000-8000-000000000003"
+        ],
+        "max_batches": 25,
+        "seed": 0,
+        "split": "validation"
+      }
+    },
+    "eval": {
+      "at_end": true,
+      "loss_every_updates": 100
+    },
+    "model": {
+      "model_id": "10000000-0000-4000-8000-000000000001",
+      "variant_id": "10000000-0000-4000-8000-000000000002"
+    },
+    "objective": "sft",
+    "optim": {
+      "accumulation_steps": 2,
+      "batch_size": 2,
+      "beta1": 0.9,
+      "beta2": 0.999,
+      "epsilon": 1e-08,
+      "learning_rate": 1e-05,
+      "max_sequence_length": 2048,
+      "name": "adamw",
+      "schedule": {
+        "kind": "constant",
+        "warmup_updates": 0
+      },
+      "updates": 32,
+      "weight_decay": 0.0
+    },
+    "output": {
+      "adapter_slug": "contract-test",
+      "checkpoint_every_updates": 100,
+      "keep_last_checkpoints": 3
+    },
+    "parameterization": {
+      "dropout": 0.0,
+      "kind": "lora",
+      "num_layers": 1,
+      "rank": 8,
+      "scale": 20.0,
+      "target_modules": [
+        "self_attn.q_proj",
+        "self_attn.v_proj"
+      ]
+    },
+    "placement": {
+      "mode": "single",
+      "preferred_node": null
+    },
+    "schema_version": 1,
+    "seed": 0
+  },
+  "template_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "tokenizer_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "worker_version": "coire-sft-016"
+}

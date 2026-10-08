@@ -7,7 +7,6 @@ import uuid
 from fastapi import APIRouter, HTTPException, status
 
 from coire_api import evaluations
-from coire_api.audit import write_principal_audit
 from coire_api.auth import CurrentAdmin
 from coire_api.db import ModelVariantRow, TrainingAdapterRow
 from coire_api.deps import SessionDep
@@ -60,24 +59,10 @@ async def evaluation_target(
 async def submit_evaluation(
     body: HarnessEvaluationSubmission, principal: CurrentAdmin, session: SessionDep
 ) -> HarnessEvaluation:
-    try:
-        result = await evaluations.record(session, body)
-    except LookupError as exc:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
-    except ValueError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    await write_principal_audit(
-        session,
-        principal=principal,
-        action="harness_evaluation.record",
-        target_type="adapter" if body.target and body.target.adapter_id else "model_variant",
-        target_id=str(
-            body.target.adapter_id if body.target and body.target.adapter_id else body.variant_id
-        ),
-        detail={"evaluation_id": str(result.id), "verdict": result.verdict.value},
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        "Platform execution evidence is required. Submit a durable harness evaluation through /api/v1/admin/evaluations; legacy scorecards remain readable.",
     )
-    await session.commit()
-    return result
 
 
 @router.get("", response_model=list[HarnessEvaluation])

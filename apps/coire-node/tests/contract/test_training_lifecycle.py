@@ -159,6 +159,13 @@ def test_native_routes_auth_scope_and_disabled_history(tmp_path: Path) -> None:
             agent.settings, agent.collector, listener=NetworkPath.CONTROL, training=supervisor
         )
         with TestClient(control) as client:
+            capabilities = client.get("/node/health", headers=headers).json()[
+                "training_capabilities"
+            ]
+            assert capabilities == {
+                "spec_versions": [1, 2],
+                "evaluation_checkpoint_ack_versions": [1],
+            }
             assert (
                 client.post(path + "/prepare", json=command.model_dump(mode="json")).status_code
                 == 401
@@ -1167,7 +1174,16 @@ async def test_slow_asset_validation_does_not_block_cancel_or_start_after_stop(s
 
 @pytest.mark.parametrize(
     "outcome",
-    ["complete", "pause", "no_commit", "stale_commit", "nonfinite", "bad_counter", "bad_eval"],
+    [
+        "complete",
+        "pause",
+        "evaluation_pause",
+        "no_commit",
+        "stale_commit",
+        "nonfinite",
+        "bad_counter",
+        "bad_eval",
+    ],
 )
 @pytest.mark.parametrize("mixture", [False, True], ids=["single", "mixture"])
 def test_unchanged_trainer_hook_boundaries_and_independent_evaluation(
@@ -1191,6 +1207,43 @@ def test_unchanged_trainer_hook_boundaries_and_independent_evaluation(
     prepared.resolved.spec.optim.accumulation_steps = 2
     prepared.resolved.spec.output.checkpoint_every_updates = 2
     prepared.resolved.spec.eval.loss_every_updates = 2
+    if outcome == "evaluation_pause":
+        from coire_core.evaluation_suites import template
+        from coire_core.models.evaluation import EvaluationSuite, EvaluationWorkload
+        from coire_core.models.training import parse_resolved_training_spec
+
+        frozen_workload = EvaluationWorkload.model_validate_json(
+            (
+                Path(__file__).resolve().parents[4] / "tests/fixtures/evaluations/workload.json"
+            ).read_bytes()
+        )
+        frozen = frozen_workload.target.model_dump(mode="json")
+        resolved = prepared.resolved.model_dump(mode="json")
+        schedule = {"suite_id": "checkpoint-task", "suite_version": 1, "checkpoint_updates": [2]}
+        resolved["spec"]["schema_version"] = 2
+        resolved["spec"]["eval"]["suites"] = [schedule]
+        frozen["target"].update(
+            model_id=resolved["spec"]["model"]["model_id"],
+            variant_id=resolved["spec"]["model"]["variant_id"],
+            base_manifest_sha256=resolved["base_manifest_sha256"],
+        )
+        frozen["runtime"].update(
+            tokenizer_sha256=resolved["tokenizer_sha256"],
+            template_sha256=resolved["template_sha256"],
+        )
+        frozen["public_selector"] = resolved["spec"]["model"]["model_id"]
+        resolved["evaluation_base"] = frozen
+        suite = EvaluationSuite(
+            suite_id="checkpoint-task",
+            version=1,
+            template=template("task-coding-instructions"),
+            generation=frozen_workload.suite.generation,
+            timeout_seconds=900,
+            content_sha256="a" * 64,
+            registered_at=datetime.now(UTC),
+        )
+        resolved["evaluations"] = [{"schedule": schedule, "suite": suite.model_dump(mode="json")}]
+        prepared.resolved = parse_resolved_training_spec(resolved)
     examples = [
         TokenizedTrainingExample(
             source_row=i + 1,
@@ -1339,6 +1392,25 @@ def test_unchanged_trainer_hook_boundaries_and_independent_evaluation(
 
         if outcome == "no_commit":
             return None
+        if outcome == "evaluation_pause":
+            from coire_core.models.training_node import CheckpointCommitAcknowledgementV2
+
+            return CheckpointCommitAcknowledgementV2.model_validate(
+                {
+                    **envelope(prepared),
+                    "schema_version": 2,
+                    "command_id": str(uuid.uuid4()),
+                    "checkpoint_id": str(manifest.artifact_id),
+                    "manifest_sha256": manifest.canonical_sha256(),
+                    "update": manifest.update,
+                    "committed_update": manifest.update,
+                    "job_version": 2,
+                    "evaluation_pause": {
+                        "trigger_id": str(uuid.uuid4()),
+                        "pause_command_id": str(uuid.uuid4()),
+                    },
+                }
+            )
         return CheckpointCommitAcknowledgement.model_validate(
             {
                 **envelope(prepared),
@@ -1376,10 +1448,12 @@ def test_unchanged_trainer_hook_boundaries_and_independent_evaluation(
             for item in events
             if item.payload.kind == "progress"
         )
-    elif outcome == "pause":
-        with pytest.raises(worker.PausedAtCheckpoint):
+    elif outcome in {"pause", "evaluation_pause"}:
+        with pytest.raises(worker.PausedAtCheckpoint) as stopped:
             execute()
-        assert step[0] == 1 and len(manifests) == 1
+        assert step[0] == (2 if outcome == "evaluation_pause" else 1) and len(manifests) == 1
+        if outcome == "evaluation_pause":
+            assert stopped.value.reason == "evaluation_pending" and manifests[0].update == 2
     else:
         with pytest.raises((TrainingConflict, TrainingValidationError)):
             execute()

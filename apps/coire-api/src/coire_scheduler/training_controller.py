@@ -27,6 +27,7 @@ from coire_api.db import (
     TrainingAttemptRow,
     TrainingCheckpointRow,
     TrainingCommandRow,
+    TrainingEvaluationTriggerRow,
     TrainingJobRow,
     TrainingParticipantRow,
     TrainingProfileRow,
@@ -41,10 +42,10 @@ from coire_api.training_executor import TrainingNodeClient
 from coire_core.errors import TrainingConflict, TrainingForbidden, TrainingValidationError
 from coire_core.models.engine import EngineStatus
 from coire_core.models.training import (
-    ResolvedTrainingSpec,
     TrainingProfile,
     TrainingReason,
     TrainingStateEvent,
+    parse_resolved_training_spec,
 )
 from coire_core.models.training_node import (
     NodeTrainingEventPage,
@@ -288,6 +289,7 @@ class TrainingController:
     @observed("coire.scheduler.training.controller.tick")
     async def tick(self, job_id: str) -> None:
         await self._resume_protective(job_id)
+        await self._resume_automatic(job_id, origin="evaluation")
         await self._advance(job_id)
         await self._dispatch(job_id, controls_only=True)
         async with self.sessions() as session:
@@ -308,14 +310,31 @@ class TrainingController:
         await self._finalize(job_id)
 
     async def _resume_protective(self, job_id: str) -> None:
+        await self._resume_automatic(job_id, origin="protective")
+
+    async def _resume_automatic(self, job_id: str, *, origin: str) -> None:
         async with self.sessions() as session:
             job = await current_job(session, job_id)
             if (
                 job.state != "paused"
-                or job.pause_origin != "protective"
-                or job.updated_at + timedelta(seconds=60) > datetime.now(UTC)
+                or job.pause_origin != origin
+                or (
+                    origin == "protective"
+                    and job.updated_at + timedelta(seconds=60) > datetime.now(UTC)
+                )
             ):
                 return
+            trigger_id = job.evaluation_pause_trigger_id if origin == "evaluation" else None
+            if origin == "evaluation":
+                trigger = await session.get(TrainingEvaluationTriggerRow, trigger_id)
+                if (
+                    trigger is None
+                    or trigger.phase != "resume_pending"
+                    or trigger.pause_version != job.version
+                    or trigger.fence != job.fence
+                    or trigger.checkpoint_id != job.latest_checkpoint_id
+                ):
+                    return
             attempt_id = await session.scalar(
                 select(TrainingAttemptRow.id)
                 .where(TrainingAttemptRow.job_id == job_id)
@@ -338,8 +357,24 @@ class TrainingController:
                 session, Principal.model_validate(job.authorization_snapshot)
             )
             job = await current_job(session, job_id, lock=True)
-            if job.state != "paused" or job.pause_origin != "protective":
+            if job.state != "paused" or job.pause_origin != origin:
                 return
+            if origin == "evaluation":
+                trigger = await session.get(
+                    TrainingEvaluationTriggerRow,
+                    trigger_id,
+                    with_for_update=True,
+                    populate_existing=True,
+                )
+                if (
+                    trigger is None
+                    or trigger.phase != "resume_pending"
+                    or job.evaluation_pause_trigger_id != trigger_id
+                    or trigger.pause_version != job.version
+                    or trigger.fence != job.fence
+                    or trigger.checkpoint_id != job.latest_checkpoint_id
+                ):
+                    return
             if (
                 await session.scalar(
                     select(TrainingAttemptRow.id).where(
@@ -360,7 +395,7 @@ class TrainingController:
                 or profile.expires_at <= datetime.now(UTC)
             ):
                 return
-            resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+            resolved = parse_resolved_training_spec(job.resolved_spec)
             await recheck_training_inputs(session, resolved)
             nodes = list(
                 (
@@ -381,6 +416,54 @@ class TrainingController:
             if remaining <= 0:
                 return
             now = datetime.now(UTC)
+            if origin == "evaluation":
+                assert trigger is not None
+                if not get_settings().training_enabled or now >= trigger.deadline_at + timedelta(
+                    seconds=get_settings().evaluation_timeout_seconds
+                    + get_settings().training_queue_timeout_s
+                ):
+                    return
+                from coire_api.audit import write_principal_audit
+
+                command_id = uuid.uuid5(trigger.id, "evaluation-resume")
+                payload = {
+                    "trigger_id": str(trigger.id),
+                    "checkpoint_id": str(trigger.checkpoint_id),
+                    "expected_version": job.version,
+                    "fence": job.fence,
+                    "profile_id": str(profile.id),
+                    "profile_sha256": profile.report_sha256,
+                }
+                session.add(
+                    TrainingCommandRow(
+                        id=command_id,
+                        actor_user_id=job.owner_user_id,
+                        job_id=job.id,
+                        subject_id=job.id,
+                        operation="training.evaluation.resume",
+                        idempotency_key=f"evaluation-resume:{trigger.id}",
+                        request_sha256=hashlib.sha256(
+                            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+                        ).hexdigest(),
+                        payload=payload,
+                        state="succeeded",
+                        receipt={"state": "queued", "version": job.version + 1},
+                    )
+                )
+                await write_principal_audit(
+                    session,
+                    principal=Principal.model_validate(job.authorization_snapshot),
+                    action="evaluation.training.resume",
+                    target_type="training_job",
+                    target_id=job.id,
+                    context=payload,
+                )
+                trigger.phase, trigger.completed_at, trigger.resume_disposition = (
+                    "complete",
+                    now,
+                    "resumed",
+                )
+                job.evaluation_pause_trigger_id = None
             job.state, job.pause_origin, job.safe_reason = "queued", None, None
             job.queue_deadline_at = now + timedelta(seconds=get_settings().training_queue_timeout_s)
             job.execution_deadline_at = job.queue_deadline_at + timedelta(seconds=remaining)
@@ -581,7 +664,7 @@ class TrainingController:
             attempt = (
                 await session.get(TrainingAttemptRow, checkpoint.attempt_id) if checkpoint else None
             )
-            resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+            resolved = parse_resolved_training_spec(job.resolved_spec)
             if (
                 checkpoint is None
                 or checkpoint.state != "committed"

@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from coire_core.models.evaluation_links import EvaluationGroupLink
 from coire_core.models.files import ULID_PATTERN
 from coire_core.models.instance import ClusterState
 from coire_core.models.placement import MemoryLedger
@@ -134,6 +135,9 @@ class ImageActivityItem(BaseModel):
 
 
 class TrainingActivityItem(BaseModel):
+    evaluation_groups: list[EvaluationGroupLink] = Field(
+        default_factory=list, max_length=100, exclude_if=lambda value: not value
+    )
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     job_id: str = Field(pattern=ULID_PATTERN)

@@ -37,9 +37,9 @@ from coire_core.models.engine import EngineState, EngineStatus
 from coire_core.models.registry import ModelState, Visibility
 from coire_core.models.training import (
     CheckpointPromotionRequest,
-    ResolvedTrainingSpec,
     TrainingJobState,
     TrainingStateEvent,
+    parse_resolved_training_spec,
 )
 from coire_core.models.training_node import TrainingArtifactManifest
 
@@ -53,6 +53,7 @@ async def stage_serving_adapter(
     *,
     slug: str,
     automatic: bool = False,
+    evaluation_trigger_id: uuid.UUID | None = None,
 ) -> TrainingAdapterRow:
     """Bind an actual node-extracted serving artifact to complete checkpoint lineage.
 
@@ -70,7 +71,7 @@ async def stage_serving_adapter(
     )
     if job is None or checkpoint.state != "committed" or job.resolved_spec is None:
         raise TrainingConflict("Adapter requires a complete retained checkpoint")
-    resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+    resolved = parse_resolved_training_spec(job.resolved_spec)
     await recheck_training_base(session, resolved)
     if (
         manifest.kind != "adapter"
@@ -86,6 +87,17 @@ async def stage_serving_adapter(
         session, checkpoint.id, checkpoint.manifest_sha256, checkpoint.total_bytes
     ) != {"coire-edge-a", "coire-edge-b"}:
         raise TrainingConflict("Source checkpoint does not have both verified copies")
+    if evaluation_trigger_id is not None:
+        from coire_api.evaluation.training import require_checkpoint_pause
+
+        trigger = await require_checkpoint_pause(session, job, evaluation_trigger_id)
+        if (
+            automatic
+            or trigger.checkpoint_id != checkpoint.id
+            or slug != f"eval-{trigger.id.hex}"
+            or manifest.artifact_id != uuid.uuid5(trigger.id, "checkpoint-adapter")
+        ):
+            raise TrainingConflict("Internal checkpoint adapter differs from its owned trigger")
     if automatic:
         principal = Principal.model_validate(job.authorization_snapshot)
         await authorize_live_training_action(session, principal)
@@ -112,6 +124,11 @@ async def stage_serving_adapter(
         raise TrainingConflict("Promotion name is reserved by a training job")
     existing = await session.get(TrainingAdapterRow, manifest.artifact_id, populate_existing=True)
     if existing is not None:
+        if (
+            existing.purpose != ("evaluation" if evaluation_trigger_id else "serving")
+            or existing.evaluation_trigger_id != evaluation_trigger_id
+        ):
+            raise TrainingConflict("Adapter purpose and trigger binding are immutable")
         if (
             existing.manifest_sha256 is None
             and existing.state == "validating"
@@ -165,6 +182,8 @@ async def stage_serving_adapter(
         manifest_sha256=manifest.canonical_sha256(),
         resolved_spec_sha256=job.resolved_sha256,
         parameterization=resolved.spec.parameterization.kind,
+        purpose="evaluation" if evaluation_trigger_id is not None else "serving",
+        evaluation_trigger_id=evaluation_trigger_id,
         state="validating",
         visibility="admin_only",
         verified=False,
@@ -172,6 +191,11 @@ async def stage_serving_adapter(
         metadata_record={
             "manifest": manifest.model_dump(mode="json"),
             "automatic": automatic,
+            **(
+                {"evaluation_only": True, "evaluation_trigger_id": str(evaluation_trigger_id)}
+                if evaluation_trigger_id
+                else {}
+            ),
             "authority": principal.model_dump(mode="json"),
         },
     )
@@ -302,7 +326,7 @@ async def enqueue_checkpoint_promotion(
     assert checkpoint is not None
     if checkpoint.state != "committed" or job.resolved_spec is None:
         raise TrainingConflict("Promotion requires a complete retained checkpoint")
-    resolved = ResolvedTrainingSpec.model_validate(job.resolved_spec)
+    resolved = parse_resolved_training_spec(job.resolved_spec)
     await recheck_training_base(session, resolved)
     manifest = TrainingArtifactManifest.model_validate(checkpoint.manifest)
     if manifest.canonical_sha256() != checkpoint.manifest_sha256 or manifest.kind != "checkpoint":
@@ -447,12 +471,23 @@ async def finalize_serving_adapter(
     principal = Principal.model_validate(row.metadata_record.get("authority"))
     await authorize_live_training_action(session, principal)
     job = await current_job(session, row.source_job_id, lock=True)
-    await recheck_training_base(session, ResolvedTrainingSpec.model_validate(job.resolved_spec))
+    await recheck_training_base(session, parse_resolved_training_spec(job.resolved_spec))
     row = await session.get(
         TrainingAdapterRow, adapter_id, populate_existing=True, with_for_update=True
     )
     assert row is not None
+    if row.purpose == "evaluation":
+        from coire_api.evaluation.training import require_checkpoint_pause
+
+        if row.evaluation_trigger_id is None:
+            raise TrainingConflict("Internal adapter trigger identity is unavailable")
+        await require_checkpoint_pause(session, job, row.evaluation_trigger_id)
     if row.state == "ready":
+        if row.metadata_record.get("automatic") is True:
+            from coire_api.evaluation.training import ensure_final_trigger
+            from coire_core.settings import get_settings
+
+            await ensure_final_trigger(session, job, row, settings=get_settings())
         return row
     automatic = row.metadata_record.get("automatic") is True
     if row.state not in {"validating", "replicating"} or (automatic and job.state != "finalizing"):
@@ -526,6 +561,10 @@ async def finalize_serving_adapter(
     if automatic:
         job.state, job.adapter_id, job.finished_at = "succeeded", row.id, now
         job.version += 1
+        from coire_api.evaluation.training import ensure_final_trigger
+        from coire_core.settings import get_settings
+
+        await ensure_final_trigger(session, job, row, settings=get_settings())
         await append_event(
             session, job.id, TrainingStateEvent(kind="terminal", state=TrainingJobState.SUCCEEDED)
         )
@@ -589,7 +628,7 @@ async def curate_adapter(
         return AdapterDetail.model_validate(command.receipt)
     # Lock base before adapter, matching target resolution and publication authority.
     candidate = await session.get(TrainingAdapterRow, adapter_id)
-    if candidate is None:
+    if candidate is None or candidate.purpose == "evaluation":
         raise TrainingNotFound()
     from coire_api.db import TrainingJobRow
 
@@ -650,7 +689,7 @@ async def curate_adapter(
             )
             if source_job is None or source_job.resolved_spec is None:
                 raise TrainingConflict("Adapter immutable base lineage is unavailable")
-            resolved = ResolvedTrainingSpec.model_validate(source_job.resolved_spec)
+            resolved = parse_resolved_training_spec(source_job.resolved_spec)
             await recheck_training_base(session, resolved)
             if (
                 row.base_manifest_sha256 != resolved.base_manifest_sha256
@@ -691,4 +730,21 @@ async def adapter_is_referenced(session: AsyncSession, adapter_id: uuid.UUID) ->
             .limit(1)
         )
         is not None
+    )
+
+
+async def adapter_evaluation_detail(
+    session: AsyncSession, row: TrainingAdapterRow
+) -> AdapterDetail:
+    from coire_api.evaluation.links import for_job
+
+    return adapter_detail(row).model_copy(
+        update={
+            "evaluation_groups": await for_job(
+                session,
+                row.source_job_id,
+                adapter_id=row.id,
+                checkpoint_id=row.source_checkpoint_id,
+            )
+        }
     )

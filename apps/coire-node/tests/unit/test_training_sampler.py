@@ -248,3 +248,40 @@ def test_global_padding_shape_and_validation_iterator_independence() -> None:
         validation.next_batch()
     assert train.snapshot() == saved
     assert train.next_batch() == sampler().next_batch()
+
+
+@pytest.mark.parametrize("replacement", [False, True])
+@pytest.mark.parametrize("strategy", ["weighted", "sequential"])
+def test_evaluation_consumed_stream_matches_actual_sampler_through_partial_epoch(
+    replacement: bool,
+    strategy: Literal["weighted", "sequential"],
+) -> None:
+    from coire_core.training_sampling import consumed_mixture_rows
+
+    stream = sampler(replacement=replacement, strategy=strategy)
+    consumed: set[tuple[uuid.UUID, int]] = set()
+    for _ in range(7):
+        stream.next_batch()
+        consumed.update(stream.last_batch_references)
+    state = stream.snapshot()
+    replayed = consumed_mixture_rows(
+        identity_sha256=state.identity_sha256,
+        epoch=state.epoch,
+        cursor=state.cursor,
+        sources=[(source.dataset_id, source.rows, source.quota) for source in stream.sources],
+        strategy=strategy,
+        replacement=replacement,
+    )
+    assert replayed == consumed
+    state_before = sampler(replacement=replacement, strategy=strategy).snapshot()
+    assert (
+        consumed_mixture_rows(
+            identity_sha256=state_before.identity_sha256,
+            epoch=0,
+            cursor=0,
+            sources=[(source.dataset_id, source.rows, source.quota) for source in stream.sources],
+            strategy=strategy,
+            replacement=replacement,
+        )
+        == set()
+    )
