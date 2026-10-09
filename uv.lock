@@ -451,6 +451,7 @@ dependencies = [
     { name = "pillow" },
     { name = "psutil" },
     { name = "safetensors" },
+    { name = "sniffio" },
     { name = "torchvision", marker = "sys_platform == 'darwin'" },
     { name = "uvicorn" },
 ]
@@ -469,6 +470,7 @@ requires-dist = [
     { name = "pillow", specifier = "==12.3.0" },
     { name = "psutil", specifier = ">=6.1" },
     { name = "safetensors", specifier = "==0.8.0" },
+    { name = "sniffio", specifier = "==1.3.1" },
     { name = "torchvision", marker = "sys_platform == 'darwin'" },
     { name = "uvicorn", specifier = ">=0.34" },
 ]

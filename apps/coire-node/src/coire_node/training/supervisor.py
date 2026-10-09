@@ -371,7 +371,7 @@ class TrainingSupervisor:
         """Unknown owners retain their envelope; measured overages count too."""
         with self.journal.lock:
             total = 0
-            for value in self.journal.records():
+            for value in self.journal.active_records():
                 if value["released"]:
                     continue
                 measured = self.footprint(value)
@@ -401,7 +401,7 @@ class TrainingSupervisor:
     def statuses(self) -> list[NodeTrainingStatus]:
         return [
             self.observe(value["attempt_id"])
-            for value in self.journal.records()
+            for value in self.journal.active_records()
             if not value["released"]
         ]
 
@@ -1180,7 +1180,7 @@ class TrainingSupervisor:
     async def watchdog(self) -> None:
         """Run in the native node service; worker has a separate lease guard too."""
         while True:
-            for value in await asyncio.to_thread(self.journal.records):
+            for value in await asyncio.to_thread(self.journal.active_records):
                 if value["released"]:
                     continue
                 try:

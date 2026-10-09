@@ -146,7 +146,7 @@ async def identity(body: EvaluationIdentityRequest, request: Request) -> Evaluat
     if body.engine_id is not None:
         from coire_node.deps import get_engines
 
-        observed = get_engines(request).attested_engine_version(
+        observed = (await get_engines(request)).attested_engine_version(
             body.engine_id, body.target, body.template_override, backend=body.engine_backend
         )
         if observed is None or observed != engine_version:

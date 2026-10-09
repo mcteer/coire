@@ -42,6 +42,10 @@ from coire_node.native_probe import run_probe
 
 logger = logging.getLogger(__name__)
 _meter = otel_metrics.get_meter("coire.node.network")
+_collection_meter = otel_metrics.get_meter("coire.node.collection")
+_agent_cpu = _collection_meter.create_gauge("coire_node_agent_cpu_percent", unit="%")
+_agent_rss = _collection_meter.create_gauge("coire_node_agent_rss_bytes", unit="By")
+_collection_ok = _collection_meter.create_gauge("coire_node_collection_budget_ok", unit="1")
 _data_link_up = _meter.create_gauge("coire_data_link_up", description="Studio data-link IP state")
 _data_link_latency = _meter.create_histogram(
     "coire_data_link_latency_ms", unit="ms", description="Studio data-link connect latency"
@@ -371,6 +375,10 @@ class MetricsCollector:
         )
 
         elapsed = time.perf_counter() - started
+        attributes = {"node": self._name}
+        _agent_cpu.set(agent_cpu, attributes)
+        _agent_rss.set(agent_rss, attributes)
+        _collection_ok.set(int(status.collection_budget_ok), attributes)
         if elapsed > self._interval / 2:
             logger.warning(
                 "metrics collection took %.2fs against a %.1fs interval; "

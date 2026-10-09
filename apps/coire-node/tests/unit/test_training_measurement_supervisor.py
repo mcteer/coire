@@ -31,7 +31,7 @@ async def test_watchdog_journal_wait_keeps_request_loop_responsive(
     finished = threading.Event()
 
     class BusyJournal:
-        def records(self) -> list[dict[str, object]]:
+        def active_records(self) -> list[dict[str, object]]:
             entered.set()
             release.wait(timeout=1)
             finished.set()

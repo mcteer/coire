@@ -12,19 +12,25 @@ from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.trace.sampling import ALWAYS_OFF
 
 logger = logging.getLogger(__name__)
 
 
-def configure_node_telemetry(version: str, endpoint: str) -> None:
+def configure_node_telemetry(
+    version: str, endpoint: str, *, diagnostics_enabled: bool = True
+) -> None:
     resource = Resource.create(
         {"service.name": "coire-node", "service.version": version, "network.path": "control"}
     )
     try:
-        tracer_provider = TracerProvider(resource=resource)
-        tracer_provider.add_span_processor(
-            BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))
+        tracer_provider = TracerProvider(
+            resource=resource, sampler=None if diagnostics_enabled else ALWAYS_OFF
         )
+        if diagnostics_enabled:
+            tracer_provider.add_span_processor(
+                BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint, insecure=True))
+            )
         trace.set_tracer_provider(tracer_provider)
         reader = PeriodicExportingMetricReader(
             OTLPMetricExporter(endpoint=endpoint, insecure=True), export_interval_millis=15_000

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import subprocess
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -19,10 +21,14 @@ from coire_core.models import (
     ShardGroupStatus,
 )
 from coire_core.models.gateway import EngineChatRequest
+from coire_core.net import shared_http_ssl_context
 from coire_node.sharding import ShardGroupManager
 
 router = APIRouter(prefix="/node/shard-groups", tags=["sharding"])
-_proxy = httpx.AsyncClient(limits=httpx.Limits(max_connections=32, max_keepalive_connections=8))
+_proxy = httpx.AsyncClient(
+    limits=httpx.Limits(max_connections=32, max_keepalive_connections=8),
+    verify=shared_http_ssl_context(),
+)
 
 
 def manager(request: Request) -> ShardGroupManager:
@@ -45,9 +51,13 @@ async def prepare(command: ShardGroupCommand, request: Request) -> ShardGroupSta
 @router.post("/capabilities", response_model=ShardCapabilityResult)
 async def capability(body: ShardCapabilityRequest, request: Request) -> ShardCapabilityResult:
     try:
-        return manager(request).capability(body.slug, body.mode)
+        return await asyncio.to_thread(manager(request).capability, body.slug, body.mode)
     except (FileNotFoundError, json.JSONDecodeError) as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "verified model metadata missing") from exc
+    except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "shard inspection unavailable"
+        ) from exc
 
 
 @router.get("/{group_id}", response_model=ShardGroupStatus)

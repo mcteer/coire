@@ -32,9 +32,10 @@ from typing import TYPE_CHECKING, Annotated, Protocol
 
 import psutil
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from opentelemetry import metrics as otel_metrics
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from coire_core.errors import TrainingConflict
 from coire_core.models.acquisition import ReservationRequest, ReservationState
@@ -53,6 +54,7 @@ from coire_node.benchmarks import BenchmarkRunner
 from coire_node.docker_api import DockerAPI
 from coire_node.engines import EngineManager
 from coire_node.grants import Grants
+from coire_node.http_server import NodeHTTPServer
 from coire_node.image_dispatch import ImageNodeDispatcher
 from coire_node.image_jobs import ImageJobJournal
 from coire_node.image_runtime.supervisor import ImageProcessSupervisor, ImageProcessUnavailable
@@ -400,6 +402,67 @@ def resolve_egress_address() -> str | None:
         return None
 
 
+class _ListenerPathMiddleware:
+    """Enforce listener policy without per-request task groups or response buffering."""
+
+    def __init__(
+        self, app: ASGIApp, *, settings: Settings, listener: NodePath | NetworkPath
+    ) -> None:
+        self.app, self.settings, self.listener = app, settings, listener
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope)
+        if (
+            not self.settings.training_enabled
+            and request.method == "POST"
+            and (
+                request.url.path == "/node/training/adapters/extractions"
+                or (
+                    request.url.path.startswith("/node/training/measurements/")
+                    and request.url.path.rsplit("/", 1)[-1]
+                    in {"prepare", "inputs", "start", "lease", "begin"}
+                )
+            )
+        ):
+            # Authentication must run first; return the feature gate from the route dependency.
+            request.state.training_mutation_disabled = True
+        if self.listener is NetworkPath.DATA and not request.url.path.startswith(
+            ("/node/export/", "/training-artifacts/", "/training-components/", "/ready")
+        ):
+            forbidden_path_counter.add(
+                1, {"network_path": "data", "node": self.settings.node_name, "peer": "unknown"}
+            )
+        if self.listener is NodePath.FALLBACK:
+            marker = request.headers.get(FALLBACK_HEADER, "").lower()
+            if marker != FALLBACK_VALUE:
+                from fastapi.responses import JSONResponse
+
+                response = JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content={
+                        "detail": (
+                            "this is the egress listener; platform traffic belongs on the "
+                            "Thunderbolt mesh. Send X-Coire-Path: fallback to use it "
+                            "deliberately."
+                        )
+                    },
+                )
+                await response(scope, receive, send)
+                return
+            client = request.client.host if request.client else "unknown"
+            fallback_counter.add(1, {"node": self.settings.node_name})
+            logger.warning(
+                "serving %s on the EGRESS path for %s — ~30x slower than the mesh; "
+                "this should not be the steady state (FR-013c)",
+                request.url.path,
+                client,
+            )
+        await self.app(scope, receive, send)
+
+
 def create_app(
     settings: Settings,
     collector: SupportsLatest,
@@ -492,66 +555,34 @@ def create_app(
         elif listener is NetworkPath.DATA:
             app.include_router(data_router)
 
-    @app.middleware("http")
-    async def enforce_path(request: Request, call_next):  # type: ignore[no-untyped-def]
-        if (
-            not settings.training_enabled
-            and request.method == "POST"
-            and (
-                request.url.path == "/node/training/adapters/extractions"
-                or (
-                    request.url.path.startswith("/node/training/measurements/")
-                    and request.url.path.rsplit("/", 1)[-1]
-                    in {"prepare", "inputs", "start", "lease", "begin"}
-                )
-            )
-        ):
-            # Authentication must run first; return the feature gate from the route dependency.
-            request.state.training_mutation_disabled = True
-        if listener is NetworkPath.DATA and not request.url.path.startswith(
-            ("/node/export/", "/training-artifacts/", "/training-components/", "/ready")
-        ):
-            forbidden_path_counter.add(
-                1, {"network_path": "data", "node": settings.node_name, "peer": "unknown"}
-            )
-        if listener is NodePath.FALLBACK:
-            marker = request.headers.get(FALLBACK_HEADER, "").lower()
-            if marker != FALLBACK_VALUE:
-                from fastapi.responses import JSONResponse
-
-                return JSONResponse(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    content={
-                        "detail": (
-                            "this is the egress listener; platform traffic belongs on the "
-                            "Thunderbolt mesh. Send X-Coire-Path: fallback to use it "
-                            "deliberately."
-                        )
-                    },
-                )
-            client = request.client.host if request.client else "unknown"
-            fallback_counter.add(1, {"node": settings.node_name})
-            logger.warning(
-                "serving %s on the EGRESS path for %s — ~30x slower than the mesh; "
-                "this should not be the steady state (FR-013c)",
-                request.url.path,
-                client,
-            )
-        return await call_next(request)
+    app.add_middleware(_ListenerPathMiddleware, settings=settings, listener=listener)
 
     if listener is not NetworkPath.DATA:
+        health_key: tuple[datetime, float] | None = None
+        health_response: Response | None = None
 
         @app.get(
             "/node/health",
             response_model=NodeStatus | NodeStatusV2,
             dependencies=[Depends(require_node_token)],
         )
-        async def node_health() -> NodeStatus | NodeStatusV2:
+        async def node_health() -> Response:
+            nonlocal health_key, health_response
             legacy_path = listener if isinstance(listener, NodePath) else NodePath.MESH
             status_value = collector.latest(path=legacy_path)
+            key = (status_value.sampled_at, status_value.uptime_seconds)
+            if health_key == key and health_response is not None:
+                return health_response
+            wire_status: NodeStatus | NodeStatusV2 = status_value
             if listener is NetworkPath.CONTROL:
-                return NodeStatusV2.model_validate(
-                    status_value.model_dump(exclude={"path"})
+                wire_status = NodeStatusV2.model_validate(
+                    # Reuse already validated nested models instead of allocating and
+                    # re-parsing every historical engine/job manifest on each health poll.
+                    {
+                        name: getattr(status_value, name)
+                        for name in type(status_value).model_fields
+                        if name != "path"
+                    }
                     | {
                         "path": "control",
                         "run_images_configured": bool(
@@ -564,7 +595,11 @@ def create_app(
                         else None,
                     }
                 )
-            return status_value
+            # Encode each validated collector snapshot once. Authentication still runs
+            # for every request, and the original sample time/freshness remain visible.
+            health_response = Response(wire_status.model_dump_json(), media_type="application/json")
+            health_key = key
+            return health_response
 
         @app.get("/node/data-link", dependencies=[Depends(require_node_token)])
         async def data_link_status():  # type: ignore[no-untyped-def]
@@ -902,7 +937,7 @@ async def serve(
     servers: list[uvicorn.Server] = []
     if not settings.legacy_network_mode and control_addr:
         servers.append(
-            uvicorn.Server(
+            NodeHTTPServer(
                 uvicorn.Config(
                     create_app(
                         settings,
@@ -930,6 +965,7 @@ async def serve(
                     host=control_addr,
                     port=port,
                     access_log=False,
+                    ws="none",
                     log_level="info",
                 )
             )
@@ -937,7 +973,7 @@ async def serve(
         logger.info("control listener on %s:%d", control_addr, port)
         if data_addr:
             servers.append(
-                uvicorn.Server(
+                NodeHTTPServer(
                     uvicorn.Config(
                         create_app(
                             settings,
@@ -960,6 +996,7 @@ async def serve(
                         host=data_addr,
                         port=settings.node_data_listen_port,
                         access_log=False,
+                        ws="none",
                         log_level="info",
                     )
                 )
@@ -967,7 +1004,7 @@ async def serve(
             logger.info("data listener on %s:%d", data_addr, settings.node_data_listen_port)
     elif settings.legacy_network_mode and mesh_addr:
         servers.append(
-            uvicorn.Server(
+            NodeHTTPServer(
                 uvicorn.Config(
                     create_app(
                         settings,
@@ -985,6 +1022,7 @@ async def serve(
                     host=mesh_addr,
                     port=port,
                     access_log=False,
+                    ws="none",
                     log_level="info",
                 )
             )
@@ -1001,7 +1039,7 @@ async def serve(
 
     if settings.legacy_network_mode and egress_addr and egress_addr != mesh_addr:
         servers.append(
-            uvicorn.Server(
+            NodeHTTPServer(
                 uvicorn.Config(
                     create_app(
                         settings,
@@ -1019,6 +1057,7 @@ async def serve(
                     host=egress_addr,
                     port=port,
                     access_log=False,
+                    ws="none",
                     log_level="warning",
                 )
             )

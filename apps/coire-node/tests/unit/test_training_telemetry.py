@@ -100,3 +100,35 @@ print(json.dumps({'owned_root': root is not None,
         "job_id": "01M4A6FSASWNDAD6MNMJ35YMC7",
         "same_parent": True,
     }
+
+
+def test_node_baseline_keeps_metrics_without_creating_trace_exporter() -> None:
+    source = """
+import json
+from opentelemetry import trace
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from coire_node import otel, metrics
+reader = InMemoryMetricReader()
+def forbidden(**kwargs):
+    raise AssertionError('disabled diagnostics created a trace exporter')
+otel.OTLPSpanExporter = forbidden
+otel.OTLPMetricExporter = lambda **kwargs: object()
+otel.PeriodicExportingMetricReader = lambda *args, **kwargs: reader
+otel.configure_node_telemetry('test', 'http://coire-core.lab:4317', diagnostics_enabled=False)
+with trace.get_tracer('test').start_as_current_span('coire.node.test') as span:
+    assert not span.is_recording()
+metrics._collection_ok.set(0, {'node':'coire-edge-a'})
+data = reader.get_metrics_data()
+values = [(m.name, sum(p.value for p in m.data.data_points))
+          for r in data.resource_metrics for s in r.scope_metrics for m in s.metrics]
+print(json.dumps(values))
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", source],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=True,
+        env={**os.environ, "OTEL_SDK_DISABLED": "false"},
+    )
+    assert ["coire_node_collection_budget_ok", 0] in json.loads(completed.stdout)

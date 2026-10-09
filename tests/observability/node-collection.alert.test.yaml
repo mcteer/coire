@@ -1,0 +1,25 @@
+rule_files:
+  - /rules/coire-platform.yml
+evaluation_interval: 15s
+tests:
+  - interval: 15s
+    input_series:
+      - series: 'coire_node_collection_budget_ok{node="coire-edge-a"}'
+        values: '1 0 0 0 0 0 1 1'
+      - series: 'coire_node_collection_budget_ok{node="coire-edge-b"}'
+        values: '1 1 1 1 1 1 1 1'
+    alert_rule_test:
+      - eval_time: 45s
+        alertname: CoireNodeCollectionBudgetExceeded
+        exp_alerts: []
+      - eval_time: 75s
+        alertname: CoireNodeCollectionBudgetExceeded
+        exp_alerts:
+          - exp_labels: {severity: warning, subject: coire-edge-a, node: coire-edge-a}
+            exp_annotations:
+              summary: Node collection exceeds its CPU/RSS budget on coire-edge-a
+              runbook_url: /docs/runbooks/sharded-serving#node-collection-budget
+              dashboard: /d/coire-cluster
+      - eval_time: 105s
+        alertname: CoireNodeCollectionBudgetExceeded
+        exp_alerts: []

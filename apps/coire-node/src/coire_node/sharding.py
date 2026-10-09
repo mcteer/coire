@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from opentelemetry import trace
 
 from coire_core.models import (
     ShardCapabilityResult,
@@ -26,9 +27,11 @@ from coire_core.models import (
     ShardingMode,
 )
 from coire_core.settings import Settings
+from coire_node.native_probe import run_probe
 from coire_node.store import Store, write_atomic_json
 
 GROUPS_FILE = "shard-groups.json"
+tracer = trace.get_tracer("coire.node.sharding")
 
 
 def build_shard_argv(
@@ -73,6 +76,7 @@ class ShardGroupManager:
         self._model_paths: dict[uuid.UUID, str] = {}
         self._state_file = Path(settings.node_state_dir) / GROUPS_FILE
         self._lock = threading.RLock()
+        self._capability_lock = threading.Lock()
         self._adopt()
 
     def capability(self, slug: str, mode: ShardingMode) -> ShardCapabilityResult:
@@ -91,15 +95,25 @@ class ShardGroupManager:
         if os.environ.get("COIRE_TEST_FAKE_VALIDATION") == "1":
             supported = True
         else:
-            from mlx_lm import load
-
-            loaded = load(str(model_path), lazy=True)
-            model = loaded[0]
-            supported = (
-                hasattr(model, "shard")
-                if mode is ShardingMode.TENSOR_PARALLEL
-                else hasattr(getattr(model, "model", None), "pipeline")
-            )
+            with (
+                self._capability_lock,
+                tracer.start_as_current_span("coire.node.sharding.capability"),
+            ):
+                result = run_probe(
+                    [
+                        sys.executable,
+                        "-m",
+                        "coire_node.shard_capability_worker",
+                        str(model_path),
+                        mode.value,
+                    ],
+                    timeout=90,
+                )
+            if result.returncode != 0:
+                raise RuntimeError("Shard capability inspection did not complete")
+            if result.stdout not in (b"true\n", b"false\n"):
+                raise RuntimeError("Shard capability inspection returned invalid output")
+            supported = result.stdout == b"true\n"
         return ShardCapabilityResult(
             architecture=architecture,
             mode=mode,

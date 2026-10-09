@@ -53,6 +53,7 @@ from coire_core.models.engine import (
     ReconcileResult,
 )
 from coire_core.models.registry import EngineBackend
+from coire_core.net import shared_http_ssl_context
 from coire_core.settings import Settings
 from coire_node.footprint import cpu_percent, resident_bytes
 from coire_node.store import Store, write_atomic_json
@@ -690,7 +691,7 @@ class EngineManager:
         url = f"http://{self._address}:{engine.port}"
         started = time.monotonic()
 
-        with httpx.Client(timeout=10.0) as client:
+        with httpx.Client(timeout=10.0, verify=shared_http_ssl_context()) as client:
             while time.monotonic() < deadline:
                 with self._lock:
                     if not _still_starting(engine):
@@ -1044,12 +1045,15 @@ class EngineManager:
             known = {e.pid for e in self._engines.values() if e.pid}
         marker = str(self._store.root)
         orphans: list[EngineStatus] = []
-        for proc in psutil.process_iter(["pid", "cmdline", "create_time"]):
-            try:
-                cmdline = " ".join(proc.info.get("cmdline") or [])
-            except (psutil.Error, TypeError):
+        # Inspect every command line, but avoid as_dict()/oneshot metadata assembly
+        # for hundreds of unrelated processes on each reconciliation. Exact creation
+        # time is needed only after identifying an unowned engine candidate.
+        for proc in psutil.process_iter():
+            if proc.pid in known:
                 continue
-            if proc.info["pid"] in known:
+            try:
+                cmdline = " ".join(proc.cmdline())
+            except (psutil.Error, TypeError):
                 continue
             if not any(
                 marker in cmdline for marker in ("mlx_lm.server", "mlx_vlm.server", "fake_engine")
@@ -1059,6 +1063,10 @@ class EngineManager:
                 continue
             port = _port_from(cmdline)
             slug = _slug_from(cmdline, marker)
+            try:
+                created = proc.create_time()
+            except psutil.Error:
+                created = None
             engine = _Engine(
                 # Give the discovered process a stable control identity immediately. Core must
                 # send this same id back when an admin clears the orphan; inventing a different
@@ -1067,8 +1075,8 @@ class EngineManager:
                 slug=slug,
                 port=port,
                 estimate_bytes=0,
-                pid=proc.info["pid"],
-                create_time=proc.info.get("create_time"),
+                pid=proc.pid,
+                create_time=created,
                 state=EngineState.ORPHAN,
                 backend=(
                     EngineBackend.MLX_VLM if "mlx_vlm.server" in cmdline else EngineBackend.MLX_LM

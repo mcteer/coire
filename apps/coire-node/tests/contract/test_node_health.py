@@ -141,3 +141,33 @@ class TestContractShape:
     async def test_reports_measured_image_worker_footprint(self) -> None:
         body = (await call(NodePath.MESH, AUTH)).json()
         assert body["image_worker_resident_bytes"] == 64 * 1024 * 1024
+
+
+async def test_encoded_snapshot_still_authenticates_and_refreshes_budget_failure() -> None:
+    class Collector:
+        snapshot = StubCollector().latest()
+
+        def latest(self, *, path: NodePath = NodePath.MESH) -> NodeStatus:
+            return self.snapshot.model_copy(update={"path": path})
+
+    collector = Collector()
+    app = create_app(settings(), collector, listener=NetworkPath.CONTROL)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://node"
+    ) as client:
+        first = await client.get("/node/health", headers=AUTH)
+        assert first.status_code == 200
+        repeat = await client.get("/node/health", headers=AUTH)
+        assert repeat.content == first.content
+        assert (await client.get("/node/health")).status_code == 401
+        assert (
+            await client.get("/node/health", headers={"Authorization": "Bearer wrong"})
+        ).status_code == 401
+        # Monotonic uptime also invalidates the encoding if the wall clock stalls.
+        collector.snapshot = collector.snapshot.model_copy(
+            update={"uptime_seconds": 2.0, "agent_cpu_percent": 3.0, "collection_budget_ok": False}
+        )
+        refreshed = await client.get("/node/health", headers=AUTH)
+        assert refreshed.json()["collection_budget_ok"] is False
+        assert refreshed.json()["agent_cpu_percent"] == 3.0
+        assert refreshed.json()["sampled_at"] == first.json()["sampled_at"]

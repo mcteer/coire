@@ -11,7 +11,10 @@ Measured on this cluster: mesh 12.0-12.6 Gb/s at 0.85-1.37 ms; egress 0.4 Gb/s a
 from __future__ import annotations
 
 import logging
+import os
 import time
+from functools import lru_cache
+from ssl import SSLContext
 from types import TracebackType
 from typing import Any, Self
 
@@ -40,6 +43,26 @@ _tracer = trace.get_tracer("coire.net")
 MESH_SUFFIX = ".mesh"
 EGRESS_SUFFIX = ".local"
 DATA_SUFFIX = ".fabric"
+
+
+def shared_http_ssl_context(*, trust_env: bool = True) -> SSLContext:
+    """Reuse verified CA stores for clients owned by this service process.
+
+    HTTPX's default verification policy is unchanged. Its clients otherwise load
+    separate copies of the same CA store, including for plaintext local HTTP.
+    Configuration and trust-root changes take effect on service restart.
+    """
+    # With no environment CA override, both policies use HTTPX's identical
+    # default roots. Keep separate stores only when trust_env changes those roots.
+    environment_roots = trust_env and bool(
+        os.environ.get("SSL_CERT_FILE") or os.environ.get("SSL_CERT_DIR")
+    )
+    return _shared_http_ssl_context(environment_roots)
+
+
+@lru_cache(maxsize=2)
+def _shared_http_ssl_context(trust_env: bool) -> SSLContext:
+    return httpx.create_ssl_context(verify=True, trust_env=trust_env)
 
 
 def _host_with(host: str, suffix: str) -> str:
@@ -94,7 +117,9 @@ class MeshClient:
         client: httpx.AsyncClient | None = None,
         fallback: bool = True,
     ) -> None:
-        self._client = client or httpx.AsyncClient(timeout=timeout)
+        self._client = client or httpx.AsyncClient(
+            timeout=timeout, verify=shared_http_ssl_context()
+        )
         self._owns_client = client is None
         self._fallback = fallback
 
@@ -197,7 +222,9 @@ class _FixedPathClient:
     ) -> None:
         self._suffix = suffix
         self._path_name = path_name
-        self._client = client or httpx.AsyncClient(timeout=timeout)
+        self._client = client or httpx.AsyncClient(
+            timeout=timeout, verify=shared_http_ssl_context()
+        )
         self._owns_client = client is None
 
     async def __aenter__(self) -> Self:

@@ -22,6 +22,7 @@ from coire_core.models.engine import (
     ReconcileResult,
 )
 from coire_core.models.gateway import EngineChatRequest
+from coire_core.net import shared_http_ssl_context
 from coire_node.deps import EngineDep, StoreDep
 from coire_node.engines import BackendMismatch, BudgetExceeded, CopyMissing, NoFreePort
 
@@ -35,7 +36,8 @@ def _engine_client() -> httpx.AsyncClient:
     global _proxy_client
     if _proxy_client is None:
         _proxy_client = httpx.AsyncClient(
-            limits=httpx.Limits(max_connections=32, max_keepalive_connections=8)
+            limits=httpx.Limits(max_connections=32, max_keepalive_connections=8),
+            verify=shared_http_ssl_context(),
         )
     return _proxy_client
 

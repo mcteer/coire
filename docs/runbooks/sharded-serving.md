@@ -196,3 +196,50 @@ and deploy the previous application tag. Database migration `0008` is additive; 
 application rollback so link observations and benchmark history remain available. Disable RDMA or
 disconnect the Studio cable only after all groups report stopped. Single-node inference continues
 over the Wi-Fi control fabric.
+
+## Node collection budget
+
+The node health fields `agent_cpu_percent`, `agent_rss_bytes`, and
+`collection_budget_ok` measure the long-lived node process against its configured
+limits (defaults: 2% of one CPU core and 150 MiB RSS). Each validated health
+snapshot is encoded once and reused until the collector produces a new sample;
+every request still authenticates, and the original sample timestamp is retained.
+Training and measurement watchdogs use a transactional partial index to skip
+released history at their unchanged cadence. Unknown release state stays in the
+query; historical rows and retained disk holds remain present. Orphan discovery
+still scans every process command line and checks engine ownership, but reads
+creation metadata only for matching unowned engines. Listener policy uses direct
+ASGI checks with the same authentication, fallback marker, and training gates;
+the HTTP listeners do not load unused WebSocket protocols. Their housekeeping
+wakeups share absolute deadlines while retaining Uvicorn's 100-ms exit and
+request-limit checks. In-memory dependency getters stay on the event loop.
+Public wire-model re-exports load their original classes on demand, preserving
+class identity, static types and schemas while omitting unused service models.
+
+Owned HTTP clients share verified TLS CA stores without changing certificate or
+hostname verification; trust-root configuration changes require a service restart.
+The native runtime explicitly includes the pinned HTTPcore backend detector to
+avoid repeating missing imports on every request. The native service honors
+`DIAGNOSTICS_ENABLED`: with diagnostics disabled it does not create a trace
+exporter, while metrics and budget alerts remain enabled. The cluster dashboard
+shows these values; `CoireNodeCollectionBudgetExceeded` alerts after one minute of
+reported failure. Startup and inference qualification must record actual health
+samples; a successful capability response alone does not qualify this budget.
+
+Shard capability inspection runs in a serialized, short-lived bare MLX worker.
+It uses local model assets with Hub access disabled, a 45-second CPU limit,
+85-second worker deadline, 1-GiB worker RSS ceiling, and 90-second parent timeout.
+The parent closes inherited descriptors and kills/reaps a timed-out probe. Probe
+failure returns an authenticated 503, never a fabricated supported result. The
+control listener remains responsive while the worker runs. Worker resource use
+is additional to the node process budget and must be included in load testing.
+
+If node RSS grows after capability inspection, check the process's loaded
+libraries and confirm the installed wheel contains the isolated worker path.
+Drain workloads through the admin API before replacing the versioned environment;
+preserve the previous environment and restore its link on failed health checks.
+Do not increase collection limits, clear journals, or weaken admission to suppress
+an overrun. A protected launchd configuration change still requires operator
+administrator authentication.
+
+Measured follow-up qualification: [issue 93 evidence](node-collection-budget-evidence.md).
