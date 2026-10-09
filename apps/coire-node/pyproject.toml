@@ -9,6 +9,9 @@ dependencies = [
     "uvicorn>=0.34",
     "psutil>=6.1",
     "httpx>=0.28",
+    # MIT OR Apache-2.0. HTTPcore otherwise retries a missing optional backend
+    # detector import on every native HTTP request (the dev graph already includes it).
+    "sniffio==1.3.1",
     # HPND. Decode bounded owner image inputs in the node journal on Linux CI and Studios.
     "pillow==12.3.0",
     # Apache-2.0. Existing locked format reader validates checkpoint tensor headers

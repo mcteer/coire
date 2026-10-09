@@ -9,6 +9,8 @@ from urllib.parse import quote
 
 import httpx
 
+from coire_core.net import shared_http_ssl_context
+
 
 class DockerAPIError(RuntimeError):
     def __init__(self, status_code: int, operation: str, detail: str = "") -> None:
@@ -29,7 +31,7 @@ class DockerAPI:
     ) -> None:
         self._owned = client is None
         self._client = client or httpx.AsyncClient(
-            transport=httpx.AsyncHTTPTransport(uds=socket_path),
+            transport=httpx.AsyncHTTPTransport(uds=socket_path, verify=shared_http_ssl_context()),
             base_url="http://docker",
             timeout=httpx.Timeout(30.0, read=None),
         )

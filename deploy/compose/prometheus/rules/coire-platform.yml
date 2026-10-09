@@ -2,6 +2,11 @@ groups:
   - name: coire-platform
     interval: 15s
     rules:
+      - alert: CoireNodeCollectionBudgetExceeded
+        expr: coire_node_collection_budget_ok == 0
+        for: 1m
+        labels: {severity: warning, subject: "{{ $labels.node }}"}
+        annotations: {summary: "Node collection exceeds its CPU/RSS budget on {{ $labels.node }}", runbook_url: "/docs/runbooks/sharded-serving#node-collection-budget", dashboard: "/d/coire-cluster"}
       - alert: CoireNodeUnreachable
         expr: coire_node_health_verdict{verdict="unreachable"} == 1
         for: 30s

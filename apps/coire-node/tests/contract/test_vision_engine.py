@@ -250,24 +250,23 @@ def test_unowned_vision_process_is_reported_as_vision_orphan(
     _seed(agent, slug)
 
     class FakePsutilProcess:
-        def __init__(self) -> None:
-            self.info = {
-                "pid": 9999999,
-                "create_time": 1.0,
-                "cmdline": [
-                    "python",
-                    "-m",
-                    "mlx_vlm.server",
-                    "--model",
-                    str(agent.store.path_for(slug)),
-                    "--port",
-                    "9500",
-                ],
-            }
+        pid = 9999999
 
-    monkeypatch.setattr(
-        "coire_node.engines.psutil.process_iter", lambda _fields: [FakePsutilProcess()]
-    )
+        def create_time(self) -> float:
+            return 1.0
+
+        def cmdline(self) -> list[str]:
+            return [
+                "python",
+                "-m",
+                "mlx_vlm.server",
+                "--model",
+                str(agent.store.path_for(slug)),
+                "--port",
+                "9500",
+            ]
+
+    monkeypatch.setattr("coire_node.engines.psutil.process_iter", lambda: [FakePsutilProcess()])
     monkeypatch.setattr(agent.engines, "_sample", lambda _engine: None)
     monkeypatch.setattr("coire_node.engines._alive", lambda *args, **kwargs: alive)
     try:

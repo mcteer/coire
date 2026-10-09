@@ -63,3 +63,7 @@ Fresh unrestricted-session checks succeeded for Studio SSH, gateway, Docker, rel
 ## Publishing continuation
 
 The user authorized commit, push, PR creation and merge when CI is green. All 017 implementation/spec/evidence changes are to be published from `feat/017-evaluation-verbs`; no main commit, rebase, force-push or branch-protection bypass is authorized. The preceding uncommitted/no-PR statements describe the pre-publication snapshot. Merge must wait for green CI on the published head, including image and isolated engine gates.
+
+## Follow-up: node collection budget (2026-10-09 UTC)
+
+Feature 017 was published and merged in [PR 92](https://github.com/mcteer/coire/pull/92), with all 70 tasks complete. Its recorded CPU/RSS overrun is historical. [Issue 93](https://github.com/mcteer/coire/issues/93) now has an independently qualified native fix: both Studios ran `/opt/coire/envs/0.2.0-a68cf8319860`, diagnostics disabled, with unchanged 2% / 150 MiB limits. All 108 polls / 53 distinct steady-state snapshots per node passed; maxima were 1.5% CPU and 144.671875 MiB (A) / 146.296875 MiB (B). All 106 generation requests and six real capability probes succeeded, followed by authenticated drain and at least 171 seconds of passing idle collection. Startup transients are not qualified. See [complete follow-up evidence](../../docs/runbooks/node-collection-budget-evidence.md); raw evidence stays outside Git. The previous pre-publication and limitation statements describe the original 017 snapshot, not this follow-up.

@@ -34,7 +34,9 @@ async def _run() -> None:
     # (feature 000 research R6; spec FR-005). Anything already set by environment or a mounted
     # file wins, so containers and CI need no keychain.
     load_node_secrets(settings)
-    configure_node_telemetry(__version__, settings.otlp_endpoint)
+    configure_node_telemetry(
+        __version__, settings.otlp_endpoint, diagnostics_enabled=settings.diagnostics_enabled
+    )
     hostname = settings.node_name or _socket.gethostname().split(".")[0]
 
     collector = MetricsCollector(

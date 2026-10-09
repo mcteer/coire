@@ -66,6 +66,8 @@ class TrainingJournal:
             "CREATE TABLE IF NOT EXISTS events ("
             "attempt TEXT NOT NULL, sequence INTEGER NOT NULL, body TEXT NOT NULL,"
             "PRIMARY KEY(attempt,sequence));"
+            "CREATE INDEX IF NOT EXISTS attempts_unreleased ON attempts(id) "
+            "WHERE json_extract(body, '$.released') IS NOT 1;"
         )
 
     def close(self) -> None:
@@ -85,6 +87,20 @@ class TrainingJournal:
     def records(self) -> list[dict[str, Any]]:
         with self.lock:
             return [json.loads(row[0]) for row in self.db.execute("SELECT body FROM attempts")]
+
+    def active_records(self) -> list[dict[str, Any]]:
+        """Skip released history without decoding it on every watchdog tick.
+
+        The partial index follows transactional journal updates. Missing release proof
+        remains included; neither unknown owners nor retained disk holds disappear.
+        """
+        with self.lock:
+            return [
+                json.loads(row[0])
+                for row in self.db.execute(
+                    "SELECT body FROM attempts WHERE json_extract(body, '$.released') IS NOT 1"
+                )
+            ]
 
     def get(self, attempt_id: str) -> dict[str, Any]:
         with self.lock:

@@ -17,6 +17,7 @@ from opentelemetry import metrics, trace
 
 from coire_core.errors import TrainingConflict
 from coire_core.models.training_node import NodeTrainingLeaseSnapshot
+from coire_core.net import shared_http_ssl_context
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,11 @@ class TrainingLeaseSnapshotReader:
         self.snapshot: NodeTrainingLeaseSnapshot | None = None
         self.deadline = 0.0
         self.client = httpx.AsyncClient(
-            timeout=2.0, follow_redirects=False, trust_env=False, transport=transport
+            timeout=2.0,
+            follow_redirects=False,
+            trust_env=False,
+            transport=transport,
+            verify=shared_http_ssl_context(trust_env=False),
         )
         self.stop = asyncio.Event()
         self.task: asyncio.Task[None] | None = None

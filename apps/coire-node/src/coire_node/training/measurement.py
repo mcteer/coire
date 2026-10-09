@@ -615,7 +615,7 @@ class MeasurementSupervisor(TrainingSupervisor):
         import asyncio
 
         while True:
-            for value in await asyncio.to_thread(self.journal.records):
+            for value in await asyncio.to_thread(self.journal.active_records):
                 if value["released"]:
                     continue
                 probe = await asyncio.to_thread(self.probe, value["attempt_id"])

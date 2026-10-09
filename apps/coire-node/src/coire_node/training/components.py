@@ -36,7 +36,7 @@ from coire_core.models.training_node import (
     TrainingRankImportStatus,
     TrainingRankVerificationReceipt,
 )
-from coire_core.net import DataFabricClient
+from coire_core.net import DataFabricClient, shared_http_ssl_context
 from coire_node.reservations import ReservationLedger
 from coire_node.store import sha256_file, write_atomic
 from coire_node.training.artifacts import data_peer_addresses
@@ -325,7 +325,12 @@ class RankImporter:
             raise TrainingValidationError("Rank import journal is linked")
         journal_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.owned_client = (
-            httpx.AsyncClient(timeout=5, follow_redirects=False, trust_env=False)
+            httpx.AsyncClient(
+                timeout=5,
+                follow_redirects=False,
+                trust_env=False,
+                verify=shared_http_ssl_context(trust_env=False),
+            )
             if client is None
             else None
         )

@@ -1,7 +1,8 @@
 """FastAPI dependencies for the node agent.
 
 The agent's collaborators — store, jobs, engines, grants — are built once in `serve()` and
-attached to `app.state`. Routes reach them through these aliases so a test can build an app
+attached to `app.state`. These getters are async because a pure in-memory lookup
+must not dispatch a worker thread for every authenticated poll. Routes reach them through these aliases so a test can build an app
 with fakes without monkeypatching module globals.
 """
 
@@ -23,35 +24,35 @@ if TYPE_CHECKING:
     from coire_node.store import Store
 
 
-def get_settings(request: Request) -> Settings:
+async def get_settings(request: Request) -> Settings:
     return request.app.state.settings  # type: ignore[no-any-return]
 
 
-def get_store(request: Request) -> Store:
+async def get_store(request: Request) -> Store:
     return request.app.state.store  # type: ignore[no-any-return]
 
 
-def get_jobs(request: Request) -> JobSupervisor:
+async def get_jobs(request: Request) -> JobSupervisor:
     return request.app.state.jobs  # type: ignore[no-any-return]
 
 
-def get_grants(request: Request) -> Grants:
+async def get_grants(request: Request) -> Grants:
     return request.app.state.grants  # type: ignore[no-any-return]
 
 
-def get_engines(request: Request) -> EngineManager:
+async def get_engines(request: Request) -> EngineManager:
     return request.app.state.engines  # type: ignore[no-any-return]
 
 
-def get_image_workers(request: Request) -> ImageProcessSupervisor:
+async def get_image_workers(request: Request) -> ImageProcessSupervisor:
     return request.app.state.image_workers  # type: ignore[no-any-return]
 
 
-def get_image_dispatcher(request: Request) -> ImageNodeDispatcher:
+async def get_image_dispatcher(request: Request) -> ImageNodeDispatcher:
     return request.app.state.image_dispatcher  # type: ignore[no-any-return]
 
 
-def get_reservations(request: Request) -> ReservationLedger:
+async def get_reservations(request: Request) -> ReservationLedger:
     return request.app.state.reservations  # type: ignore[no-any-return]
 
 
