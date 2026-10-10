@@ -1,28 +1,28 @@
 # Execution Record — Preference Optimisation and Feedback Capture
 
 Branch: `feat/018-preference-optimisation`. Baseline: `d2e4bbf` (016/017/PR94 merged).
-Status: application/native implementation and all four exact shared profiles pass. T074 is complete. Required hosted native resource CI and final reconciliation remain open (T076/T077). Fresh cleanup and privacy/published-byte preservation pass.
+Status: implementation complete; all four exact shared profiles and required source gates pass at 9dd06b2. All 77 tasks complete. Final cleanup, privacy/published-byte preservation and document/PR reconciliation pass.
 
 ## Current release evidence
 
-The table records the current ownership-snapshot source checkpoint and explicitly identifies preceding full hosted evidence. T074 is complete; T076/T077 remain unchecked. Historical checkpoints and failed attempts remain recorded below.
+The table records passing production-source checkpoint 9dd06b2, hosted run 38043072721, plus the independently tested real-Studio deployment. The final follow-up changes documentation only. All 77 tasks are complete; historical checkpoints and failed attempts remain recorded below.
 
 | Gate | Result |
 | --- | --- |
 | CPU unit/contract suite | 3,122 passed; two existing optional skips |
-| Disposable integration suite | 12 affected cases pass on current source; preceding hosted f3cacd1: 516 passed / 40 existing optional skips; current full hosted suite pending |
+| Disposable integration suite | Current hosted: 519 passed / 40 existing optional skips; all 12 affected ownership/measurement cases also pass independently |
 | Static and generated contracts | Ruff, formatting (1,778 files), strict mypy (1,021 files), OpenAPI and dependency pins pass |
 | Web | 228 tests, TypeScript and lint pass |
 | Production images | All 16 ARM64 builds, policy checks, zero-CRITICAL scans and SPDX SBOMs pass |
 | Observability | 14 alert files plus feedback/training alert tests pass |
-| Exclusive native preference training/serving | All eight objective × parameterization × initialization cases pass |
+| Exclusive native preference training/serving | All eight deployed combinations pass; hosted full matrix 60 and resource cases four pass, zero skips |
 | Recovery, cancellation and checkpoints | Actual restart/resume, ancestor retirement, cancellation, corruption, lease expiry and keep-three evidence pass |
 | Feedback privacy and export | Actual captured feedback trains and serves; immediate withdrawal, physical purge and preservation of published data pass |
 | Prior-release rollback | Drained old binaries serve the verified base on the additive schema; tested node/runtime restoration passes |
 | Training/image exclusion | Valid image job remains queued without allocation while both native trainers run; cancellation passes |
 | Shared chat/training | All four exact profiles accepted; V70 dense ORPO passes both complete phases and exact overhead p95; T074 complete |
-| Hosted native resource CI | Four probes pass independently; hosted exact-command mismatch diagnosed and standalone interpreter selected; fresh required results pending |
-| Final reconciliation/PR | Four-profile reconciliation and final cleanup pass; current required hosted checks remain pending |
+| Hosted native resource CI | All four hosted DPO/ORPO × Q4/fp16 resource cases pass at 9dd06b2; zero skips; unchanged ownership/resource/stop assertions |
+| Final reconciliation/PR | All 77 tasks reconciled; exact scope, runbooks, architecture/roadmap and PR template complete; final follow-up is documentation only |
 
 Raw transcripts, datasets, credentials, native checkpoint data and image/SBOM receipts remain outside Git in the private acceptance directory. The entries below distinguish required acceptance from synthetic fixtures and historical checkpoints.
 
@@ -1214,3 +1214,21 @@ Hosted run 38041317589 failed all four native resource cases after isolated disk
 Run 38042722616 exposed the immediate ownership failure. The configured child command begins with `/Users/runner/work/coire/coire/.venv/bin/python`, while psutil observes `/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python`. Every remaining argument, process birth and process group matches. Framework Python's executable rewrite fails the existing exact-command check, yields unknown liveness and correctly refuses renewal. This is not successful resource evidence; no observation is accepted. Startup memory and thermal readings are safe in this case and the reported swap-out counter is unchanged.
 
 Only isolated resource CI jobs now set `UV_MANAGED_PYTHON=true`, requiring uv's standalone interpreter as in native node deployment. Production ownership, interpreter configuration and resource checks are unchanged. The framework failure does not establish that a larger runner is required; fresh standalone-hosted results will determine remaining capacity prerequisites. Local CLI validation confirms the supported managed-Python option.
+
+
+### Required hosted native resource gate passed — 2026-10-10 UTC
+
+Run [38043072721](https://github.com/mcteer/coire/actions/runs/38043072721), production-source checkpoint `9dd06b2`, passes all four required isolated probes on the standard macOS runner: dense DPO **36.66 s**, dense ORPO **41.06 s**, QLoRA DPO **32.26 s**, QLoRA ORPO **42.72 s**; each is **one passed, zero skipped**. Actual admission/peak ≤2.5 GiB, two updates/probes, DPO frozen-reference accounting, ORPO reference-free accounting, serialization, zero swap growth, safe thermal state and positive stopped proof remain asserted. No ownership normalization, fake headroom, guard relaxation or production-Studio CI was used. Standalone Python resolves the observed framework command rewrite. The earlier larger-runner request is no longer a prerequisite. Private logs: `github-resource-{dpo,orpo}-{q4,fp16}-9dd06b2.log`; marker: `required-hosted-native-resources-9dd06b2-passed`. Full hosted matrix/integration results remain pending.
+
+Hosted run 38043072721 also passes all **16** current ARM64 image build/policy/zero-CRITICAL/SPDX jobs and its CPU/web job: **3,120 passed / 77 skipped / 559 deselected** on Linux, plus **228 web tests**. The local non-engine CPU suite independently passes **3,122 / two optional skips / 632 deselected**; these platform/selection counts are separate. Native cases skipped by the Linux job remain required in their dedicated Mac jobs, including the four completed resource cases. Full hosted preference/evaluation matrices and integration are still running.
+
+The same hosted run passes the unchanged full Qwen preference matrix: **30 QLoRA cases in 310.80 s** and **30 dense bf16 cases in 464.06 s**, zero skips. Together with the four separate resource cases, all **64 required native preference cases** pass. The fixture helper's small fp16 derivative does not replace the full dense bf16 parity/runtime/restart gate. Private receipt: `github-preference-matrix-9dd06b2.log`.
+
+
+### Final release gate and implementation reconciliation — 2026-10-10 UTC
+
+Hosted run [38043072721](https://github.com/mcteer/coire/actions/runs/38043072721) is **success** at production-source checkpoint `9dd06b2`: full isolated integration **519 passed / 40 existing optional skips / 3,197 deselected**, **1,975.20 s**. The 40 optional categories retain existing live/manual/paid/evaluation opt-ins; they do not replace required native acceptance. All **64 required native preference cases** and **18 native evaluation cases** pass with zero skips, alongside text/image native gates, Linux CPU/web, lint, pins and all **16** ARM64 image build/policy/zero-CRITICAL/SPDX jobs. The credential-isolation check reports no HF variable outside acquisition node-a. Local CPU/static/generated/observability and the independently deployed native/privacy/recovery/rollback/coexistence evidence remain passing.
+
+A fresh post-CI read-only audit reconfirms all **80** owned measurements terminal, all **80 memory / 80 storage holds** released, both training flags false, original administrator/privacy owner active, owned actors inactive, capture off at generation **8**, and unchanged published dataset physical SHA-256. The final native process check after the last Studio test found zero serving/training workers on both Studios.
+
+All **77** tasks are complete. Spec/plan/tasks/handoff, architecture, roadmap, runbook and PR template now describe the final qualified scope. All four exact shared profiles remain accepted; historical failures and unmeasured configurations remain excluded. The final follow-up changes documentation only; passing source gates apply to unchanged implementation checkpoint `9dd06b2`, rather than claiming a not-yet-completed automatic documentation CI rerun. No merge or new training admission is performed. Private final receipts: `github-release-9dd06b2-final.json`, `github-integration-9dd06b2.log`, `final-post-ci-final_owned_holds_audit.json`, `final-post-ci-final_readonly_privacy_audit.json`, `final-native-processes-post-ci-race-test.json`.

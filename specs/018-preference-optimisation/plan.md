@@ -2,7 +2,7 @@
 
 **Branch**: `feat/018-preference-optimisation` | **Date**: 2026-10-08 | **Spec**: [spec.md](spec.md)
 **Baseline**: `d2e4bbf` (merged training 016, evaluation 017 and node budget PR 94).
-**Status**: Application/native implementation and exclusive/privacy/recovery/rollback gates pass. All four exact shared profiles pass (T074 complete); required hosted resource CI and final reconciliation remain pending (T076/T077). See [execution-record.md](execution-record.md).
+**Status**: Implementation complete. All four exact shared profiles and all required source gates pass at 9dd06b2; all 77 tasks complete. See [execution-record.md](execution-record.md).
 
 ## Summary
 

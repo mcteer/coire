@@ -214,10 +214,11 @@ limits.
 
 Required native resource CI uses repository variable
 `COIRE_NATIVE_MEASUREMENT_RUNNER`, defaulting to `macos-15`. Set it to the label of
-an isolated non-production Apple Silicon runner with sufficient memory, or an
-eligible organization-hosted Mac runner. The standard seven-GB hosted Macs have
-shown startup swap growth even with the acquired 135M fixture; that is a failed
-required gate. Larger hosted runners require organization/enterprise access.
+an isolated non-production Apple Silicon runner with sufficient memory if the
+default runner fails actual resource guards. All four 135M Q4/fp16 probes pass
+on the standard hosted Mac after isolated cache preparation and selection of
+standalone Python. Historical startup swap-growth failures remain failures;
+larger hosted runners require organization/enterprise access.
 
 The four objective/parameterization jobs retain actual admission, footprint,
 swap, thermal, reference, serialization, update and positive-stop assertions.

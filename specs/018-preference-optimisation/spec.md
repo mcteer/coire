@@ -8,7 +8,7 @@
 
 **Updated**: 2026-10-09
 
-**Status**: Implemented; four exact shared profiles qualified; required native resource CI and final release reconciliation pending (T076/T077)
+**Status**: Implemented; all four exact shared profiles and required source gates pass; final scope and evidence reconciled.
 
 **Input**: User description: "`preference` dataset type; `objective=dpo|orpo` jobs with `init_adapter` chaining from an SFT adapter and 2× base memory reservation; chat UI thumbs, regenerate-and-compare, and admin pairwise review queue writing feedback rows; admin export of feedback → preference dataset with filters; per-user feedback opt-out and disclosure."
 
@@ -188,4 +188,4 @@ An admin works through a queue of pairwise comparisons, adding judgements that o
 - Both Studios have 256 GB; actual admission uses observed available memory and exact supported profiles rather than this nominal capacity.
 - Text-only explicit comparisons are the training source. Thumbs on other completed assistant responses remain feedback-only. There is no passive conversation harvesting or conversion of implicit behavior into training preferences.
 - Withdrawal uses the user-confirmed historical-snapshot policy in FR-019. One clarification question was asked and answered; no product clarification remains unresolved. Engine selection, objective math and compatibility details are resolved in planning research.
-- Implementation was subsequently authorized with `$speckit-implement`. The application and native runtime are implemented; all four exact shared profiles pass, including Studio B dense ORPO with complete exact overhead evidence. Required hosted resource CI awaits fresh results after fixing its framework-interpreter command mismatch. See [execution-record.md](execution-record.md) for current measured evidence.
+- Implementation was subsequently authorized with `$speckit-implement`. The application and native runtime are implemented; all four exact shared profiles pass, including Studio B dense ORPO with complete exact overhead evidence. All four required hosted native resource cases pass after fixing the isolated jobs’ framework-interpreter command mismatch; all required source gates pass at 9dd06b2 and final reconciliation is complete. See [execution-record.md](execution-record.md) for current measured evidence.
