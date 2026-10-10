@@ -44,16 +44,23 @@ def preflight_training_action(
     return owner
 
 
-async def authorize_live_training_action(session: AsyncSession, principal: Principal) -> uuid.UUID:
-    """Take current identity locks before any delayed execution or publication effect."""
+async def authorize_live_training_action(
+    session: AsyncSession, principal: Principal, *, shared: bool = False
+) -> uuid.UUID:
+    """Block privilege mutation through the transaction; exclusive by default.
+
+    Readonly guards may share barriers with each other. They must not upgrade or
+    modify identity rows; every privilege mutation still conflicts with FOR SHARE.
+    """
     with tracer.start_as_current_span("coire.api.training.authorize"):
         owner = preflight_training_action(principal, method="GET", origin=None, browser_origin="")
-        user = await session.get(UserRow, owner, populate_existing=True, with_for_update=True)
+        lock: bool | dict[str, bool] = {"read": True} if shared else True
+        user = await session.get(UserRow, owner, populate_existing=True, with_for_update=lock)
         if user is None or not user.active or user.role is not UserRole.ADMIN:
             raise TrainingForbidden()
         if principal.kind is PrincipalKind.API_KEY:
             key = await session.get(
-                ApiKeyRow, principal.api_key_id, populate_existing=True, with_for_update=True
+                ApiKeyRow, principal.api_key_id, populate_existing=True, with_for_update=lock
             )
             if (
                 key is None

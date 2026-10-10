@@ -57,13 +57,14 @@ async def test_prefix_collision_verifies_all_hashes_not_prefix_alone() -> None:
     entitlements.all.return_value = ["explicit"]
     session = AsyncMock()
     session.scalars.side_effect = [result_rows, entitlements]
-    session.get.return_value = UserRow(
+    user = UserRow(
         id=user_id,
         email="user@example.test",
         display_name="User",
         role=UserRole.USER,
         active=True,
     )
+    session.get.side_effect = [right, user]
 
     principal = await authenticate_key(session, f"coire_{prefix}_{secret}")
 
@@ -90,8 +91,6 @@ async def test_rotation_version_and_user_state_are_rechecked() -> None:
     key_id = uuid.uuid4()
     user_id = uuid.uuid4()
     principal = Mock(api_key_id=key_id, user_id=user_id, credential_version=1)
-    key = Mock(revoked_at=None, credential_version=2)
-    user = Mock(active=True)
     session = AsyncMock()
-    session.get.side_effect = [key, user]
+    session.scalar.return_value = None
     assert not await key_is_active(session, principal)

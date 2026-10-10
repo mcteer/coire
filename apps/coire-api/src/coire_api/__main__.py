@@ -15,6 +15,7 @@ def main() -> None:
         proxy_headers=True,
         forwarded_allow_ips="*",
         access_log=False,
+        loop="uvloop",
     )
 
 

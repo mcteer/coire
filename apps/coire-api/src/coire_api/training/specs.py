@@ -176,7 +176,11 @@ def parse_submission(
     intent = spec.model_dump(mode="json", exclude_unset=True)
     intent["schema_version"] = spec.schema_version
     intent_bytes = json.dumps(
-        intent, sort_keys=True, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+        ["coire-preference-intent-v1", intent] if spec.schema_version == 3 else intent,
+        sort_keys=True,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
     ).encode()
     return ParsedTrainingSubmission(
         source_yaml=submission.source_yaml,
@@ -195,9 +199,12 @@ def training_config_digest(spec: TrainingSpecDocument) -> str:
         # configuration identity used by existing held-out loss/resource profiles.
         value["schema_version"] = 1
         value["eval"].pop("suites")
+    if spec.schema_version == 3:
+        value["eval"].pop("suites")
+    identity: object = ["coire-preference-profile-v1", value] if spec.schema_version == 3 else value
     return hashlib.sha256(
         json.dumps(
-            value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+            identity, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
         ).encode()
     ).hexdigest()
 
@@ -214,11 +221,14 @@ def training_recipes() -> TrainingRecipePage:
         ("qlora", "qlora"),
         ("dora", "dora"),
         ("evaluated", "lora"),
+        ("dpo", "lora"),
+        ("orpo", "lora"),
     ):
         bindings = ["model_id", "variant_id", "dataset_id", "adapter_slug"]
         if asset == "evaluated":
             bindings.extend(["task_suite_id", "judge_suite_id"])
-        path = root / f"sft-{asset}.yaml"
+        recipe_id = asset if asset in {"dpo", "orpo"} else f"sft-{asset}"
+        path = root / f"{recipe_id}.yaml"
         try:
             with path.open("rb") as stream:
                 data = stream.read(65537)
@@ -246,7 +256,7 @@ def training_recipes() -> TrainingRecipePage:
         items.append(
             TrainingRecipe.model_validate(
                 {
-                    "id": f"sft-{asset}",
+                    "id": recipe_id,
                     "version": 1,
                     "parameterization": kind,
                     "template_yaml": source,
@@ -265,6 +275,8 @@ async def resolve_submission(
     principal: Principal | None = None,
 ) -> TrainingValidation:
     """Resolve only registry inputs and recorded, strict, current measured evidence."""
+    import uuid
+
     from sqlalchemy import select
 
     from coire_api.db import (
@@ -279,23 +291,45 @@ async def resolve_submission(
         VariantCopyRow,
     )
     from coire_api.training.mixtures import compile_mixture
+    from coire_api.training.preference_specs import (
+        objective_split,
+        objective_split_digest,
+        require_dataset_objective,
+        resolve_initial_target,
+    )
     from coire_api.training.service import payload_digest, recheck_training_inputs
     from coire_core.errors import TrainingConflict, TrainingNotFound
     from coire_core.models.acquisition import VariantState
     from coire_core.models.datasets import DatasetAnalysis, DatasetAnalysisBinding, SplitManifest
+    from coire_core.models.preference import PreferenceSplitManifest
     from coire_core.models.registry import ModelState
     from coire_core.models.training import (
+        PreferenceMemoryEvidence,
         ResolvedDatasetInput,
         ResolvedTrainingSpec,
         ResolvedTrainingSpecDocument,
         ResolvedTrainingSpecV2,
+        ResolvedTrainingSpecV3,
         TrainingMeasurementResult,
         TrainingSpecV2,
+        TrainingSpecV3,
         TrainingValidation,
     )
+    from coire_core.preference_data import compile_preference_mixture
 
     parsed = parse_submission(submission, settings=settings)
     spec = parsed.spec
+    if (
+        isinstance(spec, TrainingSpecV3)
+        and not (settings or get_settings()).preference_training_enabled
+    ):
+        from coire_core.errors import TrainingUnavailable
+
+        raise TrainingUnavailable("Preference training is disabled")
+    if isinstance(spec, TrainingSpecV3):
+        from coire_api.training.preference_specs import require_preference_capabilities
+
+        await require_preference_capabilities(settings or get_settings())
     model = await session.get(
         ModelRow, spec.model.model_id, populate_existing=True, with_for_update=True
     )
@@ -328,9 +362,14 @@ async def resolve_submission(
     base = digests["coire-edge-a"]
     if not isinstance(base, str) or re.fullmatch(r"[a-f0-9]{64}", base) is None:
         raise TrainingConflict("Training base has no immutable manifest identity")
+    initial = (
+        await resolve_initial_target(session, spec, base)
+        if isinstance(spec, TrainingSpecV3)
+        else None
+    )
     declarations: list[ResolvedTrainingSuite] = []
     evaluation_base: EvaluationTarget | None = None
-    if isinstance(spec, TrainingSpecV2):
+    if isinstance(spec, TrainingSpecV2) or (isinstance(spec, TrainingSpecV3) and spec.eval.suites):
         from coire_api.evaluation.training import resolve_declarations
         from coire_core.errors import TrainingForbidden
 
@@ -345,7 +384,7 @@ async def resolve_submission(
         )
     inputs = []
     results = []
-    splits = {}
+    splits: dict[uuid.UUID, SplitManifest | PreferenceSplitManifest] = {}
     required = {item.dataset_id for item in spec.data.train.datasets} | set(
         spec.data.validation.dataset_ids
     )
@@ -364,14 +403,15 @@ async def resolve_submission(
             return TrainingValidation(
                 spec=spec, intent_sha256=parsed.intent_sha256, reasons=["analysis_pending"]
             )
+        require_dataset_objective(spec, source.format)
         expected_loss = "all_tokens" if source.format == "text" else "final_assistant"
         if spec.data.loss_policy != expected_loss:
             raise TrainingValidationError(
                 "data.loss_policy must match the registered dataset supervision mode"
             )
-        split = SplitManifest.model_validate(source.split_manifest)
+        split = objective_split(spec, source.split_manifest)
         if (
-            payload_digest(split) != source.split_sha256
+            objective_split_digest(split) != source.split_sha256
             or split.source_sha256 != source.source_sha256
         ):
             raise TrainingConflict("Dataset split identity changed")
@@ -424,6 +464,7 @@ async def resolve_submission(
                 or candidate.state != "succeeded"
             ):
                 raise TrainingConflict("Dataset analysis result identity changed")
+            candidate.validate_binding(expected)
             chosen = candidate
             break
         if chosen is None:
@@ -442,11 +483,24 @@ async def resolve_submission(
                 }
             )
         )
-    compile_mixture(
-        spec.data.train,
-        splits,
-        validation_manifests=[splits[identity] for identity in spec.data.validation.dataset_ids],
-    )
+    if isinstance(spec, TrainingSpecV3):
+        paired = {
+            key: value
+            for key, value in splits.items()
+            if isinstance(value, PreferenceSplitManifest)
+        }
+        compile_preference_mixture(
+            spec.data.train,
+            paired,
+            validation_manifests=[paired[key] for key in spec.data.validation.dataset_ids],
+        )
+    else:
+        sft = {key: value for key, value in splits.items() if isinstance(value, SplitManifest)}
+        compile_mixture(
+            spec.data.train,
+            sft,
+            validation_manifests=[sft[key] for key in spec.data.validation.dataset_ids],
+        )
     if (
         len(
             {(item.tokenizer_sha256, item.template_sha256, item.runtime_sha256) for item in results}
@@ -495,6 +549,17 @@ async def resolve_submission(
             or evidence.template_sha256 != identity_result.template_sha256
             or evidence.runtime_sha256 != identity_result.runtime_sha256
         ):
+            continue
+        if isinstance(spec, TrainingSpecV3):
+            if not isinstance(evidence, PreferenceMemoryEvidence) or (
+                evidence.initial_target != initial
+                or evidence.reference_target != (initial if spec.objective == "dpo" else None)
+                or evidence.objective != spec.objective
+                or evidence.objective_options != spec.objective_options
+                or evidence.datasets != inputs
+            ):
+                continue
+        elif isinstance(evidence, PreferenceMemoryEvidence):
             continue
         if (
             spec.placement.mode == "data_parallel"
@@ -561,7 +626,17 @@ async def resolve_submission(
             "resource_envelope": evidence.resource_envelope,
         }
         resolved: ResolvedTrainingSpecDocument
-        if isinstance(spec, TrainingSpecV2):
+        if isinstance(spec, TrainingSpecV3):
+            resolved = ResolvedTrainingSpecV3.model_validate(
+                {
+                    **payload,
+                    "initial_target": initial,
+                    "reference_target": initial if spec.objective == "dpo" else None,
+                    "evaluations": declarations,
+                    "evaluation_base": evaluation_base,
+                }
+            )
+        elif isinstance(spec, TrainingSpecV2):
             resolved = ResolvedTrainingSpecV2.model_validate(
                 {**payload, "evaluations": declarations, "evaluation_base": evaluation_base}
             )

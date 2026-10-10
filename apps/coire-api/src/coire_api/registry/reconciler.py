@@ -769,6 +769,11 @@ class RegistryReconciler:
             row.resident_delta_bytes = status.resident_delta_bytes
             row.cpu_percent = status.cpu_percent
             row.chat_template_sha256 = status.chat_template_sha256
+            row.rendering_identity = (
+                status.rendering_identity.model_dump(mode="json")
+                if status.rendering_identity
+                else None
+            )
             row.load_seconds = status.load_seconds
             row.last_health_at = status.last_health_at
             if status.state in TERMINAL_ENGINE_STATES:

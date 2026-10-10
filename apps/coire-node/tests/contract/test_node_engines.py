@@ -15,6 +15,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 import httpx
 import psutil
@@ -135,6 +136,19 @@ def engine_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     seed(agent)
     yield agent
     agent.close()
+
+
+def test_command_override_cannot_claim_bare_rendering_provenance(
+    engine_agent: Agent,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_node import rendering_identity
+
+    inspect = Mock(return_value=None)
+    monkeypatch.setattr(rendering_identity, "inspect_rendering_identity", inspect)
+    _, status = engine_agent.engines.start(engine_id=uuid.uuid4(), slug=SLUG, estimate_bytes=1024)
+    assert status.rendering_identity is None
+    inspect.assert_not_called()
 
 
 def wait_state(agent: Agent, engine_id: uuid.UUID, *states: EngineState, timeout: float = 30.0):  # type: ignore[no-untyped-def]

@@ -7,9 +7,10 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from opentelemetry import trace
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import ANONYMOUS, Principal, PrincipalKind
@@ -258,6 +259,8 @@ async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyP
     from coire_api.gateway import execution
 
     recorded: list[tuple[str, float, dict[str, str]]] = []
+    span = Mock()
+    monkeypatch.setattr(trace, "get_current_span", lambda: span)
     monkeypatch.setattr(
         execution,
         "first_token_duration_ms",
@@ -291,6 +294,7 @@ async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyP
     assert [item[0] for item in recorded] == ["first", "overhead"]
     assert recorded[0][1] == 250
     assert recorded[1][1] == pytest.approx(50)
+    span.set_attribute.assert_called_once_with("coire.gateway.overhead_ms", pytest.approx(50))
     assert all(item[2] == {"protocol": "openai", "node": "coire-edge-b"} for item in recorded)
 
 
@@ -361,3 +365,51 @@ async def test_cold_stream_close_cancels_pending_load(
     assert await anext(source) == b": coire model loading\n\n"
     await cast(AsyncGenerator[bytes], source).aclose()
     assert cancelled.is_set()
+
+
+def test_native_text_can_freeze_plain_template_mode() -> None:
+    payload = canonical_text_payload(
+        [ChatMessage(role="user", content="hello")],
+        "/owned/model",
+        output_tokens=32,
+        enable_thinking=False,
+    )
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_native_sampling_is_forwarded_without_changing_legacy_defaults() -> None:
+    from coire_core.models.chat import NativeChatSampling
+
+    messages = [ChatMessage(role="user", content="hello")]
+    legacy = canonical_text_payload(messages, "/owned/model", output_tokens=32)
+    assert "temperature" not in legacy and "seed" not in legacy
+    sampled = canonical_text_payload(
+        messages,
+        "/owned/model",
+        output_tokens=32,
+        sampling=NativeChatSampling(temperature=0.7, top_p=0.95, seed=42),
+    )
+    assert sampled["temperature"] == 0.7 and sampled["top_p"] == 0.95
+    assert sampled["seed"] == 42 and sampled["max_tokens"] == 32
+
+
+def test_native_sampling_and_rendering_payload_crosses_strict_node_contract() -> None:
+    from pydantic import ValidationError
+
+    from coire_api.gateway.execution import canonical_text_payload
+    from coire_core.models.chat import NativeChatSampling
+    from coire_core.models.gateway import ChatMessage, EngineChatRequest
+
+    payload = canonical_text_payload(
+        [ChatMessage(role="user", content="hello")],
+        "/registry/tiny",
+        output_tokens=8,
+        enable_thinking=False,
+        sampling=NativeChatSampling(temperature=1.1, seed=77),
+    )
+    parsed = EngineChatRequest.model_validate(payload)
+    assert parsed.model_dump(mode="json", exclude_none=True) == payload
+    with pytest.raises(ValidationError):
+        EngineChatRequest.model_validate(
+            {**payload, "chat_template_kwargs": {"template": "caller supplied"}}
+        )

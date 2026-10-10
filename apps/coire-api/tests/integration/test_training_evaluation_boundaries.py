@@ -37,9 +37,9 @@ CHECKPOINT = json.loads(
 
 
 async def boundary(
-    session: AsyncSession, *, world_size: int = 1
+    session: AsyncSession, *, world_size: int = 1, version: int = 2
 ) -> tuple[TrainingJobRow, TrainingCheckpointRow]:
-    job_id, _ = await seed_evaluated_training(session, state="running")
+    job_id, _ = await seed_evaluated_training(session, state="running", version=version)
     job = await session.get(TrainingJobRow, job_id, with_for_update=True)
     assert job is not None
     checkpoint = await session.get(TrainingCheckpointRow, job.latest_checkpoint_id)
@@ -304,8 +304,9 @@ async def test_checkpoint_candidate_placement_requires_live_exact_ownership(
         await database.dispose()
 
 
+@pytest.mark.parametrize("version", [2, 3])
 async def test_boundary_obligation_pause_and_pin_replay_under_disabled_admission(
-    training_postgres_url: str, monkeypatch: pytest.MonkeyPatch
+    training_postgres_url: str, monkeypatch: pytest.MonkeyPatch, version: int
 ) -> None:
     from coire_api.evaluation.training import ensure_checkpoint_trigger
     from coire_core.errors import TrainingConflict
@@ -316,7 +317,7 @@ async def test_boundary_obligation_pause_and_pin_replay_under_disabled_admission
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(engine, expire_on_commit=False) as session:
-            job, checkpoint = await boundary(session)
+            job, checkpoint = await boundary(session, version=version)
             first = await ensure_checkpoint_trigger(
                 session, job, checkpoint, settings=Settings(evaluations_enabled=False)
             )
@@ -489,11 +490,14 @@ async def test_operator_pause_overrides_evaluation_ownership_without_resuming(
         await engine.dispose()
 
 
+@pytest.mark.parametrize("version", [2, 3])
 async def test_durable_checkpoint_acknowledgment_carries_atomic_pause_and_replays(
     training_postgres_url: str,
+    version: int,
 ) -> None:
     from coire_core.models.training_node import (
         CheckpointCommitAcknowledgementV2,
+        CheckpointCommitAcknowledgementV3,
         parse_checkpoint_acknowledgement,
     )
     from coire_scheduler.training import enqueue_checkpoint_acknowledgements
@@ -504,7 +508,7 @@ async def test_durable_checkpoint_acknowledgment_carries_atomic_pause_and_replay
             await conn.run_sync(Base.metadata.drop_all)
             await conn.run_sync(Base.metadata.create_all)
         async with AsyncSession(engine, expire_on_commit=False) as session:
-            job, checkpoint = await boundary(session)
+            job, checkpoint = await boundary(session, version=version)
             first = await enqueue_checkpoint_acknowledgements(session, checkpoint.id)
             await session.commit()
             trigger = (await session.scalars(select(TrainingEvaluationTriggerRow))).one()
@@ -512,7 +516,12 @@ async def test_durable_checkpoint_acknowledgment_carries_atomic_pause_and_replay
             assert len(first) == 1
             command = first[0]
             ack = parse_checkpoint_acknowledgement(command.payload)
-            assert isinstance(ack, CheckpointCommitAcknowledgementV2)
+            assert isinstance(
+                ack,
+                CheckpointCommitAcknowledgementV2
+                if version == 2
+                else CheckpointCommitAcknowledgementV3,
+            )
             assert (
                 ack.evaluation_pause is not None and ack.evaluation_pause.trigger_id == trigger.id
             )

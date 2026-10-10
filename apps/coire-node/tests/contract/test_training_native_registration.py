@@ -416,3 +416,36 @@ def test_measurement_health_memory_is_disjoint_and_duplicate_ownership_fails() -
     measurements.statuses = training.statuses
     with pytest.raises(RuntimeError, match="conflicting"):
         collector._training_statuses()
+
+
+@pytest.mark.parametrize("history", [20, 120])
+def test_disk_accounting_scales_with_fresh_files_and_preserves_historical_envelopes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, history: int
+) -> None:
+    root = tmp_path / "training"
+    attempts = root / "attempts"
+    rows = []
+    for i in range(history):
+        directory = attempts / str(i)
+        directory.mkdir(parents=True)
+        (directory / "bytes").write_bytes(b"abc")
+        rows.append({"attempt_id": str(i), "disk_bytes": 64 if i % 2 else 0})
+    (root / "unowned").write_bytes(b"x" * 20)
+    budget = TrainingDiskBudget(root, threading.RLock(), 100_000)
+    journal: Any = SimpleNamespace(root=attempts, records=lambda: rows)
+    budget.journals.append(journal)
+    checks = 0
+    original = Path.is_relative_to
+
+    def counted(path: Path, other: Path) -> bool:
+        nonlocal checks
+        checks += 1
+        return original(path, other)
+
+    monkeypatch.setattr(Path, "is_relative_to", counted)
+    expected = history // 2 * (64 + 3) + 20
+    assert budget.committed_bytes() == expected
+    # Historical ownership must not rescan every file for every retained attempt.
+    assert checks <= 2 * (history + 1)
+    (attempts / "0" / "bytes").write_bytes(b"y" * 93)
+    assert budget.committed_bytes() == expected + 90

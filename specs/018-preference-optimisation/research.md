@@ -1,0 +1,63 @@
+# Research: Preference Optimisation and Feedback Capture
+
+**Date**: 2026-10-08 | **Baseline**: `d2e4bbf` | **Status**: Design research only; no implementation or workload qualification.
+
+## R1 — Trainer integration and dependency choice
+
+**Decision**: Implement small Coire objective adapters over the existing pinned bare MLX trainer. Keep MLX 0.32.2 / mlx-lm 0.31.3 and use their public loss, iterator and callback hooks. No new native dependency or upstream-loop fork. The API separately adds pinned uvloop 0.22.1 (MIT / Apache-2.0); see ADR-0014 and the execution record.
+**Rationale**: `uv.lock`, node `training/objectives.py`, `training/loss.py` and `training/worker.py` already establish this boundary. The [pinned trainer source](https://raw.githubusercontent.com/ml-explore/mlx-lm/v0.31.3/mlx_lm/tuner/trainer.py) accepts custom `loss` and `iterate_batches` in train/evaluate. Its loss returns `(scalar, count)`, evaluation weights by count, and callbacks expose aggregate counters rather than arbitrary objective metrics. That permits DPO/ORPO while retaining the shipped checkpoint/guard owner.
+**Alternatives**: The roadmap mentions [mlx-lm-lora](https://github.com/Goekdeniz-Guelmez/mlx-lm-lora); adding its broader training stack would introduce a dependency and a second lifecycle to qualify. Record choosing the in-house loss-adapter option in ADR-0014. Do not assume its CLI provides Coire's fenced full-state restart contract.
+
+## R2 — Objective math, masks and metrics
+
+**Decision**: DPO uses response-token log-probability sums and a frozen initial-policy reference. ORPO uses response-token means and no reference. FP32 logits/reductions, response-only shifted masks, terminal response tokens included, padding/prompt excluded. Reject zero-token/overlength examples without truncation. Objective equations and numerical conventions are normative in [contracts/preference-training.md](contracts/preference-training.md).
+**Rationale**: The [DPO paper](https://arxiv.org/abs/2305.18290) and [authors' implementation](https://github.com/eric-mitchell/direct-preference-optimization/blob/main/trainers.py) specify a reference-relative pair preference loss. The [ORPO paper, equations 3–7](https://arxiv.org/html/2403.07691v2) uses a reference-free odds-ratio term alongside chosen-answer NLL. The original 018 claim that both always need a frozen reference was wrong and has been replaced.
+**Alternatives**: No DPO variants, label smoothing, reward model, reference-logprob cache or reference-free DPO. No shared-reference memory savings until separately measured. Emit pair count to the upstream aggregation; count actual response tokens separately so throughput never mislabels pairs as tokens. A bounded post-update eval-mode probe provides accuracy/margin outside compiled loss, preserving RNG, sampler and model mode; it is not labelled pre-update training loss.
+
+## R3 — Initialization, recovery and serving
+
+**Decision**: Match exact acquired base variant and complete adapter configuration/tensor identity. Fresh policy loads the initial adapter; a resumed policy restores full state. Build DPO reference from immutable initial artifacts and preserve policy RNG across loading; never derive it from resumed policy. Output stores complete final trainable tensors and independent ancestry metadata.
+**Rationale**: `training/objectives.py` limits architectures to `llama`/`qwen2`, target modules/tokenizers, dense LoRA and acquired affine 4-bit/group-64 QLoRA. `load_sft_runtime` seeds MLX, so reference construction can otherwise alter policy randomness. `training/checkpoints.py`, `worker.py`, `extraction.py` and API `training/adapters.py` already own full-state commit/extraction. Pin base/initial artifacts through terminal cleanup, including paused jobs; parent retirement cannot invalidate an active job or a final independent adapter.
+**Alternatives**: No adapter fusion, incompatible tensor loading, weights-only resume or inherited verification. Preference DoRA/distributed placement remain explicit refusals. Require both objectives × both parameterizations × bare/parent tiny-model evidence; real qualification covers each advertised objective/parameterization and at least one chained start per combination.
+
+## R4 — Versioning and feature 017 integration
+
+**Decision**: Add separate `TrainingSpecV3`, resolved preference documents, preference split/analysis/batch/metric/checkpoint contracts and a v3 checkpoint acknowledgement. Freeze v1/v2 serialization and hashes. Optional v3 suites reuse existing task/judge obligations; the comparator remains bare base versus result, with parent lineage displayed separately.
+**Rationale**: `models/training.py` hardcodes SFT in v1/v2, and `TrainingMeasurementRequest` currently accepts only v1. API `training/specs.py` deliberately normalizes v2 into the v1 measurement namespace: v3 MUST use a distinct key. Node `agent.py`/`models/training_node.py` advertise 1/2 only; `training/measurement.py`/`worker.py` dispatch directly to SFT. Node `supervisor.py` checks acknowledgement version against recipe version. API `evaluation/{training,authorization,inputs}.py` and scheduler `training.py` have concrete v2 type guards. All require explicit version-aware tasks.
+**Alternatives**: Do not widen old literals, append default fields to old resolved documents, or merely register a new objective while leaving preparation/measurement on SFT paths. Include preference implementation version in v3 runtime/profile identity; leave old fingerprints unchanged.
+
+## R5 — Explicit comparisons and exact chat provenance
+
+**Decision**: New comparison operation plus active-answer mapping; persist prospective exact input/target provenance only for opted-in eligible local text turns. Old turns without exact provenance remain readable/thumbable but comparison-ineligible. Compare the latest completed answer against the same prompt/target and render both; only the owner's selection changes subsequent context.
+**Rationale**: `chat/turns.py` retries only failed/stopped/interrupted latest responses and assembles context from the newest assistant per input. Reusing that path would select an unchosen candidate. Full admission history is transient today. `db.py` has target columns, but native admission/projection does not populate them; `ChatTurnCreate.model_id` is UUID-only. `chat/streaming.py`, `gateway/resolution.py`, `targets.py` and `execution.py` need exact variant pinning through cold load and dispatch. Full prompt eligibility excludes prior file/tool/code/image content, not just the latest message.
+**Alternatives**: Do not infer exact old variants from mutable registry defaults or put hidden reasoning into examples. Initial comparisons do not add an adapter picker: base-only native chat captures its actual resolved base variant; exact targets already available through registered paths may carry adapters, but clients cannot fabricate one. No historical backfill or passive dataset extraction. Explicit candidate expiry/dismissal releases the conversation after restart.
+
+## R6 — Privacy, authorization and publication race
+
+**Decision**: Dedicated owner capture preference/generation and consistent owner → conversation → pair/judgement lock order. Recheck live owner eligibility on every capture delta/terminal write, review/read, replay and export publication. Purge withdrawn copies and SSE payloads within 24 hours. Ordinary selected chat text follows chat retention. Published immutable datasets remain historical artifacts under the user-confirmed disclosed policy.
+**Rationale**: `chat/service.py` already tombstones deletion and `chat/maintenance.py` purges later; new foreign keys must not block that. `CurrentChatUser` provides owner binding/chat scope/same-origin browser writes; `CurrentTrainingAdmin` plus live authorization protects admin operations/key version. Receipts/DBOS args/logs/audit cannot retain copied text. Review cannot override contributor opt-out. The user answered the one product clarification and selected preservation of published datasets/adapters with purge of unexported feedback.
+**Alternatives**: Retiring prior datasets/cancelling jobs on withdrawal would require a different lineage-wide revocation contract. That is not silently promised. Re-enable never resurrects withdrawn generations. Caller-supplied prompt/model/owner strings are not accepted as feedback evidence.
+
+## R7 — Durable export and dataset identity
+
+**Decision**: Reuse `training/storage.py` (`DatasetStore`), `quota.py`, `datasets.py` and scheduler `datasets.py`, plus a focused durable export lane. Snapshot source IDs/versions; reserve bytes; stream staged rows; final locked eligibility check; atomic file publication and committed private dataset registration/audit; Studio-only analysis afterwards. Publication is committed registration, not eventual `ready` state.
+**Rationale**: Private store already offers containment, permissions, hash/fsync/rename and compensation. DBOS stores IDs/status only. Rebuild if withdrawal or judgement version changed before publication, at most three times within a five-minute deadline. Failure cleans staged/orphan bytes and holds quota until deletion proof; a commit-uncertain recovery checks DB identity before deleting. Existing datasets remain immutable.
+**Alternatives**: No downloadable public link, synchronous unbounded route, all-row in-memory export or publishing first then filtering. Thumbs do not form pairs; source selection prevents double-weighting an owner/admin judgement of the same pair.
+
+## R8 — Grouped splits and bounded data
+
+**Decision**: New preference format and versioned split manifest with separate full-example and prompt-group digests. Group every canonical prompt across orientations/completions into one split, and reject cross-source train/validation overlap. At least two prompt groups; fewer than 20 pairs warns. Preserve SFT splitting/hashes exactly.
+**Rationale**: `coire_core/training_data.py` and `DatasetStore.stage` currently group on full example content. Reusing that identity would leak the same prompt via different chosen/rejected answers. `DatasetProvenance` only has source/license note; exports need a private typed membership manifest and additive summary, not arbitrary metadata interpreted as authority.
+**Alternatives**: No synthetic rejected response from thumbs, silent truncation, preference/SFT mixed training corpus, Hub loader or downloaded dataset code. Both completions must pass exact model analysis.
+
+## R9 — Measurement, limits and rollout
+
+**Decision**: Reuse guarded training measurements with v3 objective/initial/reference/config/probe identities. Initial exact profiles permit one-Studio dense LoRA or affine QLoRA, zero adapter dropout, approved architectures. DPO reserves both copies plus overhead; ORPO reserves one plus pair activations/overhead. No profile is inherited from SFT. Preference admissions default off; cleanup remains on.
+**Rationale**: Current measurement/runtime APIs are explicitly SFT, and memory peaks include both completions, validation, probes and checkpoint staging. CI tiny models and real-Studio qualification prove different properties. Node budget PR 94 qualifies only its recorded collection window; it is not preference-training evidence.
+**Alternatives**: No nominal 2× admission shortcut, lowered watchdogs, implicit production qualification or CI targeting real Studios. A controlled admin measurement uses normal ledger/live guards to collect the first profile; ordinary jobs require the resulting current approved profile.
+
+## R10 — Validation tolerances and operational proof
+
+**Decision**: Independent FP64 scalar/analytic reference versus FP32 objective: loss/logp `rtol=1e-5, atol=1e-5`; gradients `rtol=1e-4, atol=1e-5`. Resume follows existing engine gate (`test_training_resume.py`): losses `rtol=1e-4, atol=1e-5`; adapter/optimizer tensors `rtol=1e-5, atol=1e-6`; exact sampler/RNG. No loosening merely to pass.
+**Rationale**: Tests distinguish DPO sum from ORPO mean, verify frozen references and initial-adapter load order, include unequal lengths/padding/extreme logits/accumulation, and prove end-to-end restore. Post-update probe evaluation must not perturb training. Full contract/privacy race and migration rollback tests precede real workloads; manual Studio evidence records objective/matrix/runtime, local artifacts, memory/latency, cancellation, recovery and rollback.
+**Alternatives**: Decreasing loss alone is not a numerical/recovery proof; skipped native qualification is not completion. Runtime blockers belong in an execution record with exact missing prerequisites, not invented successful measurements.

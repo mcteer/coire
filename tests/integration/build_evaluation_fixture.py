@@ -10,7 +10,7 @@ from pathlib import Path
 from coire_node.testing.harness import Agent
 from coire_node.testing.training import offline_training_model
 
-REPOSITORIES = (
+REPOSITORIES: tuple[str, ...] = (
     "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit",
     "mlx-community/Qwen2.5-Coder-1.5B-Instruct-4bit",
 )

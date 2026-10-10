@@ -1,5 +1,10 @@
 # SFT training operations
 
+Feature 018 v3 DPO/ORPO procedures and current qualification scope are in
+[Preference training](preference-training.md). Existing v1/v2 SFT recipes retain
+their wire shapes and hashes. Feedback publication/withdrawal procedures are in
+[Feedback operations](feedback.md).
+
 Feature 017 declared evaluation procedures are in
 [Durable evaluations](evaluations.md). Existing v1 recipes retain their held-out
 loss behavior. Evaluation-owned checkpoint pauses require complete stop/cleanup
@@ -488,3 +493,50 @@ suffix and logprobs are unsupported and rejected; there is no base fallback.
 ### Gateway measurement failure diagnostics
 
 `coire_training_workload_failures_total` reports fixed-arrival request failures by phase and closed reason: `concurrency_busy`, `completion_timeout`, `identity_mismatch`, `completion_error`, or `arrival_limit`. The jobs dashboard shows these counts; `coire.scheduler.training.workload_failure` spans and structured logs retain measurement and instance attribution. Any failure still makes the full measurement phase inconclusive. An occupied slot differs from a completion deadline; investigate that evidence before declaring a workload supported. Never subtract failed arrivals or shorten a window to approve a profile.
+
+
+The internal measurement generation route uses a bounded database connection
+pool with the configured database identity and credentials. Its first readonly
+lookup doubles as a liveness check. An invalidated connection permits one fresh
+lookup before admission; errors during admission, commit or generation are never
+replayed. All user/key, registry, artifact, node and counting-hold checks remain
+fresh. `coire_training_measurement_database_reconnects_total` and the jobs
+panel record attempts without user or source labels. A sustained rate over
+0.1/second alerts after one minute; inspect database availability and connection
+logs, stop the affected measurement through its owner/admission authority, and
+keep unqualified profiles out of shared admissions.
+
+Readonly private measurement authorization and watcher checks use PostgreSQL
+FOR SHARE on owner/key rows. Concurrent readers can proceed, while deactivation,
+revocation, rotation and scope removal wait until those checks commit. Mutation
+paths retain exclusive locks. The watcher resolves all frozen residents and
+counted model/training holds in one fresh inventory query under canonical node
+locks, checking exact engine, registry, artifact and node identities. No live
+authority or inventory result is cached.
+
+Repeated private gateway checks compare PostgreSQL-computed SHA-256 over both
+complete fresh stored request and command documents. This avoids transferring
+and decoding unchanged frozen JSON. Changed digests reload and revalidate the
+documents; any midstream change refuses generation. The digest does not replace
+current owner/key, registry, artifact, node or counted-hold checks.
+
+Private stream-frame and credential rechecks open independent fresh sessions
+on the same bounded measurement pool; they never share the admission session
+or retry stream operations. Ordinary gateway requests retain the existing
+pool. Credential liveness uses a fresh joined key/owner query, matching exact
+key owner and version and refusing inactive owners or revoked keys.
+
+Warm private routing can reuse the immutable execution principal from validated
+parsing. Its first database operation freshly checks current owner/key state
+under locks and complete request/command hashes before admission writes. Cold
+routing keeps its readonly lookup. Either first readonly operation may reconnect
+once after an invalidated connection and rollback; later reads, writes, commits
+and streams are never retried. A changed stored principal is refused before
+engine IO even when the submitted old routing digest matches.
+
+The private generation route starts one disconnect watcher after body parsing.
+Each stream frame checks its event; a receive failure fails closed. Completion
+and cancellation cancel and await the watcher. Ordinary gateway requests keep
+their existing disconnect handling. `measurement disconnect receive failed`
+is a content-free warning; the measurement reports a completion failure and
+remains unqualified.

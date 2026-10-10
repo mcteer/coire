@@ -14,8 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from coire_core.errors import TrainingConflict, TrainingValidationError
+from coire_core.models.training import ResolvedTrainingSpecV3
 from coire_core.models.training_node import (
     CheckpointCommitAcknowledgementV2,
+    CheckpointCommitAcknowledgementV3,
     NodeTrainingEvent,
     NodeTrainingEventPage,
     TrainingCommand,
@@ -23,7 +25,11 @@ from coire_core.models.training_node import (
 )
 
 
-def command_digest(command: TrainingCommand | CheckpointCommitAcknowledgementV2) -> str:
+def command_digest(
+    command: TrainingCommand
+    | CheckpointCommitAcknowledgementV2
+    | CheckpointCommitAcknowledgementV3,
+) -> str:
     """Compare every field, including the advertised digest and execution lease."""
     value = command.model_dump(mode="json")
     # Transport grants are ephemeral credentials, not durable command intent.
@@ -117,7 +123,9 @@ class TrainingJournal:
 
     def accept(
         self,
-        command: TrainingCommand | CheckpointCommitAcknowledgementV2,
+        command: TrainingCommand
+        | CheckpointCommitAcknowledgementV2
+        | CheckpointCommitAcknowledgementV3,
         *,
         require_lease: bool = True,
     ) -> str | None:
@@ -148,7 +156,11 @@ class TrainingJournal:
         return None
 
     def receipt(
-        self, command: TrainingCommand | CheckpointCommitAcknowledgementV2, encoded: str
+        self,
+        command: TrainingCommand
+        | CheckpointCommitAcknowledgementV2
+        | CheckpointCommitAcknowledgementV3,
+        encoded: str,
     ) -> None:
         self.db.execute(
             "UPDATE commands SET receipt=? WHERE id=?", (encoded, str(command.command_id))
@@ -214,12 +226,23 @@ class TrainingJournal:
                 or datetime.fromisoformat(value["lease_expires_at"]) <= datetime.now(UTC)
             ):
                 raise TrainingConflict("Worker event has no current fenced execution authority")
-            if event.payload.kind == "progress" and (
+            if event.payload.kind in {"progress", "preference_progress"} and (
                 event.payload.metric.job_id != event.job_id
                 or event.payload.metric.attempt_id != event.attempt_id
                 or event.payload.metric.update != event.update
             ):
                 raise TrainingConflict("Worker metric differs from event identity")
+            if event.payload.kind == "preference_progress":
+                if (
+                    not isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+                    or event.payload.metric.fence != event.fence
+                    or event.payload.metric.objective != prepared.resolved.spec.objective
+                ):
+                    raise TrainingConflict("Preference metric differs from prepared objective")
+            elif event.payload.kind == "progress" and isinstance(
+                prepared.resolved, ResolvedTrainingSpecV3
+            ):
+                raise TrainingConflict("Preference runs require pair-counted metrics")
             if event.payload.kind == "checkpoint_staged" and (
                 event.payload.manifest.job_id != event.job_id
                 or event.payload.manifest.attempt_id != event.attempt_id
@@ -306,7 +329,21 @@ class TrainingJournal:
         disk_floor: int = 20 * 1024**3,
     ) -> dict[str, Any]:
         with self.transaction():
-            replay = self.accept(command)
+            renewed = False
+            if isinstance(command.resolved, ResolvedTrainingSpecV3):
+                existing = self.db.execute(
+                    "SELECT body FROM attempts WHERE id=?", (command.attempt_id,)
+                ).fetchone()
+                if existing is not None:
+                    bound = self.scoped(command)
+                    expiry = datetime.fromisoformat(bound["lease_expires_at"])
+                    renewed = (
+                        not bound["released"]
+                        and bound["liveness"] == "prepared"
+                        and expiry > command.lease_expires_at
+                        and expiry > datetime.now(UTC)
+                    )
+            replay = self.accept(command, require_lease=not renewed)
             if replay is not None:
                 return self.get(command.attempt_id)
             if any(not item["released"] for item in self.records()):
@@ -353,7 +390,10 @@ class TrainingJournal:
             return value
 
     def scoped(
-        self, command: TrainingCommand | CheckpointCommitAcknowledgementV2
+        self,
+        command: TrainingCommand
+        | CheckpointCommitAcknowledgementV2
+        | CheckpointCommitAcknowledgementV3,
     ) -> dict[str, Any]:
         value = self.get(command.attempt_id)
         prepared = TrainingPrepareRequest.model_validate(value["prepare"])

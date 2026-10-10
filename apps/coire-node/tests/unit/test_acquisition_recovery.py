@@ -128,6 +128,9 @@ def test_only_hub_pull_worker_receives_hf_credential(tmp_path: Path, monkeypatch
 
     monkeypatch.setattr("coire_node.jobs.subprocess.Popen", fake_popen)
     monkeypatch.setenv("HF_TOKEN", "ambient-secret")
+    monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "ambient-alias-secret")
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
     for kind in (JobKind.PULL, JobKind.VALIDATE):
         status = JobStatus(
             job_id=uuid.uuid4(),
@@ -140,6 +143,10 @@ def test_only_hub_pull_worker_receives_hf_credential(tmp_path: Path, monkeypatch
         supervisor._write({}, status)
         supervisor._spawn(status.job_id)
     assert environments[0]["HF_TOKEN"] == "hub-test-token"
+    assert "HUGGING_FACE_HUB_TOKEN" not in environments[0]
+    assert environments[0]["HF_HUB_OFFLINE"] == "0"
+    assert environments[0]["TRANSFORMERS_OFFLINE"] == "0"
     assert "HF_TOKEN" not in environments[1]
+    assert "HUGGING_FACE_HUB_TOKEN" not in environments[1]
     assert environments[1]["HF_HUB_OFFLINE"] == "1"
     assert environments[1]["TRANSFORMERS_OFFLINE"] == "1"

@@ -19,16 +19,20 @@ from coire_api.chat.telemetry import stop_seconds, turns_total
 from coire_api.chat.text_context import compose_text_prompt
 from coire_api.chat.visual_context import visual_message
 from coire_api.db import (
+    ChatActiveAnswerRow,
     ChatConversationRow,
     ChatEventRow,
     ChatMessageRow,
     ChatTurnRow,
+    ComparisonPairRow,
     McpCallRow,
     ModelRow,
 )
+from coire_api.feedback.eligibility import authorize_owner, lock_preference
 from coire_api.gateway.context import ContextLengthError, VisualContextUnavailable, enforce_context
 from coire_api.registry.service import chat_model_eligible
 from coire_core.errors import ChatConflict, ChatContextExceeded, ChatNotFound
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.chat import (
     ChatEvent,
     ChatMessage,
@@ -40,6 +44,7 @@ from coire_core.models.chat import (
     ChatTurnStatus,
     ChatTurnTerminal,
     ChatUsage,
+    NativeChatSampling,
 )
 from coire_core.models.files import ChatAttachmentSelection
 from coire_core.models.gateway import ChatMessage as GatewayMessage
@@ -57,6 +62,10 @@ class Admission:
     replay: bool
     output_tokens: int = 1024
     reasoning_mode: Reasoning = Reasoning.NONE
+    capture_generation: int | None = None
+    context_revision: int | None = None
+    feedback_prompt_eligible: bool = False
+    sampling: NativeChatSampling | None = None
 
 
 def request_hash(body: ChatTurnCreate) -> str:
@@ -76,6 +85,7 @@ def project_message(row: ChatMessageRow) -> ChatMessage:
         reasoning=row.reasoning,
         model_id=row.model_id,
         model_display_name=row.model_display_name,
+        target=InferenceTarget.model_validate(row.target) if row.target else None,
         attachment_ids=[uuid.UUID(value) for value in row.attachment_ids or []],
         attachment_selections=selections,
         created_at=row.created_at,
@@ -261,6 +271,8 @@ async def admit_turn(
     settings: Settings,
 ) -> Admission:
     """Commit admission before generation; never hold this transaction during engine I/O."""
+    owner = await authorize_owner(session, principal)
+    preference = await lock_preference(session, owner)
     conversation = await session.scalar(
         select(ChatConversationRow)
         .where(ChatConversationRow.id == conversation_id)
@@ -289,6 +301,17 @@ async def admit_turn(
         raise ChatConflict("conversation changed; reload before sending")
     if conversation.active_turn_id is not None:
         raise ChatConflict("a turn is already active")
+    pending = await session.scalar(
+        select(ComparisonPairRow)
+        .where(
+            ComparisonPairRow.conversation_id == conversation_id,
+            ComparisonPairRow.selection_state == "pending",
+            ComparisonPairRow.expires_at > datetime.now(UTC),
+        )
+        .limit(1)
+    )
+    if pending is not None:
+        raise ChatConflict("comparison_pending")
     if body.action != "chat":
         raise ChatConflict("this conversation cannot accept that action yet")
     if body.workspace_id or body.source_revision or body.plan_id or body.research_id:
@@ -299,6 +322,10 @@ async def admit_turn(
     model = await session.get(ModelRow, body.model_id)
     if model is None or not chat_model_eligible(model, principal):
         raise ChatNotFound()
+    if body.sampling is not None and (
+        model.source != "studio" or model.backend != EngineBackend.MLX_LM.value
+    ):
+        raise ChatConflict("native sampling requires a local text model")
     saved = (
         (
             await session.execute(
@@ -326,6 +353,22 @@ async def admit_turn(
     ):
         latest_by_input[previous.input_message_id] = previous.assistant_message_id
     prior_assistant_ids = {row.assistant_message_id for row in prior_turns}
+    active_answers = list(
+        (
+            await session.execute(
+                select(ChatActiveAnswerRow).where(
+                    ChatActiveAnswerRow.conversation_id == conversation_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_turn = {row.id: row for row in prior_turns}
+    for answer in active_answers:
+        source = by_turn.get(answer.source_turn_id)
+        if source is not None:
+            latest_by_input[source.input_message_id] = answer.selected_message_id
     selected_assistant_ids = set(latest_by_input.values())
     recovery_source: ChatTurnRow | None = None
     source_input: ChatMessageRow | None = None
@@ -516,6 +559,7 @@ async def admit_turn(
     conversation.active_turn_id = turn_id
     conversation.selected_model_id = model.id
     conversation.revision += 1
+    conversation.context_revision = (conversation.context_revision or 1) + 1
     conversation.event_cursor += 1
     conversation.updated_at = now
     await session.commit()
@@ -526,4 +570,29 @@ async def admit_turn(
         and declared_reasoning in {Reasoning.THINKING, Reasoning.HYBRID}
         else Reasoning.NONE
     )
-    return Admission(turn, event, history, prompt_tokens, False, output_tokens, reasoning_mode)
+    eligible = (
+        not body.attachments
+        and not body.retry_of
+        and all(
+            not message.attachment_ids
+            and not message.attachment_selections
+            and not message.reasoning
+            and (message.prompt_content is None or message.prompt_content == message.text)
+            for message in saved
+        )
+        and all(previous.action == "chat" for previous in prior_turns)
+        and reasoning_mode is Reasoning.NONE
+    )
+    return Admission(
+        turn,
+        event,
+        history,
+        prompt_tokens,
+        False,
+        output_tokens,
+        reasoning_mode,
+        capture_generation=preference.capture_generation if preference.enabled else None,
+        context_revision=conversation.context_revision,
+        feedback_prompt_eligible=eligible,
+        sampling=body.sampling,
+    )

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "artifact_id": "10000000-0000-4000-8000-000000000001",
+  "kind": "checkpoint",
+  "files": [
+    {
+      "id": "adapter",
+      "name": "adapter.safetensors",
+      "bytes": 1,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": "optimizer",
+      "name": "optimizer.safetensors",
+      "bytes": 1,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "id": "state",
+      "name": "state.json",
+      "bytes": 1,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
+  "total_bytes": 3,
+  "job_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "attempt_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "fence": 1,
+  "update": 8,
+  "world_size": 1,
+  "runtime_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "resolved_spec_sha256": "d4cf7edb2cfa919f36495fb7b1f383be9a356729d24bc96e967c4b99a4fd4ad2",
+  "ranks": [
+    {
+      "rank": 0,
+      "update": 8,
+      "adapter_file_id": "adapter",
+      "optimizer_file_id": "optimizer",
+      "state_file_id": "state",
+      "adapter_tensors": [
+        {
+          "key": "lora_a",
+          "shape": [
+            1,
+            1
+          ],
+          "dtype": "float32"
+        }
+      ],
+      "optimizer_tensors": [
+        {
+          "key": "moment",
+          "shape": [
+            1,
+            1
+          ],
+          "dtype": "float32"
+        }
+      ]
+    }
+  ]
+}

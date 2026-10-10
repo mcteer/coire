@@ -458,20 +458,23 @@ def test_local_tokenizer_refuses_executable_or_malformed_configuration_before_im
         load_analysis_tokenizer(root, binding)
 
 
+@pytest.mark.parametrize("template_override", [None, "explicit-inert-template"])
 def test_inert_tokenizer_loader_never_opens_weights_and_forces_local_safe_kwargs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, template_override: str | None
 ) -> None:
     import sys
     from types import ModuleType, SimpleNamespace
 
     root, binding = tokenizer_assets(tmp_path, {"tokenizer_class": "PreTrainedTokenizerFast"})
+    binding = binding.model_copy(update={"template_override": template_override})
     module = ModuleType("mlx_lm.tokenizer_utils")
     observed: dict[str, Any] = {}
 
     def load(path: Path, **kwargs: Any) -> Any:
         observed.update(kwargs)
         assert path == root
-        return SimpleNamespace(chat_template="inert-template")
+        effective = kwargs["tokenizer_config_extra"].get("chat_template", "inert-template")
+        return SimpleNamespace(chat_template=effective, has_chat_template=True)
 
     module.__dict__["load"] = load
     monkeypatch.setitem(sys.modules, "mlx_lm", ModuleType("mlx_lm"))
@@ -487,9 +490,14 @@ def test_inert_tokenizer_loader_never_opens_weights_and_forces_local_safe_kwargs
 
     monkeypatch.setattr(Path, "open", safe_open)
     _tokenizer, tokenizer_sha, template_sha, runtime_sha = load_analysis_tokenizer(root, binding)
-    assert observed == {
-        "tokenizer_config_extra": {"trust_remote_code": False, "local_files_only": True}
-    }
+    expected: dict[str, Any] = {"trust_remote_code": False, "local_files_only": True}
+    if template_override is not None:
+        expected["chat_template"] = template_override
+    assert observed == {"tokenizer_config_extra": expected}
+    assert (
+        template_sha == hashlib.sha256((template_override or "inert-template").encode()).hexdigest()
+    )
+    assert _tokenizer.has_chat_template
     assert len(tokenizer_sha) == len(template_sha) == len(runtime_sha) == 64
 
 

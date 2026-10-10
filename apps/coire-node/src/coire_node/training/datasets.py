@@ -24,13 +24,24 @@ from coire_core.models.datasets import (
     DatasetAnalysis,
     DatasetAnalysisBinding,
     DatasetDiagnostic,
+    DatasetFormat,
     TokenDistribution,
     TokenizedTrainingExample,
 )
 from coire_core.models.jobs import ChecksumManifest
+from coire_core.models.preference import (
+    PreferenceAnalysis,
+    PreferenceRow,
+    PreferenceTokenSummary,
+    canonical_bytes,
+)
 from coire_core.models.training_node import DatasetAnalysisWorkerInput, NodeDatasetAnalysisRequest
 from coire_core.training_data import normalize_row
-from coire_node.training.rendering import ChatTokenizer, supervision_tokens
+from coire_node.training.rendering import (
+    ChatTokenizer,
+    render_preference_example,
+    supervision_tokens,
+)
 
 tracer = trace.get_tracer("coire.node.training.datasets")
 
@@ -124,6 +135,17 @@ def analyze_source(
             raise TrainingValidationError(
                 "Dataset source differs from its immutable analysis binding"
             )
+    if command.binding.format is DatasetFormat.PREFERENCE:
+        return analyze_preference_source(
+            source,
+            command,
+            tokenizer,
+            tokenizer_sha256=tokenizer_sha256,
+            template_sha256=template_sha256,
+            runtime_sha256=runtime_sha256,
+            max_sequence_length=max_sequence_length,
+            diagnostic_limit=diagnostic_limit,
+        )
     lengths: list[int] = []
     roles: Counter[Literal["system", "user", "assistant", "tool"]] = Counter()
     content_hashes: Counter[str] = Counter()
@@ -325,11 +347,15 @@ def load_evaluation_tokenizer(
 
     from mlx_lm.tokenizer_utils import load
 
-    tokenizer = load(
-        model_path, tokenizer_config_extra={"trust_remote_code": False, "local_files_only": True}
-    )
+    tokenizer_config: dict[str, object] = {
+        "trust_remote_code": False,
+        "local_files_only": True,
+    }
     if template_override is not None:
-        tokenizer.chat_template = template_override
+        # MLX freezes has_chat_template while wrapping the tokenizer. Apply the
+        # effective template before that wrapper is constructed.
+        tokenizer_config["chat_template"] = template_override
+    tokenizer = load(model_path, tokenizer_config_extra=tokenizer_config)
     template = tokenizer.chat_template
     if not isinstance(template, str) or not template:
         raise TrainingValidationError(
@@ -351,3 +377,134 @@ def load_evaluation_tokenizer(
         ).encode()
     ).hexdigest()
     return cast(ChatTokenizer, tokenizer), tokenizer_sha, template_sha, runtime_sha
+
+
+def analyze_preference_source(
+    source: Path,
+    command: NodeDatasetAnalysisRequest | DatasetAnalysisWorkerInput,
+    tokenizer: ChatTokenizer,
+    *,
+    tokenizer_sha256: str,
+    template_sha256: str,
+    runtime_sha256: str,
+    max_sequence_length: int,
+    diagnostic_limit: int,
+) -> DatasetAnalysis:
+    chosen_counts: list[int] = []
+    rejected_counts: list[int] = []
+    response_counts: list[tuple[int, int]] = []
+    token_rows_hash = hashlib.sha256()
+    groups: set[str] = set()
+    hashes: Counter[str] = Counter()
+    roles: Counter[Literal["system", "user", "assistant", "tool"]] = Counter()
+    diagnostics: list[DatasetDiagnostic] = []
+    invalid = 0
+    row_count = 0
+    if not 0 <= diagnostic_limit <= 100:
+        raise TrainingValidationError("Invalid analysis diagnostic bound")
+    with tracer.start_as_current_span("coire.node.training.preference.analyze"):
+        with source.open("rb") as stream:
+            while data := stream.readline(256 * 1024 + 2):
+                row_count += 1
+                if row_count > 1_000_000 or len(data.rstrip(b"\n")) > 256 * 1024:
+                    raise TrainingValidationError("Preference source exceeds analysis bounds")
+                if datetime.now(UTC) >= command.deadline:
+                    raise TrainingValidationError("Preference analysis deadline expired")
+                code = None
+                try:
+                    example = PreferenceRow.model_validate(json.loads(data))
+                    tokenized = render_preference_example(
+                        example,
+                        tokenizer,
+                        source_row=row_count,
+                        max_sequence_length=max_sequence_length,
+                        enable_thinking=command.binding.enable_thinking,
+                    )
+                    token_rows_hash.update(canonical_bytes(tokenized.model_dump(mode="json")))
+                    token_rows_hash.update(b"\n")
+                    chosen_counts.append(len(tokenized.chosen_tokens))
+                    rejected_counts.append(len(tokenized.rejected_tokens))
+                    response_counts.append(
+                        (sum(tokenized.chosen_mask), sum(tokenized.rejected_mask))
+                    )
+                    groups.add(example.prompt_sha256())
+                    hashes[example.content_sha256()] += 1
+                    roles.update(message.role for message in example.prompt)
+                    roles["assistant"] += 2
+                except TrainingValidationError as error:
+                    code = (
+                        "overlength"
+                        if "sequence length" in error.detail
+                        else "zero_target"
+                        if "supervised target" in error.detail
+                        else "token_identical"
+                        if "token-identical" in error.detail
+                        else "template_incompatible"
+                    )
+                except (ValueError, UnicodeError, RecursionError):
+                    code = "invalid_schema"
+                if code:
+                    invalid += 1
+                    if len(diagnostics) < diagnostic_limit:
+                        diagnostics.append(
+                            DatasetDiagnostic.model_validate(
+                                {"row": row_count, "field": "row", "code": code}
+                            )
+                        )
+        if not row_count:
+            raise TrainingValidationError("Preference source is empty")
+        if len(groups) < 2 and not invalid:
+            invalid += 1
+            if len(diagnostics) < diagnostic_limit:
+                diagnostics.append(
+                    DatasetDiagnostic.model_validate(
+                        {"row": 1, "field": "prompt", "code": "invalid_schema"}
+                    )
+                )
+        duplicates = sum(count - 1 for count in hashes.values())
+        preference = (
+            None
+            if invalid
+            else PreferenceAnalysis(
+                dataset_id=command.binding.dataset_id,
+                source_sha256=command.binding.source_sha256,
+                split_sha256=command.binding.split_sha256,
+                tokenizer_sha256=tokenizer_sha256,
+                template_sha256=template_sha256,
+                runtime_sha256=runtime_sha256,
+                row_count=row_count,
+                prompt_group_count=len(groups),
+                token_rows_sha256=token_rows_hash.hexdigest(),
+                chosen_tokens=preference_token_summary(chosen_counts),
+                rejected_tokens=preference_token_summary(rejected_counts),
+                chosen_response_tokens=preference_token_summary(
+                    [pair[0] for pair in response_counts]
+                ),
+                rejected_response_tokens=preference_token_summary(
+                    [pair[1] for pair in response_counts]
+                ),
+                duplicate_rows=duplicates,
+            )
+        )
+        return DatasetAnalysis(
+            id=command.analysis_id,
+            dataset_id=command.binding.dataset_id,
+            model_id=command.binding.model_id,
+            variant_id=command.binding.variant_id,
+            tokenizer_sha256=tokenizer_sha256,
+            template_sha256=template_sha256,
+            runtime_sha256=runtime_sha256,
+            state="failed" if invalid else "succeeded",
+            tokens=distribution(chosen_counts + rejected_counts),
+            role_counts=dict(roles),
+            duplicate_rows=duplicates,
+            invalid_count=invalid,
+            row_count=row_count,
+            diagnostics=diagnostics,
+            preference=preference,
+            created_at=datetime.now(UTC),
+        )
+
+
+def preference_token_summary(values: list[int]) -> PreferenceTokenSummary:
+    return PreferenceTokenSummary(minimum=min(values), maximum=max(values), total=sum(values))

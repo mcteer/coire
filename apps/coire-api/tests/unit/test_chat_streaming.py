@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
@@ -19,6 +20,7 @@ from coire_api.db import ChatConversationRow, ChatEventRow, ChatTurnRow, ModelRo
 from coire_api.gateway.proxy import EngineProxyError
 from coire_api.gateway.resolution import ResolvedModel
 from coire_core.errors import ChatNotFound
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.chat import (
     ChatEvent,
     ChatMessageDelta,
@@ -64,8 +66,10 @@ async def test_load_status_uses_observed_instance_transition(
     assert await _observed_load_state(uuid.uuid4()) == expected
 
 
+@pytest.mark.parametrize("pin_variant", [False, True])
 async def test_cold_turn_reports_observed_queue_before_running(
     monkeypatch: pytest.MonkeyPatch,
+    pin_variant: bool,
 ) -> None:
     import asyncio
 
@@ -78,15 +82,25 @@ async def test_cold_turn_reports_observed_queue_before_running(
     monkeypatch.setattr(streaming, "session_scope", _sessions)
     monkeypatch.setattr(streaming, "_ensure_current_access", AsyncMock())
     monkeypatch.setattr(streaming, "_stop_requested", AsyncMock(return_value=False))
-    monkeypatch.setattr(
-        streaming,
-        "_resolve",
-        AsyncMock(side_effect=[_resolved(admission, cold=True), _resolved(admission)]),
+    target = (
+        InferenceTarget(
+            model_id=admission.turn.model_id, variant_id=uuid.uuid4(), base_manifest_sha256="a" * 64
+        )
+        if pin_variant
+        else None
     )
+    resolver = AsyncMock(
+        side_effect=[
+            replace(_resolved(admission, cold=True), target=target),
+            replace(_resolved(admission), target=target),
+        ]
+    )
+    monkeypatch.setattr(streaming, "_resolve", resolver)
     monkeypatch.setattr(streaming, "_measured_warmup_seconds", AsyncMock(return_value=None))
     monkeypatch.setattr(streaming, "_observed_load_state", AsyncMock(return_value="queued"))
 
-    async def load_model(_model_id: uuid.UUID, _settings: Settings) -> None:
+    async def load_model(_model_id: uuid.UUID | InferenceTarget, _settings: Settings) -> None:
+        assert _model_id == (target or admission.turn.model_id)
         await release_load.wait()
 
     async def upstream(*_args: object) -> AsyncIterator[bytes]:
@@ -115,6 +129,8 @@ async def test_cold_turn_reports_observed_queue_before_running(
         )
     ]
     assert statuses == ["loading", "queued", "running"]
+    if pin_variant:
+        assert resolver.await_args_list[-1].kwargs == {"target": target}
 
 
 async def test_closing_native_cold_stream_cancels_pending_load(

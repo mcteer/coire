@@ -23,6 +23,7 @@ from coire_core.models.training import (
     TrainingMeasurementRequest,
     TrainingResidentTarget,
     TrainingResourceEnvelope,
+    TrainingSpec,
 )
 from coire_core.models.training_node import (
     TrainingMeasurementBinding,
@@ -111,6 +112,7 @@ def experiment() -> tuple[TrainingMeasurementRow, TrainingMeasurementDispatch]:
             },
         }
     )
+    assert isinstance(request.spec, TrainingSpec)
     resolved = ResolvedTrainingSpec(
         spec=request.spec,
         base_manifest_sha256=DIGEST,

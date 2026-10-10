@@ -1,4 +1,5 @@
 import Markdown from "react-markdown";
+import type { ReactNode } from "react";
 import type { ChatAttachment, ChatMessage } from "../../api/chat";
 import { CodeBlock } from "./CodeBlock";
 import { ReasoningBlock } from "./ReasoningBlock";
@@ -16,9 +17,11 @@ const safeUrl = (url: string) => {
 export function Message({
   message,
   attachments = [],
+  children,
 }: {
   message: ChatMessage;
   attachments?: ChatAttachment[];
+  children?: ReactNode;
 }) {
   return (
     <article className={"chat-message " + message.role}>
@@ -60,6 +63,7 @@ export function Message({
           })}
         </ul>
       )}
+      {children}
     </article>
   );
 }

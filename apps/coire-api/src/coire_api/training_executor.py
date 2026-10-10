@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 
-from coire_api.db import TrainingCommandRow, session_scope
+from coire_api.db import TrainingAttemptRow, TrainingCommandRow, session_scope
 from coire_api.nodes_client import NodeClient, NodeError, NodeErrorKind
 from coire_api.training.service import payload_digest
 from coire_core.errors import TrainingConflict
@@ -171,10 +171,26 @@ async def dispatch_training_command(command_id: uuid.UUID, client: "TrainingNode
             or payload_digest(request) != row.request_sha256
         ):
             raise TrainingConflict("Persisted runtime command identity changed")
+        authority_expires_at = request.lease_expires_at
+        if (
+            isinstance(request, TrainingPrepareRequest)
+            and request.resolved.spec.schema_version == 3
+        ):
+            attempt = await session.get(
+                TrainingAttemptRow, request.attempt_id, populate_existing=True
+            )
+            if (
+                attempt is None
+                or attempt.job_id != job.id
+                or attempt.fence != request.fence
+                or attempt.state != "preparing"
+            ):
+                raise TrainingConflict("Preparation has no current attempt authority")
+            authority_expires_at = attempt.lease_expires_at
         if operation not in {"node.training.stop", "node.training.pause"} and (
             request.fence != job.fence
             or job.state not in {"reserving", "running", "pausing"}
-            or request.lease_expires_at <= datetime.now(UTC)
+            or authority_expires_at <= datetime.now(UTC)
         ):
             raise TrainingConflict("Runtime execution authority expired or was cancelled")
         row.state = "dispatching"
@@ -513,11 +529,14 @@ class TrainingNodeClient(NodeClient):
         return result
 
     async def prepare_training(self, command: TrainingPrepareRequest) -> TrainingPrepared:
+        # V3 also validates the registered initial adapter before launch. Keep
+        # that bounded preparation separate from the five-second stop lane.
         _, body = await self._call(
             "POST",
             command.node,
             f"/node/training/attempts/{command.attempt_id}/prepare",
             json=command.model_dump(mode="json"),
+            request_timeout_s=30.0 if command.resolved.spec.schema_version == 3 else None,
         )
         return TrainingPrepared.model_validate(body)
 

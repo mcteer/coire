@@ -28,6 +28,7 @@ from coire_core.models.training_node import (
     CheckpointAcknowledgementDocument,
     CheckpointCommitAcknowledgement,
     CheckpointCommitAcknowledgementV2,
+    CheckpointCommitAcknowledgementV3,
     NodeTrainingEvent,
     NodeTrainingStatus,
     TrainingLeaseRenewal,
@@ -468,7 +469,7 @@ async def ingest_training_event(
     )
     if event.sequence != int(previous or 0) + 1:
         raise TrainingConflict("Node event sequence is not contiguous")
-    if event.payload.kind == "progress":
+    if event.payload.kind in {"progress", "preference_progress"}:
         metric = event.payload.metric
         if (
             metric.update != event.update
@@ -583,12 +584,12 @@ async def enqueue_checkpoint_acknowledgements(
             }
         )
         from coire_api.evaluation.training import ensure_checkpoint_trigger
-        from coire_core.models.training import ResolvedTrainingSpecV2
+        from coire_core.models.training import ResolvedTrainingSpecV2, ResolvedTrainingSpecV3
         from coire_core.models.training_node import EvaluationCheckpointPause
         from coire_core.settings import get_settings
 
         resolved = parse_resolved_training_spec(job.resolved_spec)
-        if isinstance(resolved, ResolvedTrainingSpecV2):
+        if isinstance(resolved, (ResolvedTrainingSpecV2, ResolvedTrainingSpecV3)):
             trigger = await ensure_checkpoint_trigger(
                 session, job, checkpoint, settings=get_settings()
             )
@@ -603,10 +604,15 @@ async def enqueue_checkpoint_acknowledgements(
                     trigger_id=trigger.id,
                     pause_command_id=uuid.uuid5(trigger.id, "evaluation-pause"),
                 )
-            request = CheckpointCommitAcknowledgementV2.model_validate(
+            acknowledgement_type = (
+                CheckpointCommitAcknowledgementV3
+                if isinstance(resolved, ResolvedTrainingSpecV3)
+                else CheckpointCommitAcknowledgementV2
+            )
+            request = acknowledgement_type.model_validate(
                 {
                     **request.model_dump(mode="json"),
-                    "schema_version": 2,
+                    "schema_version": resolved.spec.schema_version,
                     "committed_update": checkpoint.completed_update,
                     "job_version": job.version,
                     "evaluation_pause": pause.model_dump(mode="json") if pause else None,

@@ -214,3 +214,31 @@ tests:
               summary: Training baseline state is missing or stale
               runbook_url: /docs/runbooks/sft-training#baseline-wiring
       - {eval_time: 2m30s, alertname: CoireTrainingBaselineUnavailable, exp_alerts: []}
+
+  - name: measurement-database-reconnect-storm
+    interval: 15s
+    input_series:
+    - series: coire_training_measurement_database_reconnects_total
+      values: 0+2x24
+    alert_rule_test:
+    - eval_time: 1m
+      alertname: CoireTrainingMeasurementDatabaseReconnects
+      exp_alerts: []
+    - eval_time: 6m
+      alertname: CoireTrainingMeasurementDatabaseReconnects
+      exp_alerts:
+      - exp_labels:
+          severity: warning
+          subject: training
+        exp_annotations:
+          summary: Measurement database connections repeatedly require reconnection
+          runbook_url: /docs/runbooks/sft-training#observe
+  - name: healthy-measurement-database-does-not-reconnect
+    interval: 15s
+    input_series:
+    - series: coire_training_measurement_database_reconnects_total
+      values: 0+0x24
+    alert_rule_test:
+    - eval_time: 6m
+      alertname: CoireTrainingMeasurementDatabaseReconnects
+      exp_alerts: []

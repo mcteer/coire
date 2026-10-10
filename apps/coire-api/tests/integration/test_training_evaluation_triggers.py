@@ -16,6 +16,9 @@ pytestmark = pytest.mark.integration
     [
         (1, "succeeded", False),
         (2, "succeeded", True),
+        (3, "succeeded", True),
+        (3, "failed", False),
+        (3, "cancelled", False),
         (2, "failed", False),
         (2, "cancelled", False),
     ],
@@ -270,5 +273,51 @@ async def test_manual_training_context_requires_exact_completed_lineage(
             else:
                 with pytest.raises(EvaluationValidationError):
                     await manual_training_context(session, job_id, [target])
+    finally:
+        await engine.dispose()
+
+
+async def test_preference_empty_suites_have_no_final_or_checkpoint_obligation(
+    training_postgres_url: str,
+) -> None:
+    from coire_api.db import TrainingCheckpointRow
+    from coire_api.evaluation.training import ensure_checkpoint_trigger, ensure_final_trigger
+    from coire_api.training.service import payload_digest
+    from coire_core.models.training import ResolvedTrainingSpecV3
+
+    engine = create_async_engine(training_postgres_url)
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.drop_all)
+            await connection.run_sync(Base.metadata.create_all)
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            job_id, adapter_id = await seed_evaluated_training(session, version=3)
+            job = await session.get(TrainingJobRow, job_id, with_for_update=True)
+            adapter = await session.get(TrainingAdapterRow, adapter_id)
+            assert job is not None and adapter is not None and job.resolved_spec is not None
+            raw = ResolvedTrainingSpecV3.model_validate(job.resolved_spec).model_dump(mode="json")
+            raw["spec"] = {**raw["spec"], "eval": {**raw["spec"]["eval"], "suites": []}}
+            raw.update(evaluations=[], evaluation_base=None)
+            resolved = ResolvedTrainingSpecV3.model_validate(raw)
+            job.resolved_spec = resolved.model_dump(mode="json")
+            job.resolved_sha256 = payload_digest(resolved)
+            checkpoint = await session.get(TrainingCheckpointRow, job.latest_checkpoint_id)
+            assert checkpoint is not None
+            assert (
+                await ensure_final_trigger(
+                    session, job, adapter, settings=Settings(evaluations_enabled=False)
+                )
+                is None
+            )
+            assert (
+                await ensure_checkpoint_trigger(
+                    session, job, checkpoint, settings=Settings(evaluations_enabled=False)
+                )
+                is None
+            )
+            assert (
+                await session.scalar(select(func.count()).select_from(TrainingEvaluationTriggerRow))
+                == 0
+            )
     finally:
         await engine.dispose()

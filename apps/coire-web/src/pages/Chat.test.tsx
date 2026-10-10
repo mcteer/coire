@@ -1,7 +1,25 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Chat } from "./Chat";
 import { loadChatDrafts, saveChatDrafts } from "../api/chatDrafts";
+import * as feedbackApi from "../api/feedback";
+
+beforeEach(() => {
+  vi.spyOn(feedbackApi, "getFeedbackPreference").mockResolvedValue({
+    owner_id: "00000000-0000-0000-0000-000000000006",
+    enabled: true,
+    capture_generation: 1,
+    version: 1,
+    disclosure_version: "feedback-v1",
+    disclosure:
+      "Feedback may improve models on this platform. Published datasets and trained adapters remain unchanged.",
+    changed_at: "2026-10-08T00:00:00Z",
+  });
+  vi.spyOn(feedbackApi, "getConversationFeedback").mockResolvedValue({
+    items: [],
+    comparisons: [],
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -54,6 +72,7 @@ test("platform management is available only to admins in Chat", async () => {
   expect(screen.getByRole("heading", { name: "Chat · Platform" })).toBeInTheDocument();
   expect(screen.getByLabelText("Question")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Back to chat" }));
+  await act(async () => {});
   expect(screen.getByRole("heading", { name: "Chat" })).toBeInTheDocument();
 });
 function event(cursor: number, payload: object): string {
@@ -69,6 +88,61 @@ function event(cursor: number, payload: object): string {
 function stream(value: string): Response {
   return new Response(value, { headers: { "content-type": "text/event-stream" } });
 }
+
+test("reopening a pending comparison locks context without generating another answer", async () => {
+  const saved = { ...conversation, title: "Pending comparison" };
+  const receipt: feedbackApi.ComparisonReceipt = {
+    id: "pair",
+    version: 3,
+    state: "ready",
+    selection_state: "pending",
+    events_path: "/events",
+  };
+  const create = vi.spyOn(feedbackApi, "createComparison");
+  vi.spyOn(feedbackApi, "getComparison").mockResolvedValue({
+    ...receipt,
+    conversation_id: conversationId,
+    source_message_id: answerId,
+    target: null,
+    original: "Original candidate",
+    candidate: "Alternative candidate",
+    eligibility: "eligible",
+    disclosure_version: "feedback-v1",
+    disclosure: "Local feedback policy",
+    created_at: "2026-10-08T00:00:00Z",
+    expires_at: "2026-10-09T00:00:00Z",
+  });
+  const fetchMock = vi.fn().mockImplementation((url: string) => {
+    if (url === "/api/v1/chat/models") return Promise.resolve(json({ data: [model] }));
+    if (url.startsWith("/api/v1/chat/conversations?"))
+      return Promise.resolve(json({ data: [saved], next_cursor: null }));
+    if (url.includes("/events"))
+      return Promise.resolve(
+        new Response(new ReadableStream({ start() {} }), {
+          headers: { "content-type": "text/event-stream" },
+        }),
+      );
+    if (url.startsWith(`/api/v1/chat/conversations/${conversationId}?`))
+      return Promise.resolve(
+        json({
+          conversation: saved,
+          messages: [],
+          turns: [],
+          attachments: [],
+          comparisons: [receipt],
+          event_cursor: 3,
+        }),
+      );
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  fireEvent.click(await screen.findByRole("button", { name: /Pending comparison/ }));
+  expect(await screen.findByText("Alternative candidate")).toBeVisible();
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /Friendly model/ })).toBeDisabled();
+  expect(create).not.toHaveBeenCalled();
+});
 
 test("code mode submits a repository research run with an explicit source", async () => {
   const workspaceId = "00000000-0000-0000-0000-000000000020";
@@ -197,8 +271,7 @@ test("code mode sends a ready visual selection with an image-capable model", asy
           ],
         }),
       );
-    if (url.endsWith("/turns") && options?.method === "POST")
-      return Promise.resolve(stream(""));
+    if (url.endsWith("/turns") && options?.method === "POST") return Promise.resolve(stream(""));
     if (url.endsWith("/events")) return Promise.resolve(stream(""));
     throw new Error(`unexpected fetch ${url}`);
   });
@@ -495,7 +568,9 @@ test("Stop requests server cancellation and keeps the saved partial answer", asy
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(5));
   expect(fetchMock.mock.calls[4]?.[0]).toContain(`/turns/${turnId}/stop`);
   expect(JSON.parse(fetchMock.mock.calls[4]?.[1]?.body as string)).toEqual({ reason: "user_stop" });
-  expect(screen.getByRole("status")).toHaveTextContent("Stopping response");
+  expect(screen.getByRole("status", { name: "Response status" })).toHaveTextContent(
+    "Stopping response",
+  );
   await act(async () => {
     controller.enqueue(
       new TextEncoder().encode(
@@ -512,7 +587,9 @@ test("Stop requests server cancellation and keeps the saved partial answer", asy
   });
   await waitFor(() => expect(screen.queryByRole("button", { name: "Stop response" })).toBeNull());
   expect(screen.getByText("Partial")).toBeInTheDocument();
-  expect(screen.getByRole("status")).toHaveTextContent("stopped by user");
+  expect(screen.getByRole("status", { name: "Response status" })).toHaveTextContent(
+    "stopped by user",
+  );
 });
 
 test("leaving an owned stream requests navigation Stop before switching conversations", async () => {
@@ -680,7 +757,9 @@ test("context refusal preserves the draft and offers concrete remedies", async (
     target: { value: "Keep this long prompt" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
-  expect(await screen.findByText(/choose a model with a larger context below/i)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/choose a model with a larger context below/i),
+  ).toBeInTheDocument();
   expect(screen.getByText(/start a new conversation/i)).toBeInTheDocument();
   expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("Keep this long prompt");
 });
@@ -873,7 +952,9 @@ test.each([
   await screen.findByRole("button", { name: /Friendly model/ });
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "Hi" } });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
-  await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(label));
+  await waitFor(() =>
+    expect(screen.getByRole("status", { name: "Response status" })).toHaveTextContent(label),
+  );
   await act(async () => {
     controller.enqueue(
       new TextEncoder().encode(
@@ -888,7 +969,9 @@ test.each([
     );
     controller.close();
   });
-  expect(screen.getByRole("status")).toHaveTextContent(/choose another model/);
+  expect(screen.getByRole("status", { name: "Response status" })).toHaveTextContent(
+    /choose another model/,
+  );
 });
 
 test("shows cold wait immediately while conversation creation is pending", async () => {
@@ -945,7 +1028,7 @@ test("shows cold wait immediately while conversation creation is pending", async
     target: { value: "Hello" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
-  expect(screen.getByRole("status")).toHaveTextContent("about 19 s");
+  expect(screen.getByRole("status", { name: "Response status" })).toHaveTextContent("about 19 s");
   expect(fetchMock).toHaveBeenCalledWith("/api/v1/chat/conversations", expect.anything());
   await act(async () => finishCreate?.(json(conversation, 201)));
   await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeDisabled());
@@ -1459,4 +1542,47 @@ test("changing verified identity in one tab clears the former owner's draft", as
   await act(async () => view.rerender(<Chat ownerId={other} />));
   expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("");
   expect(sessionStorage.getItem("coire.chat.drafts." + conversation.owner_id)).toBeNull();
+});
+
+test("varied local answers send explicit sampling only after selecting the control", async () => {
+  const fetchMock = vi.fn().mockImplementation((url: string, options?: RequestInit) => {
+    if (url.startsWith("/api/v1/chat/models"))
+      return Promise.resolve(json({ data: [{ ...model, source: "studio" }] }));
+    if (url.startsWith("/api/v1/chat/conversations?"))
+      return Promise.resolve(json({ data: [], next_cursor: null }));
+    if (url === "/api/v1/workspaces") return Promise.resolve(json([]));
+    if (url === "/api/v1/chat/conversations" && options?.method === "POST")
+      return Promise.resolve(json(conversation));
+    if (url.endsWith("/turns") && options?.method === "POST")
+      return Promise.resolve(json({ detail: "Synthetic refusal" }, 409));
+    if (url.endsWith("/events")) return Promise.resolve(stream(""));
+    if (url.endsWith(conversationId))
+      return Promise.resolve(json({ conversation, messages: [], turns: [], event_cursor: 0 }));
+    throw new Error(`unexpected fetch ${url}`);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  render(<Chat ownerId={conversation.owner_id} />);
+  const control = await screen.findByRole("checkbox", { name: /Varied answers/ });
+  expect(control).not.toBeChecked();
+  fireEvent.click(control);
+  fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
+    target: { value: "hello" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() =>
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, options]) => String(url).endsWith("/turns") && options?.method === "POST",
+      ),
+    ).toBe(true),
+  );
+  const request = fetchMock.mock.calls.find(
+    ([url, options]) => String(url).endsWith("/turns") && options?.method === "POST",
+  );
+  expect(JSON.parse(String(request?.[1]?.body)).sampling).toEqual({
+    temperature: 0.7,
+    top_p: 0.95,
+    top_k: 0,
+    min_p: 0,
+  });
 });

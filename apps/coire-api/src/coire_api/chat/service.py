@@ -20,6 +20,7 @@ from coire_api.db import (
     ChatEventRow,
     ChatMessageRow,
     ChatTurnRow,
+    ComparisonPairRow,
     EngineProcessRow,
     McpArtifactRow,
     ModelRow,
@@ -319,12 +320,30 @@ async def get_conversation_detail(
     )
     from coire_api.chat.files import project_attachment
     from coire_api.chat.turns import project_message, project_turn
+    from coire_api.feedback.comparisons import pair_receipt
+
+    pairs = list(
+        (
+            await session.execute(
+                select(ComparisonPairRow)
+                .where(
+                    ComparisonPairRow.conversation_id == conversation_id,
+                    ComparisonPairRow.owner_user_id == principal.user_id,
+                )
+                .order_by(ComparisonPairRow.created_at.desc(), ComparisonPairRow.id.desc())
+                .limit(100)
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     return ChatConversationDetail(
         conversation=project_conversation(row),
         messages=[project_message(message) for message in page],
         turns=[project_turn(turn) for turn in turns],
         attachments=[project_attachment(attachment) for attachment in attachments],
+        comparisons=[pair_receipt(pair) for pair in pairs],
         event_cursor=row.event_cursor,
         next_message_position=page[0].position if len(newest) > query.limit and page else None,
     )
@@ -357,10 +376,22 @@ async def update_conversation(
     if body.model_id is not None and body.model_id != row.selected_model_id:
         if row.active_turn_id is not None:
             raise ChatConflict("cannot change model during an active turn")
+        pending = await session.scalar(
+            select(ComparisonPairRow)
+            .where(
+                ComparisonPairRow.conversation_id == conversation_id,
+                ComparisonPairRow.selection_state == "pending",
+                ComparisonPairRow.expires_at > datetime.now(UTC),
+            )
+            .limit(1)
+        )
+        if pending is not None:
+            raise ChatConflict("comparison_pending")
         model = await session.get(ModelRow, body.model_id)
         if model is None or not chat_model_eligible(model, principal):
             raise ChatNotFound()
         row.selected_model_id = model.id
+        row.context_revision = (row.context_revision or 1) + 1
         changed = True
     if body.title is not None and body.title != row.title:
         row.title = body.title
@@ -400,6 +431,11 @@ async def delete_conversation(
     settings: Settings,
 ) -> ChatDeletionResult:
     """Tombstone immediately; later maintenance purges all associated content."""
+    from coire_api.feedback.eligibility import authorize_owner, lock_preference
+    from coire_api.feedback.retention import withdraw_sources
+
+    owner = await authorize_owner(session, principal)
+    await lock_preference(session, owner)
     row = await session.scalar(
         select(ChatConversationRow)
         .where(
@@ -439,6 +475,7 @@ async def delete_conversation(
     )
     for artifact in artifacts:
         artifact.expires_at = now
+    await withdraw_sources(session, owner, conversation_id=conversation_id)
     row.deleted_at = now
     row.updated_at = now
     row.revision += 1

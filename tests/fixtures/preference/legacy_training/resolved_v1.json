@@ -1,0 +1,102 @@
+{
+  "spec": {
+    "schema_version": 1,
+    "model": {
+      "model_id": "10000000-0000-4000-8000-000000000001",
+      "variant_id": "10000000-0000-4000-8000-000000000002"
+    },
+    "data": {
+      "train": {
+        "datasets": [
+          {
+            "dataset_id": "10000000-0000-4000-8000-000000000003",
+            "split": "train",
+            "sample_count": 8,
+            "mixture_proportion": 1.0
+          }
+        ],
+        "epoch_samples": 8,
+        "mixture_strategy": "weighted",
+        "replacement": false,
+        "seed": 0
+      },
+      "validation": {
+        "dataset_ids": [
+          "10000000-0000-4000-8000-000000000003"
+        ],
+        "split": "validation",
+        "max_batches": 25,
+        "seed": 0
+      },
+      "loss_policy": "final_assistant"
+    },
+    "objective": "sft",
+    "parameterization": {
+      "kind": "lora",
+      "rank": 8,
+      "scale": 20.0,
+      "dropout": 0.0,
+      "target_modules": [
+        "self_attn.q_proj",
+        "self_attn.v_proj"
+      ],
+      "num_layers": 1
+    },
+    "optim": {
+      "name": "adamw",
+      "learning_rate": 1e-05,
+      "beta1": 0.9,
+      "beta2": 0.999,
+      "epsilon": 1e-08,
+      "weight_decay": 0.0,
+      "updates": 32,
+      "batch_size": 2,
+      "accumulation_steps": 2,
+      "max_sequence_length": 2048,
+      "schedule": {
+        "kind": "constant",
+        "warmup_updates": 0
+      }
+    },
+    "eval": {
+      "loss_every_updates": 100,
+      "at_end": true
+    },
+    "output": {
+      "adapter_slug": "contract-test",
+      "checkpoint_every_updates": 100,
+      "keep_last_checkpoints": 3
+    },
+    "placement": {
+      "mode": "single",
+      "preferred_node": null
+    },
+    "seed": 0
+  },
+  "base_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "datasets": [
+    {
+      "dataset_id": "10000000-0000-4000-8000-000000000003",
+      "analysis_id": "10000000-0000-4000-8000-000000000003",
+      "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "split_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "analysis_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+  ],
+  "tokenizer_sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+  "template_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "enable_thinking": false,
+  "runtime_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "worker_version": "coire-sft-016",
+  "sampler_version": "coire-sampler-v1",
+  "resource_envelope": {
+    "weight_bytes": 100,
+    "adapter_bytes": 10,
+    "optimizer_bytes": 20,
+    "activation_bytes": 30,
+    "buffer_bytes": 0,
+    "safety_bytes": 10,
+    "checkpoint_bytes": 100,
+    "evidence_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

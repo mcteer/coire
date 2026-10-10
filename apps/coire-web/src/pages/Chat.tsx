@@ -1,4 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import {
+  getConversationFeedback,
+  type ConversationFeedbackPage,
+  type FeedbackPreference,
+} from "../api/feedback";
+import { FeedbackSettings } from "../components/chat/FeedbackSettings";
+import { FeedbackControls } from "../components/chat/FeedbackControls";
+import { Comparison } from "../components/chat/Comparison";
 import { Composer } from "../components/chat/Composer";
 import { AttachmentList } from "../components/chat/AttachmentList";
 import { ConversationHistory } from "../components/chat/ConversationHistory";
@@ -10,14 +18,86 @@ import { useConversation } from "../hooks/useConversation";
 import { AskCoire } from "./admin/AskCoire";
 import "../styles/chat.css";
 
-export function Chat({ ownerId, isAdmin = false, requestedTarget }: { ownerId: string; isAdmin?: boolean; requestedTarget?: string }) {
-  return <ChatSession key={`${ownerId}:${requestedTarget ?? ""}`} ownerId={ownerId} isAdmin={isAdmin} requestedTarget={requestedTarget} />;
+export function Chat({
+  ownerId,
+  isAdmin = false,
+  requestedTarget,
+}: {
+  ownerId: string;
+  isAdmin?: boolean;
+  requestedTarget?: string;
+}) {
+  return (
+    <ChatSession
+      key={`${ownerId}:${requestedTarget ?? ""}`}
+      ownerId={ownerId}
+      isAdmin={isAdmin}
+      requestedTarget={requestedTarget}
+    />
+  );
 }
 
-function ChatSession({ ownerId, isAdmin, requestedTarget }: { ownerId: string; isAdmin: boolean; requestedTarget?: string }) {
+function ChatSession({
+  ownerId,
+  isAdmin,
+  requestedTarget,
+}: {
+  ownerId: string;
+  isAdmin: boolean;
+  requestedTarget?: string;
+}) {
   const [platformMode, setPlatformMode] = useState(false);
   const [exactConfirmed, setExactConfirmed] = useState(false);
   const chat = useConversation(ownerId);
+  const [preference, setPreference] = useState<FeedbackPreference | null>(null);
+  const [feedback, setFeedback] = useState<ConversationFeedbackPage | null>(null);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+  const cid = chat.conversation?.id;
+  const feedbackCursor = chat.messages
+    .filter((message) => message.role === "assistant")
+    .slice(-100)[0]?.position;
+  const comparisonStamp = chat.comparisons
+    .map((row) => `${row.id}:${row.version}:${row.state}:${row.selection_state}`)
+    .join(",");
+  const pendingComparison = chat.comparisons.some((row) => row.selection_state === "pending");
+  const latestTurnState = chat.turns.at(-1)?.state;
+  useEffect(() => {
+    let current = true;
+    if (!cid || !preference || !feedbackCursor) {
+      setFeedback(null);
+      return;
+    }
+    void getConversationFeedback(cid, String(Math.max(1, feedbackCursor - 1)))
+      .then((page) => {
+        if (current) {
+          setFeedback(page);
+          setFeedbackError(null);
+        }
+      })
+      .catch(() => {
+        if (current) {
+          setFeedback(null);
+          setFeedbackError("Feedback is unavailable. You can continue chatting.");
+        }
+      });
+    return () => {
+      current = false;
+    };
+  }, [cid, preference, feedbackCursor, latestTurnState, comparisonStamp]);
+  const refreshFeedback = async () => {
+    try {
+      await chat.refreshFeedback();
+      if (cid)
+        setFeedback(
+          await getConversationFeedback(
+            cid,
+            feedbackCursor ? String(Math.max(1, feedbackCursor - 1)) : null,
+          ),
+        );
+    } catch {
+      setFeedbackError("Could not refresh feedback. Reload the conversation before trying again.");
+    }
+  };
   const latestCodeTurn = chat.turns.filter((turn) => turn.action !== "chat").at(-1);
   if (!chat.available)
     return (
@@ -56,10 +136,43 @@ function ChatSession({ ownerId, isAdmin, requestedTarget }: { ownerId: string; i
       </main>
     );
   if (requestedTarget && !exactConfirmed) {
-    const exact = chat.models.find((model) => model.id === requestedTarget && model.target?.adapter_id);
-    return <main className="chat-page"><section className="panel glass"><h1>Exact adapter selection</h1><p className="mono">{requestedTarget}</p>
-      {chat.loading ? <p role="status">Checking entitled registry targets…</p> : exact ? <><p>{exact.display_name} · {exact.verified ? "independently verified" : "unverified — write tasks unavailable"}</p><button className="button" onClick={() => { chat.setSelectedId(exact.id); setExactConfirmed(true); }}>Use this exact registered adapter</button></> : <p role="alert">This exact adapter is unavailable in the native Chat picker. Its publication, entitlement or native routing capability must be available before selection. No base model has been substituted.</p>}
-      <a href="#chat">Back to Chat</a></section></main>;
+    const exact = chat.models.find(
+      (model) => model.id === requestedTarget && model.target?.adapter_id,
+    );
+    return (
+      <main className="chat-page">
+        <section className="panel glass">
+          <h1>Exact adapter selection</h1>
+          <p className="mono">{requestedTarget}</p>
+          {chat.loading ? (
+            <p role="status">Checking entitled registry targets…</p>
+          ) : exact ? (
+            <>
+              <p>
+                {exact.display_name} ·{" "}
+                {exact.verified ? "independently verified" : "unverified — write tasks unavailable"}
+              </p>
+              <button
+                className="button"
+                onClick={() => {
+                  chat.setSelectedId(exact.id);
+                  setExactConfirmed(true);
+                }}
+              >
+                Use this exact registered adapter
+              </button>
+            </>
+          ) : (
+            <p role="alert">
+              This exact adapter is unavailable in the native Chat picker. Its publication,
+              entitlement or native routing capability must be available before selection. No base
+              model has been substituted.
+            </p>
+          )}
+          <a href="#chat">Back to Chat</a>
+        </section>
+      </main>
+    );
   }
   return (
     <main className="chat-page">
@@ -84,6 +197,15 @@ function ChatSession({ ownerId, isAdmin, requestedTarget }: { ownerId: string; i
           </button>
         </div>
       </div>
+      <FeedbackSettings
+        refreshKey={`${cid ?? ""}:${chat.comparisons.filter((row) => row.selection_state === "withdrawn").length}`}
+        onChange={(value) => {
+          setPreference(value);
+          if (!value.enabled) setFeedback(null);
+          if (preference && preference.capture_generation !== value.capture_generation)
+            void chat.refreshFeedback().catch(() => {});
+        }}
+      />
       <div className="chat-layout">
         <ConversationHistory
           conversations={chat.history}
@@ -120,7 +242,8 @@ function ChatSession({ ownerId, isAdmin, requestedTarget }: { ownerId: string; i
             <div className="chat-selection-remedy" role="status">
               <p>
                 This turn exceeds the model’s context limit. Remove selected files or pages, choose
-                a model with a larger context below, or start a new conversation. Your draft is saved.
+                a model with a larger context below, or start a new conversation. Your draft is
+                saved.
               </p>
               {chat.selections.some((item) => item.mode === "visual") && (
                 <button className="button" type="button" onClick={chat.removeVisualSelections}>
@@ -136,8 +259,20 @@ function ChatSession({ ownerId, isAdmin, requestedTarget }: { ownerId: string; i
               models={chat.models}
               selectedId={chat.selectedId}
               onSelect={chat.setSelectedId}
-              disabled={chat.active}
+              disabled={chat.active || pendingComparison}
             />
+          )}
+          {chat.canVaryAnswers && (
+            <label>
+              <input
+                type="checkbox"
+                checked={chat.variedAnswers}
+                disabled={chat.active || pendingComparison}
+                onChange={(event) => chat.setVariedAnswers(event.target.checked)}
+              />
+              Varied answers
+              <small> Use sampling for new answers and their comparisons.</small>
+            </label>
           )}
           {chat.olderPosition && (
             <button
@@ -149,7 +284,37 @@ function ChatSession({ ownerId, isAdmin, requestedTarget }: { ownerId: string; i
               Load older messages
             </button>
           )}
-          <MessageList messages={chat.messages} attachments={chat.attachments} />
+          {feedbackError && <p role="alert">{feedbackError}</p>}
+          <MessageList
+            messages={chat.messages}
+            attachments={chat.attachments}
+            feedback={(message) => {
+              const row = feedback?.items?.find((item) => item.message_id === message.id);
+              const turn = chat.turns.find((item) => item.assistant_message_id === message.id);
+              return row && cid ? (
+                <FeedbackControls
+                  conversationId={cid}
+                  revision={chat.conversation!.revision}
+                  row={row}
+                  enabled={Boolean(preference?.enabled)}
+                  complete={!turn || turn.state === "completed"}
+                  pending={pendingComparison}
+                  onChange={refreshFeedback}
+                  onCreated={chat.recordComparison}
+                />
+              ) : null;
+            }}
+          />
+          {cid &&
+            chat.comparisons.map((receipt) => (
+              <Comparison
+                key={receipt.id}
+                conversationId={cid}
+                receipt={receipt}
+                enabled={Boolean(preference?.enabled)}
+                onChange={refreshFeedback}
+              />
+            ))}
           {chat.mode === "code" && latestCodeTurn && (
             <RunActivity
               key={latestCodeTurn.id}
@@ -236,6 +401,7 @@ function ChatSession({ ownerId, isAdmin, requestedTarget }: { ownerId: string; i
             onSend={() => void chat.send()}
             disabled={
               !chat.selectedId ||
+              pendingComparison ||
               chat.active ||
               chat.fileBusy ||
               !chat.canSendSelections ||

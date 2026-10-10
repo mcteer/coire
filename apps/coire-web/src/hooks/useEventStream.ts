@@ -183,7 +183,8 @@ export function useChatConversationObserver(
           if (
             event.conversation_id !== conversationId ||
             !Number.isSafeInteger(event.cursor) ||
-            event.cursor <= cursor.current ||
+            event.cursor < cursor.current ||
+            (event.cursor === cursor.current && event.payload.type !== "snapshot") ||
             frame.id !== `${conversationId}:${event.cursor}` ||
             frame.event !== event.payload?.type ||
             (event.payload.type !== "snapshot" && event.cursor !== cursor.current + 1)

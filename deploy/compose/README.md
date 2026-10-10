@@ -390,3 +390,17 @@ read-only Postgres snapshot; failed polls retain the last successful timestamp.
 See [baseline wiring](../../docs/runbooks/sft-training.md#baseline-wiring).
 
 Tempo has a fixed 1 GiB container ceiling and a 768 MiB Go runtime memory budget (`GOMEMLIMIT`), leaving headroom for allocations outside the managed heap. Preserve the trace volume when restarting it; use exact trace IDs during workload diagnostics to avoid unnecessary broad searches.
+
+Feature 018 adds `COIRE_PREFERENCE_TRAINING_ENABLED` (default `false`, mapped to
+`PREFERENCE_TRAINING_ENABLED`). New preference jobs and measurements also require
+`COIRE_TRAINING_ENABLED`; history, cancellation and withdrawal cleanup continue
+when admissions are disabled. `COIRE_FEEDBACK_STORAGE_QUOTA_BYTES` maps to
+`FEEDBACK_STORAGE_QUOTA_BYTES` (default and maximum 1073741824) and counts copied
+feedback content plus private export staging. `COIRE_FEEDBACK_PURGE_BATCH_SIZE`
+maps to `FEEDBACK_PURGE_BATCH_SIZE` (default and maximum 100); maintenance erases
+withdrawn source copies within 24 hours while preserving published datasets.
+
+See [feedback operations](../../docs/runbooks/feedback.md) for published dataset
+retention, source withdrawal and export cleanup, and [preference training](../../docs/runbooks/preference-training.md)
+for v3 compatibility, exact profile requirements and drained rollback. Admission
+flags do not disable baseline sampling, cancellation or withdrawal maintenance.

@@ -20,17 +20,21 @@ from safetensors import safe_open
 from coire_core.errors import TrainingConflict, TrainingValidationError
 from coire_core.models.training_node import (
     CheckpointWorkerState,
+    CheckpointWorkerStateDocument,
+    CheckpointWorkerStateV3,
     MixtureSamplerState,
     RankStateManifest,
     SingleSourceSamplerState,
     TensorDescriptor,
     TrainingArtifactFile,
     TrainingArtifactManifest,
+    parse_checkpoint_worker_state,
 )
 from coire_node.store import sha256_file
 
 if TYPE_CHECKING:
     from coire_node.training.objectives import SftRuntime
+    from coire_node.training.preference_data import PreferenceSampler
     from coire_node.training.sampler import TrainingSampler
 
 MAX_STATE_BYTES = 64 * 1024**2
@@ -83,7 +87,7 @@ class MlxTensorIO:
 
 @dataclass
 class RestoredCheckpoint:
-    state: CheckpointWorkerState
+    state: CheckpointWorkerStateDocument
     adapter_tensors: dict[str, Any]
     optimizer_state: Any
     manifest: TrainingArtifactManifest
@@ -103,7 +107,7 @@ def apply_restored_checkpoint(
     restored: RestoredCheckpoint,
     runtime: SftRuntime,
     optimizer: Any,
-    sampler: TrainingSampler,
+    sampler: TrainingSampler | PreferenceSampler,
     *,
     expected_optimizer: Any,
 ) -> None:
@@ -145,7 +149,16 @@ def apply_restored_checkpoint(
         elif type(value) is not type(other):
             raise TrainingValidationError("Checkpoint optimizer structure differs from the runtime")
     _check_optimizer_step(restored.state, restored.optimizer_state, codec)
-    sampler.restore(restored.state.sampler)
+    from coire_node.training.preference_data import PreferenceSampler
+
+    if isinstance(restored.state, CheckpointWorkerStateV3):
+        if not isinstance(sampler, PreferenceSampler):
+            raise TrainingConflict("Preference checkpoint requires its paired sampler")
+        sampler.restore(restored.state.sampler)
+    else:
+        if isinstance(sampler, PreferenceSampler):
+            raise TrainingConflict("SFT checkpoint cannot restore a preference sampler")
+        sampler.restore(restored.state.sampler)
     runtime.model.load_weights(list(restored.adapter_tensors.items()), strict=False)
     optimizer.state = restored.optimizer_state
     restore_mlx_rng_key(restored.state.mlx_rng_key)
@@ -303,7 +316,9 @@ def _check_tensor_header(path: Path, expected: list[TensorDescriptor]) -> None:
         raise TrainingValidationError("Checkpoint tensor header is invalid") from None
 
 
-def _check_optimizer_step(state: CheckpointWorkerState, optimizer: Any, codec: TensorIO) -> None:
+def _check_optimizer_step(
+    state: CheckpointWorkerStateDocument, optimizer: Any, codec: TensorIO
+) -> None:
     if not isinstance(optimizer, dict) or "step" not in optimizer:
         raise TrainingValidationError("Checkpoint requires the full optimizer update counter")
     step = optimizer["step"]
@@ -324,12 +339,14 @@ def _check_optimizer_step(state: CheckpointWorkerState, optimizer: Any, codec: T
 
 def _bound_rank_state(
     manifest: TrainingArtifactManifest, rank: RankStateManifest, paths: dict[str, Path]
-) -> CheckpointWorkerState:
+) -> CheckpointWorkerStateDocument:
     path = paths[rank.state_file_id]
     if path.stat().st_size > MAX_STATE_BYTES:
         raise TrainingValidationError("Checkpoint state exceeds its byte bound")
     try:
-        state = CheckpointWorkerState.model_validate_json(path.read_bytes())
+        import json
+
+        state = parse_checkpoint_worker_state(json.loads(path.read_bytes()))
     except (ValidationError, ValueError):
         raise TrainingValidationError("Checkpoint full-state metadata is invalid") from None
     if (
@@ -595,13 +612,13 @@ class CheckpointStore:
 
     def save(
         self,
-        state: CheckpointWorkerState,
+        state: CheckpointWorkerStateDocument,
         adapter: dict[str, Any],
         optimizer_state: Any,
         *,
         artifact_id: uuid.UUID | None = None,
     ) -> TrainingArtifactManifest:
-        state = CheckpointWorkerState.model_validate(state.model_dump(mode="json"))
+        state = parse_checkpoint_worker_state(state.model_dump(mode="json"))
         if isinstance(state.sampler, MixtureSamplerState) and (
             state.sampler.rank != state.rank or state.sampler.world_size != state.world_size
         ):

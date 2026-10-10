@@ -48,6 +48,7 @@ from coire_core.models.datasets import (
     DatasetUploadIntent,
     DatasetUploadRequest,
 )
+from coire_core.models.preference import PreferenceSplitManifest
 from coire_core.models.registry import ModelState
 
 tracer = trace.get_tracer("coire.api.training.datasets")
@@ -160,6 +161,11 @@ async def register_source(
     base_sha256 = await analysis_base(session, metadata)
     if not result.invalid_count and (result.split is None or result.split_sha256 is None):
         raise TrainingValidationError("Dataset upload requires a complete validated split")
+    if result.split is not None and (
+        (metadata.format is DatasetFormat.PREFERENCE)
+        != isinstance(result.split, PreferenceSplitManifest)
+    ):
+        raise TrainingValidationError("Dataset format differs from its versioned split")
     state = DatasetState.FAILED if result.invalid_count else DatasetState.ANALYZING
     row = TrainingDatasetRevisionRow(
         id=dataset_id,
@@ -234,6 +240,7 @@ async def project_dataset(session: AsyncSession, row: TrainingDatasetRevisionRow
         .limit(1)
     )
     return DatasetDetail(
+        warnings=["small_sample"] if row.format == "preference" and 0 < row.row_count < 20 else [],
         id=row.id,
         name=row.name,
         format=DatasetFormat(row.format),

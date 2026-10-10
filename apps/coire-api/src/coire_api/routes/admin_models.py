@@ -49,7 +49,7 @@ from coire_api.registry.placement import NoCandidate, choose_load_node
 from coire_api.registry.visual_memory import reservation_bytes
 from coire_core.errors import ChatModelUnavailable
 from coire_core.models.audit import AuditAction
-from coire_core.models.engine import EngineProcess, EngineState
+from coire_core.models.engine import EngineProcess, EngineRenderingIdentity, EngineState
 from coire_core.models.jobs import DownloadJob
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.registry import (
@@ -171,6 +171,9 @@ def _engine(row: EngineProcessRow, nodes: dict[uuid.UUID, str]) -> dict[str, obj
         resident_delta_bytes=row.resident_delta_bytes,
         cpu_percent=row.cpu_percent,
         chat_template_sha256=row.chat_template_sha256,
+        rendering_identity=EngineRenderingIdentity.model_validate(row.rendering_identity)
+        if row.rendering_identity
+        else None,
         last_health_at=row.last_health_at,
         started_at=row.started_at,
         stopped_at=row.stopped_at,
@@ -586,6 +589,11 @@ async def load_model(
     row.state = engine_status.state
     row.backend = engine_status.backend.value
     row.chat_template_sha256 = engine_status.chat_template_sha256
+    row.rendering_identity = (
+        engine_status.rendering_identity.model_dump(mode="json")
+        if engine_status.rendering_identity
+        else None
+    )
     from coire_api.audit import write_principal_audit
 
     await write_principal_audit(

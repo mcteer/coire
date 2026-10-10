@@ -1,6 +1,9 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { useEventStream } from "./useEventStream";
+import { useChatConversationObserver } from "./useEventStream";
+import { useRef, useState } from "react";
+import type { ChatEvent } from "../api/chat";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -11,6 +14,38 @@ function Probe() {
   const stream = useEventStream<{ cursor: string }>("/events");
   return <output>{stream.data?.cursor ?? stream.error ?? "connecting"}</output>;
 }
+
+function PrivacyProbe() {
+  const cursor = useRef(5);
+  const [status, setStatus] = useState("candidate visible");
+  useChatConversationObserver("conversation", true, cursor, (event: ChatEvent) => {
+    if (event.payload.type === "snapshot") setStatus("withdrawn snapshot received");
+  });
+  return <output>{status}</output>;
+}
+
+test("accepts a privacy replacement snapshot at the current cursor", async () => {
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          'id: conversation:5\nevent: snapshot\ndata: {"conversation_id":"conversation","cursor":5,"payload":{"type":"snapshot","replacement":true,"detail":{}}}\n\n',
+        ),
+      );
+    },
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(body, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    ),
+  );
+  render(<PrivacyProbe />);
+  expect(await screen.findByText("withdrawn snapshot received")).toBeInTheDocument();
+});
 
 function response(cursor: string): Response {
   const body = new ReadableStream({
@@ -46,7 +81,9 @@ test("reconnects with Last-Event-ID and reconciles new state", async () => {
 
 test("aborts hidden streams and resumes with the cursor when visible", async () => {
   let visibility = "visible";
-  vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility as DocumentVisibilityState);
+  vi.spyOn(document, "visibilityState", "get").mockImplementation(
+    () => visibility as DocumentVisibilityState,
+  );
   const signals: AbortSignal[] = [];
   const fetchMock = vi.fn().mockImplementation((_url: string, init: RequestInit) => {
     const signal = init.signal as AbortSignal;
@@ -55,7 +92,11 @@ test("aborts hidden streams and resumes with the cursor when visible", async () 
     const body = new ReadableStream<Uint8Array>({
       start(controller) {
         bodyController = controller;
-        controller.enqueue(new TextEncoder().encode('id: 10\nevent: snapshot\ndata: {"snapshot":{"cursor":"10"}}\n\n'));
+        controller.enqueue(
+          new TextEncoder().encode(
+            'id: 10\nevent: snapshot\ndata: {"snapshot":{"cursor":"10"}}\n\n',
+          ),
+        );
       },
     });
     signal.addEventListener("abort", () => bodyController.close(), { once: true });

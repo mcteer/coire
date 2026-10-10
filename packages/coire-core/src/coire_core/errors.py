@@ -242,3 +242,39 @@ class EvaluationEvidenceGone(CoireError):
     code = "evaluation_evidence_expired"
     title = "Raw evaluation evidence is unavailable"
     status = 410
+
+
+class FeedbackNotFound(CoireError):
+    code = "feedback_not_found"
+    title = "Feedback resource not found"
+    status = 404
+
+
+class FeedbackForbidden(CoireError):
+    code = "feedback_forbidden"
+    title = "Feedback access denied"
+    status = 403
+
+
+class FeedbackConflict(CoireError):
+    code = "feedback_conflict"
+    title = "Feedback state conflict"
+    status = 409
+
+
+class FeedbackQuotaExceeded(CoireError):
+    code = "feedback_quota_exceeded"
+    title = "Feedback quota exceeded"
+    status = 429
+
+
+class FeedbackValidationError(CoireError):
+    code = "feedback_validation_error"
+    title = "Invalid feedback input"
+    status = 422
+
+
+class FeedbackUnavailable(CoireError):
+    code = "feedback_unavailable"
+    title = "Exact comparison target is unavailable"
+    status = 503

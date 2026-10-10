@@ -39,6 +39,16 @@ LIVE_ENGINE_STATES = frozenset({EngineState.STARTING, EngineState.READY, EngineS
 """States that hold memory, and therefore count against a node's budget (spec FR-020)."""
 
 
+class EngineRenderingIdentity(BaseModel):
+    """Verified inert tokenizer/template assets and pinned native package versions."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tokenizer_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    template_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    runtime_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class EngineStatus(BaseModel):
     """A node's view of one engine."""
 
@@ -63,6 +73,9 @@ class EngineStatus(BaseModel):
     resident_delta_bytes: int | None = None
     cpu_percent: float | None = None
     chat_template_sha256: str | None = None
+    rendering_identity: EngineRenderingIdentity | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     load_seconds: float | None = None
     last_health_at: datetime | None = None
     started_at: datetime
@@ -89,6 +102,9 @@ class EngineProcess(BaseModel):
     resident_delta_bytes: int | None = None
     cpu_percent: float | None = None
     chat_template_sha256: str | None = None
+    rendering_identity: EngineRenderingIdentity | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     last_health_at: datetime | None = None
     started_at: datetime
     stopped_at: datetime | None = None

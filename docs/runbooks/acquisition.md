@@ -26,6 +26,15 @@ To stop physical work during an incident, read its node job id from the audit/tr
 authenticated `DELETE /node/jobs/{job_id}` to that Studio. Cancellation releases conversion
 reservations; partial conversion directories are removed and partial Hub pulls remain resumable.
 
+## Pull worker isolation
+
+Training-input validation may put the long-lived node process into offline mode.
+An authenticated acquisition pull explicitly starts its own online child with the
+Keychain-sourced Hub credential. Conversion, validation and image children remain
+offline and receive no Hub credential. This is scoped by the persisted job kind.
+If an acquisition reports `HF_HUB_OFFLINE`, confirm that the checked node build
+containing this child-environment isolation is active before an audited retry.
+
 ## Diagnose
 
 - `gated`: accept the Hub licence using the account whose token is in that Studio's System Keychain.

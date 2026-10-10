@@ -1,0 +1,347 @@
+"""Real node-owned v3 measurement processes on acquired tiny offline Studio assets."""
+
+import asyncio
+import gc
+import hashlib
+import json
+import os
+import shutil
+import sys
+import threading
+import time
+import uuid
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Literal
+
+import psutil
+import pytest
+
+from coire_core.errors import TrainingConflict
+from coire_core.models.datasets import DatasetAnalysisBinding, DatasetFormat
+from coire_core.models.preference import PreferenceRow
+from coire_core.models.training import ResolvedTrainingSpecV3
+from coire_core.models.training_node import (
+    DatasetAnalysisWorkerInput,
+    PreferenceMeasurementObservation,
+    TrainingLeaseRenewal,
+    TrainingMeasurementPrepare,
+    TrainingPrepareRequest,
+    TrainingStartRequest,
+    TrainingStopRequest,
+)
+from coire_core.preference_data import preference_split_digest, split_preference_rows
+
+pytestmark = pytest.mark.engine
+
+CI_MEASUREMENT_REPOSITORY = "mlx-community/AMD-Llama-135m-4bit"
+CI_MEASUREMENT_TEMPLATE = (
+    "{% for message in messages %}"
+    "{{ message['role'] + ': ' + message['content'] + eos_token }}"
+    "{% endfor %}{% if add_generation_prompt %}{{ 'assistant:' }}{% endif %}"
+)
+
+
+@pytest.mark.parametrize("objective", ["dpo", "orpo"])
+@pytest.mark.asyncio
+async def test_node_owned_native_preference_probe_counts_reference_and_serialization(
+    training_model: Path,
+    training_kind: Literal["lora", "qlora", "dora"],
+    tmp_path: Path,
+    objective: Literal["dpo", "orpo"],
+) -> None:
+    import mlx.core as mx
+    from test_training_worker import offline_command
+
+    import coire_core
+    import coire_node
+    from coire_node.training.datasets import analyze_source, load_analysis_tokenizer
+    from coire_node.training.journal import TrainingJournal
+    from coire_node.training.measurement import MeasurementSupervisor
+    from coire_node.training.preference_data import PreferenceFrozenInputs
+    from coire_node.training.preference_runtime import validate_preference_input
+    from coire_node.training.supervisor import NativeProcesses
+    from coire_node.training.worker import payload_sha256
+
+    # Previous native cases may retain unused Metal allocator buffers. Release
+    # only unused cache; admission below still reads actual available memory.
+    gc.collect()
+    mx.clear_cache()
+
+    old = offline_command(training_model, training_kind)
+    raw = old.model_dump(mode="json")
+    resolved = raw["resolved"]
+    spec = resolved["spec"]
+    spec.update(
+        schema_version=3,
+        objective=objective,
+        init_adapter=None,
+        objective_options={"beta": 0.1} if objective == "dpo" else {"weight": 0.1},
+    )
+    spec["parameterization"]["dropout"] = 0
+    spec["optim"].update(updates=2, max_sequence_length=256)
+    spec["data"]["train"]["datasets"][0]["sample_count"] = 2
+    spec["data"]["train"]["epoch_samples"] = 2
+    model = await asyncio.to_thread(
+        validate_preference_input,
+        training_model,
+        old.resolved.spec.parameterization.model_copy(update={"dropout": 0}),
+    )
+    resolved["base_manifest_sha256"] = model.manifest.sha256()
+    target = {**spec["model"], "base_manifest_sha256": model.manifest.sha256()}
+    resolved.update(
+        initial_target=target,
+        reference_target=target if objective == "dpo" else None,
+        sampler_version="coire-pair-sampler-v1",
+    )
+    # The smaller acquired CI base fits the actual standard runner headroom.
+    # Existing Qwen developer fixtures retain their measured 3.5-GiB bound.
+    small_ci_base = model.manifest.repo_id == CI_MEASUREMENT_REPOSITORY
+    probe_memory_bytes = (5 if small_ci_base else 7) * 1024**3 // 2
+    resolved["resource_envelope"].update(
+        weight_bytes=1,
+        adapter_bytes=1,
+        optimizer_bytes=1,
+        activation_bytes=1,
+        reference_weight_bytes=1 if objective == "dpo" else 0,
+        reference_adapter_bytes=0,
+        # The fixture envelope is still admitted against real available memory.
+        buffer_bytes=probe_memory_bytes - 1024**3 - (5 if objective == "dpo" else 4),
+        safety_bytes=1024**3,
+        checkpoint_bytes=128 * 1024**2,
+    )
+    selected = resolved["datasets"][0]
+    rows = [
+        PreferenceRow.model_validate(
+            {
+                "prompt": [{"role": "user", "content": f"Choose a concise answer {i}."}],
+                "chosen": "The answer is yes.",
+                "rejected": "The answer is no.",
+            }
+        )
+        for i in range(4)
+    ]
+    encoded = b"".join(json.dumps(row.model_dump(mode="json")).encode() + b"\n" for row in rows)
+    source = tmp_path / "source.jsonl"
+    await asyncio.to_thread(source.write_bytes, encoded)
+    await asyncio.to_thread(source.chmod, 0o600)
+    digest = hashlib.sha256(encoded).hexdigest()
+    split = split_preference_rows(
+        uuid.UUID(selected["dataset_id"]), digest, rows, seed=0, validation_fraction=0.5
+    )
+    binding = DatasetAnalysisBinding.model_validate(
+        {
+            "dataset_id": selected["dataset_id"],
+            "model_id": spec["model"]["model_id"],
+            "variant_id": spec["model"]["variant_id"],
+            "base_manifest_sha256": model.manifest.sha256(),
+            "source_sha256": digest,
+            "split_sha256": preference_split_digest(split),
+            "model_slug": training_model.name,
+            "format": DatasetFormat.PREFERENCE,
+            # This base has no upstream chat template. Use the existing explicit,
+            # hashed admin override contract rather than editing acquired assets.
+            "template_override": CI_MEASUREMENT_TEMPLATE if small_ci_base else None,
+        }
+    )
+    tokenizer, tok, template, runtime = await asyncio.to_thread(
+        load_analysis_tokenizer, training_model, binding
+    )
+    analysis = await asyncio.to_thread(
+        analyze_source,
+        source,
+        DatasetAnalysisWorkerInput(
+            command_id=uuid.uuid4(),
+            analysis_id=uuid.UUID(selected["analysis_id"]),
+            binding=binding,
+            source_bytes=len(encoded),
+            memory_bytes=1024**3,
+            deadline=datetime.now(UTC) + timedelta(minutes=1),
+        ),
+        tokenizer,
+        tokenizer_sha256=tok,
+        template_sha256=template,
+        runtime_sha256=runtime,
+        max_sequence_length=256,
+    )
+    assert analysis.state == "succeeded", analysis.model_dump_json()
+    del tokenizer
+    gc.collect()
+    selected.update(
+        source_sha256=digest,
+        split_sha256=binding.split_sha256,
+        analysis_sha256=payload_sha256(analysis),
+    )
+    resolved.update(tokenizer_sha256=tok, template_sha256=template, runtime_sha256=runtime)
+    raw["lease_expires_at"] = (datetime.now(UTC) + timedelta(seconds=29)).isoformat()
+    prepared = TrainingPrepareRequest.model_validate(raw)
+    assert isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+    probe = TrainingMeasurementPrepare(
+        measurement_id=uuid.uuid4(),
+        prepare=prepared,
+        hardware_sha256="a" * 64,
+        mode="memory",
+        deadline=datetime.now(UTC) + timedelta(minutes=2),
+    )
+    journal = TrainingJournal(
+        tmp_path / "node", node=prepared.node, admission_lock=threading.RLock()
+    )
+
+    # The hosted runner has seven GB including its OS. Disable only MLX's free
+    # allocator cache in this child fixture, preserving live tensors, real peak
+    # sampling and admission. The separate runtime matrix uses default caching.
+    bootstrap = tmp_path / "probe-runtime"
+    bootstrap.mkdir()
+    worker_stderr = tmp_path / "probe-worker.stderr"
+    (bootstrap / "sitecustomize.py").write_text(
+        "import sys\nsys.stderr = open("
+        + repr(str(worker_stderr))
+        + ", 'a')\nimport mlx.core as mx\nmx.set_cache_limit(0)\n"
+        + "import json, os, psutil, importlib.metadata\n"
+        + "from coire_node.footprint import phys_footprint\n"
+        + "from coire_node.metrics import read_thermal_state\n"
+        + "print(json.dumps({'mlx': importlib.metadata.version('mlx'), "
+        + "'available': psutil.virtual_memory().available, "
+        + "'swap_used': psutil.swap_memory().used, 'swap_out': psutil.swap_memory().sout, "
+        + "'footprint': phys_footprint(os.getpid()), 'thermal': read_thermal_state()}), "
+        + "file=sys.stderr, flush=True)\n"
+    )
+
+    class SourceProcesses(NativeProcesses):
+        def spawn(self, argv: list[str], env: dict[str, str]) -> tuple[int, float]:
+            assert "PYTHONPATH" not in env
+            roots = [str(bootstrap)]
+            for package in (coire_core, coire_node):
+                assert package.__file__ is not None
+                roots.append(str(Path(package.__file__).parent.parent))
+            return super().spawn(argv, {**env, "PYTHONPATH": ":".join(roots)})
+
+    supervisor = MeasurementSupervisor(
+        journal,
+        interpreter=Path(sys.executable),
+        accelerator_guard=lambda _: None,
+        hardware_sha256=lambda: "a" * 64,
+        store_root=training_model.parent,
+        artifact_root=tmp_path / "probes",
+        initial_artifact_root=tmp_path / "artifacts",
+        memory_available=lambda: min(8 * 1024**3, psutil.virtual_memory().available),
+        disk_available=lambda: shutil.disk_usage(tmp_path).free,
+    )
+    supervisor.processes = SourceProcesses()
+    wire = prepared.model_dump(
+        mode="json",
+        exclude={
+            "resolved",
+            "reservation_id",
+            "disk_reservation_id",
+            "resume_checkpoint_id",
+            "resume_manifest_sha256",
+            "collective",
+        },
+    )
+    started = False
+    try:
+        assert (await supervisor.prepare_measurement(probe)).ready is False
+        await supervisor.bind_inputs(
+            prepared,
+            PreferenceFrozenInputs(binding, split, analysis, source),
+            disk_available=shutil.disk_usage(tmp_path).free,
+        )
+        request = TrainingStartRequest.model_validate(
+            {
+                **wire,
+                "command_id": str(uuid.uuid4()),
+                "prepared_command_id": str(prepared.command_id),
+                "spawn_nonce": str(uuid.uuid4()),
+            }
+        )
+        await supervisor.start(request)
+        started = True
+        deadline, renew_at = time.monotonic() + 90, time.monotonic() + 6
+        status = None
+        while time.monotonic() < deadline:
+            status = supervisor.measurement_status(prepared.attempt_id)
+            if status.stopped:
+                break
+            if time.monotonic() >= renew_at:
+                try:
+                    await supervisor.renew(
+                        TrainingLeaseRenewal.model_validate(
+                            {
+                                **wire,
+                                "command_id": str(uuid.uuid4()),
+                                "lease_expires_at": (
+                                    datetime.now(UTC) + timedelta(seconds=29)
+                                ).isoformat(),
+                            }
+                        )
+                    )
+                except TrainingConflict:
+                    # Completion can occur after the status read but before
+                    # renewal. Accept only a fresh positive stop with the real
+                    # complete observation; every resource/result assertion
+                    # below still applies. A guard stop never becomes success.
+                    status = supervisor.measurement_status(prepared.attempt_id)
+                    if not status.stopped or not isinstance(
+                        status.observation, PreferenceMeasurementObservation
+                    ):
+                        identity: dict[str, object] = {}
+                        if status.status.pid is not None:
+                            try:
+                                process = psutil.Process(status.status.pid)
+                                identity = {
+                                    "expected_argv": supervisor.argv(
+                                        journal.get(prepared.attempt_id)
+                                    ),
+                                    "observed_argv": process.cmdline(),
+                                    "observed_birth": process.create_time(),
+                                    "observed_group": os.getpgid(process.pid),
+                                    "process_status": process.status(),
+                                }
+                            except (psutil.Error, ProcessLookupError, PermissionError) as exc:
+                                identity = {"identity_error": type(exc).__name__}
+                        raise AssertionError(
+                            status.model_dump_json()
+                            + "\n"
+                            + json.dumps(identity)
+                            + "\n"
+                            + worker_stderr.read_text()
+                        ) from None
+                    break
+                renew_at = time.monotonic() + 6
+            await asyncio.sleep(0.1)
+        assert status is not None and status.stopped
+        measured = status.observation
+        assert isinstance(measured, PreferenceMeasurementObservation), (
+            status.model_dump_json() + "\n" + worker_stderr.read_text()
+        )
+        assert measured.peak_footprint_bytes <= prepared.resolved.resource_envelope.memory_bytes
+        assert measured.completed_updates == measured.probe_count == 2
+        assert measured.objective == objective and measured.checkpoint_bytes > 0
+        assert measured.serialization_peak_bytes > 0 and measured.buffer_bytes > 0
+        assert (measured.reference_weight_bytes > 0) == (objective == "dpo")
+        assert (
+            measured.reference_adapter_bytes == 0
+            and measured.swap_growth_bytes == 0
+            and measured.thermal_ok
+        )
+        assert (
+            measured.weight_bytes > 0
+            and measured.adapter_bytes > 0
+            and measured.optimizer_bytes > 0
+        )
+        # Local probe saves are never durable training checkpoints.
+        assert not list((tmp_path / "probes" / prepared.attempt_id).glob("*/manifest.json"))
+    finally:
+        if started:
+            await supervisor.stop(
+                TrainingStopRequest.model_validate(
+                    {
+                        **wire,
+                        "command_id": str(uuid.uuid4()),
+                        "lease_expires_at": (datetime.now(UTC) + timedelta(seconds=29)).isoformat(),
+                        "reason": "cancelled",
+                    }
+                )
+            )
+        journal.close()

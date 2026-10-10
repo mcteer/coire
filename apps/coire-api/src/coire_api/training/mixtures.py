@@ -6,6 +6,8 @@ from collections.abc import Mapping, Sequence
 from opentelemetry import trace
 
 from coire_core.models.datasets import DatasetMixture, SplitManifest
+from coire_core.models.preference import PreferenceSplitManifest
+from coire_core.preference_data import compile_preference_mixture as _compile_preference_mixture
 from coire_core.training_data import CompiledMixture as CompiledMixture
 from coire_core.training_data import CompiledMixtureSource as CompiledMixtureSource
 from coire_core.training_data import compile_mixture as _compile_mixture
@@ -23,3 +25,15 @@ def compile_mixture(
 ) -> CompiledMixture:
     with tracer.start_as_current_span("coire.api.training.mixture.compile"):
         return _compile_mixture(mixture, manifests, validation_manifests=validation_manifests)
+
+
+def compile_preference_mixture(
+    mixture: DatasetMixture,
+    manifests: Mapping[uuid.UUID, PreferenceSplitManifest],
+    *,
+    validation_manifests: Sequence[PreferenceSplitManifest] = (),
+) -> CompiledMixture:
+    with tracer.start_as_current_span("coire.api.training.preference.mixture.compile"):
+        return _compile_preference_mixture(
+            mixture, manifests, validation_manifests=validation_manifests
+        )

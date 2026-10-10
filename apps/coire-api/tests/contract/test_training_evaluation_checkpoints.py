@@ -60,7 +60,7 @@ def test_v2_pause_decision_binds_job_version_and_completed_update() -> None:
     for change in (
         {"committed_update": 16},
         {"job_version": 0},
-        {"schema_version": 3},
+        {"schema_version": 4},
         {"evaluation_pause": {**data["evaluation_pause"], "pause_origin": "admin"}},
     ):
         with pytest.raises(ValueError):

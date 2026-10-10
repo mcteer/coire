@@ -14,6 +14,7 @@ from coire_core.errors import TrainingConflict, TrainingValidationError
 from coire_core.models.training_node import (
     CheckpointAcknowledgementDocument,
     CheckpointCommitAcknowledgementV2,
+    CheckpointCommitAcknowledgementV3,
     NodeAnalysisCancelRequest,
     NodeDatasetAnalysisRequest,
     NodeDatasetAnalysisStatus,
@@ -56,7 +57,11 @@ def native(request: Request, *, mutation: bool = False) -> TrainingSupervisor:
 
 
 def scope(
-    attempt_id: str, command: TrainingCommand | CheckpointCommitAcknowledgementV2, request: Request
+    attempt_id: str,
+    command: TrainingCommand
+    | CheckpointCommitAcknowledgementV2
+    | CheckpointCommitAcknowledgementV3,
+    request: Request,
 ) -> None:
     if command.attempt_id != attempt_id or command.node != request.app.state.settings.node_name:
         raise HTTPException(409, "training control identity differs")

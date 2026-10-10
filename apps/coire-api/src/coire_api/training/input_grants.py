@@ -26,6 +26,7 @@ from coire_api.db import (
 )
 from coire_api.training.authorization import authorize_live_training_action
 from coire_api.training.datasets import analysis_base
+from coire_api.training.preference_specs import objective_split, objective_split_digest
 from coire_core.errors import TrainingConflict, TrainingNotFound, TrainingValidationError
 from coire_core.models.auth import UserRole
 from coire_core.models.datasets import (
@@ -35,6 +36,7 @@ from coire_core.models.datasets import (
     DatasetRegistrationCommand,
     SplitManifest,
 )
+from coire_core.models.preference import PreferenceSplitManifest
 from coire_core.models.training_node import (
     DatasetInputGrant,
     TrainingInputSource,
@@ -215,7 +217,12 @@ async def authorized_source(
 async def attempt_sources(
     session: AsyncSession, prepare: TrainingPrepareRequest
 ) -> list[
-    tuple[TrainingDatasetRevisionRow, DatasetAnalysisBinding, SplitManifest, DatasetAnalysis]
+    tuple[
+        TrainingDatasetRevisionRow,
+        DatasetAnalysisBinding,
+        SplitManifest | PreferenceSplitManifest,
+        DatasetAnalysis,
+    ]
 ]:
     """Recheck the exact persisted participant and immutable inputs under current authority."""
     from coire_api.db import TrainingAttemptRow, TrainingJobRow, TrainingParticipantRow
@@ -253,7 +260,7 @@ async def attempt_sources(
         or attempt.state not in {"preparing", "running"}
         or attempt.world_size != prepare.world_size
         or attempt.lease_expires_at <= now
-        or prepare.lease_expires_at <= now
+        or (prepare.resolved.spec.schema_version != 3 and prepare.lease_expires_at <= now)
         or job.execution_deadline_at <= now
         or participant is None
         or participant.stopped_at is not None
@@ -280,11 +287,11 @@ async def attempt_sources(
         if analysis_command is None:
             raise TrainingConflict("Frozen analysis binding is unavailable")
         binding = DatasetAnalysisBinding.model_validate(analysis_command.payload.get("analysis"))
-        split = SplitManifest.model_validate(source.split_manifest)
+        split = objective_split(prepare.resolved.spec, source.split_manifest)
         analysis = DatasetAnalysis.model_validate(analysis_row.result)
         if (
             payload_digest(binding) != analysis_row.identity_sha256
-            or payload_digest(split) != frozen.split_sha256
+            or objective_split_digest(split) != frozen.split_sha256
             or binding.dataset_id != source.id
             or binding.source_sha256 != frozen.source_sha256
             or binding.split_sha256 != frozen.split_sha256
@@ -304,8 +311,15 @@ async def mint_attempt_inputs(
     sources = await attempt_sources(session, prepare)
     node = await session.scalar(select(NodeRow).where(NodeRow.name == prepare.node))
     assert node is not None
+    authority_expires_at = prepare.lease_expires_at
+    if prepare.resolved.spec.schema_version == 3:
+        from coire_api.db import TrainingAttemptRow
+
+        attempt = await session.get(TrainingAttemptRow, prepare.attempt_id, populate_existing=True)
+        assert attempt is not None
+        authority_expires_at = attempt.lease_expires_at
     expiry = min(
-        prepare.lease_expires_at,
+        authority_expires_at,
         datetime.now(UTC) + timedelta(seconds=settings.training_transfer_grant_s),
     )
     inputs = []
@@ -353,9 +367,11 @@ async def mint_attempt_inputs(
                 "resume_manifest_sha256",
                 "collective",
                 "command_id",
+                "lease_expires_at",
             }
         ),
         command_id=uuid.uuid4(),
+        lease_expires_at=expiry,
         sources=inputs,
     )
 

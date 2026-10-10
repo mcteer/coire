@@ -258,10 +258,16 @@ class TrainingController:
     async def _isolated_tick(self, job_id: str) -> None:
         try:
             await self.tick(job_id)
-        except Exception:
+        except Exception as error:
             logger.warning(
-                "training controller tick deferred",
-                extra={"job_id": job_id, "reason": "reconciliation_pending"},
+                "training controller tick deferred job_id=%s error_type=%s",
+                job_id,
+                type(error).__name__,
+                extra={
+                    "job_id": job_id,
+                    "reason": "reconciliation_pending",
+                    "error_type": type(error).__name__,
+                },
             )
 
     async def _advance(self, job_id: str) -> None:
@@ -477,6 +483,11 @@ class TrainingController:
 
     async def _dispatch(self, job_id: str, *, controls_only: bool) -> None:
         async with self.sessions() as session:
+            job = await current_job(session, job_id)
+            preference = (
+                job.resolved_spec is not None
+                and parse_resolved_training_spec(job.resolved_spec).spec.schema_version == 3
+            )
             operations = (
                 ["node.training.stop", "node.training.pause"]
                 if controls_only
@@ -491,8 +502,8 @@ class TrainingController:
             )
             commands = list(
                 (
-                    await session.scalars(
-                        select(TrainingCommandRow.id)
+                    await session.execute(
+                        select(TrainingCommandRow.id, TrainingCommandRow.operation)
                         .where(
                             TrainingCommandRow.job_id == job_id,
                             TrainingCommandRow.operation.in_(operations),
@@ -509,18 +520,36 @@ class TrainingController:
                 ).all()
             )
 
-        async def dispatch(command_id: uuid.UUID) -> None:
+        async def dispatch(command_id: uuid.UUID, operation: str) -> None:
             try:
-                async with asyncio.timeout(self.io_timeout_s):
+                # Preparation owns no trainer process. Its source/initial-policy
+                # preflight needs its own bounded budget; active controls retain
+                # the independent five-second stop/pause lane.
+                timeout = (
+                    30.0
+                    if preference and operation == "node.training.prepare"
+                    else self.io_timeout_s
+                )
+                async with asyncio.timeout(timeout):
                     await self.transport.dispatch_command(command_id)
-            except Exception:
+            except Exception as error:
                 # A timeout is uncertain delivery, not a failed/released hold.
                 logger.info(
-                    "training command awaiting reconciliation",
-                    extra={"job_id": job_id, "command_id": str(command_id)},
+                    "training command awaiting reconciliation job_id=%s command_id=%s operation=%s error_type=%s",
+                    job_id,
+                    str(command_id),
+                    operation,
+                    type(error).__name__,
+                    extra={
+                        "job_id": job_id,
+                        "command_id": str(command_id),
+                        "error_type": type(error).__name__,
+                    },
                 )
 
-        await asyncio.gather(*(dispatch(command_id) for command_id in commands))
+        await asyncio.gather(
+            *(dispatch(command_id, operation) for command_id, operation in commands)
+        )
 
     async def _observe(self, attempt_id: str) -> None:
         async with self.sessions() as session:

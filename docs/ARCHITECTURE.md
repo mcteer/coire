@@ -429,10 +429,33 @@ the full mirrored checkpoint and fenced pause. Both-rank trainer stop and owned
 cleanup precede fresh training admission for resume. Task/judge scores do not
 change harness verification, and judges must use a distinct model/base artifact.
 See [evaluation operations](runbooks/evaluations.md).
-Feature 018 separately specifies preference objectives, feedback consent/export and
-adapter initialization. Neither feature authorizes new dependencies or executable
-dataset/objective plugins in 016. Numerical, real process-restart, two-rank,
-coexistence, replication and rollback gates remain required before enablement.
+Feature 018 implements numeric v3 DPO/ORPO recipes, preference datasets, explicit
+feedback comparisons/export and exact adapter initialization. Its matrix is
+single-Studio dense Llama/Qwen2 LoRA or acquired affine 4-bit/group-64 QLoRA,
+zero dropout and final-assistant response masks. DPO retains an independent
+frozen initial-policy reference; ORPO has none. Full checkpoints retain pair
+sampler, optimizer, RNG and exact objective/initial/reference identities. Child
+outputs contain complete standalone tensors and immutable ancestry snapshots.
+Optional declared v3 suites reuse 017 obligations; empty suites create none.
+New adapters stay private/unverified and retain the exact-pair harness gate.
+
+Capture is prospective and enabled by default after visible disclosure, with an owner opt-out. Explicit
+pairs and independent owner/admin labels feed bounded private exports; thumbs
+never synthesize pairs. Withdrawal/deletion excludes unexported contributions
+immediately and purges copied bodies within 24 hours. Registered datasets and
+trained adapters are preserved, including while analysis is pending. Live user,
+key and administrator checks apply to reads, replay, review and publication.
+Cleanup and content-free baseline metrics continue with admissions/diagnostics
+disabled. Core never tokenizes or trains; Studios retain bare engine ownership.
+Native dependencies remain unchanged; the API adds pinned uvloop 0.22.1 for
+gateway I/O (ADR-0014). No trainer fork or executable objective plugin is introduced.
+Deployment/serving, privacy, recovery and drained rollback pass. Four exact
+shared profiles pass, including Studio B dense ORPO; unmeasured or failed shared
+configurations remain refused. All required native preference CI cases pass;
+full integration and final reconciliation pass. Preference admission
+stays default-off. See [feedback operations](runbooks/feedback.md),
+[preference training operations](runbooks/preference-training.md) and the
+[018 execution record](../specs/018-preference-optimisation/execution-record.md).
 
 ## 9. Upgrades and operations
 

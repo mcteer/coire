@@ -459,3 +459,77 @@ async def test_metrics_deduplicate_and_reject_stale_attempts(connection: AsyncCo
             await record_metric(session, sample.model_copy(update={"loss": 2.5}), fence=1)
         with pytest.raises(TrainingConflict):
             await record_metric(session, sample, fence=2)
+
+
+async def test_preference_metrics_replay_pairs_and_refuse_objective_or_fence(
+    connection: AsyncConnection,
+) -> None:
+    import json
+
+    from sqlalchemy import update
+
+    from coire_api.db import TrainingJobRow
+    from coire_core.models.preference import PreferenceMetricSample
+    from coire_core.models.training import ResolvedTrainingSpecV3
+
+    await seed_job(connection)
+    data = json.loads(
+        await asyncio.to_thread(
+            lambda: (
+                Path(__file__).resolve().parents[4]
+                / "tests/fixtures/preference/legacy_training/resolved_v1.json"
+            ).read_text()
+        )
+    )
+    data["spec"].update(
+        schema_version=3, objective="dpo", objective_options={"beta": 0.1}, init_adapter=None
+    )
+    target = {**data["spec"]["model"], "base_manifest_sha256": data["base_manifest_sha256"]}
+    data.update(
+        initial_target=target, reference_target=target, sampler_version="coire-pair-sampler-v1"
+    )
+    data["resource_envelope"].update(reference_weight_bytes=1024, reference_adapter_bytes=0)
+    resolved = ResolvedTrainingSpecV3.model_validate(data)
+    await connection.execute(
+        update(TrainingJobRow)
+        .where(TrainingJobRow.id == JOB)
+        .values(state="running", fence=1, resolved_spec=resolved.model_dump(mode="json"))
+    )
+    await connection.execute(
+        insert(TrainingAttemptRow).values(
+            id=JOB,
+            job_id=JOB,
+            generation=1,
+            fence=1,
+            world_size=1,
+            runtime_sha256="a" * 64,
+            state="running",
+            lease_expires_at=datetime.now(UTC) + timedelta(seconds=30),
+        )
+    )
+    await connection.commit()
+    sample = PreferenceMetricSample(
+        job_id=JOB,
+        attempt_id=JOB,
+        fence=1,
+        update=1,
+        objective="dpo",
+        kind="train",
+        loss=0.7,
+        pair_count=4,
+        response_tokens=31,
+        tokens_per_second=12,
+        recorded_at=datetime.now(UTC),
+    )
+    async with AsyncSession(bind=connection, expire_on_commit=False) as session:
+        row = await record_metric(session, sample, fence=1)
+        assert (await record_metric(session, sample, fence=1)).id == row.id
+        await session.commit()
+        page = await metric_page(session, JOB)
+        assert isinstance(page.items[0], PreferenceMetricSample)
+        assert page.items[0].pair_count == 4 and page.items[0].response_tokens == 31
+        replay = await replay_events(session, JOB)
+        assert replay.events[0].kind == "preference_progress"
+        for change in ({"objective": "orpo"}, {"fence": 2}, {"pair_count": 5}):
+            with pytest.raises(TrainingConflict):
+                await record_metric(session, sample.model_copy(update=change), fence=1)

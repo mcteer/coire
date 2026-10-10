@@ -12,10 +12,12 @@ from typing import Literal
 from pydantic import AwareDatetime, Field, JsonValue, field_validator, model_validator
 
 from coire_core.models.conversation import Conversation, ImagePart, bounded_json_object
+from coire_core.models.preference import PreferenceAnalysis
 from coire_core.models.training_types import Digest, PositiveCount, Seed, TrainingWire
 
 
 class DatasetFormat(StrEnum):
+    PREFERENCE = "preference"
     TEXT = "text"
     PROMPT_COMPLETION = "prompt_completion"
     CONVERSATION = "conversation"
@@ -329,6 +331,7 @@ class DatasetDiagnostic(TrainingWire):
         "invalid_utf8",
         "row_too_large",
         "template_incompatible",
+        "token_identical",
     ]
 
 
@@ -339,6 +342,9 @@ class DatasetReceipt(TrainingWire):
 
 
 class DatasetDetail(TrainingWire):
+    warnings: list[Literal["small_sample"]] = Field(
+        default_factory=list, max_length=1, exclude_if=lambda value: not value
+    )
     id: uuid.UUID
     name: str = Field(min_length=1, max_length=120)
     format: DatasetFormat
@@ -396,6 +402,9 @@ class TokenDistribution(TrainingWire):
 
 
 class DatasetAnalysis(TrainingWire):
+    preference: PreferenceAnalysis | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     id: uuid.UUID
     dataset_id: uuid.UUID
     model_id: uuid.UUID
@@ -427,6 +436,34 @@ class DatasetAnalysis(TrainingWire):
                 "successful analysis requires complete identities, statistics and valid rows"
             )
         return self
+
+    def validate_binding(self, binding: DatasetAnalysisBinding) -> None:
+        if (
+            self.dataset_id != binding.dataset_id
+            or self.model_id != binding.model_id
+            or self.variant_id != binding.variant_id
+        ):
+            raise ValueError("dataset analysis differs from its input binding")
+        if binding.format is not DatasetFormat.PREFERENCE:
+            if self.preference is not None:
+                raise ValueError("SFT analysis cannot contain preference statistics")
+            return
+        if self.state != "succeeded":
+            if self.preference is not None:
+                raise ValueError("failed preference analysis cannot claim complete statistics")
+            return
+        preference = self.preference
+        if preference is None or (
+            preference.dataset_id != self.dataset_id
+            or preference.source_sha256 != binding.source_sha256
+            or preference.split_sha256 != binding.split_sha256
+            or preference.row_count != self.row_count
+            or preference.tokenizer_sha256 != self.tokenizer_sha256
+            or preference.template_sha256 != self.template_sha256
+            or preference.runtime_sha256 != self.runtime_sha256
+            or preference.duplicate_rows != self.duplicate_rows
+        ):
+            raise ValueError("preference analysis requires exact complete paired statistics")
 
 
 class DatasetDeleteRequest(TrainingWire):

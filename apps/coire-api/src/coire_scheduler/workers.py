@@ -52,9 +52,11 @@ class SchedulerWorkers:
         ]
         from coire_api.training.runtime import TrainingRuntimeWorker
         from coire_scheduler.datasets import DatasetAnalysisExecutor
+        from coire_scheduler.feedback import FeedbackCleanupWorker
 
         self.workers.append(TrainingRuntimeWorker(settings))
         self.workers.append(DatasetAnalysisExecutor(settings))
+        self.workers.append(FeedbackCleanupWorker(settings))
         self.started: list[Worker] = []
 
     async def start(self) -> None:

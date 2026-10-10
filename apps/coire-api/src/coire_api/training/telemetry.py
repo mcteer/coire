@@ -7,6 +7,7 @@ from functools import wraps
 from typing import Any, ParamSpec, TypeVar
 
 from opentelemetry import metrics, trace
+from opentelemetry.context import Context
 from opentelemetry.metrics import CallbackOptions, Meter, Observation
 
 tracer = trace.get_tracer("coire.api.training")
@@ -93,6 +94,8 @@ class TrainingBaselineMetrics:
 
 def observed(
     name: str,
+    *,
+    linked_root: bool = False,
 ) -> Callable[[Callable[P, Coroutine[Any, Any, R]]], Callable[P, Coroutine[Any, Any, R]]]:
     """Async spans suppress arbitrary exception text, including SQL/source contents."""
 
@@ -101,8 +104,14 @@ def observed(
     ) -> Callable[P, Coroutine[Any, Any, R]]:
         @wraps(function)
         async def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
+            parent = trace.get_current_span().get_span_context()
+            links = [trace.Link(parent)] if linked_root and parent.is_valid else []
             with tracer.start_as_current_span(
-                name, record_exception=False, set_status_on_exception=False
+                name,
+                context=Context() if linked_root else None,
+                links=links,
+                record_exception=False,
+                set_status_on_exception=False,
             ):
                 try:
                     result = await function(*args, **kwargs)

@@ -8,6 +8,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Protocol
 
+import anyio
 from argon2 import PasswordHasher
 from argon2.exceptions import VerificationError
 from sqlalchemy import select
@@ -31,6 +32,8 @@ KEY_PATTERN = re.compile(r"^coire_([A-Za-z0-9_-]{12})_([A-Za-z0-9_-]{43})$")
 # gateway's latency budget while remaining deliberately memory-hard. API-key secrets carry
 # 256 random bits, so password-derived low-entropy tradeoffs do not apply here.
 hasher = PasswordHasher(time_cost=2, memory_cost=19 * 1024, parallelism=1)
+# Retain the existing one-hash memory envelope without blocking unrelated I/O.
+_verification_limiter = anyio.CapacityLimiter(1)
 
 
 class CredentialPrincipal(Protocol):
@@ -241,15 +244,30 @@ async def authenticate_key(session: AsyncSession, presented: str) -> AuthPrincip
         ).all()
     )
     matched: ApiKeyRow | None = None
+    verified_identity: tuple[str, int, uuid.UUID, str] | None = None
     for row in rows:
+        identity = (row.secret_hash, row.credential_version, row.user_id, row.prefix)
         try:
-            if hasher.verify(row.secret_hash, secret):
+            if await anyio.to_thread.run_sync(
+                hasher.verify, identity[0], secret, limiter=_verification_limiter
+            ):
                 matched = row
+                verified_identity = identity
         except VerificationError:
             continue
     if matched is None:
         raise InvalidApiKey("invalid API key")
-    user = await session.get(UserRow, matched.user_id)
+    # Verification yields to other requests, including credential mutations.
+    # Re-read before deriving authority; never attach a new version to an old secret.
+    matched = await session.get(ApiKeyRow, matched.id, populate_existing=True)
+    if (
+        matched is None
+        or matched.revoked_at is not None
+        or (matched.secret_hash, matched.credential_version, matched.user_id, matched.prefix)
+        != verified_identity
+    ):
+        raise InvalidApiKey("invalid API key")
+    user = await session.get(UserRow, matched.user_id, populate_existing=True)
     if user is None or not user.active:
         raise InvalidApiKey("invalid API key")
     entitlements = frozenset(
@@ -277,12 +295,20 @@ async def authenticate_key(session: AsyncSession, presented: str) -> AuthPrincip
 async def key_is_active(session: AsyncSession, principal: CredentialPrincipal) -> bool:
     if principal.api_key_id is None:
         return True
-    row = await session.get(ApiKeyRow, principal.api_key_id)
-    user = await session.get(UserRow, principal.user_id) if principal.user_id else None
-    return bool(
-        row
-        and user
-        and user.active
-        and row.revoked_at is None
-        and row.credential_version == principal.credential_version
+    if principal.user_id is None:
+        return False
+    # Scalar database authority cannot be satisfied by stale ORM identity-map rows.
+    return (
+        await session.scalar(
+            select(ApiKeyRow.id)
+            .join(UserRow, UserRow.id == ApiKeyRow.user_id)
+            .where(
+                ApiKeyRow.id == principal.api_key_id,
+                ApiKeyRow.user_id == principal.user_id,
+                ApiKeyRow.revoked_at.is_(None),
+                ApiKeyRow.credential_version == principal.credential_version,
+                UserRow.active.is_(True),
+            )
+        )
+        is not None
     )

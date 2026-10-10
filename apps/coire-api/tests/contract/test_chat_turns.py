@@ -18,12 +18,16 @@ from coire_api.app import create_app
 from coire_api.auth import Principal, PrincipalKind, require_principal
 from coire_api.chat.turns import admit_turn, project_message, project_turn, read_turn_detail
 from coire_api.db import (
+    ChatActiveAnswerRow,
     ChatAttachmentRow,
     ChatConversationRow,
     ChatEventRow,
     ChatMessageRow,
     ChatTurnRow,
+    ComparisonPairRow,
+    FeedbackPreferenceRow,
     ModelRow,
+    UserRow,
     get_session,
 )
 from coire_core.errors import ChatConflict, ChatContextExceeded, ChatNotFound
@@ -66,10 +70,18 @@ class Session:
         self.attachments: dict[uuid.UUID, ChatAttachmentRow] = {}
         self.sql: list[str] = []
         self.commits = 0
+        self.pending_comparison: ComparisonPairRow | None = None
+        self.active_answers: list[ChatActiveAnswerRow] = []
+        self.user = UserRow(id=conversation.owner_user_id, active=True)
+        self.preference = FeedbackPreferenceRow(
+            owner_user_id=conversation.owner_user_id, enabled=True, capture_generation=1, version=1
+        )
 
     async def scalar(self, statement: object) -> object:
         sql = str(statement)
         self.sql.append(sql)
+        if "FROM comparison_pairs" in sql:
+            return self.pending_comparison
         if "FROM chat_conversations" in sql:
             return self.conversation
         if "FROM chat_turns" in sql:
@@ -81,9 +93,15 @@ class Session:
         sql = str(statement)
         self.sql.append(sql)
         rows = self.turns if "FROM chat_turns" in sql else self.messages
+        if "FROM chat_active_answers" in sql:
+            rows = self.active_answers  # type: ignore[assignment]
         return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: list(rows)))
 
-    async def get(self, model: object, identifier: uuid.UUID) -> object | None:
+    async def get(self, model: object, identifier: uuid.UUID, **_kwargs: object) -> object | None:
+        if model is UserRow:
+            return self.user
+        if model is FeedbackPreferenceRow:
+            return self.preference
         if model is ChatAttachmentRow:
             return self.attachments.get(identifier)
         if model is ChatTurnRow:
@@ -876,3 +894,72 @@ async def test_send_and_status_routes_use_native_sse_and_owner_guard(
         status = await client.get(f"{path}/{admission.turn.id}", headers=headers)
         assert status.status_code == 200
         assert status.json()["turn"]["model_display_name"] == "Named model"
+
+
+async def test_pending_comparison_blocks_a_new_turn() -> None:
+    from coire_api.db import ComparisonPairRow
+
+    session, principal, body = _case()
+    session.pending_comparison = ComparisonPairRow(
+        id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        conversation_id=session.conversation.id,
+        selection_state="pending",
+    )
+    with pytest.raises(ChatConflict, match="comparison_pending"):
+        await admit_turn(
+            session,  # type: ignore[arg-type]
+            session.conversation.id,
+            principal,
+            body,
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+        )
+
+
+async def test_selected_comparison_answer_alone_enters_next_prompt() -> None:
+    session, principal, body = _case()
+    uid, original, candidate, tid = [uuid.uuid4() for _ in range(4)]
+    for position, identity, role, text in [
+        (1, uid, "user", "before"),
+        (2, original, "assistant", "unchosen"),
+        (3, candidate, "assistant", "chosen"),
+    ]:
+        session.messages.append(
+            ChatMessageRow(
+                id=identity,
+                conversation_id=session.conversation.id,
+                position=position,
+                role=role,
+                text=text,
+                reasoning="",
+                attachment_ids=[],
+                attachment_selections=[],
+                created_at=NOW,
+            )
+        )
+    session.turns.append(
+        ChatTurnRow(
+            id=tid,
+            conversation_id=session.conversation.id,
+            client_request_id=uuid.uuid4(),
+            input_message_id=uid,
+            assistant_message_id=original,
+            action="chat",
+            state="completed",
+        )
+    )
+    session.active_answers.append(
+        ChatActiveAnswerRow(
+            source_turn_id=tid,
+            conversation_id=session.conversation.id,
+            selected_message_id=candidate,
+            selection_revision=1,
+        )
+    )
+    admission = await admit_turn(
+        session,  # type: ignore[arg-type]
+        session.conversation.id,
+        principal,
+        body,
+        Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
+    )
+    assert [message.content for message in admission.history] == ["before", "chosen", "Hello"]

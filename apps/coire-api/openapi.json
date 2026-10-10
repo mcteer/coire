@@ -320,8 +320,12 @@
             "type": "string"
           },
           "objective": {
-            "const": "sft",
             "default": "sft",
+            "enum": [
+              "sft",
+              "dpo",
+              "orpo"
+            ],
             "title": "Objective",
             "type": "string"
           },
@@ -393,6 +397,100 @@
           "created_at"
         ],
         "title": "AdapterDetail",
+        "type": "object"
+      },
+      "AdapterLineage": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_id": {
+            "format": "uuid",
+            "title": "Adapter Id",
+            "type": "string"
+          },
+          "ancestors": {
+            "items": {
+              "$ref": "#/components/schemas/AdapterLineageEntry"
+            },
+            "maxItems": 32,
+            "title": "Ancestors",
+            "type": "array"
+          },
+          "base": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "adapter_id",
+          "base",
+          "parent",
+          "ancestors"
+        ],
+        "title": "AdapterLineage",
+        "type": "object"
+      },
+      "AdapterLineageEntry": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_id": {
+            "format": "uuid",
+            "title": "Adapter Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 32,
+            "title": "Dataset Ids",
+            "type": "array"
+          },
+          "objective": {
+            "enum": [
+              "sft",
+              "dpo",
+              "orpo"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "resolved_spec_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Resolved Spec Sha256",
+            "type": "string"
+          },
+          "source_job_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          }
+        },
+        "required": [
+          "adapter_id",
+          "target",
+          "objective",
+          "source_job_id",
+          "dataset_ids",
+          "resolved_spec_sha256",
+          "created_at"
+        ],
+        "title": "AdapterLineageEntry",
         "type": "object"
       },
       "AdapterPage": {
@@ -485,6 +583,39 @@
         ],
         "title": "AdapterState",
         "type": "string"
+      },
+      "AdminPairJudgement": {
+        "additionalProperties": false,
+        "properties": {
+          "choice": {
+            "enum": [
+              "original",
+              "candidate",
+              "skip"
+            ],
+            "title": "Choice",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackTag"
+            },
+            "maxItems": 16,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_version",
+          "choice"
+        ],
+        "title": "AdminPairJudgement",
+        "type": "object"
       },
       "AgentRun": {
         "additionalProperties": false,
@@ -2724,6 +2855,14 @@
             "title": "Attachments",
             "type": "array"
           },
+          "comparisons": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonReceipt"
+            },
+            "maxItems": 100,
+            "title": "Comparisons",
+            "type": "array"
+          },
           "conversation": {
             "$ref": "#/components/schemas/ChatConversation"
           },
@@ -2933,6 +3072,12 @@
             "discriminator": {
               "mapping": {
                 "attachment.changed": "#/components/schemas/ChatAttachmentChanged",
+                "comparison.accepted": "#/components/schemas/ComparisonEvent",
+                "comparison.delta": "#/components/schemas/ComparisonEvent",
+                "comparison.ready": "#/components/schemas/ComparisonEvent",
+                "comparison.selection": "#/components/schemas/ComparisonEvent",
+                "comparison.status": "#/components/schemas/ComparisonEvent",
+                "comparison.terminal": "#/components/schemas/ComparisonEvent",
                 "conversation.deleted": "#/components/schemas/ChatConversationDeleted",
                 "conversation.updated": "#/components/schemas/ChatConversationUpdated",
                 "message.delta": "#/components/schemas/ChatMessageDelta",
@@ -2979,6 +3124,9 @@
               },
               {
                 "$ref": "#/components/schemas/ChatConversationDeleted"
+              },
+              {
+                "$ref": "#/components/schemas/ComparisonEvent"
               }
             ],
             "title": "Payload"
@@ -3804,6 +3952,16 @@
             ],
             "title": "Retry Of"
           },
+          "sampling": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NativeChatSampling"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source_revision": {
             "anyOf": [
               {
@@ -4374,6 +4532,385 @@
         "title": "ClusterState",
         "type": "object"
       },
+      "ComparisonCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "source_message_id": {
+            "format": "uuid",
+            "title": "Source Message Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_revision",
+          "source_message_id"
+        ],
+        "title": "ComparisonCreate",
+        "type": "object"
+      },
+      "ComparisonDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "admin_judgement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "admin_tags": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackTag"
+            },
+            "maxItems": 16,
+            "title": "Admin Tags",
+            "type": "array"
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disclosure": {
+            "default": "Feedback and comparisons may improve models on this platform. Turning capture off or deleting a conversation removes unexported feedback. Already published training datasets and trained adapters remain unchanged.",
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "disclosure_version": {
+            "const": "feedback-v1",
+            "default": "feedback-v1",
+            "title": "Disclosure Version",
+            "type": "string"
+          },
+          "eligibility": {
+            "$ref": "#/components/schemas/FeedbackEligibilityReason"
+          },
+          "events_path": {
+            "pattern": "^/api/v1/chat/conversations/[0-9a-f-]{36}/events$",
+            "title": "Events Path",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "original": {
+            "anyOf": [
+              {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original"
+          },
+          "owner_judgement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_tags": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackTag"
+            },
+            "maxItems": 16,
+            "title": "Owner Tags",
+            "type": "array"
+          },
+          "selected": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PairChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selection_state": {
+            "$ref": "#/components/schemas/SelectionState"
+          },
+          "source_message_id": {
+            "format": "uuid",
+            "title": "Source Message Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ComparisonState"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TextCompletionUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "selection_state",
+          "events_path",
+          "conversation_id",
+          "source_message_id",
+          "target",
+          "eligibility",
+          "expires_at",
+          "created_at"
+        ],
+        "title": "ComparisonDetail",
+        "type": "object"
+      },
+      "ComparisonDismiss": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_version"
+        ],
+        "title": "ComparisonDismiss",
+        "type": "object"
+      },
+      "ComparisonEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "comparison_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "selection_state": {
+            "$ref": "#/components/schemas/SelectionState"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ComparisonState"
+          },
+          "text_delta": {
+            "anyOf": [
+              {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Delta"
+          },
+          "text_length": {
+            "default": 0,
+            "maximum": 65536.0,
+            "minimum": 0.0,
+            "title": "Text Length",
+            "type": "integer"
+          },
+          "text_offset": {
+            "default": 0,
+            "maximum": 65536.0,
+            "minimum": 0.0,
+            "title": "Text Offset",
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "comparison.accepted",
+              "comparison.status",
+              "comparison.delta",
+              "comparison.ready",
+              "comparison.selection",
+              "comparison.terminal"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "type",
+          "comparison_id",
+          "version",
+          "state",
+          "selection_state"
+        ],
+        "title": "ComparisonEvent",
+        "type": "object"
+      },
+      "ComparisonReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "events_path": {
+            "pattern": "^/api/v1/chat/conversations/[0-9a-f-]{36}/events$",
+            "title": "Events Path",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "selection_state": {
+            "$ref": "#/components/schemas/SelectionState"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ComparisonState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "selection_state",
+          "events_path"
+        ],
+        "title": "ComparisonReceipt",
+        "type": "object"
+      },
+      "ComparisonSelect": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate": {
+            "$ref": "#/components/schemas/PairChoice"
+          },
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackTag"
+            },
+            "maxItems": 16,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_version",
+          "candidate"
+        ],
+        "title": "ComparisonSelect",
+        "type": "object"
+      },
+      "ComparisonSelectionReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "comparison": {
+            "$ref": "#/components/schemas/ComparisonReceipt"
+          },
+          "conversation_revision": {
+            "minimum": 1.0,
+            "title": "Conversation Revision",
+            "type": "integer"
+          },
+          "feedback": {
+            "$ref": "#/components/schemas/FeedbackReceipt"
+          }
+        },
+        "required": [
+          "comparison",
+          "feedback",
+          "conversation_revision"
+        ],
+        "title": "ComparisonSelectionReceipt",
+        "type": "object"
+      },
+      "ComparisonState": {
+        "enum": [
+          "queued",
+          "running",
+          "ready",
+          "failed",
+          "cancelled",
+          "identical",
+          "expired",
+          "withdrawn"
+        ],
+        "type": "string"
+      },
       "ConsoleAlert": {
         "additionalProperties": false,
         "properties": {
@@ -4512,6 +5049,44 @@
           "ledgers"
         ],
         "title": "ConsoleSnapshot",
+        "type": "object"
+      },
+      "ConversationFeedbackPage": {
+        "additionalProperties": false,
+        "properties": {
+          "comparisons": {
+            "items": {
+              "$ref": "#/components/schemas/ComparisonReceipt"
+            },
+            "maxItems": 100,
+            "title": "Comparisons",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MessageFeedback"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ConversationFeedbackPage",
         "type": "object"
       },
       "CoreHostCapacity": {
@@ -4716,6 +5291,16 @@
             "format": "uuid",
             "title": "Model Id",
             "type": "string"
+          },
+          "preference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreferenceAnalysis"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "role_counts": {
             "additionalProperties": {
@@ -4993,6 +5578,15 @@
             "minimum": 1.0,
             "title": "Version",
             "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "const": "small_sample",
+              "type": "string"
+            },
+            "maxItems": 1,
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
@@ -5023,7 +5617,8 @@
               "zero_target",
               "invalid_utf8",
               "row_too_large",
-              "template_incompatible"
+              "template_incompatible",
+              "token_identical"
             ],
             "title": "Code",
             "type": "string"
@@ -5049,6 +5644,7 @@
       },
       "DatasetFormat": {
         "enum": [
+          "preference",
           "text",
           "prompt_completion",
           "conversation"
@@ -5314,6 +5910,22 @@
       "Digest": {
         "pattern": "^[a-f0-9]{64}$",
         "type": "string"
+      },
+      "DpoOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "beta": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Beta",
+            "type": "number"
+          }
+        },
+        "required": [
+          "beta"
+        ],
+        "title": "DpoOptions",
+        "type": "object"
       },
       "ElectionVoteGrant": {
         "additionalProperties": false,
@@ -7716,6 +8328,17 @@
         "title": "EvaluationWorkerResult",
         "type": "object"
       },
+      "ExportState": {
+        "enum": [
+          "queued",
+          "staging",
+          "publishing",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "type": "string"
+      },
       "FailoverAccessVerifier": {
         "additionalProperties": false,
         "description": "Public Cloudflare Access verification material safe for a Studio snapshot.",
@@ -7962,6 +8585,413 @@
         ],
         "title": "FailoverSnapshot",
         "type": "object"
+      },
+      "FeedbackEligibilityReason": {
+        "enum": [
+          "eligible",
+          "capture_disabled",
+          "withdrawn",
+          "source_provenance_unavailable",
+          "unsupported_content",
+          "source_not_latest",
+          "source_incomplete",
+          "source_too_large",
+          "expired"
+        ],
+        "type": "string"
+      },
+      "FeedbackPreference": {
+        "additionalProperties": false,
+        "properties": {
+          "capture_generation": {
+            "minimum": 1.0,
+            "title": "Capture Generation",
+            "type": "integer"
+          },
+          "changed_at": {
+            "format": "date-time",
+            "title": "Changed At",
+            "type": "string"
+          },
+          "disclosure": {
+            "default": "Feedback and comparisons may improve models on this platform. Turning capture off or deleting a conversation removes unexported feedback. Already published training datasets and trained adapters remain unchanged.",
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "disclosure_version": {
+            "const": "feedback-v1",
+            "default": "feedback-v1",
+            "title": "Disclosure Version",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "withdrawn_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withdrawn At"
+          }
+        },
+        "required": [
+          "owner_id",
+          "enabled",
+          "capture_generation",
+          "version",
+          "changed_at"
+        ],
+        "title": "FeedbackPreference",
+        "type": "object"
+      },
+      "FeedbackPreferenceUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "disclosure_version": {
+            "const": "feedback-v1",
+            "title": "Disclosure Version",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_version",
+          "enabled",
+          "disclosure_version"
+        ],
+        "title": "FeedbackPreferenceUpdate",
+        "type": "object"
+      },
+      "FeedbackReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "disclosure": {
+            "default": "Feedback and comparisons may improve models on this platform. Turning capture off or deleting a conversation removes unexported feedback. Already published training datasets and trained adapters remain unchanged.",
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "disclosure_version": {
+            "const": "feedback-v1",
+            "default": "feedback-v1",
+            "title": "Disclosure Version",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "judgement": {
+            "anyOf": [
+              {
+                "enum": [
+                  "up",
+                  "down",
+                  "original",
+                  "candidate"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judgement"
+          },
+          "source": {
+            "enum": [
+              "owner",
+              "admin"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "judgement",
+          "source"
+        ],
+        "title": "FeedbackReceipt",
+        "type": "object"
+      },
+      "FeedbackReviewDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "admin_judgement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "admin_tags": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackTag"
+            },
+            "maxItems": 16,
+            "title": "Admin Tags",
+            "type": "array"
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "conversation_id": {
+            "format": "uuid",
+            "title": "Conversation Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disclosure": {
+            "default": "Feedback and comparisons may improve models on this platform. Turning capture off or deleting a conversation removes unexported feedback. Already published training datasets and trained adapters remain unchanged.",
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "disclosure_version": {
+            "const": "feedback-v1",
+            "default": "feedback-v1",
+            "title": "Disclosure Version",
+            "type": "string"
+          },
+          "eligibility": {
+            "$ref": "#/components/schemas/FeedbackEligibilityReason"
+          },
+          "events_path": {
+            "pattern": "^/api/v1/chat/conversations/[0-9a-f-]{36}/events$",
+            "title": "Events Path",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "original": {
+            "anyOf": [
+              {
+                "maxLength": 65536,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "owner_judgement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "owner_tags": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackTag"
+            },
+            "maxItems": 16,
+            "title": "Owner Tags",
+            "type": "array"
+          },
+          "prompt": {
+            "items": {
+              "$ref": "#/components/schemas/PreferenceMessage"
+            },
+            "maxItems": 128,
+            "title": "Prompt",
+            "type": "array"
+          },
+          "selected": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PairChoice"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selection_state": {
+            "$ref": "#/components/schemas/SelectionState"
+          },
+          "source_message_id": {
+            "format": "uuid",
+            "title": "Source Message Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ComparisonState"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TextCompletionUsage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "selection_state",
+          "events_path",
+          "conversation_id",
+          "source_message_id",
+          "target",
+          "eligibility",
+          "expires_at",
+          "created_at",
+          "owner_id"
+        ],
+        "title": "FeedbackReviewDetail",
+        "type": "object"
+      },
+      "FeedbackReviewPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackReviewDetail"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "FeedbackReviewPage",
+        "type": "object"
+      },
+      "FeedbackReviewReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "comparison_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "judgement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skipped": {
+            "default": false,
+            "title": "Skipped",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "comparison_id"
+        ],
+        "title": "FeedbackReviewReceipt",
+        "type": "object"
+      },
+      "FeedbackTag": {
+        "maxLength": 32,
+        "minLength": 1,
+        "pattern": "^[a-z0-9][a-z0-9-]*$",
+        "type": "string"
       },
       "FileCitation": {
         "additionalProperties": false,
@@ -12033,6 +13063,43 @@
         "title": "MemoryReservationState",
         "type": "string"
       },
+      "MessageFeedback": {
+        "additionalProperties": false,
+        "properties": {
+          "eligibility": {
+            "$ref": "#/components/schemas/FeedbackEligibilityReason"
+          },
+          "feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message_id": {
+            "format": "uuid",
+            "title": "Message Id",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackTag"
+            },
+            "maxItems": 16,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "message_id",
+          "eligibility"
+        ],
+        "title": "MessageFeedback",
+        "type": "object"
+      },
       "Model": {
         "additionalProperties": false,
         "description": "The registry record.",
@@ -12948,6 +14015,54 @@
           "updated_at"
         ],
         "title": "ModelVariant",
+        "type": "object"
+      },
+      "NativeChatSampling": {
+        "additionalProperties": false,
+        "description": "Explicit sampling for native local text chat; omitted requests retain engine defaults.",
+        "properties": {
+          "min_p": {
+            "default": 0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Min P",
+            "type": "number"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "maximum": 4294967295.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "temperature": {
+            "default": 0.7,
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Temperature",
+            "type": "number"
+          },
+          "top_k": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Top K",
+            "type": "integer"
+          },
+          "top_p": {
+            "default": 0.95,
+            "exclusiveMinimum": 0.0,
+            "maximum": 1.0,
+            "title": "Top P",
+            "type": "number"
+          }
+        },
+        "title": "NativeChatSampling",
         "type": "object"
       },
       "Node": {
@@ -14450,6 +15565,29 @@
         "title": "OpsTurnStatus",
         "type": "string"
       },
+      "OrpoOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "weight": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Weight",
+            "type": "number"
+          }
+        },
+        "required": [
+          "weight"
+        ],
+        "title": "OrpoOptions",
+        "type": "object"
+      },
+      "PairChoice": {
+        "enum": [
+          "original",
+          "candidate"
+        ],
+        "type": "string"
+      },
       "PinUpdate": {
         "additionalProperties": false,
         "properties": {
@@ -14725,6 +15863,908 @@
         ],
         "title": "Precision",
         "type": "string"
+      },
+      "PreferenceAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "chosen_response_tokens": {
+            "$ref": "#/components/schemas/PreferenceTokenSummary"
+          },
+          "chosen_tokens": {
+            "$ref": "#/components/schemas/PreferenceTokenSummary"
+          },
+          "dataset_id": {
+            "format": "uuid",
+            "title": "Dataset Id",
+            "type": "string"
+          },
+          "duplicate_rows": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Duplicate Rows",
+            "type": "integer"
+          },
+          "implementation": {
+            "const": "coire-preference-data-v1",
+            "default": "coire-preference-data-v1",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "prompt_group_count": {
+            "maximum": 1000000.0,
+            "minimum": 2.0,
+            "title": "Prompt Group Count",
+            "type": "integer"
+          },
+          "rejected_response_tokens": {
+            "$ref": "#/components/schemas/PreferenceTokenSummary"
+          },
+          "rejected_tokens": {
+            "$ref": "#/components/schemas/PreferenceTokenSummary"
+          },
+          "row_count": {
+            "maximum": 1000000.0,
+            "minimum": 2.0,
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "runtime_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "source_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "split_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "template_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "token_rows_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "tokenizer_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          }
+        },
+        "required": [
+          "dataset_id",
+          "source_sha256",
+          "split_sha256",
+          "tokenizer_sha256",
+          "template_sha256",
+          "runtime_sha256",
+          "row_count",
+          "prompt_group_count",
+          "token_rows_sha256",
+          "chosen_tokens",
+          "rejected_tokens",
+          "chosen_response_tokens",
+          "rejected_response_tokens"
+        ],
+        "title": "PreferenceAnalysis",
+        "type": "object"
+      },
+      "PreferenceExportCancel": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "PreferenceExportCancel",
+        "type": "object"
+      },
+      "PreferenceExportCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/PreferenceExportFilters"
+          },
+          "license_note": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "License Note",
+            "type": "string"
+          },
+          "model_id": {
+            "format": "uuid",
+            "title": "Model Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "default": "owner_preferred",
+            "enum": [
+              "owner_preferred",
+              "owner",
+              "admin"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "split_seed": {
+            "$ref": "#/components/schemas/Seed",
+            "default": 0
+          },
+          "validation_fraction": {
+            "default": 0.05,
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Validation Fraction",
+            "type": "number"
+          },
+          "variant_id": {
+            "format": "uuid",
+            "title": "Variant Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "license_note",
+          "model_id",
+          "variant_id"
+        ],
+        "title": "PreferenceExportCreate",
+        "type": "object"
+      },
+      "PreferenceExportDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_limit": {
+            "const": 268435456,
+            "default": 268435456,
+            "title": "Byte Limit",
+            "type": "integer"
+          },
+          "cleanup_pending": {
+            "title": "Cleanup Pending",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dataset_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Id"
+          },
+          "deadline": {
+            "format": "date-time",
+            "title": "Deadline",
+            "type": "string"
+          },
+          "excluded_count": {
+            "minimum": 0.0,
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "matched_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Matched Count",
+            "type": "integer"
+          },
+          "owner_id": {
+            "format": "uuid",
+            "title": "Owner Id",
+            "type": "string"
+          },
+          "pair_limit": {
+            "const": 10000,
+            "default": 10000,
+            "title": "Pair Limit",
+            "type": "integer"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "empty",
+                  "oversize",
+                  "insufficient_groups",
+                  "source_changed",
+                  "unauthorized",
+                  "quota",
+                  "timeout",
+                  "cancelled",
+                  "invalid_data",
+                  "internal"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "request": {
+            "$ref": "#/components/schemas/PreferenceExportCreate"
+          },
+          "selected_count": {
+            "maximum": 10000.0,
+            "minimum": 0.0,
+            "title": "Selected Count",
+            "type": "integer"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ExportState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "const": "small_sample",
+              "type": "string"
+            },
+            "maxItems": 1,
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "version",
+          "owner_id",
+          "request",
+          "selected_count",
+          "excluded_count",
+          "cleanup_pending",
+          "created_at",
+          "deadline"
+        ],
+        "title": "PreferenceExportDetail",
+        "type": "object"
+      },
+      "PreferenceExportFilters": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adapter Id"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "tag": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackTag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          },
+          "variant_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Variant Id"
+          }
+        },
+        "title": "PreferenceExportFilters",
+        "type": "object"
+      },
+      "PreferenceExportPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PreferenceExportDetail"
+            },
+            "maxItems": 100,
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PreferenceExportPage",
+        "type": "object"
+      },
+      "PreferenceExportReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ExportState"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "version"
+        ],
+        "title": "PreferenceExportReceipt",
+        "type": "object"
+      },
+      "PreferenceMemoryEvidence": {
+        "additionalProperties": false,
+        "description": "V3 measurements cannot be interpreted as legacy SFT resource profiles.",
+        "properties": {
+          "base_manifest_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "completed_updates": {
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Completed Updates",
+            "type": "integer"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedDatasetInput"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Datasets",
+            "type": "array"
+          },
+          "implementation": {
+            "const": "coire-preference-v1",
+            "default": "coire-preference-v1",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "initial_target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          },
+          "measured_at": {
+            "format": "date-time",
+            "title": "Measured At",
+            "type": "string"
+          },
+          "measurement_id": {
+            "format": "uuid",
+            "title": "Measurement Id",
+            "type": "string"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingNodeMemoryEvidence"
+            },
+            "maxItems": 1,
+            "minItems": 1,
+            "title": "Nodes",
+            "type": "array"
+          },
+          "objective": {
+            "enum": [
+              "dpo",
+              "orpo"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "objective_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DpoOptions"
+              },
+              {
+                "$ref": "#/components/schemas/OrpoOptions"
+              }
+            ],
+            "title": "Objective Options"
+          },
+          "probe_version": {
+            "const": "coire-preference-probe-v1",
+            "default": "coire-preference-probe-v1",
+            "title": "Probe Version",
+            "type": "string"
+          },
+          "reference_target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resource_envelope": {
+            "$ref": "#/components/schemas/PreferenceResourceEnvelope"
+          },
+          "runtime_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "sampler_version": {
+            "const": "coire-pair-sampler-v1",
+            "default": "coire-pair-sampler-v1",
+            "title": "Sampler Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 3,
+            "default": 3,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "template_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "tokenizer_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "training_config_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "valid_until": {
+            "format": "date-time",
+            "title": "Valid Until",
+            "type": "string"
+          },
+          "worker_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Worker Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "measurement_id",
+          "training_config_sha256",
+          "base_manifest_sha256",
+          "tokenizer_sha256",
+          "template_sha256",
+          "runtime_sha256",
+          "worker_version",
+          "completed_updates",
+          "resource_envelope",
+          "nodes",
+          "measured_at",
+          "valid_until",
+          "objective",
+          "objective_options",
+          "initial_target",
+          "reference_target",
+          "datasets"
+        ],
+        "title": "PreferenceMemoryEvidence",
+        "type": "object"
+      },
+      "PreferenceMessage": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "maxLength": 131072,
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "system",
+              "user",
+              "assistant"
+            ],
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "PreferenceMessage",
+        "type": "object"
+      },
+      "PreferenceMetricSample": {
+        "additionalProperties": false,
+        "properties": {
+          "attempt_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "fence": {
+            "minimum": 1.0,
+            "title": "Fence",
+            "type": "integer"
+          },
+          "footprint_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Footprint Bytes",
+            "type": "integer"
+          },
+          "implementation": {
+            "const": "coire-preference-v1",
+            "default": "coire-preference-v1",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "job_id": {
+            "$ref": "#/components/schemas/TrainingId"
+          },
+          "kind": {
+            "enum": [
+              "train",
+              "validation"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "learning_rate": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Learning Rate",
+            "type": "number"
+          },
+          "loss": {
+            "title": "Loss",
+            "type": "number"
+          },
+          "normalization": {
+            "const": "pair_mean",
+            "default": "pair_mean",
+            "title": "Normalization",
+            "type": "string"
+          },
+          "objective": {
+            "enum": [
+              "dpo",
+              "orpo"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "pair_count": {
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Pair Count",
+            "type": "integer"
+          },
+          "peak_bytes": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Peak Bytes",
+            "type": "integer"
+          },
+          "probe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreferenceProbe"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "response_tokens": {
+            "maximum": 67108864.0,
+            "minimum": 0.0,
+            "title": "Response Tokens",
+            "type": "integer"
+          },
+          "rolled_back": {
+            "default": false,
+            "title": "Rolled Back",
+            "type": "boolean"
+          },
+          "tokens_per_second": {
+            "minimum": 0.0,
+            "title": "Tokens Per Second",
+            "type": "number"
+          },
+          "update": {
+            "maximum": 100000.0,
+            "minimum": 0.0,
+            "title": "Update",
+            "type": "integer"
+          },
+          "updates_per_second": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Updates Per Second",
+            "type": "number"
+          }
+        },
+        "required": [
+          "job_id",
+          "attempt_id",
+          "fence",
+          "update",
+          "objective",
+          "kind",
+          "loss",
+          "pair_count",
+          "response_tokens",
+          "tokens_per_second",
+          "recorded_at"
+        ],
+        "title": "PreferenceMetricSample",
+        "type": "object"
+      },
+      "PreferenceProbe": {
+        "additionalProperties": false,
+        "properties": {
+          "accuracy": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Accuracy",
+            "type": "number"
+          },
+          "chosen_nll": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chosen Nll"
+          },
+          "margin": {
+            "title": "Margin",
+            "type": "number"
+          },
+          "odds_penalty": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Odds Penalty"
+          },
+          "sample_count": {
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "Sample Count",
+            "type": "integer"
+          },
+          "scope": {
+            "const": "held_out_post_update",
+            "default": "held_out_post_update",
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sample_count",
+          "accuracy",
+          "margin"
+        ],
+        "title": "PreferenceProbe",
+        "type": "object"
+      },
+      "PreferenceResourceEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "activation_bytes": {
+            "minimum": 1.0,
+            "title": "Activation Bytes",
+            "type": "integer"
+          },
+          "adapter_bytes": {
+            "minimum": 1.0,
+            "title": "Adapter Bytes",
+            "type": "integer"
+          },
+          "buffer_bytes": {
+            "minimum": 0.0,
+            "title": "Buffer Bytes",
+            "type": "integer"
+          },
+          "checkpoint_bytes": {
+            "minimum": 1.0,
+            "title": "Checkpoint Bytes",
+            "type": "integer"
+          },
+          "evidence_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "optimizer_bytes": {
+            "minimum": 1.0,
+            "title": "Optimizer Bytes",
+            "type": "integer"
+          },
+          "reference_adapter_bytes": {
+            "minimum": 0.0,
+            "title": "Reference Adapter Bytes",
+            "type": "integer"
+          },
+          "reference_weight_bytes": {
+            "minimum": 0.0,
+            "title": "Reference Weight Bytes",
+            "type": "integer"
+          },
+          "safety_bytes": {
+            "minimum": 1.0,
+            "title": "Safety Bytes",
+            "type": "integer"
+          },
+          "weight_bytes": {
+            "minimum": 1.0,
+            "title": "Weight Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "weight_bytes",
+          "reference_weight_bytes",
+          "adapter_bytes",
+          "reference_adapter_bytes",
+          "optimizer_bytes",
+          "activation_bytes",
+          "buffer_bytes",
+          "safety_bytes",
+          "checkpoint_bytes",
+          "evidence_sha256"
+        ],
+        "title": "PreferenceResourceEnvelope",
+        "type": "object"
+      },
+      "PreferenceTokenSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "maximum": {
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Maximum",
+            "type": "integer"
+          },
+          "minimum": {
+            "maximum": 8192.0,
+            "minimum": 1.0,
+            "title": "Minimum",
+            "type": "integer"
+          },
+          "total": {
+            "maximum": 8192000000.0,
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "minimum",
+          "maximum",
+          "total"
+        ],
+        "title": "PreferenceTokenSummary",
+        "type": "object"
+      },
+      "PreferenceTrainingProgressEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "preference_progress",
+            "default": "preference_progress",
+            "title": "Kind",
+            "type": "string"
+          },
+          "metric": {
+            "$ref": "#/components/schemas/PreferenceMetricSample"
+          }
+        },
+        "required": [
+          "metric"
+        ],
+        "title": "PreferenceTrainingProgressEvent",
+        "type": "object"
       },
       "ProbeOutcome": {
         "enum": [
@@ -15236,6 +17276,9 @@
           },
           {
             "$ref": "#/components/schemas/ResolvedTrainingSpecV2"
+          },
+          {
+            "$ref": "#/components/schemas/ResolvedTrainingSpecV3"
           }
         ]
       },
@@ -15312,6 +17355,106 @@
           "evaluation_base"
         ],
         "title": "ResolvedTrainingSpecV2",
+        "type": "object"
+      },
+      "ResolvedTrainingSpecV3": {
+        "additionalProperties": false,
+        "properties": {
+          "base_manifest_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedDatasetInput"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "Datasets",
+            "type": "array"
+          },
+          "enable_thinking": {
+            "title": "Enable Thinking",
+            "type": "boolean"
+          },
+          "evaluation_base": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedTrainingSuite"
+            },
+            "maxItems": 4,
+            "title": "Evaluations",
+            "type": "array"
+          },
+          "implementation": {
+            "const": "coire-preference-v1",
+            "default": "coire-preference-v1",
+            "title": "Implementation",
+            "type": "string"
+          },
+          "initial_target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          },
+          "reference_target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InferenceTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resource_envelope": {
+            "$ref": "#/components/schemas/PreferenceResourceEnvelope"
+          },
+          "runtime_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "sampler_version": {
+            "const": "coire-pair-sampler-v1",
+            "default": "coire-pair-sampler-v1",
+            "title": "Sampler Version",
+            "type": "string"
+          },
+          "spec": {
+            "$ref": "#/components/schemas/TrainingSpecV3"
+          },
+          "template_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "tokenizer_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "worker_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Worker Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "spec",
+          "base_manifest_sha256",
+          "initial_target",
+          "reference_target",
+          "datasets",
+          "tokenizer_sha256",
+          "template_sha256",
+          "enable_thinking",
+          "runtime_sha256",
+          "worker_version",
+          "resource_envelope"
+        ],
+        "title": "ResolvedTrainingSpecV3",
         "type": "object"
       },
       "ResolvedTrainingSuite": {
@@ -15548,6 +17691,16 @@
         "maximum": 4294967295.0,
         "minimum": 0.0,
         "type": "integer"
+      },
+      "SelectionState": {
+        "enum": [
+          "pending",
+          "chosen",
+          "dismissed",
+          "expired",
+          "withdrawn"
+        ],
+        "type": "string"
       },
       "ServiceHealth": {
         "additionalProperties": false,
@@ -16227,6 +18380,51 @@
         "title": "ThermalState",
         "type": "string"
       },
+      "ThumbUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "expected_version": {
+            "minimum": 0.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "judgement": {
+            "anyOf": [
+              {
+                "enum": [
+                  "up",
+                  "down"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judgement"
+          },
+          "tags": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackTag"
+            },
+            "maxItems": 16,
+            "title": "Tags",
+            "type": "array"
+          }
+        },
+        "required": [
+          "client_request_id",
+          "expected_version",
+          "judgement"
+        ],
+        "title": "ThumbUpdate",
+        "type": "object"
+      },
       "TokenDistribution": {
         "additionalProperties": false,
         "properties": {
@@ -16347,10 +18545,35 @@
             "title": "Model Id",
             "type": "string"
           },
+          "objective": {
+            "anyOf": [
+              {
+                "enum": [
+                  "dpo",
+                  "orpo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective"
+          },
           "owner_id": {
             "format": "uuid",
             "title": "Owner Id",
             "type": "string"
+          },
+          "preference_probe": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreferenceProbe"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "reserved_bytes": {
             "minimum": 0.0,
@@ -16598,6 +18821,33 @@
         "title": "TrainingEvaluationV2",
         "type": "object"
       },
+      "TrainingEvaluationV3": {
+        "additionalProperties": false,
+        "properties": {
+          "at_end": {
+            "default": true,
+            "title": "At End",
+            "type": "boolean"
+          },
+          "loss_every_updates": {
+            "default": 100,
+            "maximum": 100000.0,
+            "minimum": 1.0,
+            "title": "Loss Every Updates",
+            "type": "integer"
+          },
+          "suites": {
+            "items": {
+              "$ref": "#/components/schemas/TrainingSuiteSchedule"
+            },
+            "maxItems": 4,
+            "title": "Suites",
+            "type": "array"
+          }
+        },
+        "title": "TrainingEvaluationV3",
+        "type": "object"
+      },
       "TrainingEvent": {
         "additionalProperties": false,
         "properties": {
@@ -16623,6 +18873,7 @@
             "enum": [
               "state",
               "progress",
+              "preference_progress",
               "checkpoint",
               "recovery",
               "terminal",
@@ -16660,6 +18911,7 @@
         "discriminator": {
           "mapping": {
             "checkpoint": "#/components/schemas/TrainingCheckpointEvent",
+            "preference_progress": "#/components/schemas/PreferenceTrainingProgressEvent",
             "progress": "#/components/schemas/TrainingProgressEvent",
             "recovery": "#/components/schemas/TrainingRecoveryEvent",
             "reset": "#/components/schemas/TrainingResetEvent",
@@ -16674,6 +18926,9 @@
           },
           {
             "$ref": "#/components/schemas/TrainingProgressEvent"
+          },
+          {
+            "$ref": "#/components/schemas/PreferenceTrainingProgressEvent"
           },
           {
             "$ref": "#/components/schemas/TrainingCheckpointEvent"
@@ -16958,6 +19213,75 @@
         "title": "TrainingJobState",
         "type": "string"
       },
+      "TrainingMeasurementCompletion": {
+        "additionalProperties": false,
+        "description": "Authenticated gateway reports the instance that actually completed the stream.",
+        "properties": {
+          "first_token_seconds": {
+            "minimum": 0.0,
+            "title": "First Token Seconds",
+            "type": "number"
+          },
+          "input_tokens": {
+            "maximum": 4000.0,
+            "minimum": 1.0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "output_tokens": {
+            "maximum": 1024.0,
+            "minimum": 1.0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          }
+        },
+        "required": [
+          "instance_id",
+          "target",
+          "first_token_seconds",
+          "input_tokens",
+          "output_tokens"
+        ],
+        "title": "TrainingMeasurementCompletion",
+        "type": "object"
+      },
+      "TrainingMeasurementGenerateRequest": {
+        "additionalProperties": false,
+        "description": "Node-authenticated request for an existing frozen measurement only.",
+        "properties": {
+          "max_output_tokens": {
+            "maximum": 1024.0,
+            "minimum": 1.0,
+            "title": "Max Output Tokens",
+            "type": "integer"
+          },
+          "principal_sha256": {
+            "$ref": "#/components/schemas/Digest"
+          },
+          "prompt": {
+            "$ref": "#/components/schemas/TrainingMeasurementPrompt"
+          },
+          "target": {
+            "$ref": "#/components/schemas/TrainingResidentTarget"
+          }
+        },
+        "required": [
+          "principal_sha256",
+          "target",
+          "prompt",
+          "max_output_tokens"
+        ],
+        "title": "TrainingMeasurementGenerateRequest",
+        "type": "object"
+      },
       "TrainingMeasurementPhase": {
         "additionalProperties": false,
         "properties": {
@@ -17134,7 +19458,7 @@
             "type": "array"
           },
           "spec": {
-            "$ref": "#/components/schemas/TrainingSpec"
+            "$ref": "#/components/schemas/TrainingSpecDocument"
           },
           "workload": {
             "$ref": "#/components/schemas/TrainingMeasurementWorkload"
@@ -17171,7 +19495,7 @@
           "memory_evidence": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/TrainingMemoryEvidence"
+                "$ref": "#/components/schemas/TrainingMemoryEvidenceDocument"
               },
               {
                 "type": "null"
@@ -17387,12 +19711,29 @@
         "title": "TrainingMemoryEvidence",
         "type": "object"
       },
+      "TrainingMemoryEvidenceDocument": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/TrainingMemoryEvidence"
+          },
+          {
+            "$ref": "#/components/schemas/PreferenceMemoryEvidence"
+          }
+        ]
+      },
       "TrainingMetricPage": {
         "additionalProperties": false,
         "properties": {
           "items": {
             "items": {
-              "$ref": "#/components/schemas/TrainingMetricSample"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TrainingMetricSample"
+                },
+                {
+                  "$ref": "#/components/schemas/PreferenceMetricSample"
+                }
+              ]
             },
             "maxItems": 2000,
             "title": "Items",
@@ -18152,6 +20493,9 @@
           },
           {
             "$ref": "#/components/schemas/TrainingSpecV2"
+          },
+          {
+            "$ref": "#/components/schemas/TrainingSpecV3"
           }
         ]
       },
@@ -18205,6 +20549,85 @@
           "output"
         ],
         "title": "TrainingSpecV2",
+        "type": "object"
+      },
+      "TrainingSpecV3": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/TrainingData"
+          },
+          "eval": {
+            "$ref": "#/components/schemas/TrainingEvaluationV3"
+          },
+          "init_adapter": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Init Adapter"
+          },
+          "model": {
+            "$ref": "#/components/schemas/TrainingModel"
+          },
+          "objective": {
+            "enum": [
+              "dpo",
+              "orpo"
+            ],
+            "title": "Objective",
+            "type": "string"
+          },
+          "objective_options": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DpoOptions"
+              },
+              {
+                "$ref": "#/components/schemas/OrpoOptions"
+              }
+            ],
+            "title": "Objective Options"
+          },
+          "optim": {
+            "$ref": "#/components/schemas/TrainingOptimizer"
+          },
+          "output": {
+            "$ref": "#/components/schemas/TrainingOutput"
+          },
+          "parameterization": {
+            "$ref": "#/components/schemas/TrainingParameterization"
+          },
+          "placement": {
+            "$ref": "#/components/schemas/TrainingPlacement"
+          },
+          "schema_version": {
+            "const": 3,
+            "default": 3,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "seed": {
+            "$ref": "#/components/schemas/Seed",
+            "default": 0
+          }
+        },
+        "required": [
+          "model",
+          "data",
+          "objective",
+          "objective_options",
+          "init_adapter",
+          "parameterization",
+          "optim",
+          "output"
+        ],
+        "title": "TrainingSpecV3",
         "type": "object"
       },
       "TrainingStateEvent": {
@@ -18848,6 +21271,10 @@
       "HTTPBearer": {
         "scheme": "bearer",
         "type": "http"
+      },
+      "NodeCredential": {
+        "scheme": "bearer",
+        "type": "http"
       }
     }
   },
@@ -19293,6 +21720,70 @@
           }
         ],
         "summary": "Curate",
+        "tags": [
+          "admin:adapters"
+        ]
+      }
+    },
+    "/api/v1/admin/adapters/{adapter_id}/lineage": {
+      "get": {
+        "operationId": "lineage_api_v1_admin_adapters__adapter_id__lineage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "adapter_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Adapter Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdapterLineage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lineage",
         "tags": [
           "admin:adapters"
         ]
@@ -22269,6 +24760,558 @@
         "summary": "Apply Override",
         "tags": [
           "admin: failover"
+        ]
+      }
+    },
+    "/api/v1/admin/feedback/comparisons": {
+      "get": {
+        "operationId": "get_review_queue_api_v1_admin_feedback_comparisons_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "default": "unreviewed",
+              "enum": [
+                "unreviewed",
+                "reviewed",
+                "skipped"
+              ],
+              "title": "State",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 512,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReviewPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Review Queue",
+        "tags": [
+          "admin:feedback"
+        ]
+      }
+    },
+    "/api/v1/admin/feedback/comparisons/{pair_id}": {
+      "get": {
+        "operationId": "get_review_pair_api_v1_admin_feedback_comparisons__pair_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Pair Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReviewDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Review Pair",
+        "tags": [
+          "admin:feedback"
+        ]
+      }
+    },
+    "/api/v1/admin/feedback/comparisons/{pair_id}/judgement": {
+      "put": {
+        "operationId": "put_review_judgement_api_v1_admin_feedback_comparisons__pair_id__judgement_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Pair Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminPairJudgement"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReviewReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Review Judgement",
+        "tags": [
+          "admin:feedback"
+        ]
+      }
+    },
+    "/api/v1/admin/feedback/exports": {
+      "get": {
+        "operationId": "get_exports_api_v1_admin_feedback_exports_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferenceExportPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Exports",
+        "tags": [
+          "admin:feedback"
+        ]
+      },
+      "post": {
+        "operationId": "post_export_api_v1_admin_feedback_exports_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferenceExportCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferenceExportReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Export",
+        "tags": [
+          "admin:feedback"
+        ]
+      }
+    },
+    "/api/v1/admin/feedback/exports/{export_id}": {
+      "get": {
+        "operationId": "get_export_api_v1_admin_feedback_exports__export_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferenceExportDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Export",
+        "tags": [
+          "admin:feedback"
+        ]
+      }
+    },
+    "/api/v1/admin/feedback/exports/{export_id}/cancel": {
+      "post": {
+        "operationId": "post_export_cancel_api_v1_admin_feedback_exports__export_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "export_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Export Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferenceExportCancel"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferenceExportReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Export Cancel",
+        "tags": [
+          "admin:feedback"
         ]
       }
     },
@@ -28001,6 +31044,322 @@
         ]
       }
     },
+    "/api/v1/chat/conversations/{conversation_id}/comparisons": {
+      "post": {
+        "operationId": "post_comparison_api_v1_chat_conversations__conversation_id__comparisons_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Comparison",
+        "tags": [
+          "chat:feedback"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/comparisons/{pair_id}": {
+      "get": {
+        "operationId": "get_comparison_api_v1_chat_conversations__conversation_id__comparisons__pair_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Pair Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Comparison",
+        "tags": [
+          "chat:feedback"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/comparisons/{pair_id}/dismiss": {
+      "post": {
+        "operationId": "post_comparison_dismiss_api_v1_chat_conversations__conversation_id__comparisons__pair_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Pair Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonDismiss"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Comparison Dismiss",
+        "tags": [
+          "chat:feedback"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/comparisons/{pair_id}/selection": {
+      "post": {
+        "operationId": "post_comparison_selection_api_v1_chat_conversations__conversation_id__comparisons__pair_id__selection_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "pair_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Pair Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComparisonSelect"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComparisonSelectionReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Post Comparison Selection",
+        "tags": [
+          "chat:feedback"
+        ]
+      }
+    },
     "/api/v1/chat/conversations/{conversation_id}/events": {
       "get": {
         "operationId": "get_chat_events_api_v1_chat_conversations__conversation_id__events_get",
@@ -28079,6 +31438,100 @@
         "summary": "Get Chat Events",
         "tags": [
           "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/conversations/{conversation_id}/feedback": {
+      "get": {
+        "operationId": "get_conversation_feedback_api_v1_chat_conversations__conversation_id__feedback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 10,
+                  "pattern": "^[1-9][0-9]*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationFeedbackPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Conversation Feedback",
+        "tags": [
+          "chat:feedback"
         ]
       }
     },
@@ -28474,6 +31927,90 @@
         ]
       }
     },
+    "/api/v1/chat/conversations/{conversation_id}/messages/{message_id}/feedback": {
+      "put": {
+        "operationId": "put_message_feedback_api_v1_chat_conversations__conversation_id__messages__message_id__feedback_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "conversation_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Conversation Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "message_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Message Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThumbUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Put Message Feedback",
+        "tags": [
+          "chat:feedback"
+        ]
+      }
+    },
     "/api/v1/chat/conversations/{conversation_id}/turns": {
       "post": {
         "operationId": "send_chat_turn_api_v1_chat_conversations__conversation_id__turns_post",
@@ -28775,6 +32312,122 @@
         "summary": "Stop Chat Turn",
         "tags": [
           "chat"
+        ]
+      }
+    },
+    "/api/v1/chat/feedback-preference": {
+      "get": {
+        "operationId": "get_feedback_preference_api_v1_chat_feedback_preference_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackPreference"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Feedback Preference",
+        "tags": [
+          "chat:feedback"
+        ]
+      },
+      "patch": {
+        "operationId": "patch_feedback_preference_api_v1_chat_feedback_preference_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-api-key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackPreferenceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackPreference"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Feedback Preference",
+        "tags": [
+          "chat:feedback"
         ]
       }
     },
@@ -30962,6 +34615,81 @@
           }
         },
         "summary": "Source Content",
+        "tags": [
+          "internal:training"
+        ]
+      }
+    },
+    "/api/v1/internal/training/measurements/{measurement_id}/generate": {
+      "post": {
+        "description": "Run the frozen workload through the actual gateway, never through a node shortcut.",
+        "operationId": "generate_measurement_api_v1_internal_training_measurements__measurement_id__generate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "measurement_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Measurement Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-coire-node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Coire-Node"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TrainingMeasurementGenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrainingMeasurementCompletion"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "NodeCredential": []
+          }
+        ],
+        "summary": "Generate Measurement",
         "tags": [
           "internal:training"
         ]

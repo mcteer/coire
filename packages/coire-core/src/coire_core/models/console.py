@@ -13,6 +13,7 @@ from coire_core.models.evaluation_links import EvaluationGroupLink
 from coire_core.models.files import ULID_PATTERN
 from coire_core.models.instance import ClusterState
 from coire_core.models.placement import MemoryLedger
+from coire_core.models.preference import PreferenceProbe
 from coire_core.models.training import TrainingJobState
 
 
@@ -135,6 +136,12 @@ class ImageActivityItem(BaseModel):
 
 
 class TrainingActivityItem(BaseModel):
+    objective: Literal["dpo", "orpo"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    preference_probe: PreferenceProbe | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     evaluation_groups: list[EvaluationGroupLink] = Field(
         default_factory=list, max_length=100, exclude_if=lambda value: not value
     )

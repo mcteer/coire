@@ -281,13 +281,24 @@ def test_checkpoint_promotion_binds_parent_job_version(wire: Any, explicit: bool
 
 
 @pytest.mark.parametrize("verb", ["validate", "submit"])
-def test_original_yaml_is_transported_verbatim(wire: Any, tmp_path: Path, verb: str) -> None:
+@pytest.mark.parametrize("objective", ["sft", "dpo", "orpo"])
+def test_original_yaml_is_transported_verbatim(
+    wire: Any, tmp_path: Path, verb: str, objective: str
+) -> None:
     calls, replies = wire
-    source = "# original comment\r\n" + yaml.safe_dump(spec(), sort_keys=False)
+    intent = spec()
+    if objective != "sft":
+        intent.update(
+            schema_version=3,
+            objective=objective,
+            objective_options={"beta": 0.1} if objective == "dpo" else {"weight": 0.1},
+            init_adapter=None,
+        )
+    source = "# original comment\r\n" + yaml.safe_dump(intent, sort_keys=False)
     path = tmp_path / "recipe.yaml"
     path.write_bytes(source.encode())
     payload = (
-        {"spec": spec(), "intent_sha256": DIGEST, "reasons": ["profile_missing"]}
+        {"spec": intent, "intent_sha256": DIGEST, "reasons": ["profile_missing"]}
         if verb == "validate"
         else {
             "job_id": JOB,
@@ -891,3 +902,26 @@ def test_adapter_context_without_public_pair_is_rejected(wire: Any) -> None:
     )
     assert cli.main([*PREFIX, "eval", "harness", str(VARIANT), "--adapter", str(ADAPTER)]) == 2
     assert len(calls) == 1
+
+
+def test_adapter_lineage_is_a_typed_authenticated_read(wire: Any) -> None:
+    calls, replies = wire
+    replies.append(
+        (
+            200,
+            {
+                "adapter_id": str(ADAPTER),
+                "base": {
+                    "model_id": str(MODEL),
+                    "variant_id": str(VARIANT),
+                    "base_manifest_sha256": DIGEST,
+                },
+                "parent": None,
+                "ancestors": [],
+            },
+        )
+    )
+    assert cli.main([*PREFIX, "adapter", "lineage", str(ADAPTER)]) == 0
+    assert len(calls) == 1 and calls[0].method == "GET"
+    assert calls[0].url.path == f"{ROOT}/adapters/{ADAPTER}/lineage"
+    assert calls[0].headers["Authorization"] == "Bearer private-token"

@@ -62,12 +62,13 @@ export const deleteDataset = (dataset: Dataset, key: string) =>
   );
 
 export type TrainingSpec = components["schemas"]["TrainingSpec"];
-export type TrainingSpecDocument = TrainingSpec | components["schemas"]["TrainingSpecV2"];
+export type TrainingSpecDocument =
+  TrainingSpec | components["schemas"]["TrainingSpecV2"] | components["schemas"]["TrainingSpecV3"];
 export type TrainingSubmission = components["schemas"]["TrainingSubmission"];
 export type TrainingValidation = components["schemas"]["TrainingValidation"];
 export type TrainingJob = components["schemas"]["TrainingJobDetail"];
 export type TrainingEvent = components["schemas"]["TrainingEvent"];
-export type TrainingMetric = components["schemas"]["TrainingMetricSample"];
+export type TrainingMetric = components["schemas"]["TrainingMetricPage"]["items"][number];
 export type Checkpoint = components["schemas"]["CheckpointDetail"];
 export type Adapter = components["schemas"]["AdapterDetail"];
 export type TrainingActivityItem = components["schemas"]["TrainingActivityItem"];
@@ -152,7 +153,8 @@ export const retireAdapter = (adapter: Adapter, key: string) =>
   );
 
 /** JSON is a YAML 1.2 subset: preserves all scalar types without a second parser. */
-export const trainingYaml = (spec: TrainingSpecDocument): string => JSON.stringify(spec, null, 2) + "\n";
+export const trainingYaml = (spec: TrainingSpecDocument): string =>
+  JSON.stringify(spec, null, 2) + "\n";
 export const listTrainingRecipes = () =>
   api<components["schemas"]["TrainingRecipePage"]>(`${trainingPath}/recipes`);
 export const submitTraining = (body: TrainingSubmission, key: string) =>
@@ -183,3 +185,7 @@ export const submitTrainingMeasurement = (body: TrainingMeasurementRequest, key:
   });
 export const getTrainingMeasurement = (id: string) =>
   api<TrainingMeasurementResult>(`${trainingPath}/measurements/${encodeURIComponent(id)}`);
+export const getAdapterLineage = (id: string) =>
+  api<components["schemas"]["AdapterLineage"]>(
+    `/api/v1/admin/adapters/${encodeURIComponent(id)}/lineage`,
+  );

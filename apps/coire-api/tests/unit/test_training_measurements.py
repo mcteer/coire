@@ -24,6 +24,77 @@ from coire_scheduler.training_guard import measurement_report_digest, memory_evi
 from coire_scheduler.training_measurements import GatewayWorkloadDriver, build_report
 
 
+@pytest.mark.parametrize("preference", [False, True])
+async def test_probe_prepare_has_its_own_bound_without_widening_stop_lane(
+    monkeypatch: pytest.MonkeyPatch,
+    preference: bool,
+) -> None:
+    from coire_core.models.training_node import (
+        DatasetInputGrant,
+        TrainingInputSource,
+        TrainingInputsRequest,
+        TrainingPrepared,
+    )
+    from coire_scheduler.training_measurements import MeasurementNodeClient
+
+    if preference:
+        from preference_measurement_fixtures import preference_experiment
+
+        _, dispatch, _ = preference_experiment()
+    else:
+        _, dispatch = experiment()
+    probe = dispatch.commands[0]
+    calls: list[dict[str, object]] = []
+
+    async def capture(*args: object, **kwargs: object) -> tuple[int, dict[str, object]]:
+        calls.append(kwargs)
+        return 200, TrainingPrepared(
+            attempt_id=probe.prepare.attempt_id,
+            fence=probe.prepare.fence,
+            node=probe.prepare.node,
+            reservation_id=probe.prepare.reservation_id,
+            runtime_sha256=probe.prepare.resolved.runtime_sha256,
+            ready=False,
+            reason="analysis_pending",
+        ).model_dump(mode="json")
+
+    client = MeasurementNodeClient(Settings(), timeout=5.0)
+    async with client:
+        monkeypatch.setattr(client, "_call", capture)
+        assert not (await client.prepare(probe)).ready
+        delivery = TrainingInputsRequest.model_validate(
+            {
+                **{
+                    key: value
+                    for key, value in probe.prepare.model_dump(mode="json").items()
+                    if key in TrainingInputsRequest.model_fields
+                },
+                "command_id": uuid.uuid4(),
+                "sources": [
+                    TrainingInputSource(
+                        binding=source.binding,
+                        split=source.split,
+                        analysis=source.analysis,
+                        grant=DatasetInputGrant(
+                            grant_id=uuid.uuid4(),
+                            node=probe.prepare.node,
+                            dataset_id=source.binding.dataset_id,
+                            source_sha256=source.binding.source_sha256,
+                            max_bytes=1024,
+                            attempt_id=probe.prepare.attempt_id,
+                            expires_at=probe.prepare.lease_expires_at,
+                            secret="synthetic-fixture-grant-secret-0001",
+                        ),
+                    )
+                    for source in dispatch.sources
+                ],
+            }
+        )
+        assert not (await client.inputs(delivery)).ready
+    assert calls[1].get("request_timeout_s") == (30.0 if preference else None)
+    assert calls[0]["request_timeout_s"] == 30.0
+
+
 def test_observed_envelope_hashes_all_components_and_hardware() -> None:
     row, dispatch = experiment()
     measured = observation(dispatch.commands[0])
@@ -247,3 +318,164 @@ async def test_gateway_driver_counts_completed_exact_streams_only(
         assert "frozen prompt" not in caplog.text
     else:
         assert len(phase.samples[target.instance_id]) == len(calls) and not phase.failures
+
+
+@pytest.mark.parametrize("liveness", ["prepared", "running", "stopped"])
+async def test_watch_renews_prepared_baseline_without_resurrecting_stopped_work(
+    monkeypatch: pytest.MonkeyPatch, liveness: str
+) -> None:
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from training_measurement_fixtures import frozen_binding
+
+    from coire_core.models.training_node import TrainingMeasurementNodeStatus
+    from coire_scheduler.training_measurements import TrainingMeasurementExecutor
+
+    row, dispatch = experiment()
+    probe = dispatch.commands[0]
+    now = datetime.now(UTC)
+    status = TrainingMeasurementNodeStatus.model_validate(
+        {
+            "measurement_id": row.id,
+            "status": {
+                "attempt_id": probe.prepare.attempt_id,
+                "job_id": probe.prepare.job_id,
+                "fence": probe.prepare.fence,
+                "node": probe.prepare.node,
+                "liveness": liveness,
+                "update": 0,
+                "lease_expires_at": now + timedelta(seconds=30),
+            },
+            "stopped": liveness == "stopped",
+            "swap_used_bytes": 0,
+            "swap_out_bytes": 0,
+            "thermal_state": "nominal",
+            "sampled_at": now,
+        }
+    )
+    transport = AsyncMock()
+    executor = TrainingMeasurementExecutor(Settings(), transport)
+    recheck = AsyncMock()
+    monkeypatch.setattr(executor, "recheck", recheck)
+    monkeypatch.setattr(executor, "statuses", AsyncMock(return_value=[status]))
+    monkeypatch.setattr(asyncio, "sleep", AsyncMock(side_effect=asyncio.CancelledError))
+    principal = Principal(kind=PrincipalKind.USER, user_id=row.owner_user_id, role=UserRole.ADMIN)
+    with pytest.raises(asyncio.CancelledError):
+        await executor.watch(row.id, principal, frozen_binding(dispatch), dispatch)
+    recheck.assert_awaited_once()
+    if liveness == "stopped":
+        transport.renew.assert_not_awaited()
+    else:
+        transport.renew.assert_awaited_once()
+        renewal = transport.renew.call_args.args[0]
+        assert renewal.attempt_id == probe.prepare.attempt_id
+        assert renewal.fence == probe.prepare.fence
+        assert renewal.lease_expires_at > now
+
+
+@pytest.mark.parametrize("withdrawn", [False, True])
+async def test_input_delivery_runs_under_watchdog_and_stops_on_withdrawal(
+    monkeypatch: pytest.MonkeyPatch, withdrawn: bool
+) -> None:
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from training_measurement_fixtures import frozen_binding
+
+    from coire_scheduler.training_measurements import TrainingMeasurementExecutor
+
+    row, dispatch = experiment()
+    transport = AsyncMock()
+    executor = TrainingMeasurementExecutor(Settings(), transport)
+    watching = asyncio.Event()
+    input_cancelled = asyncio.Event()
+
+    async def watch(*args: object) -> None:
+        transport.prepare.assert_awaited_once()
+        watching.set()
+        if withdrawn:
+            raise TrainingConflict("Synthetic owner withdrawal during input preparation")
+        await asyncio.Event().wait()
+
+    async def deliver(*args: object) -> None:
+        try:
+            # Delivery cannot finish until the watchdog is alive. Real preparation
+            # may outlast the initial lease while downloads/token caches are pending.
+            await watching.wait()
+            if withdrawn:
+                await asyncio.Event().wait()
+        finally:
+            input_cancelled.set()
+
+    monkeypatch.setattr(executor, "watch", watch)
+    monkeypatch.setattr(executor, "deliver", deliver)
+    principal = Principal(kind=PrincipalKind.USER, user_id=row.owner_user_id, role=UserRole.ADMIN)
+    async with asyncio.timeout(1):
+        if withdrawn:
+            with pytest.raises(TrainingConflict, match="withdrawal"):
+                await executor.prepare_inputs(row.id, principal, frozen_binding(dispatch), dispatch)
+            assert input_cancelled.is_set()
+        else:
+            renewal = await executor.prepare_inputs(
+                row.id, principal, frozen_binding(dispatch), dispatch
+            )
+            assert not renewal.done()
+            renewal.cancel()
+            await asyncio.gather(renewal, return_exceptions=True)
+
+
+@pytest.mark.parametrize("outcome", ["settled", "withdrawn", "ended", "cancelled"])
+async def test_baseline_handoff_retains_watchdog_and_cancels_pending_delay(
+    monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from coire_api.training.lease_snapshots import SNAPSHOT_VALIDITY_SECONDS
+    from coire_scheduler.training_measurements import TrainingMeasurementExecutor
+
+    entered = asyncio.Event()
+    elapsed = asyncio.Event()
+    authority_ended = asyncio.Event()
+    delay_finished = asyncio.Event()
+
+    async def delay(seconds: float) -> None:
+        assert seconds == SNAPSHOT_VALIDITY_SECONDS
+        entered.set()
+        try:
+            await elapsed.wait()
+        finally:
+            delay_finished.set()
+
+    async def watch() -> None:
+        await authority_ended.wait()
+        if outcome == "withdrawn":
+            raise TrainingConflict("Synthetic owner withdrawal during baseline handoff")
+
+    executor = TrainingMeasurementExecutor(Settings(), AsyncMock())
+    monkeypatch.setattr(asyncio, "sleep", delay)
+    renewal = asyncio.create_task(watch())
+    handoff = asyncio.create_task(executor.settle_baseline_leases(renewal))
+    try:
+        async with asyncio.timeout(1):
+            await entered.wait()
+            assert not handoff.done() and not renewal.done()
+            if outcome == "settled":
+                elapsed.set()
+                await handoff
+                assert not renewal.done()
+            elif outcome == "cancelled":
+                handoff.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await handoff
+                assert not renewal.done()
+            else:
+                authority_ended.set()
+                with pytest.raises(TrainingConflict, match=r"withdrawal|watchdog ended"):
+                    await handoff
+            assert delay_finished.is_set()
+    finally:
+        handoff.cancel()
+        renewal.cancel()
+        await asyncio.gather(handoff, renewal, return_exceptions=True)

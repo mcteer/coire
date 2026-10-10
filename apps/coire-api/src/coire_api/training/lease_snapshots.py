@@ -32,6 +32,7 @@ _COUNTED = (
     MemoryReservationState.RELEASING,
 )
 _MAX_IDENTITIES = 256
+SNAPSHOT_VALIDITY_SECONDS = 5
 
 
 def _uuid(value: str) -> uuid.UUID | None:
@@ -181,7 +182,7 @@ async def node_lease_snapshot(session: AsyncSession, node_name: str) -> NodeTrai
         counts[identity] = max(counts.get(identity, 0), 1)
         if len(counts) > _MAX_IDENTITIES:
             raise TrainingConflict("Node lease inventory exceeds its identity bound")
-    expires_at = sampled_at + timedelta(seconds=5)
+    expires_at = sampled_at + timedelta(seconds=SNAPSHOT_VALIDITY_SECONDS)
     publication_time: datetime = (
         await session.execute(select(func.clock_timestamp()))
     ).scalar_one()

@@ -1,0 +1,32 @@
+groups:
+  - name: coire-feedback
+    interval: 15s
+    rules:
+      - alert: CoireFeedbackBaselineUnavailable
+        expr: absent(coire_feedback_snapshot_timestamp_seconds) or max(time() - coire_feedback_snapshot_timestamp_seconds) > 60 or absent(coire_feedback_exports) or absent(coire_feedback_purge_oldest_seconds) or absent(coire_feedback_export_overdue)
+        for: 1m
+        labels: {severity: critical, subject: feedback}
+        annotations:
+          summary: Feedback baseline state is missing or stale
+          runbook_url: /docs/runbooks/feedback#observe
+      - alert: CoireFeedbackPurgeOverdue
+        expr: max(coire_feedback_purge_oldest_seconds) > 86400
+        for: 0m
+        labels: {severity: critical, subject: feedback}
+        annotations:
+          summary: Unexported feedback withdrawal has exceeded the twenty-four-hour purge deadline
+          runbook_url: /docs/runbooks/feedback#purge
+      - alert: CoireFeedbackExportOverdue
+        expr: sum(coire_feedback_export_overdue) > 0
+        for: 1m
+        labels: {severity: warning, subject: feedback}
+        annotations:
+          summary: A feedback export has exceeded its queue or publication deadline
+          runbook_url: /docs/runbooks/feedback#cancel-and-recover
+      - alert: CoireFeedbackExportCleanupStalled
+        expr: sum(coire_feedback_export_cleanup_pending) > 0
+        for: 10m
+        labels: {severity: warning, subject: feedback}
+        annotations:
+          summary: Private feedback export files remain awaiting proven removal
+          runbook_url: /docs/runbooks/feedback#cancel-and-recover

@@ -14,7 +14,15 @@ from pydantic import SecretStr
 from coire_api.app import create_app
 from coire_api.auth import Principal, PrincipalKind, require_owned_chat, require_principal
 from coire_api.chat.service import delete_conversation
-from coire_api.db import ChatConversationRow, ChatEventRow, ChatTurnRow, McpArtifactRow, get_session
+from coire_api.db import (
+    ChatConversationRow,
+    ChatEventRow,
+    ChatTurnRow,
+    FeedbackPreferenceRow,
+    McpArtifactRow,
+    UserRow,
+    get_session,
+)
 from coire_core.errors import ChatConflict, ChatNotFound
 from coire_core.models.chat import ChatDeleteRequest
 from coire_core.settings import Settings
@@ -58,10 +66,18 @@ class DeleteSession:
     async def scalar(self, _statement: object) -> ChatConversationRow | None:
         return self.conversation if self.allowed else None
 
-    async def get(self, _model: object, identifier: uuid.UUID) -> ChatTurnRow | None:
+    async def get(self, _model: object, identifier: uuid.UUID, **_kwargs: object) -> object:
+        if _model is UserRow:
+            return UserRow(id=identifier, active=True)
+        if _model is FeedbackPreferenceRow:
+            return FeedbackPreferenceRow(
+                owner_user_id=identifier, enabled=True, capture_generation=1, version=1
+            )
         return self.turn if identifier == self.turn.id else None
 
     async def execute(self, statement: object) -> object:
+        if "feedback_" in str(statement) or "comparison_pairs" in str(statement):
+            return SimpleNamespace()
         assert "chat_turns.coding_call_id" in str(statement)
         return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: self.artifacts))
 

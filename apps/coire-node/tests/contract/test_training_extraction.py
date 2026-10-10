@@ -19,8 +19,12 @@ from coire_core.errors import TrainingConflict
 from coire_core.models.acquisition import ReservationState
 from coire_core.models.adapters import InferenceTarget
 from coire_core.models.datasets import TokenizedTrainingExample
-from coire_core.models.training import ResolvedTrainingSpec
-from coire_core.models.training_node import CheckpointWorkerState, TrainingAdapterExtractRequest
+from coire_core.models.training import ResolvedTrainingSpec, ResolvedTrainingSpecDocument
+from coire_core.models.training_node import (
+    CheckpointWorkerState,
+    CheckpointWorkerStateDocument,
+    TrainingAdapterExtractRequest,
+)
 from coire_core.settings import Settings
 from coire_node.engines import EngineManager
 from coire_node.reservations import ReservationLedger
@@ -51,7 +55,7 @@ class CPUWriter:
 
 
 def fixture(
-    tmp_path: Path, kind: str = "lora", *, invalid: str = ""
+    tmp_path: Path, kind: str = "lora", *, invalid: str = "", objective: str | None = None
 ) -> tuple[AdapterExtractor, TrainingAdapterExtractRequest]:
     tmp_path = tmp_path.resolve()
     settings = Settings(node_state_dir=str(tmp_path / "state")).model_copy(
@@ -91,7 +95,7 @@ def fixture(
     manifest = store.hash_tree(base.name, repo_id="synthetic/base", revision="offline")
     store.write_manifest(manifest)
     model, variant, dataset = [uuid.uuid4() for _ in range(3)]
-    resolved = ResolvedTrainingSpec.model_validate(
+    resolved: ResolvedTrainingSpecDocument = ResolvedTrainingSpec.model_validate(
         {
             "spec": {
                 "model": {"model_id": model, "variant_id": variant},
@@ -160,7 +164,7 @@ def fixture(
         seed=0,
         max_sequence_length=8,
     )
-    state = CheckpointWorkerState(
+    state: CheckpointWorkerStateDocument = CheckpointWorkerState(
         job_id=JOB,
         attempt_id=JOB,
         fence=1,
@@ -191,6 +195,51 @@ def fixture(
         )
     if invalid == "missing_magnitude":
         adapter.pop("model.layers.1.self_attn.q_proj.m")
+    if objective is not None:
+        from coire_core.models.training import ResolvedTrainingSpecV3
+        from coire_core.models.training_node import CheckpointWorkerStateV3
+
+        raw = resolved.model_dump(mode="json")
+        raw["spec"].update(
+            schema_version=3,
+            objective=objective,
+            objective_options={"beta": 0.1} if objective == "dpo" else {"weight": 0.1},
+            init_adapter=None,
+        )
+        raw["spec"]["parameterization"]["dropout"] = 0
+        raw["spec"]["data"]["loss_policy"] = "final_assistant"
+        initial = {**raw["spec"]["model"], "base_manifest_sha256": raw["base_manifest_sha256"]}
+        raw.update(
+            initial_target=initial,
+            reference_target=initial if objective == "dpo" else None,
+            sampler_version="coire-pair-sampler-v1",
+        )
+        raw["resource_envelope"].update(
+            reference_weight_bytes=1 if objective == "dpo" else 0, reference_adapter_bytes=0
+        )
+        resolved = ResolvedTrainingSpecV3.model_validate(raw)
+        state = CheckpointWorkerStateV3.model_validate(
+            {
+                **state.model_dump(mode="json"),
+                "schema_version": 3,
+                "optimizer": resolved.spec.optim.model_dump(mode="json"),
+                "resolved_spec_sha256": hashlib.sha256(
+                    canonical(resolved.model_dump(mode="json"))
+                ).hexdigest(),
+                "objective": objective,
+                "objective_options": resolved.spec.objective_options,
+                "initial_target": resolved.initial_target,
+                "reference_target": resolved.reference_target,
+                "sampler": {
+                    "kind": "preference",
+                    "dataset_sha256": "a" * 64,
+                    "seed": 0,
+                    "epoch": 0,
+                    "cursor": 3,
+                    "batch_size": resolved.spec.optim.batch_size,
+                },
+            }
+        )
     checkpoint = CheckpointStore(artifacts.root, tensor_io=CPUWriter(), disk_floor_bytes=0).save(
         state, adapter, {"step": np.array(3, dtype=np.uint32)}
     )
@@ -211,6 +260,27 @@ def fixture(
         deadline=datetime.now(UTC) + timedelta(minutes=2),
     )
     return extractor, command
+
+
+@pytest.mark.parametrize("objective", ["dpo", "orpo"])
+@pytest.mark.parametrize("kind", ["lora", "qlora"])
+def test_preference_full_adapter_extraction_is_independent_and_replayable(
+    tmp_path: Path, objective: str, kind: str
+) -> None:
+    extractor, command = fixture(tmp_path, kind, objective=objective)
+    result = extractor.extract(command)
+    assert result.state == "succeeded", result
+    assert result.manifest is not None
+    directory = extractor.artifacts.directory(command.adapter_id)
+    config = json.loads((directory / "adapter_config.json").read_bytes())
+    assert config["lora_parameters"]["dropout"] == 0
+    assert config["coire_base_manifest_sha256"] == command.resolved.base_manifest_sha256
+    assert extractor.extract(command) == result
+    checkpoint = extractor.artifacts.manifest(command.checkpoint_id)
+    assert (
+        extractor.artifacts.file(checkpoint, checkpoint.ranks[0].adapter_file_id).read_bytes()
+        == (directory / "adapters.safetensors").read_bytes()
+    )
 
 
 @pytest.mark.parametrize("kind", ["lora", "qlora", "dora"])
@@ -278,10 +348,11 @@ def test_native_served_format_and_exact_engine_store(tmp_path: Path, kind: str) 
         "quota",
     ],
 )
+@pytest.mark.parametrize("objective", [None, "dpo", "orpo"])
 def test_corruption_incompatibility_deadline_quota_fail_before_publication(
-    tmp_path: Path, failure: str
+    tmp_path: Path, failure: str, objective: str | None
 ) -> None:
-    extractor, command = fixture(tmp_path)
+    extractor, command = fixture(tmp_path, objective=objective)
     checkpoint = extractor.artifacts.manifest(command.checkpoint_id)
     if failure.startswith("corrupt"):
         entry = (
@@ -292,6 +363,14 @@ def test_corruption_incompatibility_deadline_quota_fail_before_publication(
         extractor.artifacts.file(checkpoint, entry).write_bytes(b"private corrupted tensor")
     elif failure == "wrong_base":
         command.resolved.base_manifest_sha256 = "0" * 64
+        from coire_core.models.training import ResolvedTrainingSpecV3
+
+        if isinstance(command.resolved, ResolvedTrainingSpecV3):
+            command.resolved.initial_target = command.resolved.initial_target.model_copy(
+                update={"base_manifest_sha256": "0" * 64}
+            )
+            if command.resolved.reference_target is not None:
+                command.resolved.reference_target = command.resolved.initial_target
     elif failure in {"wrong_shape", "wrong_dtype", "missing_key"}:
         rank = checkpoint.ranks[0]
         if failure == "wrong_shape":

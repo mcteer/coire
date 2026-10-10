@@ -1,0 +1,84 @@
+{
+  "schema_version": 2,
+  "model": {
+    "model_id": "10000000-0000-4000-8000-000000000001",
+    "variant_id": "10000000-0000-4000-8000-000000000002"
+  },
+  "data": {
+    "train": {
+      "datasets": [
+        {
+          "dataset_id": "10000000-0000-4000-8000-000000000003",
+          "split": "train",
+          "sample_count": 8,
+          "mixture_proportion": 1.0
+        }
+      ],
+      "epoch_samples": 8,
+      "mixture_strategy": "weighted",
+      "replacement": false,
+      "seed": 0
+    },
+    "validation": {
+      "dataset_ids": [
+        "10000000-0000-4000-8000-000000000003"
+      ],
+      "split": "validation",
+      "max_batches": 25,
+      "seed": 0
+    },
+    "loss_policy": "final_assistant"
+  },
+  "objective": "sft",
+  "parameterization": {
+    "kind": "lora",
+    "rank": 8,
+    "scale": 20.0,
+    "dropout": 0.0,
+    "target_modules": [
+      "self_attn.q_proj",
+      "self_attn.v_proj"
+    ],
+    "num_layers": 1
+  },
+  "optim": {
+    "name": "adamw",
+    "learning_rate": 1e-05,
+    "beta1": 0.9,
+    "beta2": 0.999,
+    "epsilon": 1e-08,
+    "weight_decay": 0.0,
+    "updates": 32,
+    "batch_size": 2,
+    "accumulation_steps": 2,
+    "max_sequence_length": 2048,
+    "schedule": {
+      "kind": "constant",
+      "warmup_updates": 0
+    }
+  },
+  "eval": {
+    "loss_every_updates": 100,
+    "at_end": true,
+    "suites": [
+      {
+        "suite_id": "task-coding-instructions",
+        "suite_version": 1,
+        "checkpoint_updates": [
+          8,
+          16
+        ]
+      }
+    ]
+  },
+  "output": {
+    "adapter_slug": "contract-test",
+    "checkpoint_every_updates": 8,
+    "keep_last_checkpoints": 3
+  },
+  "placement": {
+    "mode": "single",
+    "preferred_node": null
+  },
+  "seed": 0
+}

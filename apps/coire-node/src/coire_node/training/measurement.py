@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import inspect
+import json
 import logging
 import os
 import platform
@@ -17,17 +18,22 @@ from collections.abc import Callable
 from dataclasses import fields, is_dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 import psutil
 from opentelemetry import metrics, trace
 from pydantic import BaseModel, TypeAdapter
 
 from coire_core.errors import TrainingConflict, TrainingValidationError
+from coire_core.models.training import ResolvedTrainingSpecV3
 from coire_core.models.training_node import (
+    CheckpointAcknowledgementDocument,
     CheckpointCommitAcknowledgement,
+    CheckpointCommitAcknowledgementV3,
     CheckpointWorkerState,
+    CheckpointWorkerStateDocument,
     NodeTrainingStatus,
+    PreferenceMeasurementObservation,
     TrainingArtifactManifest,
     TrainingMeasurementCapabilities,
     TrainingMeasurementNodeStatus,
@@ -41,6 +47,7 @@ from coire_core.models.training_node import (
     TrainingStartRequest,
     TrainingStopReceipt,
     TrainingStopRequest,
+    parse_training_measurement_observation,
 )
 from coire_core.models.training_types import TrainingId
 from coire_core.settings import get_settings
@@ -53,13 +60,24 @@ from coire_node.training.datasets import load_analysis_tokenizer
 from coire_node.training.distributed import BareCollective, DeadlineGuardian, JacclLaunch
 from coire_node.training.journal import TrainingJournal, command_digest
 from coire_node.training.objectives import load_sft_runtime, validate_sft_input
+from coire_node.training.preference_data import (
+    PreferenceFrozenInputs,
+    PreferenceSampler,
+    compile_preference_samples,
+)
+from coire_node.training.preference_runtime import (
+    PreferenceRuntime,
+    load_preference_runtime,
+    validate_preference_input,
+)
 from coire_node.training.process_inventory import attempt_process_absent
+from coire_node.training.sampler import TrainingSampler
 from coire_node.training.supervisor import TrainingSupervisor
 from coire_node.training.worker import (
-    FrozenInputs,
+    FrozenInputDocument,
     PrivateControl,
     compile_samples,
-    load_all_frozen_inputs,
+    load_training_frozen_inputs,
     make_optimizer,
     payload_sha256,
     read_private,
@@ -246,9 +264,9 @@ def python_buffer_bytes(value: Any, seen: set[int] | None = None) -> int:
 
 def probe_inputs(
     prepared: TrainingPrepareRequest, directory: Path, journal: TrainingJournal
-) -> list[FrozenInputs]:
+) -> list[FrozenInputDocument]:
     """Every train and independently selected held-out source is a frozen input."""
-    return load_all_frozen_inputs(prepared, directory, journal)
+    return load_training_frozen_inputs(prepared, directory, journal)
 
 
 class MeasurementSupervisor(TrainingSupervisor):
@@ -268,6 +286,7 @@ class MeasurementSupervisor(TrainingSupervisor):
         hardware_sha256: Callable[[], str],
         store_root: Path,
         artifact_root: Path,
+        initial_artifact_root: Path | None = None,
         memory_available: Callable[[], int],
         disk_available: Callable[[], int],
         jaccl_hostfile: Path | None = None,
@@ -279,6 +298,7 @@ class MeasurementSupervisor(TrainingSupervisor):
             interpreter=interpreter,
             store_root=store_root,
             artifact_root=artifact_root,
+            initial_artifact_root=initial_artifact_root,
             memory_available=memory_available,
             disk_available=disk_available,
             jaccl_hostfile=jaccl_hostfile or Path(get_settings().sharding_jaccl_hostfile),
@@ -292,6 +312,10 @@ class MeasurementSupervisor(TrainingSupervisor):
         argv = super().argv(value)
         argv[2] = "coire_node.training.measurement"
         argv[-1] = str(self.artifact_root / value["attempt_id"])
+        if isinstance(
+            TrainingPrepareRequest.model_validate(value["prepare"]).resolved, ResolvedTrainingSpecV3
+        ):
+            argv.extend(["--initial-artifact-root", str(self.initial_artifact_root)])
         return argv
 
     def probe(self, attempt: str) -> TrainingMeasurementPrepare:
@@ -351,6 +375,7 @@ class MeasurementSupervisor(TrainingSupervisor):
             node=self.journal.node,
             hardware_sha256=self.hardware_sha256(),
             world_sizes=worlds,
+            spec_versions=[1, 2, 3] if native else [],
             measurement_checkpoint=hook,
         )
 
@@ -488,7 +513,7 @@ class MeasurementSupervisor(TrainingSupervisor):
         path = self.directory(attempt) / "observation.json"
         if path.exists() and status.liveness == "stopped":
             encoded = read_private(path, 1024**2)
-            candidate = TrainingMeasurementObservation.model_validate_json(encoded)
+            candidate = parse_training_measurement_observation(json.loads(encoded))
             if (
                 candidate.measurement_id != probe.measurement_id
                 or candidate.attempt_id != attempt
@@ -658,6 +683,7 @@ def native_measurement(
     owner: str,
     store_root: Path,
     artifact_root: Path,
+    initial_artifact_root: Path | None = None,
 ) -> int:
     if (
         platform.node().lower().split(".", 1)[0] not in {"coire-edge-a", "coire-edge-b"}
@@ -754,17 +780,52 @@ def native_measurement(
             nonlocal compiler_buffer_bytes
             compiler_buffer_bytes = max(compiler_buffer_bytes, amount)
 
-        training, validation = compile_samples(
-            prepared, all_inputs, tokenizer, buffer_observer=observe_buffer
-        )
+        training: TrainingSampler | PreferenceSampler
+        validation: TrainingSampler | PreferenceSampler
+        if isinstance(prepared.resolved, ResolvedTrainingSpecV3):
+            training, validation = compile_preference_samples(
+                prepared,
+                cast(list[PreferenceFrozenInputs], all_inputs),
+                tokenizer,
+                buffer_observer=observe_buffer,
+            )
+        else:
+            from coire_node.training.worker import FrozenInputs
+
+            training, validation = compile_samples(
+                prepared,
+                cast(list[FrozenInputs], all_inputs),
+                tokenizer,
+                buffer_observer=observe_buffer,
+            )
         sample()
-        source = validate_sft_input(
+        source = (
+            validate_preference_input
+            if isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+            else validate_sft_input
+        )(
             model_path,
             prepared.resolved.spec.parameterization,
             expected_manifest_sha256=prepared.resolved.base_manifest_sha256,
         )
+        preference: PreferenceRuntime | None = None
         with tracer.start_as_current_span("coire.node.training.load"):
-            runtime = load_sft_runtime(source, seed=prepared.resolved.spec.seed)
+            if isinstance(prepared.resolved, ResolvedTrainingSpecV3):
+                target = prepared.resolved.initial_target
+                if target.adapter_id and initial_artifact_root is None:
+                    raise TrainingConflict("Preference probe has no owned initial artifact root")
+                preference = load_preference_runtime(
+                    source,
+                    seed=prepared.resolved.spec.seed,
+                    objective=prepared.resolved.spec.objective,
+                    initial_target=target,
+                    initial_adapter=initial_artifact_root / str(target.adapter_id)
+                    if target.adapter_id and initial_artifact_root
+                    else None,
+                )
+                runtime = preference.policy
+            else:
+                runtime = load_sft_runtime(source, seed=prepared.resolved.spec.seed)
         optimizer = make_optimizer(prepared.resolved.spec.optim)
         import mlx.core as mx
 
@@ -772,12 +833,25 @@ def native_measurement(
         mx.eval(params)
         weights = sum(int(v.nbytes) for k, v in params.items() if k not in runtime.trainable_keys)
         adapter = sum(int(params[k].nbytes) for k in runtime.trainable_keys)
+        reference_weights = reference_adapters = 0
+        if preference is not None and preference.reference is not None:
+            reference_params = preference.reference.parameters()
+            mx.eval(reference_params)
+            # A bare initial reference has no parent artifact: every frozen tensor,
+            # including the zero-initialized LoRA module, belongs to its weight allocation.
+            parent_keys = (
+                runtime.trainable_keys if preference.initial_target.adapter_id else frozenset()
+            )
+            reference_weights = sum(
+                int(v.nbytes) for k, v in reference_params.items() if k not in parent_keys
+            )
+            reference_adapters = sum(int(reference_params[k].nbytes) for k in parent_keys)
         checkpoint_bytes, optimizer_bytes = 0, 0
 
         class ObservedCheckpointStore(CheckpointStore):
             def save(
                 self,
-                state: CheckpointWorkerState,
+                state: CheckpointWorkerStateDocument,
                 adapter: dict[str, Any],
                 optimizer_state: Any,
                 *,
@@ -825,7 +899,9 @@ def native_measurement(
         training_started = datetime.now(UTC)
         write_atomic(directory / "training-started", training_started.isoformat().encode())
 
-        def local_probe_save(manifest: TrainingArtifactManifest) -> CheckpointCommitAcknowledgement:
+        def local_probe_save(
+            manifest: TrainingArtifactManifest,
+        ) -> CheckpointAcknowledgementDocument:
             # This receipt lets the unchanged trainer proceed in an isolated experiment.
             # It is never sent to core or published as a durable training checkpoint.
             nonlocal checkpoint_bytes, optimizer_bytes
@@ -838,7 +914,7 @@ def native_measurement(
             # is eligible for publication or recovery; free its bounded scratch.
             shutil.rmtree(artifact_root / str(manifest.artifact_id))
             _fsync_directory(artifact_root)
-            return CheckpointCommitAcknowledgement(
+            receipt = CheckpointCommitAcknowledgement(
                 **{
                     k: getattr(prepared, k)
                     for k in (
@@ -857,6 +933,16 @@ def native_measurement(
                 manifest_sha256=manifest.canonical_sha256(),
                 update=manifest.update or 0,
             )
+            if preference is not None:
+                return CheckpointCommitAcknowledgementV3.model_validate(
+                    {
+                        **receipt.model_dump(),
+                        "schema_version": 3,
+                        "committed_update": receipt.update,
+                        "job_version": 1,
+                    }
+                )
+            return receipt
 
         rank_arguments: dict[str, Any] = {}
         if rank_checkpoint is not None:
@@ -865,6 +951,18 @@ def native_measurement(
                 "collective": collective,
                 "guardian": guardian,
             }
+        probe_count = 0
+
+        def emit(event: Any) -> None:
+            nonlocal probe_count
+            if event.payload.kind == "preference_progress" and event.payload.metric.kind == "train":
+                if event.payload.metric.probe is None:
+                    raise TrainingConflict(
+                        "Preference measurement did not execute its post-update probe"
+                    )
+                probe_count += 1
+            journal.append_event(event)
+
         completed = run_sft(
             prepared,
             runtime,
@@ -873,10 +971,11 @@ def native_measurement(
             validation,
             store=checkpoints,
             scratch=directory / "scratch",
-            emit=journal.append_event,
+            emit=emit,
             commit=local_probe_save,
             control=channel.poll,
             footprint=sample,
+            preference=preference,
             **rank_arguments,
         )
         training_finished = datetime.now(UTC)
@@ -917,6 +1016,20 @@ def native_measurement(
             world_size=prepared.world_size,
             rank_checkpoints=rank_summaries,
         )
+        if preference is not None:
+            assert isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+            observation = PreferenceMeasurementObservation.model_validate(
+                {
+                    **observation.model_dump(),
+                    "schema_version": 3,
+                    "objective": preference.objective,
+                    "initial_target": prepared.resolved.initial_target,
+                    "reference_target": prepared.resolved.reference_target,
+                    "reference_weight_bytes": reference_weights,
+                    "reference_adapter_bytes": reference_adapters,
+                    "probe_count": probe_count,
+                }
+            )
         path = directory / "observation.json"
         if path.exists():
             raise TrainingConflict("Probe result is immutable")
@@ -935,8 +1048,11 @@ def main() -> int:
     parser.add_argument("--owner", required=True, type=uuid.UUID)
     for name in ("state-root", "store-root", "artifact-root"):
         parser.add_argument("--" + name, required=True, type=Path)
+    parser.add_argument("--initial-artifact-root", type=Path)
     args = parser.parse_args()
-    if not all(p.is_absolute() for p in (args.state_root, args.store_root, args.artifact_root)):
+    if not all(p.is_absolute() for p in (args.state_root, args.store_root, args.artifact_root)) or (
+        args.initial_artifact_root is not None and not args.initial_artifact_root.is_absolute()
+    ):
         parser.error("probe roots must be absolute node configuration")
     prepared = TrainingPrepareRequest.model_validate_json(
         read_private(args.state_root / args.attempt / "prepare.json", 1024**2)
@@ -962,6 +1078,7 @@ def main() -> int:
                 owner=str(args.owner),
                 store_root=args.store_root,
                 artifact_root=args.artifact_root,
+                initial_artifact_root=args.initial_artifact_root,
             )
     finally:
         journal.close()

@@ -222,7 +222,11 @@ async def resolve_checkpoint_measurement_target(
     from coire_api.db import TrainingJobRow
     from coire_api.evaluation.training import require_checkpoint_pause
     from coire_core.errors import EvaluationConflict
-    from coire_core.models.training import ResolvedTrainingSpecV2, parse_resolved_training_spec
+    from coire_core.models.training import (
+        ResolvedTrainingSpecV2,
+        ResolvedTrainingSpecV3,
+        parse_resolved_training_spec,
+    )
 
     job = await session.get(
         TrainingJobRow, adapter.source_job_id, with_for_update=True, populate_existing=True
@@ -241,7 +245,7 @@ async def resolve_checkpoint_measurement_target(
     }:
         raise EvaluationConflict("Checkpoint measurement ownership is unavailable")
     resolved = parse_resolved_training_spec(job.resolved_spec)
-    if not isinstance(resolved, ResolvedTrainingSpecV2):
+    if not isinstance(resolved, (ResolvedTrainingSpecV2, ResolvedTrainingSpecV3)):
         raise EvaluationConflict("Checkpoint measurement requires frozen evaluation identity")
     base = await resolve_evaluation_target(
         session,

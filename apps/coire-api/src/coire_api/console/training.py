@@ -22,7 +22,7 @@ from coire_api.training.telemetry import observed
 from coire_core.errors import TrainingValidationError
 from coire_core.models.console import CursorPage, TrainingActivityItem
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
-from coire_core.models.training import TERMINAL_TRAINING_STATES, parse_training_spec
+from coire_core.models.training import TERMINAL_TRAINING_STATES, TrainingSpecV3, parse_training_spec
 from coire_core.models.training_types import TrainingId
 
 
@@ -84,6 +84,7 @@ async def project_training_activity(
         else []
     )
     latest = {(row.job_id, row.kind): row.loss for row in losses}
+    probes = {(row.job_id, row.kind): row.metric.get("probe") for row in losses}
     reservations: dict[str, int] = {}
     if selected:
         reservation_rows = await session.execute(
@@ -111,6 +112,10 @@ async def project_training_activity(
         items.append(
             TrainingActivityItem.model_validate(
                 {
+                    "objective": spec.objective if isinstance(spec, TrainingSpecV3) else None,
+                    "preference_probe": probes.get((row.id, "train"))
+                    if isinstance(spec, TrainingSpecV3)
+                    else None,
                     "job_id": row.id,
                     "evaluation_groups": await for_job(session, row.id),
                     "owner_id": row.owner_user_id,

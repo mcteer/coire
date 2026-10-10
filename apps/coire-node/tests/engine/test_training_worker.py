@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import platform
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -106,7 +105,9 @@ def offline_command(
             "attempt_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
             "fence": 1,
             "request_sha256": "a" * 64,
-            "node": platform.node().split(".", 1)[0],
+            # The isolated fixture's logical rank is not the CI host name.
+            # training_model already guards the physical host against core.
+            "node": "coire-edge-a",
             "rank": 0,
             "world_size": 1,
             "lease_expires_at": (datetime.now(UTC) + timedelta(seconds=29)).isoformat(),

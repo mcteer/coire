@@ -33,6 +33,7 @@ from coire_api.db import (
     ChatTurnRow,
     EngineProcessRow,
     EntitlementRow,
+    FeedbackPreferenceRow,
     ModelInstanceRow,
     ModelRow,
     UserRow,
@@ -52,10 +53,11 @@ from coire_api.gateway.providers import (
     validate_provider_request,
 )
 from coire_api.gateway.proxy import StreamTiming, stream
-from coire_api.gateway.resolution import ResolvedModel, resolve_model
+from coire_api.gateway.resolution import ResolvedModel, resolve_exact_target, resolve_model
 from coire_api.gateway.usage import UsageTracker
 from coire_api.registry.service import chat_model_eligible
 from coire_core.errors import ChatConflict, ChatNotFound
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.chat import (
     ChatEvent,
     ChatMessageDelta,
@@ -67,7 +69,7 @@ from coire_core.models.chat import (
 )
 from coire_core.models.gateway import GatewayProtocol, UsageOutcome
 from coire_core.models.instance import InstanceState
-from coire_core.models.registry import ModelSource
+from coire_core.models.registry import ModelSource, Reasoning
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -189,8 +191,15 @@ async def persist_native_event(
     return event
 
 
-async def _resolve(admission: Admission, principal: Principal) -> ResolvedModel:
+async def _resolve(
+    admission: Admission,
+    principal: Principal,
+    *,
+    target: InferenceTarget | None = None,
+) -> ResolvedModel:
     async with session_scope() as session:
+        if target is not None:
+            return await resolve_exact_target(session, target, principal)
         return await resolve_model(session, admission.turn.model_id, principal)
 
 
@@ -337,7 +346,10 @@ async def native_stream(
                 )
                 yield encode_event(loading)
                 last_load_state: Literal["queued", "loading"] = "loading"
-                task = asyncio.create_task(load_with_ceiling(admission.turn.model_id, settings))
+                frozen_target = resolved.target
+                task = asyncio.create_task(
+                    load_with_ceiling(frozen_target or admission.turn.model_id, settings)
+                )
                 last_keepalive = monotonic()
                 async with cancel_pending_load(task):
                     while not task.done():
@@ -372,7 +384,11 @@ async def native_stream(
                 if await _stop_requested(admission.turn.id):
                     stop_signal.set()
                     raise ChatStopRequested()
-                resolved = await _resolve(admission, principal)
+                resolved = (
+                    await _resolve(admission, principal, target=frozen_target)
+                    if frozen_target
+                    else await _resolve(admission, principal)
+                )
             if resolved.source is ModelSource.STUDIO and (
                 resolved.engine_url is None or resolved.model_path is None
             ):
@@ -387,8 +403,20 @@ async def native_stream(
             if resolved.source is ModelSource.STUDIO:
                 assert resolved.model_path is not None and resolved.engine_url is not None
                 payload = canonical_text_payload(
-                    admission.history, resolved.model_path, output_tokens=admission.output_tokens
+                    admission.history,
+                    resolved.model_path,
+                    output_tokens=admission.output_tokens,
+                    sampling=admission.sampling,
+                    enable_thinking=False if admission.reasoning_mode is Reasoning.NONE else None,
                 )
+                if admission.capture_generation is not None:
+                    from coire_api.feedback.provenance import capture_native_provenance
+
+                    async with session_scope() as capture_session:
+                        await capture_native_provenance(
+                            capture_session, principal, admission, resolved, settings
+                        )
+                        await capture_session.commit()
                 source = stream(resolved.engine_url, payload, settings, timing)
             else:
                 target = target_for(resolved)
@@ -681,6 +709,7 @@ async def observe_conversation(
     """Follow saved events without acquiring generation or cancellation authority."""
     from coire_api.chat.service import get_conversation_detail
 
+    capture_state: tuple[int, bool] | None = None
     while True:
         snapshot = False
         deleted = False
@@ -732,6 +761,22 @@ async def observe_conversation(
                 snapshot = bool(rows and rows[0].cursor != cursor + 1) or (
                     not rows and conversation.event_cursor > cursor
                 )
+            preference = await session.get(FeedbackPreferenceRow, principal.user_id)
+            current_capture = (
+                (preference.capture_generation, preference.enabled)
+                if preference is not None
+                else (0, True)
+            )
+            if (
+                capture_state is not None
+                and current_capture != capture_state
+                and not deleted
+                and conversation.event_cursor > 0
+            ):
+                # A privacy change replaces projection even when no new chat
+                # event was written. It does not create a generation or cursor.
+                snapshot = True
+            capture_state = current_capture
             if snapshot:
                 detail = await get_conversation_detail(
                     session, principal, conversation_id, ChatMessagePageQuery()
@@ -762,6 +807,15 @@ async def observe_conversation(
             cursor = 0
         else:
             for row in rows:
+                if row.type.startswith("comparison."):
+                    from coire_api.feedback.comparisons import replay_comparison_event
+
+                    comparison_event = await replay_comparison_event(principal, row)
+                    cursor = row.cursor
+                    if comparison_event is None:
+                        return
+                    yield encode_event(comparison_event)
+                    continue
                 event = ChatEvent.model_validate(
                     {
                         "conversation_id": row.conversation_id,

@@ -365,6 +365,7 @@ def test_mixture_safetensors_optimizer_and_cursor_continuation(tmp_path: Path) -
     )
     resumed, _ = compile_samples(command, inputs, SyntheticTokenizer())
     assert isinstance(resumed, MixtureSampler)
+    assert isinstance(restored.state, CheckpointWorkerState)
     resumed.restore(restored.state.sampler)
     actual_weights, actual_moments = (
         restored.adapter_tensors["lora_a"],

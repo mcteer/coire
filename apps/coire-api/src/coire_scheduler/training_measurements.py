@@ -15,7 +15,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from opentelemetry import metrics, trace
 from sqlalchemy import func, select
@@ -36,11 +36,13 @@ from coire_api.db import (
     TrainingProfileRow,
     TrainingStorageReservationRow,
     VariantCopyRow,
+    init_engine,
     session_scope,
 )
 from coire_api.nodes_client import NodeClient
 from coire_api.placement.service import effective_occupied_bytes, lock_nodes_for_admission
 from coire_api.training.authorization import authorize_live_training_action
+from coire_api.training.lease_snapshots import SNAPSHOT_VALIDITY_SECONDS
 from coire_api.training.measurements import (
     freeze_measurement_inputs,
     mint_measurement_inputs,
@@ -49,13 +51,18 @@ from coire_api.training.measurements import (
 from coire_api.training.service import payload_digest, recheck_training_inputs, training_id
 from coire_api.training.specs import training_config_digest
 from coire_core.errors import TrainingConflict
+from coire_core.models.datasets import DatasetFormat
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
+from coire_core.models.preference import PreferenceResourceEnvelope
 from coire_core.models.training import (
+    PreferenceMemoryEvidence,
     ResolvedDatasetInput,
     ResolvedTrainingSpec,
+    ResolvedTrainingSpecDocument,
+    ResolvedTrainingSpecV3,
     TargetLatencyMeasurement,
     TrainingMeasurementCompletion,
     TrainingMeasurementPhase,
@@ -64,12 +71,18 @@ from coire_core.models.training import (
     TrainingMeasurementRequest,
     TrainingMeasurementResult,
     TrainingMemoryEvidence,
+    TrainingMemoryEvidenceDocument,
     TrainingNodeMemoryEvidence,
     TrainingProfile,
     TrainingResidentTarget,
     TrainingResourceEnvelope,
+    TrainingSpec,
+    TrainingSpecV2,
+    TrainingSpecV3,
 )
 from coire_core.models.training_node import (
+    PreferenceMeasurementBinding,
+    PreferenceMeasurementObservation,
     TrainingCollectiveBinding,
     TrainingInputsRequest,
     TrainingLeaseRenewal,
@@ -84,6 +97,7 @@ from coire_core.models.training_node import (
     TrainingStartRequest,
     TrainingStopReceipt,
     TrainingStopRequest,
+    parse_training_measurement_binding,
 )
 from coire_core.settings import Settings, get_settings
 from coire_scheduler.training_guard import (
@@ -115,7 +129,7 @@ async def isolated_memory_envelope(
     request: TrainingMeasurementRequest,
     binding: TrainingMeasurementBinding,
     nodes: list[NodeRow],
-) -> TrainingResourceEnvelope:
+) -> TrainingResourceEnvelope | PreferenceResourceEnvelope:
     profiles = list(
         await session.scalars(
             select(TrainingProfileRow)
@@ -164,6 +178,31 @@ async def isolated_memory_envelope(
                 for n in evidence.nodes
             )
         ):
+            continue
+        if isinstance(request.spec, TrainingSpecV3):
+            if (
+                not isinstance(binding, PreferenceMeasurementBinding)
+                or not isinstance(evidence, PreferenceMemoryEvidence)
+                or (
+                    evidence.initial_target != binding.initial_target
+                    or evidence.reference_target != binding.reference_target
+                    or evidence.objective != binding.objective
+                    or evidence.objective_options != binding.objective_options
+                    or evidence.datasets
+                    != [
+                        ResolvedDatasetInput(
+                            dataset_id=s.binding.dataset_id,
+                            analysis_id=s.analysis.id,
+                            source_sha256=s.binding.source_sha256,
+                            split_sha256=s.binding.split_sha256,
+                            analysis_sha256=payload_digest(s.analysis),
+                        )
+                        for s in binding.sources
+                    ]
+                )
+            ):
+                continue
+        elif isinstance(evidence, PreferenceMemoryEvidence):
             continue
         return evidence.resource_envelope
     raise TrainingConflict(
@@ -248,6 +287,10 @@ class MeasurementNodeClient(NodeClient):
             probe.prepare.node,
             f"/node/training/measurements/{probe.prepare.attempt_id}/prepare",
             json=probe.model_dump(mode="json"),
+            # Preparing the accounted namespace can exceed the five-second
+            # control lane while reconciling disk reservations. Stop remains
+            # independently bounded by stop_probe; preparation never spawns.
+            request_timeout_s=30.0,
         )
         return TrainingPrepared.model_validate(body)
 
@@ -257,6 +300,9 @@ class MeasurementNodeClient(NodeClient):
             request.node,
             f"/node/training/measurements/{request.attempt_id}/inputs",
             json=request.model_dump(mode="json"),
+            request_timeout_s=30.0
+            if any(source.binding.format is DatasetFormat.PREFERENCE for source in request.sources)
+            else None,
         )
         return TrainingPrepared.model_validate(body)
 
@@ -581,6 +627,7 @@ async def admit_measurement(
         if sum(h.bytes for h in disk_holds) + 20 * 1024**3 + input_disk_bytes > 200 * 1024**3:
             return None
         # This is the entire isolated available slot, not a inferred model estimate.
+        cap: TrainingResourceEnvelope | PreferenceResourceEnvelope
         cap = TrainingResourceEnvelope(
             weight_bytes=1,
             adapter_bytes=1,
@@ -591,10 +638,20 @@ async def admit_measurement(
             checkpoint_bytes=(20 * 1024**3) // (request.spec.output.keep_last_checkpoints + 2),
             evidence_sha256="0" * 64,
         )
-        resolved = ResolvedTrainingSpec(
-            spec=request.spec,
-            base_manifest_sha256=binding.base_manifest_sha256,
-            datasets=[
+        native_spec: TrainingSpec | TrainingSpecV3
+        if isinstance(request.spec, TrainingSpec):
+            native_spec = request.spec
+        elif isinstance(request.spec, TrainingSpecV2):
+            legacy = request.spec.model_dump(mode="json")
+            legacy["schema_version"] = 1
+            legacy["eval"].pop("suites")
+            native_spec = TrainingSpec.model_validate(legacy)
+        else:
+            native_spec = request.spec
+        resolved_fields: dict[str, Any] = {
+            "spec": native_spec,
+            "base_manifest_sha256": binding.base_manifest_sha256,
+            "datasets": [
                 ResolvedDatasetInput(
                     dataset_id=s.binding.dataset_id,
                     analysis_id=s.analysis.id,
@@ -604,13 +661,42 @@ async def admit_measurement(
                 )
                 for s in binding.sources
             ],
-            tokenizer_sha256=binding.tokenizer_sha256,
-            template_sha256=binding.template_sha256,
-            enable_thinking=False,
-            runtime_sha256=binding.runtime_sha256,
-            worker_version=binding.worker_version,
-            resource_envelope=cap,
-        )
+            "tokenizer_sha256": binding.tokenizer_sha256,
+            "template_sha256": binding.template_sha256,
+            "enable_thinking": False,
+            "runtime_sha256": binding.runtime_sha256,
+            "worker_version": binding.worker_version,
+            "resource_envelope": cap,
+        }
+        resolved: ResolvedTrainingSpecDocument
+        if isinstance(request.spec, TrainingSpecV3):
+            if not isinstance(binding, PreferenceMeasurementBinding):
+                raise TrainingConflict("Preference probe has no frozen initial policy binding")
+            reference_weight = int(request.spec.objective == "dpo")
+            reference_adapter = int(
+                request.spec.objective == "dpo" and request.spec.init_adapter is not None
+            )
+            cap = PreferenceResourceEnvelope.model_validate(
+                {
+                    **cap.model_dump(),
+                    "reference_weight_bytes": reference_weight,
+                    "reference_adapter_bytes": reference_adapter,
+                    "buffer_bytes": cap.buffer_bytes - reference_weight - reference_adapter,
+                }
+            )
+            isolated_spec = request.spec.model_copy(deep=True)
+            isolated_spec.eval.suites = []
+            resolved = ResolvedTrainingSpecV3.model_validate(
+                {
+                    **resolved_fields,
+                    "spec": isolated_spec,
+                    "resource_envelope": cap,
+                    "initial_target": binding.initial_target,
+                    "reference_target": binding.reference_target,
+                }
+            )
+        else:
+            resolved = ResolvedTrainingSpec.model_validate(resolved_fields)
         await recheck_training_inputs(session, resolved)
         reservation, disk = uuid.uuid4(), uuid.uuid4()
         probe = TrainingMeasurementPrepare(
@@ -704,7 +790,8 @@ def build_report(
         o = by_node[probe.prepare.node]
         if (
             o.measurement_id != row.id
-            or probe.prepare.resolved.spec != request.spec
+            or training_config_digest(probe.prepare.resolved.spec)
+            != training_config_digest(request.spec)
             or o.attempt_id != probe.prepare.attempt_id
             or o.rank != probe.prepare.rank
             or o.world_size != probe.prepare.world_size
@@ -716,6 +803,25 @@ def build_report(
             or o.peak_footprint_bytes > probe.prepare.resolved.resource_envelope.memory_bytes
         ):
             raise TrainingConflict("Observed execution differs from frozen safe probe")
+    if isinstance(request.spec, TrainingSpecV3):
+        for probe in dispatch.commands:
+            observed = by_node[probe.prepare.node]
+            resolved = probe.prepare.resolved
+            if (
+                not isinstance(observed, PreferenceMeasurementObservation)
+                or not isinstance(resolved, ResolvedTrainingSpecV3)
+                or (
+                    observed.objective != resolved.spec.objective
+                    or observed.initial_target != resolved.initial_target
+                    or observed.reference_target != resolved.reference_target
+                    or observed.probe_count != observed.completed_updates
+                )
+            ):
+                raise TrainingConflict(
+                    "Preference evidence differs from the exact measured objective"
+                )
+    elif any(isinstance(o, PreferenceMeasurementObservation) for o in observations):
+        raise TrainingConflict("SFT measurement cannot reuse preference observations")
     if len(dispatch.commands) == 2:
         from coire_core.models.training_node import TrainingMeasurementRankSet
 
@@ -753,6 +859,7 @@ def build_report(
         max_component("serialization_peak_bytes"),
     )
     safety = max(256 * 1024**2, math.ceil(physical * 0.1))
+    cap: TrainingResourceEnvelope | PreferenceResourceEnvelope
     cap = TrainingResourceEnvelope(
         weight_bytes=weights,
         adapter_bytes=adapter,
@@ -763,6 +870,26 @@ def build_report(
         checkpoint_bytes=max_component("checkpoint_bytes"),
         evidence_sha256="0" * 64,
     )
+    if isinstance(request.spec, TrainingSpecV3):
+        reference_weights = max_component("reference_weight_bytes")
+        reference_adapters = max_component("reference_adapter_bytes")
+        cap = PreferenceResourceEnvelope.model_validate(
+            {
+                **cap.model_dump(),
+                "reference_weight_bytes": reference_weights,
+                "reference_adapter_bytes": reference_adapters,
+                "activation_bytes": max(
+                    1,
+                    physical
+                    - weights
+                    - adapter
+                    - optimizer
+                    - buffers
+                    - reference_weights
+                    - reference_adapters,
+                ),
+            }
+        )
     if any(
         cap.memory_bytes > p.prepare.resolved.resource_envelope.memory_bytes
         for p in dispatch.commands
@@ -770,17 +897,17 @@ def build_report(
         raise TrainingConflict("Measured envelope plus safety does not fit probe hold")
     now = max(o.measured_at for o in observations)
     resolved = dispatch.commands[0].prepare.resolved
-    evidence = TrainingMemoryEvidence(
-        measurement_id=row.id,
-        training_config_sha256=training_config_digest(request.spec),
-        base_manifest_sha256=resolved.base_manifest_sha256,
-        tokenizer_sha256=resolved.tokenizer_sha256,
-        template_sha256=resolved.template_sha256,
-        runtime_sha256=resolved.runtime_sha256,
-        worker_version=resolved.worker_version,
-        completed_updates=min(o.completed_updates for o in observations),
-        resource_envelope=cap,
-        nodes=[
+    evidence_fields: dict[str, Any] = {
+        "measurement_id": row.id,
+        "training_config_sha256": training_config_digest(request.spec),
+        "base_manifest_sha256": resolved.base_manifest_sha256,
+        "tokenizer_sha256": resolved.tokenizer_sha256,
+        "template_sha256": resolved.template_sha256,
+        "runtime_sha256": resolved.runtime_sha256,
+        "worker_version": resolved.worker_version,
+        "completed_updates": min(o.completed_updates for o in observations),
+        "resource_envelope": cap,
+        "nodes": [
             TrainingNodeMemoryEvidence(
                 node=o.node,
                 hardware_sha256=o.hardware_sha256,
@@ -790,9 +917,23 @@ def build_report(
             )
             for o in sorted(observations, key=lambda o: o.node)
         ],
-        measured_at=now,
-        valid_until=now + timedelta(seconds=settings.training_profile_ttl_s),
-    )
+        "measured_at": now,
+        "valid_until": now + timedelta(seconds=settings.training_profile_ttl_s),
+    }
+    evidence: TrainingMemoryEvidenceDocument
+    if isinstance(resolved, ResolvedTrainingSpecV3):
+        evidence = PreferenceMemoryEvidence.model_validate(
+            {
+                **evidence_fields,
+                "objective": resolved.spec.objective,
+                "objective_options": resolved.spec.objective_options,
+                "initial_target": resolved.initial_target,
+                "reference_target": resolved.reference_target,
+                "datasets": resolved.datasets,
+            }
+        )
+    else:
+        evidence = TrainingMemoryEvidence.model_validate(evidence_fields)
     evidence.resource_envelope.evidence_sha256 = memory_evidence_digest(evidence)
     targets = []
     if request.mode == "coexistence":
@@ -912,18 +1053,30 @@ class TrainingMeasurementExecutor:
                 self.active[identity] = asyncio.create_task(self.advance(identity))
 
     async def advance(self, identity: uuid.UUID) -> None:
-        # The ownership transaction contains no domain row locks across node I/O.
-        async with session_scope() as ownership:
-            owned = await ownership.scalar(
-                select(
-                    func.pg_try_advisory_xact_lock(
-                        func.hashtextextended(f"coire.training.measurement:{identity}", 0)
+        # Keep cross-worker ownership without retaining an MVCC snapshot through
+        # native I/O or the two 900-second phases. A session lock survives commit
+        # only on this dedicated physical connection, never a borrowed Session.
+        async with init_engine(self.settings).connect() as ownership:
+            try:
+                with tracer.start_as_current_span(
+                    "coire.scheduler.training.measurement.ownership",
+                    attributes={"measurement_id": str(identity)},
+                ):
+                    owned = await ownership.scalar(
+                        select(
+                            func.pg_try_advisory_lock(
+                                func.hashtextextended(f"coire.training.measurement:{identity}", 0)
+                            )
+                        )
                     )
-                )
-            )
-            if not owned:
-                return
-            await self._advance(identity)
+                    await ownership.commit()
+                if owned:
+                    await self._advance(identity)
+            finally:
+                # Physically discard the connection on success, refusal, error
+                # and cancellation. Returning a session lock to the pool could
+                # let another borrower acquire it reentrantly.
+                await ownership.invalidate()
 
     async def _advance(self, identity: uuid.UUID) -> None:
         with tracer.start_as_current_span("coire.scheduler.training.measurement.execute"):
@@ -948,7 +1101,7 @@ class TrainingMeasurementExecutor:
                     raise TrainingConflict(
                         "Queued measurement intent changed after audited submission"
                     )
-                binding = TrainingMeasurementBinding.model_validate(command.payload["binding"])
+                binding = parse_training_measurement_binding(command.payload["binding"])
                 prompts = (
                     TrainingMeasurementPromptSet.model_validate(command.payload["prompts"])
                     if command.payload.get("prompts")
@@ -987,12 +1140,7 @@ class TrainingMeasurementExecutor:
                 if resumed:
                     raise TrainingConflict("Interrupted measurement phases are inconclusive")
                 async with asyncio.timeout(3600):
-                    for probe in dispatch.commands:
-                        await self.transport.prepare(probe)
-                        await self.deliver(principal, probe)
-                    renewal = asyncio.create_task(
-                        self.watch(identity, principal, binding, dispatch)
-                    )
+                    renewal = await self.prepare_inputs(identity, principal, binding, dispatch)
                     if request.mode == "coexistence":
                         if self.workload is None or prompts is None:
                             raise TrainingConflict(
@@ -1024,6 +1172,7 @@ class TrainingMeasurementExecutor:
                             raise TrainingConflict(
                                 "Baseline is incomplete or already breaches latency"
                             )
+                        await self.settle_baseline_leases(renewal)
                     await self.recheck(identity, principal, binding)
                     # Attach both owned native ranks concurrently, after both inputs are ready.
                     starts: list[Awaitable[TrainingStartReceipt]] = []
@@ -1096,6 +1245,56 @@ class TrainingMeasurementExecutor:
                         session, identity, principal, binding, dispatch, report, proofs
                     )
 
+    async def settle_baseline_leases(self, renewal: asyncio.Task[None]) -> None:
+        # The last baseline response can finish after the node's most recent
+        # authenticated lease snapshot. Let that snapshot expire while keeping
+        # preparation owned and watched. Native start still requires fresh zero
+        # leases; failed refreshes and unrelated requests remain refusals.
+        with tracer.start_as_current_span("coire.scheduler.training.measurement.lease_handoff"):
+            settle = asyncio.create_task(asyncio.sleep(SNAPSHOT_VALIDITY_SECONDS))
+            try:
+                done, _ = await asyncio.wait([settle, renewal], return_when=asyncio.FIRST_COMPLETED)
+                if renewal in done:
+                    await renewal
+                    raise TrainingConflict("Baseline handoff watchdog ended")
+                await settle
+            finally:
+                if not settle.done():
+                    settle.cancel()
+                await asyncio.gather(settle, return_exceptions=True)
+
+    async def prepare_inputs(
+        self,
+        identity: uuid.UUID,
+        principal: Principal,
+        binding: TrainingMeasurementBinding,
+        dispatch: TrainingMeasurementDispatch,
+    ) -> asyncio.Task[None]:
+        for probe in dispatch.commands:
+            await self.transport.prepare(probe)
+        renewal = asyncio.create_task(self.watch(identity, principal, binding, dispatch))
+
+        async def deliver_all() -> None:
+            for probe in dispatch.commands:
+                await self.deliver(principal, probe)
+
+        inputs = asyncio.create_task(deliver_all())
+        try:
+            done, _ = await asyncio.wait([inputs, renewal], return_when=asyncio.FIRST_COMPLETED)
+            if renewal in done:
+                await renewal
+                raise TrainingConflict("Input preparation watchdog ended")
+            await inputs
+        except BaseException:
+            renewal.cancel()
+            await asyncio.gather(renewal, return_exceptions=True)
+            raise
+        finally:
+            if not inputs.done():
+                inputs.cancel()
+            await asyncio.gather(inputs, return_exceptions=True)
+        return renewal
+
     async def deliver(self, principal: Principal, probe: TrainingMeasurementPrepare) -> None:
         while True:
             async with session_scope() as session:
@@ -1128,19 +1327,46 @@ class TrainingMeasurementExecutor:
         self, identity: uuid.UUID, principal: Principal, binding: TrainingMeasurementBinding
     ) -> None:
         async with session_scope() as session:
-            await authorize_live_training_action(session, principal)
+            await authorize_live_training_action(session, principal, shared=True)
             row = await session.get(TrainingMeasurementRow, identity)
             if row is None or row.state != "running" or not self.settings.training_enabled:
                 raise TrainingConflict("Measurement execution authority ended")
             request = TrainingMeasurementRequest.model_validate(row.request)
             if await freeze_measurement_inputs(session, request) != binding:
                 raise TrainingConflict("Measurement pinned assets changed")
+            dispatch = None
+            if request.mode == "coexistence":
+                command = await session.scalar(
+                    select(TrainingCommandRow).where(
+                        TrainingCommandRow.subject_id == str(identity),
+                        TrainingCommandRow.operation == "training.measurement",
+                    )
+                )
+                if command is None:
+                    raise TrainingConflict("Measurement dispatch disappeared")
+                dispatch = TrainingMeasurementDispatch.model_validate(
+                    command.payload.get("dispatch")
+                )
             nodes = list(
                 await session.scalars(select(NodeRow).where(NodeRow.name.in_(request.nodes)))
             )
             await lock_nodes_for_admission(session, [n.id for n in nodes])
-            for target in request.resident_targets:
-                await resident_members(session, target)
+            if dispatch is not None:
+                from coire_api.training.measurement_residents import resolve_measurement_residents
+
+                await resolve_measurement_residents(
+                    session,
+                    [node.id for node in nodes],
+                    request.resident_targets,
+                    {
+                        instance_id: engine_id
+                        for probe in dispatch.commands
+                        for instance_id, engine_id in probe.resident_engine_ids.items()
+                    },
+                    {probe.prepare.reservation_id for probe in dispatch.commands},
+                    identity,
+                    {node.id: node.name for node in nodes},
+                )
 
     async def watch(
         self,
@@ -1169,7 +1395,9 @@ class TrainingMeasurementExecutor:
                 )
                 if status.swap_used_bytes > initial[0] or status.swap_out_bytes > initial[1]:
                     raise TrainingConflict("Measurement caused swap growth")
-                if status.status.liveness == "running":
+                # Prepared reservations remain owned throughout the chat baseline.
+                # Renew before expiry; the node rejects stopped or expired work.
+                if status.status.liveness in {"prepared", "running"}:
                     await self.transport.renew(
                         TrainingLeaseRenewal.model_validate(control_fields(probe))
                     )

@@ -176,3 +176,29 @@ def test_event_payload_is_discriminated_and_cursor_is_scoped() -> None:
         ChatEvent.model_validate({**event.model_dump(), "payload": {"type": "message.delta"}})
     with pytest.raises(ValidationError):
         ChatTurnStatus(state="running", estimate_seconds=-1)
+
+
+def test_native_sampling_is_optional_bounded_and_strict() -> None:
+    from coire_core.models.chat import NativeChatSampling
+
+    body = {
+        "client_request_id": uuid4(),
+        "expected_revision": 1,
+        "model_id": uuid4(),
+        "content": "hello",
+    }
+    legacy = ChatTurnCreate.model_validate(body)
+    assert "sampling" not in legacy.model_dump(exclude_none=True)
+    varied = ChatTurnCreate.model_validate(
+        {**body, "sampling": NativeChatSampling(temperature=0.7, top_p=0.95)}
+    )
+    assert varied.sampling is not None and varied.sampling.temperature == 0.7
+    for value in (
+        {"temperature": float("nan")},
+        {"top_p": 0},
+        {"top_k": True},
+        {"seed": -1},
+        {"unknown": 1},
+    ):
+        with pytest.raises(ValidationError):
+            NativeChatSampling.model_validate(value)

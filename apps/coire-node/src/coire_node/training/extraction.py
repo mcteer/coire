@@ -25,13 +25,14 @@ from safetensors import safe_open
 from coire_core.errors import TrainingConflict, TrainingValidationError
 from coire_core.models.acquisition import ReservationRequest, ReservationState
 from coire_core.models.jobs import ChecksumManifest
-from coire_core.models.training import TrainingReason
+from coire_core.models.training import ResolvedTrainingSpecV3, TrainingReason
 from coire_core.models.training_node import (
-    CheckpointWorkerState,
+    CheckpointWorkerStateV3,
     TrainingAdapterExtractionStatus,
     TrainingAdapterExtractRequest,
     TrainingArtifactFile,
     TrainingArtifactManifest,
+    parse_checkpoint_worker_state,
 )
 from coire_core.settings import Settings
 from coire_node.reservations import ReservationLedger, ReservationRefused
@@ -414,9 +415,31 @@ class AdapterExtractor:
             _check_tensor_header(
                 self.artifacts.file(manifest, rank.optimizer_file_id), rank.optimizer_tensors
             )
-            state = CheckpointWorkerState.model_validate_json(
-                private_read(self.artifacts.file(manifest, rank.state_file_id), MAX_METADATA)
+            state = parse_checkpoint_worker_state(
+                json.loads(
+                    private_read(self.artifacts.file(manifest, rank.state_file_id), MAX_METADATA)
+                )
             )
+            preference = isinstance(command.resolved, ResolvedTrainingSpecV3)
+            if preference != isinstance(state, CheckpointWorkerStateV3):
+                raise TrainingValidationError("Checkpoint objective version differs")
+            if isinstance(state, CheckpointWorkerStateV3):
+                resolved = command.resolved
+                assert isinstance(resolved, ResolvedTrainingSpecV3)
+                if (
+                    state.objective,
+                    state.objective_options,
+                    state.initial_target,
+                    state.reference_target,
+                    state.implementation,
+                ) != (
+                    resolved.spec.objective,
+                    resolved.spec.objective_options,
+                    resolved.initial_target,
+                    resolved.reference_target,
+                    resolved.implementation,
+                ):
+                    raise TrainingValidationError("Checkpoint preference identity differs")
             if (
                 state.job_id,
                 state.attempt_id,

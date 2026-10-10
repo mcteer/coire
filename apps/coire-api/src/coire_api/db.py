@@ -1090,6 +1090,9 @@ class EngineProcessRow(Base):
     resident_delta_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     cpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     chat_template_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rendering_identity: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     load_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     """How long this load took. The first measurement a cold model's warm-up estimate uses."""
     last_health_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1386,6 +1389,7 @@ class ChatConversationRow(Base):
         ForeignKey("models.id", ondelete="SET NULL"), nullable=True
     )
     revision: Mapped[int] = mapped_column(Integer, default=1)
+    context_revision: Mapped[int] = mapped_column(BigInteger, default=1, server_default="1")
     active_turn_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("chat_turns.id", name="fk_chat_conversation_active_turn", use_alter=True),
         nullable=True,
@@ -2806,3 +2810,263 @@ class EvaluationCoexistenceProfileRow(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     invalidated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     invalidated_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+class FeedbackPreferenceRow(Base):
+    __tablename__ = "feedback_preferences"
+    __table_args__ = (
+        CheckConstraint("capture_generation >= 1 AND version >= 1", name="ck_feedback_generation"),
+    )
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    capture_generation: Mapped[int] = mapped_column(BigInteger, server_default=text("1"))
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    disclosure_version: Mapped[str] = mapped_column(String(32), server_default="feedback-v1")
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ChatFeedbackProvenanceRow(Base):
+    __tablename__ = "chat_feedback_provenance"
+    __table_args__ = (
+        UniqueConstraint("source_turn_id", name="uq_feedback_provenance_turn"),
+        CheckConstraint(
+            "capture_generation >= 1 AND context_revision >= 1 AND counted_bytes >= 0",
+            name="ck_feedback_provenance_bounds",
+        ),
+        Index("ix_feedback_provenance_cleanup", "purge_after", "id"),
+        Index("ix_feedback_provenance_owner", "owner_user_id", "capture_generation"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    conversation_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    source_turn_id: Mapped[uuid.UUID] = mapped_column()
+    source_message_id: Mapped[uuid.UUID] = mapped_column()
+    capture_generation: Mapped[int] = mapped_column(BigInteger)
+    context_revision: Mapped[int] = mapped_column(BigInteger)
+    target: Mapped[dict[str, object]] = mapped_column(JSONB)
+    settings: Mapped[dict[str, object]] = mapped_column(JSONB)
+    tokenizer_sha256: Mapped[str] = mapped_column(String(64))
+    template_sha256: Mapped[str] = mapped_column(String(64))
+    runtime_sha256: Mapped[str] = mapped_column(String(64))
+    prompt_sha256: Mapped[str] = mapped_column(String(64))
+    prompt: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB(none_as_null=True))
+    counted_bytes: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purge_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ComparisonPairRow(Base):
+    __tablename__ = "comparison_pairs"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "client_request_id", name="uq_comparison_request"),
+        CheckConstraint(
+            "capture_generation >= 1 AND context_revision >= 1 AND version >= 1 AND counted_bytes BETWEEN 0 AND 262144",
+            name="ck_comparison_bounds",
+        ),
+        CheckConstraint(
+            "generation_state IN ('queued','running','ready','failed','cancelled','identical','expired','withdrawn') AND selection_state IN ('pending','chosen','dismissed','expired','withdrawn')",
+            name="ck_comparison_states",
+        ),
+        CheckConstraint(
+            "selected_candidate IS NULL OR selected_candidate IN ('original','candidate')",
+            name="ck_comparison_choice",
+        ),
+        Index(
+            "uq_comparison_pending",
+            "conversation_id",
+            unique=True,
+            postgresql_where=text("selection_state = 'pending'"),
+        ),
+        Index("ix_comparison_owner", "owner_user_id", "capture_generation"),
+        Index("ix_comparison_purge", "purge_after", "id"),
+        Index("ix_comparison_review", "created_at", "id"),
+    )
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    conversation_id: Mapped[uuid.UUID] = mapped_column()
+    source_turn_id: Mapped[uuid.UUID] = mapped_column()
+    source_message_id: Mapped[uuid.UUID] = mapped_column()
+    provenance_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("chat_feedback_provenance.id", ondelete="SET NULL")
+    )
+    candidate_message_id: Mapped[uuid.UUID | None] = mapped_column()
+    capture_generation: Mapped[int] = mapped_column(BigInteger)
+    context_revision: Mapped[int] = mapped_column(BigInteger)
+    client_request_id: Mapped[uuid.UUID] = mapped_column()
+    request_sha256: Mapped[str] = mapped_column(String(64))
+    target: Mapped[dict[str, object] | None] = mapped_column(JSONB(none_as_null=True))
+    prompt: Mapped[list[dict[str, object]] | None] = mapped_column(JSONB(none_as_null=True))
+    original: Mapped[str | None] = mapped_column(Text)
+    candidate: Mapped[str | None] = mapped_column(Text)
+    generation_state: Mapped[str] = mapped_column(String(16), server_default="queued")
+    selection_state: Mapped[str] = mapped_column(String(16), server_default="pending")
+    selected_candidate: Mapped[str | None] = mapped_column(String(16))
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    counted_bytes: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    execution: Mapped[dict[str, object]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    accounting: Mapped[dict[str, object]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purge_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ChatActiveAnswerRow(Base):
+    __tablename__ = "chat_active_answers"
+    source_turn_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    conversation_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    selected_message_id: Mapped[uuid.UUID] = mapped_column()
+    selection_revision: Mapped[int] = mapped_column(BigInteger)
+
+
+class FeedbackRow(Base):
+    __tablename__ = "feedback_rows"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('thumb','pair') AND source IN ('owner','admin') AND version >= 1 AND capture_generation >= 1",
+            name="ck_feedback_row_kind",
+        ),
+        CheckConstraint(
+            "(kind='thumb' AND message_id IS NOT NULL AND pair_id IS NULL AND source='owner' AND (judgement IS NULL OR judgement IN ('up','down'))) OR (kind='pair' AND message_id IS NULL AND pair_id IS NOT NULL AND ((judgement IS NOT NULL AND judgement IN ('original','candidate')) OR (withdrawn_at IS NOT NULL AND judgement IS NULL)))",
+            name="ck_feedback_row_subject",
+        ),
+        Index(
+            "uq_feedback_thumb",
+            "owner_user_id",
+            "message_id",
+            unique=True,
+            postgresql_where=text("kind='thumb'"),
+        ),
+        Index(
+            "uq_feedback_pair_source",
+            "pair_id",
+            "source",
+            unique=True,
+            postgresql_where=text("kind='pair'"),
+        ),
+        Index("ix_feedback_owner", "owner_user_id", "capture_generation"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    conversation_id: Mapped[uuid.UUID] = mapped_column()
+    message_id: Mapped[uuid.UUID | None] = mapped_column()
+    pair_id: Mapped[str | None] = mapped_column(
+        ForeignKey("comparison_pairs.id", ondelete="RESTRICT")
+    )
+    kind: Mapped[str] = mapped_column(String(8))
+    source: Mapped[str] = mapped_column(String(8))
+    judgement: Mapped[str | None] = mapped_column(String(16))
+    tags: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    capture_generation: Mapped[int] = mapped_column(BigInteger)
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class FeedbackMutationRow(Base):
+    __tablename__ = "feedback_mutations"
+    __table_args__ = (
+        UniqueConstraint("actor_user_id", "operation", "request_id", name="uq_feedback_mutation"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    operation: Mapped[str] = mapped_column(String(128))
+    request_id: Mapped[str] = mapped_column(String(128))
+    intent_sha256: Mapped[str] = mapped_column(String(64))
+    receipt: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class FeedbackReviewSkipRow(Base):
+    __tablename__ = "feedback_review_skips"
+    actor_user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), primary_key=True
+    )
+    pair_id: Mapped[str] = mapped_column(
+        ForeignKey("comparison_pairs.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PreferenceExportRow(Base):
+    __tablename__ = "preference_exports"
+    __table_args__ = (
+        CheckConstraint(
+            "state IN ('queued','staging','publishing','succeeded','failed','cancelled') AND version >= 1 AND active_slot = 1 AND selected_count BETWEEN 0 AND 10000",
+            name="ck_preference_export_bounds",
+        ),
+        Index(
+            "uq_preference_export_active",
+            "active_slot",
+            unique=True,
+            postgresql_where=text("state IN ('staging','publishing')"),
+        ),
+        Index("ix_preference_export_queue", "state", "created_at", "id"),
+    )
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    authorization_snapshot: Mapped[dict[str, object]] = mapped_column(JSONB)
+    request: Mapped[dict[str, object]] = mapped_column(JSONB)
+    state: Mapped[str] = mapped_column(String(16), server_default="queued")
+    active_slot: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    version: Mapped[int] = mapped_column(Integer, server_default=text("1"))
+    fence: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    selected_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    matched_count: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    excluded_count: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    warnings: Mapped[list[str]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    dataset_id: Mapped[uuid.UUID | None] = mapped_column()
+    staging: Mapped[dict[str, object]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    cleanup_pending: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    terminal_reason: Mapped[str | None] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    queue_deadline_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    execution_deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PreferenceExportMemberRow(Base):
+    __tablename__ = "preference_export_members"
+    export_id: Mapped[str] = mapped_column(
+        ForeignKey("preference_exports.id", ondelete="RESTRICT"), primary_key=True
+    )
+    pair_id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    owner_user_id: Mapped[uuid.UUID] = mapped_column()
+    capture_generation: Mapped[int] = mapped_column(BigInteger)
+    conversation_id: Mapped[uuid.UUID] = mapped_column()
+    source_message_id: Mapped[uuid.UUID] = mapped_column()
+    judgement_source: Mapped[str] = mapped_column(String(8))
+    judgement_version: Mapped[int] = mapped_column(Integer)
+    actor_user_id: Mapped[uuid.UUID] = mapped_column()
+    target: Mapped[dict[str, object]] = mapped_column(JSONB)
+    prompt_sha256: Mapped[str] = mapped_column(String(64))
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    row_index: Mapped[int] = mapped_column(Integer)
+    published: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+
+class AdapterLineageRow(Base):
+    __tablename__ = "adapter_lineage"
+    adapter_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("training_adapters.id", ondelete="RESTRICT"), primary_key=True
+    )
+    parent_adapter_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("training_adapters.id", ondelete="RESTRICT")
+    )
+    lineage: Mapped[dict[str, object]] = mapped_column(JSONB)
+    depth: Mapped[int] = mapped_column(Integer)
+    __table_args__ = (
+        CheckConstraint(
+            "depth BETWEEN 0 AND 32 AND adapter_id IS DISTINCT FROM parent_adapter_id",
+            name="ck_adapter_lineage_depth",
+        ),
+    )
