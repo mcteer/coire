@@ -363,6 +363,19 @@ jobs:
           HF_HUB_OFFLINE: "0"
           TRANSFORMERS_OFFLINE: "0"
         run: uv run python tests/integration/build_preference_fixture.py
+      - name: package acquired measurement fixtures
+        run: |
+          tar -cf preference-fixtures.tar -C models \
+            mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit \
+            mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit.manifest.json \
+            mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit.preference-dense-bf16 \
+            mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit.preference-dense-bf16.manifest.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: preference-measurement-fixtures
+          path: preference-fixtures.tar
+          compression-level: 0
+          retention-days: 1
       - name: real objective, initialization, worker, measurement and restart matrix
         run: |
           for suffix in '' '.preference-dense-bf16'; do
@@ -376,8 +389,13 @@ jobs:
           done
 
   preference-measurement-engine:
-    needs: lint
+    needs: preference-engine
     runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        objective: [dpo, orpo]
+        suffix: ['', '.preference-dense-bf16']
     env:
       COIRE_TRAINING_ENGINE: "1"
       HF_HUB_OFFLINE: "1"
@@ -393,19 +411,21 @@ jobs:
         # only the fresh CI VM's identity; its workloads remain local fixtures.
         run: sudo scutil --set HostName coire-edge-a
       - run: uv sync --all-packages --frozen
-      - name: isolated tiny acquisition and node-owned dense conversion
-        env:
-          HF_HUB_OFFLINE: "0"
-          TRANSFORMERS_OFFLINE: "0"
-        run: uv run python tests/integration/build_preference_fixture.py
-      - name: node-owned measurement on a fresh runner
-        # Earlier numerical cases can leave OS memory pressure and swap activity
-        # after their processes exit. Resource probes require their own fresh VM.
+      - uses: actions/download-artifact@v8
+        with:
+          name: preference-measurement-fixtures
+          path: fixture-download
+      - name: restore acquired fixture with its checksum manifest
         run: |
-          for suffix in '' '.preference-dense-bf16'; do
-            export COIRE_TEST_MODEL="$GITHUB_WORKSPACE/models/mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit${suffix}"
-            uv run pytest -q -rs apps/coire-node/tests/engine/test_preference_measurement.py
-          done
+          mkdir -p models
+          tar -xf fixture-download/preference-fixtures.tar -C models
+      - name: node-owned measurement on a fresh runner
+        # Each actual resource probe gets a fresh VM without prior conversion or
+        # numerical workloads. Admission, peak, swap and thermal checks stay real.
+        env:
+          COIRE_TEST_MODEL: ${{ github.workspace }}/models/mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit${{ matrix.suffix }}
+          PROBE_OBJECTIVE: ${{ matrix.objective }}
+        run: uv run pytest -q -rs "apps/coire-node/tests/engine/test_preference_measurement.py::test_node_owned_native_preference_probe_counts_reference_and_serialization[$PROBE_OBJECTIVE]"
 
   publish:
     # Only tagged releases publish. Pull requests never push an image.
