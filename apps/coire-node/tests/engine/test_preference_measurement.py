@@ -175,7 +175,20 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
     # sampling and admission. The separate runtime matrix uses default caching.
     bootstrap = tmp_path / "probe-runtime"
     bootstrap.mkdir()
-    (bootstrap / "sitecustomize.py").write_text("import mlx.core as mx\nmx.set_cache_limit(0)\n")
+    worker_stderr = tmp_path / "probe-worker.stderr"
+    (bootstrap / "sitecustomize.py").write_text(
+        "import sys\nsys.stderr = open("
+        + repr(str(worker_stderr))
+        + ", 'a')\nimport mlx.core as mx\nmx.set_cache_limit(0)\n"
+        + "import json, os, psutil, importlib.metadata\n"
+        + "from coire_node.footprint import phys_footprint\n"
+        + "from coire_node.metrics import read_thermal_state\n"
+        + "print(json.dumps({'mlx': importlib.metadata.version('mlx'), "
+        + "'available': psutil.virtual_memory().available, "
+        + "'swap_used': psutil.swap_memory().used, 'swap_out': psutil.swap_memory().sout, "
+        + "'footprint': phys_footprint(os.getpid()), 'thermal': read_thermal_state()}), "
+        + "file=sys.stderr, flush=True)\n"
+    )
 
     class SourceProcesses(NativeProcesses):
         def spawn(self, argv: list[str], env: dict[str, str]) -> tuple[int, float]:
@@ -249,7 +262,9 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
             await asyncio.sleep(0.1)
         assert status is not None and status.stopped
         measured = status.observation
-        assert isinstance(measured, PreferenceMeasurementObservation), status.model_dump_json()
+        assert isinstance(measured, PreferenceMeasurementObservation), (
+            status.model_dump_json() + "\n" + worker_stderr.read_text()
+        )
         assert measured.peak_footprint_bytes <= prepared.resolved.resource_envelope.memory_bytes
         assert measured.completed_updates == measured.probe_count == 2
         assert measured.objective == objective and measured.checkpoint_bytes > 0
