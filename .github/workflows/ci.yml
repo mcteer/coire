@@ -412,6 +412,9 @@ jobs:
         objective: [dpo, orpo]
         suffix: ['', '.preference-dense-fp16']
     env:
+      # Framework Python rewrites argv[0] after exec; native ownership requires
+      # the exact configured command. Node deployments use standalone Python.
+      UV_MANAGED_PYTHON: "true"
       COIRE_TRAINING_ENGINE: "1"
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"

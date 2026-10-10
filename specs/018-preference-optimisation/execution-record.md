@@ -21,7 +21,7 @@ The table records the current ownership-snapshot source checkpoint and explicitl
 | Prior-release rollback | Drained old binaries serve the verified base on the additive schema; tested node/runtime restoration passes |
 | Training/image exclusion | Valid image job remains queued without allocation while both native trainers run; cancellation passes |
 | Shared chat/training | All four exact profiles accepted; V70 dense ORPO passes both complete phases and exact overhead p95; T074 complete |
-| Hosted native resource CI | Four small probes pass locally; hosted startup swap growth remains a failed required gate, pending adequate isolated runner |
+| Hosted native resource CI | Four probes pass independently; hosted exact-command mismatch diagnosed and standalone interpreter selected; fresh required results pending |
 | Final reconciliation/PR | Four-profile reconciliation and final cleanup pass; current required hosted checks remain pending |
 
 Raw transcripts, datasets, credentials, native checkpoint data and image/SBOM receipts remain outside Git in the private acceptance directory. The entries below distinguish required acceptance from synthetic fixtures and historical checkpoints.
@@ -1207,3 +1207,10 @@ Current lease-handoff source gates passed: **3,118 CPU tests**, two existing opt
 ### Required native CI completion-race diagnostics — 2026-10-10 UTC
 
 Hosted run 38041317589 failed all four native resource cases after isolated disk-cache preparation. One runner's observed available memory rose from 3,245,932,544 to 4,984,389,632 bytes, without changing its swap-out counter during preparation; this does not establish safe native execution. A renewal conflict obscured the terminal worker outcome. The test now rereads terminal status after that conflict and accepts only a positive stop with a real complete typed observation, then applies every existing update/reference/serialization/memory/swap/thermal assertion. Guard stops without observations remain failures and include bounded worker diagnostics. All four actual native cases pass independently on Studio A; Ruff, formatting and strict mypy across 1,021 source files pass. Hosted acceptance remains pending actual fresh results.
+
+
+### Hosted framework-interpreter identity diagnosis — 2026-10-10 UTC
+
+Run 38042722616 exposed the immediate ownership failure. The configured child command begins with `/Users/runner/work/coire/coire/.venv/bin/python`, while psutil observes `/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python`. Every remaining argument, process birth and process group matches. Framework Python's executable rewrite fails the existing exact-command check, yields unknown liveness and correctly refuses renewal. This is not successful resource evidence; no observation is accepted. Startup memory and thermal readings are safe in this case and the reported swap-out counter is unchanged.
+
+Only isolated resource CI jobs now set `UV_MANAGED_PYTHON=true`, requiring uv's standalone interpreter as in native node deployment. Production ownership, interpreter configuration and resource checks are unchanged. The framework failure does not establish that a larger runner is required; fresh standalone-hosted results will determine remaining capacity prerequisites. Local CLI validation confirms the supported managed-Python option.

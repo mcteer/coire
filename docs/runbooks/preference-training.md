@@ -230,3 +230,5 @@ serialization remain inside the actual measured interval. The
 runner needs permission for the existing fixture hostname setup/restore. Keep
 these jobs required by publication; neither skipping them nor pointing them at
 the production Studios satisfies the gate.
+
+Native resource CI requires uv-managed standalone Python (`UV_MANAGED_PYTHON=true`). macOS framework Python can rewrite argv[0] after exec, causing the exact native ownership check to return unknown even when birth and group match. Inspect configured/observed commands before attributing this refusal to memory. Do not normalize away command differences or renew unknown work. The standalone interpreter changes CI setup only; all physical resource and positive-stop assertions remain required.
