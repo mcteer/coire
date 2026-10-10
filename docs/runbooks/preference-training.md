@@ -211,3 +211,22 @@ scheduler. Do not terminate a database owner as a substitute for stopping its
 native workload. The scheduler change does not alter native runtime identities,
 fresh authority, node admission locks, counter admission, durability or latency
 limits.
+
+Required native resource CI uses repository variable
+`COIRE_NATIVE_MEASUREMENT_RUNNER`, defaulting to `macos-15`. Set it to the label of
+an isolated non-production Apple Silicon runner with sufficient memory, or an
+eligible organization-hosted Mac runner. The standard seven-GB hosted Macs have
+shown startup swap growth even with the acquired 135M fixture; that is a failed
+required gate. Larger hosted runners require organization/enterprise access.
+
+The four objective/parameterization jobs retain actual admission, footprint,
+swap, thermal, reference, serialization, update and positive-stop assertions.
+They refuse production lab hostnames and deployed node environments before
+fixture setup, and restore the isolated host's original hostname on exit. CI
+releases dependency/artifact disk cache before starting the probe, without
+loading a model or altering memory/swap telemetry. The test parent releases its
+analysis tokenizer before the node-owned child starts; all model loading and
+serialization remain inside the actual measured interval. The
+runner needs permission for the existing fixture hostname setup/restore. Keep
+these jobs required by publication; neither skipping them nor pointing them at
+the production Studios satisfies the gate.

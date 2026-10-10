@@ -163,6 +163,8 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         max_sequence_length=256,
     )
     assert analysis.state == "succeeded", analysis.model_dump_json()
+    del tokenizer
+    gc.collect()
     selected.update(
         source_sha256=digest,
         split_sha256=binding.split_sha256,

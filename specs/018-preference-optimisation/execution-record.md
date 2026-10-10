@@ -1,17 +1,17 @@
 # Execution Record — Preference Optimisation and Feedback Capture
 
 Branch: `feat/018-preference-optimisation`. Baseline: `d2e4bbf` (016/017/PR94 merged).
-Status: application/native implementation complete; current lease-handoff release checks pass; T074 qualification remains pending. Eight exclusive native train/serve cases, live recovery and drained rollback pass. Three sustained shared profiles pass; Studio A dense ORPO fails the gateway-overhead gate.
+Status: application/native implementation complete; three exact sustained shared profiles pass. Dense ORPO shared qualification and required hosted native resource CI remain incomplete (T074/T076/T077). Current ownership-snapshot source gates pass; V70 qualification is active.
 
 ## Current release evidence
 
-The table records the current lease-handoff checkpoint. Full CPU, static/image, affected database and complete isolated integration gates pass. Local release checks pass; T076 is reopened pending corrected GitHub native CI. T074 and final T077 reconciliation remain unchecked. Earlier completed checkpoints and all failed attempts remain recorded below.
+The table records the current ownership-snapshot source checkpoint and explicitly identifies preceding full hosted evidence. T074/T076/T077 remain unchecked. Historical checkpoints and failed attempts remain recorded below.
 
 | Gate | Result |
 | --- | --- |
-| CPU unit/contract suite | 3,118 passed; two existing optional skips |
-| Disposable integration suite | 517 passed on current lease-handoff images; nine affected cases also pass; 39 existing optional skips, no required 018 skips |
-| Static and generated contracts | Ruff, formatting (1,776 files), strict mypy (1,019 files), OpenAPI and dependency pins pass |
+| CPU unit/contract suite | 3,122 passed; two existing optional skips |
+| Disposable integration suite | 12 affected cases pass on current source; preceding hosted f3cacd1: 516 passed / 40 existing optional skips; current full hosted suite pending |
+| Static and generated contracts | Ruff, formatting (1,778 files), strict mypy (1,021 files), OpenAPI and dependency pins pass |
 | Web | 228 tests, TypeScript and lint pass |
 | Production images | All 16 ARM64 builds, policy checks, zero-CRITICAL scans and SPDX SBOMs pass |
 | Observability | 14 alert files plus feedback/training alert tests pass |
@@ -20,7 +20,8 @@ The table records the current lease-handoff checkpoint. Full CPU, static/image, 
 | Feedback privacy and export | Actual captured feedback trains and serves; immediate withdrawal, physical purge and preservation of published data pass |
 | Prior-release rollback | Drained old binaries serve the verified base on the additive schema; tested node/runtime restoration passes |
 | Training/image exclusion | Valid image job remains queued without allocation while both native trainers run; cancellation passes |
-| Shared chat/training | Three exact profiles accepted; Studio A dense ORPO **failed T074** and remains unqualified |
+| Shared chat/training | Three exact profiles accepted; dense ORPO **failed T074** and remains unqualified; V70 pending |
+| Hosted native resource CI | Four small probes pass locally; hosted startup swap growth remains a failed required gate, pending adequate isolated runner |
 | Final reconciliation/PR | Reopened for current-source checks, T074 qualification and final cleanup |
 
 Raw transcripts, datasets, credentials, native checkpoint data and image/SBOM receipts remain outside Git in the private acceptance directory. The entries below distinguish required acceptance from synthetic fixtures and historical checkpoints.
@@ -97,6 +98,8 @@ The held-resident inventory/lease batching prototype rolled back every provision
 A metadata-only PostgreSQL check then confirmed the existing measurement ownership transaction retains an MVCC snapshot across idle native I/O. After two seconds its state was `idle in transaction`, `backend_xmin` non-null. The same advisory identity held as a session lock followed by immediate commit was `idle`, with `backend_xmin` and `xact_start` null. This can prevent old request-counter versions from being reclaimed; it does not independently prove the cause of every previous p95 failure. The scheduler now holds session ownership on a dedicated physical connection, commits acquisition, and physically discards the connection on every exit to prevent pooled reentrant ownership. All **12** affected PostgreSQL cases pass, including three new success/error/cancellation cases proving snapshot release, competing-worker exclusion and timely lock release. Current-source **3,122 CPU tests**, all **16 ARM64 image gates**, the **12** affected PostgreSQL cases, Ruff/format, strict mypy (1,021 files), OpenAPI and pins pass. V70 is starting the same Studio B dense ORPO workload on checked images: one-second arrival, concurrency one, 4,000 input/one output token, 5,632 native updates and full 900-second baseline/mixed phases. All thresholds and safety/stop requirements remain unchanged; acceptance is pending actual complete receipts.
 
 Hosted run `38037775120` passed acquisition/conversion of the small Q4/fp16 fixtures and the unchanged full Qwen numerical/runtime matrix. Its resource probes passed real admission but stopped before training when the host swap-out counter increased by **16–32 KiB** during startup; no result is accepted. GitHub's [standard Apple Silicon runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) have **7 GB** RAM. [Larger runners](https://docs.github.com/en/actions/how-tos/manage-runners/larger-runners/manage-larger-runners) require an eligible organization or enterprise; this repository is personal and has no registered self-hosted runner. A dedicated isolated non-production Apple Silicon runner with adequate memory, or eligible organization runner access, is a concrete outstanding prerequisite. The user has been asked for that asset while latency work continues. Production Studios are not targeted by CI, and zero-swap/resource guards remain unchanged.
+
+The CI preparation experiment keeps the required four cases and all assertions. Before the probe it releases only OS disk cache with macOS `purge`, logs actual available-memory/swap-out values before/after, and lets preparation settle for five seconds. No model is preloaded. The test parent drops its no-longer-used analysis tokenizer; all four actual local Q4/fp16 probes still pass, **8.67/9.97 s**, zero skips. The configurable `COIRE_NATIVE_MEASUREMENT_RUNNER` repository variable permits an adequate isolated runner if standard-host preparation remains insufficient. Preflight rejects production hostnames/deployed node environments before setup; its actual-core negative check passed without creating the hostname backup. Hostname restoration only runs after successful preflight. YAML/shell syntax, the unchanged four-case matrix, Ruff/format and strict typing pass. The hosted experiment is pending and supplies no acceptance yet.
 
 ## Prerequisites and intended matrix
 

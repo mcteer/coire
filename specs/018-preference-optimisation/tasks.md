@@ -1,7 +1,7 @@
 # Tasks: Preference Optimisation and Feedback Capture
 
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md), [data-model.md](data-model.md), [contracts](contracts/), [quickstart.md](quickstart.md).
-**Branch**: `feat/018-preference-optimisation` | **Baseline**: `d2e4bbf` | **Status**: Implementation code complete; release withheld at failed T074. Checked tasks have recorded evidence.
+**Branch**: `feat/018-preference-optimisation` | **Baseline**: `d2e4bbf` | **Status**: Application/native implementation complete; release withheld at T074/T076/T077. Checked tasks have recorded evidence.
 
 Tests are required by the spec and constitution. Write behavior/contract tests before their corresponding implementation. New files listed below are intentional. Task IDs are sequential; `[P]` marks independent files/work after the stated phase prerequisites, not permission to bypass shared-file dependencies.
 

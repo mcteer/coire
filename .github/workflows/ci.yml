@@ -405,7 +405,7 @@ jobs:
 
   preference-measurement-engine:
     needs: preference-measurement-fixture
-    runs-on: macos-15
+    runs-on: ${{ vars.COIRE_NATIVE_MEASUREMENT_RUNNER || 'macos-15' }}
     strategy:
       fail-fast: false
       matrix:
@@ -416,6 +416,20 @@ jobs:
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
     steps:
+      - name: refuse production lab hosts before native fixture setup
+        id: native_preflight
+        run: |
+          case "$(hostname)" in
+            coire-core|coire-core.*|coire-edge-a|coire-edge-a.*|coire-edge-b|coire-edge-b.*)
+              echo 'Native CI requires an isolated non-production Mac.' >&2
+              exit 1
+              ;;
+          esac
+          if [ -e /opt/coire/envs/current ] || [ -f /Library/LaunchDaemons/com.coire.node.plist ]; then
+            echo 'Native CI cannot use a deployed Coire node.' >&2
+            exit 1
+          fi
+          hostname > "$RUNNER_TEMP/coire-original-hostname"
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.0.1
         with:
@@ -423,7 +437,7 @@ jobs:
           enable-cache: true
       - name: declare the isolated fixture node identity
         # Native probes require the prepared node's declared hostname. This sets
-        # only the fresh CI VM's identity; its workloads remain local fixtures.
+        # only the isolated runner's fixture identity, restored on exit.
         run: sudo scutil --set HostName coire-edge-a
       - run: uv sync --all-packages --frozen
       - uses: actions/download-artifact@v8
@@ -434,13 +448,27 @@ jobs:
         run: |
           mkdir -p models
           tar -xf fixture-download/preference-fixtures.tar -C models
+      - name: release preparation disk cache before the resource probe
+        # Cold disk cache; no model has been loaded. Actual admission, live
+        # footprint, zero-swap and thermal guards remain unchanged.
+        run: |
+          uv run python -c 'import json,psutil; print(json.dumps({"stage":"before_disk_cache_purge","available":psutil.virtual_memory().available,"swap_out":psutil.swap_memory().sout}))'
+          sudo /usr/sbin/purge
+          sleep 5
+          uv run python -c 'import json,psutil; print(json.dumps({"stage":"after_disk_cache_purge","available":psutil.virtual_memory().available,"swap_out":psutil.swap_memory().sout}))'
       - name: node-owned measurement on a fresh runner
-        # Each actual resource probe gets a fresh VM without prior conversion or
-        # numerical workloads. Admission, peak, swap and thermal checks stay real.
+        # Each probe has its own job/process without acquisition/conversion in
+        # that job. Admission, peak, swap and thermal checks stay real.
         env:
           COIRE_TEST_MODEL: ${{ github.workspace }}/models/mlx-community--AMD-Llama-135m-4bit${{ matrix.suffix }}
           PROBE_OBJECTIVE: ${{ matrix.objective }}
         run: uv run pytest -q -rs "apps/coire-node/tests/engine/test_preference_measurement.py::test_node_owned_native_preference_probe_counts_reference_and_serialization[$PROBE_OBJECTIVE]"
+      - name: restore the isolated runner hostname
+        if: always() && steps.native_preflight.outcome == 'success'
+        run: |
+          if [ -f "$RUNNER_TEMP/coire-original-hostname" ]; then
+            sudo scutil --set HostName "$(cat "$RUNNER_TEMP/coire-original-hostname")"
+          fi
 
   publish:
     # Only tagged releases publish. Pull requests never push an image.

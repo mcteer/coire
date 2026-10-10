@@ -2,7 +2,7 @@
 
 **Branch**: `feat/018-preference-optimisation` | **Date**: 2026-10-08 | **Spec**: [spec.md](spec.md)
 **Baseline**: `d2e4bbf` (merged training 016, evaluation 017 and node budget PR 94).
-**Status**: Implementation complete; exclusive native, privacy, recovery and rollback gates passed. Three exact shared profiles pass; Studio A dense ORPO fails T074, so release remains withheld; see [execution-record.md](execution-record.md).
+**Status**: Application/native implementation and exclusive/privacy/recovery/rollback gates pass. Three exact shared profiles pass; dense ORPO shared qualification and required hosted resource CI remain pending (T074/T076/T077). See [execution-record.md](execution-record.md).
 
 ## Summary
 
