@@ -16,6 +16,7 @@ from typing import Literal
 import psutil
 import pytest
 
+from coire_core.errors import TrainingConflict
 from coire_core.models.datasets import DatasetAnalysisBinding, DatasetFormat
 from coire_core.models.preference import PreferenceRow
 from coire_core.models.training import ResolvedTrainingSpecV3
@@ -262,17 +263,31 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
             if status.stopped:
                 break
             if time.monotonic() >= renew_at:
-                await supervisor.renew(
-                    TrainingLeaseRenewal.model_validate(
-                        {
-                            **wire,
-                            "command_id": str(uuid.uuid4()),
-                            "lease_expires_at": (
-                                datetime.now(UTC) + timedelta(seconds=29)
-                            ).isoformat(),
-                        }
+                try:
+                    await supervisor.renew(
+                        TrainingLeaseRenewal.model_validate(
+                            {
+                                **wire,
+                                "command_id": str(uuid.uuid4()),
+                                "lease_expires_at": (
+                                    datetime.now(UTC) + timedelta(seconds=29)
+                                ).isoformat(),
+                            }
+                        )
                     )
-                )
+                except TrainingConflict:
+                    # Completion can occur after the status read but before
+                    # renewal. Accept only a fresh positive stop with the real
+                    # complete observation; every resource/result assertion
+                    # below still applies. A guard stop never becomes success.
+                    status = supervisor.measurement_status(prepared.attempt_id)
+                    if not status.stopped or not isinstance(
+                        status.observation, PreferenceMeasurementObservation
+                    ):
+                        raise AssertionError(
+                            status.model_dump_json() + "\n" + worker_stderr.read_text()
+                        ) from None
+                    break
                 renew_at = time.monotonic() + 6
             await asyncio.sleep(0.1)
         assert status is not None and status.stopped

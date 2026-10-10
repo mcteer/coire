@@ -1,7 +1,7 @@
 # Tasks: Preference Optimisation and Feedback Capture
 
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md), [data-model.md](data-model.md), [contracts](contracts/), [quickstart.md](quickstart.md).
-**Branch**: `feat/018-preference-optimisation` | **Baseline**: `d2e4bbf` | **Status**: Application/native implementation complete; release withheld at T074/T076/T077. Checked tasks have recorded evidence.
+**Branch**: `feat/018-preference-optimisation` | **Baseline**: `d2e4bbf` | **Status**: Application/native implementation complete; release withheld at T076/T077. Checked tasks have recorded evidence.
 
 Tests are required by the spec and constitution. Write behavior/contract tests before their corresponding implementation. New files listed below are intentional. Task IDs are sequential; `[P]` marks independent files/work after the stated phase prerequisites, not permission to bypass shared-file dependencies.
 
@@ -112,7 +112,7 @@ All four stories are required for full 018. Required native/manual gates must pa
 - [X] T071 Wire preference numerical/native matrix and integration coverage into `.github/workflows/ci.yml` using existing isolated Mac fixtures, `apps/coire-node/tests/engine/test_preference_worker.py` and `apps/coire-api/tests/integration/test_preference_training.py`; explicitly enabled missing prerequisites fail, CI never targets real Studios. Maps FR-028, SC-002, SC-009, SC-010, SC-012.
 - [X] T072 Run authorized real-Studio DPO/ORPO × dense LoRA/affine QLoRA qualification with chained starts, complete adapter serving and memory/probe/checkpoint measurements; record exact profiles and receipts in `specs/018-preference-optimisation/execution-record.md` per `quickstart.md`. Maps FR-004, FR-005, FR-006, FR-020, FR-028, SC-002, SC-003, SC-006.
 - [x] T073 Run real scheduler/node restart, checkpoint corruption/replication/retention, cancellation ≤5 seconds, guard stop and unknown-liveness hold acceptance; record proofs in `specs/018-preference-optimisation/execution-record.md` using `quickstart.md`. Maps FR-007, FR-023, FR-028, SC-009, SC-012.
-- [ ] T074 Qualify exact preference/chat coexistence and training/image exclusion with ≥100 baseline and mixed requests per resident, zero failures/swap and specified p95 limits; record measured profiles and invalidation tests in `specs/018-preference-optimisation/execution-record.md`. Maps FR-006, FR-007, FR-028, SC-006.
+- [X] T074 Qualify exact preference/chat coexistence and training/image exclusion with ≥100 baseline and mixed requests per resident, zero failures/swap and specified p95 limits; record measured profiles and invalidation tests in `specs/018-preference-optimisation/execution-record.md`. Maps FR-006, FR-007, FR-028, SC-006.
 - [x] T075 Rehearse drained binary rollback and isolated seeded schema downgrade, including export/compare/withdrawal cleanup and evaluation-owned pauses; record restored runtime identities and retained data behavior in `specs/018-preference-optimisation/execution-record.md`. Maps FR-003, FR-019, FR-023, FR-026, SC-010, SC-012.
 - [ ] T076 Run full required Ruff/mypy/pytest/web/OpenAPI/pin/image build/scan/SBOM checks from `specs/018-preference-optimisation/quickstart.md`; refresh `apps/coire-api/openapi.json` and `apps/coire-web/src/api/schema.d.ts`, document every result with no required failed/skipped gates in the execution record. Maps FR-028, SC-010, SC-012.
 - [ ] T077 Reconcile completed tasks and exact qualified scope in `specs/018-preference-optimisation/spec.md`, `plan.md`, `tasks.md`, `handoff.md` and `execution-record.md`; prepare the implementation PR using `.github/pull_request_template.md`, linking 018 and principles I–VII, dependency statement and measured limitations. Maps FR-028, SC-012.
@@ -185,4 +185,4 @@ First deliver the foundation plus US1 and US3 as a privacy-complete feedback/exp
 
 ## Task totals
 
-Total: 77. shared: 27, US1: 17, US2: 22, US3: 5, US4: 6. Release remains withheld at T074; checkbox state and execution-record evidence determine completion.
+Total: 77. shared: 27, US1: 17, US2: 22, US3: 5, US4: 6. Release remains withheld at T076/T077; checkbox state and execution-record evidence determine completion.

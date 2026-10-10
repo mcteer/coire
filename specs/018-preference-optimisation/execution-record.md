@@ -1,11 +1,11 @@
 # Execution Record — Preference Optimisation and Feedback Capture
 
 Branch: `feat/018-preference-optimisation`. Baseline: `d2e4bbf` (016/017/PR94 merged).
-Status: application/native implementation complete; three exact sustained shared profiles pass. Dense ORPO shared qualification and required hosted native resource CI remain incomplete (T074/T076/T077). Current ownership-snapshot source gates pass; V70 qualification is active.
+Status: application/native implementation and all four exact shared profiles pass. T074 is complete. Required hosted native resource CI and final reconciliation remain open (T076/T077). Fresh cleanup and privacy/published-byte preservation pass.
 
 ## Current release evidence
 
-The table records the current ownership-snapshot source checkpoint and explicitly identifies preceding full hosted evidence. T074/T076/T077 remain unchecked. Historical checkpoints and failed attempts remain recorded below.
+The table records the current ownership-snapshot source checkpoint and explicitly identifies preceding full hosted evidence. T074 is complete; T076/T077 remain unchecked. Historical checkpoints and failed attempts remain recorded below.
 
 | Gate | Result |
 | --- | --- |
@@ -20,7 +20,7 @@ The table records the current ownership-snapshot source checkpoint and explicitl
 | Feedback privacy and export | Actual captured feedback trains and serves; immediate withdrawal, physical purge and preservation of published data pass |
 | Prior-release rollback | Drained old binaries serve the verified base on the additive schema; tested node/runtime restoration passes |
 | Training/image exclusion | Valid image job remains queued without allocation while both native trainers run; cancellation passes |
-| Shared chat/training | Three exact profiles accepted; dense ORPO **failed T074** and remains unqualified; V70 pending |
+| Shared chat/training | All four exact profiles accepted; V70 dense ORPO passes both complete phases and exact overhead p95; T074 complete |
 | Hosted native resource CI | Four small probes pass locally; hosted startup swap growth remains a failed required gate, pending adequate isolated runner |
 | Final reconciliation/PR | Reopened for current-source checks, T074 qualification and final cleanup |
 
@@ -100,6 +100,14 @@ A metadata-only PostgreSQL check then confirmed the existing measurement ownersh
 Hosted run `38037775120` passed acquisition/conversion of the small Q4/fp16 fixtures and the unchanged full Qwen numerical/runtime matrix. Its resource probes passed real admission but stopped before training when the host swap-out counter increased by **16–32 KiB** during startup; no result is accepted. GitHub's [standard Apple Silicon runners](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) have **7 GB** RAM. [Larger runners](https://docs.github.com/en/actions/how-tos/manage-runners/larger-runners/manage-larger-runners) require an eligible organization or enterprise; this repository is personal and has no registered self-hosted runner. A dedicated isolated non-production Apple Silicon runner with adequate memory, or eligible organization runner access, is a concrete outstanding prerequisite. The user has been asked for that asset while latency work continues. Production Studios are not targeted by CI, and zero-swap/resource guards remain unchanged.
 
 The CI preparation experiment keeps the required four cases and all assertions. Before the probe it releases only OS disk cache with macOS `purge`, logs actual available-memory/swap-out values before/after, and lets preparation settle for five seconds. No model is preloaded. The test parent drops its no-longer-used analysis tokenizer; all four actual local Q4/fp16 probes still pass, **8.67/9.97 s**, zero skips. The configurable `COIRE_NATIVE_MEASUREMENT_RUNNER` repository variable permits an adequate isolated runner if standard-host preparation remains insufficient. Preflight rejects production hostnames/deployed node environments before setup; its actual-core negative check passed without creating the hostname backup. Hostname restoration only runs after successful preflight. YAML/shell syntax, the unchanged four-case matrix, Ruff/format and strict typing pass. The hosted experiment is pending and supplies no acceptance yet.
+
+### V70 accepted shared profile and final reconciliation — 2026-10-10 UTC
+
+V70 measurement `1b421fa3-c3e7-4bb8-8fa0-8b600237bde6` and profile `7738edfd-213e-47ae-b131-3640f4e303b6` qualify exact **Studio B dense ORPO**, bare initialization, one-second arrival, concurrency one, 4,000 input/one output token and **5,632** native updates. Baseline/mixed duration was **900.006065/900.000709 s**; each completed **900 requests with zero failures**. TTFT p95 **410.776084/361.283875 ms** passes. Complete exact traces for all **1,800** requests give gateway overhead p95 **17.443310004/17.997938034 ms**, with **14/15** requests above 20 ms. All unchanged latency/sample/phase requirements pass.
+
+Native training ran **09:00:58.412695–09:21:25.287229 UTC**, covering the entire mixed phase and all 900 mixed requests. Peak footprint **3,309,537,680 bytes**, zero swap growth, safe thermal state and **11,840** physical samples are recorded. All 5,632 updates completed. Positive fenced stop proof and the exact resident's stopped state pass. This success follows the ownership-snapshot repair; earlier V62/V64 and other failed configurations remain failed historical evidence and are not retroactively qualified.
+
+Fresh read-only reconciliation verified all four accepted reports, computed digests, current non-invalidated profiles, full native coverage, latency evidence and stopped residents. Both owned actors are inactive and all their keys revoked; the original administrator and privacy owner remain active. All **80** owned measurements are terminal and all **80 memory / 80 storage holds** released. Both training admission flags are false; the owned CI registry is stopped. Both Studios remain on `0.2.0-77c83e29e179` and final process inspection found zero serving/training/acquisition workers. Published dataset `11d70037-2c0c-5216-9bf5-868ef97a03d5` is ready and its physical source bytes still match SHA256 `52426559bf6cbec8c97851ff7a93556ebb226c00d73a981b72dcb02fd1d43fbf`. Capture remains disabled at generation **8**. T074 is complete; T076/T077 remain open for required hosted CI and final reconciliation. Private fresh markers: `all-shared-profiles-accepted`, `final-shared-cleanup-complete-v70`; audit receipts: `final-owned-holds-v70.json`, `final-readonly-privacy-v70.json`.
 
 ## Prerequisites and intended matrix
 
@@ -1194,3 +1202,8 @@ The scheduler now waits the sender's full five-second snapshot validity window a
 
 
 Current lease-handoff source gates passed: **3,118 CPU tests**, two existing optional skips; **517 isolated integration tests**, 39 existing optional skips (1,578.76 s); all nine affected measurement transaction/usage cases; Ruff/format, strict mypy (1,019 files), OpenAPI freshness and pins; all **16 ARM64 production image build/policy/zero-CRITICAL/SPDX gates**. Web and alert checks remain green on unchanged source. The 39 integration skips retain the existing live/manual/paid/native-evaluation categories; required 018 native acceptance has no required skips. T076 is complete. V61 will use normal checked entrypoints and the same one-second Studio B workload after the guarded handoff fix; T074/T077 remain pending.
+
+
+### Required native CI completion-race diagnostics — 2026-10-10 UTC
+
+Hosted run 38041317589 failed all four native resource cases after isolated disk-cache preparation. One runner's observed available memory rose from 3,245,932,544 to 4,984,389,632 bytes, without changing its swap-out counter during preparation; this does not establish safe native execution. A renewal conflict obscured the terminal worker outcome. The test now rereads terminal status after that conflict and accepts only a positive stop with a real complete typed observation, then applies every existing update/reference/serialization/memory/swap/thermal assertion. Guard stops without observations remain failures and include bounded worker diagnostics. All four actual native cases pass independently on Studio A; Ruff, formatting and strict mypy across 1,021 source files pass. Hosted acceptance remains pending actual fresh results.
