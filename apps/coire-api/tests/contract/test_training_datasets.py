@@ -959,7 +959,12 @@ async def test_wrong_result_scope_or_counts_cannot_publish_or_release(
     from coire_scheduler.datasets import DatasetAnalysisExecutor
 
     analysis_node.mismatch = mismatch
-    with pytest.raises(ValueError, match="scope or counts"):
+    reason = (
+        "dataset analysis differs from its input binding"
+        if mismatch in {"dataset_id", "model_id", "variant_id"}
+        else "scope or counts"
+    )
+    with pytest.raises(ValueError, match=reason):
         await DatasetAnalysisExecutor(api.settings).advance(analysis_node.analysis_id)
     assert await analysis_hold(api, analysis_node.analysis_id) == ("running", "held")
     async with api.sessions() as session:

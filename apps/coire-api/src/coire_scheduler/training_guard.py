@@ -35,6 +35,8 @@ from coire_core.models.gateway import UsageOutcome
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.training import (
+    PreferenceMemoryEvidence,
+    ResolvedTrainingSpecV3,
     TrainingMeasurementRequest,
     TrainingMeasurementResult,
     TrainingProfile,
@@ -298,6 +300,17 @@ async def matching_profile(
             or evidence.resource_envelope.checkpoint_bytes
             > resolved.resource_envelope.checkpoint_bytes
         ):
+            continue
+        if isinstance(resolved, ResolvedTrainingSpecV3):
+            if not isinstance(evidence, PreferenceMemoryEvidence) or (
+                evidence.initial_target != resolved.initial_target
+                or evidence.reference_target != resolved.reference_target
+                or evidence.objective != resolved.spec.objective
+                or evidence.objective_options != resolved.spec.objective_options
+                or evidence.datasets != resolved.datasets
+            ):
+                continue
+        elif isinstance(evidence, PreferenceMemoryEvidence):
             continue
         if residents is not None:
             expected = sorted(residents, key=lambda item: str(item.instance_id))

@@ -61,6 +61,7 @@ from coire_core.models.training import (
     TrainingReplayPage,
     TrainingResetEvent,
     TrainingSpecV2,
+    TrainingSpecV3,
     TrainingSubmission,
     TrainingValidation,
 )
@@ -73,6 +74,11 @@ def enabled(request: Request) -> None:
         raise TrainingUnavailable("Training is disabled")
 
 
+def evaluated_submission(body: TrainingSubmission, request: Request) -> bool:
+    spec = parse_submission(body, settings=request.app.state.settings).spec
+    return isinstance(spec, (TrainingSpecV2, TrainingSpecV3)) and bool(spec.eval.suites)
+
+
 @router.post("/validate", response_model=TrainingValidation)
 async def validate_training(
     request: Request, body: TrainingSubmission, principal: CurrentTrainingAdmin
@@ -80,9 +86,7 @@ async def validate_training(
     enabled(request)
     scope = (
         mutation_scope(session_scope, principal, "evaluation.training.validate", "training")
-        if isinstance(
-            parse_submission(body, settings=request.app.state.settings).spec, TrainingSpecV2
-        )
+        if evaluated_submission(body, request)
         else session_scope()
     )
     async with scope as session:
@@ -108,9 +112,7 @@ async def submit_job(
     enabled(request)
     scope = (
         mutation_scope(session_scope, principal, "evaluation.training.submit", "training")
-        if isinstance(
-            parse_submission(body, settings=request.app.state.settings).spec, TrainingSpecV2
-        )
+        if evaluated_submission(body, request)
         else session_scope()
     )
     async with scope as session:

@@ -23,7 +23,14 @@ from coire_core.errors import (
     TrainingUploadTooLarge,
     TrainingValidationError,
 )
-from coire_core.models.datasets import DatasetDiagnostic, DatasetUploadRequest, SplitManifest
+from coire_core.models.datasets import (
+    DatasetDiagnostic,
+    DatasetFormat,
+    DatasetUploadRequest,
+    SplitManifest,
+)
+from coire_core.models.preference import PreferenceRow, PreferenceSplitManifest
+from coire_core.preference_data import preference_split_digest, split_preference_hashes
 from coire_core.settings import Settings
 
 tracer = trace.get_tracer("coire.api.training.datasets")
@@ -60,10 +67,12 @@ class StagedDataset:
     row_count: int
     invalid_count: int
     diagnostics: list[DatasetDiagnostic]
-    split: SplitManifest | None
+    split: SplitManifest | PreferenceSplitManifest | None
 
     @property
     def split_sha256(self) -> str | None:
+        if isinstance(self.split, PreferenceSplitManifest):
+            return preference_split_digest(self.split)
         return split_digest(self.split) if self.split else None
 
 
@@ -215,6 +224,7 @@ class DatasetStore:
         source_bytes = rows = invalid = 0
         diagnostics: list[DatasetDiagnostic] = []
         content_hashes: list[str] = []
+        prompt_hashes: list[str] = []
         buffer = bytearray()
         oversized = False
 
@@ -241,10 +251,15 @@ class DatasetStore:
                     value = json.loads(
                         text, object_pairs_hook=_unique_object, parse_constant=_nonfinite
                     )
-                    example = normalize_row(
-                        value, format=metadata.format, dataset_id=dataset_id, source_row=rows
-                    )
-                    content_hashes.append(example.content_sha256())
+                    if metadata.format is DatasetFormat.PREFERENCE:
+                        preference = PreferenceRow.model_validate(value)
+                        content_hashes.append(preference.content_sha256())
+                        prompt_hashes.append(preference.prompt_sha256())
+                    else:
+                        example = normalize_row(
+                            value, format=metadata.format, dataset_id=dataset_id, source_row=rows
+                        )
+                        content_hashes.append(example.content_sha256())
                 except UnicodeError:
                     invalid_row("invalid_utf8")
                 except ValidationError as error:
@@ -274,7 +289,11 @@ class DatasetStore:
                     finish_row()
                 position = end + 1
 
-        with tracer.start_as_current_span("coire.api.training.dataset.stage") as span:
+        with tracer.start_as_current_span(
+            "coire.api.training.dataset.stage",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
             span.set_attribute("coire.dataset_id", str(dataset_id))
             try:
                 async with await anyio.open_file(path, "xb") as stream:
@@ -297,12 +316,23 @@ class DatasetStore:
                 if invalid == 0:
                     try:
                         split = await anyio.to_thread.run_sync(
-                            lambda: split_rows(
-                                dataset_id,
-                                source_hash.hexdigest(),
-                                content_hashes,
-                                seed=metadata.split_seed,
-                                validation_fraction=metadata.validation_fraction,
+                            lambda: (
+                                split_preference_hashes(
+                                    dataset_id,
+                                    source_hash.hexdigest(),
+                                    content_hashes,
+                                    prompt_hashes,
+                                    seed=metadata.split_seed,
+                                    validation_fraction=metadata.validation_fraction,
+                                )
+                                if metadata.format is DatasetFormat.PREFERENCE
+                                else split_rows(
+                                    dataset_id,
+                                    source_hash.hexdigest(),
+                                    content_hashes,
+                                    seed=metadata.split_seed,
+                                    validation_fraction=metadata.validation_fraction,
+                                )
                             )
                         )
                     except TrainingValidationError:

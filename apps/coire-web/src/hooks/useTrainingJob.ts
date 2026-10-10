@@ -44,7 +44,7 @@ export function useTrainingJob(id: string | null) {
     if (payload.kind === "reset") {
       setJob((old) => old && payload.snapshot.version >= old.version ? { ...old, ...payload.snapshot } : old);
       setMetrics([]); void refresh();
-    } else if (payload.kind === "progress") {
+    } else if (payload.kind === "progress" || payload.kind === "preference_progress") {
       setMetrics((old) => mergeTrainingMetrics(old, [payload.metric]));
       setJob((old) => old && event.state_version >= old.version ? { ...old, completed_update: payload.metric.update, attempt_id: event.attempt_id, version: event.state_version } : old);
     } else {

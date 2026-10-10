@@ -76,7 +76,7 @@ class AdapterDetail(TrainingWire):
     source_checkpoint_id: uuid.UUID
     resolved_spec_sha256: Digest
     parameterization: Literal["lora", "qlora", "dora"]
-    objective: Literal["sft"] = "sft"
+    objective: Literal["sft", "dpo", "orpo"] = "sft"
     verified: bool = False
     evaluation_id: uuid.UUID | None = None
     version: int = Field(ge=1)

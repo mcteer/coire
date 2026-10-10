@@ -34,6 +34,7 @@ from coire_api.training.storage import DatasetStore
 from coire_core.errors import TrainingForbidden, TrainingNotFound
 from coire_core.models.datasets import (
     DatasetAnalysis,
+    DatasetAnalysisBinding,
     DatasetAnalysisDispatch,
     DatasetRegistrationCommand,
 )
@@ -410,6 +411,14 @@ class DatasetAnalysisExecutor:
         result: DatasetAnalysis | None,
         state: str,
     ) -> None:
+        expected_samples = dataset.row_count * (2 if dataset.format == "preference" else 1)
+        if result is not None:
+            command = await session.get(TrainingCommandRow, row.command_id)
+            if command is None:
+                raise ValueError("analysis input binding is unavailable")
+            result.validate_binding(
+                DatasetAnalysisBinding.model_validate(command.payload.get("analysis"))
+            )
         if result is not None and (
             result.id != row.id
             or result.dataset_id != dataset.id
@@ -424,8 +433,8 @@ class DatasetAnalysisExecutor:
             or (
                 result.tokens is not None
                 and (
-                    sum(result.tokens.histogram) > dataset.row_count
-                    or (state == "succeeded" and sum(result.tokens.histogram) != dataset.row_count)
+                    sum(result.tokens.histogram) > expected_samples
+                    or (state == "succeeded" and sum(result.tokens.histogram) != expected_samples)
                 )
             )
         ):

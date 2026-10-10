@@ -88,6 +88,8 @@ async def test_versioned_recipes_are_unbound_and_all_public_contracts_are_regist
         "sft-qlora",
         "sft-dora",
         "sft-evaluated",
+        "dpo",
+        "orpo",
     }
     for recipe in recipes:
         assert recipe["version"] == 1

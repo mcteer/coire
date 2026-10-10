@@ -519,13 +519,18 @@ class TrainingDiskBudget:
                     if path.is_file():
                         files[path] = path.stat().st_size
             remaining = dict(files)
+            files_by_scope: dict[Path, set[Path]] = {}
+            for path in files:
+                for scope in (path, *path.parents):
+                    files_by_scope.setdefault(scope, set()).add(path)
 
             def claim(paths: tuple[Path, ...], bound: int) -> int:
-                owned = [
-                    p
-                    for p in remaining
-                    if any(p == root or p.is_relative_to(root) for root in paths)
-                ]
+                owned = {
+                    path
+                    for scope in paths
+                    for path in files_by_scope.get(scope, ())
+                    if path in remaining
+                }
                 materialized = sum(remaining.pop(p) for p in owned)
                 return max(bound, materialized)
 

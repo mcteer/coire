@@ -37,6 +37,7 @@ from coire_core.models.engine import EngineState, EngineStatus
 from coire_core.models.registry import ModelState, Visibility
 from coire_core.models.training import (
     CheckpointPromotionRequest,
+    ResolvedTrainingSpecV3,
     TrainingJobState,
     TrainingStateEvent,
     parse_resolved_training_spec,
@@ -143,6 +144,11 @@ async def stage_serving_adapter(
             }
             existing.state = "replicating"
             existing.version += 1
+            if isinstance(resolved, ResolvedTrainingSpecV3):
+                from coire_api.training.lineage import persist_lineage
+
+                existing.objective = resolved.spec.objective
+                await persist_lineage(session, existing, resolved)
             from coire_api.audit import write_principal_audit
 
             await write_principal_audit(
@@ -182,6 +188,9 @@ async def stage_serving_adapter(
         manifest_sha256=manifest.canonical_sha256(),
         resolved_spec_sha256=job.resolved_sha256,
         parameterization=resolved.spec.parameterization.kind,
+        objective=resolved.spec.objective
+        if isinstance(resolved, ResolvedTrainingSpecV3)
+        else "sft",
         purpose="evaluation" if evaluation_trigger_id is not None else "serving",
         evaluation_trigger_id=evaluation_trigger_id,
         state="validating",
@@ -218,6 +227,10 @@ async def stage_serving_adapter(
         }
     )
     session.add(row)
+    if isinstance(resolved, ResolvedTrainingSpecV3):
+        from coire_api.training.lineage import persist_lineage
+
+        await persist_lineage(session, row, resolved)
     if automatic:
         job.state = "finalizing"
         job.version += 1
@@ -648,6 +661,12 @@ async def curate_adapter(
     if row.version != request.expected_version:
         raise TrainingConflict("Adapter version changed")
     if retiring:
+        from coire_api.training.preference_specs import initial_adapter_pinned
+
+        if await initial_adapter_pinned(session, row.id):
+            raise TrainingConflict(
+                "Initial adapter is pinned by a resumable training job or measurement"
+            )
         row.state, row.visibility, row.verified = "retired", "admin_only", False
         # Existing engines retain counted memory and artifact references until stopped.
         # New selection is refused by the central live target resolver.

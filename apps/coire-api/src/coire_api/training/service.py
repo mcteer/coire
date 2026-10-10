@@ -33,6 +33,12 @@ from coire_api.db import (
 )
 from coire_api.training.authorization import authorize_live_training_action
 from coire_api.training.events import append_event
+from coire_api.training.preference_specs import (
+    objective_split,
+    objective_split_digest,
+    require_dataset_objective,
+    resolve_initial_target,
+)
 from coire_api.training.specs import parse_submission
 from coire_core.errors import (
     TrainingConflict,
@@ -42,15 +48,18 @@ from coire_core.errors import (
 )
 from coire_core.models.acquisition import VariantState
 from coire_core.models.datasets import DatasetAnalysis, DatasetAnalysisBinding, SplitManifest
+from coire_core.models.preference import PreferenceSplitManifest
 from coire_core.models.registry import ModelState
 from coire_core.models.training import (
     TERMINAL_TRAINING_STATES,
     ResolvedTrainingSpecDocument,
+    ResolvedTrainingSpecV3,
     TrainingCommandReceipt,
     TrainingControlRequest,
     TrainingJobDetail,
     TrainingJobReceipt,
     TrainingJobState,
+    TrainingSpecV3,
     TrainingStateEvent,
     TrainingSubmission,
     parse_resolved_training_spec,
@@ -141,6 +150,11 @@ async def recheck_training_inputs(
     session: AsyncSession, resolved: ResolvedTrainingSpecDocument
 ) -> None:
     await recheck_training_base(session, resolved)
+    if isinstance(resolved, ResolvedTrainingSpecV3) and (
+        await resolve_initial_target(session, resolved.spec, resolved.base_manifest_sha256)
+        != resolved.initial_target
+    ):
+        raise TrainingConflict("Pinned initial adapter identity changed")
     train_hashes: set[str] = set()
     validation_hashes: set[str] = set()
     for binding in sorted(resolved.datasets, key=lambda item: str(item.dataset_id)):
@@ -172,7 +186,8 @@ async def recheck_training_inputs(
             raise TrainingConflict("Pinned input or analysis is unavailable")
         try:
             result = DatasetAnalysis.model_validate(analysis.result)
-            split = SplitManifest.model_validate(source.split_manifest)
+            require_dataset_objective(resolved.spec, source.format)
+            split = objective_split(resolved.spec, source.split_manifest)
         except ValueError:
             raise TrainingConflict("Pinned input evidence is invalid") from None
         if (
@@ -182,28 +197,38 @@ async def recheck_training_inputs(
             or result.runtime_sha256 != resolved.runtime_sha256
             or result.tokens is None
             or result.tokens.maximum > resolved.spec.optim.max_sequence_length
+            or objective_split_digest(split) != binding.split_sha256
             or split.dataset_id != binding.dataset_id
             or split.source_sha256 != binding.source_sha256
         ):
             raise TrainingConflict("Training analysis does not match immutable execution bounds")
+        hashes = (
+            split.prompt_group_sha256
+            if isinstance(split, PreferenceSplitManifest)
+            else split.row_content_sha256
+        )
+        if isinstance(resolved, ResolvedTrainingSpecV3) and (
+            result.preference is None
+            or result.preference.source_sha256 != binding.source_sha256
+            or result.preference.split_sha256 != binding.split_sha256
+        ):
+            raise TrainingConflict("Pinned preference analysis identity changed")
         for source_spec in resolved.spec.data.train.datasets:
             if source_spec.dataset_id == binding.dataset_id:
                 if source_spec.sample_count > len(split.train_rows):
                     raise TrainingConflict(
                         "Selected training sample pool exceeds its immutable split"
                     )
-                train_hashes.update(split.row_content_sha256[row - 1] for row in split.train_rows)
+                train_hashes.update(hashes[row - 1] for row in split.train_rows)
         if binding.dataset_id in resolved.spec.data.validation.dataset_ids:
-            validation_hashes.update(
-                split.row_content_sha256[row - 1] for row in split.validation_rows
-            )
+            validation_hashes.update(hashes[row - 1] for row in split.validation_rows)
     if train_hashes & validation_hashes:
         raise TrainingConflict("Duplicate content crosses training and validation sources")
 
 
 async def frozen_training_inputs(
     session: AsyncSession, prepare: TrainingPrepareRequest
-) -> tuple[DatasetAnalysisBinding, SplitManifest, DatasetAnalysis]:
+) -> tuple[DatasetAnalysisBinding, SplitManifest | PreferenceSplitManifest, DatasetAnalysis]:
     """Return the existing strict metadata models for node journal.stage_inputs()."""
     from coire_api.db import TrainingParticipantRow
 
@@ -260,7 +285,7 @@ async def frozen_training_inputs(
     if command is None:
         raise TrainingConflict("Frozen analysis binding is unavailable")
     binding = DatasetAnalysisBinding.model_validate(command.payload.get("analysis"))
-    split = SplitManifest.model_validate(source.split_manifest)
+    split = objective_split(prepare.resolved.spec, source.split_manifest)
     analysis = DatasetAnalysis.model_validate(analysis_row.result)
     if (
         payload_digest(binding) != analysis_row.identity_sha256
@@ -351,6 +376,10 @@ async def submit_training(
     )
     if command.receipt is not None:
         return TrainingJobReceipt.model_validate(command.receipt)
+    if isinstance(parsed.spec, TrainingSpecV3) and not config.preference_training_enabled:
+        from coire_core.errors import TrainingUnavailable
+
+        raise TrainingUnavailable("Preference training is disabled")
     await session.execute(
         select(func.pg_advisory_xact_lock(func.hashtextextended("coire.training.queue", 0)))
     )
@@ -657,8 +686,16 @@ commands = metrics.get_meter("coire.api.training").create_counter(
 def payload_digest(request: BaseModel) -> str:
     if request.model_config.get("extra") != "forbid":
         raise TypeError("training commands require a strict wire model")
+    document = request.model_dump(mode="json")
+    if isinstance(request, Principal):
+        # Frozen identities cross independent API/scheduler processes. JSON key
+        # sorting cannot stabilize unordered scope/entitlement/tool sets. Keep
+        # ordered fields and all historical training-spec digests unchanged.
+        for name in Principal.model_fields:
+            if isinstance(getattr(request, name), frozenset):
+                document[name] = sorted(document[name])
     payload = json.dumps(
-        request.model_dump(mode="json"),
+        document,
         sort_keys=True,
         ensure_ascii=False,
         allow_nan=False,

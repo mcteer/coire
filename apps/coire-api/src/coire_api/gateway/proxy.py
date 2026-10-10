@@ -51,6 +51,7 @@ class StreamTiming:
     request_started_at: float = field(default_factory=perf_counter)
     upstream_started_at: float | None = None
     first_chunk_at: float | None = None
+    upstream_ready: asyncio.Event | None = None
 
 
 def init_engine_client() -> None:
@@ -176,83 +177,94 @@ async def request_lease(engine_url: str, settings: Settings) -> AsyncIterator[No
         return
     lease_ids: list[uuid.UUID] = []
     instance_id: uuid.UUID | None = None
-    async with session_scope() as session:
-        from coire_api.training.gateway_measurements import authorize_measurement_lease
+    from coire_api.training.gateway_measurements import (
+        acquire_measurement_request_lease,
+        authorize_measurement_lease,
+        measurement_request_session,
+    )
 
+    async with measurement_request_session(session_scope) as session:
         await authorize_measurement_lease(session, engine_url)
         from coire_api.evaluation.gateway_measurements import authorize_probe_lease
 
         await authorize_probe_lease(session, engine_url)
-        if len(segments) > 2 and segments[2] == "shard-groups":
-            group = await session.get(ShardGroupRow, target_id)
-            if group is None:
-                raise ChatModelUnavailable()
-            instance_id = group.instance_id
-            members = (
-                list(
-                    (
-                        await session.execute(
-                            select(InstanceMemberRow).where(
-                                InstanceMemberRow.instance_id == instance_id
+        measured_lease = await acquire_measurement_request_lease(
+            session, engine_url, ttl_seconds=settings.placement_lease_ttl_s
+        )
+        if measured_lease is not None:
+            lease_id, instance_id = measured_lease
+            lease_ids.append(lease_id)
+        else:
+            if len(segments) > 2 and segments[2] == "shard-groups":
+                group = await session.get(ShardGroupRow, target_id)
+                if group is None:
+                    raise ChatModelUnavailable()
+                instance_id = group.instance_id
+                members = (
+                    list(
+                        (
+                            await session.execute(
+                                select(InstanceMemberRow).where(
+                                    InstanceMemberRow.instance_id == instance_id
+                                )
                             )
                         )
+                        .scalars()
+                        .all()
                     )
-                    .scalars()
-                    .all()
+                    if instance_id is not None
+                    else []
                 )
-                if instance_id is not None
-                else []
-            )
-            if not members:
-                raise ChatModelUnavailable()
-            # Acquire the entire group in canonical order before any individual
-            # request lease; opposite rank orders must not deadlock admissions.
-            await lock_nodes_for_admission(session, [member.node_id for member in members])
-            for member in members:
-                if member.reservation_id is None:
+                if not members:
+                    raise ChatModelUnavailable()
+                # Acquire the entire group in canonical order before any individual
+                # request lease; opposite rank orders must not deadlock admissions.
+                await lock_nodes_for_admission(session, [member.node_id for member in members])
+                for member in members:
+                    if member.reservation_id is None:
+                        raise ChatModelUnavailable()
+                    lease = await acquire_lease(
+                        session,
+                        member.reservation_id,
+                        str(uuid.uuid4()),
+                        ttl_seconds=settings.placement_lease_ttl_s,
+                    )
+                    lease_ids.append(lease.id)
+            else:
+                engine = await session.get(EngineProcessRow, target_id)
+                if engine is not None:
+                    instance_id = engine.instance_id
+            if len(segments) <= 2 or segments[2] != "shard-groups":
+                engine = await session.get(EngineProcessRow, target_id)
+            else:
+                engine = None
+            if engine is not None and engine.model_id is not None:
+                holder_id = str(engine.instance_id or engine.model_id)
+                if engine.instance_id is None:
+                    await _ensure_legacy_engine_hold_locked(session, engine, holder_id)
+                reservation = await session.scalar(
+                    select(MemoryReservationRow).where(
+                        MemoryReservationRow.node_id == engine.node_id,
+                        MemoryReservationRow.holder_type == ReservationHolder.MODEL,
+                        MemoryReservationRow.holder_id == holder_id,
+                        MemoryReservationRow.state == MemoryReservationState.HELD,
+                    )
+                )
+                if reservation is None:
                     raise ChatModelUnavailable()
                 lease = await acquire_lease(
                     session,
-                    member.reservation_id,
+                    reservation.id,
                     str(uuid.uuid4()),
                     ttl_seconds=settings.placement_lease_ttl_s,
                 )
                 lease_ids.append(lease.id)
-        else:
-            engine = await session.get(EngineProcessRow, target_id)
-            if engine is not None:
-                instance_id = engine.instance_id
-        if len(segments) <= 2 or segments[2] != "shard-groups":
-            engine = await session.get(EngineProcessRow, target_id)
-        else:
-            engine = None
-        if engine is not None and engine.model_id is not None:
-            holder_id = str(engine.instance_id or engine.model_id)
-            if engine.instance_id is None:
-                await _ensure_legacy_engine_hold_locked(session, engine, holder_id)
-            reservation = await session.scalar(
-                select(MemoryReservationRow).where(
-                    MemoryReservationRow.node_id == engine.node_id,
-                    MemoryReservationRow.holder_type == ReservationHolder.MODEL,
-                    MemoryReservationRow.holder_id == holder_id,
-                    MemoryReservationRow.state == MemoryReservationState.HELD,
-                )
-            )
-            if reservation is None:
+            elif engine is None and len(segments) > 2 and segments[2] != "shard-groups":
                 raise ChatModelUnavailable()
-            lease = await acquire_lease(
-                session,
-                reservation.id,
-                str(uuid.uuid4()),
-                ttl_seconds=settings.placement_lease_ttl_s,
-            )
-            lease_ids.append(lease.id)
-        elif engine is None and len(segments) > 2 and segments[2] != "shard-groups":
-            raise ChatModelUnavailable()
-        if instance_id is not None and lease_ids:
-            instance = await session.get(ModelInstanceRow, instance_id)
-            if instance is not None:
-                instance.in_flight += 1
+            if instance_id is not None and lease_ids:
+                instance = await session.get(ModelInstanceRow, instance_id)
+                if instance is not None:
+                    instance.in_flight += 1
     try:
         stop_refresh = asyncio.Event()
         request_task = asyncio.current_task()
@@ -369,6 +381,8 @@ async def stream(
             try:
                 if timing is not None:
                     timing.upstream_started_at = perf_counter()
+                    if timing.upstream_ready is not None:
+                        timing.upstream_ready.set()
                 with tracer.start_as_current_span("coire.gateway.upstream"):
                     async with _client().stream(
                         "POST",

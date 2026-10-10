@@ -163,7 +163,7 @@ def test_native_routes_auth_scope_and_disabled_history(tmp_path: Path) -> None:
                 "training_capabilities"
             ]
             assert capabilities == {
-                "spec_versions": [1, 2],
+                "spec_versions": [1, 2, 3],
                 "evaluation_checkpoint_ack_versions": [1],
             }
             assert (

@@ -22,7 +22,8 @@ import psutil
 from opentelemetry import metrics, trace
 
 from coire_core.errors import TrainingConflict, TrainingValidationError
-from coire_core.models.training import TrainingReason
+from coire_core.models.datasets import SplitManifest
+from coire_core.models.training import ResolvedTrainingSpecV3, TrainingReason
 from coire_core.models.training_node import (
     CheckpointAcknowledgementDocument,
     DatasetInputGrant,
@@ -44,13 +45,18 @@ from coire_core.settings import Settings
 from coire_node.store import Store, write_atomic
 from coire_node.training.components import TrainingComponents
 from coire_node.training.distributed import JacclLaunch
-from coire_node.training.journal import TrainingJournal
+from coire_node.training.journal import TrainingJournal, command_digest
 from coire_node.training.objectives import validate_sft_input
+from coire_node.training.preference_runtime import (
+    validate_initial_adapter,
+    validate_preference_input,
+)
 from coire_node.training.worker import (
-    FrozenInputs,
-    load_all_frozen_inputs,
+    FrozenInputDocument,
+    load_training_frozen_inputs,
+    make_frozen_inputs,
     read_private,
-    validate_frozen_inputs,
+    validate_training_frozen_inputs,
     verify_source,
 )
 
@@ -196,6 +202,7 @@ class TrainingSupervisor:
         processes: Processes | None = None,
         store_root: Path = Path("/opt/coire/models"),
         artifact_root: Path | None = None,
+        initial_artifact_root: Path | None = None,
         memory_available: Callable[[], int] | None = None,
         disk_available: Callable[[], int] | None = None,
         disk_floor: int = 20 * 1024**3,
@@ -207,6 +214,7 @@ class TrainingSupervisor:
             not interpreter.is_absolute()
             or not store_root.is_absolute()
             or (artifact_root is not None and not artifact_root.is_absolute())
+            or (initial_artifact_root is not None and not initial_artifact_root.is_absolute())
         ):
             raise TrainingValidationError(
                 "Trainer interpreter and store roots must be absolute node configuration"
@@ -216,6 +224,7 @@ class TrainingSupervisor:
         self.otlp_endpoint = otlp_endpoint
         self.store_root = store_root
         self.artifact_root = artifact_root or journal.root / "artifacts"
+        self.initial_artifact_root = initial_artifact_root or self.artifact_root
         from coire_node.training.rejections import PrepareRejections
 
         self.rejections = PrepareRejections(journal, self.artifact_root)
@@ -224,6 +233,7 @@ class TrainingSupervisor:
         self.processes = processes or NativeProcesses()
         self.lock = asyncio.Lock()
         self.preparations: dict[str, dict[asyncio.Task[None], bool]] = {}
+        self.validated_preparations: dict[str, str] = {}
         self.memory_available = memory_available
         self.disk_available = disk_available
         self.disk_floor = disk_floor
@@ -297,10 +307,13 @@ class TrainingSupervisor:
                 if len({s.binding.model_slug for s in command.sources}) != 1:
                     raise TrainingConflict("Source model bindings differ")
                 for source in command.sources:
-                    validate_frozen_inputs(
+                    validate_training_frozen_inputs(
                         prepared,
-                        FrozenInputs(
-                            source.binding, source.split, source.analysis, Path("/ignored")
+                        make_frozen_inputs(
+                            source.binding,
+                            source.split,
+                            source.analysis,
+                            Path("/ignored"),
                         ),
                     )
                 # Grant secrets never enter the SQLite command digest or restart record.
@@ -318,7 +331,7 @@ class TrainingSupervisor:
                     )
                     self.track_preparation(command.attempt_id, task, network=True)
                     return self.input_receipt(prepared, ready=False)
-        await self.validate_assets(prepared)
+        await self.validate_assets(prepared, preparation_poll=True)
         return self.input_receipt(prepared, ready=True)
 
     async def _deliver_sources(
@@ -332,7 +345,12 @@ class TrainingSupervisor:
             await self._download_inputs(
                 prepared,
                 source.grant,
-                FrozenInputs(source.binding, source.split, source.analysis, Path("/ignored")),
+                make_frozen_inputs(
+                    source.binding,
+                    source.split,
+                    source.analysis,
+                    Path("/ignored"),
+                ),
                 settings=settings,
                 disk_available=disk,
                 transport=None,
@@ -361,8 +379,26 @@ class TrainingSupervisor:
         await asyncio.gather(*tasks, return_exceptions=True)
         self.journal.close()
 
-    async def validate_assets(self, command: TrainingPrepareRequest) -> None:
-        task = asyncio.create_task(asyncio.to_thread(self.validate_ready, command))
+    async def validate_assets(
+        self, command: TrainingPrepareRequest, *, preparation_poll: bool = False
+    ) -> None:
+        digest = command_digest(command)
+        preference = isinstance(command.resolved, ResolvedTrainingSpecV3)
+        if (
+            preparation_poll
+            and preference
+            and self.validated_preparations.get(command.attempt_id) == digest
+        ):
+            return
+
+        async def validate() -> None:
+            self.validated_preparations.pop(command.attempt_id, None)
+            await asyncio.to_thread(self.validate_ready, command)
+            if preference:
+                self.validated_preparations[command.attempt_id] = digest
+
+        # A disconnected poll must not interrupt validation or lose its successful result.
+        task = asyncio.create_task(validate())
         if self.native_validation:
             self.track_preparation(command.attempt_id, task, network=False)
         await asyncio.shield(task)
@@ -457,7 +493,9 @@ class TrainingSupervisor:
     def validate_native_inputs(self, command: TrainingPrepareRequest) -> None:
         if command.world_size != 1:
             self.collective_launch(command)
-        sources = load_all_frozen_inputs(command, self.directory(command.attempt_id), self.journal)
+        sources = load_training_frozen_inputs(
+            command, self.directory(command.attempt_id), self.journal
+        )
         inputs = sources[0]
         from coire_node.training.datasets import load_analysis_tokenizer
 
@@ -472,16 +510,27 @@ class TrainingSupervisor:
             raise TrainingConflict(
                 "Native tokenizer/template/runtime differs from resolved execution"
             )
-        validate_sft_input(
+        source = (
+            validate_preference_input
+            if isinstance(command.resolved, ResolvedTrainingSpecV3)
+            else validate_sft_input
+        )(
             Store(self.store_root).path_for(inputs.binding.model_slug),
             command.resolved.spec.parameterization,
             expected_manifest_sha256=command.resolved.base_manifest_sha256,
         )
+        if isinstance(command.resolved, ResolvedTrainingSpecV3):
+            target = command.resolved.initial_target
+            validate_initial_adapter(
+                source,
+                target,
+                self.initial_artifact_root / str(target.adapter_id) if target.adapter_id else None,
+            )
 
     async def bind_inputs(
         self,
         command: TrainingPrepareRequest,
-        inputs: FrozenInputs,
+        inputs: FrozenInputDocument,
         *,
         disk_available: int,
         multi: bool = False,
@@ -505,11 +554,11 @@ class TrainingSupervisor:
     def _bind_inputs(
         self,
         command: TrainingPrepareRequest,
-        inputs: FrozenInputs,
+        inputs: FrozenInputDocument,
         disk_available: int,
         multi: bool = False,
     ) -> None:
-        validate_frozen_inputs(command, inputs)
+        validate_training_frozen_inputs(command, inputs)
         source_size = verify_source(inputs.source, inputs.binding.source_sha256)
         encoded = {
             "binding.json": inputs.binding.model_dump_json().encode(),
@@ -597,7 +646,7 @@ class TrainingSupervisor:
         self,
         command: TrainingPrepareRequest,
         grant: DatasetInputGrant,
-        inputs: FrozenInputs,
+        inputs: FrozenInputDocument,
         *,
         settings: Settings,
         disk_available: int,
@@ -627,7 +676,7 @@ class TrainingSupervisor:
         self,
         command: TrainingPrepareRequest,
         grant: DatasetInputGrant,
-        inputs: FrozenInputs,
+        inputs: FrozenInputDocument,
         *,
         settings: Settings,
         disk_available: int,
@@ -635,7 +684,7 @@ class TrainingSupervisor:
         multi: bool = False,
     ) -> None:
         """The source path in `inputs` is ignored; generated local staging receives grant bytes."""
-        validate_frozen_inputs(command, inputs)
+        validate_training_frozen_inputs(command, inputs)
         grant = DatasetInputGrant.model_validate(grant.model_dump(mode="json"))
         if (
             grant.node != command.node
@@ -710,7 +759,7 @@ class TrainingSupervisor:
             # max_bytes is a ceiling; retain conservative unused grant capacity in the hold.
             await self.bind_inputs(
                 command,
-                FrozenInputs(inputs.binding, inputs.split, inputs.analysis, source_path),
+                make_frozen_inputs(inputs.binding, inputs.split, inputs.analysis, source_path),
                 disk_available=disk_available,
                 multi=multi,
             )
@@ -829,7 +878,7 @@ class TrainingSupervisor:
         ):
             ready, reason = False, "analysis_pending"
         else:
-            await self.validate_assets(command)
+            await self.validate_assets(command, preparation_poll=True)
         value = self.journal.get(command.attempt_id)
         if value["liveness"] == "stopped" or value["released"]:
             ready, reason = False, value["reason"] or "cancelled"
@@ -939,6 +988,7 @@ class TrainingSupervisor:
         with self.journal.lock:
             if self.rejections.read(attempt_id) is None:
                 self.journal.release_after_death(attempt_id)
+                self.validated_preparations.pop(attempt_id, None)
 
     async def start(self, command: TrainingStartRequest) -> TrainingStartReceipt:
         with self.journal.lock:
@@ -994,6 +1044,9 @@ class TrainingSupervisor:
                     self.publish_control(
                         command.attempt_id, "prepare.json", prepared.model_dump_json().encode()
                     )
+                    # Preparation renewals authorize the reservation, not a worker.
+                    # The start lease supersedes any pre-spawn renewal mailbox.
+                    (self.directory(command.attempt_id) / "renew.json").unlink(missing_ok=True)
                     self.publish_control(
                         command.attempt_id, "lease.json", command.model_dump_json().encode()
                     )
@@ -1050,13 +1103,15 @@ class TrainingSupervisor:
             if (
                 old <= datetime.now(UTC)
                 or command.lease_expires_at <= old
-                or value["liveness"] != "running"
+                or value["liveness"] not in {"prepared", "running"}
+                or value["released"]
             ):
                 raise TrainingConflict("Lease cannot resurrect, shorten or authorize stopped work")
             value["lease_expires_at"] = command.lease_expires_at.isoformat()
-            self.publish_control(
-                command.attempt_id, "renew.json", command.model_dump_json().encode()
-            )
+            if value["liveness"] == "running":
+                self.publish_control(
+                    command.attempt_id, "renew.json", command.model_dump_json().encode()
+                )
             self.journal.save(value)
             self.journal.receipt(command, "renewed")
 
@@ -1224,3 +1279,9 @@ class TrainingSupervisor:
                             extra={"attempt_id": value["attempt_id"]},
                         )
             await asyncio.sleep(0.5)
+
+
+def require_sft_split(value: object) -> SplitManifest:
+    if not isinstance(value, SplitManifest):
+        raise TrainingValidationError("Legacy SFT runtime requires an SFT split")
+    return value

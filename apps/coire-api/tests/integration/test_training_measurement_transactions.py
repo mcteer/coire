@@ -83,7 +83,13 @@ async def measurement_db(
         await connection.run_sync(Base.metadata.drop_all)
         await connection.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(engine, expire_on_commit=False)
-    if getattr(request, "param", "single") == "mixture":
+    if getattr(request, "param", "single") in {"preference-dpo", "preference-orpo"}:
+        from preference_measurement_fixtures import preference_experiment
+
+        row, dispatch, _ = preference_experiment(
+            "dpo" if request.param == "preference-dpo" else "orpo"
+        )
+    elif getattr(request, "param", "single") == "mixture":
         row, dispatch, _ = mixture_experiment(tmp_path)
     else:
         row, dispatch = experiment()
@@ -177,7 +183,7 @@ async def measurement_db(
                     id=source.binding.dataset_id,
                     owner_user_id=row.owner_user_id,
                     name="fixture",
-                    format="text",
+                    format=source.binding.format.value,
                     state="ready",
                     source_sha256=source.binding.source_sha256,
                     source_bytes=(tmp_path / f"{source.binding.dataset_id}.jsonl").stat().st_size
@@ -189,7 +195,7 @@ async def measurement_db(
                     split_seed=0,
                     validation_fraction=0.5,
                     split_manifest=source.split.model_dump(mode="json"),
-                    split_sha256=payload_digest(source.split),
+                    split_sha256=source.binding.split_sha256,
                 )
             )
             await session.flush()

@@ -586,6 +586,9 @@ class ChatMaintenance:
                 await purge_deleted_files(self._settings)
                 await purge_expired_temporary_originals(self._settings)
                 await purge_deleted_text()
+                from coire_scheduler.feedback import cleanup_feedback
+
+                await cleanup_feedback(self._settings)
                 stale_uploads = await asyncio.to_thread(
                     purge_stale_uploads, Path(self._settings.chat_original_root)
                 )

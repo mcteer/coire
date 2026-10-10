@@ -160,6 +160,9 @@ class Settings(BaseSettings):
     provider_chat_enabled: bool = False
 
     # --- administrator SFT training; default-off until runtime/acceptance gates ---
+    preference_training_enabled: bool = False
+    feedback_storage_quota_bytes: int = Field(default=1024**3, ge=1, le=1024**3)
+    feedback_purge_batch_size: int = Field(default=100, ge=1, le=100)
     training_enabled: bool = False
     training_dataset_dir: str = "/opt/coire/training/datasets"
     training_input_api_url: str = "http://coire-core.lab:8180"

@@ -66,8 +66,10 @@ export function TrainingActivity() {
             <tr>
               <th>Job</th>
               <th>State / reason</th>
+              <th>Objective</th>
               <th>Completed updates</th>
               <th>Loss (train / validation)</th>
+              <th>Post-update preference (accuracy / margin)</th>
               <th>Reserved memory</th>
               <th>Action</th>
             </tr>
@@ -81,12 +83,18 @@ export function TrainingActivity() {
                 <td>
                   {job.state} · {job.safe_reason?.replaceAll("_", " ") ?? "no pending reason"}
                 </td>
+                <td className="mono">{(job.objective ?? "sft").toUpperCase()}</td>
                 <td className="mono">
                   {job.completed_update} / {job.total_updates}
                 </td>
                 <td className="mono">
                   {job.latest_train_loss?.toFixed(4) ?? "—"} /{" "}
                   {job.latest_validation_loss?.toFixed(4) ?? "—"}
+                </td>
+                <td className="mono">
+                  {job.preference_probe
+                    ? `${(job.preference_probe.accuracy * 100).toFixed(1)}% / ${job.preference_probe.margin.toFixed(4)} · ${job.preference_probe.sample_count} pairs`
+                    : "—"}
                 </td>
                 <td className="mono">{(job.reserved_bytes / 1024 ** 3).toFixed(2)} GiB</td>
                 <td>

@@ -20,6 +20,7 @@ from coire_api.db import (
     ModelRow,
     NodeRow,
     ShardGroupRow,
+    TrainingAdapterRow,
     VariantCopyRow,
 )
 from coire_api.gateway.targets import ModelNotFoundError as ModelNotFoundError
@@ -27,7 +28,7 @@ from coire_api.gateway.targets import resolve_target
 from coire_api.gateway.telemetry import tracer
 from coire_api.registry.service import is_chat_backend, published_ready_entitled
 from coire_core.models.adapters import InferenceTarget
-from coire_core.models.engine import EngineState
+from coire_core.models.engine import EngineRenderingIdentity, EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.registry import EngineBackend, ModelSource, ModelState, VisualCapability
 from coire_core.models.sharding import ShardGroupState
@@ -50,6 +51,7 @@ class ResolvedModel:
     daily_token_budget: int | None = None
     target: InferenceTarget | None = None
     instance_id: uuid.UUID | None = None
+    rendering_identity: EngineRenderingIdentity | None = None
 
 
 def _visible(model: ModelRow, principal: Principal) -> bool:
@@ -60,6 +62,28 @@ def _visible(model: ModelRow, principal: Principal) -> bool:
     if principal.is_admin:
         return model.state is not ModelState.RETIRED
     return published_ready_entitled(model, principal.entitlements)
+
+
+async def resolve_exact_target(
+    session: AsyncSession,
+    target: InferenceTarget,
+    principal: Principal,
+) -> ResolvedModel:
+    """Resolve registry-authored immutable artifacts under current serving authority."""
+    requested: uuid.UUID | str = target.model_id
+    if target.adapter_id is not None:
+        adapter = await session.get(TrainingAdapterRow, target.adapter_id)
+        if (
+            adapter is None
+            or adapter.model_id != target.model_id
+            or adapter.base_variant_id != target.variant_id
+        ):
+            raise ModelNotFoundError
+        requested = adapter.selector
+    resolved = await resolve_model(session, requested, principal, variant_id=target.variant_id)
+    if resolved.target != target:
+        raise ModelNotFoundError
+    return resolved
 
 
 async def resolve_model(
@@ -295,6 +319,9 @@ async def resolve_model(
         visual_capability,
         target=selected.identity,
         instance_id=_instance.id,
+        rendering_identity=EngineRenderingIdentity.model_validate(engine.rendering_identity)
+        if engine.rendering_identity
+        else None,
     )
 
 

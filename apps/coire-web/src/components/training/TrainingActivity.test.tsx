@@ -31,6 +31,30 @@ beforeEach(() => {
   vi.mocked(listTrainingActivity).mockResolvedValue({ items: [job], next_cursor: null });
 });
 
+it("separates the preference objective and post-update probe from loss", async () => {
+  vi.mocked(listTrainingActivity).mockResolvedValue({
+    items: [
+      {
+        ...job,
+        objective: "dpo",
+        preference_probe: {
+          scope: "held_out_post_update",
+          sample_count: 8,
+          accuracy: 0.75,
+          margin: 0.125,
+          chosen_nll: 0.5,
+          odds_penalty: null,
+        },
+      },
+    ],
+    next_cursor: null,
+  });
+  render(<TrainingActivity />);
+  expect(await screen.findByText("DPO")).toBeInTheDocument();
+  expect(screen.getByText(/75.0%.*0.1250.*8 pairs/)).toBeInTheDocument();
+  expect(screen.getByText("0.5000 / 0.2500")).toBeInTheDocument();
+});
+
 it("shows retained reservation/loss history and uses the confirmed versioned stop lane", async () => {
   vi.mocked(controlTraining).mockResolvedValue({
     command_id: "00000000-0000-4000-8000-000000000004",

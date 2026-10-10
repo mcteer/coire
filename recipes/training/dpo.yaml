@@ -1,0 +1,55 @@
+# Template version 1: bind every registry placeholder before validate/submit.
+# Required registry bindings: model_id, variant_id, dataset_id, adapter_slug.
+# Use an admin-acquired ready llama/qwen2 dense variant and a preference dataset.
+# Requires zero dropout, one Studio, and a measured objective-specific profile.
+# Optional init_adapter is an exact ready registry UUID; never a filesystem path.
+# Select sample_count/epoch_samples that fit the dataset's train split.
+schema_version: 3
+model:
+  model_id: "${model_id}"
+  variant_id: "${variant_id}"
+data:
+  train:
+    datasets:
+      - dataset_id: "${dataset_id}"
+        sample_count: 32
+        mixture_proportion: 1.0
+    epoch_samples: 32
+    mixture_strategy: weighted
+    replacement: false
+    seed: 0
+  validation:
+    dataset_ids: ["${dataset_id}"]
+    max_batches: 25
+    seed: 0
+  loss_policy: final_assistant
+objective: dpo
+objective_options:
+  beta: 0.1
+init_adapter: null
+parameterization:
+  kind: lora
+  rank: 8
+  scale: 20.0
+  dropout: 0.0
+  target_modules: [self_attn.q_proj, self_attn.v_proj]
+  num_layers: 1
+optim:
+  name: adamw
+  learning_rate: 0.00001
+  updates: 100
+  batch_size: 1
+  accumulation_steps: 1
+  max_sequence_length: 2048
+  schedule:
+    kind: constant
+eval:
+  loss_every_updates: 100
+  at_end: true
+output:
+  adapter_slug: "${adapter_slug}"
+  checkpoint_every_updates: 100
+  keep_last_checkpoints: 3
+placement:
+  mode: single
+seed: 0

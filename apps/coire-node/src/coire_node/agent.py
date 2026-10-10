@@ -589,7 +589,7 @@ def create_app(
                             settings.run_agent_image and settings.run_relay_image
                         ),
                         "training_capabilities": NodeTrainingCapabilities(
-                            spec_versions=[1, 2], evaluation_checkpoint_ack_versions=[1]
+                            spec_versions=[1, 2, 3], evaluation_checkpoint_ack_versions=[1]
                         ).model_dump(mode="json")
                         if training is not None
                         else None,
@@ -799,6 +799,7 @@ async def serve(
             interpreter=Path(sys.executable),
             store_root=store.root,
             artifact_root=Path(settings.node_state_dir) / "training" / "probe-artifacts",
+            initial_artifact_root=Path(settings.node_state_dir) / "training" / "artifacts",
             accelerator_guard=lambda command: guard_measurement(
                 command,
                 engines,

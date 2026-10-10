@@ -9,7 +9,15 @@ from typing import Annotated, Literal
 
 from pydantic import AwareDatetime, Field, JsonValue, TypeAdapter, model_validator
 
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.datasets import DatasetAnalysis, DatasetAnalysisBinding, SplitManifest
+from coire_core.models.preference import (
+    DpoOptions,
+    OrpoOptions,
+    PreferenceMetricSample,
+    PreferenceSamplerState,
+    PreferenceSplitManifest,
+)
 from coire_core.models.training import (
     ResolvedTrainingSpecDocument,
     TrainingMetricSample,
@@ -23,7 +31,7 @@ type MeasurementThermalState = Literal["nominal", "fair", "serious", "critical",
 
 
 class NodeTrainingCapabilities(TrainingWire):
-    spec_versions: list[Literal[1, 2]] = Field(default=[1], min_length=1, max_length=2)
+    spec_versions: list[Literal[1, 2, 3]] = Field(default=[1], min_length=1, max_length=3)
     evaluation_checkpoint_ack_versions: list[Literal[1]] = Field(default_factory=list, max_length=1)
 
     @model_validator(mode="after")
@@ -247,6 +255,7 @@ class TrainingMeasurementPrepare(TrainingWire):
 
 
 class TrainingMeasurementCapabilities(TrainingWire):
+    spec_versions: list[Literal[1, 2, 3]] = Field(default=[1, 2], min_length=0, max_length=3)
     node: StudioName
     hardware_sha256: Digest
     world_sizes: list[Literal[1, 2]] = Field(max_length=2)
@@ -254,6 +263,8 @@ class TrainingMeasurementCapabilities(TrainingWire):
 
     @model_validator(mode="after")
     def actual_matrix(self) -> TrainingMeasurementCapabilities:
+        if len(set(self.spec_versions)) != len(self.spec_versions):
+            raise ValueError("measurement recipe versions must be unique")
         if len(set(self.world_sizes)) != len(self.world_sizes) or (
             2 in self.world_sizes and not self.measurement_checkpoint
         ):
@@ -375,9 +386,45 @@ class TrainingMeasurementObservation(TrainingWire):
         return self
 
 
+class PreferenceMeasurementObservation(TrainingMeasurementObservation):
+    schema_version: Literal[3] = 3
+    objective: Literal["dpo", "orpo"]
+    implementation: Literal["coire-preference-v1"] = "coire-preference-v1"
+    initial_target: InferenceTarget
+    reference_target: InferenceTarget | None
+    reference_weight_bytes: int = Field(strict=True, ge=0)
+    reference_adapter_bytes: int = Field(strict=True, ge=0)
+    probe_count: int = Field(strict=True, ge=1, le=100_000)
+
+    @model_validator(mode="after")
+    def actual_preference_execution(self) -> PreferenceMeasurementObservation:
+        dpo = self.objective == "dpo"
+        if self.world_size != 1 or self.rank != 0 or self.probe_count != self.completed_updates:
+            raise ValueError("preference measurement must observe every single-node update probe")
+        if self.reference_target != (self.initial_target if dpo else None):
+            raise ValueError("measured reference differs from initial policy")
+        if dpo:
+            if self.reference_weight_bytes <= 0 or (
+                (self.initial_target.adapter_id is not None) != (self.reference_adapter_bytes > 0)
+            ):
+                raise ValueError("DPO measurement must count its complete frozen reference")
+        elif self.reference_weight_bytes or self.reference_adapter_bytes:
+            raise ValueError("ORPO measurement cannot contain reference allocations")
+        return self
+
+
+type TrainingMeasurementObservationDocument = (
+    TrainingMeasurementObservation | PreferenceMeasurementObservation
+)
+
+
+def parse_training_measurement_observation(value: object) -> TrainingMeasurementObservationDocument:
+    return TypeAdapter(TrainingMeasurementObservationDocument).validate_python(value)
+
+
 class TrainingMeasurementSource(TrainingWire):
     binding: DatasetAnalysisBinding
-    split: SplitManifest
+    split: SplitManifest | PreferenceSplitManifest
     analysis: DatasetAnalysis
 
 
@@ -388,6 +435,35 @@ class TrainingMeasurementBinding(TrainingWire):
     runtime_sha256: Digest
     worker_version: str = Field(min_length=1, max_length=64)
     sources: list[TrainingMeasurementSource] = Field(min_length=1, max_length=32)
+
+
+class PreferenceMeasurementBinding(TrainingMeasurementBinding):
+    schema_version: Literal[3] = 3
+    initial_target: InferenceTarget
+    reference_target: InferenceTarget | None
+    objective: Literal["dpo", "orpo"]
+    objective_options: DpoOptions | OrpoOptions
+    implementation: Literal["coire-preference-v1"] = "coire-preference-v1"
+
+    @model_validator(mode="after")
+    def exact_initial_reference(self) -> PreferenceMeasurementBinding:
+        if self.initial_target.base_manifest_sha256 != self.base_manifest_sha256:
+            raise ValueError("measurement initial target differs from acquired base")
+        dpo = self.objective == "dpo"
+        if dpo != isinstance(self.objective_options, DpoOptions):
+            raise ValueError("measurement options differ from objective")
+        if self.reference_target != (self.initial_target if dpo else None):
+            raise ValueError("measurement reference differs from exact initial policy")
+        if any(not isinstance(source.split, PreferenceSplitManifest) for source in self.sources):
+            raise ValueError("preference measurement needs paired split manifests")
+        return self
+
+
+type TrainingMeasurementBindingDocument = TrainingMeasurementBinding | PreferenceMeasurementBinding
+
+
+def parse_training_measurement_binding(value: object) -> TrainingMeasurementBindingDocument:
+    return TypeAdapter(TrainingMeasurementBindingDocument).validate_python(value)
 
 
 class TrainingMeasurementDispatch(TrainingWire):
@@ -475,7 +551,7 @@ class NodeTrainingStatus(TrainingWire):
 class TrainingMeasurementNodeStatus(TrainingWire):
     measurement_id: uuid.UUID
     status: NodeTrainingStatus
-    observation: TrainingMeasurementObservation | None = None
+    observation: TrainingMeasurementObservationDocument | None = None
     stopped: bool
     ready: bool = False
     training_started_at: AwareDatetime | None = None
@@ -527,8 +603,35 @@ class CheckpointCommitAcknowledgementV2(TrainingWire):
         return self
 
 
+class CheckpointCommitAcknowledgementV3(TrainingWire):
+    schema_version: Literal[3] = 3
+    command_id: uuid.UUID
+    job_id: TrainingId
+    attempt_id: TrainingId
+    fence: int = Field(strict=True, ge=1)
+    request_sha256: Digest
+    node: StudioName
+    rank: Literal[0] = 0
+    world_size: Literal[1]
+    lease_expires_at: AwareDatetime
+    checkpoint_id: uuid.UUID
+    manifest_sha256: Digest
+    update: int = Field(strict=True, ge=0, le=100_000)
+    committed_update: int = Field(strict=True, ge=0, le=100_000)
+    job_version: int = Field(strict=True, ge=1, le=2**31 - 1)
+    evaluation_pause: EvaluationCheckpointPause | None = None
+
+    @model_validator(mode="after")
+    def common_boundary(self) -> CheckpointCommitAcknowledgementV3:
+        if self.committed_update != self.update:
+            raise ValueError("Evaluation decision differs from the committed update")
+        return self
+
+
 type CheckpointAcknowledgementDocument = (
-    CheckpointCommitAcknowledgement | CheckpointCommitAcknowledgementV2
+    CheckpointCommitAcknowledgement
+    | CheckpointCommitAcknowledgementV2
+    | CheckpointCommitAcknowledgementV3
 )
 
 
@@ -831,7 +934,7 @@ class DatasetInputGrant(TrainingWire):
 
 class TrainingInputSource(TrainingWire):
     binding: DatasetAnalysisBinding
-    split: SplitManifest
+    split: SplitManifest | PreferenceSplitManifest
     analysis: DatasetAnalysis
     grant: DatasetInputGrant
 
@@ -969,6 +1072,11 @@ class NodeProgressPayload(TrainingWire):
     metric: TrainingMetricSample
 
 
+class NodePreferenceProgressPayload(TrainingWire):
+    kind: Literal["preference_progress"] = "preference_progress"
+    metric: PreferenceMetricSample
+
+
 class NodeCheckpointPayload(TrainingWire):
     kind: Literal["checkpoint_staged"] = "checkpoint_staged"
     manifest: TrainingArtifactManifest
@@ -985,7 +1093,11 @@ class NodeRankCheckpointPayload(TrainingWire):
 
 
 type NodeTrainingPayload = Annotated[
-    NodeProgressPayload | NodeCheckpointPayload | NodeRankCheckpointPayload | NodeControlPayload,
+    NodeProgressPayload
+    | NodePreferenceProgressPayload
+    | NodeCheckpointPayload
+    | NodeRankCheckpointPayload
+    | NodeControlPayload,
     Field(discriminator="kind"),
 ]
 
@@ -1096,3 +1208,45 @@ class CheckpointWorkerState(TrainingWire):
         if any(type(word) is not int or not 0 <= word < 2**32 for word in self.mlx_rng_key):
             raise ValueError("checkpoint MLX key must contain two uint32 words")
         return self
+
+
+class CheckpointWorkerStateV3(TrainingWire):
+    schema_version: Literal[3] = 3
+    job_id: TrainingId
+    attempt_id: TrainingId
+    fence: int = Field(strict=True, ge=1)
+    completed_update: int = Field(strict=True, ge=0, le=100_000)
+    rank: Literal[0] = 0
+    world_size: Literal[1] = 1
+    runtime_sha256: Digest
+    resolved_spec_sha256: Digest
+    optimizer: TrainingOptimizer
+    mlx_rng_key: tuple[int, int]
+    sampler: PreferenceSamplerState
+    optimizer_tree: JsonValue = None
+    objective: Literal["dpo", "orpo"]
+    objective_options: DpoOptions | OrpoOptions
+    implementation: Literal["coire-preference-v1"] = "coire-preference-v1"
+    initial_target: InferenceTarget
+    reference_target: InferenceTarget | None
+
+    @model_validator(mode="after")
+    def resumable_boundary(self) -> CheckpointWorkerStateV3:
+        if self.completed_update > self.optimizer.updates:
+            raise ValueError("checkpoint update exceeds optimizer updates")
+        if any(type(word) is not int or not 0 <= word < 2**32 for word in self.mlx_rng_key):
+            raise ValueError("checkpoint MLX key must contain two uint32 words")
+        if self.sampler.batch_size != self.optimizer.batch_size:
+            raise ValueError("checkpoint sampler batch differs from optimizer")
+        if (self.objective == "dpo") != isinstance(self.objective_options, DpoOptions):
+            raise ValueError("checkpoint objective options differ")
+        if self.reference_target != (self.initial_target if self.objective == "dpo" else None):
+            raise ValueError("checkpoint reference differs from initial policy")
+        return self
+
+
+type CheckpointWorkerStateDocument = CheckpointWorkerState | CheckpointWorkerStateV3
+
+
+def parse_checkpoint_worker_state(value: object) -> CheckpointWorkerStateDocument:
+    return TypeAdapter(CheckpointWorkerStateDocument).validate_python(value)

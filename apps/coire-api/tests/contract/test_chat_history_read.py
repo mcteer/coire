@@ -63,7 +63,7 @@ class FakeHistorySession:
             rows = self.turns  # type: ignore[assignment]
         elif "FROM chat_messages" in sql:
             rows = self.messages  # type: ignore[assignment]
-        elif "FROM chat_attachments" in sql:
+        elif "FROM chat_attachments" in sql or "FROM comparison_pairs" in sql:
             rows = []
         else:
             rows = self.conversations  # type: ignore[assignment]

@@ -573,7 +573,7 @@ class TrainingRuntimeWorker:
 
         self.client = TrainingNodeClient(settings, timeout=5.0)
         self.runtime = TrainingRuntime(settings, self.client)
-        from coire_api.training.gateway_measurements import gateway_measurement_generate
+        from coire_api.training.gateway_measurement_client import MeasurementGatewayClient
         from coire_scheduler.training_components import TrainingComponentCoordinator
         from coire_scheduler.training_guard import guard_reason, resume_profile
         from coire_scheduler.training_measurements import (
@@ -587,10 +587,11 @@ class TrainingRuntimeWorker:
 
         self.retention = TrainingRetentionWorker(self.client)
         self.measurement_client = MeasurementNodeClient(settings, timeout=5.0)
+        self.measurement_gateway = MeasurementGatewayClient(settings)
         self.measurements = TrainingMeasurementExecutor(
             settings,
             self.measurement_client,
-            GatewayWorkloadDriver(gateway_measurement_generate(settings)),
+            GatewayWorkloadDriver(self.measurement_gateway.generate),
         )
         self.controller = LifecycleController(
             TrainingExecutorTransport(
@@ -652,6 +653,7 @@ class TrainingRuntimeWorker:
                 await asyncio.gather(self._metrics, return_exceptions=True)
                 self._metrics = None
         finally:
+            await self.measurement_gateway.aclose()
             await self.measurement_client.aclose()
             await self.client.aclose()
 

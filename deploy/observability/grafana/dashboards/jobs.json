@@ -27,6 +27,12 @@
       "url": "/docs/runbooks/evaluations",
       "type": "link",
       "targetBlank": false
+    },
+    {
+      "title": "Feedback withdrawal and export operations",
+      "url": "/docs/runbooks/feedback",
+      "type": "link",
+      "targetBlank": false
     }
   ],
   "panels": [
@@ -42,7 +48,7 @@
       "title": "Training history with diagnostics ON / OFF",
       "options": {
         "mode": "markdown",
-        "content": "**Diagnostics OFF:** Grafana itself may be unavailable. Prometheus and Alertmanager remain baseline services; progress, loss samples, checkpoint lineage and security/mutation audit must remain durable. Use authenticated [job history](/api/v1/admin/training/jobs). Select a returned job ID to read `/api/v1/admin/training/jobs/{job_id}/metrics`, `/events` and `/checkpoints`; paginate all results. IDs belong in authorized API history, never metric labels.\n\n**Diagnostics ON:** this dashboard shows aggregates; use local Tempo/Loki for trace/log attribution if those destinations are enabled. Prometheus is not a loss-history database. No data means unknown, not zero or healthy.\n\n**Release status:** full hardware matrix, diagnostics-on/off delivery and baseline snapshot instrumentation are pending; feature 016 is not complete. [Baseline wiring and gates](/docs/runbooks/sft-training#baseline-wiring)."
+        "content": "**Diagnostics OFF:** Grafana itself may be unavailable. Prometheus and Alertmanager remain baseline services; progress, loss samples, checkpoint lineage and security/mutation audit must remain durable. Use authenticated [job history](/api/v1/admin/training/jobs). Select a returned job ID to read `/api/v1/admin/training/jobs/{job_id}/metrics`, `/events` and `/checkpoints`; paginate all results. IDs belong in authorized API history, never metric labels.\n\n**Diagnostics ON:** this dashboard shows aggregates; use local Tempo/Loki for trace/log attribution if those destinations are enabled. Prometheus is not a loss-history database. No data means unknown, not zero or healthy.\n\n**Release status:** 016 and 017 acceptance evidence is recorded in their execution records. Feature 018 full operational qualification is in progress; current component tests do not approve an unmeasured preference profile. [Baseline wiring and gates](/docs/runbooks/sft-training#baseline-wiring)."
       }
     },
     {
@@ -474,13 +480,201 @@
           "placement": "bottom"
         }
       }
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Feedback export states",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 103
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (state) (coire_feedback_exports)",
+          "legendFormat": "{{state}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Unexported feedback withdrawal age",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 103
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(coire_feedback_purge_oldest_seconds)",
+          "legendFormat": "Unexported feedback withdrawal age"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Overdue feedback exports",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 110
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(coire_feedback_export_overdue)",
+          "legendFormat": "Overdue feedback exports"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 17,
+      "type": "timeseries",
+      "title": "Feedback export cleanup pending",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 110
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(coire_feedback_export_cleanup_pending)",
+          "legendFormat": "Feedback export cleanup pending"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 18,
+      "type": "timeseries",
+      "title": "Measurement database reconnect attempts",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 117
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(coire_training_measurement_database_reconnects_total[5m]))",
+          "legendFormat": "readonly reconnect attempts"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "description": "Only the first readonly measurement lookup reconnects once after an invalidated connection; admissions, commits and generation are never replayed."
     }
   ],
   "schemaVersion": 39,
   "tags": [
     "coire",
     "jobs",
-    "training"
+    "training",
+    "feedback",
+    "preference"
   ],
   "templating": {
     "list": []

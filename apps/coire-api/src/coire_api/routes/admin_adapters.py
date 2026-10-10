@@ -19,8 +19,20 @@ from coire_core.models.adapters import (
     AdapterReceipt,
     AdapterRetireRequest,
 )
+from coire_core.models.feedback import AdapterLineage
 
 router = APIRouter(prefix="/api/v1/admin/adapters", tags=["admin:adapters"])
+
+
+@router.get("/{adapter_id}/lineage", response_model=AdapterLineage)
+async def lineage(
+    request: Request, adapter_id: uuid.UUID, principal: CurrentTrainingAdmin
+) -> AdapterLineage:
+    enabled(request)
+    from coire_api.training.lineage import get_lineage
+
+    async with session_scope() as session:
+        return await get_lineage(session, adapter_id)
 
 
 @router.get("", response_model=AdapterPage)

@@ -11,6 +11,7 @@ import asyncio
 import logging
 import signal
 
+from coire_core.logging import StructuredJSONFormatter
 from coire_core.settings import Settings
 from coire_node import __version__
 from coire_node.agent import resolve_egress_address, resolve_mesh_address, serve
@@ -19,10 +20,9 @@ from coire_node.metrics import MetricsCollector
 from coire_node.otel import configure_node_telemetry
 from coire_node.register import Registrar, build_registration, build_registration_v2
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}',
-)
+handler = logging.StreamHandler()
+handler.setFormatter(StructuredJSONFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 
 

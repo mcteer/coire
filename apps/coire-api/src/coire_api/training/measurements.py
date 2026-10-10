@@ -22,6 +22,12 @@ from coire_api.db import (
 )
 from coire_api.training.authorization import authorize_live_training_action
 from coire_api.training.mixtures import compile_mixture
+from coire_api.training.preference_specs import (
+    objective_split,
+    objective_split_digest,
+    require_dataset_objective,
+    resolve_initial_target,
+)
 from coire_api.training.service import payload_digest
 from coire_api.training.specs import parse_submission
 from coire_api.training.telemetry import observed
@@ -29,27 +35,31 @@ from coire_core.errors import TrainingConflict, TrainingNotFound, TrainingValida
 from coire_core.models.acquisition import VariantState
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.datasets import DatasetAnalysis, DatasetAnalysisBinding, SplitManifest
+from coire_core.models.preference import PreferenceSplitManifest
 from coire_core.models.registry import ModelState
 from coire_core.models.training import (
     TrainingMeasurementPromptSet,
     TrainingMeasurementReceipt,
     TrainingMeasurementRequest,
+    TrainingSpecV3,
     TrainingSubmission,
 )
 from coire_core.models.training_node import (
+    PreferenceMeasurementBinding,
     TrainingInputsRequest,
     TrainingMeasurementBinding,
+    TrainingMeasurementBindingDocument,
     TrainingMeasurementPrepare,
     TrainingMeasurementSource,
 )
+from coire_core.preference_data import compile_preference_mixture
 from coire_core.settings import Settings
-from coire_core.training_data import split_digest
 
 
 async def freeze_measurement_inputs(
     session: AsyncSession,
     request: TrainingMeasurementRequest,
-) -> TrainingMeasurementBinding:
+) -> TrainingMeasurementBindingDocument:
     spec = request.spec
     if spec.placement.preferred_node is not None and request.nodes != [
         spec.placement.preferred_node
@@ -93,6 +103,7 @@ async def freeze_measurement_inputs(
         source = await session.get(TrainingDatasetRevisionRow, dataset_id, with_for_update=True)
         if source is None or source.state != "ready" or source.purged_at is not None:
             raise TrainingConflict("Probe dataset needs a successful current analysis")
+        require_dataset_objective(spec, source.format)
         expected = DatasetAnalysisBinding.model_validate(
             {
                 "dataset_id": source.id,
@@ -126,7 +137,8 @@ async def freeze_measurement_inputs(
         ):
             raise TrainingConflict("Frozen analysis binding changed")
         result = DatasetAnalysis.model_validate(analysis.result)
-        split = SplitManifest.model_validate(source.split_manifest)
+        result.validate_binding(expected)
+        split = objective_split(spec, source.split_manifest)
         selected = next((d for d in spec.data.train.datasets if d.dataset_id == dataset_id), None)
         if (
             result.id != analysis.id
@@ -137,7 +149,7 @@ async def freeze_measurement_inputs(
             or result.tokens is None
             or result.tokens.maximum > spec.optim.max_sequence_length
             or (selected is not None and selected.sample_count > len(split.train_rows))
-            or split_digest(split) != source.split_sha256
+            or objective_split_digest(split) != source.split_sha256
             or split.source_sha256 != source.source_sha256
             or split.dataset_id != dataset_id
             or spec.data.loss_policy
@@ -145,12 +157,26 @@ async def freeze_measurement_inputs(
         ):
             raise TrainingConflict("Probe recipe exceeds frozen source/analysis bounds")
         sources.append(TrainingMeasurementSource(binding=expected, split=split, analysis=result))
-    by_id = {s.binding.dataset_id: s.split for s in sources}
-    compile_mixture(
-        spec.data.train,
-        by_id,
-        validation_manifests=[by_id[key] for key in spec.data.validation.dataset_ids],
-    )
+    if isinstance(spec, TrainingSpecV3):
+        paired = {
+            s.binding.dataset_id: s.split
+            for s in sources
+            if isinstance(s.split, PreferenceSplitManifest)
+        }
+        compile_preference_mixture(
+            spec.data.train,
+            paired,
+            validation_manifests=[paired[key] for key in spec.data.validation.dataset_ids],
+        )
+    else:
+        by_id = {
+            s.binding.dataset_id: s.split for s in sources if isinstance(s.split, SplitManifest)
+        }
+        compile_mixture(
+            spec.data.train,
+            by_id,
+            validation_manifests=[by_id[key] for key in spec.data.validation.dataset_ids],
+        )
     identities = {
         (s.analysis.tokenizer_sha256, s.analysis.template_sha256, s.analysis.runtime_sha256)
         for s in sources
@@ -162,7 +188,7 @@ async def freeze_measurement_inputs(
         raise TrainingConflict("Successful analysis has no measured runtime identity")
     base = copies["coire-edge-a"]
     assert base is not None
-    return TrainingMeasurementBinding(
+    binding = TrainingMeasurementBinding(
         base_manifest_sha256=base,
         tokenizer_sha256=tok,
         template_sha256=template,
@@ -170,6 +196,16 @@ async def freeze_measurement_inputs(
         worker_version="1",
         sources=sources,
     )
+    if isinstance(spec, TrainingSpecV3):
+        initial = await resolve_initial_target(session, spec, base)
+        return PreferenceMeasurementBinding(
+            **binding.model_dump(),
+            initial_target=initial,
+            reference_target=initial if spec.objective == "dpo" else None,
+            objective=spec.objective,
+            objective_options=spec.objective_options,
+        )
+    return binding
 
 
 def validate_measurement_prompts(
@@ -243,7 +279,11 @@ async def submit_measurement(
         if prior.request_sha256 != digest:
             raise TrainingConflict("Measurement idempotency key identifies another recipe")
         return TrainingMeasurementReceipt.model_validate(prior.receipt)
-    if request.spec.placement.mode == "data_parallel":
+    if isinstance(request.spec, TrainingSpecV3) and not settings.preference_training_enabled:
+        from coire_core.errors import TrainingUnavailable
+
+        raise TrainingUnavailable("Preference training is disabled")
+    if request.spec.placement.mode == "data_parallel" or isinstance(request.spec, TrainingSpecV3):
         await require_measurement_matrix(session, request, settings)
     if request.mode == "memory" and request.resident_targets:
         raise TrainingValidationError("Memory probes require an isolated accelerator slot")
@@ -336,11 +376,16 @@ async def require_measurement_matrix(
             if (
                 capability.node != name
                 or capability.hardware_sha256 != hardware_digest(node)
-                or 2 not in capability.world_sizes
-                or not capability.measurement_checkpoint
+                or (2 if request.spec.placement.mode == "data_parallel" else 1)
+                not in capability.world_sizes
+                or (isinstance(request.spec, TrainingSpecV3) and 3 not in capability.spec_versions)
+                or (
+                    request.spec.placement.mode == "data_parallel"
+                    and not capability.measurement_checkpoint
+                )
             ):
                 raise TrainingUnavailable(
-                    "Two-rank measurement callback or declared launch inventory is unavailable"
+                    "Measurement recipe version, callback or declared launch inventory is unavailable"
                 )
     except (NodeError, ValueError):
         raise TrainingUnavailable(

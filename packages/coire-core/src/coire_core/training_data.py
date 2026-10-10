@@ -34,6 +34,8 @@ from coire_core.models.datasets import (
 def normalize_row(
     value: object, *, format: DatasetFormat, dataset_id: uuid.UUID, source_row: int
 ) -> TrainingExample:
+    if format is DatasetFormat.PREFERENCE:
+        raise TrainingValidationError("Preference rows require paired normalization")
     conversation_id = uuid.uuid5(dataset_id, f"row:{source_row}")
     if format is DatasetFormat.TEXT:
         row = SftTextRow.model_validate(value)

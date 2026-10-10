@@ -33,6 +33,14 @@ from coire_core.models.datasets import (
     DatasetReceipt,
     DatasetUploadRequest,
 )
+from coire_core.models.feedback import (
+    AdapterLineage,
+    PreferenceExportCancel,
+    PreferenceExportCreate,
+    PreferenceExportDetail,
+    PreferenceExportPage,
+    PreferenceExportReceipt,
+)
 from coire_core.models.registry import Visibility
 from coire_core.models.training import (
     CheckpointPage,
@@ -82,6 +90,7 @@ def _parser() -> argparse.ArgumentParser:
     events = run_commands.add_parser("events")
     events.add_argument("run_id")
     _training_parsers(commands)
+    _feedback_parsers(commands)
     return parser
 
 
@@ -92,6 +101,21 @@ def _positive_seconds(value: str) -> float:
     if not math.isfinite(seconds) or seconds <= 0:
         raise argparse.ArgumentTypeError("must be a finite positive number of seconds")
     return seconds
+
+
+def _feedback_parsers(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    feedback = commands.add_parser("feedback", help="manage private preference exports")
+    verbs = feedback.add_subparsers(dest="verb", required=True)
+    submit = verbs.add_parser("export", help="submit a shared-contract JSON request file")
+    submit.add_argument("file", type=Path)
+    _mutation_options(submit)
+    history = verbs.add_parser("exports")
+    _page_options(history)
+    show = verbs.add_parser("export-show")
+    show.add_argument("id", type=_job_id)
+    cancel = verbs.add_parser("export-cancel")
+    cancel.add_argument("id", type=_job_id)
+    _mutation_options(cancel, version=True)
 
 
 def _version(value: str) -> int:
@@ -185,6 +209,7 @@ def _training_parsers(commands: argparse._SubParsersAction[argparse.ArgumentPars
 
     adapter = commands.add_parser("adapter", help="curate exact base/adapter targets")
     verbs = adapter.add_subparsers(dest="verb", required=True)
+    verbs.add_parser("lineage").add_argument("id", type=uuid.UUID)
     _page_options(verbs.add_parser("list"))
     verbs.add_parser("show").add_argument("id", type=uuid.UUID)
     promote = verbs.add_parser("promote")
@@ -208,6 +233,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "run":
             return _run_command(args, headers)
+        if args.command == "feedback":
+            return _feedback_command(args, headers)
         if args.command in ("data", "train", "adapter"):
             return _training_command(args, headers)
         return _evaluation_command(args, headers)
@@ -224,6 +251,40 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         print("Cannot read input file; check access and file size.", file=sys.stderr)
         return 2 if args.command == "eval" else 1
+
+
+def _feedback_command(args: argparse.Namespace, headers: dict[str, str]) -> int:
+    root = "/api/v1/admin/feedback/exports"
+    if args.verb == "export":
+        body = PreferenceExportCreate.model_validate_json(_read_yaml(args.file))
+        _print_model(
+            _api(
+                args, _mutation_headers(args, headers), "POST", root, PreferenceExportReceipt, body
+            )
+        )
+    elif args.verb == "exports":
+        _print_model(
+            _api(args, headers, "GET", root, PreferenceExportPage, params=_page_params(args))
+        )
+    elif args.verb == "export-show":
+        _print_model(_api(args, headers, "GET", root + "/" + args.id, PreferenceExportDetail))
+    else:
+        version = args.expected_version
+        if version is None:
+            version = _api(
+                args, headers, "GET", root + "/" + args.id, PreferenceExportDetail
+            ).version
+        _print_model(
+            _api(
+                args,
+                _mutation_headers(args, headers),
+                "POST",
+                root + "/" + args.id + "/cancel",
+                PreferenceExportReceipt,
+                PreferenceExportCancel(expected_version=version),
+            )
+        )
+    return 0
 
 
 def _evaluation_command(args: argparse.Namespace, headers: dict[str, str]) -> int:
@@ -606,6 +667,8 @@ def _training_command(args: argparse.Namespace, headers: dict[str, str]) -> int:
             result = _api(args, headers, "GET", root, AdapterPage, params=_page_params(args))
         elif args.verb == "show":
             result = _api(args, headers, "GET", f"{root}/{args.id}", AdapterDetail)
+        elif args.verb == "lineage":
+            result = _api(args, headers, "GET", f"{root}/{args.id}/lineage", AdapterLineage)
         elif args.verb == "promote":
             version = _current_version(
                 args, headers, f"/api/v1/admin/training/jobs/{args.job}", TrainingJobDetail

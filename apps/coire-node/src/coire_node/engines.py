@@ -47,6 +47,7 @@ from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import (
     LIVE_ENGINE_STATES,
     BudgetRefused,
+    EngineRenderingIdentity,
     EngineState,
     EngineStatus,
     ReconcileRequest,
@@ -220,10 +221,12 @@ class _Engine:
         stderr_path: Path | None = None,
         target: InferenceTarget | None = None,
         engine_version: str | None = None,
+        rendering_identity: EngineRenderingIdentity | None = None,
     ) -> None:
         self.engine_id = engine_id
         self.target = target
         self.engine_version = engine_version
+        self.rendering_identity = rendering_identity
         self.slug = slug
         self.port = port
         self.estimate_bytes = estimate_bytes
@@ -267,6 +270,7 @@ class _Engine:
             ),
             cpu_percent=self.cpu_percent,
             chat_template_sha256=self.chat_template_sha256,
+            rendering_identity=self.rendering_identity,
             load_seconds=self.load_seconds,
             last_health_at=self.last_health_at,
             started_at=self.started_at,
@@ -286,6 +290,9 @@ class _Engine:
             "backend": self.backend.value,
             "started_at": self.started_at.isoformat(),
             "chat_template_sha256": self.chat_template_sha256,
+            "rendering_identity": self.rendering_identity.model_dump(mode="json")
+            if self.rendering_identity
+            else None,
             "stderr_file": self.stderr_path.name if self.stderr_path is not None else None,
         }
 
@@ -443,6 +450,17 @@ class EngineManager:
         # while large models are checked. Admission is rechecked below before
         # any process is spawned.
         verified_manifest_sha256: str | None = None
+        rendering_identity: EngineRenderingIdentity | None = None
+        if backend is EngineBackend.MLX_LM:
+            from coire_node.rendering_identity import inspect_rendering_identity
+
+            manifest = self._store.read_manifest(slug)
+            if manifest is not None:
+                if not os.environ.get("COIRE_ENGINE_COMMAND"):
+                    rendering_identity = inspect_rendering_identity(
+                        self._store.path_for(slug), manifest, template_override=chat_template
+                    )
+                verified_manifest_sha256 = manifest.sha256()
         if backend is EngineBackend.MLX_VLM:
             from coire_node.visual_validation import inspect_local_variant
 
@@ -553,6 +571,7 @@ class EngineManager:
                 backend=backend,
                 stderr_path=stderr_path,
                 engine_version=spawn_version,
+                rendering_identity=rendering_identity,
             )
             engine.proc = proc
             with contextlib.suppress(psutil.Error):
@@ -1008,6 +1027,11 @@ class EngineManager:
                 target=target,
                 port=record["port"],
                 engine_version=record.get("engine_version"),
+                rendering_identity=EngineRenderingIdentity.model_validate(
+                    record["rendering_identity"]
+                )
+                if record.get("rendering_identity")
+                else None,
                 estimate_bytes=record.get("estimate_bytes", 0),
                 pid=pid,
                 create_time=create_time,

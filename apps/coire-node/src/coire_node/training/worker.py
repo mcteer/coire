@@ -35,13 +35,27 @@ from coire_core.models.datasets import (
     SplitManifest,
     TokenizedTrainingExample,
 )
-from coire_core.models.training import TrainingMetricSample, TrainingOptimizer, TrainingReason
+from coire_core.models.preference import (
+    PreferenceMetricSample,
+    PreferenceSamplerState,
+    PreferenceSplitManifest,
+)
+from coire_core.models.training import (
+    ResolvedTrainingSpecV3,
+    TrainingMetricSample,
+    TrainingOptimizer,
+    TrainingReason,
+)
 from coire_core.models.training_node import (
     CheckpointAcknowledgementDocument,
     CheckpointCommitAcknowledgementV2,
+    CheckpointCommitAcknowledgementV3,
     CheckpointWorkerState,
+    CheckpointWorkerStateDocument,
+    CheckpointWorkerStateV3,
     NodeCheckpointPayload,
     NodeControlPayload,
+    NodePreferenceProgressPayload,
     NodeProgressPayload,
     NodeTrainingEvent,
     TrainingArtifactManifest,
@@ -76,8 +90,28 @@ from coire_node.training.guard import ExecutionGuard
 from coire_node.training.journal import TrainingJournal, command_digest
 from coire_node.training.loss import masked_sft_loss
 from coire_node.training.objectives import SftRuntime, load_sft_runtime, validate_sft_input
+from coire_node.training.preference_data import (
+    PreferenceFrozenInputs,
+    PreferenceSampler,
+    compile_preference_samples,
+    load_preference_frozen_inputs,
+    validate_preference_frozen_inputs,
+)
+from coire_node.training.preference_loss import LossHook, make_preference_loss
+from coire_node.training.preference_probe import post_update_probe
+from coire_node.training.preference_runtime import (
+    PreferenceRuntime,
+    apply_preference_checkpoint,
+    load_preference_runtime,
+    validate_preference_input,
+)
 from coire_node.training.rendering import ChatTokenizer, render_example
-from coire_node.training.sampler import MixtureSampler, SingleSourceSampler, TrainingSampler
+from coire_node.training.sampler import (
+    MixtureSampler,
+    SamplerState,
+    SingleSourceSampler,
+    TrainingSampler,
+)
 
 tracer = trace.get_tracer("coire.node.training")
 logger = logging.getLogger(__name__)
@@ -127,6 +161,41 @@ class FrozenInputs:
     split: SplitManifest
     analysis: DatasetAnalysis
     source: Path
+
+
+type FrozenInputDocument = FrozenInputs | PreferenceFrozenInputs
+
+
+def make_frozen_inputs(
+    binding: DatasetAnalysisBinding,
+    split: SplitManifest | PreferenceSplitManifest,
+    analysis: DatasetAnalysis,
+    source: Path,
+) -> FrozenInputDocument:
+    if isinstance(split, PreferenceSplitManifest):
+        return PreferenceFrozenInputs(binding, split, analysis, source)
+    return FrozenInputs(binding, split, analysis, source)
+
+
+def validate_training_frozen_inputs(
+    prepared: TrainingPrepareRequest, inputs: FrozenInputDocument
+) -> None:
+    if isinstance(prepared.resolved, ResolvedTrainingSpecV3):
+        if not isinstance(inputs, PreferenceFrozenInputs):
+            raise TrainingConflict("Preference execution requires pair inputs")
+        validate_preference_frozen_inputs(prepared, inputs)
+    else:
+        if not isinstance(inputs, FrozenInputs):
+            raise TrainingConflict("SFT execution cannot consume preference inputs")
+        validate_frozen_inputs(prepared, inputs)
+
+
+def load_training_frozen_inputs(
+    prepared: TrainingPrepareRequest, directory: Path, journal: TrainingJournal
+) -> list[FrozenInputDocument]:
+    if isinstance(prepared.resolved, ResolvedTrainingSpecV3):
+        return list(load_preference_frozen_inputs(prepared, directory, journal))
+    return list(load_all_frozen_inputs(prepared, directory, journal))
 
 
 def validate_frozen_inputs(prepared: TrainingPrepareRequest, inputs: FrozenInputs) -> None:
@@ -509,7 +578,9 @@ def checkpoint_decision_action(
     if local in {"kill", "cancel"}:
         return local
     if (
-        isinstance(acknowledgement, CheckpointCommitAcknowledgementV2)
+        isinstance(
+            acknowledgement, (CheckpointCommitAcknowledgementV2, CheckpointCommitAcknowledgementV3)
+        )
         and acknowledgement.evaluation_pause is not None
     ):
         return "pause"
@@ -709,8 +780,8 @@ def run_sft(
     prepared: TrainingPrepareRequest,
     runtime: SftRuntime,
     optimizer: Any,
-    train_sampler: TrainingSampler,
-    validation_sampler: TrainingSampler,
+    train_sampler: TrainingSampler | PreferenceSampler,
+    validation_sampler: TrainingSampler | PreferenceSampler,
     *,
     store: CheckpointStore,
     scratch: Path,
@@ -725,6 +796,7 @@ def run_sft(
     | None = None,
     collective: Collective | None = None,
     guardian: DeadlineGuardian | None = None,
+    preference: PreferenceRuntime | None = None,
 ) -> int:
     """Train only evaluated complete updates; block advancement until fenced commit.
 
@@ -742,6 +814,25 @@ def run_sft(
         or train_sampler.dataset_sha256 == validation_sampler.dataset_sha256
     ):
         raise TrainingValidationError("Held-out evaluation requires an independent split sampler")
+    is_preference = isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+    if (
+        isinstance(train_sampler, PreferenceSampler) != is_preference
+        or isinstance(validation_sampler, PreferenceSampler) != is_preference
+    ):
+        raise TrainingConflict("Pair samplers require a preference objective")
+    if is_preference and checkpoint is not None:
+        raise TrainingConflict("Preference execution cannot use distributed checkpoint hooks")
+    if is_preference != (preference is not None) or (
+        preference is not None
+        and (
+            not isinstance(train_sampler, PreferenceSampler)
+            or not isinstance(validation_sampler, PreferenceSampler)
+            or prepared.world_size != 1
+            or preference.policy is not runtime
+            or preference.objective != prepared.resolved.spec.objective
+        )
+    ):
+        raise TrainingConflict("Worker objective, runtime and samplers differ from intent")
     settings = prepared.resolved.spec.optim
     if not 0 <= completed_update < settings.updates:
         raise TrainingConflict("Resume update lies outside remaining training")
@@ -767,6 +858,16 @@ def run_sft(
         raise TrainingValidationError("Scratch adapter directory is linked")
     sequence = 0
     current_update = completed_update
+    response_counts = {"train": 0, "validation": 0}
+    pair_counts = {"train": 0, "validation": 0}
+    loss_hook: LossHook = masked_sft_loss
+    if preference is not None:
+        assert isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+        loss_hook = make_preference_loss(
+            preference.objective,
+            prepared.resolved.spec.objective_options,
+            reference=cast(Any, preference.reference.model) if preference.reference else None,
+        )
 
     def event(payload: Any) -> None:
         nonlocal sequence
@@ -783,7 +884,9 @@ def run_sft(
             )
         )
 
-    def batches(sampler: TrainingSampler) -> Callable[..., Iterator[tuple[Any, Any]]]:
+    def batches(
+        sampler: TrainingSampler | PreferenceSampler,
+    ) -> Callable[..., Iterator[tuple[Any, Any]]]:
         def iterate(**kwargs: Any) -> Iterator[tuple[Any, Any]]:
             if kwargs["comm_group"].size() != prepared.world_size:
                 raise TrainingConflict("Bare trainer group differs from declared world size")
@@ -792,20 +895,65 @@ def run_sft(
             while True:
                 if control() in {"kill", "cancel"}:
                     raise TrainingConflict("Training execution authority ended")
-                batch = sampler.next_batch()
-                if isinstance(sampler, MixtureSampler):
+                if isinstance(sampler, PreferenceSampler):
+                    pair_batch = sampler.next_batch()
+                    tokens = pair_batch.chosen_tokens + pair_batch.rejected_tokens
+                    masks = pair_batch.chosen_masks + pair_batch.rejected_masks
+                    kind = "train" if sampler is train_sampler else "validation"
+                    response_counts[kind] += sum(sum(row[1:]) for row in masks)
+                    pair_counts[kind] += len(pair_batch.chosen_tokens)
+                elif isinstance(sampler, MixtureSampler):
+                    batch = sampler.next_batch()
                     if sampler.rank != prepared.rank or sampler.world_size != prepared.world_size:
                         raise TrainingConflict("Mixture sampler differs from declared rank")
                     tokens, masks = batch.tokens, batch.target_masks
                 else:
                     tokens, masks = partition_batch(
-                        batch, rank=prepared.rank, world_size=prepared.world_size
+                        sampler.next_batch(), rank=prepared.rank, world_size=prepared.world_size
                     )
                 yield mx.array(tokens, dtype=mx.int32), mx.array(masks, dtype=mx.bool_)
 
         return iterate
 
     def report(kind: Literal["train", "validation"], loss: float, info: dict[str, Any]) -> None:
+        if preference is not None:
+            assert isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+            assert isinstance(validation_sampler, PreferenceSampler)
+            pairs = pair_counts[kind]
+            elapsed = (
+                (settings.accumulation_steps / float(info["iterations_per_second"]))
+                if info.get("iterations_per_second")
+                else float(info.get("elapsed_seconds", 0))
+            )
+            event(
+                NodePreferenceProgressPayload(
+                    metric=PreferenceMetricSample(
+                        job_id=prepared.job_id,
+                        attempt_id=prepared.attempt_id,
+                        fence=prepared.fence,
+                        update=current_update,
+                        objective=preference.objective,
+                        kind=kind,
+                        loss=finite_loss(loss),
+                        pair_count=pairs,
+                        response_tokens=response_counts[kind],
+                        tokens_per_second=response_counts[kind] / elapsed if elapsed else 0,
+                        learning_rate=float(optimizer.learning_rate.item()),
+                        updates_per_second=float(info.get("iterations_per_second", 0))
+                        / settings.accumulation_steps,
+                        footprint_bytes=footprint(),
+                        peak_bytes=int(mx.get_peak_memory()),
+                        probe=post_update_probe(
+                            preference, validation_sampler, prepared.resolved.spec.objective_options
+                        )
+                        if kind == "train"
+                        else None,
+                        recorded_at=datetime.now(UTC),
+                    )
+                )
+            )
+            response_counts[kind] = pair_counts[kind] = 0
+            return
         event(
             NodeProgressPayload(
                 metric=TrainingMetricSample(
@@ -854,6 +1002,7 @@ def run_sft(
                 key = capture_mlx_rng_key()
                 validation_state = validation_sampler.snapshot()
                 try:
+                    validation_started = time.monotonic()
                     loss = evaluate(
                         runtime.model,
                         validation_sampler.dataset,
@@ -863,12 +1012,21 @@ def run_sft(
                             prepared.resolved.spec.data.validation.max_batches,
                         ),
                         max_seq_length=settings.max_sequence_length,
-                        loss=masked_sft_loss,
+                        loss=loss_hook,
                         iterate_batches=batches(validation_sampler),
                     )
-                    report("validation", finite_loss(loss), {})
+                    report(
+                        "validation",
+                        finite_loss(loss),
+                        {"elapsed_seconds": time.monotonic() - validation_started}
+                        if preference is not None
+                        else {},
+                    )
                 finally:
-                    validation_sampler.restore(validation_state)
+                    if isinstance(validation_sampler, PreferenceSampler):
+                        validation_sampler.restore(cast(PreferenceSamplerState, validation_state))
+                    else:
+                        validation_sampler.restore(cast(SamplerState, validation_state))
                     restore_mlx_rng_key(key)
                     runtime.model.train()
             action = collective.action(control()) if collective is not None else control()
@@ -881,19 +1039,31 @@ def run_sft(
             ):
                 getter = cast(Callable[[], dict[str, Any]], runtime.model.trainable_parameters)
                 mx.eval(getter(), optimizer.state)
-                state = CheckpointWorkerState(
-                    job_id=prepared.job_id,
-                    attempt_id=prepared.attempt_id,
-                    fence=prepared.fence,
-                    completed_update=current_update,
-                    rank=prepared.rank,
-                    world_size=prepared.world_size,
-                    runtime_sha256=prepared.resolved.runtime_sha256,
-                    resolved_spec_sha256=resolved_digest(prepared),
-                    optimizer=settings,
-                    mlx_rng_key=capture_mlx_rng_key(),
-                    sampler=train_sampler.snapshot(),
-                )
+                state_fields: dict[str, Any] = {
+                    "job_id": prepared.job_id,
+                    "attempt_id": prepared.attempt_id,
+                    "fence": prepared.fence,
+                    "completed_update": current_update,
+                    "rank": prepared.rank,
+                    "world_size": prepared.world_size,
+                    "runtime_sha256": prepared.resolved.runtime_sha256,
+                    "resolved_spec_sha256": resolved_digest(prepared),
+                    "optimizer": settings,
+                    "mlx_rng_key": capture_mlx_rng_key(),
+                    "sampler": train_sampler.snapshot(),
+                }
+                state: CheckpointWorkerStateDocument
+                if preference is not None:
+                    assert isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+                    state = CheckpointWorkerStateV3(
+                        **state_fields,
+                        objective=preference.objective,
+                        objective_options=prepared.resolved.spec.objective_options,
+                        initial_target=prepared.resolved.initial_target,
+                        reference_target=prepared.resolved.reference_target,
+                    )
+                else:
+                    state = CheckpointWorkerState(**state_fields)
                 adapter = {
                     key: value
                     for key, value in runtime.parameters().items()
@@ -903,13 +1073,15 @@ def run_sft(
                     # Measure actual evaluated per-rank state without manufacturing
                     # a durable common bundle, staged event or commit acknowledgment.
                     # Only the supervised measurement lane supplies this internal hook.
-                    measurement_checkpoint(state, adapter, optimizer.state)
+                    measurement_checkpoint(
+                        cast(CheckpointWorkerState, state), adapter, optimizer.state
+                    )
                     action = collective.action(control()) if collective is not None else control()
                     if action in {"pause", "kill", "cancel"}:
                         raise TrainingConflict("Non-durable measurement checkpoint authority ended")
                     return
                 manifest = (
-                    checkpoint(state, adapter, optimizer.state)
+                    checkpoint(cast(CheckpointWorkerState, state), adapter, optimizer.state)
                     if checkpoint is not None
                     else store.save(state, adapter, optimizer.state)
                 )
@@ -970,7 +1142,10 @@ def run_sft(
                 if action == "pause":
                     raise PausedAtCheckpoint(
                         "evaluation_pending"
-                        if isinstance(acknowledgement, CheckpointCommitAcknowledgementV2)
+                        if isinstance(
+                            acknowledgement,
+                            (CheckpointCommitAcknowledgementV2, CheckpointCommitAcknowledgementV3),
+                        )
                         and acknowledgement.evaluation_pause is not None
                         else None
                     )
@@ -1000,7 +1175,7 @@ def run_sft(
             optimizer,
             train_sampler.dataset,
             args=args,
-            loss=masked_sft_loss,
+            loss=loss_hook,
             iterate_batches=batches(train_sampler),
             training_callback=Callback(),
         )
@@ -1138,7 +1313,7 @@ def execute_native(
                 control=channel.poll,
                 scope=channel.scope,
             )
-        all_inputs = load_all_frozen_inputs(prepared, directory, journal)
+        all_inputs = load_training_frozen_inputs(prepared, directory, journal)
         inputs = all_inputs[0]
         store = Store(store_root)
         model_path = store.path_for(inputs.binding.model_slug)
@@ -1155,23 +1330,78 @@ def execute_native(
                 "Native tokenizer/template/runtime differs from resolved execution"
             )
         failure_reason = "invalid_input"
-        training, validation = compile_samples(prepared, all_inputs, tokenizer)
+        training: TrainingSampler | PreferenceSampler
+        validation: TrainingSampler | PreferenceSampler
+        if isinstance(prepared.resolved, ResolvedTrainingSpecV3):
+            training, validation = compile_preference_samples(
+                prepared, cast(Sequence[PreferenceFrozenInputs], all_inputs), tokenizer
+            )
+        else:
+            training, validation = compile_samples(
+                prepared, cast(Sequence[FrozenInputs], all_inputs), tokenizer
+            )
         if channel.poll() in {"kill", "cancel"}:
             raise TrainingConflict("Execution authority expired before model loading")
         failure_reason = "runtime_mismatch"
-        source = validate_sft_input(
+        source = (
+            validate_preference_input
+            if isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+            else validate_sft_input
+        )(
             model_path,
             prepared.resolved.spec.parameterization,
             expected_manifest_sha256=prepared.resolved.base_manifest_sha256,
         )
+        preference: PreferenceRuntime | None = None
         with tracer.start_as_current_span("coire.node.training.load"):
-            runtime = load_sft_runtime(source, seed=prepared.resolved.spec.seed)
+            if isinstance(prepared.resolved, ResolvedTrainingSpecV3):
+                initial = prepared.resolved.initial_target
+                preference = load_preference_runtime(
+                    source,
+                    seed=prepared.resolved.spec.seed,
+                    objective=prepared.resolved.spec.objective,
+                    initial_target=initial,
+                    initial_adapter=artifact_root / str(initial.adapter_id)
+                    if initial.adapter_id
+                    else None,
+                )
+                runtime = preference.policy
+            else:
+                runtime = load_sft_runtime(source, seed=prepared.resolved.spec.seed)
         if inputs.binding.template_override is not None:
             runtime.tokenizer.chat_template = inputs.binding.template_override
         optimizer = make_optimizer(prepared.resolved.spec.optim)
         checkpoints = CheckpointStore(artifact_root, max_bytes=20 * 1024**3)
         failure_reason = "checkpoint_invalid"
-        offset = restore_for_attempt(prepared, runtime, optimizer, training, checkpoints)
+        if preference is not None:
+            assert isinstance(prepared.resolved, ResolvedTrainingSpecV3)
+            assert isinstance(training, PreferenceSampler)
+            offset = 0
+            if prepared.resume_checkpoint_id is not None:
+                manifest = checkpoints.manifest(prepared.resume_checkpoint_id)
+                if (
+                    manifest.canonical_sha256() != prepared.resume_manifest_sha256
+                    or manifest.job_id != prepared.job_id
+                    or manifest.world_size != 1
+                ):
+                    raise TrainingConflict("Resume manifest differs from preference lineage")
+                restored = checkpoints.restore(
+                    prepared.resume_checkpoint_id,
+                    expected_runtime_sha256=prepared.resolved.runtime_sha256,
+                    expected_resolved_spec_sha256=resolved_digest(prepared),
+                )
+                apply_preference_checkpoint(
+                    restored,
+                    preference,
+                    optimizer,
+                    training,
+                    expected_optimizer=prepared.resolved.spec.optim,
+                    expected_options=prepared.resolved.spec.objective_options,
+                )
+                offset = restored.state.completed_update
+        else:
+            assert not isinstance(training, PreferenceSampler)
+            offset = restore_for_attempt(prepared, runtime, optimizer, training, checkpoints)
         collective = BareCollective(prepared) if prepared.world_size == 2 else None
         coordinator = (
             RankCheckpointCoordinator(
@@ -1199,6 +1429,7 @@ def execute_native(
             checkpoint=coordinator.checkpoint if coordinator is not None else None,
             collective=collective,
             guardian=guardian,
+            preference=preference,
         )
         return 0
     except PausedAtCheckpoint as paused:

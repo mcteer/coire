@@ -28,6 +28,7 @@ from coire_api.routes import (
     admin_evaluation_suites,
     admin_evaluations,
     admin_failover,
+    admin_feedback,
     admin_identity,
     admin_images,
     admin_ledger,
@@ -39,6 +40,7 @@ from coire_api.routes import (
     admin_training,
     admin_variants,
     chat,
+    chat_feedback,
     failover,
     health,
     image_inputs,
@@ -59,12 +61,12 @@ from coire_api.routes import (
 )
 from coire_api.telemetry import configure_telemetry
 from coire_core.errors import CoireError
+from coire_core.logging import StructuredJSONFormatter
 from coire_core.settings import Settings, get_settings
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}',
-)
+handler = logging.StreamHandler()
+handler.setFormatter(StructuredJSONFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 
 
@@ -133,6 +135,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if failover_poller is not None:
             await failover_poller.start()
         app.state.failover_poller = failover_poller
+        from coire_api.training.gateway_database import MeasurementDatabase
+
+        measurement_database = MeasurementDatabase(settings) if settings.training_enabled else None
+        app.state.training_measurement_database = measurement_database
         logger.info("coire-api %s started", __version__)
         try:
             yield
@@ -147,6 +153,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             await prober.stop()
             await link_probe_coordinator.stop()
             await close_engine_client()
+            if measurement_database is not None:
+                await measurement_database.close()
             await dispose_engine()
 
     app = FastAPI(
@@ -171,6 +179,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(image_inputs.router)
     app.include_router(image_outputs.router)
     app.include_router(chat.router)
+    app.include_router(chat_feedback.router)
     app.include_router(runs.router)
     app.include_router(workspaces.router)
     app.include_router(mcp_artifacts.router)
@@ -178,6 +187,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_acquisitions.router)
     app.include_router(admin_console.router)
     app.include_router(admin_datasets.router)
+    app.include_router(admin_feedback.router)
     app.include_router(admin_training.router)
     app.include_router(admin_adapters.router)
     app.include_router(admin_dataset_analyses.router)

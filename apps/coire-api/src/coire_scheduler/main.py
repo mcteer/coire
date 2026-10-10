@@ -35,6 +35,7 @@ from coire_api.db import (
     ImageJobRow,
     ModelInstanceRow,
     PlacementDecisionRow,
+    PreferenceExportRow,
     RunCommandRow,
     TrainingEvaluationTriggerRow,
     dispose_engine,
@@ -43,6 +44,7 @@ from coire_api.db import (
 )
 from coire_api.polling import FailureSummary, PollBackoff, wait_or_stop
 from coire_api.telemetry import configure_telemetry
+from coire_core.logging import StructuredJSONFormatter
 from coire_core.models.acquisition import AcquisitionState
 from coire_core.models.health import ReadyResponse
 from coire_core.models.instance import InstanceState
@@ -80,6 +82,9 @@ from coire_scheduler.workers import SchedulerWorkers
 SERVICE_NAME = "coire-scheduler"
 _IMAGE_CANCEL_POLL_SECONDS = 0.25
 __version__ = "0.1.0"
+handler = logging.StreamHandler()
+handler.setFormatter(StructuredJSONFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[handler])
 logger = logging.getLogger(__name__)
 kill_scan_failures = metrics.get_meter("coire.scheduler.dispatch").create_counter(
     "coire_scheduler_kill_scan_failures_total", unit="1"
@@ -454,6 +459,33 @@ async def dispatch_evaluations(stop: asyncio.Event) -> None:
         await wait_or_stop(stop, 1.0)
 
 
+async def dispatch_feedback_exports(stop: asyncio.Event) -> None:
+    from coire_scheduler.feedback_exports import export_workflow
+
+    while not stop.is_set():
+        try:
+            async with session_scope() as session:
+                identities = list(
+                    await session.scalars(
+                        select(PreferenceExportRow.id)
+                        .where(
+                            PreferenceExportRow.state.in_(["queued", "staging", "publishing"])
+                            | PreferenceExportRow.cleanup_pending.is_(True)
+                        )
+                        .order_by(PreferenceExportRow.created_at, PreferenceExportRow.id)
+                        .limit(101)
+                    )
+                )
+            for identity in identities:
+                with SetWorkflowID("feedback-export-" + identity):
+                    DBOS.start_workflow(export_workflow, identity)
+        except Exception as error:
+            logger.error(
+                "feedback export dispatch failed", extra={"safe_reason": type(error).__name__}
+            )
+        await wait_or_stop(stop, 1)
+
+
 async def dispatch_image_cancels(stop: asyncio.Event) -> None:
     """Notice committed cancel intent promptly without speeding every acquisition scan."""
     settings = get_settings()
@@ -583,6 +615,11 @@ def create_app() -> FastAPI:
             )
             background.append(
                 asyncio.create_task(dispatch_evaluations(stop), name="evaluation-dispatcher")
+            )
+            background.append(
+                asyncio.create_task(
+                    dispatch_feedback_exports(stop), name="feedback-export-dispatcher"
+                )
             )
             from coire_scheduler.evaluation_metrics import poll_evaluation_metrics
 

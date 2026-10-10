@@ -1,0 +1,87 @@
+rule_files:
+- ../alerts/feedback.yaml
+evaluation_interval: 15s
+tests:
+- name: CoireFeedbackPurgeOverdue-fires-and-clears
+  interval: 15s
+  input_series:
+  - series: coire_feedback_purge_oldest_seconds
+    values: 86401+0x42 0+0x12
+  alert_rule_test:
+  - eval_time: 30s
+    alertname: CoireFeedbackPurgeOverdue
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        subject: feedback
+      exp_annotations:
+        summary: Unexported feedback withdrawal has exceeded the twenty-four-hour
+          purge deadline
+        runbook_url: /docs/runbooks/feedback#purge
+  - eval_time: 11m
+    alertname: CoireFeedbackPurgeOverdue
+    exp_alerts: []
+- name: CoireFeedbackExportOverdue-fires-and-clears
+  interval: 15s
+  input_series:
+  - series: coire_feedback_export_overdue
+    values: 1+0x42 0+0x12
+  alert_rule_test:
+  - eval_time: 1m15s
+    alertname: CoireFeedbackExportOverdue
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        subject: feedback
+      exp_annotations:
+        summary: A feedback export has exceeded its queue or publication deadline
+        runbook_url: /docs/runbooks/feedback#cancel-and-recover
+  - eval_time: 11m
+    alertname: CoireFeedbackExportOverdue
+    exp_alerts: []
+- name: CoireFeedbackExportCleanupStalled-fires-and-clears
+  interval: 15s
+  input_series:
+  - series: coire_feedback_export_cleanup_pending
+    values: 1+0x42 0+0x12
+  alert_rule_test:
+  - eval_time: 10m15s
+    alertname: CoireFeedbackExportCleanupStalled
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        subject: feedback
+      exp_annotations:
+        summary: Private feedback export files remain awaiting proven removal
+        runbook_url: /docs/runbooks/feedback#cancel-and-recover
+  - eval_time: 11m
+    alertname: CoireFeedbackExportCleanupStalled
+    exp_alerts: []
+- name: missing-baseline-fires
+  interval: 15s
+  input_series: []
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireFeedbackBaselineUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        subject: feedback
+      exp_annotations:
+        summary: Feedback baseline state is missing or stale
+        runbook_url: /docs/runbooks/feedback#observe
+- name: healthy-idle-baseline
+  interval: 15s
+  input_series:
+  - series: coire_feedback_snapshot_timestamp_seconds
+    values: 0+15x24
+  - series: coire_feedback_exports{state="queued"}
+    values: 0+0x24
+  - series: coire_feedback_purge_oldest_seconds
+    values: 0+0x24
+  - series: coire_feedback_export_overdue
+    values: 0+0x24
+  alert_rule_test:
+  - eval_time: 6m
+    alertname: CoireFeedbackBaselineUnavailable
+    exp_alerts: []

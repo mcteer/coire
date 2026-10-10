@@ -14,13 +14,15 @@ from coire_scheduler.workers import SchedulerWorkers
 def test_scheduler_preserves_training_recovery_workers(enabled: bool) -> None:
     from coire_api.training.runtime import TrainingRuntimeWorker
     from coire_scheduler.datasets import DatasetAnalysisExecutor
+    from coire_scheduler.feedback import FeedbackCleanupWorker
 
     settings = Settings(_secrets_dir="/none")  # type: ignore[call-arg]
     settings.training_enabled = enabled
     supervisor = SchedulerWorkers(settings)
-    assert len(supervisor.workers) == 9
+    assert len(supervisor.workers) == 10
     assert any(isinstance(worker, TrainingRuntimeWorker) for worker in supervisor.workers)
     assert any(isinstance(worker, DatasetAnalysisExecutor) for worker in supervisor.workers)
+    assert any(isinstance(worker, FeedbackCleanupWorker) for worker in supervisor.workers)
     assert supervisor.kill_executor.external_kill_scan is True
 
 

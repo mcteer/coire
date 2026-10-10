@@ -7,6 +7,8 @@ dependencies = [
     "coire-core",
     "fastapi>=0.115",
     "uvicorn>=0.34",
+    # MIT / Apache-2.0. Reduce gateway I/O scheduling overhead on Linux and macOS.
+    "uvloop==0.22.1",
     # The [asyncio] extra, not bare sqlalchemy: it forces `greenlet`, which the async engine
     # requires at runtime. SQLAlchemy's own conditional dependency lists platform_machine
     # 'aarch64' but not 'arm64', so bare sqlalchemy installs greenlet inside the Linux arm64

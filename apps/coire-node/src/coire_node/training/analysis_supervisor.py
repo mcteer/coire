@@ -196,6 +196,10 @@ class AnalysisSupervisor:
         result_sha = hashlib.sha256(result.model_dump_json().encode()).hexdigest()
         if journal.get("result_sha256") is not None and journal["result_sha256"] != result_sha:
             raise ValueError("analysis result immutable identity differs")
+        result.validate_binding(envelope.binding)
+        expected_samples = result.row_count * (
+            2 if envelope.binding.format.value == "preference" else 1
+        )
         if (
             result.id != identity
             or result.dataset_id != envelope.binding.dataset_id
@@ -207,11 +211,11 @@ class AnalysisSupervisor:
             or result.duplicate_rows >= result.row_count
             or any(count < 0 for count in result.role_counts.values())
             or any(item.row > result.row_count for item in result.diagnostics)
-            or (result.tokens is not None and sum(result.tokens.histogram) > result.row_count)
+            or (result.tokens is not None and sum(result.tokens.histogram) > expected_samples)
             or (
                 result.state == "succeeded"
                 and result.tokens is not None
-                and sum(result.tokens.histogram) != result.row_count
+                and sum(result.tokens.histogram) != expected_samples
             )
             or (
                 journal.get("template_sha256") is not None

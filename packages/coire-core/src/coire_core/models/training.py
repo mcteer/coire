@@ -21,6 +21,13 @@ from coire_core.models.adapters import InferenceTarget
 from coire_core.models.datasets import DatasetMixture, DatasetValidationSources
 from coire_core.models.evaluation import EvaluationTarget
 from coire_core.models.evaluation_links import EvaluationGroupLink
+from coire_core.models.preference import (
+    DpoOptions,
+    OrpoOptions,
+    PreferenceMetricSample,
+    PreferenceResourceEnvelope,
+    canonical_bytes,
+)
 from coire_core.models.training_evaluation import ResolvedTrainingSuite, TrainingSuiteSchedule
 from coire_core.models.training_types import (
     AdapterSlug,
@@ -193,6 +200,51 @@ class TrainingSpecV2(TrainingWire):
         return hashlib.sha256(payload).hexdigest()
 
 
+class TrainingEvaluationV3(TrainingEvaluation):
+    suites: list[TrainingSuiteSchedule] = Field(default_factory=list, max_length=4)
+
+
+class TrainingSpecV3(TrainingWire):
+    schema_version: Literal[3] = 3
+    model: TrainingModel
+    data: TrainingData
+    objective: Literal["dpo", "orpo"]
+    objective_options: DpoOptions | OrpoOptions
+    init_adapter: uuid.UUID | None
+    parameterization: TrainingParameterization
+    optim: TrainingOptimizer
+    eval: TrainingEvaluationV3 = Field(default_factory=TrainingEvaluationV3)
+    output: TrainingOutput
+    placement: TrainingPlacement = Field(default_factory=TrainingPlacement)
+    seed: Seed = 0
+
+    @model_validator(mode="after")
+    def qualified_preference_intent(self) -> TrainingSpecV3:
+        if self.placement.mode != "single":
+            raise ValueError("preference training requires a single Studio")
+        if self.parameterization.kind == "dora" or self.parameterization.dropout != 0:
+            raise ValueError("preference training requires zero-dropout LoRA or QLoRA")
+        if self.data.loss_policy != "final_assistant":
+            raise ValueError("preference training requires response-only loss")
+        if (self.objective == "dpo") != isinstance(self.objective_options, DpoOptions):
+            raise ValueError("objective options must match the selected objective")
+        if self.data.train.epoch_samples % self.optim.batch_size:
+            raise ValueError("epoch samples must be divisible by global batch size")
+        schedules = self.eval.suites
+        if len({(item.suite_id, item.suite_version) for item in schedules}) != len(schedules):
+            raise ValueError("training evaluation suites must be unique")
+        updates = {update for item in schedules for update in item.checkpoint_updates}
+        if len(updates) > 32 or any(
+            update >= self.optim.updates or update % self.output.checkpoint_every_updates
+            for update in updates
+        ):
+            raise ValueError("suite checkpoints must be recoverable pre-final updates")
+        return self
+
+    def canonical_sha256(self) -> str:
+        return hashlib.sha256(canonical_bytes(self.model_dump(mode="json"))).hexdigest()
+
+
 def _default_training_version(value: object) -> object:
     if isinstance(value, dict) and "schema_version" not in value:
         return {**value, "schema_version": 1}
@@ -205,13 +257,13 @@ def _numeric_version_schema(schema: dict[str, object]) -> None:
 
 
 type TrainingSpecDocument = Annotated[
-    TrainingSpec | TrainingSpecV2,
+    TrainingSpec | TrainingSpecV2 | TrainingSpecV3,
     Field(discriminator="schema_version", json_schema_extra=_numeric_version_schema),
     BeforeValidator(_default_training_version),
 ]
 
 
-def parse_training_spec(value: object) -> TrainingSpec | TrainingSpecV2:
+def parse_training_spec(value: object) -> TrainingSpec | TrainingSpecV2 | TrainingSpecV3:
     return TypeAdapter(TrainingSpecDocument).validate_python(value)
 
 
@@ -322,7 +374,65 @@ class ResolvedTrainingSpecV2(TrainingWire):
         return self
 
 
-type ResolvedTrainingSpecDocument = ResolvedTrainingSpec | ResolvedTrainingSpecV2
+class ResolvedTrainingSpecV3(TrainingWire):
+    spec: TrainingSpecV3
+    base_manifest_sha256: Digest
+    initial_target: InferenceTarget
+    reference_target: InferenceTarget | None
+    datasets: list[ResolvedDatasetInput] = Field(min_length=1, max_length=32)
+    tokenizer_sha256: Digest
+    template_sha256: Digest
+    enable_thinking: bool
+    runtime_sha256: Digest
+    worker_version: str = Field(min_length=1, max_length=64)
+    implementation: Literal["coire-preference-v1"] = "coire-preference-v1"
+    sampler_version: Literal["coire-pair-sampler-v1"] = "coire-pair-sampler-v1"
+    resource_envelope: PreferenceResourceEnvelope
+    evaluations: list[ResolvedTrainingSuite] = Field(default_factory=list, max_length=4)
+    evaluation_base: EvaluationTarget | None = None
+
+    @model_validator(mode="after")
+    def exact_preference_inputs(self) -> ResolvedTrainingSpecV3:
+        initial = self.initial_target
+        if (
+            initial.model_id != self.spec.model.model_id
+            or initial.variant_id != self.spec.model.variant_id
+            or initial.base_manifest_sha256 != self.base_manifest_sha256
+            or initial.adapter_id != self.spec.init_adapter
+        ):
+            raise ValueError("initial policy differs from immutable training intent")
+        envelope = self.resource_envelope
+        if self.spec.objective == "dpo":
+            if self.reference_target != initial or envelope.reference_weight_bytes <= 0:
+                raise ValueError("DPO requires the exact frozen initial reference")
+            if (initial.adapter_id is not None) != (envelope.reference_adapter_bytes > 0):
+                raise ValueError("DPO reference adapter allocation differs from its target")
+        elif (
+            self.reference_target is not None
+            or envelope.reference_weight_bytes
+            or envelope.reference_adapter_bytes
+        ):
+            raise ValueError("ORPO cannot allocate or identify a reference")
+        if [item.schedule for item in self.evaluations] != self.spec.eval.suites:
+            raise ValueError("resolved suites differ from immutable intent")
+        if bool(self.evaluations) != (self.evaluation_base is not None):
+            raise ValueError("declared suites require a bare evaluation base")
+        base = self.evaluation_base
+        if base is not None and (
+            base.target.model_id != initial.model_id
+            or base.target.variant_id != initial.variant_id
+            or base.target.adapter_id is not None
+            or base.target.base_manifest_sha256 != self.base_manifest_sha256
+            or base.runtime.tokenizer_sha256 != self.tokenizer_sha256
+            or base.runtime.template_sha256 != self.template_sha256
+        ):
+            raise ValueError("evaluation base differs from frozen training identity")
+        return self
+
+
+type ResolvedTrainingSpecDocument = (
+    ResolvedTrainingSpec | ResolvedTrainingSpecV2 | ResolvedTrainingSpecV3
+)
 
 
 def parse_resolved_training_spec(value: object) -> ResolvedTrainingSpecDocument:
@@ -431,7 +541,7 @@ class TrainingMetricSample(TrainingWire):
 
 
 class TrainingMetricPage(TrainingWire):
-    items: list[TrainingMetricSample] = Field(max_length=2000)
+    items: list[TrainingMetricSample | PreferenceMetricSample] = Field(max_length=2000)
     next_cursor: str | None = Field(default=None, max_length=512)
 
 
@@ -473,6 +583,11 @@ class TrainingProgressEvent(TrainingWire):
     metric: TrainingMetricSample
 
 
+class PreferenceTrainingProgressEvent(TrainingWire):
+    kind: Literal["preference_progress"] = "preference_progress"
+    metric: PreferenceMetricSample
+
+
 class TrainingCheckpointEvent(TrainingWire):
     kind: Literal["checkpoint"] = "checkpoint"
     checkpoint_id: uuid.UUID
@@ -506,6 +621,7 @@ class TrainingResetEvent(TrainingWire):
 type TrainingEventPayload = Annotated[
     TrainingStateEvent
     | TrainingProgressEvent
+    | PreferenceTrainingProgressEvent
     | TrainingCheckpointEvent
     | TrainingRecoveryEvent
     | TrainingResetEvent,
@@ -519,14 +635,16 @@ class TrainingEvent(TrainingWire):
     attempt_id: TrainingId | None = None
     state_version: int = Field(ge=1)
     occurred_at: AwareDatetime
-    kind: Literal["state", "progress", "checkpoint", "recovery", "terminal", "reset"]
+    kind: Literal[
+        "state", "progress", "preference_progress", "checkpoint", "recovery", "terminal", "reset"
+    ]
     payload: TrainingEventPayload
 
     @model_validator(mode="after")
     def consistent_payload(self) -> TrainingEvent:
         if self.kind != self.payload.kind:
             raise ValueError("training event kind must match its typed payload")
-        if isinstance(self.payload, TrainingProgressEvent) and (
+        if isinstance(self.payload, (TrainingProgressEvent, PreferenceTrainingProgressEvent)) and (
             self.payload.metric.job_id != self.job_id
             or self.payload.metric.attempt_id != self.attempt_id
         ):
@@ -639,7 +757,7 @@ class TrainingResidentTarget(TrainingWire):
 
 
 class TrainingMeasurementRequest(TrainingWire):
-    spec: TrainingSpec
+    spec: TrainingSpecDocument
     nodes: list[StudioName] = Field(min_length=1, max_length=2)
     resident_targets: list[TrainingResidentTarget] = Field(default_factory=list, max_length=32)
     workload: TrainingMeasurementWorkload
@@ -704,6 +822,59 @@ class TrainingMemoryEvidence(TrainingWire):
         return self
 
 
+class PreferenceMemoryEvidence(TrainingWire):
+    """V3 measurements cannot be interpreted as legacy SFT resource profiles."""
+
+    schema_version: Literal[3] = 3
+    measurement_id: uuid.UUID
+    training_config_sha256: Digest
+    base_manifest_sha256: Digest
+    tokenizer_sha256: Digest
+    template_sha256: Digest
+    runtime_sha256: Digest
+    worker_version: str = Field(min_length=1, max_length=64)
+    completed_updates: int = Field(strict=True, ge=1, le=100_000)
+    resource_envelope: PreferenceResourceEnvelope
+    nodes: list[TrainingNodeMemoryEvidence] = Field(min_length=1, max_length=1)
+    measured_at: AwareDatetime
+    valid_until: AwareDatetime
+    objective: Literal["dpo", "orpo"]
+    objective_options: DpoOptions | OrpoOptions
+    initial_target: InferenceTarget
+    reference_target: InferenceTarget | None
+    datasets: list[ResolvedDatasetInput] = Field(min_length=1, max_length=32)
+    implementation: Literal["coire-preference-v1"] = "coire-preference-v1"
+    sampler_version: Literal["coire-pair-sampler-v1"] = "coire-pair-sampler-v1"
+    probe_version: Literal["coire-preference-probe-v1"] = "coire-preference-probe-v1"
+
+    @model_validator(mode="after")
+    def exact_objective_evidence(self) -> PreferenceMemoryEvidence:
+        if self.valid_until <= self.measured_at:
+            raise ValueError("preference evidence requires positive validity")
+        dpo = self.objective == "dpo"
+        if dpo != isinstance(self.objective_options, DpoOptions):
+            raise ValueError("preference evidence options differ from objective")
+        if self.reference_target != (self.initial_target if dpo else None):
+            raise ValueError("preference evidence reference differs from initial target")
+        if self.initial_target.base_manifest_sha256 != self.base_manifest_sha256:
+            raise ValueError("preference evidence base differs from initial target")
+        envelope = self.resource_envelope
+        if dpo:
+            if envelope.reference_weight_bytes <= 0 or (
+                (self.initial_target.adapter_id is not None)
+                != (envelope.reference_adapter_bytes > 0)
+            ):
+                raise ValueError("DPO evidence must count its complete frozen reference")
+        elif envelope.reference_weight_bytes or envelope.reference_adapter_bytes:
+            raise ValueError("ORPO evidence cannot count a reference")
+        if len({d.dataset_id for d in self.datasets}) != len(self.datasets):
+            raise ValueError("preference evidence datasets must be unique")
+        return self
+
+
+type TrainingMemoryEvidenceDocument = TrainingMemoryEvidence | PreferenceMemoryEvidence
+
+
 class TrainingMeasurementResult(TrainingWire):
     id: uuid.UUID
     request: TrainingMeasurementRequest
@@ -716,12 +887,28 @@ class TrainingMeasurementResult(TrainingWire):
     peak_memory_bytes: int = Field(default=0, ge=0)
     thermal_ok: bool = False
     created_at: AwareDatetime
-    memory_evidence: TrainingMemoryEvidence | None = None
+    memory_evidence: TrainingMemoryEvidenceDocument | None = None
     phases: list[TrainingMeasurementPhase] = Field(default_factory=list, max_length=2)
     node_report_sha256: list[Digest] = Field(default_factory=list, max_length=2)
 
     @model_validator(mode="after")
     def approval_requires_complete_evidence(self) -> TrainingMeasurementResult:
+        preference = isinstance(self.request.spec, TrainingSpecV3)
+        evidence = self.memory_evidence
+        if evidence is not None and preference != isinstance(evidence, PreferenceMemoryEvidence):
+            raise ValueError("measurement evidence differs from negotiated objective version")
+        if isinstance(evidence, PreferenceMemoryEvidence):
+            assert isinstance(self.request.spec, TrainingSpecV3)
+            if (
+                evidence.objective != self.request.spec.objective
+                or evidence.objective_options != self.request.spec.objective_options
+                or evidence.initial_target.adapter_id != self.request.spec.init_adapter
+                or evidence.initial_target.model_id != self.request.spec.model.model_id
+                or evidence.initial_target.variant_id != self.request.spec.model.variant_id
+            ):
+                raise ValueError("preference measurement differs from frozen client intent")
+        if preference and self.state == "succeeded" and evidence is None:
+            raise ValueError("preference approval requires objective-specific measured evidence")
         if self.profile_id is not None and self.state != "succeeded":
             raise ValueError("only successful measurement may approve a profile")
         if self.state == "succeeded":
@@ -822,5 +1009,18 @@ class TrainingMeasurementCompletion(TrainingWire):
     output_tokens: int = Field(strict=True, ge=1, le=1024)
 
 
+class TrainingMeasurementGenerateRequest(TrainingWire):
+    """Node-authenticated request for an existing frozen measurement only."""
+
+    principal_sha256: Digest
+    target: TrainingResidentTarget
+    prompt: TrainingMeasurementPrompt
+    max_output_tokens: int = Field(strict=True, ge=1, le=1024)
+
+
 TrainingMeasurementResult.model_rebuild()
 TrainingMeasurementRequest.model_rebuild()
+
+
+def parse_training_metric_sample(value: object) -> TrainingMetricSample | PreferenceMetricSample:
+    return TypeAdapter(TrainingMetricSample | PreferenceMetricSample).validate_python(value)

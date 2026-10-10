@@ -9,6 +9,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from coire_core.models.adapters import InferenceTarget
+from coire_core.models.feedback import ComparisonEvent, ComparisonReceipt
 from coire_core.models.files import ChatAttachment, ChatAttachmentSelection
 from coire_core.models.mcp import ApplyResult, McpToolName, PlanResult, ResearchResult
 from coire_core.models.registry import LoadState, ModelSource, Tag
@@ -125,6 +126,18 @@ class ChatUsage(BaseModel):
     completion_tokens: int = Field(ge=0)
 
 
+class NativeChatSampling(BaseModel):
+    """Explicit sampling for native local text chat; omitted requests retain engine defaults."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    temperature: float = Field(default=0.7, ge=0, le=2)
+    top_p: float = Field(default=0.95, gt=0, le=1)
+    top_k: int = Field(default=0, ge=0, strict=True)
+    min_p: float = Field(default=0, ge=0, le=1)
+    seed: int | None = Field(default=None, ge=0, le=2**32 - 1, strict=True)
+
+
 class ChatTurnCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -142,9 +155,12 @@ class ChatTurnCreate(BaseModel):
     )
     plan_id: uuid.UUID | None = None
     research_id: uuid.UUID | None = None
+    sampling: NativeChatSampling | None = None
 
     @model_validator(mode="after")
     def unique_attachments(self) -> ChatTurnCreate:
+        if self.sampling is not None and self.action != "chat":
+            raise ValueError("native sampling requires the chat action")
         if len(self.content.encode("utf-8")) > 64 * 1024:
             raise ValueError("content exceeds 64 KiB")
         if len({selection.file_id for selection in self.attachments}) != len(self.attachments):
@@ -192,6 +208,9 @@ class ChatConversationDetail(BaseModel):
     messages: list[ChatMessage] = Field(default_factory=list, max_length=100)
     turns: list[ChatTurn] = Field(default_factory=list, max_length=100)
     attachments: list[ChatAttachment] = Field(default_factory=list, max_length=100)
+    comparisons: list[ComparisonReceipt] = Field(
+        default_factory=list, max_length=100, exclude_if=lambda value: not value
+    )
     event_cursor: int = Field(ge=0)
     next_message_position: int | None = Field(default=None, ge=1)
 
@@ -324,7 +343,8 @@ ChatEventPayload = Annotated[
     | ChatRunActivity
     | ChatRunActivityStatus
     | ChatTurnResult
-    | ChatConversationDeleted,
+    | ChatConversationDeleted
+    | ComparisonEvent,
     Field(discriminator="type"),
 ]
 

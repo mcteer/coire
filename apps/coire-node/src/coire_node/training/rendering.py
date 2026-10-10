@@ -13,6 +13,7 @@ from coire_core.conversation_rendering import openai_text_messages, openai_tools
 from coire_core.errors import TrainingValidationError
 from coire_core.models.conversation import TextPart
 from coire_core.models.datasets import TokenizedTrainingExample, TrainingExample
+from coire_core.models.preference import PreferenceRow, TokenizedPreferenceExample
 
 tracer = trace.get_tracer("coire.node.training")
 
@@ -131,3 +132,54 @@ def render_example(
         target_mask=[index >= start for index in range(len(tokens))],
         target_start=start,
     )
+
+
+def render_preference_example(
+    example: PreferenceRow,
+    tokenizer: ChatTokenizer,
+    *,
+    source_row: int,
+    max_sequence_length: int,
+    enable_thinking: bool,
+) -> TokenizedPreferenceExample:
+    if not 2 <= max_sequence_length <= 8192 or not tokenizer.has_chat_template:
+        raise TrainingValidationError(
+            "Preference rendering requires a bounded shared chat template"
+        )
+    messages = [message.model_dump(mode="json") for message in example.prompt]
+    with tracer.start_as_current_span("coire.node.training.preference.render"):
+        prefix = _render(
+            tokenizer, messages, None, generation=True, enable_thinking=enable_thinking
+        )
+        sequences = []
+        for answer in (example.chosen, example.rejected):
+            tokens = _render(
+                tokenizer,
+                [*messages, {"role": "assistant", "content": answer}],
+                None,
+                generation=False,
+                enable_thinking=enable_thinking,
+            )
+            if tokens[: len(prefix)] != prefix:
+                raise TrainingValidationError(
+                    "Preference assistant token-prefix alignment is unsupported"
+                )
+            if not prefix or len(prefix) >= len(tokens):
+                raise TrainingValidationError("Preference response has no supervised target tokens")
+            if len(tokens) > max_sequence_length:
+                raise TrainingValidationError(
+                    "Preference response exceeds the declared sequence length"
+                )
+            sequences.append(tokens)
+        if sequences[0] == sequences[1]:
+            raise TrainingValidationError("Preference responses are token-identical")
+        return TokenizedPreferenceExample(
+            source_row=source_row,
+            content_sha256=example.content_sha256(),
+            prompt_sha256=example.prompt_sha256(),
+            chosen_tokens=sequences[0],
+            rejected_tokens=sequences[1],
+            chosen_mask=[index >= len(prefix) for index in range(len(sequences[0]))],
+            rejected_mask=[index >= len(prefix) for index in range(len(sequences[1]))],
+            prompt_length=len(prefix),
+        )

@@ -54,3 +54,13 @@ groups:
         annotations:
           summary: Studio ledger drift exceeds ten percent while training holds may be active
           runbook_url: /docs/runbooks/sft-training#kill-and-protect-chat
+
+      - alert: CoireTrainingMeasurementDatabaseReconnects
+        expr: sum(rate(coire_training_measurement_database_reconnects_total[5m])) > 0.1
+        for: 1m
+        labels:
+          severity: warning
+          subject: training
+        annotations:
+          summary: Measurement database connections repeatedly require reconnection
+          runbook_url: /docs/runbooks/sft-training#observe

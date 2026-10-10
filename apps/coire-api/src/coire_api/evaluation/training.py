@@ -29,7 +29,7 @@ from coire_core.errors import (
     TrainingUnavailable,
 )
 from coire_core.models.evaluation import EvaluationSubject, EvaluationTarget, SuiteKind
-from coire_core.models.training import TrainingSpecV2
+from coire_core.models.training import TrainingSpecV2, TrainingSpecV3
 from coire_core.models.training_evaluation import ResolvedTrainingSuite
 from coire_core.settings import Settings
 
@@ -38,7 +38,7 @@ from coire_core.settings import Settings
 async def resolve_declarations(
     session: AsyncSession,
     principal: Principal,
-    spec: TrainingSpecV2,
+    spec: TrainingSpecV2 | TrainingSpecV3,
     *,
     base_manifest_sha256: str,
     settings: Settings,
@@ -53,7 +53,7 @@ async def resolve_declarations(
                 training = getattr(status, "training_capabilities", None)
                 if (
                     training is None
-                    or 2 not in training.spec_versions
+                    or spec.schema_version not in training.spec_versions
                     or (
                         any(item.checkpoint_updates for item in spec.eval.suites)
                         and 1 not in training.evaluation_checkpoint_ack_versions
@@ -137,12 +137,19 @@ async def ensure_final_trigger(
     from coire_api.audit import write_principal_audit
     from coire_api.db import TrainingCheckpointRow
     from coire_api.training.service import payload_digest
-    from coire_core.models.training import ResolvedTrainingSpecV2, parse_resolved_training_spec
+    from coire_core.models.training import (
+        ResolvedTrainingSpecV2,
+        ResolvedTrainingSpecV3,
+        parse_resolved_training_spec,
+    )
 
     if job.state != "succeeded" or adapter.state != "ready" or job.resolved_spec is None:
         return None
     resolved = parse_resolved_training_spec(job.resolved_spec)
-    if not isinstance(resolved, ResolvedTrainingSpecV2):
+    if (
+        not isinstance(resolved, (ResolvedTrainingSpecV2, ResolvedTrainingSpecV3))
+        or not resolved.evaluations
+    ):
         return None
     if (
         job.adapter_id != adapter.id
@@ -234,7 +241,11 @@ async def reconcile_trigger(
         TERMINAL_EVALUATION_STATES,
         EvaluationReason,
     )
-    from coire_core.models.training import ResolvedTrainingSpecV2, parse_resolved_training_spec
+    from coire_core.models.training import (
+        ResolvedTrainingSpecV2,
+        ResolvedTrainingSpecV3,
+        parse_resolved_training_spec,
+    )
     from coire_core.models.training_evaluation import ResolvedTrainingSuite
 
     snapshot = await session.get(TrainingEvaluationTriggerRow, identity)
@@ -281,7 +292,9 @@ async def reconcile_trigger(
         return False
     resolved = parse_resolved_training_spec(job.resolved_spec)
     if (
-        not isinstance(resolved, ResolvedTrainingSpecV2)
+        not isinstance(resolved, (ResolvedTrainingSpecV2, ResolvedTrainingSpecV3))
+        or not resolved.evaluations
+        or resolved.evaluation_base is None
         or payload_digest(resolved) != job.resolved_sha256
     ):
         raise TrainingConflict("Final obligation resolved lineage changed")
@@ -519,6 +532,7 @@ async def ensure_checkpoint_trigger(
     from coire_api.training.service import payload_digest
     from coire_core.models.training import (
         ResolvedTrainingSpecV2,
+        ResolvedTrainingSpecV3,
         TrainingStateEvent,
         parse_resolved_training_spec,
     )
@@ -527,7 +541,10 @@ async def ensure_checkpoint_trigger(
     if job.resolved_spec is None:
         return None
     resolved = parse_resolved_training_spec(job.resolved_spec)
-    if not isinstance(resolved, ResolvedTrainingSpecV2):
+    if (
+        not isinstance(resolved, (ResolvedTrainingSpecV2, ResolvedTrainingSpecV3))
+        or not resolved.evaluations
+    ):
         return None
     declarations = [
         item

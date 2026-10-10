@@ -48,6 +48,20 @@ async def reserve_upload(
 ) -> TrainingStorageReservationRow:
     if not settings.training_enabled:
         raise TrainingUnavailable("Training datasets are disabled")
+    return await reserve_admitted_upload(
+        session, principal, settings, declared_bytes=declared_bytes, subject_id=subject_id
+    )
+
+
+async def reserve_admitted_upload(
+    session: AsyncSession,
+    principal: Principal,
+    settings: Settings,
+    *,
+    declared_bytes: int,
+    subject_id: uuid.UUID,
+) -> TrainingStorageReservationRow:
+    """Reserve for an already admitted durable command while enforcing live authority and quota."""
     owner = await authorize_live_training_action(session, principal)
     needed = upload_reservation_bytes(declared_bytes, settings)
     with tracer.start_as_current_span("coire.api.training.dataset.reserve"):

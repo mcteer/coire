@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ComparisonReceipt } from "../api/feedback";
 import { ApiError } from "../api/client";
 import { loadChatDrafts, saveChatDrafts } from "../api/chatDrafts";
 import {
@@ -49,33 +50,40 @@ export function useConversation(ownerId: string) {
   const [codingResults, setCodingResults] = useState<Record<string, ChatTurnResult>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
+  const [comparisons, setComparisons] = useState<ComparisonReceipt[]>([]);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [selections, setSelections] = useState<ChatAttachmentSelection[]>([]);
   const [fileBusy, setFileBusy] = useState(false);
+  const [variedAnswers, setVariedAnswers] = useState(false);
   const selectedModel = models.find((item) => item.id === selectedId);
+  const canVaryAnswers =
+    mode === "chat" && selectedModel?.source === "studio" && !selectedModel.accepts_images;
   const visualSelections = selections.filter((item) => item.mode === "visual");
-  const visualUnits = visualSelections.reduce((count, item) => count + (item.pages?.length || 1), 0);
+  const visualUnits = visualSelections.reduce(
+    (count, item) => count + (item.pages?.length || 1),
+    0,
+  );
   const selectionIssue =
     mode === "code" && selections.some((item) => item.mode !== "visual")
       ? "Coding actions use visual files. Change this selection to visual or remove it."
       : visualSelections.length > 0 && !selectedModel?.accepts_images
-      ? "Choose a verified image-capable model, or remove visual selections."
-      : visualSelections.length > 0 && visualUnits > (selectedModel?.max_images ?? 0)
-        ? "The selected model accepts fewer images or pages. Remove some visual selections."
-        : selections.some((item) => {
-              const attachment = attachments.find((row) => row.id === item.file_id);
-              return !attachment || attachment.state !== "ready";
-            })
-          ? "Wait for the selected file to finish processing, or remove it."
-          : selections.some(
-                (item) =>
-                  item.mode === "text" &&
-                  attachments
-                    .find((row) => row.id === item.file_id)
-                    ?.detected_type.startsWith("image/"),
-              )
-            ? "This image cannot be sent as text. Remove it to continue."
-            : null;
+        ? "Choose a verified image-capable model, or remove visual selections."
+        : visualSelections.length > 0 && visualUnits > (selectedModel?.max_images ?? 0)
+          ? "The selected model accepts fewer images or pages. Remove some visual selections."
+          : selections.some((item) => {
+                const attachment = attachments.find((row) => row.id === item.file_id);
+                return !attachment || attachment.state !== "ready";
+              })
+            ? "Wait for the selected file to finish processing, or remove it."
+            : selections.some(
+                  (item) =>
+                    item.mode === "text" &&
+                    attachments
+                      .find((row) => row.id === item.file_id)
+                      ?.detected_type.startsWith("image/"),
+                )
+              ? "This image cannot be sent as text. Remove it to continue."
+              : null;
   const canSendSelections = selectionIssue === null;
   const latestTurn = turns.at(-1);
   const planTurns = turns.filter(
@@ -122,9 +130,7 @@ export function useConversation(ownerId: string) {
   const reportError = (cause: unknown) => {
     const problem = cause instanceof ApiError ? cause.problem : null;
     const code =
-      problem && typeof problem === "object" && "coire_code" in problem
-        ? problem.coire_code
-        : null;
+      problem && typeof problem === "object" && "coire_code" in problem ? problem.coire_code : null;
     setContextExceeded(code === "chat_context_exceeded");
     if (cause instanceof ApiError && cause.status === 401) {
       setReauthRequired(true);
@@ -436,6 +442,7 @@ export function useConversation(ownerId: string) {
         selectedId,
         input,
         JSON.stringify(selections),
+        String(variedAnswers && canVaryAnswers),
         mode,
         action,
         workspaceId ?? "",
@@ -453,6 +460,9 @@ export function useConversation(ownerId: string) {
               content: input,
               action: mode === "chat" ? "chat" : action,
               attachments: selections,
+              ...(variedAnswers && canVaryAnswers
+                ? { sampling: { temperature: 0.7, top_p: 0.95, top_k: 0, min_p: 0 } }
+                : {}),
               ...(mode === "code"
                 ? {
                     workspace_id: workspaceId,
@@ -474,6 +484,7 @@ export function useConversation(ownerId: string) {
         setConversation(detail.conversation);
         setMessages(detail.messages ?? []);
         setTurns(detail.turns ?? []);
+        setComparisons(detail.comparisons ?? []);
       }
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === "AbortError")) {
@@ -654,6 +665,7 @@ export function useConversation(ownerId: string) {
       setDraftMode(detail.conversation.mode);
       setMessages(detail.messages ?? []);
       setTurns(detail.turns ?? []);
+      setComparisons(detail.comparisons ?? []);
       setActivities({});
       setActivityStatus({});
       setCodingResults({});
@@ -753,6 +765,7 @@ export function useConversation(ownerId: string) {
     setDraftMode("chat");
     setMessages([]);
     setTurns([]);
+    setComparisons([]);
     setActivities({});
     setActivityStatus({});
     setCodingResults({});
@@ -790,6 +803,7 @@ export function useConversation(ownerId: string) {
       setDraftMode("chat");
       setMessages([]);
       setTurns([]);
+      setComparisons([]);
       setActivities({});
       setActivityStatus({});
       setCodingResults({});
@@ -805,6 +819,7 @@ export function useConversation(ownerId: string) {
       setConversation(detail.conversation);
       setMessages(detail.messages ?? []);
       setTurns(detail.turns ?? []);
+      setComparisons(detail.comparisons ?? []);
       setAttachments(detail.attachments ?? []);
       setOlderPosition(detail.next_message_position ?? null);
       setHistory((rows) =>
@@ -827,6 +842,7 @@ export function useConversation(ownerId: string) {
             setConversation(detail.conversation);
             setMessages(detail.messages ?? []);
             setTurns(detail.turns ?? []);
+            setComparisons(detail.comparisons ?? []);
             setAttachments(detail.attachments ?? []);
             setOlderPosition(detail.next_message_position ?? null);
             setHistory((rows) => rows.map((row) => (row.id === id ? detail.conversation : row)));
@@ -900,6 +916,7 @@ export function useConversation(ownerId: string) {
           setConversation(detail.conversation);
           setMessages(detail.messages ?? []);
           setTurns(detail.turns ?? []);
+          setComparisons(detail.comparisons ?? []);
           setStatus(
             turn.state === "completed" ? null : "Response ended. Your partial answer was saved.",
           );
@@ -951,6 +968,7 @@ export function useConversation(ownerId: string) {
         setDraftMode("chat");
         setMessages([]);
         setTurns([]);
+        setComparisons([]);
         setActivities({});
         setActivityStatus({});
         setCodingResults({});
@@ -978,6 +996,9 @@ export function useConversation(ownerId: string) {
   };
 
   return {
+    variedAnswers,
+    setVariedAnswers,
+    canVaryAnswers,
     models,
     mode,
     setMode: setDraftMode,
@@ -1000,6 +1021,19 @@ export function useConversation(ownerId: string) {
     activityStatus,
     codingResults,
     turns,
+    comparisons,
+    recordComparison: (receipt: ComparisonReceipt) =>
+      setComparisons((current) => [...current.filter((row) => row.id !== receipt.id), receipt]),
+    refreshFeedback: async () => {
+      if (!conversation) return;
+      const generation = selection.current;
+      const detail = await getChatConversation(conversation.id);
+      if (selection.current !== generation) return;
+      setConversation(detail.conversation);
+      setMessages(detail.messages ?? []);
+      setTurns(detail.turns ?? []);
+      setComparisons(detail.comparisons ?? []);
+    },
     selectedId,
     setSelectedId: chooseModel,
     conversation,

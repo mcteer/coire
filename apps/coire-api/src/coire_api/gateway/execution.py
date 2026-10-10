@@ -26,6 +26,8 @@ from coire_api.gateway.proxy import EngineProxyError, StreamTiming
 from coire_api.gateway.resolution import ResolvedModel, resolve_model
 from coire_api.gateway.telemetry import first_token_duration_ms, overhead_duration_ms
 from coire_api.gateway.usage import UsageTracker
+from coire_core.models.adapters import InferenceTarget
+from coire_core.models.chat import NativeChatSampling
 from coire_core.models.gateway import ChatCompletionRequest, ChatMessage, UsageOutcome
 from coire_core.settings import Settings
 
@@ -42,16 +44,26 @@ def compatible_text_payload(body: ChatCompletionRequest, model_path: str) -> dic
 
 
 def canonical_text_payload(
-    messages: list[ChatMessage], model_path: str, *, output_tokens: int
+    messages: list[ChatMessage],
+    model_path: str,
+    *,
+    output_tokens: int,
+    enable_thinking: bool | None = None,
+    sampling: NativeChatSampling | None = None,
 ) -> dict[str, object]:
     """Adapt canonical Chat history to the same bare-engine text request shape."""
-    return {
+    payload: dict[str, object] = {
         "model": model_path,
         "messages": [message.model_dump(mode="json", exclude_none=True) for message in messages],
         "stream": True,
         "stream_options": {"include_usage": True},
         "max_tokens": output_tokens,
     }
+    if sampling is not None:
+        payload.update(sampling.model_dump(mode="json", exclude_none=True))
+    if enable_thinking is not None:
+        payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
+    return payload
 
 
 async def load_and_resolve(
@@ -75,7 +87,7 @@ async def load_and_resolve(
     return await resolve_model(session, model_id, principal, affinity_node)
 
 
-async def load_with_ceiling(model_id: uuid.UUID, settings: Settings) -> None:
+async def load_with_ceiling(model_id: uuid.UUID | InferenceTarget, settings: Settings) -> None:
     """Apply the same bounded registry load to compatible and native Chat calls."""
     await asyncio.wait_for(load_model(model_id, settings), timeout=settings.gateway_wait_ceiling_s)
 
@@ -165,8 +177,9 @@ async def _credential_is_active(principal: Principal) -> bool:
     from coire_api.db import session_scope
     from coire_api.identity.keys import key_is_active
     from coire_api.run_tokens import run_token_is_active
+    from coire_api.training.gateway_measurements import measurement_recheck_session
 
-    async with session_scope() as session:
+    async with measurement_recheck_session(session_scope) as session:
         if principal.kind is PrincipalKind.RUN:
             assert principal.run_id is not None
             return await run_token_is_active(session, principal.run_id)
@@ -188,14 +201,23 @@ async def track_stream(
     needs_recheck = request is not None and (
         usage.principal.api_key_id is not None or usage.principal.kind is PrincipalKind.RUN
     )
-    # The first recheck can run while the engine is producing its first chunk. It still
-    # gates delivery, including a revocation between route authentication and output.
-    first_recheck = (
-        asyncio.create_task(_credential_is_active(usage.principal)) if needs_recheck else None
-    )
+
+    async def first_credential_check() -> bool:
+        # Private admission already holds fresh authority locks through its lease
+        # commit. Start the independent output check at upstream handoff, avoiding
+        # competing database work before admission finishes. It still gates output.
+        if timing is not None and timing.upstream_ready is not None:
+            await timing.upstream_ready.wait()
+        return await _credential_is_active(usage.principal)
+
+    first_recheck = asyncio.create_task(first_credential_check()) if needs_recheck else None
     try:
         async for chunk in source:
             chunk_received_at = perf_counter()
+            # A direct source may not use the proxy handoff hook. Receiving its
+            # first chunk proves upstream has started, but never bypasses the check.
+            if timing is not None and timing.upstream_ready is not None:
+                timing.upstream_ready.set()
             if request is not None and await request.is_disconnected():
                 await usage.finish(UsageOutcome.DISCONNECTED, failure_code="client_disconnected")
                 return

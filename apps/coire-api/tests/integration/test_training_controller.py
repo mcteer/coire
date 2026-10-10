@@ -679,3 +679,55 @@ async def test_paused_jobs_require_current_evidence_and_admin_pause_stays_manual
         assert len((await session.scalars(select(TrainingAttemptRow))).all()) == 1
     assert transport.profile_calls == (0 if origin == "admin" else 1)
     assert not transport.deliveries
+
+
+@pytest.mark.parametrize("preference", [False, True])
+async def test_preparation_budget_does_not_inherit_the_stop_budget(
+    controller_db: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    preference: bool,
+) -> None:
+    from types import SimpleNamespace
+
+    from preference_measurement_fixtures import preference_experiment
+
+    import coire_scheduler.training_controller as module
+
+    async with controller_db.begin() as session:
+        job = await session.get(TrainingJobRow, JOB)
+        assert job is not None
+        if preference:
+            _, dispatch, _ = preference_experiment()
+            job.resolved_spec = dispatch.commands[0].prepare.resolved.model_dump(mode="json")
+        for operation in ["node.training.prepare", "node.training.stop"]:
+            session.add(
+                TrainingCommandRow(
+                    actor_user_id=job.owner_user_id,
+                    idempotency_key=str(uuid.uuid4()),
+                    operation=operation,
+                    subject_id="coire-edge-a",
+                    job_id=JOB,
+                    request_sha256=DIGEST,
+                    payload={},
+                    state="pending",
+                )
+            )
+
+    class ReceiptTransport(SimulatedTransport):
+        async def dispatch_command(self, command_id: uuid.UUID) -> None:
+            self.deliveries.append(command_id)
+
+    budgets: list[float] = []
+
+    def capture_timeout(seconds: float) -> asyncio.Timeout:
+        budgets.append(seconds)
+        return asyncio.timeout(seconds)
+
+    transport = ReceiptTransport(controller_db)
+    controller = TrainingController(transport, sessions=controller_db.begin)
+    monkeypatch.setattr(
+        module, "asyncio", SimpleNamespace(timeout=capture_timeout, gather=asyncio.gather)
+    )
+    await controller._dispatch(JOB, controls_only=False)
+    assert len(transport.deliveries) == 2
+    assert sorted(budgets) == ([5.0, 30.0] if preference else [5.0, 5.0])

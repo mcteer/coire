@@ -226,6 +226,14 @@ class AnthropicMessagesRequest(BaseModel):
     coire_affinity_node: str | None = Field(default=None, pattern=r"^coire-[a-z0-9-]+$")
 
 
+class EngineChatTemplateOptions(BaseModel):
+    """Closed rendering controls; the gateway cannot supply a template or code."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enable_thinking: bool = Field(strict=True)
+
+
 class EngineChatRequest(BaseModel):
     """Registry-resolved payload carried from the gateway to a node-owned engine."""
 
@@ -239,6 +247,9 @@ class EngineChatRequest(BaseModel):
     temperature: float | None = Field(default=None, ge=0)
     top_p: float | None = Field(default=None, ge=0, le=1)
     seed: int | None = Field(default=None, ge=0, le=2**32 - 1)
+    top_k: int | None = Field(default=None, ge=0, strict=True)
+    min_p: float | None = Field(default=None, ge=0, le=1)
+    chat_template_kwargs: EngineChatTemplateOptions | None = None
     stop: str | list[str] | None = None
     tools: list[dict[str, Any]] | None = None
     tool_choice: Any = None

@@ -127,7 +127,11 @@ async def test_probe_stages_and_compiles_every_source_and_separate_held_out(
         )
         for source in inputs:
             await supervisor.bind_inputs(prepared, source, disk_available=100 * 1024**3, multi=True)
-        frozen = probe_inputs(prepared, supervisor.directory(prepared.attempt_id), journal)
+        loaded = probe_inputs(prepared, supervisor.directory(prepared.attempt_id), journal)
+        from coire_node.training.worker import FrozenInputs
+
+        assert all(isinstance(item, FrozenInputs) for item in loaded)
+        frozen = [item for item in loaded if isinstance(item, FrozenInputs)]
         assert {s.binding.dataset_id for s in frozen} == {s.binding.dataset_id for s in inputs}
         train, held_out = compile_samples(prepared, frozen, SyntheticTokenizer())
         assert isinstance(train, MixtureSampler) and isinstance(held_out, MixtureSampler)

@@ -364,7 +364,7 @@ async def manual_training_context(
     job = await session.get(TrainingJobRow, job_id, populate_existing=True, with_for_update=True)
     if checkpoint_measurement and job is not None and job.evaluation_pause_trigger_id is not None:
         from coire_api.evaluation.training import require_checkpoint_pause
-        from coire_core.models.training import ResolvedTrainingSpecV2
+        from coire_core.models.training import ResolvedTrainingSpecV2, ResolvedTrainingSpecV3
 
         trigger = await require_checkpoint_pause(session, job, job.evaluation_pause_trigger_id)
         adapter = await session.get(
@@ -376,7 +376,7 @@ async def manual_training_context(
             adapter is None
             or adapter.state != "ready"
             or checkpoint is None
-            or not isinstance(resolved, ResolvedTrainingSpecV2)
+            or not isinstance(resolved, (ResolvedTrainingSpecV2, ResolvedTrainingSpecV3))
             or payload_digest(resolved) != job.resolved_sha256
             or any(
                 subject.target.model_id != resolved.spec.model.model_id

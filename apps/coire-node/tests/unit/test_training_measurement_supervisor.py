@@ -114,7 +114,11 @@ async def test_guard_refuses_before_any_hold_and_probe_uses_fixed_argv(
         await supervisor.prepare_measurement(probe)
     assert journal.records() == []
     argv = supervisor.argv(
-        {"attempt_id": probe.prepare.attempt_id, "spawn_nonce": dispatch.spawn_nonce}
+        {
+            "attempt_id": probe.prepare.attempt_id,
+            "spawn_nonce": dispatch.spawn_nonce,
+            "prepare": probe.prepare.model_dump(mode="json"),
+        }
     )
     assert argv[1:3] == ["-m", "coire_node.training.measurement"]
     assert "--model" not in argv

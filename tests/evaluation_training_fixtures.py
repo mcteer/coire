@@ -52,7 +52,7 @@ async def seed_evaluated_training(
             ),
         }
     )
-    if version == 2:
+    if version in {2, 3}:
         spec["schema_version"] = 2
         spec["output"]["checkpoint_every_updates"] = 8
         spec["eval"]["suites"] = [
@@ -113,6 +113,17 @@ async def seed_evaluated_training(
             for schedule, suite in zip(spec["eval"]["suites"], definitions, strict=True)
         ]
         legacy["evaluation_base"] = base.model_dump(mode="json")
+    if version == 3:
+        spec.update(
+            schema_version=3, objective="dpo", objective_options={"beta": 0.1}, init_adapter=None
+        )
+        spec["parameterization"]["dropout"] = 0
+        spec["data"]["loss_policy"] = "final_assistant"
+        target = {**spec["model"], "base_manifest_sha256": legacy["base_manifest_sha256"]}
+        legacy.update(
+            initial_target=target, reference_target=target, sampler_version="coire-pair-sampler-v1"
+        )
+        legacy["resource_envelope"].update(reference_weight_bytes=1, reference_adapter_bytes=0)
     resolved = parse_resolved_training_spec(legacy)
     source = yaml.safe_dump(spec)
     now = datetime.now(UTC)
@@ -179,6 +190,7 @@ async def seed_evaluated_training(
         manifest_sha256="c" * 64,
         resolved_spec_sha256=job.resolved_sha256,
         parameterization=spec["parameterization"]["kind"],
+        objective="dpo" if version == 3 else "sft",
         state="ready",
         visibility="admin_only",
         verified=False,

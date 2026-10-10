@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import Request
 
 from coire_api.auth import Principal, PrincipalKind
 from coire_api.chat import streaming
-from coire_api.db import ChatConversationRow, ChatEventRow, UserRow
+from coire_api.db import ChatConversationRow, ChatEventRow, FeedbackPreferenceRow, UserRow
 from coire_core.models.chat import (
     ChatConversation,
     ChatConversationDeleted,
@@ -24,6 +27,74 @@ from coire_core.models.chat import (
 )
 from coire_core.models.runs import RunActivity, RunActivityTool
 from coire_core.settings import Settings
+
+
+async def test_capture_generation_change_replaces_snapshot_without_new_chat_cursor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from coire_api.chat import service
+
+    now, owner, cid = datetime.now(UTC), uuid.uuid4(), uuid.uuid4()
+    conversation = ChatConversationRow(
+        id=cid,
+        owner_user_id=owner,
+        title="Private",
+        mode="chat",
+        revision=1,
+        event_cursor=2,
+        created_at=now,
+        updated_at=now,
+    )
+    preference = SimpleNamespace(capture_generation=1, enabled=True)
+
+    class Session:
+        async def get(self, model: type, _id: uuid.UUID) -> object:
+            if model is UserRow:
+                return SimpleNamespace(active=True)
+            if model is FeedbackPreferenceRow:
+                return preference
+            return conversation
+
+        async def execute(self, _statement: object) -> SimpleNamespace:
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: []))
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[Session]:
+        yield Session()
+
+    async def sleep(_delay: float) -> None:
+        preference.capture_generation, preference.enabled = 2, False
+
+    detail = ChatConversationDetail(
+        conversation=ChatConversation(
+            id=cid,
+            owner_id=owner,
+            title="Private",
+            mode="chat",
+            revision=1,
+            created_at=now,
+            updated_at=now,
+        ),
+        event_cursor=2,
+    )
+    monkeypatch.setattr(streaming, "session_scope", sessions)
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    read = AsyncMock(return_value=detail)
+    monkeypatch.setattr(service, "get_conversation_detail", read)
+    request = SimpleNamespace(is_disconnected=AsyncMock(side_effect=[False, True]))
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    chunks = [
+        chunk
+        async for chunk in streaming.observe_conversation(
+            cid,
+            Principal(kind=PrincipalKind.USER, user_id=owner),
+            cast(Request, request),
+            settings,
+            2,
+        )
+    ]
+    assert any(b'"replacement":true' in chunk for chunk in chunks)
+    read.assert_awaited_once()
 
 
 async def test_expired_observer_cursor_gets_replacement_snapshot(

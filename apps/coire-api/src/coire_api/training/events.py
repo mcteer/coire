@@ -19,7 +19,10 @@ from coire_api.training.telemetry import (
     tracer,
 )
 from coire_core.errors import TrainingConflict, TrainingNotFound, TrainingValidationError
+from coire_core.models.preference import PreferenceMetricSample
 from coire_core.models.training import (
+    PreferenceTrainingProgressEvent,
+    ResolvedTrainingSpecV3,
     TrainingEvent,
     TrainingEventPayload,
     TrainingJobSnapshot,
@@ -28,6 +31,8 @@ from coire_core.models.training import (
     TrainingMetricSample,
     TrainingProgressEvent,
     TrainingReplayPage,
+    parse_resolved_training_spec,
+    parse_training_metric_sample,
 )
 
 
@@ -122,11 +127,23 @@ async def append_event(
 
 
 async def record_metric(
-    session: AsyncSession, sample: TrainingMetricSample, *, fence: int
+    session: AsyncSession, sample: TrainingMetricSample | PreferenceMetricSample, *, fence: int
 ) -> TrainingMetricRow:
     with tracer.start_as_current_span("coire.api.training.metric.record"):
         job = await current_job(session, sample.job_id, lock=True)
         await current_attempt(session, job, sample.attempt_id, fence)
+        if isinstance(sample, PreferenceMetricSample):
+            resolved = parse_resolved_training_spec(job.resolved_spec)
+            if (
+                sample.fence != fence
+                or not isinstance(resolved, ResolvedTrainingSpecV3)
+                or sample.objective != resolved.spec.objective
+            ):
+                raise TrainingConflict("Preference metric differs from frozen objective or fence")
+        else:
+            intent = (job.resolved_spec or {}).get("spec")
+            if isinstance(intent, dict) and intent.get("schema_version") == 3:
+                raise TrainingConflict("Preference runs require pair-counted metrics")
         existing = await session.scalar(
             select(TrainingMetricRow).where(
                 TrainingMetricRow.job_id == sample.job_id,
@@ -158,7 +175,9 @@ async def record_metric(
         await append_event(
             session,
             job.id,
-            TrainingProgressEvent(metric=sample),
+            PreferenceTrainingProgressEvent(metric=sample)
+            if isinstance(sample, PreferenceMetricSample)
+            else TrainingProgressEvent(metric=sample),
             attempt_id=sample.attempt_id,
             fence=fence,
         )
@@ -245,7 +264,7 @@ async def metric_page(
         ).all()
     )
     items = [
-        TrainingMetricSample.model_validate({**row.metric, "rolled_back": row.rolled_back})
+        parse_training_metric_sample({**row.metric, "rolled_back": row.rolled_back})
         for row in rows[:limit]
     ]
     next_cursor = None

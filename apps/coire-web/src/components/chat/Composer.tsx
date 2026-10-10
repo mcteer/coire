@@ -37,7 +37,7 @@ export function Composer({
         }}
       />
       <div className="chat-composer-bottom">
-        <span role="status" aria-live="polite">
+        <span role="status" aria-label="Response status" aria-live="polite">
           {status}
         </span>
         <button className="button" type="submit" disabled={disabled || !value.trim()}>

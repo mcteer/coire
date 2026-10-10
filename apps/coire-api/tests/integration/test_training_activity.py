@@ -69,6 +69,63 @@ async def test_activity_has_loss_memory_and_stop_without_recipe_content(
         assert (await project_training_activity(session, actor)).items[0].reserved_bytes == 0
 
 
+@pytest.mark.parametrize("objective", ["dpo", "orpo"])
+async def test_activity_exposes_preference_probe_separately_from_loss(
+    runtime_db: RuntimeDatabase, objective: str
+) -> None:
+    from coire_core.models.preference import PreferenceMetricSample, PreferenceProbe
+    from coire_core.models.training import TrainingSpecV3, parse_training_spec
+
+    factory, _ = runtime_db
+    async with factory.begin() as session:
+        job = await session.get(TrainingJobRow, JOB)
+        assert job is not None
+        raw = parse_training_spec(job.submitted_spec).model_dump(mode="json")
+        raw.update(
+            schema_version=3,
+            objective=objective,
+            init_adapter=None,
+            objective_options={"beta": 0.1} if objective == "dpo" else {"weight": 0.1},
+        )
+        raw["parameterization"] = {**raw["parameterization"], "dropout": 0.0}
+        raw["data"] = {**raw["data"], "loss_policy": "final_assistant"}
+        job.submitted_spec = TrainingSpecV3.model_validate(raw).model_dump(mode="json")
+        probe = PreferenceProbe(sample_count=8, accuracy=0.75, margin=0.125)
+        sample = PreferenceMetricSample.model_validate(
+            {
+                "job_id": JOB,
+                "attempt_id": ATTEMPT,
+                "fence": 1,
+                "update": 1,
+                "objective": objective,
+                "kind": "train",
+                "loss": 0.5,
+                "pair_count": 2,
+                "response_tokens": 6,
+                "tokens_per_second": 3,
+                "probe": probe.model_dump(mode="json"),
+                "recorded_at": datetime.now(UTC),
+            }
+        )
+        session.add(
+            TrainingMetricRow(
+                job_id=JOB,
+                attempt_id=ATTEMPT,
+                completed_update=1,
+                kind="train",
+                loss=0.5,
+                metric=sample.model_dump(mode="json"),
+                rolled_back=False,
+                recorded_at=sample.recorded_at,
+            )
+        )
+        await session.flush()
+        actor = Principal(kind=PrincipalKind.ADMIN, user_id=job.owner_user_id, role=UserRole.ADMIN)
+        item = (await project_training_activity(session, actor)).items[0]
+        assert item.objective == objective and item.preference_probe == probe
+        assert item.latest_train_loss == 0.5
+
+
 async def test_activity_denies_service_authority_and_invalid_cursor(
     runtime_db: RuntimeDatabase,
 ) -> None:

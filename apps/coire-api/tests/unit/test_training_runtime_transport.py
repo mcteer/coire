@@ -14,6 +14,41 @@ from coire_core.models.training_node import CheckpointCommitAcknowledgement, Nod
 from coire_core.settings import Settings
 
 
+@pytest.mark.parametrize("preference", [False, True])
+async def test_preference_prepare_bound_keeps_legacy_control_timeout(
+    monkeypatch: pytest.MonkeyPatch, preference: bool
+) -> None:
+    from preference_measurement_fixtures import preference_experiment
+
+    from coire_core.models.training_node import TrainingPrepared
+
+    if preference:
+        _, dispatch, _ = preference_experiment()
+    else:
+        _, dispatch = experiment()
+    prepare = dispatch.commands[0].prepare
+    captured: dict[str, Any] = {}
+
+    async def call(*args: object, **kwargs: Any) -> tuple[int, dict[str, Any]]:
+        captured.update(kwargs)
+        receipt = TrainingPrepared(
+            attempt_id=prepare.attempt_id,
+            fence=prepare.fence,
+            node=prepare.node,
+            reservation_id=prepare.reservation_id,
+            runtime_sha256=prepare.resolved.runtime_sha256,
+            ready=False,
+            reason="analysis_pending",
+        )
+        return 200, receipt.model_dump(mode="json")
+
+    client = TrainingNodeClient(Settings(), timeout=5.0)
+    async with client:
+        monkeypatch.setattr(client, "_call", call)
+        assert not (await client.prepare_training(prepare)).ready
+    assert captured.get("request_timeout_s") == (30.0 if preference else None)
+
+
 @pytest.mark.parametrize("wrong_node", [False, True])
 async def test_checkpoint_commit_uses_typed_200_status(
     monkeypatch: pytest.MonkeyPatch, wrong_node: bool

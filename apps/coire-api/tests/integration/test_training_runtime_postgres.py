@@ -175,7 +175,7 @@ async def test_stop_rebind_requires_exact_expired_prepare_and_positive_native_re
 
 @pytest.fixture
 async def runtime_db(
-    training_postgres_url: str, monkeypatch: pytest.MonkeyPatch
+    training_postgres_url: str, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
 ) -> AsyncIterator[RuntimeDatabase]:
     engine = create_async_engine(training_postgres_url)
     async with engine.begin() as connection:
@@ -193,6 +193,10 @@ async def runtime_db(
     monkeypatch.setattr("coire_scheduler.training_guard.session_scope", sessions)
     monkeypatch.setattr("coire_scheduler.training_components.session_scope", sessions)
     _, dispatch = experiment()
+    if getattr(request, "param", None) == "preference":
+        from preference_measurement_fixtures import preference_experiment
+
+        _, dispatch, _ = preference_experiment()
     prepare = dispatch.commands[0].prepare
     frozen = dispatch.sources[0]
     async with factory.begin() as session:
@@ -258,7 +262,7 @@ async def runtime_db(
             id=frozen.binding.dataset_id,
             owner_user_id=owner.id,
             name="fixture",
-            format="text",
+            format=frozen.binding.format.value,
             state="ready",
             source_sha256=DIGEST,
             source_bytes=10,
@@ -268,7 +272,7 @@ async def runtime_db(
             split_seed=0,
             validation_fraction=0.05,
             split_manifest=frozen.split.model_dump(mode="json"),
-            split_sha256=payload_digest(frozen.split),
+            split_sha256=frozen.binding.split_sha256,
         )
         session.add(dataset)
         await session.flush()
@@ -440,6 +444,67 @@ async def test_prepare_delivers_refreshes_and_only_journals_ready(
         row = await session.get(TrainingCommandRow, prepare.command_id)
         assert row is not None
         assert row.state == "succeeded" and TrainingPrepared.model_validate(row.receipt).ready
+
+
+@pytest.mark.parametrize("runtime_db", ["preference"], indirect=True)
+async def test_preference_prepare_replay_uses_renewed_attempt_authority(
+    runtime_db: RuntimeDatabase,
+) -> None:
+    factory, prepare = runtime_db
+    prepare.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    async with factory.begin() as session:
+        command = await session.get(TrainingCommandRow, prepare.command_id)
+        attempt = await session.get(TrainingAttemptRow, prepare.attempt_id)
+        assert command is not None and attempt is not None
+        command.payload = prepare.model_dump(mode="json")
+        command.request_sha256 = payload_digest(prepare)
+        command.state = "dispatching"
+        attempt.lease_expires_at = datetime.now(UTC) + timedelta(seconds=29)
+    node = SimulatedNode()
+    await dispatch_training_command(prepare.command_id, node)
+    assert len(node.inputs) == 1
+    assert node.inputs[0].lease_expires_at > datetime.now(UTC)
+    assert node.inputs[0].sources[0].grant.expires_at == node.inputs[0].lease_expires_at
+    node.ready = True
+    await dispatch_training_command(prepare.command_id, node)
+    async with factory.begin() as session:
+        command = await session.get(TrainingCommandRow, prepare.command_id)
+        assert command is not None and command.state == "succeeded"
+        assert command.payload == prepare.model_dump(mode="json")
+
+
+@pytest.mark.parametrize("runtime_db", ["preference"], indirect=True)
+@pytest.mark.parametrize("mutation", ["expiry", "cancel", "fence", "intent"])
+async def test_renewed_preference_preparation_cannot_widen_authority(
+    runtime_db: RuntimeDatabase, mutation: str
+) -> None:
+    factory, prepare = runtime_db
+    prepare.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    async with factory.begin() as session:
+        command = await session.get(TrainingCommandRow, prepare.command_id)
+        attempt = await session.get(TrainingAttemptRow, prepare.attempt_id)
+        job = await session.get(TrainingJobRow, prepare.job_id)
+        assert command is not None and attempt is not None and job is not None
+        command.payload, command.request_sha256 = (
+            prepare.model_dump(mode="json"),
+            payload_digest(prepare),
+        )
+        command.state = "dispatching"
+        attempt.lease_expires_at = datetime.now(UTC) + timedelta(seconds=29)
+        if mutation == "expiry":
+            attempt.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        elif mutation == "cancel":
+            job.state = "cancelling"
+        elif mutation == "fence":
+            attempt.fence += 1
+        else:
+            command.request_sha256 = "f" * 64
+    node = SimulatedNode()
+    with pytest.raises(TrainingConflict):
+        await dispatch_training_command(prepare.command_id, node)
+    assert not node.inputs
+    async with factory.begin() as session:
+        assert not list(await session.scalars(select(TrainingDatasetGrantRow)))
 
 
 @pytest.mark.parametrize(
