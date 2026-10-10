@@ -92,9 +92,9 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         activation_bytes=1,
         reference_weight_bytes=1 if objective == "dpo" else 0,
         reference_adapter_bytes=0,
-        # A two-update tiny probe gets a stricter three-GiB total cap. Seven GiB
+        # A two-update tiny probe gets a stricter 3.5-GiB total cap. Seven GiB
         # cannot fit on a seven-GB CI VM after its OS and test process are counted.
-        buffer_bytes=2 * 1024**3,
+        buffer_bytes=5 * 1024**3 // 2,
         safety_bytes=1024**3,
         checkpoint_bytes=128 * 1024**2,
     )
@@ -170,10 +170,17 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         tmp_path / "node", node=prepared.node, admission_lock=threading.RLock()
     )
 
+    # The hosted runner has seven GB including its OS. Disable only MLX's free
+    # allocator cache in this child fixture, preserving live tensors, real peak
+    # sampling and admission. The separate runtime matrix uses default caching.
+    bootstrap = tmp_path / "probe-runtime"
+    bootstrap.mkdir()
+    (bootstrap / "sitecustomize.py").write_text("import mlx.core as mx\nmx.set_cache_limit(0)\n")
+
     class SourceProcesses(NativeProcesses):
         def spawn(self, argv: list[str], env: dict[str, str]) -> tuple[int, float]:
             assert "PYTHONPATH" not in env
-            roots = []
+            roots = [str(bootstrap)]
             for package in (coire_core, coire_node):
                 assert package.__file__ is not None
                 roots.append(str(Path(package.__file__).parent.parent))
