@@ -178,3 +178,12 @@ For a slow exact-profile measurement, inspect the existing
 Use these timings to locate admission cost without exposing prompts or credentials.
 A short diagnostic or inconclusive measurement supplies no admission profile;
 keep the workload's declared arrival interval with its accepted evidence.
+
+
+A coexistence baseline can finish while the node still holds a lease snapshot
+from its last request. The scheduler waits one full snapshot validity window
+(five seconds) before trainer start, with preparation renewal and authority/resource
+watching still active. The node still requires fresh zero-lease evidence; the pause
+does not turn missing telemetry, active requests or an expired snapshot into vacancy.
+If start is still refused, preserve the scheduler/node logs and the exact stopped
+receipt before retrying. A completed baseline alone supplies no shared profile.

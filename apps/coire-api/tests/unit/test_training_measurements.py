@@ -423,3 +423,59 @@ async def test_input_delivery_runs_under_watchdog_and_stops_on_withdrawal(
             assert not renewal.done()
             renewal.cancel()
             await asyncio.gather(renewal, return_exceptions=True)
+
+
+@pytest.mark.parametrize("outcome", ["settled", "withdrawn", "ended", "cancelled"])
+async def test_baseline_handoff_retains_watchdog_and_cancels_pending_delay(
+    monkeypatch: pytest.MonkeyPatch, outcome: str
+) -> None:
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from coire_api.training.lease_snapshots import SNAPSHOT_VALIDITY_SECONDS
+    from coire_scheduler.training_measurements import TrainingMeasurementExecutor
+
+    entered = asyncio.Event()
+    elapsed = asyncio.Event()
+    authority_ended = asyncio.Event()
+    delay_finished = asyncio.Event()
+
+    async def delay(seconds: float) -> None:
+        assert seconds == SNAPSHOT_VALIDITY_SECONDS
+        entered.set()
+        try:
+            await elapsed.wait()
+        finally:
+            delay_finished.set()
+
+    async def watch() -> None:
+        await authority_ended.wait()
+        if outcome == "withdrawn":
+            raise TrainingConflict("Synthetic owner withdrawal during baseline handoff")
+
+    executor = TrainingMeasurementExecutor(Settings(), AsyncMock())
+    monkeypatch.setattr(asyncio, "sleep", delay)
+    renewal = asyncio.create_task(watch())
+    handoff = asyncio.create_task(executor.settle_baseline_leases(renewal))
+    try:
+        async with asyncio.timeout(1):
+            await entered.wait()
+            assert not handoff.done() and not renewal.done()
+            if outcome == "settled":
+                elapsed.set()
+                await handoff
+                assert not renewal.done()
+            elif outcome == "cancelled":
+                handoff.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await handoff
+                assert not renewal.done()
+            else:
+                authority_ended.set()
+                with pytest.raises(TrainingConflict, match=r"withdrawal|watchdog ended"):
+                    await handoff
+            assert delay_finished.is_set()
+    finally:
+        handoff.cancel()
+        renewal.cancel()
+        await asyncio.gather(handoff, renewal, return_exceptions=True)

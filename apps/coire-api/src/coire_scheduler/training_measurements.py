@@ -41,6 +41,7 @@ from coire_api.db import (
 from coire_api.nodes_client import NodeClient
 from coire_api.placement.service import effective_occupied_bytes, lock_nodes_for_admission
 from coire_api.training.authorization import authorize_live_training_action
+from coire_api.training.lease_snapshots import SNAPSHOT_VALIDITY_SECONDS
 from coire_api.training.measurements import (
     freeze_measurement_inputs,
     mint_measurement_inputs,
@@ -1158,6 +1159,7 @@ class TrainingMeasurementExecutor:
                             raise TrainingConflict(
                                 "Baseline is incomplete or already breaches latency"
                             )
+                        await self.settle_baseline_leases(renewal)
                     await self.recheck(identity, principal, binding)
                     # Attach both owned native ranks concurrently, after both inputs are ready.
                     starts: list[Awaitable[TrainingStartReceipt]] = []
@@ -1229,6 +1231,24 @@ class TrainingMeasurementExecutor:
                     await self.finish(
                         session, identity, principal, binding, dispatch, report, proofs
                     )
+
+    async def settle_baseline_leases(self, renewal: asyncio.Task[None]) -> None:
+        # The last baseline response can finish after the node's most recent
+        # authenticated lease snapshot. Let that snapshot expire while keeping
+        # preparation owned and watched. Native start still requires fresh zero
+        # leases; failed refreshes and unrelated requests remain refusals.
+        with tracer.start_as_current_span("coire.scheduler.training.measurement.lease_handoff"):
+            settle = asyncio.create_task(asyncio.sleep(SNAPSHOT_VALIDITY_SECONDS))
+            try:
+                done, _ = await asyncio.wait([settle, renewal], return_when=asyncio.FIRST_COMPLETED)
+                if renewal in done:
+                    await renewal
+                    raise TrainingConflict("Baseline handoff watchdog ended")
+                await settle
+            finally:
+                if not settle.done():
+                    settle.cancel()
+                await asyncio.gather(settle, return_exceptions=True)
 
     async def prepare_inputs(
         self,

@@ -1,16 +1,16 @@
 # Execution Record — Preference Optimisation and Feedback Capture
 
 Branch: `feat/018-preference-optimisation`. Baseline: `d2e4bbf` (016/017/PR94 merged).
-Status: implementation code and automated checks complete; release withheld at T074. Eight exclusive native train/serve cases, live recovery and drained rollback pass. Three sustained shared profiles pass; Studio A dense ORPO fails the gateway-overhead gate.
+Status: application/native implementation complete; current lease-handoff release checks pass; T074 qualification remains pending. Eight exclusive native train/serve cases, live recovery and drained rollback pass. Three sustained shared profiles pass; Studio A dense ORPO fails the gateway-overhead gate.
 
 ## Current release evidence
 
-The table records the current admission-timing release checkpoint. T076 passes; T074 fails acceptance and remains unchecked. Final reconciliation and the draft PR record that blocker. The full 517-case integration checkpoint precedes the final content-free timing events; all nine affected real-Postgres cases were rerun on the current checked images.
+The table records the current lease-handoff checkpoint. Full CPU, static/image, affected database and complete isolated integration gates pass. T076 is complete; T074 and final T077 reconciliation remain unchecked. Earlier completed checkpoints and all failed attempts remain recorded below.
 
 | Gate | Result |
 | --- | --- |
-| CPU unit/contract suite | 3,114 passed; two existing optional skips |
-| Disposable integration suite | 517 passed at the principal-identity checkpoint; nine affected cases pass again after content-free timing events; 39 existing optional skips, no required 018 skips |
+| CPU unit/contract suite | 3,118 passed; two existing optional skips |
+| Disposable integration suite | 517 passed on current lease-handoff images; nine affected cases also pass; 39 existing optional skips, no required 018 skips |
 | Static and generated contracts | Ruff, formatting (1,776 files), strict mypy (1,019 files), OpenAPI and dependency pins pass |
 | Web | 228 tests, TypeScript and lint pass |
 | Production images | All 16 ARM64 builds, policy checks, zero-CRITICAL scans and SPDX SBOMs pass |
@@ -21,7 +21,7 @@ The table records the current admission-timing release checkpoint. T076 passes; 
 | Prior-release rollback | Drained old binaries serve the verified base on the additive schema; tested node/runtime restoration passes |
 | Training/image exclusion | Valid image job remains queued without allocation while both native trainers run; cancellation passes |
 | Shared chat/training | Three exact profiles accepted; Studio A dense ORPO **failed T074** and remains unqualified |
-| Final reconciliation/PR | Reconciled for draft review; release remains blocked by T074 |
+| Final reconciliation/PR | Reopened for current-source checks, T074 qualification and final cleanup |
 
 Raw transcripts, datasets, credentials, native checkpoint data and image/SBOM receipts remain outside Git in the private acceptance directory. The entries below distinguish required acceptance from synthetic fixtures and historical checkpoints.
 
@@ -1120,3 +1120,15 @@ V59 prospectively declares **750 ms arrival, concurrency one** for the same Stud
 V59 one-slot 750 ms baseline logged two `concurrency_busy` failures and was withdrawn through the audited API. Content-free usage timings showed 323 successful requests, first-token p95 **484.664 ms**, duration p95 **517.068 ms**, and maximum duration **924.306 ms**; two successes lasted **924.306 ms** and **761.802 ms**, explaining the overlap. One additional request failed during withdrawal. The measurement ended inconclusive, its exact resident positively drained, key revoked and disabled flags restored. Studio A's prior short diagnostic was not a sound duration bound for Studio B; no profile is accepted from V59.
 
 V60 prospectively tests one-second arrival, concurrency one, on Studio B with the same dense ORPO configuration and valid B memory evidence. The declared interval exceeds all successful V59 durations, but that observation alone supplies no acceptance: the full phase, zero-failure, conservative overhead and native-coverage proofs remain required. Normal checked service entrypoints and all safety checks/thresholds remain unchanged.
+
+
+### V60 baseline completion and guarded handoff repair — 2026-10-10 UTC
+
+V60 `3504fb2b-c17c-4fcc-abc4-fdc5006dbb34` persisted a full 900-second baseline with **900 completions, zero failures and TTFT p95 0.432350931 s**. Exported counters showed 24 samples above 20 ms across 900 completions. Its trainer-start request then received HTTP 409 and the experiment ended inconclusive before native training. The positive stopped status records update zero. The controller saved service logs, positively drained its exact resident, revoked the owned key and restored disabled flags. This baseline does not supply a shared profile.
+
+Saved Core timestamps show the last B lease snapshot at **04:20:30.650187 UTC**, concurrently with the final baseline first token at **04:20:30.648997 UTC**. The node refused trainer start at **04:20:31.488551 UTC**, before the next B snapshot at **04:20:31.679318 UTC**. A still-valid snapshot can therefore retain the final request's active lease at this handoff. The generic node refusal does not independently identify its precise originating guard.
+
+The scheduler now waits the sender's full five-second snapshot validity window after a successful baseline, while its existing watchdog keeps authority/resource checks and prepared-reservation renewal active. Watchdog failure or cancellation cancels the pending delay; fresh authority is rechecked afterward and all native zero-lease, freshness, hardware, process and resource checks remain unchanged. The node/runtime and wire schemas are unchanged. Four regression cases cover successful settling, owner withdrawal, watchdog completion and cancellation; all **28 measurement unit cases** pass. Ruff/formatting, strict mypy, OpenAPI freshness and image pins pass. Full CPU/image/integration release refresh is pending, so T076 and final T077 reconciliation are reopened along with T074.
+
+
+Current lease-handoff source gates passed: **3,118 CPU tests**, two existing optional skips; **517 isolated integration tests**, 39 existing optional skips (1,578.76 s); all nine affected measurement transaction/usage cases; Ruff/format, strict mypy (1,019 files), OpenAPI freshness and pins; all **16 ARM64 production image build/policy/zero-CRITICAL/SPDX gates**. Web and alert checks remain green on unchanged source. The 39 integration skips retain the existing live/manual/paid/native-evaluation categories; required 018 native acceptance has no required skips. T076 is complete. V61 will use normal checked entrypoints and the same one-second Studio B workload after the guarded handoff fix; T074/T077 remain pending.
