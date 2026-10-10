@@ -14,19 +14,19 @@ from coire_node.testing.training import offline_training_model
 REPOSITORY = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
 QUANTIZED = REPOSITORY.replace("/", "--")
 DENSE = QUANTIZED + ".preference-dense-bf16"
+PROBE_REPOSITORY = "mlx-community/SmolLM-135M-Instruct-4bit"
+PROBE_QUANTIZED = PROBE_REPOSITORY.replace("/", "--")
+PROBE_DENSE = PROBE_QUANTIZED + ".preference-dense-bf16"
 
 
-def main() -> None:
-    # The existing helper refuses core/non-Apple hosts before assembling a node.
-    acquisition.REPOSITORIES = (REPOSITORY,)
-    acquisition.main()
+def convert_dense(quantized: str, dense: str) -> None:
     agent = Agent(
         Path("models/.preference-ci-node").resolve(), node_store_dir=str(Path("models").resolve())
     )
     reservation_id: str | None = None
     try:
         with agent.client() as client:
-            manifest = agent.store.read_manifest(QUANTIZED)
+            manifest = agent.store.read_manifest(quantized)
             assert manifest is not None
             response = client.post(
                 "/node/jobs/reservations",
@@ -47,8 +47,8 @@ def main() -> None:
                     "job_id": str(job_id),
                     "repo_id": manifest.repo_id,
                     "revision": manifest.revision,
-                    "source_slug": QUANTIZED,
-                    "target_slug": DENSE,
+                    "source_slug": quantized,
+                    "target_slug": dense,
                     "reservation_id": reservation_id,
                     "recipe": {"name": "preference-dense-bf16", "precision": "bf16"},
                     "dequantize": True,
@@ -66,12 +66,22 @@ def main() -> None:
                 time.sleep(0.5)
             else:
                 raise RuntimeError("isolated preference conversion exceeded its deadline")
-            offline_training_model(str(agent.store.path_for(DENSE)))
+            offline_training_model(str(agent.store.path_for(dense)))
     finally:
         if reservation_id is not None:
             with agent.client() as client:
                 client.delete(f"/node/jobs/reservations/{reservation_id}").raise_for_status()
         agent.close()
+
+
+def main() -> None:
+    # The existing helper refuses core/non-Apple hosts before assembling a node.
+    acquisition.REPOSITORIES = (REPOSITORY, PROBE_REPOSITORY)
+    acquisition.main()
+    convert_dense(QUANTIZED, DENSE)
+    # Native measurement also counts the frozen dense reference and transient
+    # serializer footprint. Use the smaller real acquired base on seven-GB CI.
+    convert_dense(PROBE_QUANTIZED, PROBE_DENSE)
 
 
 if __name__ == "__main__":

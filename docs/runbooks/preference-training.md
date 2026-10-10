@@ -176,6 +176,11 @@ For a slow exact-profile measurement, inspect the existing
 `coire.api.training.measurement.admission_stage` events contain only `stage` and
 `duration_ms`: initial authority, node lock, fresh inventory, lease and commit.
 Use these timings to locate admission cost without exposing prompts or credentials.
+Each scheduler gateway request starts a separate trace linked to its qualification
+parent, keeping long runs within Tempo's per-trace bound. Follow the link to the
+qualification and select requests by their timestamps. The first-content span
+attribute `coire.gateway.overhead_ms` records the exact unchanged histogram value;
+require complete phase coverage before using individual traces for a phase p95.
 A short diagnostic or inconclusive measurement supplies no admission profile;
 keep the workload's declared arrival interval with its accepted evidence.
 

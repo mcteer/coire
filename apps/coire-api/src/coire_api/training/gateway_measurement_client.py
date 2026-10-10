@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 import httpx
+from opentelemetry import trace
 from opentelemetry.propagate import inject
 from sqlalchemy import select
 
@@ -34,7 +35,9 @@ class MeasurementGatewayClient:
     async def aclose(self) -> None:
         await self.client.aclose()
 
-    @observed("coire.scheduler.training.measurement.gateway")
+    # A sustained qualification exceeds the backend's per-trace bound if every
+    # stream shares one parent. Keep each request bounded and link its origin.
+    @observed("coire.scheduler.training.measurement.gateway", linked_root=True)
     async def generate(
         self,
         principal: Principal,
@@ -43,6 +46,9 @@ class MeasurementGatewayClient:
         prompt: TrainingMeasurementPrompt,
         max_output_tokens: int,
     ) -> TrainingMeasurementCompletion:
+        span = trace.get_current_span()
+        span.set_attribute("measurement_id", str(measurement_id))
+        span.set_attribute("instance_id", str(target.instance_id))
         async with session_scope() as session:
             node = (
                 await session.execute(

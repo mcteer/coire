@@ -47,6 +47,20 @@ GitHub run `38025929570` failed its native measurement fixture because its seven
 
 Private receipts: `v61-controller.log`, `v61-overhead-owner-withdrawal.json`, `ci-probe-budget-native-qlora.log`, `ci-probe-budget-native-lora.log`, and their content-free controller records. No raw data or secrets are committed.
 
+### Bounded request tracing follow-up
+
+Tempo's actual logs report `TRACE_TOO_LARGE` for V61's long shared trace (five-MB limit). The retained trace contains all 900 baseline requests but only 415 mixed requests. Its stage medians increased from baseline to mixed: authority **3.242→3.430 ms**, inventory **3.533→3.791 ms**, lease **1.114→1.637 ms**, commit **3.435→3.751 ms**. These incomplete traces neither identify a single cause nor establish full-phase p95.
+
+Each scheduler measurement request now starts its own root trace linked to the qualification context, with measurement/resident correlation fields. The first-content span records `coire.gateway.overhead_ms`, exactly the existing histogram calculation; timing boundaries and acceptance limits remain unchanged. Actual SDK tests verify parent restoration, separate linked trace IDs, ordinary parent behavior and content-free failures. Backend limits remain unchanged. Current-source checks pass: 3,121 CPU tests, nine affected real-Postgres integration cases, Ruff/formatting, strict mypy, unchanged OpenAPI and pins, and all 16 ARM64 image gates. The complete earlier integration result remains 517 passes on the preceding lease-handoff checkpoint; the tracing change has the focused real-Postgres rerun. V62 is running the unchanged one-second, 900-second-per-phase qualification with bounded request traces.
+
+### CI fixture resource correction
+
+Run `38028208584` still refused the four-GiB measurement reservation: actual available memory was **3,865,444,352 / 3,843,473,408 bytes**. Lower caps were also tested against the original Qwen assets: Q4 passed, but dense DPO did not produce a valid observation under three or 3.5 GiB. These attempts do not qualify the fixture. No fake available-memory value or production guard change is used.
+
+The CI numerical, runtime, worker and restart matrix retains the original Qwen 0.5B Q4 and dense bases. Its separate node-owned measurement cases now use a smaller real acquired **SmolLM 135M** Q4 base and node-converted dense base, retaining both objectives and every assertion, including exact update/probe counts, reference accounting, serialization, zero swap, thermal safety and a stricter three-GiB peak cap. The same authenticated isolated acquisition and verification pipeline acquires both repositories. The existing registered SmolLM asset uses [Apache-2.0](https://huggingface.co/mlx-community/SmolLM-135M-Instruct-4bit); no dependency is added. Corrected actual GitHub native validation remains pending.
+
+An attempted audited dense SmolLM variant acquisition (`6ccbff57-d5a9-4ebf-999e-5354609c111d`) failed conversion; it supplies no verified dense asset or acceptance proof. The isolated CI flow is separate from the active Studio qualification.
+
 ## Prerequisites and intended matrix
 
 This workspace is `coire-core.lab` (Apple Silicon). Core must not load models or execute a user harness. Native tests run through the isolated Mac CI environment and authorized Studio node workflows. Existing uv/Docker/pnpm tools are available. Credentials remain Keychain-backed; model and raw test artifacts stay outside Git.

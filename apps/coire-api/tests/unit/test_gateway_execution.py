@@ -7,9 +7,10 @@ import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
+from opentelemetry import trace
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import ANONYMOUS, Principal, PrincipalKind
@@ -258,6 +259,8 @@ async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyP
     from coire_api.gateway import execution
 
     recorded: list[tuple[str, float, dict[str, str]]] = []
+    span = Mock()
+    monkeypatch.setattr(trace, "get_current_span", lambda: span)
     monkeypatch.setattr(
         execution,
         "first_token_duration_ms",
@@ -291,6 +294,7 @@ async def test_first_token_metrics_are_recorded_once(monkeypatch: pytest.MonkeyP
     assert [item[0] for item in recorded] == ["first", "overhead"]
     assert recorded[0][1] == 250
     assert recorded[1][1] == pytest.approx(50)
+    span.set_attribute.assert_called_once_with("coire.gateway.overhead_ms", pytest.approx(50))
     assert all(item[2] == {"protocol": "openai", "node": "coire-edge-b"} for item in recorded)
 
 

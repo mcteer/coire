@@ -17,6 +17,7 @@ from time import monotonic, perf_counter
 
 from fastapi import Request
 from fastapi.responses import StreamingResponse
+from opentelemetry import trace
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.types import Receive, Scope, Send
 
@@ -270,8 +271,10 @@ async def track_stream(
                         first_token_duration_ms.record(first_token_ms, attributes)
                         if timing is not None and timing.upstream_started_at is not None:
                             engine_ms = (chunk_received_at - timing.upstream_started_at) * 1000
-                            overhead_duration_ms.record(
-                                max(first_token_ms - engine_ms, 0), attributes
+                            overhead_ms = max(first_token_ms - engine_ms, 0)
+                            overhead_duration_ms.record(overhead_ms, attributes)
+                            trace.get_current_span().set_attribute(
+                                "coire.gateway.overhead_ms", overhead_ms
                             )
                         logger.info(
                             "gateway first content token",

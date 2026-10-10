@@ -375,8 +375,8 @@ jobs:
               apps/coire-node/tests/engine/test_preference_worker.py
             # Keep the node-owned probe's parent process free of earlier model
             # tensors and compiler caches; all measurement cases still run.
-            uv run pytest -q -rs \
-              apps/coire-node/tests/engine/test_preference_measurement.py
+            COIRE_TEST_MODEL="$GITHUB_WORKSPACE/models/mlx-community--SmolLM-135M-Instruct-4bit${suffix}" \
+              uv run pytest -q -rs apps/coire-node/tests/engine/test_preference_measurement.py
           done
 
   publish:

@@ -92,9 +92,9 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         activation_bytes=1,
         reference_weight_bytes=1 if objective == "dpo" else 0,
         reference_adapter_bytes=0,
-        # A two-update tiny probe gets a stricter four-GiB total cap. Seven GiB
+        # A two-update tiny probe gets a stricter three-GiB total cap. Seven GiB
         # cannot fit on a seven-GB CI VM after its OS and test process are counted.
-        buffer_bytes=3 * 1024**3,
+        buffer_bytes=2 * 1024**3,
         safety_bytes=1024**3,
         checkpoint_bytes=128 * 1024**2,
     )
