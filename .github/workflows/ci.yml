@@ -388,6 +388,10 @@ jobs:
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
+      - name: declare the isolated fixture node identity
+        # Native probes require the prepared node's declared hostname. This sets
+        # only the fresh CI VM's identity; its workloads remain local fixtures.
+        run: sudo scutil --set HostName coire-edge-a
       - run: uv sync --all-packages --frozen
       - name: isolated tiny acquisition and node-owned dense conversion
         env:
