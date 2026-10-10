@@ -1,6 +1,7 @@
 """Real node-owned v3 measurement processes on acquired tiny offline Studio assets."""
 
 import asyncio
+import gc
 import hashlib
 import json
 import shutil
@@ -40,6 +41,7 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
     tmp_path: Path,
     objective: Literal["dpo", "orpo"],
 ) -> None:
+    import mlx.core as mx
     from test_training_worker import offline_command
 
     import coire_core
@@ -51,6 +53,11 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
     from coire_node.training.preference_runtime import validate_preference_input
     from coire_node.training.supervisor import NativeProcesses
     from coire_node.training.worker import payload_sha256
+
+    # Previous native cases may retain unused Metal allocator buffers. Release
+    # only unused cache; admission below still reads actual available memory.
+    gc.collect()
+    mx.clear_cache()
 
     old = offline_command(training_model, training_kind)
     raw = old.model_dump(mode="json")
@@ -85,7 +92,9 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         activation_bytes=1,
         reference_weight_bytes=1 if objective == "dpo" else 0,
         reference_adapter_bytes=0,
-        buffer_bytes=6 * 1024**3,
+        # A two-update tiny probe gets a stricter four-GiB total cap. Seven GiB
+        # cannot fit on a seven-GB CI VM after its OS and test process are counted.
+        buffer_bytes=3 * 1024**3,
         safety_bytes=1024**3,
         checkpoint_bytes=128 * 1024**2,
     )
@@ -234,6 +243,7 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         assert status is not None and status.stopped
         measured = status.observation
         assert isinstance(measured, PreferenceMeasurementObservation), status.model_dump_json()
+        assert measured.peak_footprint_bytes <= prepared.resolved.resource_envelope.memory_bytes
         assert measured.completed_updates == measured.probe_count == 2
         assert measured.objective == objective and measured.checkpoint_bytes > 0
         assert measured.serialization_peak_bytes > 0 and measured.buffer_bytes > 0

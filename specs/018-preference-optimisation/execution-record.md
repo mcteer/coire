@@ -5,7 +5,7 @@ Status: application/native implementation complete; current lease-handoff releas
 
 ## Current release evidence
 
-The table records the current lease-handoff checkpoint. Full CPU, static/image, affected database and complete isolated integration gates pass. T076 is complete; T074 and final T077 reconciliation remain unchecked. Earlier completed checkpoints and all failed attempts remain recorded below.
+The table records the current lease-handoff checkpoint. Full CPU, static/image, affected database and complete isolated integration gates pass. Local release checks pass; T076 is reopened pending corrected GitHub native CI. T074 and final T077 reconciliation remain unchecked. Earlier completed checkpoints and all failed attempts remain recorded below.
 
 | Gate | Result |
 | --- | --- |
@@ -38,6 +38,14 @@ The user's direction to continue authorizes further debugging. A failed acceptan
 - Dense ORPO qualification V57 was attempted on **Studio B**, beginning with its own 5,632-update memory measurement and then the full **900-second baseline + 900-second mixed** protocol at **2,000 ms arrival / concurrency one**. FR-006 requires single-Studio objective/parameterization support, and FR-007 requires exact measured configuration admission; neither assigns dense ORPO sharing to Studio A. Any accepted result will be bound to Studio B. Studio A's failed profiles remain unqualified. T074 stays unchecked until all sustained performance, native coverage, memory and stopped-proof evidence passes.
 
 Private receipts: `admission-live-profile-rows.json`, `production-metadata-benchmark*.json`, `core-inventory-benchmark.jsonl`, `container-authority-benchmark*.jsonl`, `cadence-diagnostic-*.json`, `cadence-queue-*.json`, and `v57-qualification-controller.log` in the existing private acceptance directory.
+
+### V61 and native CI follow-up
+
+V61 (`35e10553-7ea5-405b-8413-0b1227b2d08b`) completed both 900-second phases on Studio B with 900 successful requests per phase and zero failures. Baseline/mixed TTFT p95 were **433.531/370.595 ms**. The guarded lease handoff succeeded. The conservative mixed overhead interval contained 922 observations and 56 above 20 ms: assigning every interval outlier to its 900 phase requests gives **93.778%** at or below 20 ms, below the required 95%. This evidence does not qualify the shared profile; the API measurement's succeeded state alone is insufficient. The owned actor was disabled, its key revoked, resident stopped, and normal disabled training flags restored. A fresh read-only audit confirms **77** owned terminal measurements, **77** released memory reservations and **77** released storage reservations.
+
+GitHub run `38025929570` failed its native measurement fixture because its seven-GiB reservation exceeded actual available memory on the standard seven-GB macOS runner. Production admission remains unchanged. The tiny two-update fixture now declares a stricter four-GiB total envelope, asserts actual peak footprint fits it, clears unused allocator caches, and runs in a fresh pytest process after the other native cases. All original cases remain required. Actual node-owned DPO and ORPO probes passed for both Q4 and dense assets: **four passed, zero skipped**. Corrected GitHub CI remains pending, so T076 is reopened.
+
+Private receipts: `v61-controller.log`, `v61-overhead-owner-withdrawal.json`, `ci-probe-budget-native-qlora.log`, `ci-probe-budget-native-lora.log`, and their content-free controller records. No raw data or secrets are committed.
 
 ## Prerequisites and intended matrix
 

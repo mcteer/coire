@@ -372,7 +372,10 @@ jobs:
               apps/coire-node/tests/engine/test_preference_runtime.py \
               apps/coire-node/tests/engine/test_preference_resume.py \
               apps/coire-node/tests/engine/test_preference_probe.py \
-              apps/coire-node/tests/engine/test_preference_worker.py \
+              apps/coire-node/tests/engine/test_preference_worker.py
+            # Keep the node-owned probe's parent process free of earlier model
+            # tensors and compiler caches; all measurement cases still run.
+            uv run pytest -q -rs \
               apps/coire-node/tests/engine/test_preference_measurement.py
           done
 
