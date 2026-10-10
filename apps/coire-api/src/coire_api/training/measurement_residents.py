@@ -116,6 +116,23 @@ def _resident_inventory_statement() -> Select[
         )
         .options(
             load_only(
+                MemoryReservationRow.id,
+                MemoryReservationRow.node_id,
+                MemoryReservationRow.holder_type,
+                MemoryReservationRow.holder_id,
+                MemoryReservationRow.state,
+                raiseload=True,
+            ),
+            load_only(
+                ModelInstanceRow.id,
+                ModelInstanceRow.model_id,
+                ModelInstanceRow.variant_id,
+                ModelInstanceRow.adapter_id,
+                ModelInstanceRow.state,
+                ModelInstanceRow.in_flight,
+                raiseload=True,
+            ),
+            load_only(
                 InstanceMemberRow.id,
                 InstanceMemberRow.instance_id,
                 InstanceMemberRow.node_id,

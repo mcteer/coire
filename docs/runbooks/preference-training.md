@@ -176,6 +176,8 @@ For a slow exact-profile measurement, inspect the existing
 `coire.api.training.measurement.admission_stage` events contain only `stage` and
 `duration_ms`: initial authority, node lock, fresh inventory, lease and commit.
 Use these timings to locate admission cost without exposing prompts or credentials.
+Resident inventory selects only validation/lease fields with forbidden lazy loads;
+it still reads and locks current counted holds on every admission.
 Each scheduler gateway request starts a separate trace linked to its qualification
 parent, keeping long runs within Tempo's per-trace bound. Follow the link to the
 qualification and select requests by their timestamps. The first-content span
