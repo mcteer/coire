@@ -22,7 +22,7 @@ The table records the current ownership-snapshot source checkpoint and explicitl
 | Training/image exclusion | Valid image job remains queued without allocation while both native trainers run; cancellation passes |
 | Shared chat/training | All four exact profiles accepted; V70 dense ORPO passes both complete phases and exact overhead p95; T074 complete |
 | Hosted native resource CI | Four small probes pass locally; hosted startup swap growth remains a failed required gate, pending adequate isolated runner |
-| Final reconciliation/PR | Reopened for current-source checks, T074 qualification and final cleanup |
+| Final reconciliation/PR | Four-profile reconciliation and final cleanup pass; current required hosted checks remain pending |
 
 Raw transcripts, datasets, credentials, native checkpoint data and image/SBOM receipts remain outside Git in the private acceptance directory. The entries below distinguish required acceptance from synthetic fixtures and historical checkpoints.
 

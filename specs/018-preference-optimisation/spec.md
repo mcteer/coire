@@ -8,7 +8,7 @@
 
 **Updated**: 2026-10-09
 
-**Status**: Implemented; release withheld at failed T074 shared-node qualification
+**Status**: Implemented; four exact shared profiles qualified; required native resource CI and final release reconciliation pending (T076/T077)
 
 **Input**: User description: "`preference` dataset type; `objective=dpo|orpo` jobs with `init_adapter` chaining from an SFT adapter and 2× base memory reservation; chat UI thumbs, regenerate-and-compare, and admin pairwise review queue writing feedback rows; admin export of feedback → preference dataset with filters; per-user feedback opt-out and disclosure."
 
