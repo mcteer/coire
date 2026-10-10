@@ -4,6 +4,7 @@ import asyncio
 import gc
 import hashlib
 import json
+import os
 import shutil
 import sys
 import threading
@@ -284,8 +285,27 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
                     if not status.stopped or not isinstance(
                         status.observation, PreferenceMeasurementObservation
                     ):
+                        identity: dict[str, object] = {}
+                        if status.status.pid is not None:
+                            try:
+                                process = psutil.Process(status.status.pid)
+                                identity = {
+                                    "expected_argv": supervisor.argv(
+                                        journal.get(prepared.attempt_id)
+                                    ),
+                                    "observed_argv": process.cmdline(),
+                                    "observed_birth": process.create_time(),
+                                    "observed_group": os.getpgid(process.pid),
+                                    "process_status": process.status(),
+                                }
+                            except (psutil.Error, ProcessLookupError, PermissionError) as exc:
+                                identity = {"identity_error": type(exc).__name__}
                         raise AssertionError(
-                            status.model_dump_json() + "\n" + worker_stderr.read_text()
+                            status.model_dump_json()
+                            + "\n"
+                            + json.dumps(identity)
+                            + "\n"
+                            + worker_stderr.read_text()
                         ) from None
                     break
                 renew_at = time.monotonic() + 6
