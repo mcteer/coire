@@ -13,7 +13,9 @@ from coire_node.testing.training import offline_training_model
 
 REPOSITORY = "mlx-community/Qwen2.5-Coder-0.5B-Instruct-4bit"
 QUANTIZED = REPOSITORY.replace("/", "--")
-DENSE = QUANTIZED + ".preference-dense-bf16"
+DENSE_PRECISION = "bf16"
+DENSE = QUANTIZED + ".preference-dense-" + DENSE_PRECISION
+CONVERSION_MEMORY_BYTES = 3 * 1024**3
 
 
 def main() -> None:
@@ -34,7 +36,7 @@ def main() -> None:
                     "idempotency_key": str(uuid.uuid4()),
                     "workflow_id": str(uuid.uuid4()),
                     "variant_id": str(uuid.uuid4()),
-                    "memory_bytes": 3 * 1024**3,
+                    "memory_bytes": CONVERSION_MEMORY_BYTES,
                     "disk_bytes": 3 * 1024**3,
                 },
             )
@@ -50,7 +52,10 @@ def main() -> None:
                     "source_slug": QUANTIZED,
                     "target_slug": DENSE,
                     "reservation_id": reservation_id,
-                    "recipe": {"name": "preference-dense-bf16", "precision": "bf16"},
+                    "recipe": {
+                        "name": "preference-dense-" + DENSE_PRECISION,
+                        "precision": DENSE_PRECISION,
+                    },
                     "dequantize": True,
                 },
             )

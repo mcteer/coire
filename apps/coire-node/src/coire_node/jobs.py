@@ -206,6 +206,10 @@ class JobSupervisor:
         env.pop("HF_TOKEN", None)
         env.pop("HUGGING_FACE_HUB_TOKEN", None)
         if found[1].kind is JobKind.PULL:
+            # Input validation can make the long-lived agent environment offline.
+            # Only this authenticated acquisition child may reach the Hub.
+            env["HF_HUB_OFFLINE"] = "0"
+            env["TRANSFORMERS_OFFLINE"] = "0"
             hf = self._settings.hf_token.get_secret_value()
             if hf:
                 env["HF_TOKEN"] = hf

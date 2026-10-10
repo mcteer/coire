@@ -363,19 +363,6 @@ jobs:
           HF_HUB_OFFLINE: "0"
           TRANSFORMERS_OFFLINE: "0"
         run: uv run python tests/integration/build_preference_fixture.py
-      - name: package acquired measurement fixtures
-        run: |
-          tar -cf preference-fixtures.tar -C models \
-            mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit \
-            mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit.manifest.json \
-            mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit.preference-dense-bf16 \
-            mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit.preference-dense-bf16.manifest.json
-      - uses: actions/upload-artifact@v7
-        with:
-          name: preference-measurement-fixtures
-          path: preference-fixtures.tar
-          compression-level: 0
-          retention-days: 1
       - name: real objective, initialization, worker, measurement and restart matrix
         run: |
           for suffix in '' '.preference-dense-bf16'; do
@@ -388,14 +375,42 @@ jobs:
               apps/coire-node/tests/engine/test_preference_worker.py
           done
 
+  preference-measurement-fixture:
+    needs: lint
+    runs-on: macos-15
+    env:
+      COIRE_TRAINING_ENGINE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --all-packages --frozen
+      - name: acquire and node-convert the approved tiny measurement base
+        run: uv run python tests/integration/build_preference_measurement_fixture.py
+      - name: package acquired measurement fixtures
+        run: |
+          tar -cf preference-fixtures.tar -C models \
+            mlx-community--AMD-Llama-135m-4bit \
+            mlx-community--AMD-Llama-135m-4bit.manifest.json \
+            mlx-community--AMD-Llama-135m-4bit.preference-dense-fp16 \
+            mlx-community--AMD-Llama-135m-4bit.preference-dense-fp16.manifest.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: preference-measurement-fixtures
+          path: preference-fixtures.tar
+          compression-level: 0
+          retention-days: 1
+
   preference-measurement-engine:
-    needs: preference-engine
+    needs: preference-measurement-fixture
     runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
         objective: [dpo, orpo]
-        suffix: ['', '.preference-dense-bf16']
+        suffix: ['', '.preference-dense-fp16']
     env:
       COIRE_TRAINING_ENGINE: "1"
       HF_HUB_OFFLINE: "1"
@@ -423,7 +438,7 @@ jobs:
         # Each actual resource probe gets a fresh VM without prior conversion or
         # numerical workloads. Admission, peak, swap and thermal checks stay real.
         env:
-          COIRE_TEST_MODEL: ${{ github.workspace }}/models/mlx-community--Qwen2.5-Coder-0.5B-Instruct-4bit${{ matrix.suffix }}
+          COIRE_TEST_MODEL: ${{ github.workspace }}/models/mlx-community--AMD-Llama-135m-4bit${{ matrix.suffix }}
           PROBE_OBJECTIVE: ${{ matrix.objective }}
         run: uv run pytest -q -rs "apps/coire-node/tests/engine/test_preference_measurement.py::test_node_owned_native_preference_probe_counts_reference_and_serialization[$PROBE_OBJECTIVE]"
 

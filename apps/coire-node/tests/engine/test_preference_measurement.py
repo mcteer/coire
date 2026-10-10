@@ -32,6 +32,13 @@ from coire_core.preference_data import preference_split_digest, split_preference
 
 pytestmark = pytest.mark.engine
 
+CI_MEASUREMENT_REPOSITORY = "mlx-community/AMD-Llama-135m-4bit"
+CI_MEASUREMENT_TEMPLATE = (
+    "{% for message in messages %}"
+    "{{ message['role'] + ': ' + message['content'] + eos_token }}"
+    "{% endfor %}{% if add_generation_prompt %}{{ 'assistant:' }}{% endif %}"
+)
+
 
 @pytest.mark.parametrize("objective", ["dpo", "orpo"])
 @pytest.mark.asyncio
@@ -85,6 +92,10 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         reference_target=target if objective == "dpo" else None,
         sampler_version="coire-pair-sampler-v1",
     )
+    # The smaller acquired CI base fits the actual standard runner headroom.
+    # Existing Qwen developer fixtures retain their measured 3.5-GiB bound.
+    small_ci_base = model.manifest.repo_id == CI_MEASUREMENT_REPOSITORY
+    probe_memory_bytes = (5 if small_ci_base else 7) * 1024**3 // 2
     resolved["resource_envelope"].update(
         weight_bytes=1,
         adapter_bytes=1,
@@ -92,9 +103,8 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         activation_bytes=1,
         reference_weight_bytes=1 if objective == "dpo" else 0,
         reference_adapter_bytes=0,
-        # A two-update tiny probe gets a stricter 3.5-GiB total cap. Seven GiB
-        # cannot fit on a seven-GB CI VM after its OS and test process are counted.
-        buffer_bytes=5 * 1024**3 // 2,
+        # The fixture envelope is still admitted against real available memory.
+        buffer_bytes=probe_memory_bytes - 1024**3 - (5 if objective == "dpo" else 4),
         safety_bytes=1024**3,
         checkpoint_bytes=128 * 1024**2,
     )
@@ -127,6 +137,9 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
             "split_sha256": preference_split_digest(split),
             "model_slug": training_model.name,
             "format": DatasetFormat.PREFERENCE,
+            # This base has no upstream chat template. Use the existing explicit,
+            # hashed admin override contract rather than editing acquired assets.
+            "template_override": CI_MEASUREMENT_TEMPLATE if small_ci_base else None,
         }
     )
     tokenizer, tok, template, runtime = await asyncio.to_thread(
@@ -149,7 +162,7 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         runtime_sha256=runtime,
         max_sequence_length=256,
     )
-    assert analysis.state == "succeeded"
+    assert analysis.state == "succeeded", analysis.model_dump_json()
     selected.update(
         source_sha256=digest,
         split_sha256=binding.split_sha256,

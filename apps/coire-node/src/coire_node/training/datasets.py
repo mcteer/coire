@@ -347,11 +347,15 @@ def load_evaluation_tokenizer(
 
     from mlx_lm.tokenizer_utils import load
 
-    tokenizer = load(
-        model_path, tokenizer_config_extra={"trust_remote_code": False, "local_files_only": True}
-    )
+    tokenizer_config: dict[str, object] = {
+        "trust_remote_code": False,
+        "local_files_only": True,
+    }
     if template_override is not None:
-        tokenizer.chat_template = template_override
+        # MLX freezes has_chat_template while wrapping the tokenizer. Apply the
+        # effective template before that wrapper is constructed.
+        tokenizer_config["chat_template"] = template_override
+    tokenizer = load(model_path, tokenizer_config_extra=tokenizer_config)
     template = tokenizer.chat_template
     if not isinstance(template, str) or not template:
         raise TrainingValidationError(
