@@ -557,3 +557,81 @@ async def test_public_resolution_validates_sampling_without_inventing_resource_e
             )
             is None
         )
+
+
+@pytest.mark.parametrize("outcome", ["success", "error", "cancel"])
+async def test_measurement_ownership_releases_snapshot_and_fences_other_workers(
+    measurement_db: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+) -> None:
+    from sqlalchemy import text
+    from sqlalchemy.ext.asyncio import AsyncEngine
+
+    engine = measurement_db.kw["bind"]
+    assert isinstance(engine, AsyncEngine)
+    monkeypatch.setattr("coire_scheduler.training_measurements.init_engine", lambda _: engine)
+    identity = uuid.uuid4()
+    name = f"coire.training.measurement:{identity}"
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls: list[uuid.UUID] = []
+
+    class HoldingExecutor(TrainingMeasurementExecutor):
+        async def _advance(self, subject: uuid.UUID) -> None:
+            calls.append(subject)
+            entered.set()
+            await release.wait()
+            if outcome == "error":
+                raise RuntimeError("synthetic execution failure")
+
+    settings = Settings()
+    executor = HoldingExecutor(settings, MeasurementNodeClient(settings))
+    task = asyncio.create_task(executor.advance(identity))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        async with measurement_db.begin() as session:
+            owner = (
+                (
+                    await session.execute(
+                        text("""
+                        SELECT a.state, a.xact_start IS NULL AS transaction_ended,
+                               a.backend_xmin IS NULL AS snapshot_released
+                        FROM pg_locks l JOIN pg_stat_activity a USING (pid)
+                        WHERE l.locktype = 'advisory' AND l.granted AND l.objsubid = 1
+                          AND l.classid = ((hashtextextended(:name, 0) >> 32)
+                                          & 4294967295)::oid
+                          AND l.objid = (hashtextextended(:name, 0) & 4294967295)::oid
+                    """),
+                        {"name": name},
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            assert owner["state"] == "idle"
+            assert owner["transaction_ended"] and owner["snapshot_released"]
+        competitor = HoldingExecutor(settings, MeasurementNodeClient(settings))
+        await asyncio.wait_for(competitor.advance(identity), timeout=5)
+        assert calls == [identity], "A second worker entered the owned measurement"
+        if outcome == "cancel":
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        else:
+            release.set()
+            if outcome == "error":
+                with pytest.raises(RuntimeError, match="synthetic execution failure"):
+                    await task
+            else:
+                await task
+        # A distinct session must acquire after every exit. No pooled connection
+        # may retain the session lock and acquire it reentrantly on reuse.
+        async with measurement_db.begin() as session:
+            await asyncio.wait_for(
+                session.scalar(select(func.pg_advisory_xact_lock(func.hashtextextended(name, 0)))),
+                timeout=5,
+            )
+    finally:
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)

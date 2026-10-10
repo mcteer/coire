@@ -36,6 +36,7 @@ from coire_api.db import (
     TrainingProfileRow,
     TrainingStorageReservationRow,
     VariantCopyRow,
+    init_engine,
     session_scope,
 )
 from coire_api.nodes_client import NodeClient
@@ -1052,18 +1053,30 @@ class TrainingMeasurementExecutor:
                 self.active[identity] = asyncio.create_task(self.advance(identity))
 
     async def advance(self, identity: uuid.UUID) -> None:
-        # The ownership transaction contains no domain row locks across node I/O.
-        async with session_scope() as ownership:
-            owned = await ownership.scalar(
-                select(
-                    func.pg_try_advisory_xact_lock(
-                        func.hashtextextended(f"coire.training.measurement:{identity}", 0)
+        # Keep cross-worker ownership without retaining an MVCC snapshot through
+        # native I/O or the two 900-second phases. A session lock survives commit
+        # only on this dedicated physical connection, never a borrowed Session.
+        async with init_engine(self.settings).connect() as ownership:
+            try:
+                with tracer.start_as_current_span(
+                    "coire.scheduler.training.measurement.ownership",
+                    attributes={"measurement_id": str(identity)},
+                ):
+                    owned = await ownership.scalar(
+                        select(
+                            func.pg_try_advisory_lock(
+                                func.hashtextextended(f"coire.training.measurement:{identity}", 0)
+                            )
+                        )
                     )
-                )
-            )
-            if not owned:
-                return
-            await self._advance(identity)
+                    await ownership.commit()
+                if owned:
+                    await self._advance(identity)
+            finally:
+                # Physically discard the connection on success, refusal, error
+                # and cancellation. Returning a session lock to the pool could
+                # let another borrower acquire it reentrantly.
+                await ownership.invalidate()
 
     async def _advance(self, identity: uuid.UUID) -> None:
         with tracer.start_as_current_span("coire.scheduler.training.measurement.execute"):

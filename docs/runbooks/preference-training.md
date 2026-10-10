@@ -194,3 +194,20 @@ watching still active. The node still requires fresh zero-lease evidence; the pa
 does not turn missing telemetry, active requests or an expired snapshot into vacancy.
 If start is still refused, preserve the scheduler/node logs and the exact stopped
 receipt before retrying. A completed baseline alone supplies no shared profile.
+
+Measurement execution owns a session advisory lock on a dedicated PostgreSQL
+connection. Its acquisition transaction commits immediately: throughout native
+I/O and coexistence phases the owner is `idle`, with no `xact_start` or
+`backend_xmin`. An `idle in transaction` ownership connection can prevent old
+counter versions from being reclaimed. Inspect the
+`coire.scheduler.training.measurement.ownership` span and content-free database
+activity metadata when diagnosing this condition.
+
+The connection is physically discarded on completion, refusal, error or
+cancellation so its session lock cannot return to the pool and be acquired
+reentrantly by another worker. Use the authenticated cancellation/withdrawal path
+and require fenced node stop proof before restarting or rolling back the
+scheduler. Do not terminate a database owner as a substitute for stopping its
+native workload. The scheduler change does not alter native runtime identities,
+fresh authority, node admission locks, counter admission, durability or latency
+limits.
