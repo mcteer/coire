@@ -8011,3 +8011,25 @@ The expired-unstarted-close observer refused this cancelled attempt because
 that protocol accepts only expired, still-accepted attempts with no cancellation;
 no state was edited to bypass the refusal. The cancellation itself relinquishes
 this separate budget's active slot. No new budget is claimed yet.
+
+### Hosted runtime physical identity and adopted-fixture provenance
+
+Hosted run `38559884144` confirms private interpreter relocation now succeeds;
+its next refusal is the ordinary import smoke's intended physical Studio hostname
+check. The hosted isolated job now declares `coire-edge-a` only after its hosted/
+ARM64/no-production-install preflight, captures its original hostname and restores
+it with an always step. This follows the existing preference measurement fixture
+pattern; production hostname checks remain unchanged. Hosted success is pending.
+
+T077 adds shared strict fixture retirement provenance and a private acceptance
+producer. The producer requires an isolated owned Darwin/ARM64 root, one exact
+canonical adopted supervisor, a live inherited fixture restart lock, exact current
+Source/guard runtime and process identities, and a fresh authenticated complete
+idle inventory. An immutable snapshot precedes any signal; each role's dispatch
+is recorded once. Unknown signal outcome cannot be redispatched blindly. Final
+positive retirement and actual fixture/guard kernel-lock acquisition precede the
+completed fixture record. Cold ownership still requires its ordinary authenticated
+new intent and all physical gates; fixture provenance grants no recovery authority.
+The original fixture definition, adoption receipt, native claim/intent/selection
+and upgrade receipts are preserved. CPU provenance/negative tests pass with
+explicitly stubbed kernel/process observations; actual retirement is not yet claimed.

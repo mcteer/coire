@@ -46,12 +46,14 @@ from coire_node import upgrade_native_terminal as native_ack
         "release_lost",
         "wrong_authority",
         "unknown_scope",
+        "retired_fixture_provenance",
     ],
 )
 def test_native_acknowledgement_preserves_history_and_references_canonical_resolution(
     tmp_path, monkeypatch, fault
 ):
     from coire_node import expired_recovery_cold_closure as close
+    from coire_node.expired_recovery_cold_owner import observe_fixture_supervisor as observe_real
 
     def exercise(settings, owner, bootstrap, run, handback, control):
         now = datetime.now(UTC)
@@ -229,6 +231,62 @@ def test_native_acknowledgement_preserves_history_and_references_canonical_resol
         )
         assert adopted is not None and adopted.process.pid == os.getpid()
         assert adopted.process.create_time_s == psutil.Process(os.getpid()).create_time()
+        if fault == "retired_fixture_provenance":
+            from coire_core.models.upgrade_native_terminal import UpgradeNativeFixtureRetirement
+            from coire_node import expired_recovery_cold_owner as physical
+
+            definition = bootstrap.root.parent / "fixture-supervisor.py"
+            definition.write_bytes(b"unchanged private fixture definition")
+            definition.chmod(0o600)
+            import hashlib
+
+            claim = owner.original_claim
+            from coire_core.models.upgrades import NativeUpgradeClaim
+
+            previous_claim = bootstrap.read("claim.json", NativeUpgradeClaim)
+            current_native = owner.original_native.model_copy(update={"phase": "recovery_required"})
+            snapshot = UpgradeNativeFixtureRetirement(
+                claim=claim,
+                native=current_native,
+                guard=handback.status,
+                node_process=handback.node,
+                adoption=adopted,
+                definition_sha256=hashlib.sha256(definition.read_bytes()).hexdigest(),
+                observed_at=datetime.now(UTC),
+                retired_at=datetime.now(UTC),
+            )
+            bootstrap.write("claim.json", claim)
+            key = "retired-adopted-" + claim.job_id + ".json"
+            records.write(key, snapshot)
+            configured = settings.model_copy(
+                update={
+                    "upgrade_environment_root": str(bootstrap.root.parent / "envs"),
+                    "node_state_dir": str(bootstrap.root.parent / "state"),
+                }
+            )
+            checked = []
+            with monkeypatch.context() as patch:
+                patch.setattr(physical, "verify_prepared_runtime", lambda *_: python)
+                patch.setattr(physical, "verify_retired_identity", checked.append)
+                proof = observe_real(configured, handback.status, handback.node)
+                assert proof.pid == adopted.process.pid
+                assert checked == [adopted.process, handback.status.process, handback.node.process]
+                records.write(key, snapshot.model_copy(update={"retired_at": None}))
+                with pytest.raises(UpgradeConflict):
+                    observe_real(configured, handback.status, handback.node)
+                records.write(key, snapshot)
+                changed = handback.status.model_copy(
+                    update={"process": handback.status.process.model_copy(update={"pid": 98769})}
+                )
+                with pytest.raises(UpgradeConflict):
+                    observe_real(configured, changed, handback.node)
+                definition.write_bytes(b"foreign fixture definition")
+                with pytest.raises(UpgradeConflict):
+                    observe_real(configured, handback.status, handback.node)
+                definition.write_bytes(b"unchanged private fixture definition")
+            records.path(key).unlink()
+            assert previous_claim is not None
+            bootstrap.write("claim.json", previous_claim)
         # This CPU fixture adopted no real child and spawns no replacement.
         run.path("native-terminal.supervisor.receipt.json").unlink()
         run.path("native-terminal.supervisor.intent.json").unlink()
@@ -348,7 +406,7 @@ def test_native_acknowledgement_preserves_history_and_references_canonical_resol
             assert journal.latest() == initial
             assert origin.root.exists()
             return
-        if fault:
+        if fault and fault != "retired_fixture_provenance":
             with pytest.raises(UpgradeUnavailable, match="lost"):
                 native_ack.acknowledge_native_terminal(settings, grant, transport)
         ack = native_ack.acknowledge_native_terminal(settings, grant, transport)

@@ -28,6 +28,7 @@ jobs:
     runs-on: macos-15
     steps:
       - name: require an isolated hosted Apple Silicon Mac
+        id: native_preflight
         run: |
           test "$RUNNER_ENVIRONMENT" = github-hosted
           test "$RUNNER_ARCH" = ARM64
@@ -37,18 +38,24 @@ jobs:
           test ! -e /opt/coire/envs/current
           test ! -e /Library/LaunchDaemons/com.coire.node.plist
           test ! -e /Library/LaunchDaemons/com.coire.upgrade-guard.plist
+          hostname > "$RUNNER_TEMP/coire-original-hostname"
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v10.0.1
         with:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync --all-packages --frozen
+      - name: declare the isolated fixture hostname
+        run: sudo scutil --set HostName coire-edge-a
       - name: actual fixed kernel read and expired epoch refusal
         run: uv run pytest -q -m integration tests/integration/test_upgrade_kernel_identity.py
       - name: build locked native wheels without contacting Studios
         run: scripts/build-node-wheel.sh --local-only
       - name: actual installed Source and independent guard across SIGKILL
         run: uv run pytest -q -m integration tests/integration/test_upgrade_hosted_runtime.py
+      - name: restore the isolated runner hostname
+        if: always() && steps.native_preflight.outcome == 'success'
+        run: sudo scutil --set HostName "$(cat "$RUNNER_TEMP/coire-original-hostname")"
 
   lint:
     runs-on: ubuntu-24.04-arm

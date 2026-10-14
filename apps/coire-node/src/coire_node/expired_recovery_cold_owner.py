@@ -66,6 +66,60 @@ def observe_fixture_supervisor(
     ):
         raise UpgradeUnavailable("Cold fixture roots do not share the retained scope")
     records = PrivateUpgradeStore(base / "fixture-records", create=False)
+    from coire_core.models.upgrade_native_terminal import (
+        UpgradeNativeFixtureRetirement,
+        UpgradeNativeTerminalSupervisorReceipt,
+    )
+
+    bootstrap = PrivateUpgradeStore(Path(settings.upgrade_bootstrap_root), create=False)
+    current_claim = bootstrap.read("claim.json", NativeUpgradeClaim)
+    if current_claim is not None:
+        recorded = records.read(
+            "retired-adopted-" + current_claim.job_id + ".json", UpgradeNativeFixtureRetirement
+        )
+        if recorded is not None:
+            if (
+                recorded.retired_at is None
+                or recorded.claim != current_claim
+                or recorded.guard.model_dump(exclude={"observed_at"})
+                != previous.model_dump(exclude={"observed_at"})
+                or recorded.node_process != last
+            ):
+                raise UpgradeConflict("Retired adopted fixture current children differ")
+            old = recorded.adoption.intent.grant.resolution
+            owner = old.closure.handback.helper.handback.verification.request.smoke.smoke.source.launch.source.projection.owner
+            origin = PrivateUpgradeStore(
+                bootstrap.root / "expired-recovery" / owner.intent.recovery_id, create=False
+            )
+            if (
+                origin.read(
+                    "native-terminal.supervisor.receipt.json",
+                    UpgradeNativeTerminalSupervisorReceipt,
+                )
+                != recorded.adoption
+            ):
+                raise UpgradeConflict("Retired adopted fixture canonical receipt differs")
+            script = read_definition_file(base / "fixture-supervisor.py", os.getuid())
+            if hashlib.sha256(script).hexdigest() != recorded.definition_sha256:
+                raise UpgradeConflict("Retired adopted fixture original definition changed")
+            verify_prepared_runtime(
+                base / "envs", base / "runtimes", recorded.adoption.intent.runtime
+            )
+            # Missing processes grant nothing. All three exact PID/birth records
+            # must positively retire before the existing cold kernel locks and
+            # authenticated owner claim can authorize any recovery effect.
+            for identity in (
+                recorded.adoption.process,
+                recorded.guard.process,
+                recorded.node_process.process,
+            ):
+                verify_retired_identity(identity)
+            return UpgradeRecoveryRetiredSupervisor(
+                pid=recorded.adoption.process.pid,
+                create_time_s=recorded.adoption.process.create_time_s,
+                owner_uid=os.getuid(),
+                script_sha256=recorded.definition_sha256,
+            )
     parent = read_owner_json(records.path("fixture-supervisor.json"))
     children = read_owner_json(records.path("fixture-processes.json"))
     if (
