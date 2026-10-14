@@ -13058,6 +13058,7 @@ export interface components {
             previous_handback?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackReceipt"] | null;
             previous_handback_intent?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackIntent"] | null;
             previous_smoke_command?: components["schemas"]["UpgradeExpiredRecoveryColdSmokeCommand"] | null;
+            unstarted_grant?: components["schemas"]["UpgradeColdContinuationGrant"] | null;
             unstarted_intent?: components["schemas"]["UpgradeExpiredRecoveryIntent"] | null;
         };
         /** UpgradeColdContinuationGrant */
@@ -13112,6 +13113,7 @@ export interface components {
             previous_unreceipted_helper?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackHelper"] | null;
             /** Scopes */
             scopes: components["schemas"]["NodeUpgradeCollectiveScope"][];
+            unstarted_custody_grant?: components["schemas"]["UpgradeColdContinuationGrant"] | null;
             unstarted_keeper_retirement?: components["schemas"]["UpgradeColdSourceKeeperRetirement"] | null;
             unstarted_startup?: components["schemas"]["UpgradeExpiredRecoverySupportProcess"] | null;
         };

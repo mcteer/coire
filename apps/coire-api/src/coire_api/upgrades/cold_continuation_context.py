@@ -3,9 +3,14 @@
 from datetime import UTC, datetime
 
 from opentelemetry import trace
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from coire_api.db import UpgradeExpiredRecoveryRow, UpgradeOperationRow
+from coire_api.db import (
+    UpgradeExpiredRecoveryRow,
+    UpgradeOperationRow,
+    UpgradeRecoverySuccessionRow,
+)
 from coire_api.upgrades.expired_recovery_data import (
     capture_expired_metadata_snapshot,
     verify_expired_metadata_preserved,
@@ -26,6 +31,7 @@ from coire_core.models.upgrade_recovery import (
 )
 from coire_core.models.upgrade_recovery_continuation import (
     UpgradeColdContinuationContext,
+    UpgradeColdContinuationGrant,
     UpgradeColdContinuationRead,
 )
 from coire_core.models.upgrades import UpgradeExecutionPlan, UpgradeOperation
@@ -155,10 +161,26 @@ async def read_cold_predecessor_context(
     # These hashes bound only expired metadata reads; they grant no effects.
     current = await capture_expired_metadata_snapshot(session, intent)
     verify_expired_metadata_preserved(before, current, intent)
+    unstarted_grant = None
+    if unstarted is not None:
+        stored = await session.scalar(
+            select(UpgradeRecoverySuccessionRow).where(
+                UpgradeRecoverySuccessionRow.recovery_id == unstarted[1].recovery_id
+            )
+        )
+        if stored is None:
+            raise UpgradeConflict("Unstarted continuation has no recorded custody grant")
+        unstarted_grant = UpgradeColdContinuationGrant.model_validate(stored.grant_payload)
+        if (
+            unstarted_grant.intent != unstarted[1]
+            or unstarted_grant.sha256() != stored.grant_sha256
+        ):
+            raise UpgradeConflict("Unstarted custody grant changed")
     return UpgradeColdContinuationContext(
         intent=intent,
         owner=owner,
         unstarted_intent=unstarted[1] if unstarted is not None else None,
+        unstarted_grant=unstarted_grant,
         previous_smoke_command=(
             UpgradeExpiredRecoveryColdSmokeCommand.model_validate(row.cold_smoke_payload)
             if row.cold_smoke_payload is not None

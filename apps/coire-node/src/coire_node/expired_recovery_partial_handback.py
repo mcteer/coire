@@ -107,7 +107,38 @@ def observe_partial_handback(
     if captured.unstarted_intent is not None:
         from coire_node.expired_recovery_unstarted_lineage import observe_retired_keeper_custodian
 
-        custody = observe_retired_keeper_custodian(settings, captured.unstarted_intent)
+        linked = captured.unstarted_grant
+        if (
+            linked is not None
+            and linked.binding.post_handback is not None
+            and linked.binding.post_handback.stage == "keeper_retired"
+        ):
+            from coire_core.models.upgrade_recovery import UpgradeExpiredRecoverySupportStartup
+            from coire_node.expired_recovery_unstarted_lineage import observe_unstarted_custodian
+
+            startup = observe_unstarted_custodian(settings, captured.unstarted_intent)
+            origin_id = linked.binding.post_handback.keeper_custodian_recovery_id
+            if origin_id is None:
+                raise UpgradeConflict("Keeper lineage has no original custodian")
+            origin_store = PrivateUpgradeStore(
+                bootstrap.path("expired-recovery") / origin_id, create=False
+            )
+            original_startup = origin_store.read(
+                "startup.json", UpgradeExpiredRecoverySupportStartup
+            )
+            if original_startup is None:
+                raise UpgradeConflict("Keeper lineage original startup is absent")
+            _, original_retirement = observe_retired_keeper_custodian(
+                settings, original_startup.intent
+            )
+            if (
+                original_retirement.sha256()
+                != linked.binding.post_handback.keeper_retirement_sha256
+            ):
+                raise UpgradeConflict("Keeper lineage changes original retirement")
+            custody = startup, original_retirement
+        else:
+            custody = observe_retired_keeper_custodian(settings, captured.unstarted_intent)
     envs = Path(settings.upgrade_environment_root)
     with (
         records.ownership("fixture-supervisor.lock"),
@@ -308,7 +339,7 @@ def observe_partial_handback(
             previous_verification_request_sha256=qualification[1],
             post_handback=UpgradeColdPostHandbackBinding(
                 stage="keeper_retired" if custody is not None else "ready_unreceipted",
-                keeper_custodian_recovery_id=custody[0].intent.recovery_id
+                keeper_custodian_recovery_id=custody[1].grant.intent.recovery_id
                 if custody is not None
                 else None,
                 keeper_retirement_sha256=custody[1].sha256() if custody is not None else None,
@@ -329,6 +360,7 @@ def observe_partial_handback(
             previous_pair_results=results,
             previous_unreceipted_helper=helper,
             unstarted_startup=custody[0] if custody is not None else None,
+            unstarted_custody_grant=captured.unstarted_grant if custody is not None else None,
             unstarted_keeper_retirement=custody[1] if custody is not None else None,
             observer_release=body.observer_release,
             observer_runtime=body.observer_runtime,

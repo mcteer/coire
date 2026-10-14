@@ -68,6 +68,9 @@ class UpgradeColdContinuationObservation(UpgradeWire):
         default=None, exclude_if=lambda v: v is None
     )
 
+    unstarted_custody_grant: UpgradeColdContinuationGrant | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
     unstarted_keeper_retirement: UpgradeColdSourceKeeperRetirement | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
@@ -122,7 +125,18 @@ class UpgradeColdContinuationObservation(UpgradeWire):
                 late is None
                 or self.unstarted_startup is None
                 or keeper.retired_at is None
-                or keeper.grant.intent != self.unstarted_startup.intent
+                or (
+                    keeper.grant.intent != self.unstarted_startup.intent
+                    and (
+                        self.unstarted_custody_grant is None
+                        or self.unstarted_custody_grant.intent != self.unstarted_startup.intent
+                        or self.unstarted_custody_grant.binding.post_handback is None
+                        or self.unstarted_custody_grant.binding.post_handback.keeper_retirement_sha256
+                        != keeper.sha256()
+                        or self.unstarted_custody_grant.binding.post_handback.keeper_custodian_recovery_id
+                        != keeper.grant.intent.recovery_id
+                    )
+                )
                 or keeper.grant.intent.recovery_id != late.keeper_custodian_recovery_id
                 or keeper.sha256() != late.keeper_retirement_sha256
                 or keeper.grant.binding.previous_owner_sha256 != owner.sha256()
@@ -402,6 +416,9 @@ class UpgradeColdContinuationContext(UpgradeWire):
         default=None, exclude_if=lambda v: v is None
     )
     previous_smoke_command: UpgradeExpiredRecoveryColdSmokeCommand | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    unstarted_grant: UpgradeColdContinuationGrant | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
     previous_handback_intent: UpgradeExpiredRecoveryColdHandbackIntent | None = Field(

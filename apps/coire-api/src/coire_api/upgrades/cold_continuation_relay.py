@@ -85,6 +85,11 @@ async def verify_observation_context(
         or not post.released_maintenance.matches_plan(context.intent.local_inventory_plan())
     ):
         raise UpgradeConflict("Cold continuation partial ready Source differs from Core")
+    if (
+        proof.unstarted_custody_grant is not None
+        and proof.unstarted_custody_grant != context.unstarted_grant
+    ):
+        raise UpgradeConflict("Keeper continuation lineage differs from Core")
     keeper = proof.unstarted_keeper_retirement
     if keeper is not None:
         from sqlalchemy import select

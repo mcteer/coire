@@ -394,10 +394,24 @@ def initial_cold_owner(
     if grant is not None and grant.unstarted_startup is not None:
         from coire_node.expired_recovery_unstarted_lineage import observe_unstarted_custodian
 
+        late = grant.binding.post_handback
         if (
-            observe_unstarted_custodian(settings, grant.unstarted_startup.intent)
-            != grant.unstarted_startup
+            late is not None
+            and late.stage == "keeper_retired"
+            and late.keeper_custodian_recovery_id == grant.unstarted_startup.intent.recovery_id
         ):
+            from coire_node.expired_recovery_unstarted_lineage import (
+                observe_retired_keeper_custodian,
+            )
+
+            observed_startup, retirement = observe_retired_keeper_custodian(
+                settings, grant.unstarted_startup.intent
+            )
+            if retirement.sha256() != late.keeper_retirement_sha256:
+                raise UpgradeConflict("Cold keeper custody retirement digest differs")
+        else:
+            observed_startup = observe_unstarted_custodian(settings, grant.unstarted_startup.intent)
+        if observed_startup != grant.unstarted_startup:
             raise UpgradeConflict("Cold unstarted custody retirement changed before ownership")
     with (
         supervision_lock(settings, intent) as supervision_descriptor,

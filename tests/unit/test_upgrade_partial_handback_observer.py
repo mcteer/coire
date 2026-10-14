@@ -28,12 +28,13 @@ from coire_core.upgrade_journal import PrivateUpgradeStore
         "not_ready",
         "changed_data",
         "keeper_retired",
+        "keeper_unstarted_again",
         "keeper_unknown",
         "keeper_fence_effect",
     ],
 )
 def test_partial_ready_handback_is_metadata_only_and_keeps_original_deadlines(
-    tmp_path, monkeypatch, fault
+    tmp_path, monkeypatch, fault, capture_success=None
 ):
     from coire_node import expired_recovery_partial_handback as worker
 
@@ -126,7 +127,12 @@ def test_partial_ready_handback_is_metadata_only_and_keeps_original_deadlines(
         create_time_s=now.timestamp(),
         environment_sha256=owner.runtime.environment_sha256,
     )
-    keeper_case = fault in {"keeper_retired", "keeper_unknown", "keeper_fence_effect"}
+    keeper_case = fault in {
+        "keeper_retired",
+        "keeper_unstarted_again",
+        "keeper_unknown",
+        "keeper_fence_effect",
+    }
     if keeper_case:
         from coire_node import expired_recovery_unstarted_lineage as custody_reader
 
@@ -224,6 +230,75 @@ def test_partial_ready_handback_is_metadata_only_and_keeps_original_deadlines(
             }
         )
         native = native.model_copy(update={"observed_at": now})
+        if fault == "keeper_unstarted_again":
+            late = live.binding.post_handback.model_copy(
+                update={
+                    "stage": "keeper_retired",
+                    "keeper_custodian_recovery_id": child_id,
+                    "keeper_retirement_sha256": retired.sha256(),
+                }
+            )
+            retained_binding = live.binding.model_copy(
+                update={"observed_at": now, "post_handback": late}
+            )
+            second_id = "01ARZ3NDEKTSV4RRFFQ69G5FB1"
+            second_fence = fence.model_copy(
+                update={
+                    "job_id": second_id,
+                    "generation": fence.generation + 1,
+                    "updated_at": now,
+                    "drain_deadline_at": now + timedelta(seconds=300),
+                }
+            )
+            second = UpgradeExpiredRecoveryIntent.model_validate(
+                child.model_dump(mode="json")
+                | {
+                    "recovery_id": second_id,
+                    "accepted_at": now,
+                    "deadline_at": now + timedelta(seconds=300),
+                    "local_recovery_maintenance": second_fence.model_dump(mode="json"),
+                }
+            )
+            second_grant = UpgradeColdContinuationGrant(
+                grant_id="01ARZ3NDEKTSV4RRFFQ69G5FB2",
+                request_sha256="b" * 64,
+                intent=second,
+                binding=retained_binding,
+                unstarted_startup=accepted,
+                issued_by=second.accepted_by,
+                issued_at=now,
+            )
+            second_startup = UpgradeExpiredRecoverySupportStartup(
+                intent=second, runtime=owner.runtime, prepared_at=now
+            )
+            second_actor = passive.model_copy(
+                update={"pid": 98772, "create_time_s": now.timestamp()}
+            )
+            second_launch = UpgradeExpiredRecoverySupportLaunchIntent(
+                startup=second_startup,
+                launcher=second_actor.model_copy(update={"pid": 98773}),
+                started_at=now,
+            )
+            second_receipt = UpgradeExpiredRecoverySupportProcess(
+                intent=second, runtime=owner.runtime, process=second_actor, observed_at=now
+            )
+            second_run = PrivateUpgradeStore(bootstrap.root / "expired-recovery" / second_id)
+            for key, value in [
+                ("startup.json", second_startup),
+                ("support.launch.intent.json", second_launch),
+                ("support.launch.receipt.json", second_receipt),
+            ]:
+                second_run.write(key, value)
+            now = second.deadline_at + timedelta(seconds=1)
+            context = context.model_copy(
+                update={
+                    "unstarted_intent": second,
+                    "unstarted_grant": second_grant,
+                    "observed_at": now,
+                    "current_data": context.current_data.model_copy(update={"observed_at": now}),
+                }
+            )
+            native = native.model_copy(update={"observed_at": now})
         actor = actor.model_copy(update={"create_time_s": now.timestamp()})
         monkeypatch.setattr(worker, "_owned_native_process", lambda *_: None)
         for key in ["local_inventory", "peer_inventory"]:
@@ -239,7 +314,7 @@ def test_partial_ready_handback_is_metadata_only_and_keeps_original_deadlines(
         ]
     }
     with nullcontext() if keeper_case else bootstrap.ownership("lifetime.lock"):
-        if fault not in {None, "keeper_retired"}:
+        if fault not in {None, "keeper_retired", "keeper_unstarted_again"}:
             with pytest.raises((UpgradeConflict, UpgradeUnavailable, ValueError)):
                 worker.observe_partial_handback(
                     settings,
@@ -266,5 +341,9 @@ def test_partial_ready_handback_is_metadata_only_and_keeps_original_deadlines(
             assert observed.binding.previous_deadline_at == owner.intent.deadline_at
             assert observed.binding.post_handback.source_helper.observed_at == status.observed_at
             assert observed.previous_unreceipted_helper == receipt.helper
+            if capture_success is not None:
+                capture_success(
+                    settings, owner, bootstrap, run, source, observed, context, body, actor, control
+                )
     assert {path: path.read_bytes() for path in originals} == originals
     assert not run.path("cold.handback.receipt.json").exists()

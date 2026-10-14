@@ -23574,6 +23574,16 @@
               }
             ]
           },
+          "unstarted_grant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpgradeColdContinuationGrant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "unstarted_intent": {
             "anyOf": [
               {
@@ -23759,6 +23769,16 @@
             "maxItems": 6,
             "title": "Scopes",
             "type": "array"
+          },
+          "unstarted_custody_grant": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpgradeColdContinuationGrant"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "unstarted_keeper_retirement": {
             "anyOf": [
