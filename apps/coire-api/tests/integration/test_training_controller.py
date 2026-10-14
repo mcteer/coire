@@ -349,6 +349,42 @@ async def test_concurrent_cancel_ticks_commit_one_stop_and_one_release(
         assert job is not None and job.next_event_sequence == 2
 
 
+async def test_stop_command_commits_while_reducer_waits_for_the_job_lock(
+    controller_db: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stop's user FK must not deadlock against a readonly authority guard."""
+    from coire_scheduler import training
+
+    authorize = training.authorize_live_training_action
+    authorized = asyncio.Event()
+
+    async def observe_authorization(
+        session: AsyncSession, principal: Principal, *, shared: bool = False
+    ) -> uuid.UUID:
+        owner = await authorize(session, principal, shared=shared)
+        authorized.set()
+        return owner
+
+    monkeypatch.setattr(training, "authorize_live_training_action", observe_authorization)
+    controller = TrainingController(SimulatedTransport(controller_db), sessions=controller_db.begin)
+    async with (
+        asyncio.timeout(10),
+        asyncio.TaskGroup() as tasks,
+        controller_db.begin() as session,
+    ):
+        job = await session.get(TrainingJobRow, JOB, with_for_update=True)
+        assert job is not None
+        job.state, job.safe_reason = "cancelling", "cancelled"
+        await session.flush()
+        tasks.create_task(controller._advance(JOB))
+        await authorized.wait()
+        await training.enqueue_controls(session, ATTEMPT, "stop")
+    async with controller_db() as session:
+        commands = (await session.scalars(select(TrainingCommandRow))).all()
+        assert len(commands) == 1 and commands[0].operation == "node.training.stop"
+        assert commands[0].state == "pending"
+
+
 async def test_execution_timeout_requests_stop_but_does_not_assume_death(
     controller_db: async_sessionmaker[AsyncSession],
 ) -> None:

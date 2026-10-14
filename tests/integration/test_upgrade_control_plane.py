@@ -438,7 +438,9 @@ def test_first_install_remains_unready_across_executor_restart(
                         failures: dict[str, list[str]] = {}
                         for role, identity in {
                             "incumbent": seed.executor_container_id,
-                            "candidate": actual_owner["executor_container_id"],
+                            "candidate": project
+                            + "-coire-upgrade-executor-"
+                            + str(accepted["generation"]),
                         }.items():
                             output = subprocess.run(
                                 ["docker", "logs", "--tail=100", identity],
