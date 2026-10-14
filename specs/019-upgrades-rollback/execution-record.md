@@ -7979,3 +7979,35 @@ corrected support is being staged without selecting it. Any distinct captured
 recovery budget is explicitly authorized by the owner's standing instruction
 to complete implementation without further approval prompts; the implementation
 still requires authenticated, audited, non-renewing intent acceptance.
+
+### Current regression refresh and second hosted native finding
+
+The full Python run after the pending Source fix passes **5,814 tests**, with
+75 existing platform skips, 633 integration deselections and existing cleanup/
+dependency warnings, **530.76 seconds**. Output:
+`/private/tmp/coire-019-full-tests-r22.log`. Both-platform strict mypy passes
+1,276 modules. Hosted run `38558042131` passes strict Linux lint; its installed
+native gate exposed macOS directory relocation refusing a sealed staging root.
+Only an unpublished staging interpreter root is now writable during relocation;
+all children remain sealed, the root is resealed even after a lost reply, and
+full content is reverified before publishing any receipt. 34 installer tests
+pass, including positive relocation and lost-response/orphan refusal; Source
+permissions and bytes stay unchanged. Hosted native success is still pending.
+
+### Generation 78 distinct recovery attempt remains unstarted
+
+Under standing explicit operator authorization, one authenticated audited
+300-second intent `01M4X3F7GAVD8K25KAH4FEH3EX` was accepted at
+11:41:25.898854 UTC with deadline 11:46:25.898854 UTC, using tested immutable
+release `8cd4220c-7372-4db6-8ff8-096d6b60a035`, runtime
+`5ae40f7c47bdc9e9b48c329a002873848ea9e760e5356a3825e52e1476b42dfd`.
+It is distinct from original generation 78 and preserves its expired deadline
+and receipts. Installed launcher produced a real support process; its fixed
+30-second startup clearance window correctly refused the still-running adopted
+fixture supervisor/current Source children. No recovery ownership/effect claim
+was acquired. The intent was explicitly cancelled through the audited API;
+original Source PID 43339, guard PID 43246 and original fences remain.
+The expired-unstarted-close observer refused this cancelled attempt because
+that protocol accepts only expired, still-accepted attempts with no cancellation;
+no state was edited to bypass the refusal. The cancellation itself relinquishes
+this separate budget's active slot. No new budget is claimed yet.

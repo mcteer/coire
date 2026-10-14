@@ -501,7 +501,20 @@ def prepare_interpreter(
             relative = selected.relative_to(staged)
             seal_tree(staged)
             content = environment_content_sha256(staged, staged)
-            os.rename(staged, target)
+            # Some hosted macOS filesystems require write permission on the
+            # moved directory itself. Only this unpublished, privately locked
+            # staging root is writable during relocation; installed children
+            # stay sealed, and no receipt/selection exists until resealing.
+            staged.chmod(0o700)
+            try:
+                os.rename(staged, target)
+            finally:
+                if staged.exists():
+                    staged.chmod(0o500)
+                elif target.exists():
+                    target.chmod(0o500)
+            if environment_content_sha256(target, target) != content:
+                raise ValueError("retained interpreter changed during publication")
             receipt_temp = store / (".receipt-" + uuid.uuid4().hex)
             try:
                 fd = os.open(

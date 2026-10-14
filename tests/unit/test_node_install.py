@@ -517,6 +517,55 @@ def test_prepared_interpreter_is_sealed_reused_and_content_verified(tmp_path: Pa
     assert library.read_bytes() == b"library"
 
 
+@pytest.mark.parametrize("lost_response", [False, True])
+def test_interpreter_relocation_requires_unpublished_root_write_and_reseals_on_loss(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lost_response: bool
+) -> None:
+    import os
+    import stat
+
+    installer = _installer()
+    shared = tmp_path / "shared"
+    (shared / "bin").mkdir(parents=True)
+    binary = shared / "bin/python3"
+    binary.write_bytes(b"private test interpreter")
+    binary.chmod(0o755)
+    original_mode = shared.stat().st_mode
+    store = tmp_path / "retained"
+    rename = os.rename
+    relocated: list[Path] = []
+
+    def require_directory_write(source: Path, target: Path) -> None:
+        source, target = Path(source), Path(target)
+        if source.name.startswith(".prepare-"):
+            assert stat.S_IMODE(source.stat().st_mode) == 0o700
+            assert all(
+                not (p.stat().st_mode & 0o222) for p in source.rglob("*") if not p.is_symlink()
+            )
+            rename(source, target)
+            relocated.append(target)
+            if lost_response:
+                raise OSError("relocation reply lost")
+        else:
+            rename(source, target)
+
+    monkeypatch.setattr(installer.os, "rename", require_directory_write)
+    if lost_response:
+        with pytest.raises(OSError, match="reply lost"):
+            installer.prepare_interpreter(shared, binary, store, prepare_binary=lambda path: path)
+        assert not list(store.glob("*.json"))
+        with pytest.raises(FileNotFoundError):
+            installer.prepare_interpreter(shared, binary, store, prepare_binary=lambda path: path)
+    else:
+        installed = installer.prepare_interpreter(
+            shared, binary, store, prepare_binary=lambda path: path
+        )
+        assert installed.read_bytes() == binary.read_bytes()
+    assert len(relocated) == 1 and stat.S_IMODE(relocated[0].stat().st_mode) == 0o500
+    assert shared.stat().st_mode == original_mode
+    assert binary.read_bytes() == b"private test interpreter"
+
+
 def test_sealed_environment_receipt_verifies_every_byte_before_reuse(tmp_path: Path) -> None:
     installer = _installer()
     interpreter = tmp_path / "runtimes" / ("a" * 64)
