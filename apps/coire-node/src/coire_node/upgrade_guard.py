@@ -80,6 +80,7 @@ from coire_core.models.upgrades import (
 )
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore, UpgradeReceiptJournal
+from coire_node.native_platform import is_darwin
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("coire.node.upgrade_guard")
@@ -950,7 +951,7 @@ def publish_guard_status(
     if (
         not settings.upgrades_enabled
         or settings.node_name not in {"coire-edge-a", "coire-edge-b"}
-        or sys.platform != "darwin"
+        or not is_darwin(sys.platform)
         or platform.machine() != "arm64"
         or process.pid != os.getpid()
         or psutil.Process(os.getpid()).create_time() != process.create_time_s
@@ -1084,7 +1085,7 @@ def verify_node_startup(settings: Settings) -> NativeRuntimeSelection | None:
 def _verify_node_startup(settings: Settings) -> NativeRuntimeSelection:
     if (
         settings.node_name not in {"coire-edge-a", "coire-edge-b"}
-        or sys.platform != "darwin"
+        or not is_darwin(sys.platform)
         or platform.machine() != "arm64"
     ):
         raise UpgradeUnavailable("Managed node startup requires the intended native Studio")
@@ -1707,7 +1708,7 @@ def run_native_guard(settings: Settings, stopped: threading.Event) -> PreparedNa
     if (
         not settings.upgrades_enabled
         or settings.node_name not in {"coire-edge-a", "coire-edge-b"}
-        or sys.platform != "darwin"
+        or not is_darwin(sys.platform)
         or platform.machine() != "arm64"
         or not settings.node_token.get_secret_value()
     ):
@@ -1774,7 +1775,7 @@ def main() -> None:
     handler.setFormatter(StructuredJSONFormatter())
     logging.basicConfig(level=logging.INFO, handlers=[handler])
     settings = Settings()
-    if sys.platform != "darwin" or platform.machine() != "arm64":
+    if not is_darwin(sys.platform) or platform.machine() != "arm64":
         raise SystemExit(1)
     if not settings.node_token.get_secret_value():
         settings.node_token = read_item(NODE_TOKEN_ITEM)

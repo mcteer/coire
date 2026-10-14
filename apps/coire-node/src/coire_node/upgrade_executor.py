@@ -37,6 +37,7 @@ from coire_core.models.upgrades import (
 from coire_core.settings import Settings
 from coire_core.upgrade_artifacts import verify_prepared_release
 from coire_core.upgrade_journal import PrivateUpgradeStore
+from coire_node.native_platform import is_darwin
 
 if TYPE_CHECKING:
     from coire_node.upgrade_guard import NativeGuardJournal
@@ -70,7 +71,7 @@ def activate_native_candidate(
     if (
         settings.node_name != operation.node
         or settings.node_name not in {"coire-edge-a", "coire-edge-b"}
-        or sys.platform != "darwin"
+        or not is_darwin(sys.platform)
         or platform.machine() != "arm64"
     ):
         raise UpgradeUnavailable("Native activation requires the intended Studio")
@@ -246,7 +247,7 @@ def restore_native_source(
     if (
         settings.node_name != operation.node
         or settings.node_name not in {"coire-edge-a", "coire-edge-b"}
-        or sys.platform != "darwin"
+        or not is_darwin(sys.platform)
         or platform.machine() != "arm64"
     ):
         raise UpgradeUnavailable("Native restoration requires the intended Studio")
@@ -411,7 +412,7 @@ def prepare_native_candidate(
         operation.kind is not UpgradeKind.STUDIO
         or settings.node_name not in {"coire-edge-a", "coire-edge-b"}
         or settings.node_name != operation.node
-        or sys.platform != "darwin"
+        or not is_darwin(sys.platform)
         or platform.machine() != "arm64"
         or not source_status.bootstrap_ready
         or source_status.node != operation.node

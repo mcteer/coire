@@ -50,6 +50,7 @@ from coire_node.expired_recovery_continuation_history import (
 )
 from coire_node.expired_recovery_native_data import capture_native_data
 from coire_node.expired_recovery_post_handback import retained_post_handback
+from coire_node.native_platform import is_darwin
 from coire_node.recovery_identity import recovery_kernel_boot_identity, verify_retired_identity
 from coire_node.upgrade_guard import (
     NativeGuardTransport,
@@ -78,7 +79,7 @@ def observe_continuation(
         environment_sha256=runtime.environment_sha256,
     )
     if (
-        sys.platform != "darwin"
+        not is_darwin(sys.platform)
         or platform.machine() != "arm64"
         or settings.node_name != "coire-edge-a"
         or platform.node().lower().split(".", 1)[0] != settings.node_name

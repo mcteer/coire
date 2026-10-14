@@ -11,12 +11,13 @@ import psutil
 from coire_core.errors import UpgradeUnavailable
 from coire_core.models.upgrade_recovery import UpgradeRecoveryRetiredSupervisor
 from coire_core.models.upgrades import NodeAgentProcessIdentity
+from coire_node.native_platform import is_darwin
 
 
 def recovery_kernel_boot_identity(expires_at: datetime) -> str:
     """Read the fixed kernel value without spawning from a threaded native owner."""
     remaining = (expires_at - datetime.now(UTC)).total_seconds()
-    if sys.platform != "darwin" or remaining <= 0:
+    if not is_darwin(sys.platform) or remaining <= 0:
         raise UpgradeUnavailable("Recovery kernel identity is outside supported epoch")
     deadline = time.monotonic() + min(1.0, remaining)
     try:

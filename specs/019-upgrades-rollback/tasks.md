@@ -218,3 +218,5 @@ US1 is the first demonstration: deliberate bad candidate restores the exact sour
   receipt prefix; prove loss/replay/tampering and old-reader compatibility. Verify
   ordinary next-upgrade acceptance and Source rollback after acknowledgement,
   then repeat required workload gates (FR-031–FR-034, III/IV/VI/VII).
+
+- [ ] T076 Close the helper-restart-discovered pending Source collective gap: distinguish temporary unavailable live-owner observations from measured failed qualification in `upgrade_workflow.verify_source_step`, retain the original recovery deadline, smoke scope and receipts while retrying the exact collective, and cover success/failure/expiry/restart. Preserve failed generation 78 and resolve it through the authenticated distinct recovery protocol under the owner's standing authorization; install immutable corrected artifacts and repeat helper-restart, cancellation/revocation and affected gates before T068 (FR-009, FR-025, FR-030–FR-034; III/IV/VI/VII).

@@ -33,6 +33,7 @@ from coire_core.models.upgrades import (
 )
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore
+from coire_node.native_platform import is_darwin
 from coire_node.upgrade_control import NativeUpgradeControl
 from coire_node.upgrade_guard import NativeGuardTransport, _owned_node_process
 from coire_node.upgrade_inventory import native_process_entries
@@ -304,7 +305,7 @@ def verify_support_interpreter(settings: Settings) -> None:
 
 
 def execute(settings: Settings) -> NodeUpgradeStatus:
-    if sys.platform != "darwin" or platform.machine() != "arm64":
+    if not is_darwin(sys.platform) or platform.machine() != "arm64":
         raise UpgradeUnavailable("Unclaimed cancellation support requires a native Studio")
     body = sys.stdin.buffer.read(512 * 1024 + 1)
     if len(body) > 512 * 1024:

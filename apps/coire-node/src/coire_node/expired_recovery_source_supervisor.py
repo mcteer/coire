@@ -32,6 +32,7 @@ from coire_core.models.upgrade_recovery import (
 from coire_core.models.upgrades import NodeAgentProcessIdentity
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore
+from coire_node.native_platform import is_darwin
 from coire_node.recovery_identity import recovery_kernel_boot_identity
 from coire_node.upgrade_guard import (
     NativeGuardTransport,
@@ -113,7 +114,7 @@ def run_source_supervisor(settings: Settings, stopped: threading.Event) -> None:
     if (
         descriptor is None
         or settings.upgrade_recovery_id is None
-        or sys.platform != "darwin"
+        or not is_darwin(sys.platform)
         or platform.machine() != "arm64"
         or platform.node().lower().split(".", 1)[0] != settings.node_name
     ):

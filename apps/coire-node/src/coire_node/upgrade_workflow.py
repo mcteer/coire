@@ -344,6 +344,11 @@ def verify_source_step(
     ).model_copy(update={"source_verified": True})
     try:
         proof = qualify_native_pair(journal, transport, proof, stage="source", deadline_at=deadline)
+    except UpgradeCollectivePending:
+        # A temporarily unavailable owner observation is not a failed result.
+        # Keep the original Source recovery epoch and retry the exact retained
+        # smoke/collective scope; expiry still retains recovery fencing.
+        return None
     except UpgradeUnavailable:
         # Serving restoration is distinct from paired eligibility. Core records
         # this failed qualification before it can release accepted maintenance.

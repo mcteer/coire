@@ -17,6 +17,7 @@ from coire_core.models.upgrade_recovery import (
 from coire_core.models.upgrades import NativeGuardStatus, PreparedNativeRuntime
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore
+from coire_node.native_platform import is_darwin
 from coire_node.upgrade_guard import _owned_native_process
 from coire_node.upgrade_runtime import verify_prepared_runtime
 
@@ -60,7 +61,7 @@ def verify_local_successor_identity(
         deadline = transfer.intent.deadline_at
     now = datetime.now(UTC)
     if (
-        sys.platform != "darwin"
+        not is_darwin(sys.platform)
         or platform.machine() != "arm64"
         or platform.node().lower().split(".", 1)[0] != settings.node_name
         or settings.node_name != transfer.legacy_guard.node

@@ -29,6 +29,7 @@ from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore
 from coire_node.expired_recovery_cold_owner import retained_cold_preimages
 from coire_node.expired_recovery_native_data import capture_native_data
+from coire_node.native_platform import is_darwin
 from coire_node.recovery_identity import verify_retired_identity
 from coire_node.upgrade_guard import NativeGuardTransport, _owned_native_process
 from coire_node.upgrade_runtime import verify_prepared_runtime
@@ -70,7 +71,7 @@ def observe_unstarted(
     )
     if (
         not settings.upgrades_enabled
-        or sys.platform != "darwin"
+        or not is_darwin(sys.platform)
         or platform.machine() != "arm64"
         or platform.node().lower().split(".", 1)[0] != settings.node_name
         or settings.node_name != intent.original_plan.operation.node

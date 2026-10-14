@@ -38,6 +38,7 @@ from coire_core.models.upgrades import (
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore
 from coire_node.engines import EngineManager
+from coire_node.native_platform import is_darwin
 from coire_node.store import Store
 from coire_node.upgrade_runtime import verify_prepared_runtime
 
@@ -123,7 +124,7 @@ def run_node_smoke(
         settings.node_name not in {"coire-edge-a", "coire-edge-b"}
         or settings.node_name != plan.operation.node
         or platform.node().lower().split(".", 1)[0] != settings.node_name
-        or sys.platform != "darwin"
+        or not is_darwin(sys.platform)
         or platform.machine() != "arm64"
         or os.environ.get("COIRE_ENGINE_COMMAND")
     ):

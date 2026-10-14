@@ -7936,3 +7936,46 @@ the wrong public outcome spelling (`uncertain` rather than `unknown`); the
 assertion was corrected to the actual contract without changing production.
 Output: `/private/tmp/coire-019-journal-sigkill-repeat.log`. The isolated CI
 upgrade-backup job includes these cases. Broader T051 remains open.
+
+### Draft PR and hosted platform findings
+
+Feature-only commit `e6a40c0` is pushed on `feat/019-upgrades-rollback-plan`;
+draft PR https://github.com/mcteer/coire/pull/96 links the spec, constitution,
+licences, current measured evidence and remaining tasks. Unrelated skill and
+Spec Kit workflow changes remain unstaged/uncommitted. Configured pre-commit
+hooks pass using ephemeral pinned pre-commit 4.3.0 via uv; no repository
+dependency was added for that tool. Web refresh: 240 tests, lint and build pass.
+
+Hosted CI run `38555926083` exposed two concrete issues. The installer correctly
+refused a root-owned system interpreter discovered by `uv python find`, although
+it had already provisioned a private managed interpreter. Selection now explicitly
+uses `--no-project --system --managed-python`; ownership checks remain strict.
+Linux mypy marked Darwin-only bodies unreachable after direct sys.platform
+refusals. A shared runtime predicate preserves the exact refusal while allowing
+strict native bodies to be checked on both platforms. Linux and Darwin strict
+mypy now both pass 1,276 source files; 35 focused native recovery tests pass.
+Neither failing hosted check is yet recorded as passing.
+
+### Current helper restart revealed T076
+
+Operation `01M4X1YQPYNA2M7XZ4BY8K330K`, generation 78, genuinely retired its
+recorded guard and started a new independent guard. Source generated 64 fresh
+tokens and positive cleanup at 11:18:17.305799 UTC, but its proof recorded
+`collective_verified=false`; no Source collective dispatch was retained. The
+original recovery deadline 11:22:51.064212 UTC elapsed, and the operation remains
+`recovery_required`. The subsequent cancellation/revocation consumers refused
+on this retained fence; their three-case batch failed and is preserved.
+
+Code inspection found that Source qualification caught `UpgradeCollectivePending`
+under its base `UpgradeUnavailable` handler and converted an unavailable owner
+observation into a failed qualification. Source now mirrors candidate handling:
+pending returns without a complete receipt or intent advancement, retaining the
+original recovery deadline and exact smoke/collective scope. Regression coverage
+now includes both Source and candidate success, definite failure and expiry;
+all 14 guard workflow cases pass. Failed generation 78 is not rewritten. A new
+scoped recovery API is bound exclusively to that original job/generation/Source,
+using the incumbent's existing networks and hardened container policy. Immutable
+corrected support is being staged without selecting it. Any distinct captured
+recovery budget is explicitly authorized by the owner's standing instruction
+to complete implementation without further approval prompts; the implementation
+still requires authenticated, audited, non-renewing intent acceptance.

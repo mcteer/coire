@@ -24,6 +24,7 @@ from coire_core.models.upgrades import NodeAgentProcessIdentity
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore
 from coire_node.expired_recovery_support import prepare_support_startup
+from coire_node.native_platform import is_darwin
 from coire_node.upgrade_guard import NativeGuardTransport, _owned_native_process
 from coire_node.upgrade_runtime import verify_prepared_runtime
 
@@ -38,7 +39,7 @@ def launcher_python(settings: Settings, body: UpgradeExpiredRecoverySupportStart
     envs = Path(settings.upgrade_environment_root)
     python = verify_prepared_runtime(envs, envs.parent / "runtimes", body.runtime)
     if (
-        sys.platform != "darwin"
+        not is_darwin(sys.platform)
         or platform.machine() != "arm64"
         or platform.node().lower().split(".", 1)[0] != settings.node_name
         or Path(sys.prefix).resolve(strict=True)

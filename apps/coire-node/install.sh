@@ -152,7 +152,7 @@ export UV_NO_CACHE=1
 # brings its own rather than depending on what happens to be installed (research R5).
 say "provisioning CPython $PYTHON_VERSION"
 uv python install "$PYTHON_VERSION" >/dev/null
-NODE_PYTHON="$(uv python find "$PYTHON_VERSION")"
+NODE_PYTHON="$(uv python find --no-project --system --managed-python "$PYTHON_VERSION")"
 # Retain the complete interpreter before adding Coire's distinct signed binary.
 # Neither the virtualenv nor a rollback depends on uv's mutable managed install.
 NODE_PYTHON="$("$NODE_PYTHON" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \

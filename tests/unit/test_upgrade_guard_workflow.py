@@ -29,8 +29,9 @@ from coire_node.maintenance import REQUIRED_OWNERS
 
 
 @pytest.mark.parametrize("outcome", ["success", "failed", "expired"])
+@pytest.mark.parametrize("stage", ["candidate", "source"])
 def test_pending_collective_keeps_original_epoch_without_accepting_failed_or_expired_results(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, outcome: str, stage: str
 ) -> None:
     from coire_core.models import LinkObservation, ProbeOutcome, ProbeTransport
     from coire_core.models.upgrade_collective import NodeUpgradeCollectiveResult
@@ -62,13 +63,26 @@ def test_pending_collective_keeps_original_epoch_without_accepting_failed_or_exp
             updated_at=now,
         ),
     )
+    selected = candidate if stage == "candidate" else source.runtime
+    release = plan.target if stage == "candidate" else plan.source
+    phase = UpgradePhase.VERIFYING if stage == "candidate" else UpgradePhase.VERIFYING_SOURCE
+    verify = (
+        upgrade_workflow.verify_candidate_step
+        if stage == "candidate"
+        else upgrade_workflow.verify_source_step
+    )
     intent = NativeRecoveryIntent.model_validate(
         journal.current().model_dump(mode="json")
         | {
-            "phase": "candidate_selected",
+            "phase": "candidate_selected" if stage == "candidate" else "source_selected",
             "activation_started_at": now,
             "activation_grant_id": str(uuid4()),
             "readiness_deadline_at": now + timedelta(seconds=120),
+            **(
+                {"recovery_started_at": now, "recovery_deadline_at": now + timedelta(seconds=300)}
+                if stage == "source"
+                else {}
+            ),
         }
     )
     journal.store.write("intent.json", intent)
@@ -76,10 +90,10 @@ def test_pending_collective_keeps_original_epoch_without_accepting_failed_or_exp
         job_id=plan.operation.job_id,
         generation=1,
         sequence=1,
-        phase=UpgradePhase.VERIFYING,
+        phase=phase,
         effect_id="native-serving",
         outcome="intent",
-        observed_sha256=plan.target.manifest_sha256,
+        observed_sha256=release.manifest_sha256,
         occurred_at=now,
     )
     journal.receipts.append(receipt)
@@ -88,16 +102,16 @@ def test_pending_collective_keeps_original_epoch_without_accepting_failed_or_exp
         node="coire-edge-a",
         job_id=plan.operation.job_id,
         generation=1,
-        release_sha256=plan.target.manifest_sha256,
-        runtime_sha256=candidate.environment_sha256,
-        environment_id=candidate.environment_id,
+        release_sha256=release.manifest_sha256,
+        runtime_sha256=selected.environment_sha256,
+        environment_id=selected.environment_id,
         bootstrap_ready=True,
         observed_at=now,
     )
     transport.collective.side_effect = UpgradeUnavailable("Live owner observation unavailable")
     proof = UpgradeEvidence(
         check="node",
-        runtime_sha256=candidate.environment_sha256,
+        runtime_sha256=selected.environment_sha256,
         model_id=plan.model_id,
         model_variant_id=plan.model_variant_id,
         model_manifest_sha256=plan.model_manifest_sha256,
@@ -108,11 +122,14 @@ def test_pending_collective_keeps_original_epoch_without_accepting_failed_or_exp
     smoke = Mock(return_value=proof)
     monkeypatch.setattr(upgrade_workflow, "run_guard_smoke", smoke)
     try:
-        assert upgrade_workflow.verify_candidate_step(settings, journal, transport) is None
+        assert verify(settings, journal, transport) is None
         assert journal.current() == intent
         assert journal.receipts.latest() == receipt
-        assert journal.store.read("candidate-collective.json", NodeUpgradeCollectiveResult) is None
-        assert transport.collective.call_args.kwargs["deadline_at"] == intent.readiness_deadline_at
+        assert journal.store.read(stage + "-collective.json", NodeUpgradeCollectiveResult) is None
+        deadline = (
+            intent.readiness_deadline_at if stage == "candidate" else intent.recovery_deadline_at
+        )
+        assert transport.collective.call_args.kwargs["deadline_at"] == deadline
         if outcome == "expired":
             elapsed = now - timedelta(seconds=121)
             expired = NativeRecoveryIntent.model_validate(
@@ -120,11 +137,19 @@ def test_pending_collective_keeps_original_epoch_without_accepting_failed_or_exp
                 | {
                     "activation_started_at": elapsed,
                     "readiness_deadline_at": elapsed + timedelta(seconds=120),
+                    **(
+                        {
+                            "recovery_started_at": now - timedelta(seconds=301),
+                            "recovery_deadline_at": now - timedelta(seconds=1),
+                        }
+                        if stage == "source"
+                        else {}
+                    ),
                 }
             )
             journal.store.write("intent.json", expired)
             with pytest.raises(UpgradeUnavailable):
-                upgrade_workflow.verify_candidate_step(settings, journal, transport)
+                verify(settings, journal, transport)
             assert transport.collective.call_count == 1 and smoke.call_count == 1
         else:
             succeeded = outcome == "success"
@@ -132,8 +157,8 @@ def test_pending_collective_keeps_original_epoch_without_accepting_failed_or_exp
                 job_id=plan.operation.job_id,
                 generation=1,
                 plan_sha256=plan.authority_sha256(),
-                stage="candidate",
-                deadline_at=intent.readiness_deadline_at,
+                stage=stage,
+                deadline_at=deadline,
                 observations=tuple(
                     LinkObservation(
                         id=uuid4(),
@@ -147,7 +172,7 @@ def test_pending_collective_keeps_original_epoch_without_accepting_failed_or_exp
                         os_version_b="26.2",
                         engine_version="0.32.2",
                         reason=None if succeeded else "collective failed",
-                        runtime_sha256_a=candidate.environment_sha256,
+                        runtime_sha256_a=selected.environment_sha256,
                         runtime_sha256_b=plan.peer_runtime_sha256,
                         observed_at=datetime.now(UTC),
                     )
@@ -157,17 +182,21 @@ def test_pending_collective_keeps_original_epoch_without_accepting_failed_or_exp
             transport.collective.side_effect = None
             transport.collective.return_value = result
             if succeeded:
-                completed = upgrade_workflow.verify_candidate_step(settings, journal, transport)
+                completed = verify(settings, journal, transport)
                 assert completed is not None and completed.outcome == "complete"
                 assert UpgradeEvidence.model_validate_json(completed.evidence).collective_verified
-            else:
+            elif stage == "candidate":
                 with pytest.raises(UpgradeUnavailable):
-                    upgrade_workflow.verify_candidate_step(settings, journal, transport)
+                    verify(settings, journal, transport)
                 assert journal.receipts.latest() == receipt
+            else:
+                completed = verify(settings, journal, transport)
+                assert completed is not None and completed.outcome == "complete"
+                assert not UpgradeEvidence.model_validate_json(
+                    completed.evidence
+                ).collective_verified
             assert journal.current() == intent
-            assert (
-                transport.collective.call_args.kwargs["deadline_at"] == intent.readiness_deadline_at
-            )
+            assert transport.collective.call_args.kwargs["deadline_at"] == deadline
     finally:
         for path in tmp_path.rglob("*"):
             if path.is_dir() and not path.is_symlink():

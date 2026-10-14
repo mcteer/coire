@@ -48,6 +48,7 @@ from coire_core.models.upgrades import (
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore, UpgradeReceiptJournal
 from coire_node.expired_recovery_cold_supervision import verify_fixture_supervisor
+from coire_node.native_platform import is_darwin
 from coire_node.upgrade_executor import NativeDiskReservation
 from coire_node.upgrade_guard import NativeGuardTransport, _owned_native_process
 from coire_node.upgrade_runtime import verify_prepared_runtime
@@ -480,7 +481,7 @@ def main() -> None:
         )
         if not settings.node_token.get_secret_value():
             settings.node_token = read_item(NODE_TOKEN_ITEM)
-        if sys.platform != "darwin" or platform.machine() != "arm64":
+        if not is_darwin(sys.platform) or platform.machine() != "arm64":
             raise UpgradeUnavailable("Native terminal acknowledgement requires a Studio")
         data = sys.stdin.buffer.read(512 * 1024 + 1)
         if len(data) > 512 * 1024:
