@@ -99,6 +99,7 @@ with httpx.Client(trust_env=False,timeout=2) as client:
                 timeout=15,
             )
             deadline = time.monotonic() + 20
+            observed = None
             while True:
                 probe = subprocess.run(
                     ["docker", "exec", created, "/app/.venv/bin/python3", "-B", "-c", code],
@@ -111,7 +112,20 @@ with httpx.Client(trust_env=False,timeout=2) as client:
                     if observed["live"] == 200:
                         break
                 assert time.monotonic() < deadline, (
-                    "initial executor failed its bounded liveness probe"
+                    "initial executor failed its bounded liveness probe; "
+                    f"probe_exit={probe.returncode}, safe_status={observed}, "
+                    "errors="
+                    + ",".join(
+                        error
+                        for error in (
+                            "PermissionError",
+                            "ModuleNotFoundError",
+                            "ImportError",
+                            "ConnectionError",
+                            "ConnectError",
+                        )
+                        if error in probe.stderr
+                    )
                 )
                 time.sleep(0.1)
             assert observed == {

@@ -91,7 +91,11 @@ class NodeMaintenance:
                 self._admitting -= 1
 
     def apply(
-        self, command: NodeMaintenanceCommand, *, allow_existing_work: bool = False
+        self,
+        command: NodeMaintenanceCommand,
+        *,
+        allow_existing_work: bool = False,
+        recovery_preimage: UpgradeMaintenance | None = None,
     ) -> NodeMaintenanceAck:
         if allow_existing_work and not (
             command.action == "release"
@@ -109,6 +113,17 @@ class NodeMaintenance:
             self.store.ownership("maintenance.lock"),
         ):
             previous = self.current()
+            if recovery_preimage is not None and (
+                command.action != "apply"
+                or recovery_preimage.state == "released"
+                or requested.state == "released"
+                or requested.targets != (self.node,)
+                or self.node not in recovery_preimage.targets
+                or requested.generation <= recovery_preimage.generation
+                or previous not in (recovery_preimage, requested)
+                or self._admitting
+            ):
+                raise UpgradeConflict("Recovery maintenance transfer preimage or scope differs")
             if previous is not None:
                 if requested.generation == previous.generation and (
                     requested.targets != previous.targets
@@ -123,7 +138,11 @@ class NodeMaintenance:
                     and requested.job_id != previous.job_id
                 ):
                     raise UpgradeConflict("Maintenance generation has another operation")
-                if previous.state != "released" and requested.job_id != previous.job_id:
+                if (
+                    previous.state != "released"
+                    and requested.job_id != previous.job_id
+                    and recovery_preimage is None
+                ):
                     raise UpgradeConflict("Previous maintenance retains ownership")
                 if (
                     previous.state == "released"

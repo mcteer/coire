@@ -13112,6 +13112,7 @@ export interface components {
             previous_unreceipted_helper?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackHelper"] | null;
             /** Scopes */
             scopes: components["schemas"]["NodeUpgradeCollectiveScope"][];
+            unstarted_keeper_retirement?: components["schemas"]["UpgradeColdSourceKeeperRetirement"] | null;
             unstarted_startup?: components["schemas"]["UpgradeExpiredRecoverySupportProcess"] | null;
         };
         /** UpgradeColdContinuationRead */
@@ -13220,6 +13221,10 @@ export interface components {
             handback_sha256: string;
             /** Helper Sha256 */
             helper_sha256?: string | null;
+            /** Keeper Custodian Recovery Id */
+            keeper_custodian_recovery_id?: string | null;
+            /** Keeper Retirement Sha256 */
+            keeper_retirement_sha256?: string | null;
             released_claim: components["schemas"]["NativeUpgradeClaim"];
             released_maintenance: components["schemas"]["UpgradeMaintenance"];
             retired_supervisor?: components["schemas"]["NodeAgentProcessIdentity"] | null;
@@ -13229,9 +13234,30 @@ export interface components {
              * @default completed
              * @enum {string}
              */
-            stage: "completed" | "ready_unreceipted";
+            stage: "completed" | "ready_unreceipted" | "keeper_retired";
             /** Supervision Sha256 */
             supervision_sha256?: string | null;
+        };
+        /**
+         * UpgradeColdSourceKeeperRetirement
+         * @description Fixed guard-only transfer step under a separately accepted late continuation.
+         */
+        UpgradeColdSourceKeeperRetirement: {
+            actor: components["schemas"]["NodeAgentProcessIdentity"];
+            grant: components["schemas"]["UpgradeColdContinuationGrant"];
+            /**
+             * Protocol
+             * @default cold-source-keeper-retirement-v1
+             * @constant
+             */
+            protocol: "cold-source-keeper-retirement-v1";
+            /** Retired At */
+            retired_at?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
         };
         /** UpgradeCompatibility */
         UpgradeCompatibility: {

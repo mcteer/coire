@@ -442,7 +442,10 @@ def initial_cold_owner(
                 raise UpgradeConflict("Recovery fence installation changes its captured intent")
             if control.verify_support_context(intent) != intent:
                 raise UpgradeUnavailable("Recovery fence installation lost Core authority")
-            ack = gate.apply(command)
+            ack = gate.apply(
+                command,
+                recovery_preimage=before_fence if before_fence.state != "released" else None,
+            )
             run.write("local.recovery.fence.receipt.json", ack)
         original, native, status, last = retained_cold_preimages(settings, intent)
         previous = None

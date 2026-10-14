@@ -722,10 +722,23 @@ handback effects but no completed old handback receipt. The fixed continuation
 observer captures `ready_unreceipted` metadata only when Core retains the exact
 verification and handback intent, the native helper record matches that intent,
 both exact Source processes are live, its independent writer lock is held, the
-claim is released, original maintenance remains active, and data/qualification
+claim is released, original maintenance remains held, and data/qualification
 history is unchanged. Later handback, supervision, closure or resolution records
 refuse this path. The proof preserves the observed current readiness timestamp;
 it never claims the old deadline was met. An explicit authenticated audited new
 continuation may retire only that recorded Source guard, install its newly
 captured local fence, retain the Source node, and run fresh qualification and
 handback under its own budget. Old failure history and deadlines remain intact.
+
+If an explicitly accepted continuation retired that exact keeper but stopped
+before cold claim and before applying its new fence, the observer must retain
+those declared effects. `keeper_retired` metadata binds the completed retirement
+receipt to its audited grant and exact startup, requires positive retirement of
+both launch actors and keeper, acquires the free writer lock, and verifies the
+original held fence and live Source node. The only allowed fence record is the
+unapplied intent; a fence receipt, cold claim, Source projection or unknown file
+refuses this preclaim path. The new acceptance supersedes only the failed
+custodian and preserves its retirement history. Applying the next local fence
+uses the captured old held preimage, under one maintenance lock, with a higher
+generation and single-node target; ordinary apply still refuses a different held
+owner. No intermediate released state or reopening is published.

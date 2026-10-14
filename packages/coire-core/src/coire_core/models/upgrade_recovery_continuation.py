@@ -68,6 +68,9 @@ class UpgradeColdContinuationObservation(UpgradeWire):
         default=None, exclude_if=lambda v: v is None
     )
 
+    unstarted_keeper_retirement: UpgradeColdSourceKeeperRetirement | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
     previous_unreceipted_helper: UpgradeExpiredRecoveryColdHandbackHelper | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
@@ -98,7 +101,9 @@ class UpgradeColdContinuationObservation(UpgradeWire):
             raise ValueError("post-handback continuation has no required historical qualification")
         partial = self.previous_unreceipted_helper
         late = binding.post_handback
-        if (partial is not None) != (late is not None and late.stage == "ready_unreceipted") or (
+        if (partial is not None) != (
+            late is not None and late.stage in {"ready_unreceipted", "keeper_retired"}
+        ) or (
             partial is not None
             and (
                 late is None
@@ -110,6 +115,23 @@ class UpgradeColdContinuationObservation(UpgradeWire):
             )
         ):
             raise ValueError("unreceipted handback metadata changes exact helper provenance")
+        keeper = self.unstarted_keeper_retirement
+        if (keeper is not None) != (late is not None and late.stage == "keeper_retired") or (
+            keeper is not None
+            and (
+                late is None
+                or self.unstarted_startup is None
+                or keeper.retired_at is None
+                or keeper.grant.intent != self.unstarted_startup.intent
+                or keeper.grant.intent.recovery_id != late.keeper_custodian_recovery_id
+                or keeper.sha256() != late.keeper_retirement_sha256
+                or keeper.grant.binding.previous_owner_sha256 != owner.sha256()
+                or keeper.grant.binding.post_handback is None
+                or keeper.grant.binding.post_handback.source_helper.process
+                != late.source_helper.process
+            )
+        ):
+            raise ValueError("preclaim keeper retirement changes its exact custody grant")
         archive = self.previous_archive
         if archive is None:
             if (

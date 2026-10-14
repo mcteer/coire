@@ -58,6 +58,7 @@ from coire_core.models.upgrades import NativeUpgradeClaim, UpgradePhase
         "archived_continued",
         "post_handback_continued",
         "partial_handback_continued",
+        "keeper_preclaim_continued",
         "unstarted_continued",
         "inherited_continued",
     ],
@@ -65,9 +66,10 @@ from coire_core.models.upgrades import NativeUpgradeClaim, UpgradePhase
 async def test_initial_relay_atomic_acceptance_concurrency_replay_and_authority(
     training_postgres_url, tmp_path, monkeypatch, mode
 ):
-    unstarted_continued = mode == "unstarted_continued"
+    keeper_preclaim = mode == "keeper_preclaim_continued"
+    unstarted_continued = mode == "unstarted_continued" or keeper_preclaim
     inherited_continued = mode == "inherited_continued"
-    partial_handback_continued = mode == "partial_handback_continued"
+    partial_handback_continued = mode == "partial_handback_continued" or keeper_preclaim
     post_handback_continued = (
         partial_handback_continued
         or mode == "post_handback_continued"
@@ -389,6 +391,7 @@ async def test_initial_relay_atomic_acceptance_concurrency_replay_and_authority(
                     archived=archived_continued,
                     post_handback=post_handback_continued,
                     partial_handback=partial_handback_continued,
+                    keeper_preclaim=keeper_preclaim,
                     unstarted=unstarted_continued,
                     inherited=inherited_continued,
                 )

@@ -142,3 +142,42 @@ def test_absent_continuation_preserves_old_canonical_owner_digest(tmp_path, monk
     assert owner.sha256() == legacy_digest
     parsed = UpgradeExpiredRecoveryColdClaim.model_validate({**legacy_body, "continuation": None})
     assert parsed.sha256() == legacy_digest
+
+
+@pytest.mark.parametrize("fault", [None, "missing_dispatch", "unknown_local", "busy_peer"])
+def test_zero_dispatch_continuation_still_requires_exact_plan_and_complete_inventory(
+    tmp_path, monkeypatch, fault
+):
+    from test_upgrade_recovery_cold_archive import archive_fixture
+
+    from coire_core.errors import UpgradeUnavailable
+    from coire_core.upgrade_recovery_inventory import verify_retained_collective_inventory
+
+    _, _, _, owner, _, _, _, _, _, control = archive_fixture(tmp_path, monkeypatch)
+    local = control.local_inventory()
+    local = local.model_copy(
+        update={"owners": tuple(o.model_copy(update={"entries": ()}) for o in local.owners)}
+    )
+    peer = control.peer_inventory()
+    if fault == "unknown_local":
+        local = local.model_copy(
+            update={
+                "owners": tuple(o.model_copy(update={"status": "unknown"}) for o in local.owners)
+            }
+        )
+    if fault == "busy_peer":
+        peer = peer.model_copy(
+            update={
+                "owners": tuple(o.model_copy(update={"status": "blocked"}) for o in peer.owners)
+            }
+        )
+    expected = owner.intent.request.original_scope_sha256s if fault == "missing_dispatch" else ()
+    if fault:
+        with pytest.raises(UpgradeUnavailable):
+            verify_retained_collective_inventory(
+                owner.intent.original_plan, expected, (), (), local, peer
+            )
+    else:
+        verify_retained_collective_inventory(
+            owner.intent.original_plan, expected, (), (), local, peer
+        )

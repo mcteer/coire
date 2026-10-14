@@ -62,7 +62,10 @@ def previous_source(
             )
         ):
             raise UpgradeConflict("Cold continuation retained archive or failed results changed")
-    if binding.post_handback is not None and binding.post_handback.stage == "ready_unreceipted":
+    if binding.post_handback is not None and binding.post_handback.stage in {
+        "ready_unreceipted",
+        "keeper_retired",
+    }:
         from coire_core.models.upgrade_recovery import UpgradeExpiredRecoveryColdHandbackIntent
         from coire_node.expired_recovery_partial_handback import retained_unreceipted_helper
 
@@ -77,6 +80,26 @@ def previous_source(
             or helper.handback.released_claim != late.released_claim
         ):
             raise UpgradeConflict("Partial Source changes retained helper")
+        if late.stage == "keeper_retired":
+            from coire_core.models.upgrade_recovery import UpgradeExpiredRecoverySupportStartup
+            from coire_node.expired_recovery_unstarted_lineage import (
+                observe_retired_keeper_custodian,
+            )
+
+            if late.keeper_custodian_recovery_id is None:
+                raise UpgradeConflict("Partial Source has no exact keeper custodian")
+            custodian = PrivateUpgradeStore(
+                runs.path(late.keeper_custodian_recovery_id), create=False
+            )
+            startup = custodian.read("startup.json", UpgradeExpiredRecoverySupportStartup)
+            if startup is None:
+                raise UpgradeConflict("Partial Source keeper startup is absent")
+            _, retirement = observe_retired_keeper_custodian(settings, startup.intent)
+            if (
+                retirement.sha256() != late.keeper_retirement_sha256
+                or retirement.grant.binding.previous_owner_sha256 != binding.previous_owner_sha256
+            ):
+                raise UpgradeConflict("Partial Source keeper retirement changes custody")
     elif binding.post_handback is not None:
         from coire_core.models.upgrade_recovery import UpgradeExpiredRecoveryColdHandbackReceipt
         from coire_node.expired_recovery_post_handback import retained_post_handback

@@ -23760,6 +23760,16 @@
             "title": "Scopes",
             "type": "array"
           },
+          "unstarted_keeper_retirement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpgradeColdSourceKeeperRetirement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "unstarted_startup": {
             "anyOf": [
               {
@@ -24054,6 +24064,30 @@
             ],
             "title": "Helper Sha256"
           },
+          "keeper_custodian_recovery_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keeper Custodian Recovery Id"
+          },
+          "keeper_retirement_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Keeper Retirement Sha256"
+          },
           "released_claim": {
             "$ref": "#/components/schemas/NativeUpgradeClaim"
           },
@@ -24077,7 +24111,8 @@
             "default": "completed",
             "enum": [
               "completed",
-              "ready_unreceipted"
+              "ready_unreceipted",
+              "keeper_retired"
             ],
             "title": "Stage",
             "type": "string"
@@ -24102,6 +24137,48 @@
           "source_helper"
         ],
         "title": "UpgradeColdPostHandbackBinding",
+        "type": "object"
+      },
+      "UpgradeColdSourceKeeperRetirement": {
+        "additionalProperties": false,
+        "description": "Fixed guard-only transfer step under a separately accepted late continuation.",
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/NodeAgentProcessIdentity"
+          },
+          "grant": {
+            "$ref": "#/components/schemas/UpgradeColdContinuationGrant"
+          },
+          "protocol": {
+            "const": "cold-source-keeper-retirement-v1",
+            "default": "cold-source-keeper-retirement-v1",
+            "title": "Protocol",
+            "type": "string"
+          },
+          "retired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired At"
+          },
+          "started_at": {
+            "format": "date-time",
+            "title": "Started At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "grant",
+          "actor",
+          "started_at"
+        ],
+        "title": "UpgradeColdSourceKeeperRetirement",
         "type": "object"
       },
       "UpgradeCompatibility": {

@@ -75,7 +75,7 @@ async def verify_observation_context(
         raise UpgradeConflict("Cold continuation handback boundary differs from Core")
     if partial is not None and (
         post is None
-        or post.stage != "ready_unreceipted"
+        or post.stage not in {"ready_unreceipted", "keeper_retired"}
         or helper is None
         or helper.handback != partial
         or helper.sha256() != post.helper_sha256
@@ -85,6 +85,24 @@ async def verify_observation_context(
         or not post.released_maintenance.matches_plan(context.intent.local_inventory_plan())
     ):
         raise UpgradeConflict("Cold continuation partial ready Source differs from Core")
+    keeper = proof.unstarted_keeper_retirement
+    if keeper is not None:
+        from sqlalchemy import select
+
+        from coire_api.db import UpgradeRecoverySuccessionRow
+
+        stored = await session.scalar(
+            select(UpgradeRecoverySuccessionRow).where(
+                UpgradeRecoverySuccessionRow.recovery_id == keeper.grant.intent.recovery_id
+            )
+        )
+        if (
+            context.unstarted_intent != keeper.grant.intent
+            or stored is None
+            or stored.grant_sha256 != keeper.grant.sha256()
+            or stored.grant_payload != keeper.grant.model_dump(mode="json")
+        ):
+            raise UpgradeConflict("Keeper preclaim custody differs from audited Core grant")
     if partial is None and helper is not None:
         raise UpgradeConflict("Cold continuation invents partial handback")
     if (

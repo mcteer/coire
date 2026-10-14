@@ -24,9 +24,13 @@ class UpgradeColdPostHandbackBinding(UpgradeWire):
     """Recorded released preimages and positively identified idle Source writer."""
 
     handback_sha256: Sha256
-    stage: Literal["completed", "ready_unreceipted"] = Field(
+    stage: Literal["completed", "ready_unreceipted", "keeper_retired"] = Field(
         default="completed", exclude_if=lambda v: v == "completed"
     )
+    keeper_custodian_recovery_id: UpgradeId | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    keeper_retirement_sha256: Sha256 | None = Field(default=None, exclude_if=lambda v: v is None)
     helper_sha256: Sha256 | None = Field(default=None, exclude_if=lambda v: v is None)
     supervision_sha256: Sha256 | None = Field(default=None, exclude_if=lambda v: v is None)
     closure_intent_sha256: Sha256 | None = Field(default=None, exclude_if=lambda v: v is None)
@@ -50,9 +54,13 @@ class UpgradeColdPostHandbackBinding(UpgradeWire):
         elif (
             self.helper_sha256 is None
             or any(v is not None for v in completed)
-            or self.released_maintenance.state != "active"
+            or self.released_maintenance.state == "released"
         ):
             raise ValueError("unreceipted ready handback requires its helper and held maintenance")
+        if (self.keeper_retirement_sha256 is not None) != (self.stage == "keeper_retired") or (
+            self.keeper_custodian_recovery_id is not None
+        ) != (self.stage == "keeper_retired"):
+            raise ValueError("keeper retirement stage requires its exact receipt digest")
         return self
 
 
@@ -141,8 +149,11 @@ class UpgradeColdContinuationBinding(UpgradeWire):
             late.released_claim.state != "released"
             or late.released_claim.model_dump(exclude={"state", "updated_at"})
             != claim.model_dump(exclude={"state", "updated_at"})
-            or late.released_maintenance.state
-            != ("released" if late.stage == "completed" else "active")
+            or (late.stage == "completed" and late.released_maintenance.state != "released")
+            or (
+                late.stage in {"ready_unreceipted", "keeper_retired"}
+                and late.released_maintenance.state == "released"
+            )
             or (
                 (late.released_maintenance.job_id, late.released_maintenance.generation)
                 != (claim.job_id, claim.generation)

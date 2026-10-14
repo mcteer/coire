@@ -21,7 +21,7 @@ def verify_retained_collective_inventory(
 ) -> None:
     hashes = tuple(scope.sha256() for scope in scopes)
     if (
-        not scopes
+        len(scopes) > 6
         or len(hashes) != len(set(hashes))
         or sorted(hashes) != sorted(expected_scope_sha256s)
         or len(interrupted_scope_sha256s) != len(set(interrupted_scope_sha256s))

@@ -131,6 +131,7 @@ async def exercise_continuation(
     archived=False,
     post_handback=False,
     partial_handback=False,
+    keeper_preclaim=False,
     unstarted=False,
     inherited=False,
 ):
@@ -490,6 +491,33 @@ async def exercise_continuation(
                 }
             ).model_dump(mode="json")
         )
+        if keeper_preclaim:
+            from coire_core.models.upgrade_recovery_continuation import (
+                UpgradeColdSourceKeeperRetirement,
+            )
+
+            retired = UpgradeColdSourceKeeperRetirement(
+                grant=grant,
+                actor=startup.process,
+                started_at=next_intent.accepted_at,
+                retired_at=next_intent.accepted_at + timedelta(seconds=1),
+            )
+            late = fresh.binding.post_handback.model_copy(
+                update={
+                    "stage": "keeper_retired",
+                    "keeper_custodian_recovery_id": next_intent.recovery_id,
+                    "keeper_retirement_sha256": retired.sha256(),
+                }
+            )
+            fresh = UpgradeColdContinuationObservation.model_validate(
+                fresh.model_dump(mode="json")
+                | {
+                    "binding": fresh.binding.model_copy(update={"post_handback": late}).model_dump(
+                        mode="json"
+                    ),
+                    "unstarted_keeper_retirement": retired.model_dump(mode="json"),
+                }
+            )
         relay.publish(fresh)
         followup = body.model_copy(
             update={

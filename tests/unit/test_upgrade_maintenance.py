@@ -391,3 +391,40 @@ async def test_terminal_cleanup_for_each_owner_cannot_release_native_fence(
     authority.verify_terminal.assert_not_called()
     authority.release_claim.assert_not_called()
     assert not gate.inventory(accepted.maintenance.job_id, 1, "a" * 64).idle(REQUIRED_OWNERS)
+
+
+@pytest.mark.parametrize(
+    "fault", [None, "foreign_preimage", "stale", "released_target", "other_target"]
+)
+def test_recovery_transfer_preserves_continuous_held_maintenance(tmp_path, fault):
+    old = command().maintenance.model_copy(update={"state": "fencing"})
+    requested = command(2).maintenance.model_copy(
+        update={"job_id": "01ARZ3NDEKTSV4RRFFQ69G5FAW", "state": "active"}
+    )
+    gate = NodeMaintenance(tmp_path / "upgrades", "coire-edge-a")
+    gate.apply(NodeMaintenanceCommand(maintenance=old))
+    with pytest.raises(UpgradeConflict, match="retains ownership"):
+        gate.apply(NodeMaintenanceCommand(maintenance=requested))
+    preimage = old
+    if fault == "foreign_preimage":
+        preimage = old.model_copy(update={"generation": 3})
+    if fault == "stale":
+        requested = requested.model_copy(update={"generation": 1})
+    if fault == "released_target":
+        requested = requested.model_copy(update={"state": "released"})
+    if fault == "other_target":
+        requested = requested.model_copy(update={"targets": ("coire-edge-a", "coire-edge-b")})
+    if fault:
+        with pytest.raises(UpgradeConflict):
+            gate.apply(NodeMaintenanceCommand(maintenance=requested), recovery_preimage=preimage)
+        assert gate.current() == old and gate.blocked()
+    else:
+        result = gate.apply(
+            NodeMaintenanceCommand(maintenance=requested), recovery_preimage=preimage
+        )
+        assert not result.released and gate.current() == requested and gate.blocked()
+        assert not gate.apply(
+            NodeMaintenanceCommand(maintenance=requested), recovery_preimage=preimage
+        ).released
+        with pytest.raises(UpgradeUnavailable):
+            gate.check()
