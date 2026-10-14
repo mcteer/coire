@@ -387,3 +387,68 @@ def test_cold_archive_refuses_uncertainty_and_preserves_original_namespace(
         )
         is None
     )
+
+
+@pytest.mark.parametrize("interruption", [None, "intent", "effect", "receipt"])
+def test_absent_original_dispatch_is_positive_replayable_evidence(
+    tmp_path, monkeypatch, interruption
+):
+    import shutil
+
+    worker, selector, settings, claim, bootstrap, run, _, history, _, control = archive_fixture(
+        tmp_path, monkeypatch
+    )
+    shutil.rmtree(history.root)
+    request = claim.intent.request.model_copy(update={"original_scope_sha256s": ()})
+    intent = claim.intent.model_copy(update={"request": request, "scopes": ()})
+    claim = claim.model_copy(update={"intent": intent})
+    run.write("cold.claim.json", claim)
+    run.write("cold.activation.json", claim)
+    local = control.local_inventory()
+    control.local_inventory.side_effect = None
+    control.local_inventory.return_value = local.model_copy(
+        update={"owners": tuple(owner.model_copy(update={"entries": ()}) for owner in local.owners)}
+    )
+    write = PrivateUpgradeStore.write
+    interrupted = False
+
+    def persist(store, key, value, **kwargs):
+        nonlocal interrupted
+        result = write(store, key, value, **kwargs)
+        if (
+            interruption
+            and not interrupted
+            and key == f"cold.collective.archive.{interruption}.json"
+        ):
+            interrupted = True
+            raise UpgradeUnavailable("lost absence write response")
+        return result
+
+    monkeypatch.setattr(PrivateUpgradeStore, "write", persist)
+    with (
+        bootstrap.ownership("recovery-transfer.lock") as descriptor,
+        bind_recovery_lease(bootstrap, claim.sha256(), descriptor),
+    ):
+        selected = selector.project_cold_source(settings, claim, control)
+        source = UpgradeExpiredRecoveryColdSourceProcess(
+            launch=UpgradeExpiredRecoveryColdSourceLaunch(
+                source=selected, attempt=0, started_at=datetime.now(UTC)
+            ),
+            process=NodeAgentProcessIdentity(
+                pid=98765,
+                create_time_s=datetime.now(UTC).timestamp(),
+                environment_sha256=claim.original_native.source.runtime.environment_sha256,
+            ),
+            observed_at=datetime.now(UTC),
+        )
+        if interruption:
+            with pytest.raises(UpgradeUnavailable, match="lost absence"):
+                worker.archive_cold_collectives(settings, source, control)
+        receipt = worker.archive_cold_collectives(settings, source, control)
+        assert receipt == worker.archive_cold_collectives(settings, source, control)
+        assert receipt.archive.scopes == () and receipt.archive.interrupted_scope_sha256s == ()
+        assert not history.root.exists()
+        assert not run.path("collective-history").joinpath(claim.original_claim.job_id).exists()
+        history.root.mkdir(mode=0o700)
+        with pytest.raises(UpgradeConflict, match="has a namespace"):
+            worker.archive_cold_collectives(settings, source, control)

@@ -14,6 +14,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 
 from coire_core.errors import CoireError, UpgradeConflict, UpgradeUnavailable
 from coire_core.models.upgrade_recovery import (
+    UpgradeExpiredRecoveryColdClaim,
     UpgradeExpiredRecoveryIntent,
     UpgradeExpiredRecoverySupportProcess,
     UpgradeExpiredRecoveryUnstartedObservation,
@@ -99,11 +100,37 @@ def observe_unstarted(
         if startup is None or startup.intent != intent:
             raise UpgradeConflict("Unstarted recovery has no exact recorded startup actor")
         verify_retired_identity(startup.process)
+        pre_projection = run.read("cold.claim.json", UpgradeExpiredRecoveryColdClaim)
+        if pre_projection is None and run.path("cold.activation.json").exists():
+            raise UpgradeConflict("Unstarted recovery retains an orphan activation")
+        if pre_projection is not None:
+            if (
+                pre_projection.intent != intent
+                or pre_projection.process != startup.process
+                or run.read("cold.activation.json", UpgradeExpiredRecoveryColdClaim)
+                != pre_projection
+            ):
+                raise UpgradeConflict("Pre-projection cold owner/activation preimage differs")
+            verify_retired_identity(pre_projection.process)
+        allowed = {
+            "cold.claim.json",
+            "cold.activation.json",
+            "support.launch.receipt.json",
+            "support.launch.intent.json",
+            "support.launch.lock",
+            "support.log",
+            "startup.json",
+            "unstarted-input.json",
+        }
+        if any(
+            path.name not in allowed
+            and not (path.name.startswith("unstarted.observation.") and path.name.endswith(".json"))
+            for path in run.root.iterdir()
+        ):
+            raise UpgradeConflict("Unstarted recovery retains an unknown ownership/effect preimage")
         if any(
             run.path(key).exists() or run.path(key).is_symlink()
             for key in (
-                "cold.claim.json",
-                "cold.activation.json",
                 "cold.source.intent.json",
                 "owner.claim.json",
                 "transfer.json",
@@ -158,6 +185,7 @@ def observe_unstarted(
             bootstrap_runtime=bootstrap_runtime,
             native_data=data,
             observed_at=datetime.now(UTC),
+            pre_projection_owner=pre_projection,
         )
         # Retain exact metadata proof in the separate attempt namespace. The
         # admin audit stores its digest and safe closure summary, never nested

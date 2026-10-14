@@ -149,6 +149,7 @@ def test_activation_selects_once_only_after_owned_source_stop(
         monkeypatch.setattr(upgrade_executor, "datetime", SimpleNamespace(now=lambda _: clock))
     monkeypatch.setattr(upgrade_guard, "stop_owned_node_process", stop)
     monkeypatch.setattr(upgrade_executor.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(upgrade_executor, "is_darwin", lambda _: True)
     if fault == "pointer_journal_failure":
         original_write = journal.store.write
 

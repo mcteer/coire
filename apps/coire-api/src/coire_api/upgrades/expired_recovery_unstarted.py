@@ -27,6 +27,8 @@ from coire_api.upgrades.persistence import get_release, operation_lock
 from coire_api.upgrades.recovery_support_scope import require_original
 from coire_core.errors import UpgradeConflict, UpgradeForbidden, UpgradeUnavailable
 from coire_core.models.upgrade_recovery import (
+    UpgradeExpiredRecoveryCancellation,
+    UpgradeExpiredRecoveryColdClaim,
     UpgradeExpiredRecoveryDataSnapshot,
     UpgradeExpiredRecoveryIntent,
     UpgradeExpiredRecoveryNativeDataSnapshot,
@@ -58,12 +60,33 @@ async def unstarted_context(
     )
     if intent.original_plan.operation.node != node:
         raise UpgradeForbidden()
+    cancelled = None
+    if row.cancellation_payload is not None:
+        cancelled = UpgradeExpiredRecoveryCancellation.model_validate(row.cancellation_payload)
+        if (
+            cancelled.recovery_id != recovery_id
+            or cancelled.intent_sha256 != intent.sha256()
+            or cancelled.original_job_id != request.original_job_id
+            or cancelled.original_generation != request.original_generation
+            or cancelled.cancelled_at < intent.accepted_at
+        ):
+            raise UpgradeConflict("Unstarted recovery cancellation scope differs")
+    cold = None
+    if row.cold_claim_payload is not None:
+        try:
+            cold = UpgradeExpiredRecoveryColdClaim.model_validate(row.cold_claim_payload)
+        except ValueError:
+            raise UpgradeConflict(
+                "Recovery is not an expired attempt without issued effect authority"
+            ) from None
+        if cold.intent != intent or cancelled is None:
+            raise UpgradeConflict("Pre-projection closure requires exact cancelled cold authority")
     if (
         row.intent_sha256 != intent.sha256()
         or intent_sha256 != row.intent_sha256
         or row.original_job_id != request.original_job_id
         or row.active_slot != 1
-        or row.phase != "accepted"
+        or row.phase != ("recovery_required" if cancelled is not None else "accepted")
         or intent.request.recovery_mode != "cold"
         or datetime.now(UTC) < intent.deadline_at
         or any(
@@ -72,12 +95,10 @@ async def unstarted_context(
                 row.transfer_payload,
                 row.consumption_payload,
                 row.owner_claim_payload,
-                row.cold_claim_payload,
                 row.cold_smoke_payload,
                 row.cold_verification_payload,
                 row.cold_handback_intent_payload,
                 row.cold_handback_receipt_payload,
-                row.cancellation_payload,
                 row.resolution_payload,
             )
         )
@@ -110,6 +131,12 @@ async def verify_unstarted_observation(
     )
     if (
         proof.intent != intent
+        or proof.pre_projection_owner
+        != (
+            UpgradeExpiredRecoveryColdClaim.model_validate(row.cold_claim_payload)
+            if row.cold_claim_payload is not None
+            else None
+        )
         or (await get_release(session, proof.observer_release.release_id)) != proof.observer_release
     ):
         raise UpgradeConflict("Unstarted recovery observer catalog or intent differs")
@@ -205,7 +232,7 @@ async def close_unstarted_recovery(
             or row is None
             or intent is None
             or row.active_slot is not None
-            or row.phase != "cancelled_unchanged"
+            or row.phase != receipt.phase
             or row.intent_sha256 != request.intent_sha256
             or intent.sha256() != row.intent_sha256
             or (receipt.original_job_id, receipt.original_generation, receipt.source_sha256)
@@ -241,8 +268,18 @@ async def close_unstarted_recovery(
         recovery_deadline_at=proof.intent.deadline_at,
         closed_by=actor,
         closed_at=datetime.now(UTC),
+        phase="superseded" if proof.pre_projection_owner is not None else "cancelled_unchanged",
+        pre_projection_owner_sha256=(
+            proof.pre_projection_owner.sha256() if proof.pre_projection_owner is not None else None
+        ),
     )
-    row.phase, row.active_slot = "cancelled_unchanged", None
+    row.phase, row.active_slot = receipt.phase, None
+    if proof.pre_projection_owner is not None:
+        row.resolution_payload = {
+            "protocol": "cold-pre-projection-closure-v1",
+            "owner_sha256": proof.pre_projection_owner.sha256(),
+            "receipt": receipt.model_dump(mode="json"),
+        }
     await write_principal_audit(
         session,
         principal=principal,

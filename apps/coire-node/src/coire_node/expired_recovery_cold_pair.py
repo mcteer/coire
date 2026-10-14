@@ -103,11 +103,27 @@ def qualify_cold_pair(
             != archive
         ):
             raise UpgradeConflict("Cold pair has no exact retained serving and cleanup provenance")
-        archived = PrivateUpgradeStore(
-            run.root / "collective-history" / claim.original_claim.job_id, create=False
-        )
-        if history_sha256(archived) != archive.archive.history_sha256:
-            raise UpgradeConflict("Cold pair original dispatch archive changed")
+        path = run.root / "collective-history" / claim.original_claim.job_id
+        if archive.archive.scopes:
+            archived = PrivateUpgradeStore(path, create=False)
+            if history_sha256(archived) != archive.archive.history_sha256:
+                raise UpgradeConflict("Cold pair original dispatch archive changed")
+        else:
+            import hashlib
+
+            original = (
+                Path(settings.node_state_dir) / "upgrades/collectives" / claim.original_claim.job_id
+            )
+            if (
+                claim.intent.request.original_scope_sha256s
+                or original.exists()
+                or original.is_symlink()
+                or path.exists()
+                or path.is_symlink()
+                or archive.archive.history_sha256
+                != hashlib.sha256(b"coire-cold-no-original-dispatch-v1").hexdigest()
+            ):
+                raise UpgradeConflict("Cold pair absent original dispatch history changed")
 
     def inventories() -> tuple[NodeUpgradeInventory, NodeUpgradeInventory]:
         plan = claim.intent.original_plan

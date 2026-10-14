@@ -52,6 +52,8 @@ from coire_core.models.upgrades import NativeUpgradeClaim, UpgradePhase
         "cold",
         "cold_resolved",
         "unstarted_closed",
+        "unstarted_cancelled",
+        "pre_projection_closed",
         "cold_continued",
         "archived_continued",
         "post_handback_continued",
@@ -70,7 +72,9 @@ async def test_initial_relay_atomic_acceptance_concurrency_replay_and_authority(
     archived_continued = mode == "archived_continued" or post_handback_continued
     continued = mode == "cold_continued" or archived_continued
     resolve = mode == "cold_resolved"
-    unstarted = mode == "unstarted_closed"
+    pre_projection = mode == "pre_projection_closed"
+    cancelled_unstarted = mode == "unstarted_cancelled" or pre_projection
+    unstarted = mode in {"unstarted_closed", "unstarted_cancelled", "pre_projection_closed"}
     mode = "cold" if resolve or unstarted or continued else mode
     plan, native, scope, request, _ = retained_native_fixture(tmp_path)
     if mode == "cold":
@@ -218,7 +222,15 @@ async def test_initial_relay_atomic_acceptance_concurrency_replay_and_authority(
         assert intent.original_recovery_deadline_at == native.recovery_deadline_at
         if unstarted:
             await exercise_unstarted_closure(
-                sessions, actor, intent, proof, native, operation, monkeypatch
+                sessions,
+                actor,
+                intent,
+                proof,
+                native,
+                operation,
+                monkeypatch,
+                cancelled=cancelled_unstarted,
+                pre_projection=pre_projection,
             )
             return
         if mode == "cold":
@@ -1082,7 +1094,16 @@ async def test_initial_relay_atomic_acceptance_concurrency_replay_and_authority(
 
 
 async def exercise_unstarted_closure(
-    sessions, actor, intent, original_proof, native, operation, monkeypatch
+    sessions,
+    actor,
+    intent,
+    original_proof,
+    native,
+    operation,
+    monkeypatch,
+    *,
+    cancelled=False,
+    pre_projection=False,
 ):
     """Actual audit/slot transactions; native observations remain fixture facts."""
     from types import SimpleNamespace
@@ -1101,6 +1122,19 @@ async def exercise_unstarted_closure(
     )
 
     expired_at = intent.deadline_at + timedelta(seconds=1)
+    if cancelled:
+        from coire_api.upgrades.expired_recovery_cancel import cancel_recovery
+        from coire_core.models.upgrade_recovery import UpgradeExpiredRecoveryCancelRequest
+
+        async with sessions.begin() as session:
+            cancellation, created = await cancel_recovery(
+                session,
+                actor,
+                intent.recovery_id,
+                UpgradeExpiredRecoveryCancelRequest(intent_sha256=intent.sha256()),
+            )
+            assert created
+            assert cancellation.intent_sha256 == intent.sha256()
     async with sessions.begin() as session:
         active = intent.original_plan.maintenance.model_copy(
             update={
@@ -1178,7 +1212,32 @@ async def exercise_unstarted_closure(
             await worker.unstarted_context(
                 session, intent.recovery_id, intent.sha256(), native.source.node
             )
-        row.cold_claim_payload = None
+        # Restore SQL NULL, not JSON's null literal, after this injected
+        # authority fault. The database absence constraint is intentionally
+        # stricter than Python's decoded JSON None.
+        from sqlalchemy import null
+
+        row.cold_claim_payload = null()
+    if pre_projection:
+        from coire_core.models.upgrade_recovery import UpgradeExpiredRecoveryColdClaim
+
+        cold = UpgradeExpiredRecoveryColdClaim(
+            intent=intent,
+            runtime=runtime,
+            process=startup.process,
+            kernel_boot_identity="synthetic-kernel",
+            original_claim=proof.claim,
+            original_native=proof.native,
+            previous_guard=proof.guard,
+            last_node=proof.node,
+            supervision="launchd",
+            managed_definition_sha256="d" * 64,
+            claimed_at=intent.accepted_at,
+        )
+        proof = proof.model_copy(update={"pre_projection_owner": cold})
+        async with sessions.begin() as session:
+            row = await session.get(UpgradeExpiredRecoveryRow, intent.recovery_id)
+            row.cold_claim_payload = cold.model_dump(mode="json")
     async with sessions.begin() as session:
         await worker.verify_unstarted_observation(session, proof, native.source.node)
         with pytest.raises(UpgradeForbidden):
@@ -1219,7 +1278,9 @@ async def exercise_unstarted_closure(
             await close()
     async with sessions.begin() as session:
         row = await session.get(UpgradeExpiredRecoveryRow, intent.recovery_id)
-        assert row.active_slot == 1 and row.phase == "accepted"
+        assert row.active_slot == 1 and row.phase == (
+            "recovery_required" if cancelled else "accepted"
+        )
     results = await asyncio.gather(close(), close())
     assert sorted(created for _, created in results) == [False, True]
     assert results[0][0] == results[1][0]
@@ -1238,7 +1299,14 @@ async def exercise_unstarted_closure(
     async with sessions.begin() as session:
         row = await session.get(UpgradeExpiredRecoveryRow, intent.recovery_id)
         original = await session.get(UpgradeOperationRow, operation.job_id)
-        assert row.active_slot is None and row.phase == "cancelled_unchanged"
+        assert row.active_slot is None and row.phase == (
+            "superseded" if pre_projection else "cancelled_unchanged"
+        )
+        if pre_projection:
+            assert row.cold_claim_payload == cold.model_dump(mode="json")
+            assert row.resolution_payload["owner_sha256"] == cold.sha256()
+        if cancelled:
+            assert row.cancellation_payload == cancellation.model_dump(mode="json")
         assert row.intent_payload == intent.model_dump(mode="json")
         assert original.active_slot == 1 and original.payload == operation.model_dump(mode="json")
         assert all(

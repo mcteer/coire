@@ -15,8 +15,10 @@ from pathlib import Path
 
 import httpx
 import psutil
+from pydantic import TypeAdapter
 
 from coire_core.errors import UpgradeConflict, UpgradeUnavailable
+from coire_core.models.engine import TERMINAL_ENGINE_STATES, EngineStatus
 from coire_core.models.upgrade_native_terminal import (
     UpgradeNativeFixtureRetirement,
     UpgradeNativeTerminalSupervisorReceipt,
@@ -141,8 +143,22 @@ def retire_adopted_fixture(settings: Settings, job_id: str) -> UpgradeNativeFixt
             )
             from coire_node.engines import ENGINES_FILE
 
-            if response.status_code != 200 or response.json() != []:
-                raise UpgradeUnavailable("Fixture retirement Source manager is not empty")
+            if response.status_code != 200:
+                raise UpgradeUnavailable("Fixture retirement Source manager is unavailable")
+            statuses = TypeAdapter(list[EngineStatus]).validate_python(response.json())
+            for status in statuses:
+                if status.state not in TERMINAL_ENGINE_STATES:
+                    raise UpgradeUnavailable("Fixture retirement Source manager has live engines")
+                if status.pid is not None:
+                    if status.process_create_time is None:
+                        raise UpgradeUnavailable("Terminal engine has incomplete process identity")
+                    verify_retired_identity(
+                        NodeAgentProcessIdentity(
+                            pid=status.pid,
+                            create_time_s=status.process_create_time,
+                            environment_sha256=native.source.runtime.environment_sha256,
+                        )
+                    )
             if read_owner_json(base / "state" / ENGINES_FILE) != []:
                 raise UpgradeUnavailable("Fixture retirement engine journal is not empty")
             entries = (

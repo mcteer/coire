@@ -57,6 +57,20 @@ Issued authority, live startup, drift, stale samples and unknown state refuse.
 The audit stores digests and a safe summary without bypassing credential
 redaction. Lost response replay requires no new observation or budget.
 
+A cancelled, expired cold attempt may also be closed before Source projection
+when its exact retained cold owner and activation are positively retired. The
+installed observer verifies these preimages and rejects every downstream or
+unknown effect record. This closure becomes `superseded`, preserves the cold
+claim, activation and cancellation, and records their owner digest in its
+resolution receipt. Original maintenance and deadlines remain held. Any Source
+projection, serving, archive, transfer or handback evidence requires the
+appropriate continuation protocol instead.
+
+An accepted recovery with no original collective dispatches retains positive
+absence intent, effect and receipt evidence. Both original and archived job
+namespaces must remain absent; no old result or history directory is synthesized.
+Fresh local and peer ownership observations still must prove complete cleanup.
+
 The typed SDK and `coire upgrades` CLI expose `expired-recovery`,
 `recovery-status`, `recovery-cancel`, `recovery-close-unstarted`, `recovery-schema`
 and `recovery-schema-prepare`. Acceptance, schema preparation and unstarted
@@ -691,3 +705,14 @@ the hold. The atomic move retains all bytes and both filesystem identities.
 Replay verifies retained bytes' metadata before retiring the scoped hold. The
 `CoireUpgradeStagingQuarantineRetained` alert reports retained disk usage; this
 procedure does not reclaim that space. Changed or duplicated files refuse.
+
+Cold recovery also preserves completed smoke history before starting a sealed
+legacy Source that counts all smoke scopes against its original 64-scope limit.
+When more than 60 scopes are present, the activated recovery owner may archive
+at most 64 positively completed, cleaned scopes from earlier jobs into its private
+`completed-smoke-history` namespace. It holds each smoke lock, verifies empty
+engine journals and absence of actual engine processes, hashes every private
+retained byte, and journals the exact move before changing namespace ownership.
+Original-operation scopes stay in place. Lost replies reconcile the one remaining
+namespace owner and exact bytes. Unknown ownership or changed evidence refuses;
+sealed Source code and original receipts/deadlines are never edited.

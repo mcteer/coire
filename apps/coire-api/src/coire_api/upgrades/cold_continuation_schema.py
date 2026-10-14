@@ -35,11 +35,15 @@ async def inspect_checks(session: AsyncSession) -> bool:
             "SELECT conname,pg_get_constraintdef(oid) FROM pg_constraint "
             "WHERE conrelid=to_regclass('upgrade_expired_recoveries') AND "
             "conname IN ('ck_expired_recovery_phase','ck_expired_recovery_terminal_owner',"
-            "'ck_cold_recovery_supersession_payload','ck_expired_recovery_cancel_retained')"
+            "'ck_cold_recovery_supersession_payload','ck_expired_recovery_cancel_retained',"
+            "'ck_unstarted_recovery_no_effect_authority')"
         )
     )
     actual = {str(name): str(definition) for name, definition in rows.all()}
-    if actual == known_checks(continuation=True):
+    if actual in (
+        known_checks(continuation=True),
+        known_checks(continuation=True, cancelled_unstarted=True),
+    ):
         return True
     if actual == known_checks(continuation=True, unstarted=False):
         return False

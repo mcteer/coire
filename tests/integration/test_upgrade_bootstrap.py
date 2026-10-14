@@ -69,6 +69,7 @@ with httpx.Client(trust_env=False,timeout=2) as client:
             "--cpus=0.5",
             "--restart=no",
             "--tmpfs=/tmp",
+            "--tmpfs=/opt/coire/upgrades/coordination:uid=" + user.split(":")[0] + ",mode=0700",
             "--tmpfs=/opt/coire/upgrades/state:uid=" + user.split(":")[0] + ",mode=0700",
             "--mount",
             f"type=bind,source={secret},target=/run/secrets/upgrade_executor_token,readonly",

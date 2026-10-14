@@ -137,6 +137,7 @@ def run_held_cold_controller(
     )
     from coire_node.expired_recovery_cold_supervision import supervise_cold_source
     from coire_node.expired_recovery_cold_verification import verify_cold_source
+    from coire_node.expired_recovery_smoke_history import archive_completed_smokes
     from coire_node.link_probes import LinkProbeRunner
 
     bootstrap, run, _ = stores(settings, owner)
@@ -149,11 +150,10 @@ def run_held_cold_controller(
     # They cannot borrow a live-preservation controller or a different rank.
     if owner.supervision != "fixture" or settings.node_name != "coire-edge-a":
         raise UpgradeUnavailable("Cold pipeline requires supported fixture rank-zero handback")
-    if not owner.intent.request.original_scope_sha256s:
-        raise UpgradeUnavailable("Cold pipeline pre-dispatch archive producer is not yet available")
     if not boundary():
         return
     selection = project_cold_source(settings, owner, control)
+    archive_completed_smokes(settings, selection, control)
     if not boundary():
         return
     publish_cold_source_readiness(settings, selection, control)

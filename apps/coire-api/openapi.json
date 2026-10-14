@@ -24968,7 +24968,6 @@
               "$ref": "#/components/schemas/NodeUpgradeCollectiveScope"
             },
             "maxItems": 6,
-            "minItems": 1,
             "title": "Scopes",
             "type": "array"
           },
@@ -26986,10 +26985,25 @@
             "type": "boolean"
           },
           "phase": {
-            "const": "cancelled_unchanged",
             "default": "cancelled_unchanged",
+            "enum": [
+              "cancelled_unchanged",
+              "superseded"
+            ],
             "title": "Phase",
             "type": "string"
+          },
+          "pre_projection_owner_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pre Projection Owner Sha256"
           },
           "recovery_deadline_at": {
             "format": "date-time",
@@ -27082,6 +27096,16 @@
           },
           "pointer": {
             "$ref": "#/components/schemas/PreparedNativeRuntime"
+          },
+          "pre_projection_owner": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpgradeExpiredRecoveryColdClaim"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "startup": {
             "$ref": "#/components/schemas/UpgradeExpiredRecoverySupportProcess"
@@ -28231,6 +28255,15 @@
           },
           "before": {
             "$ref": "#/components/schemas/UpgradeRecoverySchemaObservation"
+          },
+          "preparation_kind": {
+            "default": "legacy_tables",
+            "enum": [
+              "legacy_tables",
+              "cancelled_unstarted_constraint"
+            ],
+            "title": "Preparation Kind",
+            "type": "string"
           },
           "prepared_at": {
             "format": "date-time",

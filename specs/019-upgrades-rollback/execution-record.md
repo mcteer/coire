@@ -8061,3 +8061,72 @@ requirement as its interpreter. Both unpublished roots are resealed on success
 and lost reply before any receipt/selection; child permissions stay sealed.
 The 60-test inventory/installer selection passes; further relocation and typed
 retirement regressions are being refreshed.
+
+### Actual adopted fixture retirement and cancelled-unstarted closure
+
+The reviewed fixture producer positively retired the original guard PID 43246
+and current Source PID 43339 at **12:36:11.299895 UTC**. Adopted supervisor PID
+36291 was already positively retired by its canonical PID/birth record. The
+producer preserved every native authority record and captured original
+authenticated owner inventory plus independent engine observations: one cached
+failed engine's exact PID/birth was positively retired, the persisted engine
+journal was empty, actual bare process scan empty, native/Core smoke ownership
+positively complete/idle. No unknown inventory was silently changed to empty.
+The fixture snapshot and role signal markers are outside Git.
+
+The previous cancellation retained the separate recovery slot, as designed; an
+earlier note that it relinquished the slot was incorrect. T079 extends expiry
+closure to an exactly bound cancelled attempt with no issued effect authority.
+Cancellation JSON is preserved. Known 0034 constraint preparation is authenticated
+and audited, checks the exact old PostgreSQL definition, preserves every recovery
+row, changes no Alembic head and adds a no-effect database guard for terminal
+unstarted closure. Seventeen complete recovery/continuation/schema PostgreSQL
+cases pass; six additional legacy schema/known-preimage cases pass. Image
+`coire-api:019-unstarted-close-current-20261014` passes build, policy, CRITICAL
+scan including unfixed and SPDX generation. Exact image
+`sha256:f8ea747d06219bfeb7322f45f2f38e05f4c6c85a01c995d8f23531e090faa698`
+is installed only in the scoped development support API with unchanged mounts,
+networks and loopback port.
+
+The installed observer and audited close-unstarted request succeeded for
+`01M4X3F7GAVD8K25KAH4FEH3EX` at 13:03 UTC. Its old cancellation, deadline
+11:46:25.898854 and original generation 78 deadline 11:22:51.064212 are preserved.
+Original fences remain. A fresh installed observation and explicitly authorized
+admin request then accepted intent `01M4X8812DEQFHHKJ6QW0E7ES7` with deadline
+**13:09:52.813103 UTC** using immutable release
+`bfa19809-c9d9-4db0-90db-2aa5c03874d9`, manifest
+`abe2b79ec7378e87bc933e5ef6ff625ef5f67f4321f8678315c3b4deea787c73`, runtime
+`9100f7c43dece8fe76b42c36f6a6e0c3a25ee5630a01303844001401c30827f7`.
+It acquired actual cold ownership with SHA
+`1909519a659af47cbc27f9cffdad8d5105d49432ffae26e10f4bbb59b8f385dd`;
+Source verification/handback is still in progress and is not claimed complete.
+
+Whole Python r27 passes **5,830 tests**, 75 existing platform skips, 633
+integration deselections, **545.01 seconds**. Its later cancellation/schema
+changes are covered by focused gates above and a new full r28 run in progress.
+Hosted run `38564254053` passed installed Source/independent guard SIGKILL
+acceptance and strict Linux lint. Full hosted suite completion is pending.
+
+### 2026-10-14 — standing authorization and pre-projection recovery implementation
+
+The owner explicitly authorized completing implementation without further approval prompts. This is standing operator authorization for explicit authenticated, audited distinct recovery intents; it does not authorize automatic renewal or changing any retained deadline.
+
+The r28 local non-integration suite completed: 5,833 passed, 75 platform skips and 633 integration deselections in 555.19 seconds. Hosted run 38564254053 passed native installed Source/guard SIGKILL and lint, but failed six Linux native unit fixtures (ARM64 fixtures lacked an explicit Darwin predicate), four initial-executor startup probes, composed installation, and generic integration. Completion remains open. The six fixtures now explicitly supply the native platform fact while production checks remain unchanged.
+
+Added pre-projection owner closure: preserve the original accepted cold claim and activation, require exact cancellation, expired budget and positive installed retirement/absence observation, close the distinct slot as superseded with an owner-bound resolution receipt, and preserve original maintenance and all deadlines. The observer refuses unknown downstream records. Focused observer cases passed 7; database acceptance/closure/replay cases passed 11 in 15.38 seconds, including concurrent closure and rollback on audit failure.
+
+Implemented positive zero-dispatch archive evidence for accepted empty original scope plans, retaining absence intent/effect/receipt without synthesizing namespaces or results. Four lost-write boundary cases and retained original namespace rejection passed with existing archive coverage: 22 tests in 7.17 seconds. The producer uses the existing maintenance lock, preserving the collective namespace's strict shape.
+
+Generation 78 remains fenced. Its retired Source has 65 completed smoke scopes, exceeding its sealed legacy inventory limit; compatibility evidence preservation and actual pre-projection closure/recovery are still required by T080. No installed sealed Source bytes or original operation history have been changed.
+
+The tested native observer was sealed as environment `0.2.0-af12d7779270c1090d78c8b9f34a48a80119f0707a9407dda9f1b9da7469dd97`, runtime `58dff3c39d69a1bc5122efc0020b824a37bd55233a1a7edbe1f8ac438df669dc`, registered support release `1428cdaf-554a-45b6-827f-4c6d11981fca`. The scoped API image `sha256:12d0434aa1db292b7a1df0e72473958191401e1138eb101457a4d4667339f50d` passed build, image policy, CRITICAL including unfixed scan and SPDX generation; replacement kept the exact existing loopback/network/mount boundary. Installed observer positively retained the exact cold claim and activation of `01M4X8812DEQFHHKJ6QW0E7ES7` and original native/data preimages. Authenticated cancellation then audited pre-projection closure succeeded as `superseded`; exact replay succeeded. Original generation 78 remains fenced and no new budget has been accepted yet. Private proof/receipt: `/private/tmp/coire-019-generation78-recovery/preprojection-actual-closure.json`. Strict Linux and native mypy pass 1,277 sources; all 78 affected tests pass in 40.49 seconds.
+
+Hosted generic integration logs identify the clean-host failure precisely: `missing built image for postgres; run coire-up --build`. The wrapper froze/inspected the release before pulling its already pinned third-party images. Moved the existing two-service pinned-image pull before release freezing; no image, listener or network definition changes. Deployment tests pass 50 in 2.73 seconds. Initial executor fixture now gives its mapped host UID a private coordination tmpfs as well as private state; Linux does not infer access from the production image's UID. Actual bounded restart/SIGKILL probe validation is underway.
+
+### Repository hygiene, completed before continuing 019
+
+At the owner's explicit request, paused implementation and cleaned the historical image stack. Closed 58 superseded draft PRs (015 children and the already incorporated PyJWT fix), deleted their 58 remote branches with exact observed-tip checks, and removed 143 stale local branches. Preserved all old remote and local tips in verified Git bundles under `/Users/mcteer/.coire/repository-cleanup/2026-10-14`, outside Git. Verified the sole open PR is #96 and sole remote branches are main and `feat/019-upgrades-rollback-plan`; retained the second active 019 worktree branch locally. Automatic branch deletion after merge was already enabled. The owner directed merge/close/delete cleanup after each completed PR; the incomplete 019 PR remains draft until its required acceptance passes.
+
+### Legacy Source smoke compatibility archive
+
+Implemented bounded, owner-authorized byte-preserving archive of completed prior-job smoke evidence before starting a sealed legacy Source. The recovery lease and authenticated current owner must remain valid; actual native engine process inventory must be empty, each selected scope must be complete with positive cleanup and an empty private engine journal, and its smoke lock remains held through the namespace effect. Original operation scopes are excluded. At most 64 scopes are moved to leave 60 readable namespaces; exact private-byte SHA and intent/receipt retain history, including replay after lost intent, rename and receipt responses. Missing authority, actual engines, two namespaces and changed archived bytes refuse. Six cases pass in 2.37 seconds, plus affected collective archive/pair coverage: 64 pass in 25.00 seconds. Strict mypy passes 1,278 sources and all Ruff gates pass. Current build/Source installation is stage-only; generation 78 remains fenced pending the new explicit recovery acceptance. Four actual first-install restart/SIGKILL probes passed in 28.82 seconds with private mapped coordination and state tmpfs.

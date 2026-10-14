@@ -67,7 +67,7 @@ async def test_cold_schema_audit_atomicity_replay_and_original_preservation(
             )
             await conn.execute(text("INSERT INTO alembic_version VALUES ('0034_upgrades')"))
             if fault != "already_ready":
-                for name in known_checks(continuation=True):
+                for name in known_checks(continuation=True, cancelled_unstarted=True):
                     await conn.execute(
                         text(f"ALTER TABLE upgrade_expired_recoveries DROP CONSTRAINT {name}")
                     )

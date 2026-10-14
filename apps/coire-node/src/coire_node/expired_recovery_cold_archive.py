@@ -26,6 +26,81 @@ from coire_node.upgrade_guard import NativeGuardTransport
 tracer = trace.get_tracer("coire.node.cold_recovery")
 
 
+def archive_absent_dispatches(
+    settings: Settings,
+    source: UpgradeExpiredRecoveryColdSourceProcess,
+    control: NativeGuardTransport,
+    collectives: PrivateUpgradeStore,
+    original: Path,
+    destination: Path,
+) -> UpgradeExpiredRecoveryColdCollectiveArchiveReceipt:
+    """Retain a positive no-dispatch observation, never create fictitious history."""
+    effect = source.launch.source.projection
+    _, run, _ = stores(settings, effect.owner)
+    node = PrivateUpgradeStore(Path(settings.node_state_dir) / "upgrades", create=False)
+    with run.ownership("cold.collective.archive.lock"), node.ownership("maintenance.lock"):
+        verify_projection_boundary(settings, effect, control)
+        require_live_cold_source(settings, source)
+        if (
+            original.exists()
+            or original.is_symlink()
+            or destination.exists()
+            or destination.is_symlink()
+        ):
+            raise UpgradeConflict("Declared absent collective dispatch has a namespace")
+        previous = run.read(
+            "cold.collective.archive.receipt.json",
+            UpgradeExpiredRecoveryColdCollectiveArchiveReceipt,
+        )
+        if previous is not None:
+            if previous.archive.source != source or previous.archive.scopes:
+                raise UpgradeConflict("Absent collective archive replay differs")
+            verify_archive_cleanup(previous.archive)
+            return previous
+        plan = effect.owner.intent.original_plan
+        retained = run.read(
+            "cold.collective.archive.intent.json", UpgradeExpiredRecoveryColdCollectiveArchive
+        )
+        proof = retained or UpgradeExpiredRecoveryColdCollectiveArchive(
+            source=source,
+            scopes=(),
+            interrupted_scope_sha256s=(),
+            local=control.local_inventory(
+                effect.owner.intent.local_inventory_plan(),
+                deadline_at=effect.owner.intent.deadline_at,
+            ),
+            peer=control.peer_inventory(plan, deadline_at=effect.owner.intent.deadline_at),
+            history_sha256=hashlib.sha256(b"coire-cold-no-original-dispatch-v1").hexdigest(),
+            prepared_at=datetime.now(UTC),
+        )
+        if (
+            proof.source != source
+            or proof.scopes
+            or proof.interrupted_scope_sha256s
+            or proof.history_sha256
+            != hashlib.sha256(b"coire-cold-no-original-dispatch-v1").hexdigest()
+        ):
+            raise UpgradeConflict("Absent collective archive retained intent differs")
+        verify_archive_cleanup(proof)
+        if retained is None:
+            run.write("cold.collective.archive.intent.json", proof, replace=False)
+        verify_projection_boundary(settings, effect, control)
+        if original.exists() or original.is_symlink():
+            raise UpgradeConflict("Collective namespace appeared after absence capture")
+        effect_proof = run.read(
+            "cold.collective.archive.effect.json", UpgradeExpiredRecoveryColdCollectiveArchive
+        )
+        if effect_proof is None:
+            run.write("cold.collective.archive.effect.json", proof, replace=False)
+        elif effect_proof != proof:
+            raise UpgradeConflict("Absent collective archive effect differs")
+        receipt = UpgradeExpiredRecoveryColdCollectiveArchiveReceipt(
+            initial_archive_sha256=proof.sha256(), archive=proof, archived_at=datetime.now(UTC)
+        )
+        run.write("cold.collective.archive.receipt.json", receipt, replace=False)
+        return receipt
+
+
 def retained_dispatches(
     history: PrivateUpgradeStore,
 ) -> tuple[tuple[NodeUpgradeCollectiveScope, ...], tuple[str, ...]]:
@@ -186,6 +261,10 @@ def archive_cold_collectives(
     archives = PrivateUpgradeStore(run.path("collective-history"))
     job_id = effect.owner.intent.request.original_job_id
     old_path, archive_path = collectives.path(job_id), archives.path(job_id)
+    if not effect.owner.intent.request.original_scope_sha256s:
+        return archive_absent_dispatches(
+            settings, source, control, collectives, old_path, archive_path
+        )
     old_parent = collectives
     continuation = effect.owner.continuation
     predecessor_archive = None

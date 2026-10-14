@@ -3226,8 +3226,12 @@ class UpgradeExpiredRecoveryRow(Base):
             name="ck_expired_recovery_owner_consumption",
         ),
         CheckConstraint(
-            "cancellation_payload IS NULL OR phase IN ('recovery_required','recovered','superseded')",
+            "cancellation_payload IS NULL OR phase IN ('recovery_required','recovered','superseded','cancelled_unchanged')",
             name="ck_expired_recovery_cancel_retained",
+        ),
+        CheckConstraint(
+            "phase <> 'cancelled_unchanged' OR (transfer_payload IS NULL AND consumption_payload IS NULL AND owner_claim_payload IS NULL AND cold_claim_payload IS NULL AND cold_smoke_payload IS NULL AND cold_verification_payload IS NULL AND cold_handback_intent_payload IS NULL AND cold_handback_receipt_payload IS NULL AND resolution_payload IS NULL)",
+            name="ck_unstarted_recovery_no_effect_authority",
         ),
         CheckConstraint(
             "phase != 'recovered' OR resolution_payload IS NOT NULL",

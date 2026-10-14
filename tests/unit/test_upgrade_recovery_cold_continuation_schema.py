@@ -19,7 +19,7 @@ async def test_actual_continuation_constraints_match_exact_known_shapes(training
     engine = create_async_engine(
         training_postgres_url, connect_args={"server_settings": {"search_path": namespace}}
     )
-    names = tuple(known_checks(continuation=True))
+    names = tuple(known_checks(continuation=True, cancelled_unstarted=True))
 
     async def definitions(conn):
         rows = await conn.execute(
@@ -37,7 +37,9 @@ async def test_actual_continuation_constraints_match_exact_known_shapes(training
             await conn.execute(text(f"CREATE SCHEMA {namespace}"))
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            assert await definitions(conn) == known_checks(continuation=True)
+            assert await definitions(conn) == known_checks(
+                continuation=True, cancelled_unstarted=True
+            )
             for name in names:
                 await conn.execute(
                     text(f"ALTER TABLE upgrade_expired_recoveries DROP CONSTRAINT {name}")

@@ -153,8 +153,38 @@ async def prepare_legacy_schema(
     await session.execute(text("SET LOCAL lock_timeout = '1s'"))
     await session.execute(text("SET LOCAL statement_timeout = '5s'"))
     before = await observe_schema(session, plan)
-    if not before.recovery_tables_absent or before.schema_sha256 != request.expected_schema_sha256:
+    if before.schema_sha256 != request.expected_schema_sha256:
         raise UpgradeConflict("Legacy preparation has no positively matching absent protocol")
+    if not before.recovery_tables_absent:
+        from coire_api.upgrades.recovery_unstarted_schema import (
+            prepare_cancelled_unstarted_constraint,
+        )
+
+        await prepare_cancelled_unstarted_constraint(session)
+        after = await observe_schema(session, plan)
+        receipt = UpgradeRecoverySchemaReceipt(
+            request=request,
+            before=before,
+            after=after,
+            prepared_by=actor,
+            prepared_at=datetime.now(UTC),
+            preparation_kind="cancelled_unstarted_constraint",
+        )
+        await write_principal_audit(
+            session,
+            principal=principal,
+            action=ACTION,
+            target_type="upgrade_recovery_schema",
+            target_id=request.original_job_id,
+            detail={
+                "idempotency_key": request.idempotency_key,
+                "receipt": receipt.model_dump(mode="json"),
+                "original_maintenance_retained": True,
+                "alembic_history_unchanged": True,
+            },
+        )
+        await session.flush()
+        return receipt, True
     checks = {
         str(name): str(definition)
         for name, definition in (

@@ -108,6 +108,7 @@ def test_restore_requires_only_retained_source_and_owned_candidate_cleanup(
     stop = Mock(return_value=fault != "unconfirmed_stop")
     monkeypatch.setattr(upgrade_guard, "stop_owned_node_process", stop)
     monkeypatch.setattr(upgrade_executor.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(upgrade_executor, "is_darwin", lambda _: True)
     if fault == "boundary_fence_changed":
         reconcile = upgrade_runtime.reconcile_native_selection
 

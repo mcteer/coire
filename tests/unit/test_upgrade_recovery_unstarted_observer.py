@@ -19,7 +19,10 @@ from coire_core.models.upgrades import NodeAgentProcessIdentity
 from coire_core.upgrade_journal import PrivateUpgradeStore
 
 
-@pytest.mark.parametrize("fault", [None, "alive", "owner", "core", "lost_publication"])
+@pytest.mark.parametrize(
+    "fault",
+    [None, "pre_projection", "unknown_record", "alive", "owner", "core", "lost_publication"],
+)
 def test_unstarted_observer_retains_original_records_and_only_distinct_metadata(
     tmp_path, monkeypatch, fault
 ):
@@ -53,6 +56,13 @@ def test_unstarted_observer_retains_original_records_and_only_distinct_metadata(
             ),
             replace=False,
         )
+        if fault == "pre_projection":
+            owner = owner.model_copy(update={"process": identity})
+            run.write("cold.claim.json", owner)
+            run.write("cold.activation.json", owner)
+        if fault == "unknown_record":
+            run.path("cold.smoke.unexpected.json").write_text("{}")
+            run.path("cold.smoke.unexpected.json").chmod(0o600)
         if fault != "alive":
             child.terminate()
             child.wait(timeout=5)
@@ -118,10 +128,11 @@ def test_unstarted_observer_retains_original_records_and_only_distinct_metadata(
             return kw["payload"]
 
         control = SimpleNamespace(_read=read)
-        if fault:
+        if fault not in {None, "pre_projection"}:
             message = {
+                "unknown_record": "unknown ownership/effect",
                 "alive": "remains present",
-                "owner": "ownership/effect preimage",
+                "owner": "owner/activation preimage differs",
                 "core": "Core metadata scope refused",
                 "lost_publication": "lost metadata publication",
             }[fault]
@@ -129,6 +140,7 @@ def test_unstarted_observer_retains_original_records_and_only_distinct_metadata(
                 worker.observe_unstarted(settings, body, control)
         else:
             proof = worker.observe_unstarted(settings, body, control)
+            assert proof.pre_projection_owner == (owner if fault == "pre_projection" else None)
             assert proof.startup.process == identity and proof.observer.pid == os.getpid()
             assert proof.original_maintenance_retained
             assert proof.bootstrap_runtime == independent_helper and independent_helper in verified

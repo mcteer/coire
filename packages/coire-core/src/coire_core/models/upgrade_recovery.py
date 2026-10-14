@@ -84,11 +84,18 @@ class UpgradeRecoverySchemaReceipt(UpgradeWire):
     after: UpgradeRecoverySchemaObservation
     prepared_by: UUID
     prepared_at: AwareDatetime
+    preparation_kind: Literal["legacy_tables", "cancelled_unstarted_constraint"] = Field(
+        default="legacy_tables", exclude_if=lambda value: value == "legacy_tables"
+    )
 
     @model_validator(mode="after")
     def exact_additive_preparation(self) -> UpgradeRecoverySchemaReceipt:
         if (
-            not self.before.recovery_tables_absent
+            (self.preparation_kind == "legacy_tables" and not self.before.recovery_tables_absent)
+            or (
+                self.preparation_kind == "cancelled_unstarted_constraint"
+                and self.before.recovery_tables_absent
+            )
             or self.after.recovery_tables_absent
             or self.before.schema_sha256 != self.request.expected_schema_sha256
             or self.before.schema_sha256 == self.after.schema_sha256
@@ -443,7 +450,7 @@ class UpgradeExpiredRecoveryColdCollectiveArchive(UpgradeWire):
     """Fresh cleanup and immutable history retained before legacy inventory projection."""
 
     source: UpgradeExpiredRecoveryColdSourceProcess
-    scopes: tuple[NodeUpgradeCollectiveScope, ...] = Field(min_length=1, max_length=6)
+    scopes: tuple[NodeUpgradeCollectiveScope, ...] = Field(max_length=6)
     interrupted_scope_sha256s: tuple[Sha256, ...] = Field(max_length=6)
     previous_archive_sha256: Sha256 | None = Field(default=None, exclude_if=lambda v: v is None)
     local: NodeUpgradeInventory
@@ -2165,10 +2172,22 @@ class UpgradeExpiredRecoveryUnstartedObservation(UpgradeWire):
     startup_retired: Literal[True] = True
     original_maintenance_retained: Literal[True] = True
     observed_at: AwareDatetime
+    pre_projection_owner: UpgradeExpiredRecoveryColdClaim | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def exact_unstarted_scope(self) -> UpgradeExpiredRecoveryUnstartedObservation:
         intent, plan = self.intent, self.intent.original_plan
+        if self.pre_projection_owner is not None and (
+            self.pre_projection_owner.intent != intent
+            or self.pre_projection_owner.process != self.startup.process
+            or self.pre_projection_owner.original_claim != self.claim
+            or self.pre_projection_owner.original_native != self.native
+            or self.pre_projection_owner.previous_guard != self.guard
+            or self.pre_projection_owner.last_node != self.node
+        ):
+            raise ValueError("pre-projection closure changes the retained cold owner")
         scope = (plan.operation.job_id, plan.operation.generation, plan.authority_sha256())
         support = self.observer_release.manifest
         runtimes = (self.native.source.runtime, self.native.candidate)
@@ -2230,7 +2249,10 @@ class UpgradeExpiredRecoveryUnstartedClosure(UpgradeWire):
     recovery_deadline_at: AwareDatetime
     closed_by: UUID
     closed_at: AwareDatetime
-    phase: Literal["cancelled_unchanged"] = "cancelled_unchanged"
+    phase: Literal["cancelled_unchanged", "superseded"] = "cancelled_unchanged"
+    pre_projection_owner_sha256: Sha256 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     original_maintenance_retained: Literal[True] = True
     original_upgrade_succeeded: Literal[False] = False
 
@@ -2238,7 +2260,22 @@ class UpgradeExpiredRecoveryUnstartedClosure(UpgradeWire):
     def unchanged_failure(self) -> UpgradeExpiredRecoveryUnstartedClosure:
         if (
             self.recovery_id == self.original_job_id
+            or (self.phase == "superseded") != (self.pre_projection_owner_sha256 is not None)
             or not self.original_deadline_at < self.recovery_deadline_at <= self.closed_at
         ):
             raise ValueError("unstarted closure has no exact fresh observed scope")
         return self
+
+
+class UpgradeRecoverySmokeHistoryEntry(UpgradeWire):
+    namespace: ArtifactKey
+    job_id: UpgradeId
+    generation: int = Field(ge=1)
+    runtime_sha256: Sha256
+    history_sha256: Sha256
+
+
+class UpgradeRecoverySmokeHistoryArchive(UpgradeWire):
+    owner_sha256: Sha256
+    entries: tuple[UpgradeRecoverySmokeHistoryEntry, ...] = Field(max_length=64)
+    captured_at: AwareDatetime

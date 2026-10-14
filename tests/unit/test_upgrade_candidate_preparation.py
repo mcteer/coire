@@ -153,6 +153,7 @@ def test_preparation_verifies_graphs_and_retains_disk_until_owned_cleanup(
 
     monkeypatch.setattr(upgrade_runtime, "smoke", smoke)
     monkeypatch.setattr(upgrade_executor.platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(upgrade_executor, "is_darwin", lambda _: True)
     try:
         if fault is None:
             assert (

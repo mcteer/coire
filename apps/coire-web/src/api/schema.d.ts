@@ -14430,9 +14430,11 @@ export interface components {
             /**
              * Phase
              * @default cancelled_unchanged
-             * @constant
+             * @enum {string}
              */
-            phase: "cancelled_unchanged";
+            phase: "cancelled_unchanged" | "superseded";
+            /** Pre Projection Owner Sha256 */
+            pre_projection_owner_sha256?: string | null;
             /**
              * Recovery Deadline At
              * Format: date-time
@@ -14474,6 +14476,7 @@ export interface components {
              */
             original_maintenance_retained: true;
             pointer: components["schemas"]["PreparedNativeRuntime"];
+            pre_projection_owner?: components["schemas"]["UpgradeExpiredRecoveryColdClaim"] | null;
             startup: components["schemas"]["UpgradeExpiredRecoverySupportProcess"];
             /**
              * Startup Retired
@@ -14916,6 +14919,12 @@ export interface components {
         UpgradeRecoverySchemaReceipt: {
             after: components["schemas"]["UpgradeRecoverySchemaObservation"];
             before: components["schemas"]["UpgradeRecoverySchemaObservation"];
+            /**
+             * Preparation Kind
+             * @default legacy_tables
+             * @enum {string}
+             */
+            preparation_kind: "legacy_tables" | "cancelled_unstarted_constraint";
             /**
              * Prepared At
              * Format: date-time
