@@ -431,6 +431,10 @@ async def training_allows_work(
     and resume, not traffic needed to collect samples on protected residents.
     """
     await lock_nodes_for_admission(session, node_ids)
+    from coire_scheduler.maintenance import allows_admission
+
+    if not await allows_admission(session, node_ids):
+        return False
     holds = list(
         (
             await session.scalars(

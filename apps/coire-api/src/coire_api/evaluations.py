@@ -41,6 +41,8 @@ def _projection(
         verdict=row.verdict,
         harness_version=row.harness_version,
         engine_version=row.engine_version,
+        runtime_sha256=row.runtime_sha256,
+        harness_image=row.harness_image,
         diagnostics=row.diagnostics,
         run_at=row.run_at,
     )
@@ -103,6 +105,8 @@ async def _record(
         verdict=submission.verdict,
         harness_version=submission.harness_version,
         engine_version=submission.engine_version,
+        runtime_sha256=submission.runtime_sha256,
+        harness_image=submission.harness_image,
         diagnostics=submission.diagnostics,
         run_at=now,
     )
@@ -202,17 +206,76 @@ async def validate_target(session: AsyncSession, target: InferenceTarget) -> Non
             raise ValueError("adapter differs from exact target")
 
 
-async def target_is_write_verified(session: AsyncSession, target: InferenceTarget) -> bool:
+async def target_is_write_verified(
+    session: AsyncSession, target: InferenceTarget, *, node_id: uuid.UUID | None = None
+) -> bool:
     try:
         await validate_target(session, target)
     except (LookupError, ValueError):
         return False
     if target.adapter_id is None:
-        return await variant_is_write_verified(session, target.variant_id)
+        return await variant_is_write_verified(session, target.variant_id, node_id=node_id)
     adapter = await session.get(TrainingAdapterRow, target.adapter_id)
-    return bool(adapter and adapter.verified and adapter.evaluation_id)
+    if not (adapter and adapter.verified and adapter.evaluation_id):
+        return False
+    evaluation = await session.get(HarnessEvaluationRow, adapter.evaluation_id)
+    return await _current_harness_runtime(session, evaluation, node_id=node_id)
 
 
-async def variant_is_write_verified(session: AsyncSession, variant_id: uuid.UUID) -> bool:
+async def variant_is_write_verified(
+    session: AsyncSession, variant_id: uuid.UUID, *, node_id: uuid.UUID | None = None
+) -> bool:
+    from coire_core.settings import get_settings
+
     row = await session.get(ModelVariantRow, variant_id)
-    return bool(row and row.harness_verified)
+    if not (row and row.harness_verified):
+        return False
+    if not get_settings().upgrades_enabled:
+        return True
+    evaluation = await session.scalar(
+        select(HarnessEvaluationRow)
+        .where(
+            HarnessEvaluationRow.variant_id == variant_id,
+            HarnessEvaluationRow.adapter_id.is_(None),
+            HarnessEvaluationRow.verdict.in_([EvaluationVerdict.PASSED, EvaluationVerdict.FAILED]),
+        )
+        .order_by(HarnessEvaluationRow.run_at.desc(), HarnessEvaluationRow.id.desc())
+        .limit(1)
+    )
+    return await _current_harness_runtime(session, evaluation, node_id=node_id)
+
+
+async def _current_harness_runtime(
+    session: AsyncSession, evaluation: HarnessEvaluationRow | None, *, node_id: uuid.UUID | None
+) -> bool:
+    from coire_api.db import NodeRow
+    from coire_api.upgrades.qualification import harness_runtime_matches
+    from coire_core.models.node import NodeRole, Reachability
+    from coire_core.settings import get_settings
+
+    settings = get_settings()
+    if not settings.upgrades_enabled:
+        return True
+    if (
+        evaluation is None
+        or evaluation.verdict is not EvaluationVerdict.PASSED
+        or not settings.run_agent_image
+        or evaluation.harness_image != settings.run_agent_image
+    ):
+        return False
+    if node_id is not None:
+        node = await session.get(NodeRow, node_id)
+        return bool(
+            node
+            and node.role is NodeRole.STUDIO
+            and node.reachability is Reachability.HEALTHY
+            and harness_runtime_matches(node, evaluation.runtime_sha256, settings)
+        )
+    nodes = (
+        await session.scalars(
+            select(NodeRow).where(
+                NodeRow.role == NodeRole.STUDIO, NodeRow.reachability == Reachability.HEALTHY
+            )
+        )
+    ).all()
+    return any(harness_runtime_matches(node, evaluation.runtime_sha256, settings) for node in nodes)

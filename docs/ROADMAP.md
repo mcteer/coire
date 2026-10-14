@@ -133,8 +133,18 @@ or passing collection-budget claim is made.
 **014b · preference optimisation (DPO/ORPO) & feedback capture** — Feature 018 implements strict v3 objectives through the unchanged pinned bare MLX trainer, single-Studio dense LoRA/affine QLoRA, exact `init_adapter` chaining, full-state recovery and measured objective-specific envelopes. Prospective capture starts enabled with a visible disclosure and owner toggle, and provides thumbs, explicit comparisons, independent admin review and bounded private exports. Withdrawal immediately excludes and purges unexported contributions within 24 hours; published datasets/adapters are retained under the disclosed policy. All four exact shared profiles pass, including Studio B dense ORPO; failed Studio A dense ORPO workloads and concurrent shared profiles remain unqualified. All required native preference CI cases pass; full integration and final reconciliation pass.
 *Done when:* explicit comparisons export once, DPO and ORPO train/resume/serve from bare and SFT starts, privacy/review gates pass, and exact memory/coexistence/recovery/rollback evidence is recorded. New adapters remain private/unverified; the harness eval gates `apply`. See [018 tasks](../specs/018-preference-optimisation/tasks.md).
 
-**015 · upgrades & rollback** — "Versioned engine envs on nodes, smoke test, symlink flip, rollback; control-plane image/`uv sync` upgrade job; admin UI trigger."
-*Done when:* an intentionally broken mlx-lm pin rolls back automatically and leaves the node serving.
+**015 · upgrades & rollback** — Feature 019 is under implementation, default-off.
+Managed, content-addressed Studio environments and fixed Core cohorts use audited
+admin operations, owner drain, independent recovery executors and retained source
+artifacts. Native isolated upgrade/failure/rollback measurements and component
+checks are recorded in the [execution record](../specs/019-upgrades-rollback/execution-record.md);
+composed bootstrap/crash, paired workload, data-preservation and release gates
+remain required. Executor network access was approved on 2026-10-11; composed and
+real-cluster acceptance remain required.
+*Done when:* all [019 tasks](../specs/019-upgrades-rollback/tasks.md) and measured
+acceptance pass, including a broken native candidate restoring exact serving
+source, full-cohort Core restoration, exclusive writer handover, preserved data
+and truthful operator reconnect across bounded maintenance.
 
 ## Phase 5 — Resilience
 

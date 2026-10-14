@@ -12,6 +12,47 @@ export type OpsConversation = components["schemas"]["OpsConversation"];
 export type OpsProposal = components["schemas"]["OpsProposal"];
 export type OpsProposalIssued = components["schemas"]["OpsProposalIssued"];
 export type OpsTurnResponse = components["schemas"]["OpsTurnResponse"];
+export type UpgradeOperation = components["schemas"]["UpgradeOperation"];
+export type UpgradeReleasePage = components["schemas"]["UpgradeReleasePage"];
+export type UpgradeReleaseSummary = components["schemas"]["UpgradeReleaseSummary"];
+export type UpgradeTargetList = components["schemas"]["UpgradeTargetList"];
+export type UpgradeEventPage = components["schemas"]["UpgradeEventPage"];
+export type UpgradeStartRequest = components["schemas"]["UpgradeStartRequest"];
+export type UpgradeRollbackRequest = components["schemas"]["UpgradeRollbackRequest"];
+
+const upgradesPath = "/api/v1/admin/upgrades";
+export const listUpgradeReleases = (cursor?: string) =>
+  api<UpgradeReleasePage>(
+    `${upgradesPath}/releases${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`,
+  );
+export const getUpgradeTargets = () => api<UpgradeTargetList>(`${upgradesPath}/targets`);
+export const getUpgradeOperation = (jobId: string) =>
+  api<UpgradeOperation>(`${upgradesPath}/${encodeURIComponent(jobId)}`);
+export const startStudioUpgrade = (
+  node: "coire-edge-a" | "coire-edge-b",
+  body: UpgradeStartRequest,
+) =>
+  api<UpgradeOperation>(`${upgradesPath}/nodes/${node}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+export const startCoreUpgrade = (body: UpgradeStartRequest) =>
+  api<UpgradeOperation>(`${upgradesPath}/control-plane`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+export const rollbackUpgrade = (jobId: string, body: UpgradeRollbackRequest) =>
+  api<UpgradeOperation>(`${upgradesPath}/${encodeURIComponent(jobId)}/rollback`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+export const cancelUpgrade = (jobId: string, reason: string = "administrator_cancelled") =>
+  api<UpgradeOperation>(`${upgradesPath}/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+export const upgradeEventsUrl = (jobId: string) =>
+  `${upgradesPath}/${encodeURIComponent(jobId)}/events`;
 export class ApiError extends Error {
   constructor(
     readonly status: number,

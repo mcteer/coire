@@ -616,3 +616,31 @@ async def test_component_transfer_holds_real_ledger_until_cancel_is_drained(
     assert importer.status(request.command_id).state == "cancelled"
     await importer.aclose()
     await client.aclose()
+
+
+async def test_rank_import_requires_maintenance_admission(pair: Pair, tmp_path: Path) -> None:
+    from collections.abc import Iterator
+    from contextlib import contextmanager
+
+    from coire_core.errors import UpgradeUnavailable
+
+    @contextmanager
+    def fenced() -> Iterator[None]:
+        if tmp_path.exists():
+            raise UpgradeUnavailable("maintenance")
+        yield
+
+    request, _ = pair.grant()
+    importer = RankImporter(
+        pair.components[1],
+        tmp_path / "imports",
+        port=8092,
+        disk_floor_bytes=0,
+        admission_context=fenced,
+    )
+    try:
+        with pytest.raises(UpgradeUnavailable):
+            await importer.start(request)
+        assert not importer.tasks and not list(importer.root.iterdir())
+    finally:
+        await importer.aclose()

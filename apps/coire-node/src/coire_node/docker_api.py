@@ -195,9 +195,9 @@ class DockerAPI:
             params={"all": True, "filters": json.dumps(filters, separators=(",", ":"))},
         )
         body = response.json()
-        if not isinstance(body, list):
-            raise DockerAPIError(502, "list", "non-list response")
-        return [item for item in body if isinstance(item, dict)]
+        if not isinstance(body, list) or any(not isinstance(item, dict) for item in body):
+            raise DockerAPIError(502, "list", "invalid container inventory response")
+        return body
 
     async def stream_logs(self, container_id: str, *, since: int = 0) -> AsyncIterator[bytes]:
         async with self._client.stream(

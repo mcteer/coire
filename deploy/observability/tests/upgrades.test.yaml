@@ -1,0 +1,486 @@
+rule_files:
+- ../alerts/upgrades.yaml
+evaluation_interval: 15s
+tests:
+- name: cold-continuation-original-held
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_cold_continuations_total{node="coire-edge-a",outcome="accepted"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeColdContinuationAccepted
+    exp_alerts:
+    - exp_labels: {node: coire-edge-a, severity: warning, subject: upgrades}
+      exp_annotations:
+        summary: Cold recovery predecessor superseded and original maintenance remains held
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: unstarted-recovery-closed-original-held
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_unstarted_recovery_closures_total{outcome="closed"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeUnstartedRecoveryClosed
+    exp_alerts:
+    - exp_labels: {severity: warning, subject: upgrades}
+      exp_annotations:
+        summary: Unstarted recovery attempt closed and original maintenance remains held
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: recovery-support-launch-refused
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_recovery_support_launches_total{node="coire-edge-a",outcome="refused"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeRecoverySupportLaunchRefused
+    exp_alerts:
+    - exp_labels: {node: coire-edge-a, severity: warning, subject: upgrades}
+      exp_annotations:
+        summary: Immutable recovery support startup refused and original authority remains retained
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: source-supervisor-missing-after-handback
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_source_supervisor_heartbeat_seconds{node="coire-edge-a"}
+    values: 0 0 0 0 0
+  - series: coire_upgrade_source_supervisor_required{node="coire-edge-a"}
+    values: 1 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeSourceSupervisorMissing
+    exp_alerts:
+    - exp_labels: {node: coire-edge-a, severity: critical, subject: upgrades}
+      exp_annotations:
+        summary: Source supervisor readiness is stale after an ownership handback
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: source-supervisor-current-or-not-required
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_source_supervisor_heartbeat_seconds{node="coire-edge-a"}
+    values: 0 15 30 45 60
+  - series: coire_upgrade_source_supervisor_required{node="coire-edge-a"}
+    values: 1 1 1 1 1
+  - series: coire_upgrade_source_supervisor_heartbeat_seconds{node="coire-edge-b"}
+    values: 0 0 0 0 0
+  - series: coire_upgrade_source_supervisor_required{node="coire-edge-b"}
+    values: 0 0 0 0 0
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeSourceSupervisorMissing
+    exp_alerts: []
+- name: cold-recovery-refused-obligations-retained
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_cold_recovery_effects_total{node="coire-edge-a",outcome="refused"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeColdRecoveryRefused
+    exp_alerts:
+    - exp_labels: {node: coire-edge-a, severity: critical, subject: upgrades}
+      exp_annotations:
+        summary: Cold recovery refused an effect and original maintenance remains held
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: recovery-cancelled-obligations-retained
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_recovery_cancellations_total{outcome="cancelled"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeRecoveryCancelled
+    exp_alerts:
+    - exp_labels: {severity: warning, subject: upgrades}
+      exp_annotations:
+        summary: Separate recovery authority was cancelled and original obligations remain held
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: successor-controller-refused
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_recovery_successor_controller_total{node="coire-edge-a",outcome="refused"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeSuccessorControllerRefused
+    exp_alerts:
+    - exp_labels: {node: coire-edge-a, severity: critical, subject: upgrades}
+      exp_annotations:
+        summary: A distinct recovery successor controller refused authority
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: observed-retirement-refused
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_recovery_stop_reconciliation_total{outcome="refused"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeRetirementReconciliationRefused
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        subject: upgrades
+      exp_annotations:
+        summary: Managed retirement reconciliation refused uncertain evidence or authority
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: stop-budget-refused-without-reconciliation-series
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_recovery_stop_budget_total{outcome="refused"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeRetirementReconciliationRefused
+    exp_alerts:
+    - exp_labels: {severity: warning, subject: upgrades}
+      exp_annotations:
+        summary: Managed retirement reconciliation refused uncertain evidence or authority
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: observed-retirement-not-command-success-or-refusal
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_recovery_stop_reconciliation_total{outcome="observed"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeRetirementReconciliationRefused
+    exp_alerts: []
+- name: interrupted-collective-cleanup-refusal
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_collective_cleanup_total{node="coire-edge-a",outcome="refused"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeCollectiveCleanupRefused
+    exp_alerts:
+    - exp_labels:
+        node: coire-edge-a
+        severity: warning
+        subject: upgrades
+      exp_annotations:
+        summary: Interrupted collective cleanup refused uncertain evidence or authority
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: interrupted-collective-cleanup-success-not-refusal
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_collective_cleanup_total{node="coire-edge-a",outcome="interrupted"}
+    values: 0 1 1 1 1
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeCollectiveCleanupRefused
+    exp_alerts: []
+- name: original-handover-deadline-exceeded
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_handover_deadline_overdue_seconds{boundary="stability"}
+    values: 0 0 1 16 31
+  alert_rule_test:
+  - eval_time: 30s
+    alertname: CoireUpgradeHandoverDeadlineExceeded
+    exp_alerts:
+    - exp_labels:
+        boundary: stability
+        severity: critical
+        subject: upgrades
+      exp_annotations:
+        summary: An original executor handover deadline expired while authority remains held
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: captured-handover-within-budget
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_handover_deadline_overdue_seconds{boundary="stability"}
+    values: 0 0 0 0 0
+  alert_rule_test:
+  - eval_time: 30s
+    alertname: CoireUpgradeHandoverDeadlineExceeded
+    exp_alerts: []
+- name: original-recovery-deadline-exceeded
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_executor_deadline_overdue_seconds{boundary="recovery"}
+    values: 0 0 1 16 31
+  alert_rule_test:
+  - eval_time: 30s
+    alertname: CoireUpgradeExecutorDeadlineExceeded
+    exp_alerts:
+    - exp_labels:
+        boundary: recovery
+        severity: critical
+        subject: upgrades
+      exp_annotations:
+        summary: An original Core upgrade deadline expired without completed verification
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: verified-or-unexpired-deadline
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_executor_deadline_overdue_seconds{boundary="recovery"}
+    values: 0+0x8
+  - series: coire_upgrade_executor_deadline_overdue_seconds{boundary="runtime"}
+    values: 0+0x8
+  - series: coire_upgrade_executor_deadline_overdue_seconds{boundary="outage"}
+    values: 0+0x8
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeExecutorDeadlineExceeded
+    exp_alerts: []
+- name: CoireUpgradeBaselineUnavailable-fires
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 1+0x20
+  - series: coire_upgrade_operations{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_executor_ready
+    values: 1+0x20
+  - series: coire_upgrade_executor_heartbeat_age_seconds
+    values: 0+0x20
+  - series: coire_upgrade_recovery_required{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_phase_age_seconds{kind="control_plane"}
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeBaselineUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        subject: upgrades
+      exp_annotations:
+        summary: Upgrade ownership observations are missing or stale
+        runbook_url: /docs/runbooks/upgrades#observe
+- name: CoireUpgradeBaselineUnavailable-healthy
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 1+0x20
+  - series: coire_upgrade_snapshot_timestamp_seconds
+    values: 0+15x20
+  - series: coire_upgrade_operations{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_executor_ready
+    values: 1+0x20
+  - series: coire_upgrade_executor_heartbeat_age_seconds
+    values: 0+0x20
+  - series: coire_upgrade_recovery_required{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_phase_age_seconds{kind="control_plane"}
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeBaselineUnavailable
+    exp_alerts: []
+- name: CoireUpgradeExecutorUnavailable-fires
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 1+0x20
+  - series: coire_upgrade_snapshot_timestamp_seconds
+    values: 0+15x20
+  - series: coire_upgrade_operations{kind="control_plane"}
+    values: 1+0x20
+  - series: coire_upgrade_executor_ready
+    values: 0+0x20
+  - series: coire_upgrade_executor_heartbeat_age_seconds
+    values: 0+0x20
+  - series: coire_upgrade_recovery_required{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_phase_age_seconds{kind="control_plane"}
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeExecutorUnavailable
+    exp_alerts:
+    - exp_labels: &id001
+        severity: critical
+        subject: upgrades
+      exp_annotations: &id002
+        summary: A retained Core operation has no fresh independent recovery executor
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: CoireUpgradeExecutorUnavailable-healthy
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 1+0x20
+  - series: coire_upgrade_snapshot_timestamp_seconds
+    values: 0+15x20
+  - series: coire_upgrade_operations{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_executor_ready
+    values: 1+0x20
+  - series: coire_upgrade_executor_heartbeat_age_seconds
+    values: 0+0x20
+  - series: coire_upgrade_recovery_required{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_phase_age_seconds{kind="control_plane"}
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeExecutorUnavailable
+    exp_alerts: []
+- name: missing-executor-heartbeat
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 1+0x20
+  - series: coire_upgrade_snapshot_timestamp_seconds
+    values: 0+15x20
+  - series: coire_upgrade_operations{kind="control_plane"}
+    values: 1+0x20
+  - series: coire_upgrade_recovery_required{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_phase_age_seconds{kind="control_plane"}
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeExecutorUnavailable
+    exp_alerts:
+    - exp_labels: *id001
+      exp_annotations: *id002
+- name: CoireUpgradeRecoveryRequired-fires
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 1+0x20
+  - series: coire_upgrade_snapshot_timestamp_seconds
+    values: 0+15x20
+  - series: coire_upgrade_operations{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_executor_ready
+    values: 1+0x20
+  - series: coire_upgrade_executor_heartbeat_age_seconds
+    values: 0+0x20
+  - series: coire_upgrade_recovery_required{kind="control_plane"}
+    values: 1+0x20
+  - series: coire_upgrade_phase_age_seconds{kind="control_plane"}
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeRecoveryRequired
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        subject: upgrades
+      exp_annotations:
+        summary: Upgrade restoration is uncertain and maintenance remains held
+        runbook_url: /docs/runbooks/upgrades#recover
+- name: CoireUpgradeRecoveryRequired-healthy
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 1+0x20
+  - series: coire_upgrade_snapshot_timestamp_seconds
+    values: 0+15x20
+  - series: coire_upgrade_operations{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_executor_ready
+    values: 1+0x20
+  - series: coire_upgrade_executor_heartbeat_age_seconds
+    values: 0+0x20
+  - series: coire_upgrade_recovery_required{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_phase_age_seconds{kind="control_plane"}
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeRecoveryRequired
+    exp_alerts: []
+- name: CoireUpgradeProgressStalled-fires
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 1+0x20
+  - series: coire_upgrade_snapshot_timestamp_seconds
+    values: 0+15x20
+  - series: coire_upgrade_operations{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_executor_ready
+    values: 1+0x20
+  - series: coire_upgrade_executor_heartbeat_age_seconds
+    values: 0+0x20
+  - series: coire_upgrade_recovery_required{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_phase_age_seconds{kind="control_plane"}
+    values: 901+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeProgressStalled
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        subject: upgrades
+      exp_annotations:
+        summary: A retained upgrade obligation has made no progress for fifteen minutes
+        runbook_url: /docs/runbooks/upgrades#observe
+- name: CoireUpgradeProgressStalled-healthy
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 1+0x20
+  - series: coire_upgrade_snapshot_timestamp_seconds
+    values: 0+15x20
+  - series: coire_upgrade_operations{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_executor_ready
+    values: 1+0x20
+  - series: coire_upgrade_executor_heartbeat_age_seconds
+    values: 0+0x20
+  - series: coire_upgrade_recovery_required{kind="control_plane"}
+    values: 0+0x20
+  - series: coire_upgrade_phase_age_seconds{kind="control_plane"}
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeProgressStalled
+    exp_alerts: []
+- name: CoireUpgradeBaselineUnavailable-disabled
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeBaselineUnavailable
+    exp_alerts: []
+- name: CoireUpgradeExecutorUnavailable-disabled
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeExecutorUnavailable
+    exp_alerts: []
+- name: CoireUpgradeRecoveryRequired-disabled
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeRecoveryRequired
+    exp_alerts: []
+- name: CoireUpgradeProgressStalled-disabled
+  interval: 15s
+  input_series:
+  - series: coire_upgrades_enabled
+    values: 0+0x20
+  alert_rule_test:
+  - eval_time: 1m
+    alertname: CoireUpgradeProgressStalled
+    exp_alerts: []
+- name: rebooted-staging-quarantine-retained
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_native_terminal_quarantined_bytes{node="coire-edge-a"}
+    values: 1074360320 1074360320 1074360320
+  alert_rule_test:
+  - eval_time: 30s
+    alertname: CoireUpgradeStagingQuarantineRetained
+    exp_alerts:
+    - exp_labels: {severity: warning, subject: upgrades}
+      exp_annotations:
+        summary: Reboot-renumbered upgrade staging bytes are preserved in quarantine
+        runbook_url: /docs/runbooks/upgrades#recover

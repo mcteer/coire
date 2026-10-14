@@ -459,7 +459,40 @@ stays default-off. See [feedback operations](runbooks/feedback.md),
 
 ## 9. Upgrades and operations
 
-Each Studio keeps versioned virtual environments under `/opt/coire/envs/<version>` (mlx, mlx-lm, jaccl, mflux pinned by a lockfile in the repo). An admin-triggered `upgrade` job on a node: creates the new env, runs a smoke test (load a tiny model, generate 10 tokens, for sharded also a 2-rank all-reduce), flips a symlink, restarts coire-node, and rolls back on failure. Control-plane upgrades are uniform: images for `coire-api`, `coire-mcp`, `coire-web`, and `coire-agent` are built from a git tag by CI (multi-arch, arm64 first), pulled on core, and rolled with `docker compose up -d` service by service; Alembic migrations run from a one-shot `coire-migrate` service before the API starts, and rollback is re-pinning the previous tag. Only the admin model's launchd service and OrbStack itself are updated outside compose. macOS updates remain manual — RDMA is tied to the OS build and should be re-validated after each update.
+Feature [019](../specs/019-upgrades-rollback/spec.md) defines managed upgrades of
+immutable, content-addressed Studio environments and a fixed Core service cohort.
+It remains default-off pending its acceptance gates. Administrators register
+trusted, locally prepared artifacts through the audited admin API; runtime callers
+cannot supply engine paths, image tags or Docker commands. Studio changes fence
+all affected admission and drain existing owners before switching environments.
+A separate coire-node recovery helper retains the exact source independently of
+the replaced agent. Smoke uses an admin-acquired, registry-verified tiny model and
+64 tokens; declared paired capability also requires a real collective qualified
+against both full native environment identities.
+
+Core recovery belongs to a separate non-root, distroless
+`coire-upgrade-executor` service. Its fixed Docker HTTP operations use the existing
+socket proxy; only the proxy mounts the Docker socket. The executor preserves
+source containers, immutable configuration, credential mounts and existing volume
+references. A recent source-schema backup with a disconnected restore-validation
+receipt precedes a one-shot migration. Replacement follows the frozen cohort's
+dependency order; failure restores every changed source in reverse order without
+downgrading the database or overwriting newer data. The migration and runtime
+activation gates independently revalidate the initiating human administrator.
+DBOS orchestration stays in the scheduler, while durable executor intent and
+physical reconciliation survive API and scheduler outages.
+
+Initial bootstrap is not ready until actual Linux namespace, physical source,
+sealed catalogs and exclusive kernel writer are qualified. Executor replacement
+retains a restartable incumbent as the independent stability observer and rollback
+owner. Original passive, transfer, 120-second stability and recovery epochs survive
+restart. SQL serializes final commit against restoration before any candidate
+stop. The predecessor retires only after the accepted candidate holds the writer
+and independently proves readiness; its container and image remain retained.
+Host deployment commands share the same typed admission and ownership journals.
+See [the recovery ADR](adr/0015-upgrade-recovery-executor.md) and
+[upgrade runbook](runbooks/upgrades.md). macOS and OrbStack updates remain manual;
+RDMA qualification must be renewed after an OS or native runtime change.
 
 Model management: adding a model (admin only, §3.2) is a registry row plus a download job (HF repo → local store on one node, checksum-verified, then LAN replication to the peer so both Studios hold every roster model; see §2.1 on why that beats two WAN pulls). Removal unloads then deletes files. Conversion/quantisation is stage 3 of the acquisition pipeline (§3.3), so 4/6/8-bit variants are produced on the Studio rather than downloaded separately.
 

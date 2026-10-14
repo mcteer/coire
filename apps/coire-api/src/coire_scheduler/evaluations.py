@@ -242,6 +242,11 @@ async def load_evidence(
 
 @observed("coire.scheduler.evaluation.phase")
 async def advance(session: AsyncSession, run_id: str, settings: Settings) -> bool:
+    allowed = True
+    if settings.upgrades_enabled:
+        from coire_scheduler.maintenance import allows_core_work
+
+        allowed = await allows_core_work(session, ("coire-api", "coire-scheduler"))
     snapshot = await current_run(session, run_id, lock=False)
     authority_revoked = False
     try:
@@ -300,6 +305,8 @@ async def advance(session: AsyncSession, run_id: str, settings: Settings) -> boo
             await session.execute(text("SELECT pg_advisory_xact_lock(170027)"))
             run.evidence_reserved_bytes = 0
         return cleaned
+    if run.state == "queued" and run.started_at is None and not allowed:
+        return False
     suite = EvaluationSuite.model_validate(run.suite_snapshot)
     if run.measurement_id is not None:
         measurement = await session.get(

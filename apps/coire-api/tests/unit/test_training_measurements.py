@@ -34,6 +34,10 @@ async def test_probe_prepare_has_its_own_bound_without_widening_stop_lane(
         TrainingInputSource,
         TrainingInputsRequest,
         TrainingPrepared,
+        TrainingStartReceipt,
+        TrainingStartRequest,
+        TrainingStopReceipt,
+        TrainingStopRequest,
     )
     from coire_scheduler.training_measurements import MeasurementNodeClient
 
@@ -48,6 +52,22 @@ async def test_probe_prepare_has_its_own_bound_without_widening_stop_lane(
 
     async def capture(*args: object, **kwargs: object) -> tuple[int, dict[str, object]]:
         calls.append(kwargs)
+        if str(args[2]).endswith("/start"):
+            return 200, TrainingStartReceipt(
+                attempt_id=probe.prepare.attempt_id,
+                fence=probe.prepare.fence,
+                pid=1234,
+                process_create_time=100.0,
+                reservation_id=probe.prepare.reservation_id,
+            ).model_dump(mode="json")
+        if str(args[2]).endswith("/stop"):
+            return 200, TrainingStopReceipt(
+                attempt_id=probe.prepare.attempt_id,
+                fence=probe.prepare.fence,
+                node=probe.prepare.node,
+                stopped=True,
+                observed_at=datetime.now(UTC),
+            ).model_dump(mode="json")
         return 200, TrainingPrepared(
             attempt_id=probe.prepare.attempt_id,
             fence=probe.prepare.fence,
@@ -91,8 +111,31 @@ async def test_probe_prepare_has_its_own_bound_without_widening_stop_lane(
             }
         )
         assert not (await client.inputs(delivery)).ready
-    assert calls[1].get("request_timeout_s") == (30.0 if preference else None)
-    assert calls[0]["request_timeout_s"] == 30.0
+        envelope = {
+            name: getattr(probe.prepare, name)
+            for name in TrainingStopRequest.model_fields
+            if hasattr(probe.prepare, name)
+        }
+        await client.start(
+            TrainingStartRequest.model_validate(
+                {
+                    **envelope,
+                    "command_id": uuid.uuid4(),
+                    "prepared_command_id": probe.prepare.command_id,
+                    "spawn_nonce": uuid.uuid4(),
+                }
+            )
+        )
+        await client.stop(
+            TrainingStopRequest.model_validate(
+                {
+                    **envelope,
+                    "command_id": uuid.uuid4(),
+                    "reason": "cancelled",
+                }
+            )
+        )
+    assert [call.get("request_timeout_s") for call in calls] == [30.0, 30.0, 30.0, None]
 
 
 def test_observed_envelope_hashes_all_components_and_hardware() -> None:

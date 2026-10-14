@@ -16,7 +16,7 @@ from urllib.parse import quote, urlsplit
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
-DEFAULT_SECRETS_DIR = "/run/secrets"
+from coire_core.secret_paths import DEFAULT_SECRETS_DIR
 
 
 class Settings(BaseSettings):
@@ -159,6 +159,48 @@ class Settings(BaseSettings):
     gateway_inline_visual_enabled: bool = False
     provider_chat_enabled: bool = False
 
+    # --- fixed-operation upgrades and independent recovery ---
+    upgrades_enabled: bool = False
+    upgrade_project: str = Field(default="coire", pattern=r"^[a-z][a-z0-9_-]{1,62}$")
+    upgrade_executor_id: str = Field(
+        default="coire-upgrade-executor", pattern=r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$"
+    )
+    upgrade_executor_token: SecretStr = SecretStr("")
+    upgrade_api_url: str = "http://coire-api:8000"
+    upgrade_mcp_url: str = "http://coire-mcp:8001"
+    upgrade_proxy_url: str = "http://docker-socket-proxy:2375"
+    upgrade_prepared_dir: str = "/opt/coire/upgrades/prepared"
+    upgrade_state_dir: str = "/opt/coire/upgrades/state"
+    upgrade_coordination_dir: str = "/opt/coire/upgrades/coordination"
+    upgrade_environment_root: str = "/opt/coire/envs"
+    upgrade_bootstrap_root: str = "/opt/coire/upgrade-bootstrap"
+    upgrade_recovery_id: str | None = Field(default=None, pattern=r"^[0-9A-HJKMNP-TV-Z]{26}$")
+    upgrade_recovery_supervision_fd: int | None = Field(default=None, ge=3, le=1048576)
+    upgrade_recovery_core_api_port: int | None = Field(default=None, ge=1024, le=65535)
+    upgrade_recovery_schema_admin_token_file: str = (
+        "/run/secrets/upgrade_recovery_schema_admin_token"
+    )
+    upgrade_recovery_support_job_id: str | None = Field(
+        default=None, pattern=r"^[0-9A-HJKMNP-TV-Z]{26}$"
+    )
+    upgrade_recovery_support_generation: int | None = Field(default=None, ge=1)
+    upgrade_recovery_support_source_sha256: str | None = Field(
+        default=None, pattern=r"^[a-f0-9]{64}$"
+    )
+    upgrade_recovery_succession_id: str | None = Field(
+        default=None, pattern=r"^[0-9A-HJKMNP-TV-Z]{26}$"
+    )
+    upgrade_recovery_succession_mode: Literal["resume", "initial"] = "resume"
+    upgrade_smoke_model_id: uuid.UUID | None = None
+    upgrade_migration_job_id: str | None = Field(default=None, pattern=r"^[0-9A-HJKMNP-TV-Z]{26}$")
+    upgrade_migration_generation: int | None = Field(default=None, ge=1, le=2**63 - 1)
+    upgrade_drain_s: int = Field(default=900, ge=1, le=900)
+    upgrade_readiness_s: int = Field(default=120, ge=1, le=120)
+    upgrade_recovery_s: int = Field(default=300, ge=1, le=300)
+    upgrade_gateway_outage_s: int = Field(default=300, ge=1, le=300)
+    upgrade_poll_s: float = Field(default=2.0, gt=0, le=5)
+    upgrade_disk_margin_bytes: int = Field(default=1024**3, ge=1)
+
     # --- administrator SFT training; default-off until runtime/acceptance gates ---
     preference_training_enabled: bool = False
     feedback_storage_quota_bytes: int = Field(default=1024**3, ge=1, le=1024**3)
@@ -214,6 +256,39 @@ class Settings(BaseSettings):
     training_metric_page_max: int = Field(default=2000, ge=1, le=2000)
     training_list_page_default: int = Field(default=25, ge=1, le=100)
     training_list_page_max: int = Field(default=100, ge=1, le=100)
+
+    @model_validator(mode="after")
+    def recovery_successor_selector_is_scoped(self) -> Settings:
+        support_fields = (
+            self.upgrade_recovery_support_job_id,
+            self.upgrade_recovery_support_generation,
+            self.upgrade_recovery_support_source_sha256,
+        )
+        if any(value is not None for value in support_fields) and (
+            not all(value is not None for value in support_fields) or not self.upgrades_enabled
+        ):
+            raise ValueError("recovery support API requires complete enabled original scope")
+        if self.upgrade_recovery_core_api_port is not None and (
+            not self.upgrades_enabled or self.node_name not in {"coire-edge-a", "coire-edge-b"}
+        ):
+            raise ValueError("Recovery control port requires enabled native Studio support")
+        if self.upgrade_recovery_supervision_fd is not None and (
+            self.upgrade_recovery_id is None
+            or not self.upgrades_enabled
+            or self.node_name not in {"coire-edge-a", "coire-edge-b"}
+        ):
+            raise ValueError("inherited supervision descriptor requires scoped Studio recovery")
+        if (
+            self.upgrade_recovery_succession_mode == "initial"
+            and self.upgrade_recovery_succession_id is None
+        ):
+            raise ValueError("initial successor mode requires scoped succession selector")
+        if self.upgrade_recovery_succession_id is not None and (
+            self.upgrade_recovery_id is None
+            or self.upgrade_recovery_succession_id == self.upgrade_recovery_id
+        ):
+            raise ValueError("successor selector requires distinct recovery parent")
+        return self
 
     @model_validator(mode="after")
     def training_limits_are_consistent(self) -> Settings:
@@ -277,7 +352,7 @@ class Settings(BaseSettings):
     def blank_image_retention(cls, value: object) -> object:
         return None if value == "" else value
 
-    @field_validator("chat_default_model_id", mode="before")
+    @field_validator("chat_default_model_id", "upgrade_smoke_model_id", mode="before")
     @classmethod
     def empty_chat_default_model(cls, value: object) -> object:
         return None if value == "" else value
@@ -448,6 +523,7 @@ class Settings(BaseSettings):
     node_name: str = ""
     node_token: SecretStr = SecretStr("")
     node_registration_token: SecretStr = SecretStr("")
+    node_registration_enabled: bool = True
     node_listen_port: int = 9400
     node_data_listen_port: int = 9401
     node_control_host: str = ""

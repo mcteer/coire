@@ -138,6 +138,7 @@ class NodeRow(Base):
         DateTime(timezone=True), nullable=True
     )
     gpu_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    runtime_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 def create_engine(settings: Settings) -> AsyncEngine:
@@ -166,6 +167,13 @@ async def dispose_engine() -> None:
         await _engine.dispose()
         _engine = None
         _sessionmaker = None
+
+
+def session_factory() -> async_sessionmaker[AsyncSession]:
+    """Separate bounded transactions for orchestration with I/O between them."""
+    if _sessionmaker is None:
+        raise RuntimeError("engine not initialised; call init_engine() during startup")
+    return _sessionmaker
 
 
 @asynccontextmanager
@@ -393,6 +401,8 @@ class HarnessEvaluationRow(Base):
     )
     harness_version: Mapped[str] = mapped_column(String(32))
     engine_version: Mapped[str] = mapped_column(String(64))
+    runtime_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    harness_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     diagnostics: Mapped[list[str]] = mapped_column(JSONB, default=list)
     run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -866,6 +876,8 @@ class ModelInstanceRow(Base):
         ForeignKey("placement_decisions.id", ondelete="SET NULL"), nullable=True
     )
     policy: Mapped[str] = mapped_column(String(64))
+    upgrade_smoke_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
+    upgrade_smoke_result: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
     state: Mapped[InstanceState] = mapped_column(_enum(InstanceState, "instance_state"), index=True)
     failure_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     failure_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -924,6 +936,8 @@ class LinkObservationRow(Base):
     os_version_a: Mapped[str] = mapped_column(String(64))
     os_version_b: Mapped[str] = mapped_column(String(64))
     engine_version: Mapped[str] = mapped_column(String(64))
+    runtime_sha256_a: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    runtime_sha256_b: Mapped[str | None] = mapped_column(String(64), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     observed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -3068,5 +3082,295 @@ class AdapterLineageRow(Base):
         CheckConstraint(
             "depth BETWEEN 0 AND 32 AND adapter_id IS DISTINCT FROM parent_adapter_id",
             name="ck_adapter_lineage_depth",
+        ),
+    )
+
+
+class UpgradeReleaseRow(Base):
+    __tablename__ = "upgrade_releases"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    manifest_sha256: Mapped[str] = mapped_column(String(64), unique=True)
+    prepared_artifact_id: Mapped[str] = mapped_column(String(128), unique=True)
+    prepared_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UpgradeOperationRow(Base):
+    __tablename__ = "upgrade_operations"
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    key_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("api_keys.id", ondelete="RESTRICT"))
+    credential_version: Mapped[int | None] = mapped_column(Integer)
+    source_release_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("upgrade_releases.id", ondelete="RESTRICT")
+    )
+    target_release_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("upgrade_releases.id", ondelete="RESTRICT")
+    )
+    idempotency_key: Mapped[uuid.UUID] = mapped_column()
+    request_sha256: Mapped[str] = mapped_column(String(64))
+    generation: Mapped[int] = mapped_column(BigInteger, unique=True)
+    active_slot: Mapped[int | None] = mapped_column(Integer, unique=True)
+    phase: Mapped[str] = mapped_column(String(32))
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    execution_plan: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    node_command: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    migration_execution: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    executor_identity: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_upgrade_request"),
+        CheckConstraint(
+            "generation >= 1 AND (active_slot IS NULL OR active_slot = 1)", name="ck_upgrade_owner"
+        ),
+        CheckConstraint(
+            "phase IN ('accepted','preflight','fencing','draining','staged','smoke_before','migrating','activating','verifying','qualifying','committing','restoring','verifying_source','recovery_required','succeeded','failed_unchanged','cancelled_unchanged','rolled_back')",
+            name="ck_upgrade_phase",
+        ),
+        CheckConstraint(
+            "(active_slot IS NULL) = (phase IN ('succeeded','failed_unchanged','cancelled_unchanged','rolled_back'))",
+            name="ck_upgrade_terminal_owner",
+        ),
+    )
+
+
+class UpgradeExpiredRecoveryRow(Base):
+    """Distinct recovery authority; never overwrite the original accepted plan."""
+
+    __tablename__ = "upgrade_expired_recoveries"
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    original_job_id: Mapped[str] = mapped_column(
+        ForeignKey("upgrade_operations.id", ondelete="RESTRICT")
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    key_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("api_keys.id", ondelete="RESTRICT"))
+    credential_version: Mapped[int | None] = mapped_column(Integer)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    request_sha256: Mapped[str] = mapped_column(String(64))
+    intent_sha256: Mapped[str] = mapped_column(String(64))
+    intent_payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    active_slot: Mapped[int | None] = mapped_column(Integer, unique=True)
+    phase: Mapped[str] = mapped_column(String(32))
+    transfer_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    consumption_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    owner_claim_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    cold_claim_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    cold_smoke_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    data_baseline_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    native_baseline_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    cold_verification_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    cold_handback_intent_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    cold_handback_receipt_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    cancellation_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    resolution_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_expired_recovery_request"),
+        CheckConstraint("id != original_job_id", name="ck_expired_recovery_distinct_id"),
+        CheckConstraint("active_slot IS NULL OR active_slot = 1", name="ck_expired_recovery_slot"),
+        CheckConstraint(
+            "phase IN ('accepted','transferring','transfer_consumed','recovering','verifying','cold_recovering','handback_prepared','handing_back','resolving','recovery_required','recovered','cancelled_unchanged','superseded')",
+            name="ck_expired_recovery_phase",
+        ),
+        CheckConstraint(
+            "(active_slot IS NULL) = (phase IN ('recovered','cancelled_unchanged','superseded'))",
+            name="ck_expired_recovery_terminal_owner",
+        ),
+        CheckConstraint(
+            "phase <> 'superseded' OR (cancellation_payload IS NOT NULL AND resolution_payload IS NOT NULL AND (cold_claim_payload IS NOT NULL OR coalesce((resolution_payload->>'protocol' = 'cold-unstarted-supersession-v1' AND resolution_payload->'unstarted_startup'->'intent' = intent_payload AND transfer_payload IS NULL AND consumption_payload IS NULL AND owner_claim_payload IS NULL AND cold_claim_payload IS NULL AND cold_smoke_payload IS NULL AND cold_verification_payload IS NULL AND cold_handback_intent_payload IS NULL AND cold_handback_receipt_payload IS NULL),false)))",
+            name="ck_cold_recovery_supersession_payload",
+        ),
+        CheckConstraint(
+            "phase NOT IN ('transferring','transfer_consumed','recovering','verifying','recovered') OR transfer_payload IS NOT NULL OR (phase = 'recovered' AND cold_claim_payload IS NOT NULL)",
+            name="ck_expired_recovery_transfer_required",
+        ),
+        CheckConstraint(
+            "phase NOT IN ('transfer_consumed','recovering','verifying','recovered') OR consumption_payload IS NOT NULL OR (phase = 'recovered' AND cold_claim_payload IS NOT NULL)",
+            name="ck_expired_recovery_consumption_required",
+        ),
+        CheckConstraint(
+            "phase NOT IN ('recovering','verifying','recovered') OR owner_claim_payload IS NOT NULL OR (phase = 'recovered' AND cold_claim_payload IS NOT NULL)",
+            name="ck_expired_recovery_owner_required",
+        ),
+        CheckConstraint(
+            "phase != 'cold_recovering' OR cold_claim_payload IS NOT NULL",
+            name="ck_expired_recovery_cold_owner_required",
+        ),
+        CheckConstraint(
+            "cold_smoke_payload IS NULL OR cold_claim_payload IS NOT NULL",
+            name="ck_expired_recovery_cold_smoke_owner",
+        ),
+        CheckConstraint(
+            "cold_verification_payload IS NULL OR (cold_smoke_payload IS NOT NULL AND data_baseline_payload IS NOT NULL AND native_baseline_payload IS NOT NULL)",
+            name="ck_expired_recovery_cold_verification",
+        ),
+        CheckConstraint(
+            "phase NOT IN ('handback_prepared','handing_back','resolving') OR cold_verification_payload IS NOT NULL",
+            name="ck_expired_recovery_handback_verified",
+        ),
+        CheckConstraint(
+            "phase NOT IN ('handing_back','resolving') OR cold_handback_intent_payload IS NOT NULL",
+            name="ck_expired_recovery_handback_intent",
+        ),
+        CheckConstraint(
+            "cold_handback_receipt_payload IS NULL OR cold_handback_intent_payload IS NOT NULL",
+            name="ck_expired_recovery_handback_receipt",
+        ),
+        CheckConstraint(
+            "cold_claim_payload IS NULL OR (transfer_payload IS NULL AND consumption_payload IS NULL AND owner_claim_payload IS NULL AND COALESCE(intent_payload->'request'->>'recovery_mode' = 'cold', false))",
+            name="ck_expired_recovery_cold_distinct",
+        ),
+        CheckConstraint(
+            "owner_claim_payload IS NULL OR consumption_payload IS NOT NULL",
+            name="ck_expired_recovery_owner_consumption",
+        ),
+        CheckConstraint(
+            "cancellation_payload IS NULL OR phase IN ('recovery_required','recovered','superseded')",
+            name="ck_expired_recovery_cancel_retained",
+        ),
+        CheckConstraint(
+            "phase != 'recovered' OR resolution_payload IS NOT NULL",
+            name="ck_expired_recovery_resolution_required",
+        ),
+    )
+
+
+class UpgradeMaintenanceRow(Base):
+    __tablename__ = "upgrade_maintenance"
+    target: Mapped[str] = mapped_column(String(64), primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("upgrade_operations.id", ondelete="RESTRICT"))
+    generation: Mapped[int] = mapped_column(BigInteger)
+    released: Mapped[bool] = mapped_column(Boolean, default=False)
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    __table_args__ = (CheckConstraint("generation >= 1", name="ck_upgrade_maintenance_generation"),)
+
+
+class UpgradeReceiptRow(Base):
+    __tablename__ = "upgrade_receipts"
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("upgrade_operations.id", ondelete="RESTRICT"), primary_key=True
+    )
+    generation: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    sequence: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    receipt_sha256: Mapped[str] = mapped_column(String(64))
+    payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    __table_args__ = (
+        CheckConstraint("generation >= 1 AND sequence >= 1", name="ck_upgrade_receipt_sequence"),
+    )
+
+
+class UpgradeExecutorRow(Base):
+    __tablename__ = "upgrade_executors"
+    project: Mapped[str] = mapped_column(String(63), primary_key=True)
+    identity: Mapped[str] = mapped_column(String(128))
+    image_id: Mapped[str] = mapped_column(String(71))
+    source_release_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("upgrade_releases.id", ondelete="RESTRICT")
+    )
+    bootstrap_ready: Mapped[bool] = mapped_column(Boolean, default=False)
+    bootstrap_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    generation: Mapped[int] = mapped_column(BigInteger)
+    __table_args__ = (CheckConstraint("generation >= 1", name="ck_upgrade_executor_generation"),)
+
+
+class UpgradeRecoverySuccessionRow(Base):
+    """Append-only audited succession grants; predecessor owner stays immutable."""
+
+    __tablename__ = "upgrade_recovery_successions"
+    id: Mapped[str] = mapped_column(String(26), primary_key=True)
+    recovery_id: Mapped[str] = mapped_column(
+        ForeignKey("upgrade_expired_recoveries.id", ondelete="RESTRICT")
+    )
+    predecessor_sha256: Mapped[str] = mapped_column(String(64))
+    grant_sha256: Mapped[str] = mapped_column(String(64))
+    grant_payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (
+        UniqueConstraint(
+            "recovery_id", "predecessor_sha256", name="uq_recovery_succession_predecessor"
+        ),
+        CheckConstraint("id != recovery_id", name="ck_recovery_succession_distinct_id"),
+    )
+
+
+class UpgradeRecoverySuccessorClaimRow(Base):
+    """Immutable claim separate from both initial owner and succession grant."""
+
+    __tablename__ = "upgrade_recovery_successor_claims"
+    id: Mapped[str] = mapped_column(
+        ForeignKey("upgrade_recovery_successions.id", ondelete="RESTRICT"), primary_key=True
+    )
+    claim_sha256: Mapped[str] = mapped_column(String(64))
+    claim_payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class UpgradeHandoverRow(Base):
+    """Accepted executor handover is separate from the application upgrade cohort."""
+
+    __tablename__ = "upgrade_handovers"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    project: Mapped[str] = mapped_column(String(63))
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    key_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("api_keys.id", ondelete="RESTRICT"))
+    credential_version: Mapped[int | None] = mapped_column(Integer)
+    idempotency_key: Mapped[uuid.UUID] = mapped_column()
+    preparation_sha256: Mapped[str] = mapped_column(String(64))
+    generation: Mapped[int] = mapped_column(BigInteger)
+    active_slot: Mapped[int | None] = mapped_column(Integer, unique=True)
+    phase: Mapped[str] = mapped_column(String(32))
+    preparation_payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    transfer_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    commit_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    __table_args__ = (
+        UniqueConstraint("user_id", "idempotency_key", name="uq_upgrade_handover_request"),
+        CheckConstraint("generation >= 1", name="ck_upgrade_handover_generation"),
+        CheckConstraint("active_slot IS NULL OR active_slot = 1", name="ck_upgrade_handover_slot"),
+        CheckConstraint(
+            "phase IN ('accepted','passive','verified','transfer_consumed','claimed','stable',"
+            "'committing','committed','restoring','restored','failed_unchanged')",
+            name="ck_upgrade_handover_phase",
+        ),
+        CheckConstraint(
+            "(active_slot IS NULL) = (phase IN ('committed','restored','failed_unchanged'))",
+            name="ck_upgrade_handover_terminal",
+        ),
+        CheckConstraint(
+            "phase NOT IN ('transfer_consumed','claimed','stable','committing','committed') "
+            "OR transfer_payload IS NOT NULL",
+            name="ck_upgrade_handover_transfer_required",
+        ),
+        CheckConstraint(
+            "transfer_payload IS NULL OR phase IN "
+            "('transfer_consumed','claimed','stable','committing','committed','restoring','restored')",
+            name="ck_upgrade_handover_transfer_retained",
+        ),
+        CheckConstraint(
+            "phase NOT IN ('committing','committed') OR commit_payload IS NOT NULL",
+            name="ck_upgrade_handover_commit_required",
+        ),
+        CheckConstraint(
+            "commit_payload IS NULL OR phase IN ('committing','committed','restoring','restored')",
+            name="ck_upgrade_handover_commit_retained",
+        ),
+    )
+
+
+class UpgradeGrantRow(Base):
+    __tablename__ = "upgrade_activation_grants"
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("upgrade_operations.id", ondelete="RESTRICT"))
+    generation: Mapped[int] = mapped_column(BigInteger)
+    boundary: Mapped[str] = mapped_column(String(16))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    __table_args__ = (
+        UniqueConstraint("job_id", "generation", "boundary", name="uq_upgrade_activation_boundary"),
+        CheckConstraint(
+            "generation >= 1 AND boundary IN ('migration','runtime')",
+            name="ck_upgrade_activation_boundary",
         ),
     )

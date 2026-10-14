@@ -149,16 +149,24 @@ async def choose_studio(run_id: uuid.UUID) -> uuid.UUID | None:
         return await first_run_ready_studio(candidates, client)
 
 
-async def _advance(run_id: uuid.UUID, state: AgentRunState, reason: str) -> None:
+async def _advance(run_id: uuid.UUID, state: AgentRunState, reason: str) -> bool:
     async with session_scope() as session:
+        allowed = True
+        if state is AgentRunState.PLACING and get_settings().upgrades_enabled:
+            from coire_scheduler.maintenance import allows_core_work
+
+            allowed = await allows_core_work(session, ("coire-api", "coire-scheduler"))
         run = await session.get(AgentRunRow, run_id, with_for_update=True)
+        if run is not None and run.state is AgentRunState.QUEUED and not allowed:
+            return False
         if run is not None and run.state is not state and run.state not in TERMINAL_RUN_STATES:
             if run.state is AgentRunState.KILL_REQUESTED:
-                return
+                return True
             await transition(session, run, state, reason)
             transitions_total.add(1, {"state": state.value})
             last_transition.set(time.time(), {"state": state.value})
             logger.info("run transition run_id=%s state=%s", run_id, state.value)
+        return True
 
 
 async def _submit(run_id: uuid.UUID, operation: RunOperation) -> dict[str, Any]:
@@ -202,11 +210,55 @@ async def _submit(run_id: uuid.UUID, operation: RunOperation) -> dict[str, Any]:
         )
 
 
+async def commit_run_placement(run_id: uuid.UUID, node_id: uuid.UUID) -> bool:
+    """Revalidate the probed node while holding the ordered admission barrier."""
+    from coire_api.placement.service import lock_nodes_for_admission
+    from coire_scheduler.maintenance import allows_admission, allows_core_work
+
+    settings = get_settings()
+    async with session_scope() as session:
+        if settings.upgrades_enabled and not await allows_core_work(
+            session, ("coire-api", "coire-scheduler")
+        ):
+            return False
+        run = await session.get(AgentRunRow, run_id, with_for_update=True)
+        if (
+            run is None
+            or run.state in TERMINAL_RUN_STATES
+            or run.state is AgentRunState.KILL_REQUESTED
+        ):
+            return True
+        if run.node_id is not None:
+            return True
+        await lock_nodes_for_admission(session, [node_id])
+        if settings.upgrades_enabled and not await allows_admission(session, [node_id]):
+            return False
+        if settings.upgrades_enabled and run.task_class.value == "write":
+            from coire_api.evaluations import target_is_write_verified, variant_is_write_verified
+            from coire_api.runs import run_target
+
+            target = run_target(run)
+            qualified = (
+                await target_is_write_verified(session, target, node_id=node_id)
+                if target
+                else await variant_is_write_verified(
+                    session, run.primary_variant_id, node_id=node_id
+                )
+            )
+            if not qualified:
+                return False
+        run.node_id = node_id
+        run.updated_at = datetime.now(UTC)
+        return True
+
+
 @DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
 async def place_run(run_id_text: str) -> None:
     run_id = uuid.UUID(run_id_text)
-    await _advance(run_id, AgentRunState.PLACING, "Studio placement started")
     while True:
+        if not await _advance(run_id, AgentRunState.PLACING, "Studio placement started"):
+            await asyncio.sleep(get_settings().placement_poll_interval_s)
+            continue
         async with session_scope() as session:
             pending = await session.get(AgentRunRow, run_id)
             if pending is None or pending.state in {
@@ -220,16 +272,7 @@ async def place_run(run_id_text: str) -> None:
                 await authorize_evaluation_child(session, pending)
                 return
         node_id = await choose_studio(run_id)
-        if node_id is not None:
-            async with session_scope() as session:
-                run = await session.get(AgentRunRow, run_id, with_for_update=True)
-                if (
-                    run is not None
-                    and run.node_id is None
-                    and run.state is not AgentRunState.KILL_REQUESTED
-                ):
-                    run.node_id = node_id
-                    run.updated_at = datetime.now(UTC)
+        if node_id is not None and await commit_run_placement(run_id, node_id):
             return
         queued_total.add(1)
         await asyncio.sleep(get_settings().placement_poll_interval_s)

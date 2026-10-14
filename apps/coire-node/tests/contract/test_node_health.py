@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import httpx
 import pytest
@@ -17,6 +19,8 @@ from jsonschema import Draft202012Validator
 from coire_core.models.node import NetworkPath, NodePath, NodeStatus, ThermalState
 from coire_core.settings import Settings
 from coire_node.agent import create_app
+from coire_node.maintenance import NodeMaintenance
+from coire_node.store import Store
 
 CONTRACT = Path(__file__).resolve().parents[4] / "specs/000-bootstrap/contracts/health-api.yaml"
 TOKEN = "correct-horse-battery-staple"
@@ -78,6 +82,46 @@ async def call(
 
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
 FALLBACK = {"X-Coire-Path": "fallback"}
+
+
+async def test_cached_health_tracks_changed_or_missing_managed_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    configured = settings().model_copy(
+        update={
+            "upgrades_enabled": True,
+            "node_name": "coire-edge-a",
+            "node_state_dir": str(tmp_path / "state"),
+            "upgrade_bootstrap_root": str(tmp_path / "bootstrap"),
+        }
+    )
+    collector = StubCollector()
+    fixed_sample = collector.latest()
+    monkeypatch.setattr(collector, "latest", lambda **kwargs: fixed_sample)
+    app = create_app(
+        configured,
+        collector,
+        listener=NetworkPath.CONTROL,
+        store=Store(tmp_path / "models"),
+        maintenance=NodeMaintenance(tmp_path / "state/upgrades", "coire-edge-a"),
+    )
+    observed = Mock()
+    app.state.upgrades.observed = observed
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://node"
+    ) as client:
+        for digest in (None, "a" * 64, "b" * 64, None):
+            observed.return_value = (
+                SimpleNamespace(runtime=SimpleNamespace(environment_sha256=digest))
+                if digest is not None
+                else None
+            )
+            response = await client.get("/node/health", headers=AUTH)
+            assert response.status_code == 200
+            assert response.json()["runtime_sha256"] == digest
+            assert response.json()["sampled_at"] == fixed_sample.sampled_at.isoformat().replace(
+                "+00:00", "Z"
+            )
 
 
 class TestAuthentication:

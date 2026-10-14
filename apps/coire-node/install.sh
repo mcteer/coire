@@ -23,6 +23,7 @@ AGENT_VERSION="0.2.0"
 WHEEL_DIR=""
 DRY_RUN=0
 STAGE_ONLY=0
+BOOTSTRAP_REQUEST=""
 NODE_NAME="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
 RUN_AGENT_IMAGE="${COIRE_RUN_AGENT_IMAGE:-}"
 RUN_RELAY_IMAGE="${COIRE_RUN_RELAY_IMAGE:-}"
@@ -33,6 +34,7 @@ while [[ $# -gt 0 ]]; do
     --wheel-dir) WHEEL_DIR="$2"; shift 2 ;;
     --dry-run)   DRY_RUN=1; shift ;;
     --stage-only) STAGE_ONLY=1; shift ;;
+    --bootstrap-upgrades) BOOTSTRAP_REQUEST="$2"; shift 2 ;;
     --prefix)    PREFIX="$2"; shift 2 ;;
     -h|--help)   sed -n '2,16p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -48,6 +50,7 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "install.sh would create exactly:"
   say "$PREFIX/bin/uv"
   say "$PREFIX/python/**            (CPython $PYTHON_VERSION, provisioned by uv)"
+  say "$PREFIX/runtimes/**          (private retained interpreter trees and content receipts)"
   say "$ENV_DIR/**                  (agent virtualenv)"
   say "$PREFIX/envs/current         (symlink -> $ENV_DIR)"
   say "$PREFIX/log/                 (launchd stdout/stderr)"
@@ -56,11 +59,56 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
   say "$PREFIX/hf-cache/             (Hugging Face metadata scratch; weights are not kept here)"
   say "$PREFIX/workspaces/           (platform-prepared run workspaces)"
   say "$PLIST"
+  if [[ -n "$BOOTSTRAP_REQUEST" ]]; then
+    say "$PREFIX/upgrade-bootstrap/ (verified retained source recovery metadata)"
+    say "/Library/LaunchDaemons/com.coire.upgrade-guard.plist"
+  fi
   say "keychain:coire-node-token    (System keychain, created by the operator)"
   say "keychain:coire-node-registration-token (one-time, System keychain)"
   say "keychain:coire-hf-token      (System keychain, created by the operator)"
   echo "and nothing under /usr/local, /opt/homebrew, or \$HOME."
   exit 0
+fi
+if [[ -n "$BOOTSTRAP_REQUEST" ]]; then
+  if [[ "$STAGE_ONLY" -eq 1 || -n "$WHEEL_DIR" ]]; then
+    echo "error: bootstrap is a separate operation on an already installed source." >&2
+    exit 2
+  fi
+  case "$NODE_NAME" in
+    coire-edge-a|coire-edge-b) ;;
+    *) echo "error: managed recovery bootstrap requires a registered Studio." >&2; exit 2 ;;
+  esac
+  BOOTSTRAP_PYTHON="$PREFIX/envs/current/bin/python3"
+  GUARD_TEMPLATE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/deploy/launchd/com.coire.upgrade-guard.plist.template"
+  if [[ ! -x "$BOOTSTRAP_PYTHON" || ! -r "$BOOTSTRAP_REQUEST" || ! -r "$GUARD_TEMPLATE" ]]; then
+    echo "error: bootstrap requires the installed source, registration request and guard template." >&2
+    exit 2
+  fi
+  export NODE_NAME
+  export UPGRADE_ENVIRONMENT_ROOT="$PREFIX/envs"
+  export UPGRADE_BOOTSTRAP_ROOT="$PREFIX/upgrade-bootstrap"
+  export UPGRADE_PREPARED_DIR="$PREFIX/upgrades/prepared"
+  "$BOOTSTRAP_PYTHON" -I -B -m coire_node.upgrade_bootstrap < "$BOOTSTRAP_REQUEST"
+  GUARD_RENDERED="$(mktemp)"
+  "$BOOTSTRAP_PYTHON" -I -B -m coire_node.upgrade_bootstrap \
+    --render-guard-plist "$GUARD_TEMPLATE" --user "$(whoami)" > "$GUARD_RENDERED"
+  NODE_RENDERED="$(mktemp)"
+  "$BOOTSTRAP_PYTHON" -I -B -m coire_node.upgrade_bootstrap \
+    --render-node-plist "$PLIST" --user "$(whoami)" > "$NODE_RENDERED"
+  echo "verified recovery metadata; install the retained guard before enabling managed node startup:"
+  echo "  sudo install -o root -g wheel -m 644 $GUARD_RENDERED /Library/LaunchDaemons/com.coire.upgrade-guard.plist"
+  echo "  sudo launchctl bootstrap system /Library/LaunchDaemons/com.coire.upgrade-guard.plist"
+  echo "after the guard is ready and existing node work drains, install the managed node plist:"
+  echo "  sudo install -o root -g wheel -m 644 $NODE_RENDERED $PLIST"
+  echo "  # Use the documented drained node restart; do not terminate active user work."
+  echo "rendered guard plist left at: $GUARD_RENDERED"
+  echo "rendered managed node plist left at: $NODE_RENDERED"
+  exit 0
+fi
+if [[ "$STAGE_ONLY" -eq 0 && ( -e "$PREFIX/upgrade-bootstrap" || -L "$PREFIX/upgrade-bootstrap" ) ]]; then
+  echo "error: this Studio has managed recovery ownership; activate through the admin upgrade API." >&2
+  echo "use --stage-only to prepare an immutable candidate without changing the selected runtime." >&2
+  exit 2
 fi
 for IMAGE in "$RUN_AGENT_IMAGE" "$RUN_RELAY_IMAGE" "$FAILOVER_IMAGE"; do
   if [[ -n "$IMAGE" && ! "$IMAGE" =~ ^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$ ]]; then
@@ -105,13 +153,12 @@ export UV_NO_CACHE=1
 say "provisioning CPython $PYTHON_VERSION"
 uv python install "$PYTHON_VERSION" >/dev/null
 NODE_PYTHON="$(uv python find "$PYTHON_VERSION")"
-# Keep uv's interpreter untouched. A distinct executable name and stable identity avoid
-# ambiguous python3.13 permission rows left by signing a previously registered path.
-if [[ "$(uname -s)" == "Darwin" ]]; then
-  NODE_PYTHON="$("$NODE_PYTHON" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \
-    --network-python "$NODE_PYTHON")"
-  say "using dedicated Studio runtime $NODE_PYTHON"
-fi
+# Retain the complete interpreter before adding Coire's distinct signed binary.
+# Neither the virtualenv nor a rollback depends on uv's mutable managed install.
+NODE_PYTHON="$("$NODE_PYTHON" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \
+  --prepare-python "$NODE_PYTHON" "$PREFIX/runtimes")"
+INTERPRETER_ROOT="$(dirname "$(dirname "$NODE_PYTHON")")"
+say "using retained Studio runtime $NODE_PYTHON"
 
 # --- exact locked wheel graph ---------------------------------------------
 if [[ -z "$WHEEL_DIR" ]]; then
@@ -131,7 +178,8 @@ if [[ ! -r "$REQUIREMENTS" || ! -d "$WHEELHOUSE" || \
 fi
 # The executable identity is part of the immutable environment, not just the wheel graph.
 # An older environment with the same wheels may still point at uv's shared Python.
-LOCK_ID="$( { printf '%s\n' 'coire-node-runtime-v2'; cat "$REQUIREMENTS" "${CORE_WHEELS[0]}" "${NODE_WHEELS[0]}" "$NODE_PYTHON"; } | shasum -a 256 | cut -c1-12)"
+LOCK_ID="$("$NODE_PYTHON" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \
+  --runtime-input-id "$INTERPRETER_ROOT" "$REQUIREMENTS" "${CORE_WHEELS[0]}" "${NODE_WHEELS[0]}" "$NODE_PYTHON")"
 ENV_DIR="$PREFIX/envs/$AGENT_VERSION-$LOCK_ID"
 STAGING="$ENV_DIR.staging.$$"
 cleanup_stage() { [[ ! -e "$STAGING" ]] || rm -rf "$STAGING"; }
@@ -147,10 +195,10 @@ if [[ ! -x "$ENV_DIR/bin/python3" ]]; then
   # install root back to python3.13. Provisioning is complete; make this explicit
   # interpreter request without that managed-install shortcut, then verify it.
   env -u UV_PYTHON_INSTALL_DIR -u UV_PYTHON_BIN_DIR \
-    uv venv --python "$NODE_PYTHON" "$STAGING" >/dev/null
-  uv pip sync --python "$STAGING/bin/python3" --require-hashes --no-index \
+    uv venv --relocatable --python "$NODE_PYTHON" "$STAGING" >/dev/null
+  uv pip sync --link-mode copy --python "$STAGING/bin/python3" --require-hashes --no-index \
     --find-links "$WHEELHOUSE" "$REQUIREMENTS" >/dev/null
-  uv pip install --python "$STAGING/bin/python3" --no-index --no-deps \
+  uv pip install --link-mode copy --python "$STAGING/bin/python3" --no-index --no-deps \
     "${CORE_WHEELS[0]}" "${NODE_WHEELS[0]}" >/dev/null
   uv pip check --python "$STAGING/bin/python3" >/dev/null
   SMOKE_SOURCE="$STAGING"
@@ -162,12 +210,12 @@ fi
 # A failed import or CLI flag check leaves the previous active environment untouched.
 if [[ "$STAGE_ONLY" -eq 1 ]]; then
   "$SMOKE_SOURCE/bin/python3" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \
-    --stage "$SMOKE_SOURCE" "$ENV_DIR" "$NODE_PYTHON"
+    --seal-stage "$SMOKE_SOURCE" "$ENV_DIR" "$NODE_PYTHON"
   say "verified immutable candidate $ENV_DIR; active link and launchd service unchanged"
   exit 0
 fi
 "$SMOKE_SOURCE/bin/python3" "$(dirname "${BASH_SOURCE[0]}")/install_runtime.py" \
-  "$SMOKE_SOURCE" "$ENV_DIR" "$PREFIX/envs/current" "$NODE_PYTHON"
+  --seal-stage "$SMOKE_SOURCE" "$ENV_DIR" "$NODE_PYTHON" "$PREFIX/envs/current"
 
 say "flipped $PREFIX/envs/current -> $ENV_DIR"
 

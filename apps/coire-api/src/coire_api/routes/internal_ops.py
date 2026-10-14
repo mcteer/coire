@@ -32,6 +32,7 @@ from coire_core.models.ops import (
     OpsSessionRegistration,
 )
 from coire_core.models.registry import ModelSource
+from coire_core.models.upgrades import UpgradeAdmissionStatus
 
 router = APIRouter(prefix="/api/v1/internal/ops", tags=["internal: ops"])
 OpsSessionPrincipal = Annotated[Principal, Depends(require_ops_scope("ops:session"))]
@@ -215,3 +216,15 @@ async def submit_ops_proposal(
         ) from exc
     await session.commit()
     return issued
+
+
+@router.get("/upgrade-admission", response_model=UpgradeAdmissionStatus)
+async def upgrade_admission(
+    principal: OpsReadPrincipal, session: SessionDep, settings: SettingsDep
+) -> UpgradeAdmissionStatus:
+    from coire_scheduler.maintenance import allows_core_work
+
+    allowed = not settings.upgrades_enabled or await allows_core_work(
+        session, ("coire-api", "coire-ops")
+    )
+    return UpgradeAdmissionStatus(allowed=allowed)

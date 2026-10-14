@@ -13,6 +13,7 @@ from pathlib import Path
 
 import httpx
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.failover_crypto import public_key_b64, sign_ed25519
 from coire_core.failover_election import ServiceRole, timings_from_settings
 from coire_core.failover_poller import FailoverPoller, peer_url
@@ -23,6 +24,7 @@ from coire_core.models.failover import (
     FailoverSnapshot,
     FailoverStatus,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
 from coire_node.docker_api import DockerAPI, DockerAPIError
 from coire_node.failover.journal import ElectionJournal
@@ -50,6 +52,32 @@ class StudioFailoverController:
         self._docker = docker
         self._last_issued_at: datetime | None = None
         self._last_epoch = 0
+
+    async def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        poller = self._poller
+        active = poller is not None and poller.participant.role in (
+            ServiceRole.ELECTED,
+            ServiceRole.DRAINING,
+        )
+        if self._docker is None:
+            raise UpgradeUnavailable("Failover frontend ownership is unavailable")
+        container = await self._docker.inspect_container("coire-failover")
+        if container is None or not isinstance(container.get("State"), dict):
+            raise UpgradeUnavailable("Failover frontend state is unavailable")
+        state = container["State"]
+        if type(state.get("Running")) is not bool:
+            raise UpgradeUnavailable("Failover frontend running state is uncertain")
+        entries: tuple[UpgradeInventoryEntry, ...] = ()
+        if active or state["Running"]:
+            entries = (
+                UpgradeInventoryEntry(
+                    owner="failover",
+                    kind="failover-service",
+                    work_id="coire-failover",
+                    state="active",
+                ),
+            )
+        return UpgradeOwnerInventory(owner="failover", status="complete", entries=entries)
 
     def _verified(self, snapshot: FailoverSnapshot, *, require_fresh: bool = True) -> bool:
         key = self.settings.failover_peer_key.get_secret_value().strip()

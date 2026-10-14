@@ -5,13 +5,14 @@ from __future__ import annotations
 import uuid
 
 import anyio
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from coire_core.errors import TrainingConflict
 from coire_core.models.training_node import (
     TrainingAdapterExtractionStatus,
     TrainingAdapterExtractRequest,
 )
+from coire_node.maintenance import require_admission
 from coire_node.training.extraction import AdapterExtractor
 
 router = APIRouter(prefix="/node/training/adapters/extractions")
@@ -24,7 +25,9 @@ def manager(request: Request) -> AdapterExtractor:
     return value
 
 
-@router.post("", response_model=TrainingAdapterExtractionStatus)
+@router.post(
+    "", response_model=TrainingAdapterExtractionStatus, dependencies=[Depends(require_admission)]
+)
 async def extract(
     body: TrainingAdapterExtractRequest, request: Request
 ) -> TrainingAdapterExtractionStatus:

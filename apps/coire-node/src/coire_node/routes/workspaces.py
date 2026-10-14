@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import cast
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
 
 from coire_core.models.node import (
@@ -14,6 +14,7 @@ from coire_core.models.node import (
     WorkspacePrepareRequest,
     WorkspacePrepareResult,
 )
+from coire_node.maintenance import require_admission
 from coire_node.runs import RunManager
 from coire_node.workspaces import WorkspaceError
 
@@ -39,7 +40,12 @@ def _translate(exc: WorkspaceError) -> HTTPException:
     return HTTPException(http_status, {"code": code, "detail": str(exc)})
 
 
-@router.post("", response_model=WorkspacePrepareResult, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=WorkspacePrepareResult,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admission)],
+)
 async def prepare_workspace(
     body: WorkspacePrepareRequest, request: Request
 ) -> WorkspacePrepareResult:

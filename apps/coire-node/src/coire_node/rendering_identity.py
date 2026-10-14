@@ -20,6 +20,7 @@ def inspect_rendering_identity(
     *,
     template_override: str | None = None,
     versions: dict[str, str] | None = None,
+    runtime_sha256: str | None = None,
 ) -> EngineRenderingIdentity | None:
     """Return no provenance when acquired files cannot prove effective rendering.
 
@@ -89,9 +90,8 @@ def inspect_rendering_identity(
                 json.dumps(tokenizer_files, separators=(",", ":")).encode()
             ).hexdigest(),
             template_sha256=hashlib.sha256(template.encode()).hexdigest(),
-            runtime_sha256=hashlib.sha256(
-                json.dumps(packages, sort_keys=True).encode()
-            ).hexdigest(),
+            runtime_sha256=runtime_sha256
+            or hashlib.sha256(json.dumps(packages, sort_keys=True).encode()).hexdigest(),
         )
     except (OSError, ValueError, PackageNotFoundError):
         return None

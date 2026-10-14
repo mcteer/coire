@@ -19,6 +19,7 @@ from coire_core.models.acquisition import (
     ReservationRequest,
     ReservationState,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
 from coire_node.store import Store, write_atomic
 
@@ -74,8 +75,10 @@ class ReservationLedger:
         additional_held_disk_bytes: Callable[[Path], int] | None = None,
         disk_quota_bytes: int | None = None,
         disk_usage_bytes: Callable[[], int] | None = None,
+        admission_check: Callable[[], None] | None = None,
     ) -> None:
         self.settings = settings
+        self._admission_check = admission_check or (lambda: None)
         self.store = store
         self._committed_engine_bytes = committed_engine_bytes
         # A separately journaled trainer supplies its full/unknown disk envelope
@@ -329,6 +332,30 @@ class ReservationLedger:
                 total += max(item.memory_bytes, measured)
             return total
 
+    def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        with self._lock:
+            self._check_available()
+            persisted = self._load()
+            if persisted != self._items:
+                raise ReservationLedgerUnavailable(
+                    "reservation journal differs from live ownership"
+                )
+            return UpgradeOwnerInventory(
+                owner="reservations",
+                status="complete",
+                entries=tuple(
+                    UpgradeInventoryEntry(
+                        owner="reservations",
+                        kind="resource-hold",
+                        work_id=str(item.id),
+                        state="unknown",
+                        holds=(str(item.id),),
+                    )
+                    for item in self._items.values()
+                    if item.state is not ReservationState.RELEASED
+                ),
+            )
+
     def hold(
         self,
         request: ReservationRequest,
@@ -374,6 +401,7 @@ class ReservationLedger:
                 if self._metadata[existing.id] != metadata:
                     raise ReservationConflict(request, existing)
                 return existing.model_copy(deep=True), False
+            self._admission_check()
             budget = int(self.settings.node_memory_budget_fraction * psutil.virtual_memory().total)
             engines = int(self._committed_engine_bytes())
             committed = engines + self.held_bytes()

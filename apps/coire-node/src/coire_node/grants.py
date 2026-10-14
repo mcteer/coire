@@ -12,10 +12,13 @@ not the health endpoint.
 
 from __future__ import annotations
 
+import hashlib
 import hmac
 import logging
 import threading
 from datetime import UTC, datetime
+
+from coire_core.models.upgrades import UpgradeInventoryEntry
 
 logger = logging.getLogger(__name__)
 
@@ -76,3 +79,18 @@ class Grants:
     def __len__(self) -> int:
         with self._lock:
             return len(self._grants)
+
+    def upgrade_entries(self) -> tuple[UpgradeInventoryEntry, ...]:
+        """An issued transfer remains drain work while its credential can admit files."""
+        now = datetime.now(UTC)
+        with self._lock:
+            return tuple(
+                UpgradeInventoryEntry(
+                    owner="acquisition",
+                    kind="export-grant",
+                    work_id=hashlib.sha256(grant.encode()).hexdigest(),
+                    state="active",
+                )
+                for grant, (_, expires) in self._grants.items()
+                if expires > now
+            )

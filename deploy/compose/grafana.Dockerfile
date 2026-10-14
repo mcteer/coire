@@ -45,6 +45,7 @@ COPY deploy/observability/grafana/dashboards/control-plane-efficiency.json /etc/
 COPY deploy/observability/grafana/dashboards/chat.json /etc/grafana/provisioning/dashboards/chat.json
 COPY deploy/observability/grafana/dashboards/image.json /etc/grafana/provisioning/dashboards/image.json
 COPY deploy/observability/grafana/dashboards/jobs.json /etc/grafana/provisioning/dashboards/jobs.json
+COPY deploy/observability/grafana/dashboards/upgrades.json /etc/grafana/provisioning/dashboards/upgrades.json
 ENV GF_PATHS_CONFIG=/etc/grafana/grafana.ini \
     GF_PATHS_DATA=/tmp/grafana \
     GF_PATHS_HOME=/usr/share/grafana \

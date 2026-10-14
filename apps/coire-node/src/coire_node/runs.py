@@ -9,6 +9,8 @@ import re
 import tarfile
 import time
 import uuid
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,7 @@ from urllib.parse import urlparse
 
 from opentelemetry import trace
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.models.evaluation import EvaluationWorkload, EvaluationWorkspaceReceipt
 from coire_core.models.harness import TaskClass
 from coire_core.models.runs import (
@@ -31,6 +34,7 @@ from coire_core.models.runs import (
     RunLogChunk,
     RunResourceUsage,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
 from coire_node.docker_api import DockerAPI, DockerAPIError
 from coire_node.evaluations import EvaluationWorkspaceManager
@@ -53,8 +57,15 @@ class RunRuntimeError(RuntimeError):
 
 
 class RunManager:
-    def __init__(self, settings: Settings, docker: DockerAPI) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        docker: DockerAPI,
+        *,
+        admission_context: Callable[[], AbstractContextManager[None]] | None = None,
+    ) -> None:
         self.settings = settings
+        self._admission_context = admission_context or nullcontext
         self.docker = docker
         self.workspaces = WorkspaceManager(settings)
         self.evaluations = EvaluationWorkspaceManager(settings)
@@ -144,6 +155,19 @@ class RunManager:
                 or workload.target.runtime != command.evaluation_runtime
             ):
                 raise RunRuntimeError("run_workspace_invalid", "evaluation command scope differs")
+            if self.settings.upgrades_enabled:
+                from coire_node.upgrade_runtime import running_runtime_sha256
+
+                native_runtime = running_runtime_sha256(self.settings)
+                if (
+                    not self.settings.run_agent_image
+                    or workload.target.runtime.harness_image != self.settings.run_agent_image
+                    or native_runtime is None
+                    or native_runtime != workload.target.runtime.native_runtime_sha256
+                ):
+                    raise RunRuntimeError(
+                        "run_runtime_mismatch", "evaluation native runtime differs"
+                    )
             if receipt.run_id != command.run_id or receipt.output_ref != command.output_ref:
                 raise RunRuntimeError(
                     "run_workspace_invalid", "evaluation workspace ownership differs"
@@ -275,8 +299,9 @@ class RunManager:
 
     async def create(self, command: RunContainerCreate) -> RunContainerStatus:
         lock = self._create_locks.setdefault(command.run_id, asyncio.Lock())
-        async with lock:
-            return await self._create(command)
+        with self._admission_context():
+            async with lock:
+                return await self._create(command)
 
     async def _create(self, command: RunContainerCreate) -> RunContainerStatus:
         name = self.container_name(command.run_id)
@@ -344,6 +369,10 @@ class RunManager:
         raise RunRuntimeError("run_relay_failed", "run relay readiness timed out")
 
     async def start(self, run_id: uuid.UUID) -> RunContainerStatus:
+        with self._admission_context():
+            return await self._start_admitted(run_id)
+
+    async def _start_admitted(self, run_id: uuid.UUID) -> RunContainerStatus:
         name = self.container_name(run_id)
         await self.docker.start_container(name)
         observed = await self.docker.inspect_container(name)
@@ -559,6 +588,45 @@ class RunManager:
                 )
             )
         return observations
+
+    async def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        """Retain runners and relays, including exited containers awaiting cleanup."""
+        rows = await self.docker.list_containers(
+            labels={MANAGED_LABEL: "true", NODE_LABEL: self.settings.node_name}
+        )
+        if len(rows) > 4096:
+            raise UpgradeUnavailable("Run inventory exceeds its bound")
+        entries: list[UpgradeInventoryEntry] = []
+        seen: set[str] = set()
+        for row in rows:
+            labels = row.get("Labels")
+            identity = row.get("Id")
+            state = row.get("State")
+            if (
+                not isinstance(labels, dict)
+                or labels.get(MANAGED_LABEL) != "true"
+                or labels.get(NODE_LABEL) != self.settings.node_name
+                or not isinstance(identity, str)
+                or re.fullmatch(r"[0-9a-f]{64}", identity) is None
+                or identity in seen
+                or state
+                not in {"created", "running", "paused", "restarting", "exited", "dead", "removing"}
+            ):
+                raise UpgradeUnavailable("Run inventory identity is uncertain")
+            try:
+                uuid.UUID(str(labels[RUN_LABEL]))
+            except (KeyError, ValueError, TypeError) as error:
+                raise UpgradeUnavailable("Run inventory ownership is uncertain") from error
+            seen.add(identity)
+            entries.append(
+                UpgradeInventoryEntry(
+                    owner="runs",
+                    kind="container",
+                    work_id=identity,
+                    state="active" if state in {"running", "paused", "restarting"} else "cleaning",
+                )
+            )
+        return UpgradeOwnerInventory(owner="runs", status="complete", entries=tuple(entries))
 
     async def managed_run_ids(self) -> set[uuid.UUID]:
         """Return IDs for every managed runner or relay, including incomplete pairs."""

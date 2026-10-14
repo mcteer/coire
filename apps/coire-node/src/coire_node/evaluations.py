@@ -76,6 +76,19 @@ class EvaluationWorkspaceManager:
 
     async def prepare(self, command: EvaluationWorkspacePrepare) -> EvaluationWorkspaceReceipt:
         workload = command.workload
+        if self.settings.upgrades_enabled:
+            from coire_node.upgrade_runtime import running_runtime_sha256
+
+            native_runtime = await asyncio.to_thread(running_runtime_sha256, self.settings)
+            if (
+                not self.settings.run_agent_image
+                or workload.target.runtime.harness_image != self.settings.run_agent_image
+                or native_runtime is None
+                or native_runtime != workload.target.runtime.native_runtime_sha256
+            ):
+                raise WorkspaceError(
+                    "evaluation_runtime_mismatch", "evaluation native runtime differs"
+                )
         if template(workload.suite.template.template_id) != workload.suite.template:
             raise WorkspaceError(
                 "evaluation_catalog_invalid", "suite differs from installed catalog"

@@ -37,6 +37,11 @@ async def _run() -> None:
     configure_node_telemetry(
         __version__, settings.otlp_endpoint, diagnostics_enabled=settings.diagnostics_enabled
     )
+    from coire_node.upgrade_guard import record_node_process, verify_node_startup
+
+    selected_runtime = await asyncio.to_thread(verify_node_startup, settings)
+    if selected_runtime is not None:
+        await asyncio.to_thread(record_node_process, settings, selected_runtime)
     hostname = settings.node_name or _socket.gethostname().split(".")[0]
 
     collector = MetricsCollector(
@@ -52,7 +57,9 @@ async def _run() -> None:
     mesh = resolve_mesh_address(hostname, settings.mesh_hosts_file)
     egress = resolve_egress_address()
     registrar: Registrar | None = None
-    if settings.legacy_network_mode and mesh:
+    if not settings.node_registration_enabled:
+        logger.info("node registration disabled for the isolated runtime")
+    elif settings.legacy_network_mode and mesh:
         # Egress is optional: it only carries the alerted Wi-Fi fallback listener. A node with
         # no route off the mesh is a legitimate configuration and must still join the cluster.
         if egress is None:

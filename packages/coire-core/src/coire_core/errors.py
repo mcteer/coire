@@ -278,3 +278,34 @@ class FeedbackUnavailable(CoireError):
     code = "feedback_unavailable"
     title = "Exact comparison target is unavailable"
     status = 503
+
+
+class UpgradeConflict(CoireError):
+    code = "upgrade_conflict"
+    title = "Upgrade prerequisite or ownership conflict"
+    status = 409
+
+
+class UpgradeForbidden(CoireError):
+    code = "upgrade_forbidden"
+    title = "Upgrade access denied"
+    status = 403
+
+
+class UpgradeNotFound(CoireError):
+    code = "upgrade_not_found"
+    title = "Upgrade resource not found"
+    status = 404
+
+
+class UpgradeUnavailable(CoireError):
+    code = "upgrade_unavailable"
+    title = "Upgrade recovery or admission unavailable"
+    status = 503
+
+
+class UpgradeCollectivePending(UpgradeUnavailable):
+    """No authoritative collective outcome is available within the captured window."""
+
+    code = "upgrade_collective_pending"
+    title = "Upgrade collective qualification pending"

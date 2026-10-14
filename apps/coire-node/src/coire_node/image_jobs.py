@@ -25,6 +25,7 @@ from coire_core.models.image_worker import (
     NodeImageJob,
     NodeImageStartRequest,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry
 from coire_node.metrics import ImageNodeOutcome, ImageNodeStage, image_node_span, record_image_stage
 from coire_node.store import write_atomic
 
@@ -181,6 +182,30 @@ class ImageJobJournal:
             _private_root(self.root)
             record = self._record(job_id)
             return record.request if record is not None else None
+
+    def upgrade_entries(self) -> tuple[UpgradeInventoryEntry, ...]:
+        with self._lock:
+            _private_root(self.root)
+            entries: list[UpgradeInventoryEntry] = []
+            for path in sorted(self.root.iterdir()):
+                if path.suffix != ".json" or re.fullmatch(ULID_PATTERN, path.stem) is None:
+                    raise ImageJournalUnavailable()
+                record = self._record(path.stem)
+                if record is None:
+                    raise ImageJournalUnavailable()
+                status = record.status
+                if status.state not in _TERMINAL or not status.scratch_cleaned:
+                    entries.append(
+                        UpgradeInventoryEntry(
+                            owner="images",
+                            kind="image-job",
+                            work_id=status.job_id,
+                            state="cleaning" if status.state in _TERMINAL else "active",
+                            process_id=status.pid,
+                            process_created_at=status.process_create_time,
+                        )
+                    )
+            return tuple(entries)
 
     def pending_terminal_cleanup(
         self, *, after_job: str | None = None, limit: int = 25

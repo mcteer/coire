@@ -244,6 +244,21 @@ async def authorize_evaluation_child(
         raise EvaluationForbidden()
     workload = EvaluationWorkload.model_validate(attempt.workload)
     validate_phase_binding(parent, attempt, workload)
+    from coire_api.upgrades.qualification import harness_runtime_matches
+    from coire_core.settings import get_settings
+
+    settings = get_settings()
+    if settings.upgrades_enabled:
+        node = await session.get(NodeRow, attempt.node_id) if attempt.node_id is not None else None
+        if (
+            workload.target.runtime.harness_image != settings.run_agent_image
+            or not settings.run_agent_image
+            or child.node_id != attempt.node_id
+            or not harness_runtime_matches(
+                node, workload.target.runtime.native_runtime_sha256, settings
+            )
+        ):
+            raise EvaluationConflict("Evaluation native runtime is unknown or changed")
     if workload.pressure is not None:
         measurement = await session.get(
             EvaluationMeasurementRow, workload.pressure.measurement_id, populate_existing=True

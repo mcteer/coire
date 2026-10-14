@@ -46,6 +46,11 @@ from coire_core.settings import Settings
 async def prepare_export(identity: str, settings: Settings) -> str:
     """Claim one admitted export, or terminalize metadata-only refusals."""
     async with session_scope() as session:
+        allowed = True
+        if settings.upgrades_enabled:
+            from coire_scheduler.maintenance import allows_core_work
+
+            allowed = await allows_core_work(session, ("coire-api", "coire-scheduler"))
         export = await session.get(PreferenceExportRow, identity)
         if export is None:
             return "missing"
@@ -75,6 +80,8 @@ async def prepare_export(identity: str, settings: Settings) -> str:
         if export.queue_deadline_at <= now:
             export.state, export.terminal_reason = "failed", "timeout"
         else:
+            if not allowed:
+                return "queued"
             active = await session.scalar(
                 select(func.count())
                 .select_from(PreferenceExportRow)

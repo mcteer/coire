@@ -68,6 +68,9 @@ async def resolve_exact_target(
     session: AsyncSession,
     target: InferenceTarget,
     principal: Principal,
+    *,
+    instance_id: uuid.UUID | None = None,
+    upgrade_job_id: str | None = None,
 ) -> ResolvedModel:
     """Resolve registry-authored immutable artifacts under current serving authority."""
     requested: uuid.UUID | str = target.model_id
@@ -80,7 +83,17 @@ async def resolve_exact_target(
         ):
             raise ModelNotFoundError
         requested = adapter.selector
-    resolved = await resolve_model(session, requested, principal, variant_id=target.variant_id)
+    if instance_id is None and upgrade_job_id is None:
+        resolved = await resolve_model(session, requested, principal, variant_id=target.variant_id)
+    else:
+        resolved = await resolve_model(
+            session,
+            requested,
+            principal,
+            variant_id=target.variant_id,
+            instance_id=instance_id,
+            upgrade_job_id=upgrade_job_id,
+        )
     if resolved.target != target:
         raise ModelNotFoundError
     return resolved
@@ -94,6 +107,7 @@ async def resolve_model(
     *,
     variant_id: uuid.UUID | None = None,
     instance_id: uuid.UUID | None = None,
+    upgrade_job_id: str | None = None,
 ) -> ResolvedModel:
     selected = await resolve_target(session, requested_id, principal, variant_id)
     evaluation_bound = False
@@ -160,6 +174,12 @@ async def resolve_model(
             EngineProcessRow.model_id == model.id,
             EngineProcessRow.state == EngineState.READY,
             ModelInstanceRow.state == InstanceState.READY,
+            (
+                ModelInstanceRow.upgrade_smoke_payload.is_(None)
+                if upgrade_job_id is None
+                else ModelInstanceRow.upgrade_smoke_payload["plan"]["operation"]["job_id"].astext
+                == upgrade_job_id
+            ),
             ModelInstanceRow.adapter_id == adapter_id,
             EngineProcessRow.adapter_id == adapter_id,
             ModelInstanceRow.variant_id == exact_variant,
@@ -192,6 +212,7 @@ async def resolve_model(
             .where(
                 ModelInstanceRow.model_id == model.id,
                 ModelInstanceRow.state == InstanceState.READY,
+                ModelInstanceRow.upgrade_smoke_payload.is_(None),
                 ModelInstanceRow.adapter_id.is_(None),
                 ModelInstanceRow.variant_id == exact_variant,
                 literal(adapter_id is None),

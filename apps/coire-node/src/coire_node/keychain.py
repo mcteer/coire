@@ -95,7 +95,10 @@ def load_node_secrets(settings: object) -> None:
                 SYSTEM_KEYCHAIN,
             )
 
-    if not settings.node_registration_token.get_secret_value():
+    if (
+        settings.node_registration_enabled
+        and not settings.node_registration_token.get_secret_value()
+    ):
         settings.node_registration_token = read_item(NODE_REGISTRATION_TOKEN_ITEM)
 
     if not settings.hf_token.get_secret_value():

@@ -76,4 +76,4 @@ ENV PATH="/app/.venv/bin:${PATH}" \
 USER 65532:65532
 WORKDIR /app
 ENTRYPOINT ["/app/.venv/bin/python3"]
-CMD ["-m", "alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+CMD ["-m", "coire_api.upgrades.migration_runner"]

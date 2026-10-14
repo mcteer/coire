@@ -619,6 +619,11 @@ async def prepare_image_dispatch(
 ) -> PreparedImageDispatch | None:
     """Commit placement once, then return the same node command on every retry."""
     current = now or datetime.now(UTC)
+    allowed = True
+    if settings.upgrades_enabled:
+        from coire_scheduler.maintenance import allows_core_work
+
+        allowed = await allows_core_work(session, ("coire-api", "coire-scheduler"))
     await session.execute(_QUOTA_LOCK)
     row = await session.get(ImageJobRow, job_id, populate_existing=True, with_for_update=True)
     if row is None or row.cancel_requested_at is not None:
@@ -635,6 +640,8 @@ async def prepare_image_dispatch(
             return None
         return await _resume(session, row, settings)
     if row.state != ImageJobState.QUEUED or _placed(row) or row.deadline_at <= current:
+        return None
+    if not allowed:
         return None
     snapshot, _, explicit = _policy(row)
     if snapshot.resolved is not None:

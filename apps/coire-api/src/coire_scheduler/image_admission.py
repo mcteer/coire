@@ -36,6 +36,7 @@ from coire_core.models.instance import InstanceState
 from coire_core.models.node import NodeRole, Reachability
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 from coire_core.models.registry import ModelKind, ModelState
+from coire_core.settings import get_settings
 
 PINNED_RUNTIME_VERSION = "mflux-0.20.0"
 FIRST_TOKEN_P95_LIMIT_S = 1.5
@@ -149,9 +150,22 @@ def node_hardware_fingerprint(node: NodeRow) -> str:
 
 
 def node_runtime_fingerprint(node: NodeRow) -> str:
-    """An agent or pinned image runtime version change invalidates measured approval."""
+    """Bind image approval to the observed installed graph when upgrades are managed."""
     values = [node.agent_version, PINNED_RUNTIME_VERSION]
+    if get_settings().upgrades_enabled:
+        values.append(node.runtime_sha256 or "unknown-native-runtime")
     return hashlib.sha256(json.dumps(values, separators=(",", ":")).encode()).hexdigest()
+
+
+def current_image_runtime(node: NodeRow, now: datetime) -> bool:
+    settings = get_settings()
+    return not settings.upgrades_enabled or (
+        node.runtime_sha256 is not None
+        and node.health_observed_at is not None
+        and 0
+        <= (now - node.health_observed_at).total_seconds()
+        <= settings.placement_health_freshness_s
+    )
 
 
 def image_environment_fingerprint(node: NodeRow, manifest_sha256: str) -> str:
@@ -320,6 +334,8 @@ async def chat_mix_allowed(
         )
     ).all()
     hardware = node_hardware_fingerprint(node)
+    if not current_image_runtime(node, now):
+        return False
     runtime = node_runtime_fingerprint(node)
     return any(
         profile.hardware_fingerprint == hardware

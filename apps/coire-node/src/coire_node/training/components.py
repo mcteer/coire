@@ -11,6 +11,7 @@ import shutil
 import time
 import uuid
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,7 +22,7 @@ from fastapi import Depends, FastAPI
 from opentelemetry import metrics, trace
 from safetensors import safe_open
 
-from coire_core.errors import TrainingConflict, TrainingValidationError
+from coire_core.errors import TrainingConflict, TrainingValidationError, UpgradeUnavailable
 from coire_core.models.acquisition import ReservationRequest
 from coire_core.models.training_node import (
     CheckpointWorkerState,
@@ -36,6 +37,7 @@ from coire_core.models.training_node import (
     TrainingRankImportStatus,
     TrainingRankVerificationReceipt,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry
 from coire_core.net import DataFabricClient, shared_http_ssl_context
 from coire_node.reservations import ReservationLedger
 from coire_node.store import sha256_file, write_atomic
@@ -50,6 +52,7 @@ from coire_node.training.checkpoints import (
     _private_file,
 )
 from coire_node.training.journal import TrainingJournal
+from coire_node.upgrade_inventory import read_owner_json
 
 tracer = trace.get_tracer("coire.node.training")
 outcomes = metrics.get_meter("coire.node.training").create_counter(
@@ -319,8 +322,10 @@ class RankImporter:
         max_bytes: int = 200 * 1024**3,
         disk_floor_bytes: int = 20 * 1024**3,
         reservations: ReservationLedger | None = None,
+        admission_context: Callable[[], AbstractContextManager[None]] | None = None,
     ) -> None:
         self.components, self.root, self.port = components, journal_root, port
+        self._maintenance_admission = admission_context or nullcontext
         if journal_root.is_symlink():
             raise TrainingValidationError("Rank import journal is linked")
         journal_root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -360,6 +365,40 @@ class RankImporter:
                         scope, release_check=lambda: True, footprint_bytes=lambda: None
                     )
                     self.reservations.release(scope)
+
+    def upgrade_entries(self) -> tuple[UpgradeInventoryEntry, ...]:
+        entries: list[UpgradeInventoryEntry] = []
+        for path in self.root.iterdir():
+            identity = uuid.UUID(path.stem)
+            value = read_owner_json(path)
+            if path.name != f"{identity}.json" or not isinstance(value, dict):
+                raise UpgradeUnavailable("Rank import journal is uncertain")
+            intent = TrainingArtifactImportIntent.model_validate(value["intent"])
+            status = TrainingRankImportStatus.model_validate(value["status"])
+            if (
+                intent.command_id != identity
+                or status.import_id != identity
+                or intent.manifest_sha256 != status.component.canonical_sha256()
+            ):
+                raise UpgradeUnavailable("Rank import identity differs")
+            task = self.tasks.get(identity)
+            active = status.state in {"staging", "transferring"} or (
+                task is not None and not task.done()
+            )
+            parent = self.components.directory(
+                status.component.artifact_id, status.component.rank
+            ).parent
+            staging = parent / f".import-rank-{status.component.rank}"
+            if active or staging.exists() or staging.is_symlink():
+                entries.append(
+                    UpgradeInventoryEntry(
+                        owner="artifacts",
+                        kind="rank-import",
+                        work_id=str(identity),
+                        state="active" if active else "cleaning",
+                    )
+                )
+        return tuple(entries)
 
     def status(self, identity: uuid.UUID) -> TrainingRankImportStatus:
         if identity not in self.records:
@@ -441,19 +480,20 @@ class RankImporter:
                 ):
                     raise TrainingConflict("Rank import intent is immutable")
                 return prior
-            if len([t for t in self.tasks.values() if not t.done()]) >= 32:
-                raise TrainingConflict("Rank import queue is full")
-            status = TrainingRankImportStatus(
-                import_id=request.command_id,
-                component=request.component,
-                state="staging",
-                transferred_bytes=0,
-            )
-            self.records[request.command_id] = intent, status
-            self.deadlines[request.command_id] = time.monotonic() + 60
-            self.persist(request.command_id, status)
-            self.tasks[request.command_id] = asyncio.create_task(self.run(request))
-            return status
+            with self._maintenance_admission():
+                if len([t for t in self.tasks.values() if not t.done()]) >= 32:
+                    raise TrainingConflict("Rank import queue is full")
+                status = TrainingRankImportStatus(
+                    import_id=request.command_id,
+                    component=request.component,
+                    state="staging",
+                    transferred_bytes=0,
+                )
+                self.records[request.command_id] = intent, status
+                self.deadlines[request.command_id] = time.monotonic() + 60
+                self.persist(request.command_id, status)
+                self.tasks[request.command_id] = asyncio.create_task(self.run(request))
+                return status
 
     async def refresh(
         self, identity: uuid.UUID, request: TrainingArtifactGrantRefresh
@@ -477,18 +517,19 @@ class RankImporter:
                 raise TrainingConflict("Rank import deadline/cancellation cannot be resurrected")
             if identity in self.tasks and not self.tasks[identity].done():
                 raise TrainingConflict("Rank import is still running")
-            intent = intent.model_copy(update={"grant_id": request.grant_id})
-            self.records[identity] = intent, status
-            self.persist(identity, status)
-            command = TrainingRankImportRequest.model_validate(
-                {
-                    **intent.model_dump(mode="json"),
-                    "grant_secret": request.grant_secret,
-                    "component": status.component.model_dump(mode="json"),
-                }
-            )
-            self.tasks[identity] = asyncio.create_task(self.run(command))
-            return status
+            with self._maintenance_admission():
+                intent = intent.model_copy(update={"grant_id": request.grant_id})
+                self.records[identity] = intent, status
+                self.persist(identity, status)
+                command = TrainingRankImportRequest.model_validate(
+                    {
+                        **intent.model_dump(mode="json"),
+                        "grant_secret": request.grant_secret,
+                        "component": status.component.model_dump(mode="json"),
+                    }
+                )
+                self.tasks[identity] = asyncio.create_task(self.run(command))
+                return status
 
     async def cancel(self, identity: uuid.UUID) -> TrainingRankImportStatus:
         async with self.lock:

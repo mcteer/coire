@@ -16,6 +16,7 @@ from coire_api.db import session_scope
 from coire_api.deps import SessionDep, SettingsDep
 from coire_api.placement.service import project_ledgers
 from coire_api.routes.instances import project_cluster_state
+from coire_core.errors import UpgradeForbidden
 from coire_core.models.console import (
     ConsoleAlert,
     ConsoleCapabilities,
@@ -51,7 +52,18 @@ async def cached_snapshot(
             _projections.add(1)
             cache.snapshot = snapshot.model_copy(deep=True)
             cache.expires_at = time.monotonic() + settings.console_snapshot_interval_s
-        return cache.snapshot.model_copy(deep=True)
+        result = cache.snapshot.model_copy(deep=True)
+    if settings.upgrades_enabled:
+        from coire_api.upgrades.authorization import authorize
+
+        async with session_scope() as session:
+            try:
+                await authorize(session, principal)
+            except UpgradeForbidden:
+                result.capabilities.upgrades = False
+            else:
+                result.capabilities.upgrades = True
+    return result
 
 
 def project_core_capacity(observed_at: datetime) -> CoreHostCapacity:

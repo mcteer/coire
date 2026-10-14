@@ -25,7 +25,7 @@ import sys
 import threading
 import uuid
 from collections.abc import Callable
-from contextlib import suppress
+from contextlib import AbstractContextManager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Protocol
@@ -48,6 +48,7 @@ from coire_core.models.training_node import (
     TrainingArtifactManifest,
     TrainingMeasurementPrepare,
 )
+from coire_core.models.upgrades import StudioName, UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
 from coire_node import __version__
 from coire_node.benchmarks import BenchmarkRunner
@@ -60,6 +61,7 @@ from coire_node.image_jobs import ImageJobJournal
 from coire_node.image_runtime.supervisor import ImageProcessSupervisor, ImageProcessUnavailable
 from coire_node.jobs import JobSupervisor
 from coire_node.link_probes import LinkProbeRunner
+from coire_node.maintenance import NodeMaintenance
 from coire_node.reservations import ReservationLedger, TrainingDiskBudget
 from coire_node.routes import benchmarks as benchmark_routes
 from coire_node.routes import engines as engines_routes
@@ -77,6 +79,7 @@ from coire_node.routes import workspaces as workspaces_routes
 from coire_node.runs import RunManager
 from coire_node.sharding import ShardGroupManager
 from coire_node.store import Store
+from coire_node.upgrade_runtime import managed_worker_environment
 
 if TYPE_CHECKING:
     from coire_node.training.artifacts import TrainingArtifacts
@@ -117,6 +120,7 @@ class AccountedArtifactImporter(ArtifactImporter):
         training: TrainingSupervisor,
         max_bytes: int = 200 * 1024**3,
         disk_floor_bytes: int = 20 * 1024**3,
+        admission_context: Callable[[], AbstractContextManager[None]] | None = None,
     ) -> None:
         super().__init__(
             artifacts,
@@ -124,6 +128,7 @@ class AccountedArtifactImporter(ArtifactImporter):
             port=port,
             max_bytes=max_bytes,
             disk_floor_bytes=disk_floor_bytes,
+            admission_context=admission_context,
         )
         self.reservations = reservations
         self.training = training
@@ -260,6 +265,10 @@ def hardware_sha256(settings: Settings, gpu_cores: int | None) -> str:
         "gpu_cores": gpu_cores,
         "agent_version": __version__,
     }
+    if settings.upgrades_enabled:
+        from coire_node.upgrade_runtime import running_runtime_sha256
+
+        value["native_runtime_sha256"] = running_runtime_sha256(settings)
     return hashlib.sha256(
         json.dumps(
             value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
@@ -486,6 +495,7 @@ def create_app(
     training_measurements: MeasurementSupervisor | None = None,
     training_adapter_extractor: AdapterExtractor | None = None,
     training_rank_importer: RankImporter | None = None,
+    maintenance: NodeMaintenance | None = None,
 ) -> FastAPI:
     """Build the agent app for one listener.
 
@@ -495,6 +505,7 @@ def create_app(
     surest way to guarantee that is for the route not to be there.
     """
     app = FastAPI(title=f"coire-node ({listener.value})", docs_url=None, openapi_url=None)
+    app.state.maintenance = maintenance
     app.state.settings = settings
     app.state.store = store
     app.state.jobs = jobs
@@ -525,6 +536,12 @@ def create_app(
             raise HTTPException(503, "training is disabled")
 
     app.state.require_node_token = require_node_token
+    if settings.upgrades_enabled and maintenance is not None and listener is not NetworkPath.DATA:
+        from coire_node.routes.upgrades import router as upgrades_router
+        from coire_node.upgrade_control import NativeUpgradeControl
+
+        app.state.upgrades = NativeUpgradeControl(settings)
+        app.include_router(upgrades_router, dependencies=[Depends(require_node_token)])
     if training_rank_importer is not None:
         from coire_node.routes.training_components import control_router as components_control
         from coire_node.routes.training_components import data_router as components_data
@@ -558,7 +575,7 @@ def create_app(
     app.add_middleware(_ListenerPathMiddleware, settings=settings, listener=listener)
 
     if listener is not NetworkPath.DATA:
-        health_key: tuple[datetime, float] | None = None
+        health_key: tuple[datetime, float, str | None] | None = None
         health_response: Response | None = None
 
         @app.get(
@@ -570,7 +587,20 @@ def create_app(
             nonlocal health_key, health_response
             legacy_path = listener if isinstance(listener, NodePath) else NodePath.MESH
             status_value = collector.latest(path=legacy_path)
-            key = (status_value.sampled_at, status_value.uptime_seconds)
+            if settings.upgrades_enabled:
+                selected = app.state.upgrades.observed()
+                status_value = status_value.model_copy(
+                    update={
+                        "runtime_sha256": selected.runtime.environment_sha256
+                        if selected is not None
+                        else None
+                    }
+                )
+            key = (
+                status_value.sampled_at,
+                status_value.uptime_seconds,
+                status_value.runtime_sha256,
+            )
             if health_key == key and health_response is not None:
                 return health_response
             wire_status: NodeStatus | NodeStatusV2 = status_value
@@ -662,11 +692,35 @@ async def serve(
     # Feature 001's collaborators, built once and shared by both listeners.
     store = Store(settings.node_store_dir)
     store.ensure_root()
-    jobs = JobSupervisor(settings, store)
     grants = Grants()
     # Bare engines are private implementation details of coire-node. The authenticated
     # control listener is their sole network boundary; no engine port binds to Wi-Fi.
     memory_lock = threading.RLock()
+    maintenance: NodeMaintenance | None = None
+    if settings.upgrades_enabled:
+        if settings.node_name not in {"coire-edge-a", "coire-edge-b"}:
+            raise ValueError("Managed upgrades require a registered Studio identity")
+        node: StudioName = (
+            "coire-edge-a" if settings.node_name == "coire-edge-a" else "coire-edge-b"
+        )
+        maintenance = NodeMaintenance(
+            Path(settings.node_state_dir) / "upgrades", node, lock=memory_lock
+        )
+    jobs = JobSupervisor(
+        settings,
+        store,
+        memory_lock=memory_lock,
+        admission_check=maintenance.check if maintenance else None,
+    )
+    if maintenance is not None:
+
+        def collect_acquisition() -> UpgradeOwnerInventory:
+            inventory = jobs.upgrade_inventory()
+            return inventory.model_copy(
+                update={"entries": inventory.entries + grants.upgrade_entries()}
+            )
+
+        maintenance.register("acquisition", collect_acquisition)
     image_workers: ImageProcessSupervisor | None = None
     reservations: ReservationLedger | None = None
     training: TrainingSupervisor | None = None
@@ -681,6 +735,7 @@ async def serve(
         store,
         "127.0.0.1",
         memory_lock=memory_lock,
+        admission_check=maintenance.check if maintenance else None,
         additional_committed_bytes=lambda: (
             (image_workers.committed_bytes() if image_workers else 0)
             + (reservations.held_bytes() if reservations else 0)
@@ -688,6 +743,8 @@ async def serve(
             + (measurements.committed_bytes() if measurements else 0)
         ),
     )
+    if maintenance is not None:
+        maintenance.register("engines", engines.upgrade_inventory)
     image_workers = ImageProcessSupervisor(
         settings,
         store,
@@ -702,9 +759,21 @@ async def serve(
             )
         ),
         memory_lock=memory_lock,
+        admission_check=maintenance.check if maintenance else None,
     )
     image_journal = ImageJobJournal(settings.node_state_dir, hostname)
     image_dispatcher = ImageNodeDispatcher(image_journal, image_workers)
+    if maintenance is not None:
+
+        def collect_images() -> UpgradeOwnerInventory:
+            assert image_workers is not None
+            return UpgradeOwnerInventory(
+                owner="images",
+                status="complete",
+                entries=image_workers.upgrade_entries() + image_journal.upgrade_entries(),
+            )
+
+        maintenance.register("images", collect_images)
     reservations = ReservationLedger(
         settings,
         store,
@@ -721,13 +790,62 @@ async def serve(
         ),
         disk_quota_bytes=settings.training_artifact_quota_bytes,
         disk_usage_bytes=disk_budget.committed_bytes,
+        admission_check=maintenance.check if maintenance else None,
     )
+    if maintenance is not None:
+        maintenance.register("reservations", reservations.upgrade_inventory)
     disk_budget.ledger = reservations
-    shard_groups = ShardGroupManager(settings, store)
+    shard_groups = ShardGroupManager(
+        settings,
+        store,
+        memory_lock=memory_lock,
+        admission_check=maintenance.check if maintenance else None,
+    )
+    if maintenance is not None:
+        maintenance.register("shards", shard_groups.upgrade_inventory)
     link_probes = LinkProbeRunner(settings)
+    if maintenance is not None:
+
+        def collect_probes() -> UpgradeOwnerInventory:
+            from coire_node.upgrade_inventory import collective_entries, native_process_entries
+
+            entries = list(
+                native_process_entries(
+                    "probes",
+                    (
+                        "coire_node.link_probe_worker",
+                        "mlx_lm.benchmark",
+                        "coire_node.evaluation_tokenizer_worker",
+                        "coire_node.shard_capability_worker",
+                        "coire_node.upgrade_smoke",
+                    ),
+                )
+            )
+            entries.extend(collective_entries(Path(settings.node_state_dir)))
+            workspace_root = Path(settings.run_workspace_root)
+            if workspace_root.is_symlink():
+                raise ValueError("Probe workspace root is linked")
+            if workspace_root.exists():
+                for path in workspace_root.iterdir():
+                    if path.name.startswith(("eval-", "eval-output-")):
+                        entries.append(
+                            UpgradeInventoryEntry(
+                                owner="probes",
+                                kind="evaluation-workspace",
+                                work_id=path.name,
+                                state="cleaning",
+                            )
+                        )
+            return UpgradeOwnerInventory(owner="probes", status="complete", entries=tuple(entries))
+
+        maintenance.register("probes", collect_probes)
     benchmarks = BenchmarkRunner(settings, store)
     docker = DockerAPI(settings.run_docker_socket)
-    runs = RunManager(settings, docker)
+    runs = RunManager(
+        settings, docker, admission_context=maintenance.admission if maintenance else None
+    )
+    if maintenance is not None:
+        maintenance.register_async("runs", runs.upgrade_inventory)
     training_artifacts: TrainingArtifacts | None = None
     training_artifact_importer: ArtifactImporter | None = None
     training_analyses: AnalysisSupervisor | None = None
@@ -742,6 +860,8 @@ async def serve(
         )
         training = TrainingSupervisor(
             journal,
+            runtime_environment=managed_worker_environment(settings),
+            admission_check=maintenance.check if maintenance else None,
             otlp_endpoint=settings.otlp_endpoint,
             interpreter=Path(sys.executable),
             store_root=store.root,
@@ -780,13 +900,18 @@ async def serve(
             max_bytes=settings.training_artifact_quota_bytes,
             disk_floor_bytes=settings.training_artifact_disk_floor_bytes,
             reservations=reservations,
+            admission_context=maintenance.admission if maintenance else None,
         )
         if measurement_active_leases is None:
             lease_reader = TrainingLeaseSnapshotReader(settings, node=hostname)
             measurement_active_leases = lease_reader
+            if maintenance is not None:
+                maintenance.register_async("training-lifecycle", lease_reader.upgrade_inventory)
         disk_budget.journals.append(journal)
         from coire_node.register import read_gpu_cores
 
+        if maintenance is not None:
+            maintenance.register("training", training.upgrade_inventory)
         gpu_cores = await asyncio.to_thread(read_gpu_cores)
         measurement_journal = TrainingJournal(
             Path(settings.node_state_dir) / "training" / "measurements",
@@ -795,6 +920,8 @@ async def serve(
         )
         measurements = MeasurementSupervisor(
             measurement_journal,
+            runtime_environment=managed_worker_environment(settings),
+            admission_check=maintenance.check if maintenance else None,
             otlp_endpoint=settings.otlp_endpoint,
             interpreter=Path(sys.executable),
             store_root=store.root,
@@ -830,6 +957,8 @@ async def serve(
         )
         disk_budget.journals.append(measurement_journal)
         measurements.statuses()
+        if maintenance is not None:
+            maintenance.register("measurements", measurements.upgrade_inventory)
     if training is not None:
         from coire_node.training.artifacts import TrainingArtifacts
 
@@ -843,11 +972,40 @@ async def serve(
             port=settings.node_data_listen_port,
             max_bytes=settings.training_artifact_quota_bytes,
             disk_floor_bytes=settings.training_artifact_disk_floor_bytes,
+            admission_context=maintenance.admission if maintenance else None,
             reservations=reservations,
             training=training,
         )
         extractor = AccountedAdapterExtractor(training_artifacts, reservations, settings, store)
-        training_analyses = AnalysisSupervisor(settings, reservations)
+        training_analyses = AnalysisSupervisor(
+            settings, reservations, admission_context=maintenance.admission if maintenance else None
+        )
+        if maintenance is not None:
+            maintenance.register("analysis", training_analyses.upgrade_inventory)
+
+            def collect_artifacts() -> UpgradeOwnerInventory:
+                assert training_artifact_importer is not None and extractor is not None
+                entries = list(training_artifact_importer.upgrade_entries())
+                entries.extend(extractor.upgrade_entries())
+                if rank_importer is not None:
+                    entries.extend(rank_importer.upgrade_entries())
+                # Published immutable bytes are standing data. Incomplete staging
+                # remains an obligation even if its command journal was lost.
+                for path in training_artifact_importer.artifacts.root.iterdir():
+                    if path.name.startswith((".import-", ".extract-")):
+                        entries.append(
+                            UpgradeInventoryEntry(
+                                owner="artifacts",
+                                kind="orphan-staging",
+                                work_id=path.name,
+                                state="cleaning",
+                            )
+                        )
+                return UpgradeOwnerInventory(
+                    owner="artifacts", status="complete", entries=tuple(entries)
+                )
+
+            maintenance.register("artifacts", collect_artifacts)
 
         def artifact_referenced(identity: uuid.UUID) -> bool:
             # Fail closed on any live/uncertain trainer. Core decides which old
@@ -918,7 +1076,7 @@ async def serve(
             logger.info("adopted image worker %s after restart", adopted_image.instance_id)
     if adopted:
         logger.info("adopted %d running engine(s) after restart", len(adopted))
-    resumed = jobs.resume_all()
+    resumed = jobs.resume_all() if maintenance is None or not maintenance.blocked() else 0
     if resumed:
         logger.info("resumed %d acquisition job(s)", resumed)
     engines.start_health_loop()
@@ -947,6 +1105,7 @@ async def serve(
                         store=store,
                         jobs=jobs,
                         engines=engines,
+                        maintenance=maintenance,
                         image_workers=image_workers,
                         image_dispatcher=image_dispatcher,
                         grants=grants,
@@ -983,6 +1142,7 @@ async def serve(
                             store=store,
                             jobs=jobs,
                             engines=engines,
+                            maintenance=maintenance,
                             image_workers=image_workers,
                             image_dispatcher=image_dispatcher,
                             grants=grants,
@@ -1014,6 +1174,7 @@ async def serve(
                         store=store,
                         jobs=jobs,
                         engines=engines,
+                        maintenance=maintenance,
                         image_workers=image_workers,
                         image_dispatcher=image_dispatcher,
                         grants=grants,
@@ -1049,6 +1210,7 @@ async def serve(
                         store=store,
                         jobs=jobs,
                         engines=engines,
+                        maintenance=maintenance,
                         image_workers=image_workers,
                         image_dispatcher=image_dispatcher,
                         grants=grants,
@@ -1088,7 +1250,36 @@ async def serve(
 
     failover_controller = build_controller(settings, docker)
     if failover_controller is not None:
+        if maintenance is not None:
+            maintenance.register_async("failover", failover_controller.upgrade_inventory)
         await failover_controller.start()
+    elif maintenance is not None:
+
+        async def collect_inactive_failover() -> UpgradeOwnerInventory:
+            observed = await docker.inspect_container("coire-failover")
+            if observed is None:
+                return UpgradeOwnerInventory(owner="failover", status="complete")
+            state = observed.get("State")
+            if not isinstance(state, dict) or type(state.get("Running")) is not bool:
+                return UpgradeOwnerInventory(
+                    owner="failover", status="unknown", reason="frontend_state_uncertain"
+                )
+            return UpgradeOwnerInventory(
+                owner="failover",
+                status="complete",
+                entries=(
+                    UpgradeInventoryEntry(
+                        owner="failover",
+                        kind="failover-service",
+                        work_id="coire-failover",
+                        state="active",
+                    ),
+                )
+                if state["Running"]
+                else (),
+            )
+
+        maintenance.register_async("failover", collect_inactive_failover)
     image_sweep_stop = asyncio.Event()
     image_sweep_task = asyncio.create_task(
         _sweep_terminal_image_scratch(image_dispatcher, image_sweep_stop),

@@ -1,0 +1,30 @@
+# Agent-run isolated Studio acceptance only. Requires AGENTS.md network approval.
+# Approved by the user. V19 was retired with its failed fences retained. The
+# same approved addresses/ports were applied to fresh V20 and V21; no additional
+# interfaces, engine listeners or production configuration were changed.
+applied_project: coire-019-core-cohort-f2d99146e6
+applied_fixture_root: /Users/mcteer/coire-019-acceptance/native-upgrade-lab-v21
+project: coire-019-core-cohort-b1f19b0f43
+fixture_root: /Users/mcteer/coire-019-acceptance/native-upgrade-lab-v19
+purpose: Real checkpoint and adapter replication over the existing Studio data fabric.
+change:
+  fixture_hosts_file: fixture-records/empty-hosts
+  contents: |
+    192.168.100.11 coire-edge-a.fabric
+    192.168.100.12 coire-edge-b.fabric
+  resulting_data_listeners:
+    coire-edge-a: 192.168.100.11:39261
+    coire-edge-b: 192.168.100.12:39261
+  control_listeners: 127.0.0.1:39260
+security:
+  existing_declared_fabric_interfaces_only: true
+  scoped_expiring_transfer_grants_required: true
+  source_peer_address_validation_preserved: true
+  engine_ports_private_to_node: true
+  production_launchd_and_runtime_pointers_untouched: true
+lifecycle:
+  - Cancel the failed isolated training trial through the authenticated admin API.
+  - Verify owned training/import processes are stopped before restarting fixture services.
+  - Write the private fixture hosts file; restart only verified fixture supervisors.
+  - Run native training, checkpoint replication and adapter preservation acceptance.
+  - Retire the isolated listeners after acceptance, retaining required evidence and artifacts.

@@ -37,6 +37,42 @@ def snapshot(clock: Clock, leases: dict[uuid.UUID, int]) -> NodeTrainingLeaseSna
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("jobs", [None, (), ("01M4PZBKVWEZZX5T638SRJR2S8",)])
+async def test_upgrade_drain_requires_explicit_finished_training_lifecycle(
+    tmp_path: Path, jobs: tuple[str, ...] | None
+) -> None:
+    agent = Agent(tmp_path / "node", node_name="coire-edge-a")
+    clock = Clock()
+    body = snapshot(clock, {}).model_dump(mode="json")
+    if jobs is not None:
+        body["unfinished_jobs"] = list(jobs)
+    reader = TrainingLeaseSnapshotReader(
+        agent.settings,
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=body)),
+        now=clock.now,
+        monotonic=clock.monotonic,
+    )
+    try:
+        inventory = await reader.upgrade_inventory()
+        assert inventory.status == ("unknown" if jobs is None else "complete")
+        assert tuple(entry.work_id for entry in inventory.entries) == (jobs or ())
+        assert all(entry.state == "active" for entry in inventory.entries)
+        clock.mono += 5
+        # Replaying the same wall-clock observation cannot renew monotonic validity.
+        assert (await reader.upgrade_inventory()).status == "unknown"
+    finally:
+        await reader.aclose()
+        agent.close()
+
+
+def test_training_lifecycle_snapshot_rejects_duplicate_ownership() -> None:
+    body = snapshot(Clock(), {}).model_dump(mode="json")
+    body["unfinished_jobs"] = ["01M4PZBKVWEZZX5T638SRJR2S8"] * 2
+    with pytest.raises(ValueError, match="duplicate jobs"):
+        NodeTrainingLeaseSnapshot.model_validate(body)
+
+
+@pytest.mark.asyncio
 async def test_authenticated_fetch_exact_scope_and_missing_instances_refuse(tmp_path: Path) -> None:
     agent = Agent(tmp_path / "node", node_name="coire-edge-a")
     clock = Clock()
@@ -95,6 +131,119 @@ async def test_snapshot_scope_and_time_bounds(tmp_path: Path, case: str) -> None
     try:
         with pytest.raises(TrainingConflict):
             reader.accept(valid.model_copy(update=changes[case]))
+        with pytest.raises(TrainingConflict):
+            reader(set())
+    finally:
+        await reader.aclose()
+        agent.close()
+
+
+@pytest.mark.asyncio
+async def test_fetch_waits_for_same_future_observation_without_reissuing_or_renewing(
+    tmp_path: Path,
+) -> None:
+    agent = Agent(tmp_path / "node", node_name="coire-edge-a")
+    sampled = datetime.now(UTC) + timedelta(milliseconds=30)
+    original = NodeTrainingLeaseSnapshot(
+        node="coire-edge-a",
+        sampled_at=sampled,
+        expires_at=sampled + timedelta(seconds=5),
+        active_leases={},
+        unfinished_jobs=(),
+    )
+    calls: list[httpx.Request] = []
+
+    def fetch(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=original.model_dump(mode="json"))
+
+    reader = TrainingLeaseSnapshotReader(agent.settings, transport=httpx.MockTransport(fetch))
+    try:
+        await reader.refresh()
+        assert datetime.now(UTC) >= sampled
+        assert reader.snapshot == original
+        assert len(calls) == 1
+        assert reader(set()) == 0
+        assert (
+            reader.deadline - reader.monotonic()
+            <= (original.expires_at - datetime.now(UTC)).total_seconds() + 0.01
+        )
+    finally:
+        await reader.aclose()
+        agent.close()
+
+
+@pytest.mark.asyncio
+async def test_early_timer_wakeup_rechecks_same_snapshot_before_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    agent = Agent(tmp_path / "node", node_name="coire-edge-a")
+    clock = Clock()
+    sampled = clock.wall + timedelta(milliseconds=3)
+    original = NodeTrainingLeaseSnapshot(
+        node="coire-edge-a",
+        sampled_at=sampled,
+        expires_at=sampled + timedelta(seconds=5),
+        active_leases={},
+        unfinished_jobs=(),
+    )
+    calls: list[httpx.Request] = []
+    sleeps: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def early_sleep(delay: float) -> None:
+        sleeps.append(delay)
+        elapsed = delay / 2 if len(sleeps) == 1 else delay
+        clock.wall += timedelta(seconds=elapsed)
+        clock.mono += elapsed
+        await real_sleep(0)
+
+    def fetch(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(200, json=original.model_dump(mode="json"))
+
+    monkeypatch.setattr("coire_node.training.lease_snapshot.asyncio.sleep", early_sleep)
+    reader = TrainingLeaseSnapshotReader(
+        agent.settings,
+        transport=httpx.MockTransport(fetch),
+        now=clock.now,
+        monotonic=clock.monotonic,
+    )
+    try:
+        await reader.refresh()
+        assert len(calls) == 1 and len(sleeps) == 2
+        assert sleeps == pytest.approx([0.003, 0.0015])
+        assert clock.wall == sampled and reader.snapshot == original
+        assert reader(set()) == 0
+        assert reader.deadline == pytest.approx(clock.mono + 5)
+    finally:
+        await reader.aclose()
+        agent.close()
+
+
+@pytest.mark.asyncio
+async def test_frozen_future_clock_refuses_within_original_fetch_budget(tmp_path: Path) -> None:
+    agent = Agent(tmp_path / "node", node_name="coire-edge-a")
+    clock = Clock()
+    future = snapshot(clock, {}).model_copy(
+        update={
+            "sampled_at": clock.wall + timedelta(seconds=3),
+            "expires_at": clock.wall + timedelta(seconds=8),
+        }
+    )
+    reader = TrainingLeaseSnapshotReader(
+        agent.settings,
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json=future.model_dump(mode="json"))
+        ),
+        now=clock.now,
+    )
+    try:
+        started = reader.monotonic()
+        with pytest.raises(TimeoutError):
+            await reader.refresh()
+        assert reader.monotonic() - started < 2.5
+        assert reader.snapshot is None
         with pytest.raises(TrainingConflict):
             reader(set())
     finally:

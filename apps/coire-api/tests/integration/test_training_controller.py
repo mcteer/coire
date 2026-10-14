@@ -171,6 +171,24 @@ async def controller_db(
         await engine.dispose()
 
 
+@pytest.mark.parametrize("state", ["finalizing", "succeeded", "failed", "cancelled", "paused"])
+async def test_node_lifecycle_keeps_stopped_attempt_finalization_busy(
+    controller_db: async_sessionmaker[AsyncSession], state: str
+) -> None:
+    from coire_api.training.lease_snapshots import node_lease_snapshot
+
+    async with controller_db.begin() as session:
+        job = await session.get(TrainingJobRow, JOB)
+        attempt = await session.get(TrainingAttemptRow, ATTEMPT)
+        assert job is not None and attempt is not None
+        job.state = state
+        attempt.state = "stopped"
+        attempt.stopped_at = datetime.now(UTC)
+    async with controller_db.begin() as session:
+        snapshot = await node_lease_snapshot(session, "coire-edge-a")
+        assert snapshot.unfinished_jobs == ((JOB,) if state == "finalizing" else ())
+
+
 class SimulatedTransport:
     """No engines: exercise actual DB journal/proofs around uncertain node I/O."""
 
@@ -731,3 +749,107 @@ async def test_preparation_budget_does_not_inherit_the_stop_budget(
     await controller._dispatch(JOB, controls_only=False)
     assert len(transport.deliveries) == 2
     assert sorted(budgets) == ([5.0, 30.0] if preference else [5.0, 5.0])
+
+
+@pytest.mark.parametrize(
+    "state,expected",
+    [
+        ("queued", 15),
+        ("running", 15),
+        ("recovering", 15),
+        ("finalizing", 15),
+        ("paused", 900),
+        ("succeeded", 900),
+        ("failed", 900),
+        ("cancelled", 900),
+    ],
+)
+async def test_upgrade_captures_training_safe_drain_before_checkpoint_wait(
+    controller_db: async_sessionmaker[AsyncSession], state: str, expected: int
+) -> None:
+    from coire_api.upgrades.acceptance import capture_drain_budget
+
+    async with controller_db.begin() as session:
+        job = await session.get(TrainingJobRow, JOB)
+        assert job is not None
+        job.state = state
+    async with controller_db.begin() as session:
+        assert await capture_drain_budget(session, 900) == expected
+        assert await capture_drain_budget(session, 5) == 5
+
+
+@pytest.mark.parametrize(
+    "operation,command_state,terminal,stopped,superseded,blocked",
+    [
+        ("node.training.lease", "pending", True, True, False, False),
+        ("node.training.lease", "dispatching", True, True, False, True),
+        ("node.training.lease", "pending", False, True, False, True),
+        ("node.training.lease", "pending", True, False, False, True),
+        ("node.artifact.import", "dispatching", True, True, True, False),
+        ("node.artifact.import", "dispatching", True, True, False, True),
+        ("node.artifact.import", "dispatching", True, False, True, True),
+        ("node.artifact.import", "dispatching", False, True, True, True),
+    ],
+)
+async def test_core_drain_retains_uncertainty_but_preserves_inert_command_history(
+    controller_db: async_sessionmaker[AsyncSession],
+    operation: str,
+    command_state: str,
+    terminal: bool,
+    stopped: bool,
+    superseded: bool,
+    blocked: bool,
+) -> None:
+    from coire_api.upgrades.inventory import job_inventory
+
+    identity = uuid.uuid4()
+    async with controller_db.begin() as session:
+        job = await session.get(TrainingJobRow, JOB)
+        attempt = await session.get(TrainingAttemptRow, ATTEMPT)
+        assert job is not None and attempt is not None
+        job.state = "succeeded" if terminal else "running"
+        if superseded:
+            job.fence = attempt.fence + 1
+        if stopped:
+            for participant in (await session.scalars(select(TrainingParticipantRow))).all():
+                node = await session.get(NodeRow, participant.node_id)
+                assert node is not None
+                await record_stop_proof(
+                    session,
+                    ATTEMPT,
+                    TrainingStopReceipt(
+                        attempt_id=ATTEMPT,
+                        fence=attempt.fence,
+                        node=node.name,
+                        pid=participant.pid,
+                        process_create_time=participant.process_create_time,
+                        stopped=True,
+                        observed_at=datetime.now(UTC),
+                    ),
+                )
+        session.add(
+            TrainingCommandRow(
+                id=identity,
+                actor_user_id=job.owner_user_id,
+                idempotency_key=str(identity),
+                operation=operation,
+                subject_id="coire-edge-a",
+                job_id=JOB,
+                attempt_id=ATTEMPT,
+                request_sha256=DIGEST,
+                payload={},
+                state=command_state,
+            )
+        )
+    async with controller_db.begin() as session:
+        owners = await job_inventory(session)
+        entries = [entry for owner in owners for entry in owner.entries]
+        assert (
+            any(
+                entry.kind == "training-command" and entry.work_id == str(identity)
+                for entry in entries
+            )
+            is blocked
+        )
+        retained = await session.get(TrainingCommandRow, identity)
+        assert retained is not None and retained.state == command_state and retained.payload == {}

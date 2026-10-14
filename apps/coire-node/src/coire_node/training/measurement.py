@@ -50,6 +50,7 @@ from coire_core.models.training_node import (
     parse_training_measurement_observation,
 )
 from coire_core.models.training_types import TrainingId
+from coire_core.models.upgrades import UpgradeOwnerInventory
 from coire_core.settings import get_settings
 from coire_node.footprint import phys_footprint
 from coire_node.metrics import read_thermal_state
@@ -292,6 +293,8 @@ class MeasurementSupervisor(TrainingSupervisor):
         jaccl_hostfile: Path | None = None,
         jaccl_coordinator_port: int = 32323,
         otlp_endpoint: str | None = None,
+        runtime_environment: dict[str, str] | None = None,
+        admission_check: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(
             journal,
@@ -304,9 +307,14 @@ class MeasurementSupervisor(TrainingSupervisor):
             jaccl_hostfile=jaccl_hostfile or Path(get_settings().sharding_jaccl_hostfile),
             jaccl_coordinator_port=jaccl_coordinator_port,
             otlp_endpoint=otlp_endpoint,
+            runtime_environment=runtime_environment,
+            admission_check=admission_check,
         )
         self.accelerator_guard = accelerator_guard
         self.hardware_sha256 = hardware_sha256
+
+    def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        return self._upgrade_inventory("measurements", ("coire_node.training.measurement",))
 
     def argv(self, value: dict[str, Any]) -> list[str]:
         argv = super().argv(value)
@@ -392,6 +400,7 @@ class MeasurementSupervisor(TrainingSupervisor):
                 "Two-rank measurement needs the trainer's non-durable measurement hook"
             )
         with self.journal.lock:
+            self._admission_check()
             rejected = self.rejected_probe(command.prepare.attempt_id)
             if rejected is not None:
                 if rejected != command:

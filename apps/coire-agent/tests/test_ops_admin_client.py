@@ -43,6 +43,7 @@ def test_ops_client_has_no_confirmation_or_generic_request_authority() -> None:
     public = {name for name in dir(AdminClient) if not name.startswith("_")}
     assert public == {
         "heartbeat_session",
+        "upgrade_admission",
         "read_snapshot",
         "register_session",
         "submit_proposal",

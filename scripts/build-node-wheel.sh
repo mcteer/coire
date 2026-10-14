@@ -43,13 +43,17 @@ if [[ "$LOCAL_ONLY" -eq 1 ]]; then
   echo "locked wheels staged in dist/node-wheels; no Studio contacted"
   exit 0
 fi
-ssh "mcteer@${CONTROL_TARGET}" 'mkdir -p "$HOME/coire-stage/dist/node-wheels" "$HOME/coire-stage/apps/coire-node" "$HOME/coire-stage/deploy/launchd"' \
+ssh "mcteer@${CONTROL_TARGET}" 'mkdir -p "$HOME/coire-stage/dist/node-wheels" "$HOME/coire-stage/apps/coire-node/src/coire_node" "$HOME/coire-stage/deploy/launchd"' \
   || { echo "control path to $NODE is unreachable" >&2; exit 1; }
 scp dist/*.whl "mcteer@${CONTROL_TARGET}:coire-stage/dist/"
 scp dist/node-wheels/*.whl dist/node-wheels/requirements.txt \
   "mcteer@${CONTROL_TARGET}:coire-stage/dist/node-wheels/"
 scp apps/coire-node/install.sh "mcteer@${CONTROL_TARGET}:coire-stage/apps/coire-node/"
 scp apps/coire-node/install_runtime.py "mcteer@${CONTROL_TARGET}:coire-stage/apps/coire-node/"
+scp apps/coire-node/src/coire_node/__init__.py apps/coire-node/src/coire_node/upgrade_runtime.py \
+  "mcteer@${CONTROL_TARGET}:coire-stage/apps/coire-node/src/coire_node/"
 scp deploy/launchd/com.coire.node.plist.template "mcteer@${CONTROL_TARGET}:coire-stage/deploy/launchd/"
+scp deploy/launchd/com.coire.upgrade-guard.plist.template \
+  "mcteer@${CONTROL_TARGET}:coire-stage/deploy/launchd/"
 echo "staged on ${NODE}:~/coire-stage — after creating /opt/coire, run:"
 echo "  ~/coire-stage/apps/coire-node/install.sh --wheel-dir ~/coire-stage/dist"

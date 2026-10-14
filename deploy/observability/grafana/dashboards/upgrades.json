@@ -1,0 +1,693 @@
+{
+  "uid": "coire-upgrades",
+  "title": "Coire upgrades and recovery",
+  "editable": false,
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": [
+    "coire",
+    "upgrades"
+  ],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Retained upgrade operations",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind) (coire_upgrade_operations)",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Age since durable progress",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max by (kind) (coire_upgrade_phase_age_seconds)",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Uncertain restoration",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind) (coire_upgrade_recovery_required)",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Independent executor readiness",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max(coire_upgrade_executor_ready)",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Executor heartbeat age",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max(coire_upgrade_executor_heartbeat_age_seconds)",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Receipt ingestion outcomes",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind, outcome) (rate(coire_upgrade_receipt_ingest_attempts_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Original executor deadlines exceeded",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max by (boundary) (coire_upgrade_executor_deadline_overdue_seconds)",
+          "refId": "A",
+          "legendFormat": "{{boundary}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Original executor handover deadlines",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max by (boundary) (coire_upgrade_handover_deadline_overdue_seconds)",
+          "refId": "A",
+          "legendFormat": "{{boundary}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Failed receipt observations",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind, phase) (rate(coire_upgrade_failure_observations_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Mean terminal operation duration",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (kind, phase) (rate(coire_upgrade_operation_duration_seconds_sum[5m])) / sum by (kind, phase) (rate(coire_upgrade_operation_duration_seconds_count[5m]))",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "title": "Retained maintenance age",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 48
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max by (kind) (coire_upgrade_maintenance_age_seconds)",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "title": "Recovery-required age",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 48
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "max by (kind) (coire_upgrade_recovery_age_seconds)",
+          "refId": "A",
+          "legendFormat": "{{kind}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "title": "Successor controller outcomes (5m; not qualification)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (node, outcome) (increase(coire_upgrade_recovery_successor_controller_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{node}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "title": "Retirement observations and stop-budget refusals (5m; not command success)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 64
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (increase(coire_upgrade_recovery_stop_reconciliation_total[5m]))",
+          "refId": "A",
+          "legendFormat": "reconciliation {{outcome}}"
+        },
+        {
+          "expr": "sum(increase(coire_upgrade_recovery_stop_budget_total{outcome=\"refused\"}[5m]))",
+          "refId": "B",
+          "legendFormat": "stop budget refused"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "title": "Interrupted collective cleanup outcomes (5m)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 56
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (node, outcome) (increase(coire_upgrade_collective_cleanup_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{node}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "title": "Recovery cancellations (5m; original obligations retained)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 80
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(coire_upgrade_recovery_cancellations_total{outcome=\"cancelled\"}[5m]))",
+          "refId": "A",
+          "legendFormat": "cancelled; maintenance retained"
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "title": "Cold recovery effects (5m; serving qualification remains separate)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 88
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (node, outcome) (increase(coire_upgrade_cold_recovery_effects_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{node}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "title": "Committed cold recovery transitions (5m; upgrade remains failed)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 96
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "sum by (node, phase) (increase(coire_upgrade_cold_recovery_transitions_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{node}} {{phase}}"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "title": "Required Source supervisor heartbeat age",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 104
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "expr": "(time() - coire_upgrade_source_supervisor_heartbeat_seconds) and on (node) (coire_upgrade_source_supervisor_required == 1)",
+          "refId": "A",
+          "legendFormat": "{{node}}"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "title": "Immutable recovery support launches (5m)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 112
+      },
+      "targets": [
+        {
+          "expr": "sum by (node, outcome) (increase(coire_upgrade_recovery_support_launches_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{node}} {{outcome}}"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Unstarted recovery closures; original holds retained (5m)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 120
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(coire_upgrade_unstarted_recovery_closures_total{outcome=\"closed\"}[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Cold continuations; original maintenance retained (5m)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 128
+      },
+      "targets": [
+        {
+          "expr": "sum by (node, outcome) (increase(coire_upgrade_cold_continuations_total[5m]))",
+          "refId": "A",
+          "legendFormat": "{{node}} {{outcome}}"
+        },
+        {
+          "expr": "sum(increase(coire_upgrade_cold_continuation_schema_preparations_total[5m]))",
+          "refId": "B",
+          "legendFormat": "schema preparations"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "title": "Terminal recovery host hold",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 136
+      },
+      "targets": [
+        {
+          "expr": "max(coire_upgrade_terminal_host_hold)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "title": "Unpublished preparation cancellation pending",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 140
+      },
+      "targets": [
+        {
+          "expr": "max(coire_upgrade_unclaimed_cancellation_pending)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "title": "Native terminal acknowledgement requests",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 144
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(coire_upgrade_native_terminal_requests_total[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "title": "Retained staging quarantine bytes",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 148
+      },
+      "targets": [
+        {
+          "expr": "sum(coire_upgrade_native_terminal_quarantined_bytes)",
+          "refId": "A"
+        }
+      ]
+    }
+  ]
+}

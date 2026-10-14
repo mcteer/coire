@@ -48,6 +48,8 @@ async def append_observation(
         os_version_a=observation.os_version_a,
         os_version_b=observation.os_version_b,
         engine_version=observation.engine_version,
+        runtime_sha256_a=observation.runtime_sha256_a,
+        runtime_sha256_b=observation.runtime_sha256_b,
         reason=observation.reason,
         observed_at=observation.observed_at,
     )
@@ -68,14 +70,15 @@ async def append_observation(
 
 
 async def link_projection(session: AsyncSession, settings: Settings) -> StudioLinkProjection:
-    nodes = {
-        row.id: row.name
-        for row in (
+    node_rows = list(
+        (
             await session.execute(
                 select(NodeRow).where(NodeRow.name.in_(["coire-edge-a", "coire-edge-b"]))
             )
         ).scalars()
-    }
+    )
+    nodes = {row.id: row.name for row in node_rows}
+    identities = {row.name: row.runtime_sha256 for row in node_rows}
     rows = (
         (
             await session.execute(
@@ -99,6 +102,8 @@ async def link_projection(session: AsyncSession, settings: Settings) -> StudioLi
             os_version_a=row.os_version_a,
             os_version_b=row.os_version_b,
             engine_version=row.engine_version,
+            runtime_sha256_a=row.runtime_sha256_a,
+            runtime_sha256_b=row.runtime_sha256_b,
             reason=row.reason,
             observed_at=row.observed_at,
         )
@@ -110,6 +115,12 @@ async def link_projection(session: AsyncSession, settings: Settings) -> StudioLi
         freshness_s=settings.link_probe_freshness_s,
         failures_before_down=settings.link_failures_before_down,
         successes_before_up=settings.link_successes_before_up,
+        current_runtime_pair=(
+            identities.get("coire-edge-a"),
+            identities.get("coire-edge-b"),
+        )
+        if settings.upgrades_enabled
+        else None,
     )
     link_eligible.set(1 if projection.tp_eligible else 0, {"mode": "tp"})
     link_eligible.set(1 if projection.fallback_state.value == "up" else 0, {"mode": "pp"})

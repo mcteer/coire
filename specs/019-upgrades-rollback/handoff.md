@@ -1,6 +1,6 @@
 # 019 Implementation Handoff
 
-Prepared 2026-10-10 for the user's requested model switch. **Planning only; implementation has not started.**
+Prepared 2026-10-10 for the user's requested model switch. **Implementation is now in progress.** This planning handoff is historical; use [tasks.md](tasks.md) and the [execution record](execution-record.md) for current completion and measured evidence. The feature has not met all release gates.
 
 ## Working copy and baseline
 
@@ -11,7 +11,7 @@ Prepared 2026-10-10 for the user's requested model switch. **Planning only; impl
 
 ## Planning artifacts
 
-Specify/clarify produced the revised [spec](spec.md) and [16-item quality checklist](checklists/requirements.md). Plan produced [plan](plan.md), [research](research.md), [data model](data-model.md), three [contracts](contracts/admin-api.md) and [validation guide](quickstart.md). [tasks.md](tasks.md) contains 68 unchecked implementation tasks and an explicit mapping of all 30 functional requirements and 12 success criteria. The final read-only analysis report is delivered in the completing conversation turn, rather than written by the analyze skill.
+Specify/clarify produced the revised [spec](spec.md) and [16-item quality checklist](checklists/requirements.md). Plan produced [plan](plan.md), [research](research.md), [data model](data-model.md), three [contracts](contracts/admin-api.md) and [validation guide](quickstart.md). At the planning handoff, [tasks.md](tasks.md) contained 68 unchecked implementation tasks and an explicit mapping of all 30 functional requirements and 12 success criteria. The final read-only analysis report is delivered in the completing conversation turn, rather than written by the analyze skill.
 
 Task breakdown: setup 2, foundation 16, US1 10, US2 7, US3 17, US4 7, cross-cutting/release gates 9. Four independent test-authoring pairs are marked parallel. US1 is the first demonstrable increment; all stories and release gates remain required.
 
@@ -21,7 +21,7 @@ The user explicitly confirmed a brief, announced gateway maintenance window afte
 
 A separate hardened Core executor provides recovery while API/scheduler containers are replaced. A coire-node bootstrap helper provides Studio recovery after agent or host restart. Both need independent, retained recovery ownership. The first managed source must already implement 019 bootstrap/admission/protocol support; the original 018-to-019 installation uses the existing controlled bootstrap workflow.
 
-**Network authorization:** An explicit question was sent in the planning conversation for adding only the executor to existing `coire-docker`, `coire-internal` and `coire-telemetry` networks. Consult the latest user reply before T002/T049. If approved, that authorization persists and must not be requested again. Without approval, continue independent implementation but do not apply those memberships. [contracts/executor.md](contracts/executor.md) is the concrete proposal. AGENTS.md requires asking before widening network settings. No public ports, proxy flags, raw socket mount, firewall rules or capabilities are to be added.
+**Network authorization:** The user explicitly approved [executor-topology-proposal.yaml](executor-topology-proposal.yaml) on 2026-10-11: only the executor joins existing `coire-docker`, `coire-internal` and `coire-telemetry` networks, with the reviewed private mounts, secret and hardened limits. This satisfies T002/T049's authorization gate and must not be requested again. [contracts/executor.md](contracts/executor.md) retains the fixed-operation authority. No public ports, proxy flags, raw socket mount, firewall rules or capabilities are to be added. Full composed acceptance is still required.
 
 Preserve the user's existing 018 decision: published datasets and trained adapters survive opt-out/deletion; unexported contributions remain excluded and are purged under existing policy. Automatic rollback is restricted to declared tested compatibility; it cannot silently cross pre-018 privacy or native journal boundaries.
 

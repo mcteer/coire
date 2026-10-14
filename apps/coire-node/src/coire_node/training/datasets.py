@@ -345,6 +345,11 @@ def load_evaluation_tokenizer(
     for name in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "MLX_TRUST_REMOTE_CODE"):
         os.environ.pop(name, None)
 
+    from coire_core.settings import Settings
+    from coire_node.upgrade_runtime import running_runtime_sha256
+
+    managed_runtime_sha = running_runtime_sha256(Settings())
+
     from mlx_lm.tokenizer_utils import load
 
     tokenizer_config: dict[str, object] = {
@@ -370,12 +375,17 @@ def load_evaluation_tokenizer(
         json.dumps(tokenizer_files, separators=(",", ":")).encode()
     ).hexdigest()
     template_sha = hashlib.sha256(template.encode()).hexdigest()
-    runtime_sha = hashlib.sha256(
-        json.dumps(
-            {name: version(name) for name in ("mlx", "mlx-lm", "transformers", "tokenizers")},
-            sort_keys=True,
-        ).encode()
-    ).hexdigest()
+    if managed_runtime_sha is not None:
+        from coire_node.training.runtime_identity import training_code_sha256
+
+        runtime_sha = training_code_sha256()
+    else:
+        runtime_sha = hashlib.sha256(
+            json.dumps(
+                {name: version(name) for name in ("mlx", "mlx-lm", "transformers", "tokenizers")},
+                sort_keys=True,
+            ).encode()
+        ).hexdigest()
     return cast(ChatTokenizer, tokenizer), tokenizer_sha, template_sha, runtime_sha
 
 

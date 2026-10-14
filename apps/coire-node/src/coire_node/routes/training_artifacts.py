@@ -7,7 +7,7 @@ import uuid
 from typing import Annotated, cast
 
 import anyio
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from opentelemetry import metrics, trace
 
@@ -23,6 +23,7 @@ from coire_core.models.training_node import (
     TrainingArtifactVerificationReceipt,
     TrainingArtifactVerifyRequest,
 )
+from coire_node.maintenance import require_admission
 from coire_node.training.artifacts import TrainingArtifacts
 from coire_node.training.importer import ArtifactImporter
 
@@ -46,7 +47,12 @@ def importer(request: Request) -> ArtifactImporter:
     return cast(ArtifactImporter, value)
 
 
-@control_router.post("/imports", response_model=TrainingArtifactImportStatus, status_code=202)
+@control_router.post(
+    "/imports",
+    response_model=TrainingArtifactImportStatus,
+    status_code=202,
+    dependencies=[Depends(require_admission)],
+)
 async def start_import(
     body: TrainingArtifactImportRequest, request: Request
 ) -> TrainingArtifactImportStatus:

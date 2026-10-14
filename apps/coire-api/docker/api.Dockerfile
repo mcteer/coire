@@ -42,8 +42,8 @@ COPY apps/coire-api apps/coire-api
 # --no-editable: workspace packages must be copied into the venv, not linked back to /build,
 # which does not exist in the runtime stage.
 RUN uv sync --frozen --no-dev --no-editable --package coire-api \
-  && mkdir -p /volume/originals /volume/derived /volume/blobs /volume/datasets \
-  && chmod 700 /volume/originals /volume/derived /volume/blobs /volume/datasets \
+  && mkdir -p /volume/originals /volume/derived /volume/blobs /volume/datasets /volume/upgrade-prepared /volume/upgrade-state \
+  && chmod 700 /volume/originals /volume/derived /volume/blobs /volume/datasets /volume/upgrade-prepared /volume/upgrade-state \
  && cp /usr/lib/aarch64-linux-gnu/libpcre2-8.so.0.11.2 \
        /app/.venv/lib/python3.13/site-packages/psycopg_binary.libs/libpcre2-8-8701a61e.so.0.7.1
 
@@ -79,6 +79,8 @@ COPY --from=builder --chown=65532:65532 /volume/originals /opt/coire/chat/origin
 COPY --from=builder --chown=65532:65532 /volume/derived /opt/coire/chat/derived
 COPY --from=builder --chown=65532:65532 /volume/blobs /opt/coire/blobs
 COPY --from=builder --chown=65532:65532 --chmod=0700 /volume/datasets /opt/coire/training/datasets
+COPY --from=builder --chown=65532:65532 --chmod=0700 /volume/upgrade-prepared /opt/coire/upgrades/prepared
+COPY --from=builder --chown=65532:65532 --chmod=0700 /volume/upgrade-state /opt/coire/upgrades/state
 # Existing recipe loaders resolve parents[5] from non-editable site-packages.
 COPY recipes/training/ /app/.venv/recipes/training/
 COPY recipes/images/ /app/.venv/recipes/images/

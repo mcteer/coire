@@ -180,7 +180,8 @@ class Handler(BaseHTTPRequestHandler):
                     "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
                 },
             ]
-            slow = "slow-stream" in str(request.get("messages", ""))
+            upgrade_stream = "upgrade-stream" in str(request.get("messages", ""))
+            slow = "slow-stream" in str(request.get("messages", "")) or upgrade_stream
             fail = "fail-stream" in str(request.get("messages", ""))
             if not slow and not fail:
                 body = (
@@ -208,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.close_connection = True
                     return
                 if slow:
-                    time.sleep(1.0)
+                    time.sleep(15.0 if upgrade_stream else 1.0)
             write_chunk(b"data: [DONE]\n\n")
             self.wfile.write(b"0\r\n\r\n")
             self.wfile.flush()

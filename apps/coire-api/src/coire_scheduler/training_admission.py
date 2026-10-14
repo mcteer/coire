@@ -296,6 +296,13 @@ async def admit_training(
     Unmeasured coexistence is deliberately queued. No inference victim is
     optimistically subtracted while its engine remains alive.
     """
+    from coire_core.settings import get_settings
+
+    if get_settings().upgrades_enabled:
+        from coire_scheduler.maintenance import allows_core_work
+
+        if not await allows_core_work(session, ("coire-api", "coire-scheduler")):
+            return None
     await authorize_live_training_action(
         session, Principal.model_validate(job.authorization_snapshot)
     )
@@ -324,6 +331,11 @@ async def admit_training(
     if len(nodes) != expected or len({n.id for n in nodes}) != expected:
         raise TrainingConflict("Admission participants differ from the immutable world size")
     await lock_nodes_for_admission(session, [n.id for n in nodes])
+    if get_settings().upgrades_enabled:
+        from coire_scheduler.maintenance import allows_admission
+
+        if not await allows_admission(session, [node.id for node in nodes]):
+            return None
     now = datetime.now(UTC)
     if job.queue_deadline_at <= now:
         await admission_state(session, job, "failed", "queue_timeout")
@@ -336,7 +348,6 @@ async def admit_training(
         return None
     if expected == 2:
         from coire_api.sharding import link_projection
-        from coire_core.settings import get_settings
 
         if not (await link_projection(session, get_settings())).tp_eligible:
             await admission_state(session, job, job.state, "node_unreachable")

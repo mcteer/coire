@@ -106,6 +106,7 @@ async def _place_variant_if_available(
                 ModelInstanceRow.variant_id == variant.id,
                 ModelInstanceRow.adapter_id == adapter_id,
                 ModelInstanceRow.state == InstanceState.READY,
+                ModelInstanceRow.upgrade_smoke_payload.is_(None),
             )
         )
         if ready is not None:
@@ -117,6 +118,7 @@ async def _place_variant_if_available(
                 ModelInstanceRow.variant_id == variant.id,
                 ModelInstanceRow.adapter_id == adapter_id,
                 ModelInstanceRow.policy == policy,
+                ModelInstanceRow.upgrade_smoke_payload.is_(None),
                 ModelInstanceRow.state.in_(
                     [
                         InstanceState.REQUESTED,

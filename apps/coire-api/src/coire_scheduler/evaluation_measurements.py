@@ -389,9 +389,18 @@ async def measurement_workflow(identity: str) -> None:
 async def claim_measurement(identity_text: str) -> bool:
     identity = uuid.UUID(identity_text)
     async with session_scope() as session:
+        from coire_api.placement.service import lock_nodes_for_admission
+        from coire_scheduler.maintenance import allows_admission, allows_core_work
+
+        settings = get_settings()
+        core_allowed = not settings.upgrades_enabled or await allows_core_work(
+            session, ("coire-api", "coire-scheduler")
+        )
         row = await session.get(EvaluationMeasurementRow, identity)
         if row is None or row.state in {"succeeded", "failed", "cancelled", "running"}:
             return True
+        if not core_allowed:
+            return False
         revoked = False
         try:
             await authorize_live_evaluation_action(
@@ -426,6 +435,14 @@ async def claim_measurement(identity_text: str) -> bool:
             if run is not None:
                 await request_stop(session, run, "admission_disabled")
             return True
+        if settings.upgrades_enabled:
+            request = EvaluationMeasurementRequest.model_validate(row.request)
+            node = await session.scalar(select(NodeRow).where(NodeRow.name == request.node))
+            if node is None:
+                return False
+            await lock_nodes_for_admission(session, [node.id])
+            if not await allows_admission(session, [node.id]):
+                return False
         other = await session.scalar(
             select(EvaluationMeasurementRow.id)
             .where(

@@ -432,6 +432,10 @@ components:
       additionalProperties: false
       required: [name, agent_version, uptime_seconds, cpu_percent, thermal_state, memory_total_bytes, memory_free_bytes, disk_total_bytes, disk_free_bytes, agent_cpu_percent, agent_rss_bytes, collection_budget_ok, path, sampled_at, engines, jobs, memory_budget_bytes, memory_committed_bytes, store_free_bytes]
       properties:
+        runtime_sha256:
+          type: [string, "null"]
+          pattern: "^[a-f0-9]{64}$"
+          description: "feature 019: full sealed environment identity; unknown on unmanaged nodes"
         name: { type: string }
         agent_version: { type: string }
         uptime_seconds: { type: number }

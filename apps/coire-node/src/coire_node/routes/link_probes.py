@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from coire_core.models import LinkObservation, LinkProbeCommand
 from coire_node.link_probes import LinkProbeRunner
+from coire_node.maintenance import require_admission
 
 router = APIRouter(prefix="/node/link-probes", tags=["link probes"])
 
 
-@router.post("", response_model=LinkObservation)
+@router.post("", response_model=LinkObservation, dependencies=[Depends(require_admission)])
 async def run_probe(command: LinkProbeCommand, request: Request) -> LinkObservation:
     runner = request.app.state.link_probes
     if not isinstance(runner, LinkProbeRunner):

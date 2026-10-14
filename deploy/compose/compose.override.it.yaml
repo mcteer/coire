@@ -44,7 +44,9 @@ services:
       # production default would refuse every fixture. The check itself has a focused test.
       DISK_RESERVE_BYTES: "268435456"
       REGISTRY_RECONCILE_INTERVAL_S: "2"
-      GATEWAY_MAX_INFLIGHT_PER_ENGINE: "4"
+      # A separate transport-only gate supplies 100 for its controlled engine
+      # double. Baseline admission/saturation tests retain their four-slot limit.
+      GATEWAY_MAX_INFLIGHT_PER_ENGINE: ${COIRE_IT_GATEWAY_STREAM_CAPACITY:-4}
       IMAGE_ENABLED: "false"
       PLACEMENT_POLL_INTERVAL_S: "0.2"
       INSTANCE_DRAIN_TIMEOUT_S: "2"

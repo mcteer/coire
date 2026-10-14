@@ -36,6 +36,7 @@ from coire_core.models.registry import (
 )
 from coire_scheduler.image_admission import (
     coexistence_report_hash,
+    current_image_runtime,
     node_hardware_fingerprint,
     node_runtime_fingerprint,
 )
@@ -73,6 +74,7 @@ async def admit_coexistence_report(
         node is None
         or node.role is not NodeRole.STUDIO
         or node.reachability is not Reachability.HEALTHY
+        or not current_image_runtime(node, now)
     ):
         raise ImageValidationError("coexistence node unavailable")
     if report.hardware_fingerprint != node_hardware_fingerprint(

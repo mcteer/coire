@@ -63,7 +63,11 @@ def init_engine_client() -> None:
             # Retire idle sockets before the node's five-second keepalive closes
             # them near a fixed workload arrival. Do not replay failed streams.
             limits=httpx.Limits(
-                max_connections=32, max_keepalive_connections=8, keepalive_expiry=1.0
+                # Preserve 100 live streams across unrelated service changes.
+                # Per-engine admission remains separately bounded by settings.
+                max_connections=128,
+                max_keepalive_connections=8,
+                keepalive_expiry=1.0,
             )
         )
 

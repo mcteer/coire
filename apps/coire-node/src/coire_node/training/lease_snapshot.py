@@ -17,6 +17,7 @@ from opentelemetry import metrics, trace
 
 from coire_core.errors import TrainingConflict
 from coire_core.models.training_node import NodeTrainingLeaseSnapshot
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.net import shared_http_ssl_context
 from coire_core.settings import Settings
 
@@ -24,6 +25,9 @@ logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("coire.node.training")
 fetches = metrics.get_meter("coire.node.training").create_counter(
     "coire_training_lease_snapshot_fetches_total"
+)
+upgrade_observations = metrics.get_meter("coire.node.training").create_counter(
+    "coire_training_upgrade_inventory_total"
 )
 MAX_AGE_S = 5.0
 MAX_BYTES = 64 * 1024
@@ -152,8 +156,54 @@ class TrainingLeaseSnapshotReader:
                     if len(body) + len(chunk) > MAX_BYTES:
                         raise TrainingConflict("Lease inventory exceeds its byte bound")
                     body.extend(chunk)
-            self.accept(NodeTrainingLeaseSnapshot.model_validate_json(body, strict=True))
+                snapshot = NodeTrainingLeaseSnapshot.model_validate_json(body, strict=True)
+                # Independently synchronized hosts can differ by milliseconds.
+                # Never accept future authority or replace its timestamps: wait
+                # for this exact observation inside the original fetch budget.
+                # A frozen/backward clock still expires the monotonic timeout.
+                ahead = (snapshot.sampled_at - self.now()).total_seconds()
+                while ahead > 0:
+                    # Event-loop timers may wake slightly early. Recheck this
+                    # same observation; never admit it merely because sleep
+                    # returned. The original two-second timeout still bounds
+                    # every wait, including a frozen or backward wall clock.
+                    await asyncio.sleep(ahead)
+                    ahead = (snapshot.sampled_at - self.now()).total_seconds()
+                self.accept(snapshot)
         fetches.add(1, {"outcome": "accepted"})
+
+    @tracer.start_as_current_span(
+        "coire.node.training.upgrade_inventory",
+        record_exception=False,
+        set_status_on_exception=False,
+    )
+    async def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        """A stopped trainer still owns finalization until Core proves completion."""
+        owner = "training-lifecycle"
+        try:
+            await self.refresh()
+            with self.lock:
+                self(set())  # Enforce the same original wall/monotonic validity.
+                snapshot = self.snapshot
+                if snapshot is None or snapshot.unfinished_jobs is None:
+                    raise TrainingConflict("Training lifecycle observation is unavailable")
+                jobs = snapshot.unfinished_jobs
+            upgrade_observations.add(1, {"outcome": "busy" if jobs else "idle"})
+            return UpgradeOwnerInventory(
+                owner=owner,
+                status="complete",
+                entries=tuple(
+                    UpgradeInventoryEntry(
+                        owner=owner, kind="training-job", work_id=job, state="active"
+                    )
+                    for job in jobs
+                ),
+            )
+        except (TrainingConflict, ValueError, httpx.HTTPError, TimeoutError, OSError):
+            upgrade_observations.add(1, {"outcome": "unknown"})
+            return UpgradeOwnerInventory(
+                owner=owner, status="unknown", reason="Training lifecycle observation unavailable"
+            )
 
     async def observe(self) -> None:
         try:

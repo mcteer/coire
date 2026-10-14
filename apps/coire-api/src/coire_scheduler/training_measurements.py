@@ -51,7 +51,6 @@ from coire_api.training.measurements import (
 from coire_api.training.service import payload_digest, recheck_training_inputs, training_id
 from coire_api.training.specs import training_config_digest
 from coire_core.errors import TrainingConflict
-from coire_core.models.datasets import DatasetFormat
 from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.node import Reachability
@@ -300,9 +299,10 @@ class MeasurementNodeClient(NodeClient):
             request.node,
             f"/node/training/measurements/{request.attempt_id}/inputs",
             json=request.model_dump(mode="json"),
-            request_timeout_s=30.0
-            if any(source.binding.format is DatasetFormat.PREFERENCE for source in request.sources)
-            else None,
+            # Every format verifies acquired weight bytes before becoming ready.
+            # That work can exceed the five-second control default; independent
+            # lease renewal and stop retain their existing bounds.
+            request_timeout_s=30.0,
         )
         return TrainingPrepared.model_validate(body)
 
@@ -312,6 +312,9 @@ class MeasurementNodeClient(NodeClient):
             request.node,
             f"/node/training/measurements/{request.attempt_id}/start",
             json=request.model_dump(mode="json"),
+            # Start repeats frozen-asset verification before recording/spawning
+            # its owned nonce. Keep the renewable lease/watchdog independent.
+            request_timeout_s=30.0,
         )
         return TrainingStartReceipt.model_validate(body)
 
@@ -503,17 +506,25 @@ async def admit_measurement(
     *,
     settings: Settings | None = None,
 ) -> TrainingMeasurementDispatch | None:
+    from coire_scheduler.maintenance import allows_admission, allows_core_work
+
+    config = settings or get_settings()
+    if config.upgrades_enabled and not await allows_core_work(
+        session, ("coire-api", "coire-scheduler")
+    ):
+        return None
     request = TrainingMeasurementRequest.model_validate(row.request)
     nodes = list(await session.scalars(select(NodeRow).where(NodeRow.name.in_(request.nodes))))
     if len(nodes) != len(request.nodes):
         raise TrainingConflict("Probe participant inventory is incomplete")
     await lock_nodes_for_admission(session, [n.id for n in nodes])
+    if config.upgrades_enabled and not await allows_admission(session, [n.id for n in nodes]):
+        return None
     collective_binding = None
     if len(nodes) == 2:
         from coire_api.sharding import link_projection
         from coire_scheduler.sharding import validate_hostfile
 
-        config = settings or get_settings()
         if not (await link_projection(session, config)).tp_eligible:
             raise TrainingConflict(
                 "Two-rank measurement requires current bounded bare JACCL link evidence"
@@ -1081,6 +1092,11 @@ class TrainingMeasurementExecutor:
     async def _advance(self, identity: uuid.UUID) -> None:
         with tracer.start_as_current_span("coire.scheduler.training.measurement.execute"):
             async with session_scope() as session:
+                from coire_scheduler.maintenance import allows_core_work
+
+                core_allowed = not self.settings.upgrades_enabled or await allows_core_work(
+                    session, ("coire-api", "coire-scheduler")
+                )
                 row = await session.get(TrainingMeasurementRow, identity, with_for_update=True)
                 command = await session.scalar(
                     select(TrainingCommandRow)
@@ -1114,6 +1130,8 @@ class TrainingMeasurementExecutor:
                 )
                 resumed = dispatch is not None
                 if dispatch is None:
+                    if not core_allowed:
+                        return
                     await authorize_live_training_action(session, principal)
                     if await freeze_measurement_inputs(session, request) != binding:
                         raise TrainingConflict("Frozen measurement inputs changed before admission")

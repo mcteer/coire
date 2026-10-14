@@ -6,7 +6,7 @@ import asyncio
 import uuid
 
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from coire_core.models.image_worker import (
     ImageWorkerLoadRequest,
@@ -15,11 +15,17 @@ from coire_core.models.image_worker import (
 )
 from coire_node.deps import ImageWorkersDep
 from coire_node.image_runtime.supervisor import ImageProcessUnavailable
+from coire_node.maintenance import require_admission
 
 router = APIRouter(prefix="/node/images/worker", tags=["image-worker"])
 
 
-@router.put("", response_model=ImageWorkerLoadResult, status_code=status.HTTP_202_ACCEPTED)
+@router.put(
+    "",
+    response_model=ImageWorkerLoadResult,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admission)],
+)
 async def load_worker(
     request: ImageWorkerLoadRequest, workers: ImageWorkersDep
 ) -> ImageWorkerLoadResult:

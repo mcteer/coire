@@ -43,7 +43,7 @@ A unique partial database index permits one nonterminal cluster operation. An id
 
 ## Execution plans, journals and receipts
 
-**UpgradeExecutionPlan**: protocol version; job/project/target; owner generation; manifest digests; fixed action enum; source observed identities; allowed service set/order; smoke asset registry identity; maintenance generation; authorization expiry; captured deadlines; bounded evidence limit. No command strings, source paths or caller-supplied environment overrides. The plan is immutable and authenticated before it is journaled.
+**UpgradeExecutionPlan**: protocol version; job/project/target; owner generation; manifest digests; fixed action enum; source observed identities; allowed service set/order; smoke asset registry identity; maintenance generation; authorization expiry; captured deadlines; bounded evidence limit. No command strings, source paths or caller-supplied environment overrides. Core plans additionally bind the actual deployed Alembic head, a structural schema SHA-256 and the intended retained head. Manual rollback keeps the actual deployed head; it cannot request a downgrade. Both runtime readers must explicitly support that retained head. A known failed migration can be classified unchanged only when its before/after structural hashes match the accepted snapshot. The plan is immutable and authenticated before it is journaled.
 
 **UpgradeJournalEntry**: monotonic sequence; job/generation; phase; effect ID; intended or observed effect; actual source/candidate container or process identity; content hashes; deadline; previous entry digest. Writes use private ownership, atomic replace and fsync; source and candidate must not share mutable runtime files. Corrupt or truncated state blocks normal admission and preserves all evidence.
 
@@ -58,3 +58,62 @@ A unique partial database index permits one nonterminal cluster operation. An id
 Keep current and last compatible release plus every nonterminal-operation reference; preserve credential generations and local image/environment artifacts until all references clear. Cleanup only deletes owned staging remnants after positive inactivity. Persist audit and terminal operation summaries according to existing audit retention; bounded diagnostic payloads may expire independently.
 
 Migration 0034 creates release, operation-specific, maintenance, stage/receipt and ownership metadata with foreign keys, uniqueness and bounded enum constraints. Extend existing jobs/audit tables through their established patterns. Downgrade is reversible in an empty disposable database but refuses to erase populated operational or audit history. Production rollback retains the additive schema. No changes to dataset, adapter or feedback retention policy are authorized.
+
+
+## Deployment filesystem authority
+
+`DeploymentOwnership` binds the project, host/executor identity and boot identity to a
+monotonic coordination generation. Executor claims additionally bind their job ID and
+separate database operation generation; host preparation also advances the coordination
+clock, so these counters cannot be equated. Stages distinguish preparation without runtime
+effects from mutation and selection. Interrupted mutation remains active.
+
+`DeploymentLease` is atomically published in the shared private coordination store and
+binds the owner to its actual kernel platform/boot identity. Local `flock` is insufficient
+across macOS/OrbStack kernels (see ADR-0015); the atomic shared claim supplies exclusion
+across those kernels. An abandoned foreign-kernel claim requires recovery in its original
+namespace. No expiry or dead PID authorizes removal.
+
+`DeploymentSelectionReceipt` binds the selected owned release key and complete Compose
+hash to the committing owner/generation. Its protected release map includes the retained
+source and every retained selected release; host reconciliation verifies all those hashes
+before repairing `current`. Referenced credential generations remain protected, including
+binds retained by stopped project containers.
+
+## Distinct expired-operation recovery (FR-031–FR-034)
+
+`UpgradeExpiredRecoveryRequest` binds the original job/generation/plan, retained
+scope hashes, exact Source and registered immutable support release. It cannot
+supply old deadlines, commands, paths or credentials. `UpgradeExpiredRecoveryIntent`
+retains the original execution plan, support release, accepting administrator,
+actual original native recovery deadline, acceptance instant and independently
+bounded new deadline. The latter is exactly acceptance plus the requested budget
+(maximum 300 seconds), never an extension of the original epoch. Support must
+explicitly declare compatibility with the retained Source and match platform/kind.
+
+`upgrade_expired_recoveries` is separate from `upgrade_operations`: original job
+foreign key, actor/credential generation, actor-scoped idempotency, immutable
+request/intent hashes and payload, exclusive active recovery slot, phase and
+write-once transfer/resolution payloads. Original operation, deadlines, receipts
+and maintenance rows stay unchanged at acceptance. Recovery-required authority
+remains active; recovered authority requires retained resolution. Transfer is
+required before transferring/recovering/verifying/recovered phases. Database
+triggers reject deletion, authority rewrites and replacement of retained proofs.
+
+Acceptance uses live administrative authorization and the existing cluster
+operation lock; it rechecks original recovery-required authority, complete held
+maintenance and the immutable catalog before committing intent and audit together.
+A new capture must be no more than five seconds old, not future-dated and have
+remaining budget. This is a conservative, reversible freshness policy consistent
+with other upgrade observations. Authenticated exact retries return the first
+captured intent without recapturing its deadline, even after budget expiry; such
+replay is inspection, not renewed effect authority.
+
+Private intent-file retention also preserves exact captured bytes under ownership
+locking. Neither retention nor administrative acceptance alone grants runtime
+ownership, activation, Source-serving verification or qualification. The supported
+legacy observation/install/transfer and effect-grant producers remain prerequisite
+work; do not expose an admin route accepting caller-supplied native observations.
+The existing unreviewed feature migration is extended once for this schema. An
+already-deployed private acceptance fixture with the earlier 0034 shape requires
+supported schema preparation; never silently alter it or patch sealed Source.

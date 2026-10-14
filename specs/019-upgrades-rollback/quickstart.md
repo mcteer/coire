@@ -1,6 +1,6 @@
 # Validation Guide: 019 upgrades and rollback
 
-This guide is for the implementation phase. No deployment or acceptance workload was run while producing the planning artifacts. All paths and CLI additions below are implementation targets. Use the latest clean 019 implementation head and record exact identities and results in `execution-record.md`; older worktree evidence does not count.
+This guide describes the implemented validation paths. Record exact source and candidate artifact identities, commands and results in `execution-record.md`. Validation of a working tree must name its built content identities; repeat affected checks after any implementation change and record the final reviewed commit before release. Earlier fixture results do not substitute for current acceptance.
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ This guide is for the implementation phase. No deployment or acceptance workload
 - Prepare source and candidate releases from trusted builds, with full manifests, local images and declared compatibility. Install and verify node/Core recovery bootstrap before enabling managed upgrades.
 - Keep Keychain-backed credentials and all fixtures/artifacts outside Git. Use isolated project names/volumes for CI. Never point CI at the real Studios.
 - For native integration, set `COIRE_TEST_MODEL` to an admin-acquired, manifest-verified tiny model of at most 1 GB. Prepare its registry record through existing admin tooling. No test or upgrade may trigger an implicit download.
-- Core migration acceptance needs a protected backup/validation receipt at most 24 hours old, matching project and source schema. Use the new fixed `backup-release` host-tool mode; do not use credential recovery as a backup mechanism.
+- Core migration acceptance needs a protected backup/validation receipt at most 24 hours old, matching project and source schema. After bootstrap establishes committed shared deployment ownership, run `uv run python scripts/coire-deploy.py prepare-backup /private/operator/backup-catalog --publisher-image sha256:<verified-executor-image-id>`. The catalog must be outside Git. This fixed mode dumps the project PostgreSQL 17 database, restores it into a disconnected disposable container using the existing immutable PostgreSQL image, verifies the same structural schema digest used by activation, and publishes protected bytes under the service UID. It never restores production or rotates credentials. The tested bound is a 4 GiB dump and a 4 GiB disposable restore data directory; larger databases require an explicitly tested extension before use.
 
 ## Local automated gates
 
@@ -19,9 +19,9 @@ Run focused checks as each story lands, then the full required gates once the im
 ```bash
 uv run ruff format --check
 uv run ruff check
-uv run mypy
+uv run mypy apps/ packages/ scripts/coire-deploy.py
 uv run pytest -q
-uv run coire-api export-openapi --check
+uv run python -m coire_api.openapi --check
 pnpm -C apps/coire-web test
 pnpm -C apps/coire-web lint
 pnpm -C apps/coire-web build
@@ -33,6 +33,8 @@ For isolated stateful/native checks, run the implemented suites with their docum
 
 ```bash
 uv run pytest -q tests/integration/test_upgrade_persistence.py
+docker build -f apps/coire-upgrade-executor/Dockerfile -t coire-019-upgrade-executor:dev .
+uv run pytest -q tests/integration/test_upgrade_backup_preparation.py
 uv run pytest -q tests/integration/test_upgrade_control_plane.py
 uv run pytest -q tests/integration/test_upgrade_bootstrap.py
 uv run pytest -q -m integration tests/integration/test_upgrade_node.py

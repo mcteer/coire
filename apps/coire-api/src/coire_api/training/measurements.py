@@ -59,6 +59,8 @@ from coire_core.settings import Settings
 async def freeze_measurement_inputs(
     session: AsyncSession,
     request: TrainingMeasurementRequest,
+    *,
+    settings: Settings | None = None,
 ) -> TrainingMeasurementBindingDocument:
     spec = request.spec
     if spec.placement.preferred_node is not None and request.nodes != [
@@ -186,6 +188,16 @@ async def freeze_measurement_inputs(
     tok, template, runtime = identities.pop()
     if tok is None or template is None or runtime is None:
         raise TrainingConflict("Successful analysis has no measured runtime identity")
+    from coire_api.upgrades.qualification import training_runtimes_current
+    from coire_core.settings import get_settings
+
+    configured = settings or get_settings()
+    if configured.upgrades_enabled:
+        nodes = list(
+            (await session.scalars(select(NodeRow).where(NodeRow.name.in_(request.nodes)))).all()
+        )
+        if len(nodes) != len(request.nodes) or not training_runtimes_current(nodes, configured):
+            raise TrainingConflict("Probe analysis does not match current Studio runtimes")
     base = copies["coire-edge-a"]
     assert base is not None
     binding = TrainingMeasurementBinding(
@@ -298,7 +310,7 @@ async def submit_measurement(
             func.pg_advisory_xact_lock(func.hashtextextended("coire.training.measurement.queue", 0))
         )
     )
-    binding = await freeze_measurement_inputs(session, request)
+    binding = await freeze_measurement_inputs(session, request, settings=settings)
     active = await session.scalar(
         select(func.count())
         .select_from(TrainingMeasurementRow)

@@ -140,8 +140,15 @@ class DatasetAnalysisExecutor:
         with tracer.start_as_current_span("coire.scheduler.training.dataset.advance") as span:
             span.set_attribute("coire.analysis_id", str(identity))
             async with session_scope() as session:
+                from coire_scheduler.maintenance import allows_admission, allows_core_work
+
+                core_allowed = not self.settings.upgrades_enabled or await allows_core_work(
+                    session, ("coire-api", "coire-scheduler")
+                )
                 row = await session.get(TrainingDatasetAnalysisRow, identity)
                 if row is None or row.state not in {"queued", "running"}:
+                    return
+                if not core_allowed and not (row.result and "dispatch" in row.result):
                     return
                 command = await session.get(TrainingCommandRow, row.command_id)
                 assert command is not None
@@ -179,6 +186,10 @@ class DatasetAnalysisExecutor:
                     )
                     await lock_nodes_for_admission(session, [node.id for node in nodes])
                     for node in nodes:
+                        if self.settings.upgrades_enabled and not await allows_admission(
+                            session, [node.id]
+                        ):
+                            continue
                         ledger = await session.get(
                             NodeMemoryLedgerRow, node.id, populate_existing=True
                         )

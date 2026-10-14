@@ -37,6 +37,7 @@ def test_ops_routes_are_present_with_exact_human_and_service_boundaries() -> Non
         ("/api/v1/internal/ops/sessions", "post"),
         ("/api/v1/internal/ops/sessions/{session_id}", "patch"),
         ("/api/v1/internal/ops/proposals", "post"),
+        ("/api/v1/internal/ops/upgrade-admission", "get"),
         ("/api/v1/internal/ops/anthropic/v1/models/{model_id}", "get"),
         ("/api/v1/internal/ops/anthropic/v1/messages", "post"),
     }

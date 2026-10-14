@@ -13,6 +13,14 @@ Use the existing authenticated Core-to-node transport; commands are strict Pydan
 
 Command fields: job and node IDs, protocol, generation, source/target release IDs/full digests, immutable preparation receipt ID, allowed action enum, authorization expiry, smoke registry variant and manifest digest, paired-smoke requirement, expected peer runtime, and captured deadlines. Validate source, platform, manifest, compatibility and bootstrap readiness before accepting. A matching replay observes the same operation; different contents under the same job/generation conflict. A stale owner cannot activate or release maintenance. New activation requires a fresh Core authorization bound to the current human administrator; post-activation recovery can restore the recorded source while Core is unavailable.
 
+An activating node command includes both the phase-bound grant and the exact intent receipt
+already consumed/persisted by Core. Both bind the same job/generation/runtime boundary and
+observed source; either field alone is invalid. The independent native guard retains this
+receipt and its source/candidate/process identities before any selection or stop effect.
+Candidate smoke must prove positive process/resource cleanup as well as ten generated
+tokens. Activation and restoration deadlines are captured once and survive replay/restart;
+replaying a consumed command observes its existing intent and does not renew permission.
+
 ## Admission and inventory matrix
 
 Every row needs both race testing and startup/resumption coverage. Fence checks occur in owner admission critical sections, before acquiring new process/resource obligations; inventory collection must not use best-effort metrics arrays.
@@ -39,4 +47,54 @@ The helper journals intent, verifies artifact hashes, permits only controlled in
 
 Before switching, revalidate source identity, current authorization, drain and peer readiness. Use PID plus creation identity for restart; never signal by recycled PID alone. All stage deadlines are captured in the plan; no agent health heartbeat extends them indefinitely. Source restoration selects the exact retained environment, proves node health/serving, and reconciles qualifications before releasing the fence. Failed restoration or uncertain inventory keeps placement closed and emits recovery-required receipts.
 
+Interrupted collective cleanup (T072) uses `NodeUpgradeCollectiveCleanup` with
+its exact original `NodeUpgradeCollectiveScope`; `cleanup_only` can only be true.
+The separate `NodeUpgradeCollectiveCleanupReceipt` binds job/generation, command,
+full scope SHA and both namespace inventory SHAs. It reports interrupted cleanup,
+not a LinkObservation or successful measurement. The producer must authenticate
+through existing node/operation authority, resolve only that retained scope,
+verify complete physical owner inventories on both nodes (excluding only its own
+exact unresolved logical entry), and retain the observation evidence before
+closure. Unknown owners, active workers, changed authority and another dispatcher
+holding the scope lock refuse cleanup. An expired original probe deadline permits
+no launch, serving work or qualification; cleanup does not renew it. Cleanup alone
+cannot release maintenance or finalize an operation. Exact replay returns the
+same receipt; altered scope/command/generation conflicts. Installed Sources and
+journals must not be hand-patched to add this support.
+
+The node producer is `POST /node/upgrades/{job_id}/collective-cleanup`, authenticated
+on the control listener. Its private peer read is
+`POST /api/v1/internal/upgrades/{job_id}/collective-cleanup-peer`, authenticated as
+rank-zero Studio A and pinned to the current accepted paired plan and maintenance
+before/after I/O. This separate read does not widen qualification's peer-read
+policy. Canonical local/peer snapshots use one five-second observation budget;
+the captured probe deadline and scope remain unchanged. For restored Studio B,
+only its captured source or scoped runtime is accepted, never an arbitrary digest.
+The producer holds maintenance and collective filesystem locks, persists
+`cleanup-local.json` and `cleanup-peer.json` before immutable `cleanup.json`, and
+validates cached receipts from historical evidence without treating it as fresh
+qualification. Partial preimage writes are not closure. Canonical inventory
+recognizes closure only with valid retained proof and matching scope path; physical
+owner collection remains independent. Conflicting worker/cleanup results refuse.
+The outcome counter `coire_upgrade_collective_cleanup_total` labels only node and
+outcome; scoped job/generation/command fields belong in structured logs.
+
 A successful single-node recovery with a failed source-pair probe retains paired-placement blocking explicitly. If a source lacks compatible journals/privacy behavior, the command is refused before activation; do not archive or rewrite user history to make rollback pass.
+
+A paired activation command also carries the fresh Core-authenticated peer inventory
+under the same fenced job/generation and exact peer digest. This observation is mutable
+execution evidence rather than immutable plan authority, but the consumed activation
+command retains it unchanged. Missing, wrong-node, wrong-generation or wrong-digest peer
+observations are rejected. The guard requires all owner inventories positively idle and
+no older than five seconds at the effect boundary; expiry never permits forced drain.
+
+A pre-activation abort must resume the verified unchanged source without terminating
+known pre-existing requests or jobs. A release command may carry `source_unchanged=true`
+and the captured `source_runtime_sha256` only with terminal reconciliation. The node
+independently verifies its physical source/guard and, for a local selection operation,
+a `failed_unchanged` or `cancelled_unchanged` terminal with no activation and positive
+operation-resource cleanup. For a peer with no local selection operation, Core's
+operation-scoped authenticated release remains the authority. Every required inventory
+owner must be complete and every entry reconciled; unknown owners/holds still block.
+This exception preserves existing work and resumes admission; it grants no permission
+to select another runtime or stop a workload. Activated release keeps the full idle gate.

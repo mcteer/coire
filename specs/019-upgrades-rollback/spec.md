@@ -26,6 +26,11 @@ The ambiguity review retained the original draft's parallel installation, real i
 
 A1 records this accepted policy and its proposed timing defaults. Preservation, authentication, workload ownership, and real-cluster validation follow existing project requirements.
 
+### Session 2026-10-12 — approved expired-operation recovery extension
+
+- Q: May 019 add separately authorized, audited recovery intent for an already-expired operation, preserving its original deadlines/receipts rather than renewing generation 57 or patching its sealed Source? → A: Yes, extend.
+- This approval authorizes specification and implementation of that protocol; it is not release approval, permission to edit authority journals manually, or a waiver of Source-serving/cleanup/paired qualification gates.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — A bad Studio upgrade restores service (Priority: P1)
@@ -130,6 +135,13 @@ Insufficient staging space; source or candidate tampering; same package version 
 - **FR-028**: Existing feedback opt-out and deletion semantics MUST survive upgrade and rollback: published datasets and trained adapters are preserved; unexported contributions stay excluded and subject to their existing purge obligations. Historical training/evaluation data and private erasure obligations MUST remain usable and auditable.
 - **FR-029**: Fresh installation MUST establish an independently recoverable upgrade mechanism before accepting managed upgrades; missing recovery support MUST be reported as not ready, never bypassed.
 - **FR-030**: Automated unit, contract, disposable-environment recovery and tiny-model integration tests, plus documented real-cluster drain, paired qualification and rollback acceptance, MUST pass before implementation is declared complete.
+
+### Expired-operation recovery extension
+
+- **FR-031**: An administrator MAY create a distinct, audited, idempotent recovery intent for an operation whose original recovery budget expired. It MUST bind the original job/generation/plan and retained dispatch hashes, exact recorded Source and peer, and a verified immutable recovery-support artifact. It MUST preserve original deadlines, receipts and failure history unchanged; it MUST NOT report the original upgrade as successful or relaunch its interrupted probe.
+- **FR-032**: The new intent MUST capture its own bounded recovery budget once, reserve exclusive recovery authority without an unfenced interval, reject stale/conflicting/replayed effects, and revalidate administrative authority before mutations. It MUST NOT automatically retry by obtaining a new budget. Cancellation and crashes MUST preserve obligations and refuse maintenance release on uncertainty.
+- **FR-033**: Recovery-support execution MUST use a supported, tested immutable installation/handover path even when the installed Source lacks the new protocol. It MUST NOT patch the sealed Source, hand-edit journals, widen permissions/networks, load models on Core, or infer ownership from process absence. Ordinary idle-helper refresh prerequisites remain intact.
+- **FR-034**: Resolving the old obligation requires actual fresh Source-serving, complete physical cleanup, preserved data and required exact-pair qualification under the new intent. Resolution MUST be explicitly linked and audited as recovery after the original deadline, never copied qualification or retroactive satisfaction of the old budget. Unknown state retains fencing and alerts. Tests MUST cover authorization, idempotency, deadline expiry, lost response, crashes, owner handover and legacy Source support before native use.
 
 ### Key Entities
 

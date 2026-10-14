@@ -43,6 +43,7 @@ import psutil
 from opentelemetry import metrics as otel_metrics
 from opentelemetry import trace
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import (
     LIVE_ENGINE_STATES,
@@ -54,6 +55,11 @@ from coire_core.models.engine import (
     ReconcileResult,
 )
 from coire_core.models.registry import EngineBackend
+from coire_core.models.upgrades import (
+    NativeSmokeEngineRecord,
+    UpgradeInventoryEntry,
+    UpgradeOwnerInventory,
+)
 from coire_core.net import shared_http_ssl_context
 from coire_core.settings import Settings
 from coire_node.footprint import cpu_percent, resident_bytes
@@ -336,8 +342,12 @@ class EngineManager:
         *,
         memory_lock: threading.RLock | None = None,
         additional_committed_bytes: Callable[[], int] | None = None,
+        admission_check: Callable[[], None] | None = None,
+        strict_persistence: bool = False,
     ) -> None:
         self._settings = settings
+        self._admission_check = admission_check or (lambda: None)
+        self._strict_persistence = strict_persistence
         self._store = store
         self._address = mesh_address
         self._engines: dict[str, _Engine] = {}
@@ -457,8 +467,13 @@ class EngineManager:
             manifest = self._store.read_manifest(slug)
             if manifest is not None:
                 if not os.environ.get("COIRE_ENGINE_COMMAND"):
+                    from coire_node.upgrade_runtime import running_runtime_sha256
+
                     rendering_identity = inspect_rendering_identity(
-                        self._store.path_for(slug), manifest, template_override=chat_template
+                        self._store.path_for(slug),
+                        manifest,
+                        template_override=chat_template,
+                        runtime_sha256=running_runtime_sha256(self._settings),
                     )
                 verified_manifest_sha256 = manifest.sha256()
         if backend is EngineBackend.MLX_VLM:
@@ -473,6 +488,7 @@ class EngineManager:
                 raise CopyMissing(f"visual copy of {slug} differs from its manifest")
             verified_manifest_sha256 = manifest.sha256()
         with self._lock:
+            self._admission_check()
             existing = self._engines.get(str(engine_id))
             if existing is not None and (existing.slug != slug or existing.target != target):
                 raise BackendMismatch("engine identity already binds another target")
@@ -826,37 +842,89 @@ class EngineManager:
             (output or "").strip()[-500:],
         )
 
-    def stop(self, engine_id: uuid.UUID) -> EngineStatus | None:
+    def stop(
+        self, engine_id: uuid.UUID, *, verify_process: Callable[[], bool] | None = None
+    ) -> EngineStatus | None:
         with self._lock:
             engine = self._engines.get(str(engine_id))
             if engine is None:
                 return None
             engine.state = EngineState.STOPPING
             self._persist()
-        threading.Thread(target=self._terminate, args=(engine,), daemon=True).start()
+
+        def terminate() -> None:
+            try:
+                if verify_process is None:
+                    self._terminate(engine)
+                else:
+                    self._terminate(engine, verify_process)
+            except (UpgradeUnavailable, OSError, psutil.Error):
+                logger.warning("engine stop identity remains uncertain; ownership retained")
+
+        threading.Thread(target=terminate, daemon=True).start()
         return engine.status()
 
-    def _terminate(self, engine: _Engine) -> None:
+    def adopt_owned_smoke(
+        self, record: NativeSmokeEngineRecord, verify_process: Callable[[], bool]
+    ) -> EngineStatus:
+        """Rehydrate one strict operation-owned journal solely for normal termination.
+
+        No readiness probe, generation, model acquisition or best-effort record
+        dropping occurs here. The caller supplies exact retained process proof.
+        """
+        from coire_node.upgrade_inventory import read_owner_json
+
+        record = NativeSmokeEngineRecord.model_validate(record.model_dump(mode="json"))
+        with self._lock:
+            if not self._strict_persistence or self._engines:
+                raise UpgradeUnavailable("Owned smoke needs an exclusive strict lifecycle owner")
+            stored = read_owner_json(self._state_file)
+            if (
+                not isinstance(stored, list)
+                or len(stored) != 1
+                or NativeSmokeEngineRecord.model_validate(stored[0]) != record
+            ):
+                raise UpgradeUnavailable("Owned smoke engine journal changed")
+            verify_process()  # Absence is safe; unreadable or unrelated identity is not.
+            engine = _Engine(
+                engine_id=record.engine_id,
+                slug=record.slug,
+                port=record.port,
+                estimate_bytes=record.estimate_bytes,
+                pid=record.pid,
+                create_time=record.create_time,
+                state=EngineState.STARTING,
+                started_at=record.started_at,
+                engine_version=record.engine_version,
+                stderr_path=self._stderr_root / record.stderr_file
+                if record.stderr_file is not None
+                else None,
+            )
+            self._engines[str(record.engine_id)] = engine
+            return engine.status()
+
+    def _terminate(self, engine: _Engine, verify_process: Callable[[], bool] | None = None) -> None:
         """SIGTERM the process group, SIGKILL what is left.
 
         The group, not the pid: `mlx.launch` (feature 006) spawns ranks, and terminating only
         the leader would leave them holding memory.
         """
         pid = engine.pid
-        if pid is not None and _alive(pid, engine.create_time):
+        alive = verify_process or (lambda: _alive(pid, engine.create_time))
+        if pid is not None and alive():
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.killpg(os.getpgid(pid), 15)
             deadline = time.monotonic() + STOP_GRACE_S
-            while time.monotonic() < deadline and _alive(pid, engine.create_time):
+            while time.monotonic() < deadline and alive():
                 time.sleep(0.2)
-            if _alive(pid, engine.create_time):
+            if alive():
                 logger.warning("engine %s did not exit; killing", engine.engine_id)
                 with contextlib.suppress(ProcessLookupError, PermissionError):
                     os.killpg(os.getpgid(pid), 9)
                 deadline = time.monotonic() + 2.0
-                while time.monotonic() < deadline and _alive(pid, engine.create_time):
+                while time.monotonic() < deadline and alive():
                     time.sleep(0.1)
-            if _alive(pid, engine.create_time):
+            if alive():
                 logger.error("engine %s stop remains uncertain; memory held", engine.engine_id)
                 return
         with self._lock:
@@ -925,11 +993,99 @@ class EngineManager:
                 engine.last_health_at = datetime.now(UTC)
             self._persist()
 
+    def verify_no_unowned_native_processes(self) -> None:
+        """A missing engine row cannot prove absence while any PID is unowned."""
+        from coire_node.upgrade_inventory import native_process_entries
+
+        with self._lock:
+            known = {
+                (engine.pid, engine.create_time)
+                for engine in self._engines.values()
+                if engine.engine_id is not None and engine.state in LIVE_ENGINE_STATES
+            }
+            actual = native_process_entries(
+                "engines", ("mlx_lm.server", "mlx_vlm.server", "fake_engine")
+            )
+            if any((entry.process_id, entry.process_created_at) not in known for entry in actual):
+                raise UpgradeUnavailable("Native engine absence has an unowned process")
+
+    def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        from coire_node.upgrade_inventory import (
+            core_smoke_entries,
+            native_process_entries,
+            read_owner_json,
+            upgrade_smoke_entries,
+        )
+
+        with self._lock:
+            try:
+                records = read_owner_json(self._state_file)
+            except FileNotFoundError:
+                records = []
+                if any(e.state in LIVE_ENGINE_STATES for e in self._engines.values()):
+                    raise UpgradeUnavailable("Live engine journal is absent") from None
+            if not isinstance(records, list) or any(not isinstance(r, dict) for r in records):
+                raise UpgradeUnavailable("Engine journal is invalid")
+            native = native_process_entries(
+                "engines", ("mlx_lm.server", "mlx_vlm.server", "fake_engine")
+            )
+            entries = list(native)
+            entries.extend(upgrade_smoke_entries(Path(self._settings.node_state_dir)))
+            entries.extend(core_smoke_entries(Path(self._settings.node_state_dir)))
+            for engine in self._engines.values():
+                if engine.state in LIVE_ENGINE_STATES or engine.state is EngineState.ORPHAN:
+                    entries.append(
+                        UpgradeInventoryEntry(
+                            owner="engines",
+                            kind="engine",
+                            work_id=str(engine.engine_id or engine.port),
+                            state="unknown" if engine.state is EngineState.ORPHAN else "active",
+                            process_id=engine.pid,
+                            process_created_at=engine.create_time,
+                        )
+                    )
+            # A persisted process absent from the live manager has not been reconciled.
+            known = {engine.pid for engine in self._engines.values() if engine.pid}
+            for index, record in enumerate(records):
+                if not record.get("pid") or record.get("pid") not in known:
+                    entries.append(
+                        UpgradeInventoryEntry(
+                            owner="engines",
+                            kind="unreconciled-record",
+                            work_id=str(index),
+                            state="unknown",
+                        )
+                    )
+            return UpgradeOwnerInventory(owner="engines", status="complete", entries=tuple(entries))
+
     def statuses(self) -> list[EngineStatus]:
         """Named `statuses`, not `list`: a method called `list` shadows the builtin inside the
         class body, so every `list[...]` annotation below it silently resolves to the method."""
         with self._lock:
             return [e.status() for e in self._engines.values()]
+
+    def _idle_resident_identities(self) -> tuple[uuid.UUID, ...] | None:
+        """Called only under the shared maintenance lock after every work owner is idle.
+
+        Unknown processes and residents still loading retain their reservations. Normal
+        stop owns termination and persists STOPPED only after process death is proven.
+        """
+        with self._lock:
+            inventory = self.upgrade_inventory()
+            live = [
+                engine for engine in self._engines.values() if engine.state in LIVE_ENGINE_STATES
+            ]
+            if any(engine.state is not EngineState.READY for engine in live):
+                return None
+            known = {(engine.pid, engine.create_time) for engine in live if engine.pid is not None}
+            if any(
+                entry.state == "unknown"
+                or entry.kind not in {"engine", "native-process"}
+                or (entry.process_id, entry.process_created_at) not in known
+                for entry in inventory.entries
+            ):
+                return None
+            return tuple(engine.engine_id for engine in live if engine.engine_id is not None)
 
     def get(self, engine_id: uuid.UUID) -> EngineStatus | None:
         with self._lock:
@@ -969,8 +1125,11 @@ class EngineManager:
             for e in self._engines.values()
             if e.state in LIVE_ENGINE_STATES or e.state is EngineState.ORPHAN
         ]
-        with contextlib.suppress(OSError):
+        if self._strict_persistence:
             write_atomic_json(self._state_file, records)
+        else:
+            with contextlib.suppress(OSError):
+                write_atomic_json(self._state_file, records)
 
     def adopt_from_state(self) -> list[EngineStatus]:
         """Re-own engines recorded before the agent stopped.

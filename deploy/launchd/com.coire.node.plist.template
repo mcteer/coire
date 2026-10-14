@@ -50,6 +50,8 @@
 
     <key>EnvironmentVariables</key>
     <dict>
+        <key>PYTHONDONTWRITEBYTECODE</key>
+        <string>1</string>
         <key>COIRE_ROLE</key>
         <string>studio</string>
         <key>NODE_NAME</key>

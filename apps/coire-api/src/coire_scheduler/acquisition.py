@@ -27,6 +27,7 @@ from coire_api.db import (
     session_scope,
 )
 from coire_api.placement.service import ensure_ledgers, node_admission_lock
+from coire_core.errors import UpgradeUnavailable
 from coire_core.models.acquisition import (
     AcquisitionStage,
     AcquisitionState,
@@ -92,6 +93,11 @@ async def _hold_conversion_memory(
 ) -> None:
     settings = get_settings()
     async with session_scope() as session:
+        if settings.upgrades_enabled:
+            from coire_scheduler.maintenance import allows_core_work
+
+            if not await allows_core_work(session, ("coire-api", "coire-scheduler")):
+                raise UpgradeUnavailable("Conversion waits for control-plane maintenance")
         await ensure_ledgers(
             session,
             budget_bytes=settings.placement_default_budget_bytes,
@@ -102,6 +108,11 @@ async def _hold_conversion_memory(
         if ledger is None:
             raise RuntimeError("conversion node has no memory ledger")
         async with node_admission_lock(session, node_id):
+            if settings.upgrades_enabled:
+                from coire_scheduler.maintenance import allows_admission
+
+                if not await allows_admission(session, [node_id]):
+                    raise UpgradeUnavailable("Conversion waits for Studio maintenance")
             from coire_api.placement.service import training_allows_work
 
             if not await training_allows_work(session, [node_id]):
@@ -206,10 +217,27 @@ async def _context(workflow_id: uuid.UUID) -> dict[str, Any]:
         }
 
 
-async def _start_stage(workflow_id: uuid.UUID, stage: AcquisitionStage) -> None:
-    stage_transitions.add(1, {"stage": stage.value, "outcome": "started"})
+async def _start_stage(workflow_id: uuid.UUID, stage: AcquisitionStage) -> bool:
     async with session_scope() as session:
-        workflow = await session.get(AcquisitionWorkflowRow, workflow_id)
+        allowed = True
+        if get_settings().upgrades_enabled:
+            from coire_scheduler.maintenance import allows_core_work
+
+            allowed = await allows_core_work(session, ("coire-api", "coire-scheduler"))
+        workflow = await session.get(AcquisitionWorkflowRow, workflow_id, with_for_update=True)
+        if workflow is not None and workflow.state is AcquisitionState.QUEUED:
+            if not allowed:
+                return False
+            if get_settings().upgrades_enabled:
+                from coire_scheduler.maintenance import allows_admission
+
+                nodes = [
+                    node
+                    for node in (workflow.origin_node_id, workflow.replica_node_id)
+                    if node is not None
+                ]
+                if not nodes or not await allows_admission(session, nodes):
+                    return False
         variant = await session.get(ModelVariantRow, workflow.variant_id) if workflow else None
         if workflow is None or variant is None:
             raise RuntimeError("acquisition workflow disappeared")
@@ -250,6 +278,8 @@ async def _start_stage(workflow_id: uuid.UUID, stage: AcquisitionStage) -> None:
             target_type="acquisition_workflow",
             target_id=str(workflow_id),
         )
+        stage_transitions.add(1, {"stage": stage.value, "outcome": "started"})
+        return True
 
 
 async def _finish_stage(
@@ -550,7 +580,7 @@ async def _run_command_stage(
 
 
 @DBOS.step(retries_allowed=True, max_attempts=5, interval_seconds=2.0)
-async def run_stage(workflow_id_text: str, stage_text: str) -> None:
+async def run_stage(workflow_id_text: str, stage_text: str) -> bool:
     workflow_id = uuid.UUID(workflow_id_text)
     stage = AcquisitionStage(stage_text)
     with tracer.start_as_current_span(f"coire.scheduler.acquisition.{stage.value}") as span:
@@ -560,9 +590,15 @@ async def run_stage(workflow_id_text: str, stage_text: str) -> None:
     inspection = context["inspection"]
     source_is_mlx = inspection.get("source_format") == "mlx"
     raw_slug = f"{context['model_slug']}.raw"
-    await _start_stage(workflow_id, stage)
-    await _run_command_stage(workflow_id, stage, context, source_is_mlx, raw_slug)
-    return
+    if not await _start_stage(workflow_id, stage):
+        return False
+    try:
+        await _run_command_stage(workflow_id, stage, context, source_is_mlx, raw_slug)
+    except UpgradeUnavailable:
+        # An accepted multi-stage acquisition remains durable while a later
+        # conversion is fenced. Maintenance is not a node-job failure.
+        return False
+    return True
 
 
 async def _stage_result(workflow_id: uuid.UUID, stage: AcquisitionStage) -> dict[str, Any]:
@@ -736,7 +772,8 @@ async def acquisition_workflow(workflow_id_text: str) -> None:
         if await stage_complete(workflow_id_text, stage.value):
             continue
         try:
-            await run_stage(workflow_id_text, stage.value)
+            while not await run_stage(workflow_id_text, stage.value):
+                await DBOS.sleep_async(1)
         except Exception as exc:
             await mark_failed(
                 workflow_id_text,

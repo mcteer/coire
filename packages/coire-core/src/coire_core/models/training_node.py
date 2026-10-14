@@ -904,6 +904,9 @@ class NodeTrainingLeaseSnapshot(TrainingWire):
     sampled_at: AwareDatetime
     expires_at: AwareDatetime
     active_leases: dict[uuid.UUID, int] = Field(max_length=256)
+    # Older publishers cannot prove that native workers have finished their
+    # scheduler-owned extraction, replication and validation obligations.
+    unfinished_jobs: tuple[TrainingId, ...] | None = Field(default=None, max_length=256)
 
     @model_validator(mode="after")
     def bounded_snapshot(self) -> NodeTrainingLeaseSnapshot:
@@ -911,6 +914,10 @@ class NodeTrainingLeaseSnapshot(TrainingWire):
             type(v) is not int or v < 0 for v in self.active_leases.values()
         ):
             raise ValueError("lease snapshot requires finite validity and nonnegative counts")
+        if self.unfinished_jobs is not None and len(set(self.unfinished_jobs)) != len(
+            self.unfinished_jobs
+        ):
+            raise ValueError("training lifecycle snapshot contains duplicate jobs")
         return self
 
 

@@ -45,6 +45,7 @@ class PrincipalKind(StrEnum):
     USER = "user"
     SERVICE = "service"
     OPS_SERVICE = "ops_service"
+    UPGRADE_EXECUTOR = "upgrade_executor"
     API_KEY = "api_key"
     RUN = "run"
 
@@ -211,6 +212,24 @@ async def authenticate_request(request: Request) -> Principal:
         if legacy is not ANONYMOUS:
             auth_attempts.add(1, {"method": "legacy", "outcome": "accepted", "reason": "none"})
             return legacy
+    if bearer.startswith("coire_upgrade_"):
+        expected = settings.upgrade_executor_token.get_secret_value()
+        accepted = bool(expected and hmac.compare_digest(expected, bearer))
+        auth_attempts.add(
+            1,
+            {
+                "method": "upgrade_executor",
+                "outcome": "accepted" if accepted else "refused",
+                "reason": "none" if accepted else "invalid",
+            },
+        )
+        if not accepted:
+            return ANONYMOUS
+        return Principal(
+            kind=PrincipalKind.UPGRADE_EXECUTOR,
+            subject=settings.upgrade_executor_id,
+            scopes=frozenset({"upgrades:execute"}),
+        )
     if bearer.startswith("coire_ops_"):
         expected = settings.ops_service_token.get_secret_value()
         accepted = bool(expected and hmac.compare_digest(expected, bearer))

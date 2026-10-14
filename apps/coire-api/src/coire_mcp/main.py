@@ -26,7 +26,9 @@ from coire_api.db import dispose_engine, init_engine
 from coire_api.identity.access import AccessVerifier
 from coire_api.identity.limits import MonthlyQuotaExceeded, RateLimitExceeded
 from coire_api.telemetry import configure_telemetry
+from coire_api.upgrades.admission import CoreAdmissionMiddleware, CoreAdmissions
 from coire_core.models.health import ReadyResponse
+from coire_core.models.upgrades import UpgradeOwnerInventory
 from coire_core.settings import get_settings
 from coire_mcp.tools import register_tools
 
@@ -126,10 +128,13 @@ def create_app() -> FastAPI:
     )
     app.state.settings = settings
     app.state.access_verifier = AccessVerifier(settings)
+    admissions = CoreAdmissions(enabled=settings.upgrades_enabled)
+    app.state.upgrade_admissions = admissions
+    app.add_middleware(CoreAdmissionMiddleware, admissions=admissions)
 
     @app.middleware("http")
     async def authenticate_mcp(request: Request, call_next):  # type: ignore[no-untyped-def]
-        if request.url.path not in {"/ready", "/mcp"}:
+        if request.url.path not in {"/ready", "/mcp", "/internal/upgrades/inventory"}:
             return JSONResponse(status_code=404, content={"detail": "not found"})
         if request.url.path == "/mcp" and request.method not in {"GET", "POST", "DELETE"}:
             return JSONResponse(status_code=405, content={"detail": "method not allowed"})
@@ -176,6 +181,18 @@ def create_app() -> FastAPI:
                 headers={"WWW-Authenticate": "Bearer"},
                 content={"detail": "valid identity or API key required"},
             )
+        if request.url.path == "/internal/upgrades/inventory":
+            if request.method != "GET":
+                return JSONResponse(status_code=405, content={"detail": "method not allowed"})
+            if (
+                principal.kind is not PrincipalKind.UPGRADE_EXECUTOR
+                or principal.subject != settings.upgrade_executor_id
+                or principal.scopes != frozenset({"upgrades:execute"})
+            ):
+                return JSONResponse(
+                    status_code=403, content={"detail": "executor identity required"}
+                )
+            return await call_next(request)
         if request.url.path != "/ready" and (
             principal.kind is not PrincipalKind.API_KEY
             or principal.user_id is None
@@ -194,6 +211,10 @@ def create_app() -> FastAPI:
     @app.get("/ready", response_model=ReadyResponse)
     async def get_ready() -> ReadyResponse:
         return ReadyResponse(service=SERVICE_NAME, version=__version__)
+
+    @app.get("/internal/upgrades/inventory", response_model=UpgradeOwnerInventory)
+    async def upgrade_inventory() -> UpgradeOwnerInventory:
+        return await admissions.inventory(("coire-mcp",), owner="mcp")
 
     app.mount("/", protocol_app)
     app.add_middleware(DisconnectCancellingMiddleware)
