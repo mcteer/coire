@@ -8033,3 +8033,31 @@ new intent and all physical gates; fixture provenance grants no recovery authori
 The original fixture definition, adoption receipt, native claim/intent/selection
 and upgrade receipts are preserved. CPU provenance/negative tests pass with
 explicitly stubbed kernel/process observations; actual retirement is not yet claimed.
+
+### Measured Source inventory blocker: retained smoke capacity
+
+The actual retirement producer refused without sending any signal. Canonical
+adopted supervisor PID 36291 had already retired; protected receipt and
+PID/birth proof plus the actual free restart lock establish that predecessor.
+All 13 other Source owner inventories are complete/empty, but engines reports
+unknown. Independent read-only calls from installed Source found zero bare
+engine processes, zero Core-smoke owners, and the exact exception
+`Upgrade smoke ownership exceeds its bound`. There are **65** retained native
+smoke namespaces; the collector incorrectly used its 64 limit for completed
+history as well as outstanding ownership. This explains the unavailable pair
+observation preceding generation 78's false failed qualification.
+
+T078 preserves all owner records and the 64 active namespace limit. History is
+separately bounded to 4,096 namespaces and 4 MiB of owner bytes; every retained
+owner remains validated, and unknown/missing/active-overflow/oversized inputs
+remain refusals. No old collector or sealed Source is patched. The private
+retirement producer records the original authenticated inventory, and independently
+requires the live Source engine-manager endpoint and actual engine journal both
+empty, zero actual bare engine processes, and positive native/Core smoke ownership
+inspection. These are real observations, not a synthetic empty inventory.
+
+The hosted environment staging path exposed the same sealed-directory relocation
+requirement as its interpreter. Both unpublished roots are resealed on success
+and lost reply before any receipt/selection; child permissions stay sealed.
+The 60-test inventory/installer selection passes; further relocation and typed
+retirement regressions are being refreshed.

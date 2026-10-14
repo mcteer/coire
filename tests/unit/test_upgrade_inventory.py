@@ -12,6 +12,43 @@ from coire_node.runs import RunManager
 from coire_node.upgrade_inventory import native_process_entries, read_owner_json
 
 
+@pytest.mark.parametrize("fault", [None, "active", "unknown", "missing", "bytes"])
+def test_retained_completed_smokes_do_not_consume_active_ownership_capacity(
+    tmp_path: Path, fault: str | None
+) -> None:
+    from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
+    from coire_core.upgrade_journal import PrivateUpgradeStore
+    from coire_node.upgrade_inventory import upgrade_smoke_entries
+
+    root = PrivateUpgradeStore(tmp_path / "upgrades/smokes")
+    for index in range(80):
+        scope = PrivateUpgradeStore(root.path("scope-" + str(index)))
+        if fault == "missing" and index == 79:
+            continue
+        owner = UpgradeOwnerInventory(
+            owner="engines",
+            status="unknown" if fault == "unknown" and index == 79 else "complete",
+            entries=(
+                UpgradeInventoryEntry(
+                    owner="engines", kind="smoke", work_id=str(index), state="active"
+                ),
+            )
+            if fault == "active"
+            else (),
+        )
+        scope.write("owner.json", owner)
+        if fault == "bytes":
+            with scope.path("owner.json").open("ab") as output:
+                output.write(b" " * (64 * 1024))
+    before = {str(p): p.read_bytes() for p in root.root.rglob("owner.json")}
+    if fault:
+        with pytest.raises(UpgradeUnavailable):
+            upgrade_smoke_entries(tmp_path)
+    else:
+        assert upgrade_smoke_entries(tmp_path) == ()
+    assert {str(p): p.read_bytes() for p in root.root.rglob("owner.json")} == before
+
+
 def test_native_scan_bounds_all_processes_even_without_matching_engines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

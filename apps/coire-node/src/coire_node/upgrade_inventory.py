@@ -60,17 +60,31 @@ def upgrade_smoke_entries(state_root: Path) -> tuple[UpgradeInventoryEntry, ...]
         return ()
     store = PrivateUpgradeStore(root)
     children = list(store.root.iterdir())
-    if len(children) > 64:
-        raise UpgradeUnavailable("Upgrade smoke ownership exceeds its bound")
+    # Completed smoke records are retained evidence, not active ownership.
+    # Bound both history I/O and outstanding namespaces; ordinary successful
+    # upgrades must not eventually make every subsequent drain unknown.
+    if len(children) > 4096:
+        raise UpgradeUnavailable("Upgrade smoke history exceeds its bound")
     entries: list[UpgradeInventoryEntry] = []
+    active = 0
+    read_bytes = 0
     for child in children:
         if not child.is_dir() or child.is_symlink():
             raise UpgradeUnavailable("Upgrade smoke owner is unreconciled")
-        owner = PrivateUpgradeStore(store.path(child.name)).read(
-            "owner.json", UpgradeOwnerInventory
-        )
+        child_store = PrivateUpgradeStore(store.path(child.name))
+        try:
+            read_bytes += child_store.path("owner.json").lstat().st_size
+        except OSError:
+            raise UpgradeUnavailable("Upgrade smoke ownership is incomplete") from None
+        if read_bytes > 4 * 1024**2:
+            raise UpgradeUnavailable("Upgrade smoke history bytes exceed their bound")
+        owner = child_store.read("owner.json", UpgradeOwnerInventory)
         if owner is None or owner.owner != "engines" or owner.status != "complete":
             raise UpgradeUnavailable("Upgrade smoke ownership is incomplete")
+        if owner.entries:
+            active += 1
+            if active > 64:
+                raise UpgradeUnavailable("Upgrade smoke active ownership exceeds its bound")
         entries.extend(owner.entries)
     return tuple(entries)
 

@@ -28,6 +28,7 @@ from coire_core.models.upgrades import (
     NativeUpgradeClaim,
     NodeAgentProcessIdentity,
     UpgradeExecutionPlan,
+    UpgradeOwnerInventory,
 )
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore
@@ -35,6 +36,12 @@ from coire_node.expired_recovery_definition import read_definition_file
 from coire_node.maintenance import REQUIRED_OWNERS
 from coire_node.recovery_identity import verify_retired_identity
 from coire_node.upgrade_guard import NativeGuardTransport, _owned_native_process
+from coire_node.upgrade_inventory import (
+    core_smoke_entries,
+    native_process_entries,
+    read_owner_json,
+    upgrade_smoke_entries,
+)
 from coire_node.upgrade_runtime import verify_prepared_runtime
 
 
@@ -107,17 +114,50 @@ def retire_adopted_fixture(settings: Settings, job_id: str) -> UpgradeNativeFixt
                 lock = records.path("fixture-supervisor.lock")
                 if not any(Path(item.path) == lock for item in process.open_files()):
                     raise UpgradeUnavailable("Adopted fixture owner has no inherited restart lock")
-                matches.append(receipt)
+            else:
+                # A retained canonical adoption plus positive PID/birth
+                # retirement and actual free restart lock establishes the
+                # predecessor, even if it exited before this observation.
+                verify_retired_identity(receipt.process)
+                with records.ownership("fixture-supervisor.lock"):
+                    pass
+            matches.append(receipt)
         if len(matches) != 1:
-            raise UpgradeUnavailable("Fixture retirement requires one exact live adopted owner")
+            raise UpgradeUnavailable("Fixture retirement requires one exact adopted predecessor")
         definition = read_definition_file(base / "fixture-supervisor.py", os.getuid())
         with httpx.Client(trust_env=False, timeout=5) as client:
-            inventory = NativeGuardTransport(settings, client).inventory(
+            transport = NativeGuardTransport(settings, client)
+            inventory = transport.inventory(
                 plan,
                 native.source.runtime.environment_sha256,
                 deadline_at=datetime.now(UTC) + timedelta(seconds=5),
             )
-        if not inventory.idle(REQUIRED_OWNERS):
+            # Observe every engine ownership source independently. This is
+            # positive evidence when a legacy collector refuses its exhausted
+            # history bound, never an empty replacement for an unknown owner.
+            response = client.get(
+                str(transport.base.copy_with(path="/node/engines")),
+                headers={"Authorization": "Bearer " + settings.node_token.get_secret_value()},
+            )
+            from coire_node.engines import ENGINES_FILE
+
+            if response.status_code != 200 or response.json() != []:
+                raise UpgradeUnavailable("Fixture retirement Source manager is not empty")
+            if read_owner_json(base / "state" / ENGINES_FILE) != []:
+                raise UpgradeUnavailable("Fixture retirement engine journal is not empty")
+            entries = (
+                native_process_entries(
+                    "engines", ("mlx_lm.server", "mlx_vlm.server", "fake_engine")
+                )
+                + upgrade_smoke_entries(base / "state")
+                + core_smoke_entries(base / "state")
+            )
+            if entries:
+                raise UpgradeUnavailable("Fixture retirement has actual engine ownership")
+            engine_inventory = UpgradeOwnerInventory(
+                owner="engines", status="complete", entries=entries
+            )
+        if not inventory.idle(REQUIRED_OWNERS - {"engines"}):
             raise UpgradeUnavailable("Fixture retirement has active or unknown Source work")
         retained = UpgradeNativeFixtureRetirement(
             claim=claim,
@@ -126,6 +166,8 @@ def retire_adopted_fixture(settings: Settings, job_id: str) -> UpgradeNativeFixt
             node_process=node,
             adoption=matches[0],
             definition_sha256=hashlib.sha256(definition).hexdigest(),
+            inventory=inventory,
+            engine_inventory=engine_inventory,
             observed_at=datetime.now(UTC),
         )
         records.write(key, retained, replace=False)

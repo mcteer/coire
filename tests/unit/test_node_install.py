@@ -566,6 +566,41 @@ def test_interpreter_relocation_requires_unpublished_root_write_and_reseals_on_l
     assert binary.read_bytes() == b"private test interpreter"
 
 
+@pytest.mark.parametrize("lost_response", [False, True])
+def test_sealed_environment_relocation_reseals_after_a_lost_reply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lost_response: bool
+) -> None:
+    import os
+    import stat
+
+    installer = _installer()
+    source, target = tmp_path / "environment.staging", tmp_path / "environment"
+    (source / "bin").mkdir(parents=True)
+    (source / "bin/python3").write_bytes(b"private installed fixture")
+    replace = os.replace
+
+    def relocate(before: Path, after: Path) -> None:
+        assert stat.S_IMODE(before.stat().st_mode) == 0o700
+        assert stat.S_IMODE((before / "bin/python3").stat().st_mode) == 0o400
+        replace(before, after)
+        if lost_response:
+            raise OSError("environment relocation reply lost")
+
+    monkeypatch.setattr(installer.os, "replace", relocate)
+
+    def verify(python: Path) -> None:
+        installer.seal_tree(python.parent.parent)
+
+    if lost_response:
+        with pytest.raises(OSError, match="reply lost"):
+            installer.stage_environment(source, target, verify=verify)
+    else:
+        installer.stage_environment(source, target, verify=verify)
+    assert not source.exists()
+    assert stat.S_IMODE(target.stat().st_mode) == 0o500
+    assert (target / "bin/python3").read_bytes() == b"private installed fixture"
+
+
 def test_sealed_environment_receipt_verifies_every_byte_before_reuse(tmp_path: Path) -> None:
     installer = _installer()
     interpreter = tmp_path / "runtimes" / ("a" * 64)

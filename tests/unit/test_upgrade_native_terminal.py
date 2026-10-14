@@ -245,6 +245,19 @@ def test_native_acknowledgement_preserves_history_and_references_canonical_resol
 
             previous_claim = bootstrap.read("claim.json", NativeUpgradeClaim)
             current_native = owner.original_native.model_copy(update={"phase": "recovery_required"})
+            from coire_core.models.upgrades import NODE_UPGRADE_OWNERS, NodeUpgradeInventory
+
+            inventory = NodeUpgradeInventory(
+                job_id=claim.job_id,
+                generation=claim.generation,
+                node=claim.node,
+                runtime_sha256=current_native.source.runtime.environment_sha256,
+                observed_at=datetime.now(UTC),
+                owners=tuple(
+                    UpgradeOwnerInventory(owner=name, status="complete")
+                    for name in sorted(NODE_UPGRADE_OWNERS)
+                ),
+            )
             snapshot = UpgradeNativeFixtureRetirement(
                 claim=claim,
                 native=current_native,
@@ -252,6 +265,8 @@ def test_native_acknowledgement_preserves_history_and_references_canonical_resol
                 node_process=handback.node,
                 adoption=adopted,
                 definition_sha256=hashlib.sha256(definition.read_bytes()).hexdigest(),
+                inventory=inventory,
+                engine_inventory=UpgradeOwnerInventory(owner="engines", status="complete"),
                 observed_at=datetime.now(UTC),
                 retired_at=datetime.now(UTC),
             )

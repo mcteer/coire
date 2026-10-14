@@ -646,7 +646,17 @@ def stage_environment(
     if source != target:
         if target.exists():
             raise FileExistsError("immutable node environment already exists")
-        os.replace(source, target)
+        sealed = stat.S_IMODE(source.stat().st_mode) == 0o500
+        if sealed:
+            source.chmod(0o700)
+        try:
+            os.replace(source, target)
+        finally:
+            if sealed:
+                if source.exists():
+                    source.chmod(0o500)
+                elif target.exists():
+                    target.chmod(0o500)
         directory = os.open(target.parent, os.O_RDONLY)
         try:
             os.fsync(directory)

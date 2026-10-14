@@ -6,14 +6,17 @@ from pydantic import AwareDatetime, model_validator
 
 from coire_core.models.upgrade_recovery import UpgradeExpiredRecoveryColdResolution
 from coire_core.models.upgrades import (
+    NODE_UPGRADE_OWNERS,
     NativeGuardStatus,
     NativeNodeProcess,
     NativeRecoveryIntent,
     NativeUpgradeClaim,
     NodeAgentProcessIdentity,
+    NodeUpgradeInventory,
     PreparedNativeRuntime,
     Sha256,
     UpgradeDiskHold,
+    UpgradeOwnerInventory,
     UpgradeReceipt,
     UpgradeWire,
 )
@@ -72,6 +75,8 @@ class UpgradeNativeFixtureRetirement(UpgradeWire):
     node_process: NativeNodeProcess
     adoption: UpgradeNativeTerminalSupervisorReceipt
     definition_sha256: Sha256
+    inventory: NodeUpgradeInventory
+    engine_inventory: UpgradeOwnerInventory
     observed_at: AwareDatetime
     retired_at: AwareDatetime | None = None
 
@@ -97,6 +102,22 @@ class UpgradeNativeFixtureRetirement(UpgradeWire):
             != self.adoption.intent.runtime.environment_sha256
             or self.adoption.observed_at > self.observed_at
             or self.native.updated_at > self.observed_at
+            or (
+                self.inventory.job_id,
+                self.inventory.generation,
+                self.inventory.node,
+                self.inventory.runtime_sha256,
+            )
+            != (
+                self.claim.job_id,
+                self.claim.generation,
+                self.claim.node,
+                source.runtime.environment_sha256,
+            )
+            or self.engine_inventory.owner != "engines"
+            or self.engine_inventory.status != "complete"
+            or self.engine_inventory.entries
+            or not self.inventory.idle(NODE_UPGRADE_OWNERS - {"engines"})
             or (self.retired_at is not None and self.retired_at < self.observed_at)
         ):
             raise ValueError("fixture retirement is not the exact fenced current Source")
