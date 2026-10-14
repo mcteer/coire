@@ -44,6 +44,16 @@ class UpgradeNativeTerminalAcknowledgement(UpgradeWire):
     terminal: UpgradeReceipt
 
 
+class UpgradeNativeTerminalServingHistory(UpgradeWire):
+    """Byte bindings for separate completed original and recovery smoke scopes."""
+
+    resolution_sha256: Sha256
+    original_attempt_sha256: Sha256
+    recovered_attempt_sha256: Sha256
+    original_scope_sha256: Sha256
+    recovered_scope_sha256: Sha256
+
+
 class UpgradeNativeTerminalIntent(UpgradeWire):
     resolution_sha256: Sha256
     before_native: "NativeRecoveryIntent"

@@ -47,6 +47,9 @@ from coire_node import upgrade_native_terminal as native_ack
         "wrong_authority",
         "unknown_scope",
         "retired_fixture_provenance",
+        "existing_history",
+        "existing_history_unknown",
+        "existing_history_lost",
     ],
 )
 def test_native_acknowledgement_preserves_history_and_references_canonical_resolution(
@@ -342,6 +345,39 @@ def test_native_acknowledgement_preserves_history_and_references_canonical_resol
             "owner.json", UpgradeOwnerInventory(owner="engines", status="complete", entries=())
         )
         PrivateUpgradeStore(tmp_path / "state/upgrades/smokes")
+        old_scope = None
+        old_attempt = None
+        if fault is not None and fault.startswith("existing_history"):
+            old_attempt = smoke.attempt.model_copy(
+                update={
+                    "evidence": smoke.attempt.evidence.model_copy(
+                        update={"output_sha256": "b" * 64}
+                    )
+                }
+            )
+            old_scope = PrivateUpgradeStore(tmp_path / "state/upgrades/smokes" / scope_name)
+            old_scope.write("result.json", old_attempt.evidence)
+            old_scope.write("owner.json", UpgradeOwnerInventory(owner="engines", status="complete"))
+            PrivateUpgradeStore(operation.root / "guard", create=False).write(
+                "source-serving.json", old_attempt
+            )
+            if fault == "existing_history_unknown":
+                old_scope.write(
+                    "owner.json", UpgradeOwnerInventory(owner="engines", status="unknown")
+                )
+            elif fault == "existing_history_lost":
+                write_history = PrivateUpgradeStore.write
+
+                def lose_history(self, key, value, **kwargs):
+                    nonlocal interrupted_history
+                    outcome = write_history(self, key, value, **kwargs)
+                    if key == "native-terminal.serving-history.json" and not interrupted_history:
+                        interrupted_history = True
+                        raise UpgradeUnavailable("lost serving history acknowledgement")
+                    return outcome
+
+                interrupted_history = False
+                monkeypatch.setattr(PrivateUpgradeStore, "write", lose_history)
         from pathlib import Path
 
         from coire_node.upgrade_executor import NativeDiskReservation
@@ -427,13 +463,13 @@ def test_native_acknowledgement_preserves_history_and_references_canonical_resol
                 return result
 
             monkeypatch.setattr(PrivateUpgradeStore, "write", lost_intent)
-        if fault in {"wrong_authority", "unknown_scope"}:
+        if fault in {"wrong_authority", "unknown_scope", "existing_history_unknown"}:
             with pytest.raises((UpgradeConflict, UpgradeUnavailable)):
                 native_ack.acknowledge_native_terminal(settings, grant, transport)
             assert journal.latest() == initial
             assert origin.root.exists()
             return
-        if fault and fault != "retired_fixture_provenance":
+        if fault and fault not in {"retired_fixture_provenance", "existing_history"}:
             with pytest.raises(UpgradeUnavailable, match="lost"):
                 native_ack.acknowledge_native_terminal(settings, grant, transport)
         ack = native_ack.acknowledge_native_terminal(settings, grant, transport)
@@ -443,7 +479,26 @@ def test_native_acknowledgement_preserves_history_and_references_canonical_resol
         assert journal.latest() == ack.terminal and ack.terminal.phase is UpgradePhase.ROLLED_BACK
         assert ack.terminal.reason == "expired_operation_recovered"
         assert ack.verification.evidence == ack.terminal.evidence
-        assert not origin.root.exists() and verified
+        assert verified
+        if old_scope is not None:
+            assert origin.root.exists()
+            assert old_scope.read("result.json", UpgradeEvidence) == old_attempt.evidence
+            assert (
+                PrivateUpgradeStore(operation.root / "guard", create=False).read(
+                    "source-serving.json", type(old_attempt)
+                )
+                == old_attempt
+            )
+            origin.write("result.json", old_attempt.evidence)
+            with pytest.raises(UpgradeConflict):
+                native_ack.transfer_source_smoke(
+                    settings,
+                    grant,
+                    run,
+                    PrivateUpgradeStore(operation.root / "guard", create=False),
+                )
+        else:
+            assert not origin.root.exists()
         assert result.original_upgrade_succeeded is False
 
     perform_source_handback_fixture(tmp_path, monkeypatch, callback=exercise, supervision="fixture")

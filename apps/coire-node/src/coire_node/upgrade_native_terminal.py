@@ -21,6 +21,7 @@ from coire_core.models.upgrade_native_terminal import (
     UpgradeNativeTerminalAcknowledgement,
     UpgradeNativeTerminalGrant,
     UpgradeNativeTerminalIntent,
+    UpgradeNativeTerminalServingHistory,
     UpgradeNativeTerminalStagingQuarantine,
     UpgradeNativeTerminalState,
     UpgradeNativeTerminalSupervisorIntent,
@@ -47,6 +48,7 @@ from coire_core.models.upgrades import (
 )
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore, UpgradeReceiptJournal
+from coire_node.expired_recovery_cold_archive import history_sha256
 from coire_node.expired_recovery_cold_supervision import verify_fixture_supervisor
 from coire_node.native_platform import is_darwin
 from coire_node.upgrade_executor import NativeDiskReservation
@@ -231,8 +233,6 @@ def transfer_source_smoke(
     ):
         raise UpgradeUnavailable("Native acknowledgement smoke process retirement is unverified")
     existing = guard.read("source-serving.json", NativeSmokeAttempt)
-    if existing is not None and existing != attempt:
-        raise UpgradeConflict("Native acknowledgement would overwrite original serving history")
     scope_name = (
         f"{plan.operation.job_id}-{plan.operation.generation}-{runtime.environment_sha256}-source"
     )
@@ -241,6 +241,62 @@ def transfer_source_smoke(
         Path(settings.node_state_dir) / "upgrades/smokes", create=False
     )
     destination = destination_root.path(scope_name)
+    if existing is not None and existing != attempt:
+        original = PrivateUpgradeStore(destination, create=False)
+        recovered = PrivateUpgradeStore(origin, create=False)
+        with original.ownership("smoke.lock"), recovered.ownership("smoke.lock"):
+            for recorded, scope in ((existing, original), (attempt, recovered)):
+                if (
+                    recorded.state != "complete"
+                    or not recorded.cleanup_verified
+                    or recorded.process is None
+                    or recorded.evidence is None
+                    or (
+                        recorded.job_id,
+                        recorded.generation,
+                        recorded.plan_sha256,
+                        recorded.stage,
+                        recorded.runtime_sha256,
+                    )
+                    != (
+                        attempt.job_id,
+                        attempt.generation,
+                        attempt.plan_sha256,
+                        "source-serving",
+                        runtime.environment_sha256,
+                    )
+                    or _owned_native_process(recorded.process, python, "coire_node.upgrade_smoke")
+                    is not None
+                    or scope.read("result.json", UpgradeEvidence) != recorded.evidence
+                    or scope.read("owner.json", UpgradeOwnerInventory)
+                    != UpgradeOwnerInventory(owner="engines", status="complete")
+                ):
+                    raise UpgradeConflict("Native serving history lacks exact completed custody")
+                if any(
+                    getattr(recorded.evidence, field) != getattr(attempt.evidence, field)
+                    for field in (
+                        "runtime_sha256",
+                        "release_sha256",
+                        "model_id",
+                        "model_variant_id",
+                        "model_manifest_sha256",
+                    )
+                ):
+                    raise UpgradeConflict("Native serving history Source binding differs")
+            proof = UpgradeNativeTerminalServingHistory(
+                resolution_sha256=result.sha256(),
+                original_attempt_sha256=existing.sha256(),
+                recovered_attempt_sha256=attempt.sha256(),
+                original_scope_sha256=history_sha256(original),
+                recovered_scope_sha256=history_sha256(recovered),
+            )
+            key = "native-terminal.serving-history.json"
+            retained_history = run.read(key, UpgradeNativeTerminalServingHistory)
+            if retained_history is None:
+                run.write(key, proof, replace=False)
+            elif retained_history != proof:
+                raise UpgradeConflict("Native serving history retained bytes changed")
+        return
     check_scope = origin if origin.exists() or origin.is_symlink() else destination
     scope_store = PrivateUpgradeStore(check_scope, create=False)
     if scope_store.read("result.json", UpgradeEvidence) != attempt.evidence:
