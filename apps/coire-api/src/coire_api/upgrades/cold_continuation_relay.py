@@ -102,7 +102,13 @@ async def verify_observation_context(
             )
         )
         if (
-            context.unstarted_intent != keeper.grant.intent
+            (
+                context.unstarted_intent != keeper.grant.intent
+                and (
+                    proof.unstarted_custody_grant is None
+                    or proof.unstarted_custody_grant != context.unstarted_grant
+                )
+            )
             or stored is None
             or stored.grant_sha256 != keeper.grant.sha256()
             or stored.grant_payload != keeper.grant.model_dump(mode="json")

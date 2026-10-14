@@ -452,3 +452,65 @@ def test_absent_original_dispatch_is_positive_replayable_evidence(
         history.root.mkdir(mode=0o700)
         with pytest.raises(UpgradeConflict, match="has a namespace"):
             worker.archive_cold_collectives(settings, source, control)
+
+
+def test_empty_archive_continuation_retains_its_accepted_predecessor_digest(tmp_path, monkeypatch):
+    from test_upgrade_recovery_cold_retained_source import continuation_fixture
+
+    from coire_node import expired_recovery_cold_archive as worker
+
+    selector, _, launcher, settings, owner, bootstrap, run, _, _, control = continuation_fixture(
+        tmp_path, monkeypatch, archived=True
+    )
+    request = owner.intent.request.model_copy(update={"original_scope_sha256s": ()})
+    owner = owner.model_copy(
+        update={"intent": owner.intent.model_copy(update={"request": request, "scopes": ()})}
+    )
+    run.write("cold.claim.json", owner)
+    run.write("cold.activation.json", owner)
+    monkeypatch.setattr(worker, "verify_projection_boundary", lambda *_: None)
+    monkeypatch.setattr(worker, "require_live_cold_source", lambda *_: None)
+    with (
+        bootstrap.ownership("recovery-transfer.lock") as descriptor,
+        bind_recovery_lease(bootstrap, owner.sha256(), descriptor),
+    ):
+        selected = selector.project_cold_source(settings, owner, control)
+        source = launcher.launch_cold_source(settings, selected, control)
+        monkeypatch.setattr(
+            worker,
+            "datetime",
+            SimpleNamespace(now=lambda _: source.observed_at + timedelta(seconds=1)),
+        )
+        receipt = worker.archive_cold_collectives(settings, source, control)
+        assert receipt.archive.previous_archive_sha256 == owner.continuation.previous_archive_sha256
+        assert receipt.archive.scopes == ()
+
+
+@pytest.mark.parametrize("fault", [None, "original", "archived", "linked_parent"])
+def test_absent_history_custody_never_creates_or_ignores_a_namespace(tmp_path, fault):
+    from coire_node.expired_recovery_cold_archive import absent_history_sha256
+
+    node = PrivateUpgradeStore(tmp_path / "state/upgrades")
+    collectives = PrivateUpgradeStore(node.path("collectives"))
+    run = PrivateUpgradeStore(tmp_path / "bootstrap/recovery")
+    archive = PrivateUpgradeStore(run.path("collective-history"))
+    job = "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+    if fault == "original":
+        PrivateUpgradeStore(collectives.path(job))
+    if fault == "archived":
+        PrivateUpgradeStore(archive.path(job))
+    if fault == "linked_parent":
+        archive.root.rmdir()
+        archive.root.symlink_to(collectives.root, target_is_directory=True)
+    if fault:
+        with pytest.raises(UpgradeConflict):
+            absent_history_sha256(node, run, job)
+    else:
+        assert absent_history_sha256(node, run, job) == worker_digest()
+        assert not collectives.path(job).exists() and not archive.path(job).exists()
+
+
+def worker_digest():
+    import hashlib
+
+    return hashlib.sha256(b"coire-cold-no-original-dispatch-v1").hexdigest()

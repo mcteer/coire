@@ -35,13 +35,18 @@ from coire_core.models.upgrades import (
     NativeRuntimeSelection,
     NativeUpgradeClaim,
     NodeAgentProcessIdentity,
+    NodeUpgradeCollectiveScope,
     PreparedNativeRuntime,
     UpgradeMaintenance,
 )
 from coire_core.settings import Settings
 from coire_core.upgrade_journal import PrivateUpgradeStore
 from coire_core.upgrade_recovery_inventory import verify_retained_collective_inventory
-from coire_node.expired_recovery_cold_archive import history_sha256, retained_dispatches
+from coire_node.expired_recovery_cold_archive import (
+    absent_history_sha256,
+    history_sha256,
+    retained_dispatches,
+)
 from coire_node.expired_recovery_cold_continuation import fixture_origin
 from coire_node.expired_recovery_cold_owner import observe_fixture_supervisor
 from coire_node.expired_recovery_continuation_history import (
@@ -291,28 +296,42 @@ def observe_continuation(
             pending_archive = pending_archive_custody(settings, owner)
         collective_root = PrivateUpgradeStore(node.path("collectives"), create=False)
         original_history = collective_root.path(intent.request.original_job_id)
-        if archived is not None:
-            if original_history.exists() or original_history.is_symlink():
-                raise UpgradeConflict("Cold continuation archive has two namespace owners")
-            history = PrivateUpgradeStore(
-                run.path("collective-history") / intent.request.original_job_id, create=False
+        scopes: tuple[NodeUpgradeCollectiveScope, ...]
+        interrupted: tuple[str, ...]
+        history = None
+        absence_store = (
+            PrivateUpgradeStore(runs.path(pending_archive[0]), create=False)
+            if pending_archive is not None
+            else run
+        )
+        if not intent.request.original_scope_sha256s:
+            scopes, interrupted = (), ()
+            history_digest = absent_history_sha256(
+                node, absence_store, intent.request.original_job_id
             )
         else:
-            history = PrivateUpgradeStore(
-                runs.path(pending_archive[0])
-                / "collective-history"
-                / intent.request.original_job_id
-                if pending_archive is not None
-                else original_history,
-                create=False,
-            )
-        for stage in sorted(history.root.iterdir()):
-            for slot in sorted(PrivateUpgradeStore(stage, create=False).root.iterdir()):
-                stack.enter_context(
-                    PrivateUpgradeStore(slot, create=False).ownership("collective.lock")
+            if archived is not None:
+                if original_history.exists() or original_history.is_symlink():
+                    raise UpgradeConflict("Cold continuation archive has two namespace owners")
+                history = PrivateUpgradeStore(
+                    run.path("collective-history") / intent.request.original_job_id, create=False
                 )
-        scopes, interrupted = retained_dispatches(history)
-        history_digest = history_sha256(history)
+            else:
+                history = PrivateUpgradeStore(
+                    runs.path(pending_archive[0])
+                    / "collective-history"
+                    / intent.request.original_job_id
+                    if pending_archive is not None
+                    else original_history,
+                    create=False,
+                )
+            for stage in sorted(history.root.iterdir()):
+                for slot in sorted(PrivateUpgradeStore(stage, create=False).root.iterdir()):
+                    stack.enter_context(
+                        PrivateUpgradeStore(slot, create=False).ownership("collective.lock")
+                    )
+            scopes, interrupted = retained_dispatches(history)
+            history_digest = history_sha256(history)
         if archived is not None and (
             archived.archive.scopes != scopes
             or archived.archive.interrupted_scope_sha256s != interrupted
@@ -343,7 +362,12 @@ def observe_continuation(
             unstarted = observe_unstarted_custodian(settings, captured.unstarted_intent)
         if (
             before != preimages()
-            or history_digest != history_sha256(history)
+            or history_digest
+            != (
+                history_sha256(history)
+                if history is not None
+                else absent_history_sha256(node, absence_store, intent.request.original_job_id)
+            )
             or final.owner != owner
             or final.native_baseline != captured.native_baseline
             or final.data_baseline != captured.data_baseline

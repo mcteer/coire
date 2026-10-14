@@ -65,6 +65,12 @@ def archive_absent_dispatches(
             source=source,
             scopes=(),
             interrupted_scope_sha256s=(),
+            previous_archive_sha256=(
+                effect.owner.continuation.previous_archive_sha256
+                or effect.owner.continuation.untransferred_archive_sha256
+            )
+            if effect.owner.continuation is not None
+            else None,
             local=control.local_inventory(
                 effect.owner.intent.local_inventory_plan(),
                 deadline_at=effect.owner.intent.deadline_at,
@@ -99,6 +105,19 @@ def archive_absent_dispatches(
         )
         run.write("cold.collective.archive.receipt.json", receipt, replace=False)
         return receipt
+
+
+def absent_history_sha256(node: PrivateUpgradeStore, run: PrivateUpgradeStore, job_id: str) -> str:
+    parent = run.path("collective-history")
+    if parent.is_symlink():
+        raise UpgradeConflict("Absent archive parent is linked")
+    if parent.exists():
+        PrivateUpgradeStore(parent, create=False)
+    collectives = PrivateUpgradeStore(node.path("collectives"), create=False)
+    for path in (collectives.path(job_id), parent / job_id):
+        if path.exists() or path.is_symlink():
+            raise UpgradeConflict("Declared absent dispatch history has a namespace")
+    return hashlib.sha256(b"coire-cold-no-original-dispatch-v1").hexdigest()
 
 
 def retained_dispatches(

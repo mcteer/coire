@@ -549,6 +549,62 @@ async def exercise_continuation(
                 session, actor, followup, relay_module.ColdContinuationObservationRelay()
             )
             assert replay == recovered_intent and not created
+        if keeper_preclaim:
+            latest_startup = UpgradeExpiredRecoverySupportProcess(
+                intent=recovered_intent,
+                runtime=owner.runtime,
+                process=startup.process.model_copy(
+                    update={"pid": 12356, "create_time_s": recovered_intent.accepted_at.timestamp()}
+                ),
+                observed_at=recovered_intent.accepted_at,
+            )
+            async with sessions.begin() as session:
+                await cancel_recovery(
+                    session,
+                    actor,
+                    recovered_intent.recovery_id,
+                    UpgradeExpiredRecoveryCancelRequest(intent_sha256=recovered_intent.sha256()),
+                )
+            now = recovered_intent.deadline_at + timedelta(seconds=1)
+            async with sessions.begin() as session:
+                latest_context = await context.read_cold_predecessor_context(
+                    session, intent.recovery_id, read, plan.operation.node
+                )
+                assert latest_context.unstarted_grant == final_grant
+            latest = UpgradeColdContinuationObservation.model_validate(
+                fresh.model_dump(mode="json")
+                | {
+                    "binding": fresh.binding.model_copy(update={"observed_at": now}).model_dump(
+                        mode="json"
+                    ),
+                    "observed_at": now,
+                    "peer": fresh.peer.model_copy(update={"observed_at": now}).model_dump(
+                        mode="json"
+                    ),
+                    "native_data": fresh.native_data.model_copy(
+                        update={"observed_at": now}
+                    ).model_dump(mode="json"),
+                    "unstarted_startup": latest_startup.model_dump(mode="json"),
+                    "unstarted_custody_grant": final_grant.model_dump(mode="json"),
+                }
+            )
+            relay.publish(latest)
+            next_request = followup.model_copy(
+                update={
+                    "observation_sha256": latest.sha256(),
+                    "request": followup.request.model_copy(
+                        update={"idempotency_key": sha256(b"keeper-repeat-unstarted").hexdigest()}
+                    ),
+                }
+            )
+            async with sessions.begin() as session:
+                final_intent, created = await service.accept_continuation(
+                    session, actor, next_request, relay
+                )
+                assert created and final_intent.recovery_id != recovered_intent.recovery_id
+                assert (
+                    await session.get(UpgradeExpiredRecoveryRow, recovered_intent.recovery_id)
+                ).phase == "superseded"
         return
     next_owner = UpgradeExpiredRecoveryColdClaim(
         intent=next_intent,

@@ -32,7 +32,7 @@ def pending_archive_custody(
         )
     else:
         return None
-    from coire_node.expired_recovery_cold_archive import history_sha256
+    from coire_node.expired_recovery_cold_archive import absent_history_sha256, history_sha256
     from coire_node.expired_recovery_cold_continuation import previous_source
 
     current = owner
@@ -59,7 +59,16 @@ def pending_archive_custody(
             or archive.archive.source.launch.source.projection.owner != current
         ):
             raise UpgradeConflict("Pending archive differs from exact predecessor evidence")
-        if verify_bytes:
+        if verify_bytes and not owner.intent.request.original_scope_sha256s:
+            if archive.archive.scopes:
+                raise UpgradeConflict("Absent pending archive has dispatch records")
+            node = PrivateUpgradeStore(Path(settings.node_state_dir) / "upgrades", create=False)
+            if (
+                absent_history_sha256(node, run, owner.intent.request.original_job_id)
+                != history_sha
+            ):
+                raise UpgradeConflict("Absent pending archive digest differs")
+        elif verify_bytes:
             history = PrivateUpgradeStore(
                 run.path("collective-history") / owner.intent.request.original_job_id, create=False
             )
