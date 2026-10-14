@@ -353,15 +353,15 @@ async def test_stop_command_commits_while_reducer_waits_for_the_job_lock(
     controller_db: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Stop's user FK must not deadlock against a readonly authority guard."""
+    from coire_api.training.authorization import authorize_live_training_action
     from coire_scheduler import training
 
-    authorize = training.authorize_live_training_action
     authorized = asyncio.Event()
 
     async def observe_authorization(
         session: AsyncSession, principal: Principal, *, shared: bool = False
     ) -> uuid.UUID:
-        owner = await authorize(session, principal, shared=shared)
+        owner = await authorize_live_training_action(session, principal, shared=shared)
         authorized.set()
         return owner
 
