@@ -414,6 +414,8 @@ jobs:
       - name: bring up and validate
         env:
           COIRE_TAG: ci
+          COIRE_UPGRADE_EXECUTOR_TEST_IMAGE: coire-upgrade-executor:ci
+          COIRE_UPGRADE_LOCK_TEST_IMAGE: coire-api:ci
           COIRE_SECRETS_DIR: ${{ runner.temp }}/coire-secrets
           # Optional. The acquisition test uses an ungated repository, so it passes without a
           # token; set the secret only if a gated repository is ever needed. It reaches
@@ -422,7 +424,12 @@ jobs:
         run: |
           export COIRE_SECRET_POSTGRES_PASSWORD="$(openssl rand -base64 24)"
           export COIRE_SECRET_KEY_SIGNING_SECRET="$(openssl rand -base64 32)"
-          COIRE_INTEGRATION=1 uv run pytest -m "integration and not native_upgrade and not upgrade_stream" -q
+          # These three suites require the private service UID and run in the
+          # required upgrade-backup/upgrade-control-plane jobs above.
+          COIRE_INTEGRATION=1 uv run pytest -m "integration and not native_upgrade and not upgrade_stream" -q \
+            --ignore=tests/integration/test_upgrade_bootstrap.py \
+            --ignore=tests/integration/test_upgrade_host_ownership.py \
+            --ignore=tests/integration/test_upgrade_control_plane.py
       - name: one hundred controlled streams survive unrelated restarts
         env:
           COIRE_IT_GATEWAY_STREAM_CAPACITY: "100"

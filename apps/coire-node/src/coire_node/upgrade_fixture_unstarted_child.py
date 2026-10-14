@@ -1,9 +1,12 @@
 """Preserve a positively retired fixture child that never published startup state."""
 
 import hashlib
+import logging
 import os
 from datetime import UTC, datetime
 from pathlib import Path
+
+from opentelemetry import metrics, trace
 
 from coire_core.errors import UpgradeConflict
 from coire_core.models.upgrade_native_terminal import UpgradeNativeFixtureUnstartedChild
@@ -23,7 +26,14 @@ from coire_node.recovery_identity import verify_retired_identity
 from coire_node.upgrade_inventory import read_owner_json
 from coire_node.upgrade_runtime import verify_prepared_runtime
 
+tracer = trace.get_tracer("coire.node.native_terminal")
+captured_children = metrics.get_meter("coire.node.native_terminal").create_counter(
+    "coire_upgrade_fixture_unstarted_children_total"
+)
+logger = logging.getLogger(__name__)
 
+
+@tracer.start_as_current_span("coire.node.native_terminal.capture_unstarted_child")
 def capture_retired_unstarted_child(
     settings: Settings, job_id: str
 ) -> UpgradeNativeFixtureUnstartedChild:
@@ -162,4 +172,9 @@ def capture_retired_unstarted_child(
             raise UpgradeConflict("Unstarted fixture retained provenance changed")
         else:
             proof = retained
+    captured_children.add(1, {"node": claim.node})
+    logger.info(
+        "Retired unpublished fixture child preserved",
+        extra={"job_id": job_id, "node": claim.node, "generation": claim.generation},
+    )
     return proof

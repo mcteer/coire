@@ -705,6 +705,23 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 28,
+      "title": "Retired unpublished fixture children",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 156
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(coire_upgrade_fixture_unstarted_children_total[5m]))",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }
