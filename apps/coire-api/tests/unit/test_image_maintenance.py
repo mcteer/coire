@@ -45,6 +45,7 @@ def _private_file(path: Path, content: bytes) -> None:
 def test_fresh_owned_blob_volume_is_tightened_before_maintenance(tmp_path: Path) -> None:
     root = tmp_path / "blobs"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)  # Exercise an existing public directory regardless of caller umask.
     maintenance.prepare_private_blob_root(root)
     assert root.stat().st_mode & 0o777 == 0o700
     assert purge_stale_transfer_temporaries(root)[0] == 0
@@ -55,6 +56,7 @@ def test_blob_root_refuses_symlink_and_foreign_owner(
 ) -> None:
     root = tmp_path / "blobs"
     root.mkdir(mode=0o755)
+    root.chmod(0o755)  # Refusal must preserve the explicitly prepared permissions.
     alias = tmp_path / "alias"
     alias.symlink_to(root)
     with pytest.raises(ImageStorageUnavailable):

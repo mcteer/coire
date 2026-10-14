@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from coire_core.models.adapters import InferenceTarget
 from coire_core.models.registry import EngineBackend
+from coire_core.models.upgrades import CoreNodeSmokeScope
 
 
 class EngineState(StrEnum):
@@ -114,6 +115,7 @@ class EngineStartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     engine_id: uuid.UUID
+    coire_upgrade_scope: CoreNodeSmokeScope | None = None
     slug: str
     target: InferenceTarget | None = None
     backend: EngineBackend = EngineBackend.MLX_LM

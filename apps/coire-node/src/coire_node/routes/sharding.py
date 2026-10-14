@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from coire_core.models import (
@@ -22,6 +22,7 @@ from coire_core.models import (
 )
 from coire_core.models.gateway import EngineChatRequest
 from coire_core.net import shared_http_ssl_context
+from coire_node.maintenance import require_admission
 from coire_node.sharding import ShardGroupManager
 
 router = APIRouter(prefix="/node/shard-groups", tags=["sharding"])
@@ -38,7 +39,12 @@ def manager(request: Request) -> ShardGroupManager:
     return value
 
 
-@router.post("", response_model=ShardGroupStatus, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "",
+    response_model=ShardGroupStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(require_admission)],
+)
 async def prepare(command: ShardGroupCommand, request: Request) -> ShardGroupStatus:
     try:
         return manager(request).prepare(command)
@@ -87,7 +93,7 @@ async def mark_ready(group_id: uuid.UUID, request: Request) -> ShardGroupStatus:
     return found
 
 
-@router.post("/{group_id}/proxy/v1/chat/completions")
+@router.post("/{group_id}/proxy/v1/chat/completions", dependencies=[Depends(require_admission)])
 async def proxy_group(group_id: uuid.UUID, body: EngineChatRequest, request: Request) -> Response:
     groups = manager(request)
     found = groups.get(group_id)

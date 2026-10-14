@@ -666,6 +666,35 @@
         }
       },
       "description": "Only the first readonly measurement lookup reconnects once after an invalidated connection; admissions, commits and generation are never replayed."
+    },
+    {
+      "id": 19,
+      "type": "timeseries",
+      "title": "Native swap telemetry failures",
+      "description": "Unverifiable native swap readings refuse qualification. Filesystem page-outs are not swap-outs.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 124
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(coire_training_swap_sample_failures_total[5m]))",
+          "legendFormat": "unverifiable readings / second"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      }
     }
   ],
   "schemaVersion": 39,

@@ -165,8 +165,16 @@ async def authenticate_run_token(session: AsyncSession, presented: str) -> Princ
         )
         if run.task_class is TaskClass.WRITE:
             for target in scope.permitted_targets:
-                if not await target_is_write_verified(session, target):
+                if not await target_is_write_verified(session, target, node_id=run.node_id):
                     raise InvalidRunToken("target_unverified")
+    if run.task_class is TaskClass.WRITE and not scope.permitted_targets:
+        from coire_api.evaluations import variant_is_write_verified
+        from coire_core.settings import get_settings
+
+        if get_settings().upgrades_enabled and not await variant_is_write_verified(
+            session, run.primary_variant_id, node_id=run.node_id
+        ):
+            raise InvalidRunToken("target_unverified")
     return Principal(
         kind=PrincipalKind.RUN,
         subject=str(run.id),

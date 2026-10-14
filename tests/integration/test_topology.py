@@ -33,6 +33,7 @@ FIRST_PARTY = {
     "coire-scheduler",
     "coire-migrate",
     "coire-ops",
+    "coire-upgrade-executor",
 }
 LONG_LIVED = {
     "coire-web",
@@ -43,6 +44,7 @@ LONG_LIVED = {
     "docker-socket-proxy",
     "otel-collector",
     "coire-ops",
+    "coire-upgrade-executor",
 }
 EXPECTED_NETWORKS = {
     "coire-edge",
@@ -68,6 +70,7 @@ def config() -> dict[str, Any]:
         # invariants are about what *ships*, so render the production file alone: an overlay
         # leaking in here would quietly weaken every assertion below.
         "COMPOSE_FILE": str(COMPOSE),
+        "COMPOSE_PROFILES": "mcp,ops,upgrades",
     }
     proc = subprocess.run(
         ["docker", "compose", "-f", str(COMPOSE), "config", "--format", "json"],
@@ -126,10 +129,39 @@ class TestNetworkSegmentation:
         assert "coire-db" not in nets(config, "coire-web")
         assert nets(config, "coire-web") & nets(config, "postgres") == set()
 
-    def test_socket_proxy_reachable_only_by_scheduler(self, config: dict[str, Any]) -> None:
-        """FR-007: the Docker socket has exactly two parties on its network."""
+    def test_socket_proxy_reachable_only_by_fixed_owners(self, config: dict[str, Any]) -> None:
+        """019 authorized the independent executor; no other role gets Docker access."""
         on_docker = {s for s in config["services"] if "coire-docker" in nets(config, s)}
-        assert on_docker == {"coire-scheduler", "docker-socket-proxy"}
+        assert on_docker == {"coire-scheduler", "docker-socket-proxy", "coire-upgrade-executor"}
+
+    def test_executor_has_only_approved_access(self, config: dict[str, Any]) -> None:
+        executor = config["services"]["coire-upgrade-executor"]
+        assert nets(config, "coire-upgrade-executor") == {
+            "coire-docker",
+            "coire-internal",
+            "coire-telemetry",
+        }
+        assert not executor.get("ports")
+        assert not executor.get("depends_on")
+        assert executor["profiles"] == ["upgrades"]
+        assert executor["environment"]["UPGRADES_ENABLED"] == "false"
+        assert {item["source"] for item in executor["secrets"]} == {"upgrade_executor_token"}
+        mounts = {item["target"]: item for item in executor["volumes"]}
+        assert set(mounts) == {
+            "/opt/coire/upgrades/prepared",
+            "/opt/coire/upgrades/state",
+            "/opt/coire/upgrades/coordination",
+        }
+        assert mounts["/opt/coire/upgrades/prepared"]["read_only"]
+        assert not mounts["/opt/coire/upgrades/state"].get("read_only", False)
+        assert not mounts["/opt/coire/upgrades/coordination"].get("read_only", False)
+        assert executor["pids_limit"] == 128
+        assert int(executor["mem_limit"]) == 512 * 1024**2
+        assert float(executor["cpus"]) == 1
+        assert executor["healthcheck"]["test"][-1] == "--healthcheck"
+        api_mounts = {item["target"]: item for item in config["services"]["coire-api"]["volumes"]}
+        assert api_mounts["/opt/coire/upgrades/state"]["read_only"]
+        assert api_mounts["/opt/coire/upgrades/prepared"]["read_only"]
 
     def test_ops_is_core_only_and_has_exact_networks(self, config: dict[str, Any]) -> None:
         assert nets(config, "coire-ops") == {"coire-internal", "coire-telemetry"}
@@ -141,11 +173,13 @@ class TestNetworkSegmentation:
     def test_postgres_is_only_on_the_db_network(self, config: dict[str, Any]) -> None:
         assert nets(config, "postgres") == {"coire-db"}
 
-    def test_file_processing_is_scheduler_only_by_default(self, config: dict[str, Any]) -> None:
+    def test_file_processing_is_scoped_to_scheduler_and_api_census(
+        self, config: dict[str, Any]
+    ) -> None:
         attached = {
             name for name in config["services"] if "coire-file-processing" in nets(config, name)
         }
-        assert attached == {"coire-scheduler"}
+        assert attached == {"coire-scheduler", "coire-api"}
 
 
 class TestPublishedPorts:
@@ -201,6 +235,12 @@ class TestHealthAndDependencies:
         assert dep["postgres"]["condition"] == "service_healthy"
         assert dep["coire-migrate"]["condition"] == "service_completed_successfully"
 
+    def test_one_shot_migration_keeps_bounded_frozen_logging(self, config: dict[str, Any]) -> None:
+        assert config["services"]["coire-migrate"]["logging"] == {
+            "driver": "json-file",
+            "options": {"max-size": "10m", "max-file": "3"},
+        }
+
     def test_nothing_depends_on_the_collector(self, config: dict[str, Any]) -> None:
         """Telemetry loss must never cause a request failure (FR-014, research R11)."""
         for name, svc in config["services"].items():
@@ -248,9 +288,12 @@ class TestImagesAndSecrets:
         assert "file_worker_service_token" in {
             item["source"] for item in services["coire-scheduler"]["secrets"]
         }
+        assert "file_worker_service_token" in {
+            item["source"] for item in services["coire-api"]["secrets"]
+        }
         assert {
             name for name in services if "coire-file-processing" in nets(file_worker_config, name)
-        } == {"coire-scheduler", "coire-file-worker"}
+        } == {"coire-scheduler", "coire-file-worker", "coire-api"}
         mounts = {item["target"]: item for item in worker["volumes"]}
         assert mounts["/opt/coire/chat/originals"]["read_only"] is True
         assert mounts["/opt/coire/chat/derived"].get("read_only", False) is False

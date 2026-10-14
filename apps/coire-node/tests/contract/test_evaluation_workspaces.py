@@ -242,3 +242,36 @@ async def test_input_staging_is_declared_digest_bound_and_idempotent(tmp_path: P
     manager.validate_inputs(request.run_id)
     await manager.cleanup(request.run_id, command.request_sha256)
     assert not (tmp_path / first.name).exists()
+
+
+@pytest.mark.parametrize("observed", [None, "b" * 64, "a" * 64, "image"])
+async def test_managed_prepare_checks_native_runtime_before_workspace_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, observed: str | None
+) -> None:
+    import coire_node.upgrade_runtime
+
+    monkeypatch.setattr(
+        coire_node.upgrade_runtime,
+        "running_runtime_sha256",
+        lambda settings: "a" * 64 if observed == "image" else observed,
+    )
+    manager = EvaluationWorkspaceManager(
+        Settings(
+            upgrades_enabled=True,
+            run_agent_image="coire-agent@sha256:" + "f" * 64,
+            run_workspace_root=str(tmp_path),
+            node_name="coire-edge-a",
+        )
+    )
+    request = workload()
+    request.target.runtime.native_runtime_sha256 = "a" * 64
+    request.target.runtime.harness_image = (
+        "coire-agent@sha256:" + ("e" if observed == "image" else "f") * 64
+    )
+    command = EvaluationWorkspacePrepare(workload=request, request_sha256=canonical_digest(request))
+    if observed == "a" * 64:
+        assert (await manager.prepare(command)).run_id == request.run_id
+    else:
+        with pytest.raises(WorkspaceError, match="native runtime"):
+            await manager.prepare(command)
+        assert not manager._path(request.run_id).exists()

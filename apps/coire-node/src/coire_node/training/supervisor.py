@@ -41,6 +41,7 @@ from coire_core.models.training_node import (
     TrainingStopReceipt,
     TrainingStopRequest,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
 from coire_node.store import Store, write_atomic
 from coire_node.training.components import TrainingComponents
@@ -209,6 +210,8 @@ class TrainingSupervisor:
         jaccl_hostfile: Path | None = None,
         jaccl_coordinator_port: int = 32323,
         otlp_endpoint: str | None = None,
+        runtime_environment: dict[str, str] | None = None,
+        admission_check: Callable[[], None] | None = None,
     ) -> None:
         if (
             not interpreter.is_absolute()
@@ -220,8 +223,10 @@ class TrainingSupervisor:
                 "Trainer interpreter and store roots must be absolute node configuration"
             )
         self.journal = journal
+        self._admission_check = admission_check or (lambda: None)
         self.interpreter = interpreter
         self.otlp_endpoint = otlp_endpoint
+        self.runtime_environment = dict(runtime_environment or {})
         self.store_root = store_root
         self.artifact_root = artifact_root or journal.root / "artifacts"
         self.initial_artifact_root = initial_artifact_root or self.artifact_root
@@ -834,6 +839,31 @@ class TrainingSupervisor:
                     return True
             return False
 
+    def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        return self._upgrade_inventory("training", ("coire_node.training.worker",))
+
+    def _upgrade_inventory(self, owner: str, markers: tuple[str, ...]) -> UpgradeOwnerInventory:
+        from coire_node.upgrade_inventory import native_process_entries
+
+        with self.journal.lock:
+            entries = list(native_process_entries(owner, markers))
+            for value in self.journal.active_records():
+                prepared = TrainingPrepareRequest.model_validate(value["prepare"])
+                if prepared.node != self.journal.node or prepared.attempt_id != value["attempt_id"]:
+                    raise TrainingConflict("Training inventory identity differs")
+                entries.append(
+                    UpgradeInventoryEntry(
+                        owner=owner,
+                        kind="attempt",
+                        work_id=prepared.attempt_id,
+                        state="cleaning" if value.get("liveness") == "stopped" else "active",
+                        holds=(str(prepared.reservation_id),),
+                        process_id=value.get("pid"),
+                        process_created_at=value.get("process_create_time"),
+                    )
+                )
+            return UpgradeOwnerInventory(owner=owner, status="complete", entries=tuple(entries))
+
     async def prepare(
         self,
         command: TrainingPrepareRequest,
@@ -845,6 +875,7 @@ class TrainingSupervisor:
         command = TrainingPrepareRequest.model_validate(command.model_dump(mode="json"))
         async with self.lock:
             with self.journal.lock:
+                self._admission_check()
                 rejected = self.rejections.read(command.attempt_id)
                 if rejected is not None:
                     if rejected != command:
@@ -1038,6 +1069,7 @@ class TrainingSupervisor:
                         raise TrainingConflict("Stopped preparation cannot start an execution")
                     if command.world_size == 2:
                         self.collective_launch(prepared)
+                    self._admission_check()
                     value.update(spawn_nonce=str(command.spawn_nonce), liveness="unknown")
                     value["lease_expires_at"] = command.lease_expires_at.isoformat()
                     self.journal.save(value)
@@ -1059,6 +1091,7 @@ class TrainingSupervisor:
                 )
                 if self.otlp_endpoint:
                     env["OTLP_ENDPOINT"] = self.otlp_endpoint
+                env.update(self.runtime_environment)
                 if prepared.world_size == 2:
                     env.update(
                         self.collective_launch(prepared).environment(

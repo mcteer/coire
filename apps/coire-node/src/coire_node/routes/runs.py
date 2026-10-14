@@ -7,7 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import cast
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from opentelemetry import metrics, trace
 
 from coire_core.models.runs import (
@@ -22,6 +22,7 @@ from coire_core.models.runs import (
     RunReconcileResult,
 )
 from coire_node.docker_api import DockerAPIError
+from coire_node.maintenance import require_admission
 from coire_node.runs import RunManager, RunRuntimeError
 
 router = APIRouter(prefix="/node/runs", tags=["runs"])
@@ -67,7 +68,12 @@ def _translate(exc: RunRuntimeError | DockerAPIError) -> HTTPException:
     )
 
 
-@router.post("", response_model=RunContainerStatus, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    response_model=RunContainerStatus,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(require_admission)],
+)
 async def create_run(command: RunContainerCreate, request: Request) -> RunContainerStatus:
     with _instrument("create", command.run_id):
         try:
@@ -76,7 +82,9 @@ async def create_run(command: RunContainerCreate, request: Request) -> RunContai
             raise _translate(exc) from exc
 
 
-@router.post("/{run_id}/start", response_model=RunContainerStatus)
+@router.post(
+    "/{run_id}/start", response_model=RunContainerStatus, dependencies=[Depends(require_admission)]
+)
 async def start_run(run_id: uuid.UUID, request: Request) -> RunContainerStatus:
     with _instrument("start", run_id):
         try:

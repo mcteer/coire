@@ -11,6 +11,7 @@ from coire_core.models.ops import (
     OpsSession,
     OpsSessionRegistration,
 )
+from coire_core.models.upgrades import UpgradeAdmissionStatus
 
 
 class AdminClient:
@@ -66,3 +67,9 @@ class AdminClient:
             )
             response.raise_for_status()
             return OpsProposalIssued.model_validate(response.json())
+
+    async def upgrade_admission(self) -> bool:
+        async with self._client() as client:
+            response = await client.get("/api/v1/internal/ops/upgrade-admission")
+            response.raise_for_status()
+            return UpgradeAdmissionStatus.model_validate(response.json()).allowed

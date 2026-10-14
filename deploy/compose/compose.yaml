@@ -7,7 +7,7 @@
 # environment and never writes them to disk (FR-011, research R4).
 #
 # Networks are per concern, not one flat bridge: a container is attached only to the networks
-# its role requires, so coire-web cannot reach Postgres and only coire-scheduler can reach the
+# its role requires, so coire-web cannot reach Postgres and the scheduler and recovery executor can reach the
 # Docker socket proxy (FR-006, FR-007).
 #
 # Absent by design: cloudflared (no tunnel until the platform faces external traffic —
@@ -96,8 +96,11 @@ services:
     build:
       context: ../..
       dockerfile: apps/coire-api/docker/api.Dockerfile
-    networks: [coire-edge, coire-db, coire-internal, coire-telemetry]
+    networks: [coire-edge, coire-db, coire-internal, coire-telemetry, coire-file-processing]
     environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+      UPGRADE_PROJECT: ${COMPOSE_PROJECT_NAME:-coire}
+      UPGRADE_SMOKE_MODEL_ID: ${COIRE_UPGRADE_SMOKE_MODEL_ID:-}
       <<: *training-environment
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
@@ -160,12 +163,22 @@ services:
       FAILOVER_EDGE_A_PUBLIC_KEY: ${COIRE_FAILOVER_EDGE_A_PUBLIC_KEY:-}
       FAILOVER_EDGE_B_PUBLIC_KEY: ${COIRE_FAILOVER_EDGE_B_PUBLIC_KEY:-}
     volumes:
-      - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
+      - type: bind
+        source: ${COIRE_UPGRADE_COORDINATION_DIR:-/opt/coire/upgrades/coordination}
+        target: /opt/coire/upgrades/coordination
+        bind: {create_host_path: false}
+      - coire-upgrade-prepared:/opt/coire/upgrades/prepared:ro
+      - coire-upgrade-state:/opt/coire/upgrades/state:ro
+      - type: bind
+        source: ${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}
+        target: /run/coire/cluster
+        read_only: true
+        bind: {create_host_path: false}
       - coire-chat-originals:/opt/coire/chat/originals
       - coire-chat-derived:/opt/coire/chat/derived:ro
       - coire-blobs:/opt/coire/blobs
       - coire-training-data:/opt/coire/training/datasets
-    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key, openai_api_key, anthropic_api_key]
+    secrets: [postgres_password, key_signing_secret, node_tokens, admin_token, bootstrap_admin_email, ops_service_token, failover_peer_key, openai_api_key, anthropic_api_key, upgrade_executor_token, file_worker_service_token]
     depends_on:
       postgres: {condition: service_healthy}
       coire-migrate: {condition: service_completed_successfully}
@@ -217,6 +230,8 @@ services:
       dockerfile: apps/coire-agent/ops.Dockerfile
     networks: [coire-internal, coire-telemetry]
     environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+      UPGRADE_PROJECT: ${COMPOSE_PROJECT_NAME:-coire}
       OTLP_ENDPOINT: http://otel-collector:4317
       OPS_API_URL: http://coire-api:8000
       OPS_GATEWAY_URL: http://coire-api:8000/v1
@@ -243,12 +258,14 @@ services:
       dockerfile: apps/coire-api/docker/mcp.Dockerfile
     networks: [coire-edge, coire-db, coire-telemetry]
     environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+      UPGRADE_PROJECT: ${COMPOSE_PROJECT_NAME:-coire}
       OTLP_ENDPOINT: http://otel-collector:4317
       POSTGRES_HOST: postgres
       CLOUDFLARE_ACCESS_ISSUER: ${CLOUDFLARE_ACCESS_ISSUER:-}
       CLOUDFLARE_ACCESS_AUDIENCE: ${CLOUDFLARE_ACCESS_AUDIENCE:-}
       MCP_RUN_TIMEOUT_SECONDS: ${COIRE_MCP_RUN_TIMEOUT_SECONDS:-900}
-    secrets: [postgres_password]
+    secrets: [postgres_password, upgrade_executor_token]
     depends_on:
       postgres: {condition: service_healthy}
       coire-migrate: {condition: service_completed_successfully}
@@ -266,9 +283,11 @@ services:
     build:
       context: ../..
       dockerfile: apps/coire-api/docker/scheduler.Dockerfile
-    # The only service on coire-docker, and it reaches the socket solely through the proxy.
+    # Reaches the Docker socket solely through the proxy, alongside the recovery executor.
     networks: [coire-edge, coire-db, coire-internal, coire-docker, coire-telemetry, coire-file-processing]
     environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+      UPGRADE_PROJECT: ${COMPOSE_PROJECT_NAME:-coire}
       <<: *training-environment
       POSTGRES_HOST: postgres
       OTLP_ENDPOINT: http://otel-collector:4317
@@ -292,7 +311,15 @@ services:
       IMAGE_DISK_SAFETY_FLOOR_BYTES: ${COIRE_IMAGE_DISK_SAFETY_FLOOR_BYTES:-2147483648}
       IMAGE_BLOB_ROOT: /opt/coire/blobs
     volumes:
-      - "${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}:/run/coire/cluster:ro"
+      - type: bind
+        source: ${COIRE_UPGRADE_COORDINATION_DIR:-/opt/coire/upgrades/coordination}
+        target: /opt/coire/upgrades/coordination
+        bind: {create_host_path: false}
+      - type: bind
+        source: ${COIRE_CLUSTER_CONFIG_DIR:-../cluster/generated}
+        target: /run/coire/cluster
+        read_only: true
+        bind: {create_host_path: false}
       - coire-chat-derived:/opt/coire/chat/derived:ro
       - coire-blobs:/opt/coire/blobs
       - coire-training-data:/opt/coire/training/datasets
@@ -317,6 +344,8 @@ services:
       dockerfile: apps/coire-file-worker/Dockerfile
     networks: [coire-file-processing, coire-telemetry]
     environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+      UPGRADE_PROJECT: ${COMPOSE_PROJECT_NAME:-coire}
       FILE_WORKER_INPUT_ROOT: /opt/coire/chat/originals
       FILE_WORKER_OUTPUT_ROOT: /opt/coire/chat/derived
       FILE_WORKER_PROCESS_TIMEOUT_S: ${COIRE_FILE_WORKER_TIMEOUT_SECONDS:-30}
@@ -356,9 +385,13 @@ services:
     security_opt: [no-new-privileges:true]
     user: "65532:65532"
     restart: "no"
+    stop_grace_period: 5s
     pids_limit: 128
     mem_limit: 512m
     cpus: "1.0"
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
 
   # ---------------------------------------------------------------- stateful
   postgres:
@@ -577,6 +610,57 @@ services:
       timeout: 2s
       retries: 3
 
+  # Independent recovery owner; network access authorized 2026-10-11.
+  coire-upgrade-executor:
+    profiles: [upgrades]
+    image: ${COIRE_REGISTRY:-}coire-upgrade-executor:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-upgrade-executor/Dockerfile
+    networks: [coire-docker, coire-internal, coire-telemetry]
+    environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+      UPGRADE_PROJECT: ${COMPOSE_PROJECT_NAME:-coire}
+      UPGRADE_EXECUTOR_ID: coire-upgrade-executor
+      UPGRADE_API_URL: http://coire-api:8000
+      UPGRADE_MCP_URL: http://coire-mcp:8001
+      UPGRADE_PROXY_URL: http://docker-socket-proxy:2375
+      UPGRADE_PREPARED_DIR: /opt/coire/upgrades/prepared
+      UPGRADE_STATE_DIR: /opt/coire/upgrades/state
+      UPGRADE_COORDINATION_DIR: /opt/coire/upgrades/coordination
+      UPGRADE_DRAIN_S: 900
+      UPGRADE_READINESS_S: 120
+      UPGRADE_RECOVERY_S: 300
+      UPGRADE_GATEWAY_OUTAGE_S: 300
+      OTLP_ENDPOINT: http://otel-collector:4317
+    volumes:
+      - coire-upgrade-prepared:/opt/coire/upgrades/prepared:ro
+      - coire-upgrade-state:/opt/coire/upgrades/state
+      - type: bind
+        source: ${COIRE_UPGRADE_COORDINATION_DIR:-/opt/coire/upgrades/coordination}
+        target: /opt/coire/upgrades/coordination
+        bind: {create_host_path: false}
+    secrets: [upgrade_executor_token]
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    stop_grace_period: 5s
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "1.0"
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python3, -m, coire_upgrade_executor, --healthcheck]
+      interval: 20s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
 networks:
   # Only coire-edge is non-internal: it is where cloudflared attaches in feature 007. Even so,
   # nothing is published from it in feature 000 except coire-web on loopback.
@@ -606,6 +690,8 @@ volumes:
   coire-chat-derived:
   coire-blobs:
   coire-training-data:
+  coire-upgrade-prepared:
+  coire-upgrade-state:
 
 secrets:
   # File-sourced from a 0700 directory outside the repository, written by coire-up from the
@@ -646,3 +732,5 @@ secrets:
     file: ${COIRE_SECRETS_DIR}/openai_api_key
   anthropic_api_key:
     file: ${COIRE_SECRETS_DIR}/anthropic_api_key
+  upgrade_executor_token:
+    file: ${COIRE_SECRETS_DIR}/upgrade_executor_token

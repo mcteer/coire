@@ -63,6 +63,23 @@ def test_node_token_map_parses_json(tmp_path: Path) -> None:
     assert settings.node_token_map == {"coire-edge-a": "aaa", "coire-edge-b": "bbb"}
 
 
+def test_empty_upgrade_smoke_configuration_blocks_operations_without_breaking_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from uuid import uuid4
+
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("UPGRADE_SMOKE_MODEL_ID", "")
+    assert Settings().upgrade_smoke_model_id is None
+    model_id = uuid4()
+    monkeypatch.setenv("UPGRADE_SMOKE_MODEL_ID", str(model_id))
+    assert Settings().upgrade_smoke_model_id == model_id
+    monkeypatch.setenv("UPGRADE_SMOKE_MODEL_ID", "caller-supplied-model-name")
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 def test_node_token_map_tolerates_malformed_json(tmp_path: Path) -> None:
     """A malformed token file must not crash the API at import; registration simply refuses."""
     assert _settings(tmp_path, node_tokens="not json").node_token_map == {}

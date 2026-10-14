@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.coire.upgrade-guard</string>
+    <!-- This environment is retained independently; never use envs/current. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PREFIX__/envs/__BOOTSTRAP_ENVIRONMENT__/bin/python3</string>
+        <string>-I</string>
+        <string>-B</string>
+        <string>-m</string>
+        <string>coire_node.upgrade_guard</string>
+    </array>
+    <key>UserName</key>
+    <string>__USER__</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <!-- Restart retains owned children and their journals for reconciliation. -->
+    <key>AbandonProcessGroup</key>
+    <true/>
+    <key>ExitTimeOut</key>
+    <integer>30</integer>
+    <key>ProcessType</key>
+    <string>Standard</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONDONTWRITEBYTECODE</key>
+        <string>1</string>
+        <key>PYTHONNOUSERSITE</key>
+        <string>1</string>
+        <key>COIRE_ROLE</key>
+        <string>studio</string>
+        <key>UPGRADES_ENABLED</key>
+        <string>1</string>
+        <key>NODE_NAME</key>
+        <string>__NODE_NAME__</string>
+        <key>NODE_CONTROL_HOST</key>
+        <string>__NODE_NAME__.lab</string>
+        <key>CORE_CONTROL_HOST</key>
+        <string>coire-core.lab</string>
+        <key>NODE_STORE_DIR</key>
+        <string>__PREFIX__/models</string>
+        <key>NODE_STATE_DIR</key>
+        <string>__PREFIX__/state</string>
+        <key>UPGRADE_ENVIRONMENT_ROOT</key>
+        <string>__PREFIX__/envs</string>
+        <key>UPGRADE_BOOTSTRAP_ROOT</key>
+        <string>__PREFIX__/upgrade-bootstrap</string>
+        <key>UPGRADE_PREPARED_DIR</key>
+        <string>__PREFIX__/upgrades/prepared</string>
+        <key>OTLP_ENDPOINT</key>
+        <string>http://coire-core.lab:4317</string>
+        <key>PATH</key>
+        <string>/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+    <!-- Only the existing node-control credential is loaded from System Keychain. -->
+    <key>StandardOutPath</key>
+    <string>__PREFIX__/log/coire-upgrade-guard.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__PREFIX__/log/coire-upgrade-guard.err.log</string>
+</dict>
+</plist>

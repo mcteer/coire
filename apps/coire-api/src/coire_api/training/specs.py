@@ -589,11 +589,16 @@ async def resolve_submission(
                 await session.scalars(select(NodeRow).where(NodeRow.name.in_(report.request.nodes)))
             ).all()
         )
+        from coire_api.upgrades.qualification import training_runtimes_current
         from coire_scheduler.training_guard import (
             hardware_digest,
             measurement_report_digest,
             memory_evidence_digest,
         )
+
+        if not training_runtimes_current(nodes, settings or get_settings()):
+            reason = "runtime_mismatch"
+            continue
 
         if (
             len(nodes) != len(report.request.nodes)

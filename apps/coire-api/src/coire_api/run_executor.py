@@ -30,7 +30,7 @@ from coire_api.db import (
 from coire_api.evaluation.evidence import EvidenceStore, persist_collected
 from coire_api.evaluation.execution import authorize_evaluation_child
 from coire_api.evaluation.validation import parse_worker_result, validate_worker_result
-from coire_api.evaluations import target_is_write_verified
+from coire_api.evaluations import target_is_write_verified, variant_is_write_verified
 from coire_api.nodes_client import NodeClient, NodeError
 from coire_api.polling import PollBackoff, wait_or_stop
 from coire_api.run_tokens import rotate_run_token
@@ -487,9 +487,13 @@ class RunCommandExecutor:
                             or (
                                 locked.task_class is TaskClass.WRITE
                                 and not (
-                                    await target_is_write_verified(session, target)
+                                    await target_is_write_verified(
+                                        session, target, node_id=locked.node_id
+                                    )
                                     if target
-                                    else variant.harness_verified
+                                    else await variant_is_write_verified(
+                                        session, variant.id, node_id=locked.node_id
+                                    )
                                 )
                             )
                         ):
@@ -528,9 +532,13 @@ class RunCommandExecutor:
                             variant_id=locked.primary_variant_id,
                             target=target,
                             public_selector=selector,
-                            harness_verified=await target_is_write_verified(session, target)
+                            harness_verified=await target_is_write_verified(
+                                session, target, node_id=locked.node_id
+                            )
                             if target
-                            else variant.harness_verified,
+                            else await variant_is_write_verified(
+                                session, variant.id, node_id=locked.node_id
+                            ),
                             image=self.settings.run_agent_image,
                             argv=["-m", "coire_agent"],
                             workspace_ref=locked.workspace_ref,

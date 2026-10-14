@@ -1,0 +1,75 @@
+# Archived access proposal approved on 2026-10-11; do not deploy this overlay.
+# Production Compose contains the authorized role. Its catalog/state mounts were
+# corrected to service-owned named volumes to match the publication helpers.
+services:
+  coire-upgrade-executor:
+    profiles: [upgrades]
+    image: ${COIRE_REGISTRY:-}coire-upgrade-executor:${COIRE_TAG:-dev}
+    build:
+      context: ../..
+      dockerfile: apps/coire-upgrade-executor/Dockerfile
+    networks: [coire-docker, coire-internal, coire-telemetry]
+    environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+      UPGRADE_PROJECT: coire
+      UPGRADE_EXECUTOR_ID: coire-upgrade-executor
+      UPGRADE_API_URL: http://coire-api:8000
+      UPGRADE_MCP_URL: http://coire-mcp:8001
+      UPGRADE_PROXY_URL: http://docker-socket-proxy:2375
+      UPGRADE_PREPARED_DIR: /opt/coire/upgrades/prepared
+      UPGRADE_STATE_DIR: /opt/coire/upgrades/state
+      UPGRADE_COORDINATION_DIR: /opt/coire/upgrades/coordination
+      UPGRADE_DRAIN_S: 900
+      UPGRADE_READINESS_S: 120
+      UPGRADE_RECOVERY_S: 300
+      UPGRADE_GATEWAY_OUTAGE_S: 300
+      OTLP_ENDPOINT: http://otel-collector:4317
+    volumes:
+      - ${COIRE_UPGRADE_PREPARED_DIR:-/opt/coire/upgrades/prepared}:/opt/coire/upgrades/prepared:ro
+      - ${COIRE_UPGRADE_STATE_DIR:-/opt/coire/upgrades/state}:/opt/coire/upgrades/state
+      - ${COIRE_UPGRADE_COORDINATION_DIR:-/opt/coire/upgrades/coordination}:/opt/coire/upgrades/coordination
+    secrets: [upgrade_executor_token]
+    user: "65532:65532"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    stop_grace_period: 5s
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: "1.0"
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    healthcheck:
+      test: [CMD, /app/.venv/bin/python3, -m, coire_upgrade_executor, --healthcheck]
+      interval: 20s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+  coire-api:
+    environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+    volumes:
+      - ${COIRE_UPGRADE_PREPARED_DIR:-/opt/coire/upgrades/prepared}:/opt/coire/upgrades/prepared:ro
+      - ${COIRE_UPGRADE_STATE_DIR:-/opt/coire/upgrades/state}:/opt/coire/upgrades/state:ro
+      - ${COIRE_UPGRADE_COORDINATION_DIR:-/opt/coire/upgrades/coordination}:/opt/coire/upgrades/coordination
+    secrets: [upgrade_executor_token]
+  coire-scheduler:
+    environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+    volumes:
+      - ${COIRE_UPGRADE_COORDINATION_DIR:-/opt/coire/upgrades/coordination}:/opt/coire/upgrades/coordination
+  coire-mcp:
+    environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+  coire-ops:
+    environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+  coire-file-worker:
+    environment:
+      UPGRADES_ENABLED: ${COIRE_UPGRADES_ENABLED:-false}
+secrets:
+  upgrade_executor_token:
+    file: ${COIRE_SECRETS_DIR:-/opt/coire/secrets}/upgrade_executor_token

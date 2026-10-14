@@ -5,9 +5,15 @@ import { useChatConversationObserver } from "./useEventStream";
 import { useRef, useState } from "react";
 import type { ChatEvent } from "../api/chat";
 
+const originalSetTimeout = window.setTimeout;
+const originalClearTimeout = window.clearTimeout;
 afterEach(() => {
-  vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.useRealTimers();
+  // The timeout spy captures fake timers. Restore the original browser timers
+  // after restoring spies so later tests cannot inherit that fake clock.
+  window.setTimeout = originalSetTimeout;
+  window.clearTimeout = originalClearTimeout;
 });
 
 function Probe() {
@@ -131,3 +137,39 @@ test("aborts hidden streams and resumes with the cursor when visible", async () 
 function assertAborted(signal: AbortSignal | undefined) {
   expect(signal?.aborted).toBe(true);
 }
+
+test("outage retry jitter never exceeds the ten-second replay budget", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(Math, "random").mockReturnValue(1);
+  const timers = vi.spyOn(window, "setTimeout");
+  const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 503 }));
+  vi.stubGlobal("fetch", fetchMock);
+  const view = render(<Probe />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_000);
+  });
+  const delays = timers.mock.calls.map((call) => call[1] ?? 0);
+  expect(fetchMock.mock.calls.length).toBeGreaterThan(5);
+  expect(delays).toContain(10_000);
+  expect(delays.every((delay) => delay <= 10_000)).toBe(true);
+  view.unmount();
+});
+
+test.each([401, 403])(
+  "denied stream %i stays stopped across visibility and online events",
+  async (status) => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status }));
+    vi.stubGlobal("fetch", fetchMock);
+    function AccessProbe() {
+      const stream = useEventStream("/private-events");
+      return <output>{stream.accessDenied ? "access denied" : "connecting"}</output>;
+    }
+    render(<AccessProbe />);
+    expect(await screen.findByText("access denied")).toBeInTheDocument();
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("online"));
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  },
+);

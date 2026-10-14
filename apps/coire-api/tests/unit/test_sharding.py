@@ -58,3 +58,35 @@ def test_hostfile_is_canonical_and_rejects_core_or_extra_nodes() -> None:
             payload,
             {"coire-edge-a": "coire-core.lab", "coire-edge-b": "coire-edge-b.fabric"},
         )
+
+
+def test_managed_failed_collective_invalidates_older_ring_until_fresh_measurement() -> None:
+    from coire_core.models import LinkState
+
+    now = datetime.now(UTC)
+    pair = ("a" * 64, "b" * 64)
+    failure = observation(ProbeOutcome.FAILED, now).model_copy(
+        update={
+            "runtime_sha256_a": pair[0],
+            "runtime_sha256_b": pair[1],
+        }
+    )
+    old_ring = observation(ProbeOutcome.SUCCEEDED, now - timedelta(seconds=1)).model_copy(
+        update={
+            "transport": ProbeTransport.RING,
+            "runtime_sha256_a": pair[0],
+            "runtime_sha256_b": pair[1],
+        }
+    )
+    assert (
+        project_link([failure, old_ring], now=now, current_runtime_pair=pair).fallback_state
+        is LinkState.DOWN
+    )
+    assert project_link([failure, old_ring], now=now).fallback_state is LinkState.UP
+    new_ring = old_ring.model_copy(update={"observed_at": now + timedelta(seconds=1)})
+    assert (
+        project_link(
+            [failure, new_ring], now=now + timedelta(seconds=1), current_runtime_pair=pair
+        ).fallback_state
+        is LinkState.UP
+    )

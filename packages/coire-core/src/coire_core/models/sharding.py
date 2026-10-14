@@ -63,11 +63,15 @@ class LinkObservation(BaseModel):
     os_version_a: str
     os_version_b: str
     engine_version: str
+    runtime_sha256_a: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    runtime_sha256_b: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     reason: str | None = Field(default=None, max_length=512)
     observed_at: datetime
 
     @model_validator(mode="after")
     def canonical_pair_and_measurement(self) -> LinkObservation:
+        if (self.runtime_sha256_a is None) != (self.runtime_sha256_b is None):
+            raise ValueError("collective runtime identity must bind both endpoints")
         if self.node_a >= self.node_b:
             raise ValueError("link endpoints must be distinct and canonically ordered")
         if self.outcome is ProbeOutcome.SUCCEEDED and (

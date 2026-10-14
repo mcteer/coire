@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import type { ConsoleSnapshot } from "../api/client";
 
-export type AdminTab = "overview" | "models" | "instances" | "activity" | "identity" | "audit";
+export type AdminTab = "overview" | "models" | "instances" | "activity" | "identity" | "audit" | "upgrades";
 const tabs: [AdminTab, string][] = [
   ["overview", "Overview"],
   ["models", "Models"],
@@ -9,6 +9,7 @@ const tabs: [AdminTab, string][] = [
   ["activity", "Runs & jobs"],
   ["identity", "Users & keys"],
   ["audit", "Audit"],
+  ["upgrades", "Upgrades"],
 ];
 
 export function AppShell({
@@ -69,7 +70,7 @@ export function AppShell({
       </header>
       {view === "admin" && tab && setTab && (
         <nav className="tabs glass" aria-label="Admin sections">
-          {tabs.map(([id, label]) => (
+          {tabs.filter(([id]) => id !== "upgrades" || snapshot?.capabilities.upgrades).map(([id, label]) => (
             <button
               className={"tab " + (tab === id ? "active" : "")}
               aria-current={tab === id ? "page" : undefined}

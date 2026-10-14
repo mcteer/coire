@@ -59,6 +59,14 @@ async def reserve_phase(
     target: EvaluationTarget,
     settings: Settings,
 ) -> bool:
+    from coire_scheduler.maintenance import allows_admission, allows_core_work
+
+    if (
+        settings.upgrades_enabled
+        and attempt.sandbox_reservation_id is None
+        and not await allows_core_work(session, ("coire-api", "coire-scheduler"))
+    ):
+        return False
     workload = EvaluationWorkload.model_validate(attempt.workload)
     sandbox_bytes = max(
         settings.run_default_memory_bytes, training_scan_memory_bytes(workload.training)
@@ -112,6 +120,8 @@ async def reserve_phase(
     ).all()
     await lock_nodes_for_admission(session, [node.id for node in nodes])
     for node in nodes:
+        if settings.upgrades_enabled and not await allows_admission(session, [node.id]):
+            continue
         now = datetime.now(UTC)
         ledger = await session.get(NodeMemoryLedgerRow, node.id, populate_existing=True)
         if (

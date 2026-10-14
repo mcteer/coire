@@ -27,9 +27,6 @@ if [[ ! "$PROJECT" =~ ^[a-z][a-z0-9_-]{1,62}$ ]]; then
   echo "invalid Compose project name" >&2
   exit 2
 fi
-mkdir -p "$STATE_ROOT/$PROJECT"
-chmod 700 "$STATE_ROOT/$PROJECT"
-LOCKDIR="$STATE_ROOT/$PROJECT/.coire-up.lock"
 WAIT_TIMEOUT="${COIRE_WAIT_TIMEOUT:-180}"
 CONTROL_PORT="${COIRE_CONTROL_PORT:-8180}"
 export COIRE_CONTROL_PORT="$CONTROL_PORT"
@@ -48,35 +45,20 @@ for arg in "$@"; do
   esac
 done
 
-# Two operators must not race the migration (spec edge case). macOS ships no flock(1), so the
-# lock is an atomic mkdir plus a PID file; a lock left by a killed run is detected as stale
-# rather than blocking bring-up forever.
-acquire_lock() {
-  if mkdir "$LOCKDIR" 2>/dev/null; then
-    echo "$$" > "$LOCKDIR/pid"
-    trap 'rm -rf "$LOCKDIR"' EXIT
-    return 0
-  fi
-  if [[ -r "$LOCKDIR/pid" ]]; then
-    local holder
-    holder="$(cat "$LOCKDIR/pid" 2>/dev/null || echo)"
-    if [[ -n "$holder" ]] && ! kill -0 "$holder" 2>/dev/null; then
-      echo "removing stale lock from pid $holder" >&2
-      rm -rf "$LOCKDIR"
-      if mkdir "$LOCKDIR" 2>/dev/null; then
-        echo "$$" > "$LOCKDIR/pid"
-        trap 'rm -rf "$LOCKDIR"' EXIT
-        return 0
-      fi
-    fi
-  fi
-  return 1
-}
-
-if ! acquire_lock; then
-  echo "bring-up already running (lock held at $LOCKDIR)" >&2
-  exit 3
+# A host/container PID cannot establish ownership across namespaces. The fixed
+# host runner retains the same kernel descriptor and typed intent as the executor.
+if [[ -z "${COIRE_DEPLOY_OWNER_FD:-}" ]]; then
+  exec uv run python -m coire_core.deploy host-up -- "$@"
 fi
+uv run python -m coire_core.deploy verify-host
+mkdir -p "$STATE_ROOT/$PROJECT"
+chmod 700 "$STATE_ROOT/$PROJECT"
+
+# The executor and host runner share this exact cross-kernel ownership store.
+# API/scheduler mounts must resolve to the same inode, not a second default root.
+export COIRE_UPGRADE_COORDINATION_DIR="$STATE_ROOT/$PROJECT/upgrades/coordination"
+mkdir -p "$COIRE_UPGRADE_COORDINATION_DIR"
+chmod 700 "$COIRE_UPGRADE_COORDINATION_DIR"
 
 # Resolve only the control-VLAN address; never widen the published listener.
 if [[ -z "${COIRE_CONTROL_BIND_ADDRESS:-}" ]]; then
@@ -132,21 +114,26 @@ if [[ "$BUILD" -eq 1 ]]; then
   echo "building images..."
   docker compose build --quiet
 fi
-RELEASE="$(uv run python "$REPO_ROOT/scripts/coire-deploy.py" install "$SECRETS_DIR")"
 # A clean host has no cached third-party base services. Pull only their pinned digest
 # references; first-party services remain frozen to the locally installed image IDs.
-docker compose -p "$PROJECT" -f "$RELEASE/compose.json" pull --policy missing \
+docker compose -p "$PROJECT" pull --policy missing \
   postgres docker-socket-proxy
+RELEASE="$(uv run python "$REPO_ROOT/scripts/coire-deploy.py" install "$SECRETS_DIR")"
 if ! uv run python "$REPO_ROOT/scripts/coire-deploy.py" preflight "$RELEASE"; then
   if [[ "$RECOVER_DB_ROLE" -ne 1 ]]; then
     echo "retry with --recover-db-role only after reviewing the retained release and backup location" >&2
     exit 2
   fi
+  uv run python -m coire_core.deploy mark-host
   uv run python "$REPO_ROOT/scripts/coire-deploy.py" recover-db-role "$SECRETS_DIR" \
     --backup-dir "$STATE_ROOT/$PROJECT/backups" --apply
   uv run python "$REPO_ROOT/scripts/coire-deploy.py" preflight "$RELEASE"
 fi
 
+# Read-only database preflight must finish before marking a runtime mutation.
+# A refusal can then release this host claim for an explicit credential recovery;
+# failed role changes or service activation still retain unreconciled ownership.
+uv run python -m coire_core.deploy mark-host
 echo "starting control plane (waiting up to ${WAIT_TIMEOUT}s for health)..."
 up_args=(up --no-build --pull never -d --wait --wait-timeout "$WAIT_TIMEOUT")
 if [[ "$RECREATE_SECRETS" -eq 1 ]]; then

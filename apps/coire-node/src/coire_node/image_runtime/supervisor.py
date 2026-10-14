@@ -28,6 +28,7 @@ from coire_core.models.image_worker import (
     ImageWorkerProcessRecord,
     ImageWorkerUnloadRequest,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry
 from coire_core.settings import Settings
 from coire_node.footprint import resident_bytes as measured_footprint_bytes
 from coire_node.image_jobs import ImageJournalUnavailable
@@ -174,8 +175,10 @@ class ImageProcessSupervisor:
         *,
         memory_total_bytes: int | None = None,
         memory_lock: threading.RLock | None = None,
+        admission_check: Callable[[], None] | None = None,
     ) -> None:
         self.settings = settings
+        self._admission_check = admission_check or (lambda: None)
         self.store = store
         self.other_committed_bytes = other_committed_bytes
         self.memory_total_bytes = memory_total_bytes or psutil.virtual_memory().total
@@ -204,9 +207,62 @@ class ImageProcessSupervisor:
                 return None
             return measured_footprint_bytes(record.status.pid)
 
+    def upgrade_entries(self) -> tuple[UpgradeInventoryEntry, ...]:
+        from coire_node.upgrade_inventory import native_process_entries
+
+        with self._lock:
+            entries = list(
+                native_process_entries("images", ("coire_node.image_runtime.bootstrap",))
+            )
+            if self._uncertain_reserved_bytes:
+                raise ImageProcessUnavailable()
+            if self.record_path.is_symlink():
+                raise ImageProcessUnavailable()
+            if self.record_path.exists():
+                record = ImageWorkerProcessRecord.model_validate_json(
+                    _read_private(self.record_path, 32 * 1024)
+                )
+                if self._record is None or self._record != record:
+                    raise ImageProcessUnavailable()
+            if self._record is not None:
+                status = self._record.status
+                entries.append(
+                    UpgradeInventoryEntry(
+                        owner="images",
+                        kind="image-worker",
+                        work_id=str(status.instance_id),
+                        state="active",
+                        process_id=status.pid,
+                        process_created_at=status.process_create_time,
+                    )
+                )
+            return tuple(entries)
+
     def current_status(self) -> ImageWorkerLoadResult | None:
         with self._lock:
             return self._record.status if self._record is not None else None
+
+    def _idle_resident_identity(self) -> uuid.UUID | None:
+        """Resolve a ready resident only after the maintenance owner proves job drain."""
+        with self._lock:
+            entries = self.upgrade_entries()
+            record = self._record
+            if record is None:
+                if entries:
+                    raise ImageProcessUnavailable()
+                return None
+            status = record.status
+            if status.state != "ready" or not _identity_alive(record):
+                raise ImageProcessUnavailable()
+            if any(
+                entry.kind not in {"native-process", "image-worker"}
+                or entry.state != "active"
+                or (entry.process_id, entry.process_created_at)
+                != (status.pid, status.process_create_time)
+                for entry in entries
+            ):
+                raise ImageProcessUnavailable()
+            return status.instance_id
 
     def private_control(self, instance_id: uuid.UUID) -> tuple[ImageWorkerLoadRequest, int, str]:
         """Return private control facts only for this exact ready, live child."""
@@ -450,6 +506,7 @@ class ImageProcessSupervisor:
 
     def _start(self, request: ImageWorkerLoadRequest) -> ImageWorkerLoadResult:
         with self._lock:
+            self._admission_check()
             if self._record is not None:
                 if self._record.config.load == request:
                     return self._record.status

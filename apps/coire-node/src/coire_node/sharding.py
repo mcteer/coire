@@ -11,14 +11,17 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import httpx
+import psutil
 from opentelemetry import trace
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.models import (
     ShardCapabilityResult,
     ShardGroupCommand,
@@ -26,9 +29,11 @@ from coire_core.models import (
     ShardGroupStatus,
     ShardingMode,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
 from coire_node.native_probe import run_probe
 from coire_node.store import Store, write_atomic_json
+from coire_node.upgrade_inventory import native_process_entries, read_owner_json
 
 GROUPS_FILE = "shard-groups.json"
 tracer = trace.get_tracer("coire.node.sharding")
@@ -67,7 +72,14 @@ def build_shard_argv(
 
 
 class ShardGroupManager:
-    def __init__(self, settings: Settings, store: Store) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        store: Store,
+        *,
+        memory_lock: threading.RLock | None = None,
+        admission_check: Callable[[], None] | None = None,
+    ) -> None:
         self._settings = settings
         self._store = store
         self._groups: dict[uuid.UUID, ShardGroupStatus] = {}
@@ -75,7 +87,8 @@ class ShardGroupManager:
         self._commands: dict[uuid.UUID, uuid.UUID] = {}
         self._model_paths: dict[uuid.UUID, str] = {}
         self._state_file = Path(settings.node_state_dir) / GROUPS_FILE
-        self._lock = threading.RLock()
+        self._lock = memory_lock or threading.RLock()
+        self._admission_check = admission_check
         self._capability_lock = threading.Lock()
         self._adopt()
 
@@ -127,6 +140,8 @@ class ShardGroupManager:
                 return self._groups[existing_id]
             if command.group_id in self._groups:
                 raise ValueError("group exists with a different command identity")
+            if self._admission_check is not None:
+                self._admission_check()
             # Store resolves a registry slug beneath the managed model root.
             model_path = self._store.path_for(command.slug)
             if not model_path.is_dir():
@@ -162,7 +177,7 @@ class ShardGroupManager:
                 )
                 self._processes[command.group_id] = proc
                 command.ranks[0].pid = proc.pid
-                command.ranks[0].process_create_time = datetime.now(UTC).timestamp()
+                command.ranks[0].process_create_time = psutil.Process(proc.pid).create_time()
             status.state = ShardGroupState.STARTING
             self._persist()
             return status
@@ -190,6 +205,44 @@ class ShardGroupManager:
     def model_path(self, group_id: uuid.UUID) -> str | None:
         with self._lock:
             return self._model_paths.get(group_id)
+
+    def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        with self._lock:
+            entries = list(
+                native_process_entries("shards", ("mlx.launch", "coire_node.mlx_launch"))
+            )
+            if self._state_file.exists() or self._state_file.is_symlink():
+                records = read_owner_json(self._state_file)
+                if not isinstance(records, list):
+                    raise UpgradeUnavailable("Shard ownership journal is uncertain")
+                persisted = [ShardGroupStatus.model_validate(item) for item in records]
+                if len({item.group_id for item in persisted}) != len(persisted):
+                    raise UpgradeUnavailable("Shard ownership identities are duplicated")
+                if {item.group_id for item in persisted} != set(self._groups):
+                    raise UpgradeUnavailable("Shard ownership differs from its journal")
+            for identity, status in self._groups.items():
+                if status.state is not ShardGroupState.STOPPED:
+                    entries.append(
+                        UpgradeInventoryEntry(
+                            owner="shards",
+                            kind="shard-group",
+                            work_id=str(identity),
+                            state="active",
+                        )
+                    )
+                    continue
+                # A terminal label does not establish launcher death after adoption.
+                for rank in status.ranks:
+                    if rank.node_name != self._settings.node_name or rank.pid is None:
+                        continue
+                    try:
+                        psutil.Process(rank.pid)
+                    except psutil.NoSuchProcess:
+                        continue
+                    raise UpgradeUnavailable(
+                        "Stopped shard still has an uncertain process identity"
+                    )
+            return UpgradeOwnerInventory(owner="shards", status="complete", entries=tuple(entries))
 
     def stop(self, group_id: uuid.UUID) -> ShardGroupStatus | None:
         with self._lock:

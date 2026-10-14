@@ -35,6 +35,7 @@ class ConsoleCapabilities(BaseModel):
     audit: bool = True
     ask: bool = True
     training: bool = False
+    upgrades: bool = False
 
 
 class ConsoleAlert(BaseModel):

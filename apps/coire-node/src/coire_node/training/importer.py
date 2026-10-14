@@ -9,11 +9,14 @@ import stat
 import tempfile
 import threading
 import uuid
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 
 import anyio
 from opentelemetry import trace
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.models.training_node import (
     TrainingArtifactGrantRefresh,
     TrainingArtifactImportIntent,
@@ -22,9 +25,11 @@ from coire_core.models.training_node import (
     TrainingArtifactImportStatus,
     TrainingArtifactManifest,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry
 from coire_core.net import DataFabricClient
 from coire_node.store import sha256_file
 from coire_node.training.artifacts import TrainingArtifacts
+from coire_node.upgrade_inventory import read_owner_json
 
 tracer = trace.get_tracer("coire.node.training")
 MAX_MANIFEST_BYTES = 64 * 1024**2
@@ -44,6 +49,7 @@ class ArtifactImporter:
         client: DataFabricClient | None = None,
         max_bytes: int = 200 * 1024**3,
         disk_floor_bytes: int = 20 * 1024**3,
+        admission_context: Callable[[], AbstractContextManager[None]] | None = None,
     ) -> None:
         if journal_root.is_symlink():
             raise ValueError("artifact journal root is linked")
@@ -54,6 +60,7 @@ class ArtifactImporter:
         self.client = client or DataFabricClient(timeout=60)
         self.max_bytes = max_bytes
         self.disk_floor_bytes = disk_floor_bytes
+        self._maintenance_admission = admission_context or nullcontext
         self._records: dict[uuid.UUID, TrainingArtifactImportJournal] = {}
         self._tasks: dict[uuid.UUID, asyncio.Task[None]] = {}
         self._slots = asyncio.Semaphore(1)
@@ -119,6 +126,31 @@ class ArtifactImporter:
             raise ValueError("artifact import is unknown")
         return record.status
 
+    def upgrade_entries(self) -> tuple[UpgradeInventoryEntry, ...]:
+        entries: list[UpgradeInventoryEntry] = []
+        for path in self.root.iterdir():
+            identity = uuid.UUID(path.stem)
+            if path.name != f"{identity}.json":
+                raise UpgradeUnavailable("Artifact import journal name is uncertain")
+            record = TrainingArtifactImportJournal.model_validate(read_owner_json(path))
+            if record.intent.command_id != identity:
+                raise UpgradeUnavailable("Artifact import journal owner differs")
+            task = self._tasks.get(identity)
+            staging = self.artifacts.root / f".import-{record.intent.artifact_id}"
+            active = record.status.state in {"staging", "transferring"} or (
+                task is not None and not task.done()
+            )
+            if active or staging.exists() or staging.is_symlink():
+                entries.append(
+                    UpgradeInventoryEntry(
+                        owner="artifacts",
+                        kind="artifact-import",
+                        work_id=str(identity),
+                        state="active" if active else "cleaning",
+                    )
+                )
+        return tuple(entries)
+
     async def _status(self, identity: uuid.UUID, **changes: object) -> None:
         record = self._records[identity]
         status = TrainingArtifactImportStatus.model_validate(
@@ -152,20 +184,21 @@ class ArtifactImporter:
             ):
                 raise ValueError("artifact import command identifies different immutable intent")
             return prior.status
-        if sum(not task.done() for task in self._tasks.values()) >= 32:
-            raise ValueError("artifact import queue capacity exhausted")
-        status = TrainingArtifactImportStatus(
-            import_id=request.command_id,
-            artifact_id=request.artifact_id,
-            manifest_sha256=request.manifest_sha256,
-            state="staging",
-            transferred_bytes=0,
-        )
-        record = TrainingArtifactImportJournal(intent=intent, status=status)
-        await anyio.to_thread.run_sync(self._persist, record)
-        self._cache(record)
-        self._tasks[request.command_id] = asyncio.create_task(self._run(request))
-        return status
+        with self._maintenance_admission():
+            if sum(not task.done() for task in self._tasks.values()) >= 32:
+                raise ValueError("artifact import queue capacity exhausted")
+            status = TrainingArtifactImportStatus(
+                import_id=request.command_id,
+                artifact_id=request.artifact_id,
+                manifest_sha256=request.manifest_sha256,
+                state="staging",
+                transferred_bytes=0,
+            )
+            record = TrainingArtifactImportJournal(intent=intent, status=status)
+            await anyio.to_thread.run_sync(self._persist, record)
+            self._cache(record)
+            self._tasks[request.command_id] = asyncio.create_task(self._run(request))
+            return status
 
     async def refresh(
         self, identity: uuid.UUID, request: TrainingArtifactGrantRefresh
@@ -192,16 +225,17 @@ class ArtifactImporter:
         task = self._tasks.get(identity)
         if task is not None and not task.done():
             raise ValueError("artifact import is still running")
-        updated = intent.model_copy(update={"grant_id": request.grant_id})
-        resumed = prior.status.model_copy(update={"state": "staging", "reason": None})
-        record = TrainingArtifactImportJournal(intent=updated, status=resumed)
-        await anyio.to_thread.run_sync(self._persist, record)
-        self._records[identity] = record
-        command = TrainingArtifactImportRequest.model_validate(
-            {**updated.model_dump(mode="json"), "grant_secret": request.grant_secret}
-        )
-        self._tasks[identity] = asyncio.create_task(self._run(command))
-        return resumed
+        with self._maintenance_admission():
+            updated = intent.model_copy(update={"grant_id": request.grant_id})
+            resumed = prior.status.model_copy(update={"state": "staging", "reason": None})
+            record = TrainingArtifactImportJournal(intent=updated, status=resumed)
+            await anyio.to_thread.run_sync(self._persist, record)
+            self._records[identity] = record
+            command = TrainingArtifactImportRequest.model_validate(
+                {**updated.model_dump(mode="json"), "grant_secret": request.grant_secret}
+            )
+            self._tasks[identity] = asyncio.create_task(self._run(command))
+            return resumed
 
     async def _fetch_manifest(
         self, request: TrainingArtifactImportRequest

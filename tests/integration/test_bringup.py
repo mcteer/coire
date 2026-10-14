@@ -126,8 +126,8 @@ def test_concurrent_bringup_is_refused() -> None:
     ra, rb = a.wait(timeout=300), b.wait(timeout=300)
     codes = sorted([ra, rb])
     err = (a.stderr.read() if a.stderr else "") + (b.stderr.read() if b.stderr else "")
-    assert 3 in codes, f"expected one run to be refused with exit 3, got {codes}\n{err}"
-    assert "bring-up already running" in err
+    assert codes == [0, 3], f"expected one successful owner and one refused run, got {codes}\n{err}"
+    assert "Another recovery owner is active" in err
 
 
 def test_no_secret_is_written_inside_the_repository() -> None:

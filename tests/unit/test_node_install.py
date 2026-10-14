@@ -4,15 +4,29 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import os
 import platform
+import shutil
 import struct
 import subprocess
+import sys
 import tomllib
+from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import Mock
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def restore_test_directory_permissions(tmp_path: Path) -> Iterator[None]:
+    yield
+    # Production retention stays sealed; only this test's owned scratch tree is
+    # made writable for pytest's teardown, including dangling interpreter links.
+    for directory in tmp_path.rglob("*"):
+        if not directory.is_symlink() and directory.is_dir():
+            directory.chmod(0o700)
 
 
 def _installer() -> ModuleType:
@@ -38,6 +52,46 @@ def _environment(path: Path) -> Path:
     python.parent.mkdir(parents=True)
     python.write_text("staged")
     return path
+
+
+def test_recovery_runtime_verifier_is_packaged_with_node_not_external_checkout() -> None:
+    from coire_node.upgrade_runtime import environment_content_sha256
+
+    installer = _installer()
+    assert installer.environment_content_sha256 is environment_content_sha256
+    assert environment_content_sha256.__module__ == "coire_node.upgrade_runtime"
+
+
+@pytest.mark.parametrize("bootstrap", ["directory", "dangling_link"])
+def test_installer_refuses_out_of_band_managed_activation(tmp_path: Path, bootstrap: str) -> None:
+    root = tmp_path / "upgrade-bootstrap"
+    if bootstrap == "directory":
+        root.mkdir()
+    else:
+        root.symlink_to(tmp_path / "missing-recovery-state")
+    result = subprocess.run(
+        ["bash", "apps/coire-node/install.sh", "--prefix", str(tmp_path)],
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert b"activate through the admin upgrade API" in result.stderr
+    assert not (tmp_path / "bin").exists()
+    assert not (tmp_path / "envs/current").exists()
+
+
+@pytest.mark.parametrize("link", ["symbolic", "hard"])
+def test_runtime_input_digest_rejects_linked_inputs(tmp_path: Path, link: str) -> None:
+    installer = _installer()
+    source = tmp_path / "source"
+    source.write_bytes(b"trusted-input")
+    artifact = tmp_path / "wheel"
+    if link == "symbolic":
+        artifact.symlink_to(source)
+    else:
+        os.link(source, artifact)
+    with pytest.raises((ValueError, OSError)):
+        installer.artifact_graph_sha256([artifact])
 
 
 def test_failed_smoke_keeps_previous_link_and_staged_environment(tmp_path: Path) -> None:
@@ -243,30 +297,58 @@ def test_smoke_checks_text_and_vision_cli_without_starting_models(
 ) -> None:
     installer = _installer()
     run = Mock()
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(platform, "node", lambda: "coire-edge-a")
     monkeypatch.setattr(installer.subprocess, "run", run)
     monkeypatch.setenv("HF_TOKEN", "must-not-reach-smoke")
     monkeypatch.setenv("WANDB_API_KEY", "must-not-reach-smoke")
+    monkeypatch.setenv("DATABASE_URL", "must-not-reach-smoke")
     installer.smoke(Path("/staged/bin/python3"))
-    assert [call.args[0] for call in run.call_args_list[:4]] == [
-        ["/staged/bin/python3", "-c", "import coire_core, coire_node, mlx_lm, mlx_vlm, mflux"],
+    expected = [
+        [
+            "/staged/bin/python3",
+            "-c",
+            (
+                "import coire_core, coire_node, mlx_lm, mlx_vlm, mflux; "
+                "import coire_node.upgrade_guard, coire_node.expired_recovery_support, "
+                "coire_node.expired_recovery_successor_session"
+            ),
+        ],
         ["/staged/bin/python3", "-m", "mlx_lm.server", "--help"],
         ["/staged/bin/python3", "-m", "mlx_vlm.server", "--help"],
         ["/staged/bin/python3", "-c", "from mflux.models.z_image.variants.z_image import ZImage"],
     ]
+    assert [call.args[0] for call in run.call_args_list[:4]] == [
+        [command[0], "-I", "-B", *command[1:]] for command in expected
+    ]
     assert len(run.call_args_list) == 5
+    assert all("DATABASE_URL" not in call.kwargs["env"] for call in run.call_args_list)
     training_probe = run.call_args_list[4].args[0]
-    assert training_probe[:2] == ["/staged/bin/python3", "-c"]
-    assert "inspect.signature(train)" in training_probe[2]
-    assert "training_callback" in training_probe[2]
-    assert "version('mlx') == '0.32.2'" in training_probe[2]
-    assert "version('mlx-lm') == '0.31.3'" in training_probe[2]
-    assert "coire_node.training.worker" in training_probe[2]
+    assert training_probe[:4] == ["/staged/bin/python3", "-I", "-B", "-c"]
+    assert "inspect.signature(train)" in training_probe[4]
+    assert "training_callback" in training_probe[4]
+    assert "version('mlx') == '0.32.2'" in training_probe[4]
+    assert "version('mlx-lm') == '0.31.3'" in training_probe[4]
+    assert "coire_node.training.worker" in training_probe[4]
     for call in run.call_args_list:
         env = call.kwargs["env"]
         assert env["HF_HUB_OFFLINE"] == "1"
         assert env["TRANSFORMERS_OFFLINE"] == "1"
         assert env["WANDB_MODE"] == "disabled"
         assert "HF_TOKEN" not in env and "WANDB_API_KEY" not in env
+
+
+def test_smoke_refuses_core_before_starting_a_process(monkeypatch: pytest.MonkeyPatch) -> None:
+    installer = _installer()
+    run = Mock()
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(platform, "node", lambda: "coire-core")
+    monkeypatch.setattr(installer.subprocess, "run", run)
+    with pytest.raises(ValueError, match="registered Apple Silicon Studio"):
+        installer.smoke(Path("/staged/bin/python3"))
+    run.assert_not_called()
 
 
 def test_image_runtime_is_darwin_only_and_locked() -> None:
@@ -330,3 +412,269 @@ def test_wheel_hash_failure_never_publishes_partial_file(
             tmp_path,
         )
     assert list(tmp_path.iterdir()) == []
+
+
+def test_runtime_content_identity_uses_complete_named_inputs(tmp_path: Path) -> None:
+    installer = _installer()
+    first, second = tmp_path / "first.whl", tmp_path / "second.whl"
+    first.write_bytes(b"ab")
+    second.write_bytes(b"c")
+    original = installer.artifact_graph_sha256([first, second])
+    assert len(original) == 64
+    assert installer.artifact_graph_sha256([second, first]) == original
+    first.write_bytes(b"a")
+    second.write_bytes(b"bc")
+    assert installer.artifact_graph_sha256([first, second]) != original
+    with pytest.raises(ValueError, match="distinct names"):
+        installer.artifact_graph_sha256([first, first])
+
+
+def test_environment_identity_covers_native_and_interpreter_bytes(tmp_path: Path) -> None:
+    installer = _installer()
+    env = _environment(tmp_path / "env")
+    base = tmp_path / "python"
+    base.mkdir()
+    library = base / "libpython.dylib"
+    library.write_bytes(b"native")
+    (env / "bin/python3").unlink()
+    binary = base / "python3"
+    binary.write_bytes(b"interpreter")
+    (env / "bin/python3").symlink_to(binary)
+    first = installer.environment_content_sha256(env, base)
+    library.write_bytes(b"changed")
+    assert installer.environment_content_sha256(env, base) != first
+    library.write_bytes(b"native")
+    assert installer.environment_content_sha256(env, base) == first
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"uncontrolled")
+    (env / "escape").symlink_to(outside)
+    with pytest.raises(ValueError, match="outside"):
+        installer.environment_content_sha256(env, base)
+
+
+def test_retained_interpreter_survives_shared_interpreter_removal(tmp_path: Path) -> None:
+    installer = _installer()
+    shared = tmp_path / "shared"
+    (shared / "bin").mkdir(parents=True)
+    (shared / "lib").mkdir()
+    (shared / "bin/python3.13").write_bytes(b"binary")
+    (shared / "lib/libpython.dylib").write_bytes(b"library")
+    (shared / "bin/python3").symlink_to(shared / "bin/python3.13")
+    target = tmp_path / "retained"
+    installer.retain_interpreter(shared, target)
+    assert (target / "bin/python3").resolve() == target / "bin/python3.13"
+    installer.shutil.rmtree(shared)
+    assert (target / "bin/python3").read_bytes() == b"binary"
+    assert (target / "lib/libpython.dylib").read_bytes() == b"library"
+    with pytest.raises(FileExistsError):
+        installer.retain_interpreter(target, target)
+
+
+def test_retention_refuses_external_interpreter_dependencies_without_publication(
+    tmp_path: Path,
+) -> None:
+    installer = _installer()
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    outside = tmp_path / "external-library"
+    outside.write_bytes(b"mutable library")
+    (shared / "library").symlink_to(outside)
+    target = tmp_path / "retained"
+    with pytest.raises(ValueError, match="outside"):
+        installer.retain_interpreter(shared, target)
+    assert not target.exists()
+    assert set(tmp_path.iterdir()) == {shared, outside}
+
+
+def test_prepared_interpreter_is_sealed_reused_and_content_verified(tmp_path: Path) -> None:
+    installer = _installer()
+    shared = tmp_path / "shared"
+    (shared / "bin").mkdir(parents=True)
+    binary = shared / "bin/python3"
+    binary.write_bytes(b"interpreter")
+    binary.chmod(0o755)
+    library = shared / "libpython.dylib"
+    library.write_bytes(b"library")
+    store = tmp_path / "retained"
+    prepared = installer.prepare_interpreter(
+        shared, binary, store, prepare_binary=lambda path: path
+    )
+    assert prepared.read_bytes() == b"interpreter"
+    retained = prepared.parent.parent
+    assert retained != shared
+    assert all(
+        not (path.stat().st_mode & 0o222) for path in retained.rglob("*") if not path.is_symlink()
+    )
+    assert (
+        installer.prepare_interpreter(shared, binary, store, prepare_binary=lambda path: path)
+        == prepared
+    )
+    retained_library = retained / "libpython.dylib"
+    retained_library.chmod(0o600)
+    retained_library.write_bytes(b"corrupt")
+    with pytest.raises(ValueError, match="content"):
+        installer.prepare_interpreter(shared, binary, store, prepare_binary=lambda path: path)
+    assert library.read_bytes() == b"library"
+
+
+@pytest.mark.parametrize("lost_response", [False, True])
+def test_interpreter_relocation_requires_unpublished_root_write_and_reseals_on_loss(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lost_response: bool
+) -> None:
+    import os
+    import stat
+
+    installer = _installer()
+    shared = tmp_path / "shared"
+    (shared / "bin").mkdir(parents=True)
+    binary = shared / "bin/python3"
+    binary.write_bytes(b"private test interpreter")
+    binary.chmod(0o755)
+    original_mode = shared.stat().st_mode
+    store = tmp_path / "retained"
+    rename = os.rename
+    relocated: list[Path] = []
+
+    def require_directory_write(source: Path, target: Path) -> None:
+        source, target = Path(source), Path(target)
+        if source.name.startswith(".prepare-"):
+            assert stat.S_IMODE(source.stat().st_mode) == 0o700
+            assert all(
+                not (p.stat().st_mode & 0o222) for p in source.rglob("*") if not p.is_symlink()
+            )
+            rename(source, target)
+            relocated.append(target)
+            if lost_response:
+                raise OSError("relocation reply lost")
+        else:
+            rename(source, target)
+
+    monkeypatch.setattr(installer.os, "rename", require_directory_write)
+    if lost_response:
+        with pytest.raises(OSError, match="reply lost"):
+            installer.prepare_interpreter(shared, binary, store, prepare_binary=lambda path: path)
+        assert not list(store.glob("*.json"))
+        with pytest.raises(FileNotFoundError):
+            installer.prepare_interpreter(shared, binary, store, prepare_binary=lambda path: path)
+    else:
+        installed = installer.prepare_interpreter(
+            shared, binary, store, prepare_binary=lambda path: path
+        )
+        assert installed.read_bytes() == binary.read_bytes()
+    assert len(relocated) == 1 and stat.S_IMODE(relocated[0].stat().st_mode) == 0o500
+    assert shared.stat().st_mode == original_mode
+    assert binary.read_bytes() == b"private test interpreter"
+
+
+@pytest.mark.parametrize("lost_response", [False, True])
+def test_sealed_environment_relocation_reseals_after_a_lost_reply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lost_response: bool
+) -> None:
+    import os
+    import stat
+
+    installer = _installer()
+    source, target = tmp_path / "environment.staging", tmp_path / "environment"
+    (source / "bin").mkdir(parents=True)
+    (source / "bin/python3").write_bytes(b"private installed fixture")
+    replace = os.replace
+
+    def relocate(before: Path, after: Path) -> None:
+        assert stat.S_IMODE(before.stat().st_mode) == 0o700
+        assert stat.S_IMODE((before / "bin/python3").stat().st_mode) == 0o400
+        replace(before, after)
+        if lost_response:
+            raise OSError("environment relocation reply lost")
+
+    monkeypatch.setattr(installer.os, "replace", relocate)
+
+    def verify(python: Path) -> None:
+        installer.seal_tree(python.parent.parent)
+
+    if lost_response:
+        with pytest.raises(OSError, match="reply lost"):
+            installer.stage_environment(source, target, verify=verify)
+    else:
+        installer.stage_environment(source, target, verify=verify)
+    assert not source.exists()
+    assert stat.S_IMODE(target.stat().st_mode) == 0o500
+    assert (target / "bin/python3").read_bytes() == b"private installed fixture"
+
+
+def test_sealed_environment_receipt_verifies_every_byte_before_reuse(tmp_path: Path) -> None:
+    installer = _installer()
+    interpreter = tmp_path / "runtimes" / ("a" * 64)
+    (interpreter / "bin").mkdir(parents=True)
+    python = interpreter / "bin/python3"
+    python.write_bytes(b"interpreter")
+    python.chmod(0o755)
+    installer.seal_tree(interpreter)
+    source = tmp_path / "envs/staged"
+    (source / "bin").mkdir(parents=True)
+    (source / "bin/python3").symlink_to(python)
+    module = source / "native.so"
+    module.write_bytes(b"native")
+    target = tmp_path / "envs/candidate"
+    checked: list[Path] = []
+    receipt = installer.stage_sealed_environment(source, target, python, verify=checked.append)
+    assert len(receipt.environment_sha256) == 64
+    assert checked == [source / "bin/python3"]
+    assert not (target / "native.so").stat().st_mode & 0o222
+    assert (
+        installer.stage_sealed_environment(target, target, python, verify=checked.append) == receipt
+    )
+    changed = target / "native.so"
+    changed.chmod(0o600)
+    changed.write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="content"):
+        installer.stage_sealed_environment(target, target, python, verify=checked.append)
+    assert len(checked) == 2
+
+
+def test_interpreter_receipt_rejects_duplicate_fields(tmp_path: Path) -> None:
+    installer = _installer()
+    shared = tmp_path / "shared"
+    (shared / "bin").mkdir(parents=True)
+    binary = shared / "bin/python3"
+    binary.write_bytes(b"interpreter")
+    binary.chmod(0o755)
+    store = tmp_path / "retained"
+    installer.prepare_interpreter(shared, binary, store, prepare_binary=lambda path: path)
+    receipt = next(store.glob("*.json"))
+    content = receipt.read_text()
+    receipt.write_text('{"executable":"outside",' + content[1:])
+    with pytest.raises(ValueError, match="duplicate"):
+        installer.prepare_interpreter(shared, binary, store, prepare_binary=lambda path: path)
+
+
+def test_shipped_installer_bootstraps_without_an_installed_node_package(tmp_path: Path) -> None:
+    bundle = tmp_path / "apps/coire-node"
+    source = bundle / "src/coire_node"
+    source.mkdir(parents=True)
+    shutil.copyfile("apps/coire-node/install_runtime.py", bundle / "install_runtime.py")
+    for name in ("__init__.py", "upgrade_runtime.py"):
+        shutil.copyfile(Path("apps/coire-node/src/coire_node") / name, source / name)
+    first, second = tmp_path / "first.whl", tmp_path / "second.whl"
+    first.write_bytes(b"first immutable input")
+    second.write_bytes(b"second immutable input")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            "-S",
+            str(bundle / "install_runtime.py"),
+            "--content-id",
+            str(first),
+            str(second),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    assert result.stdout.strip() == _installer().artifact_graph_sha256([first, second])
+    shipping = Path("scripts/build-node-wheel.sh").read_text()
+    assert "coire-stage/apps/coire-node/src/coire_node" in shipping
+    assert "apps/coire-node/src/coire_node/upgrade_runtime.py" in shipping
+    assert "deploy/launchd/com.coire.upgrade-guard.plist.template" in shipping

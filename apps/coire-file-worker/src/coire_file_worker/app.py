@@ -27,6 +27,7 @@ from coire_core.models.files import (
     is_ulid,
 )
 from coire_core.models.image_worker import ImageRecipeParseRequest, ImageRecipeParseResult
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
 from coire_file_worker.image_inputs import (
     ImageInputProcessError,
@@ -72,6 +73,37 @@ class Worker:
         return FileProcessStatus.model_validate(
             {"job_id": request.job_id, "state": state, "updated_at": datetime.now(UTC), **kwargs}
         )
+
+    async def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        with tracer.start_as_current_span("coire.file_worker.upgrade_inventory"):
+            async with self.lock:
+                entries: list[UpgradeInventoryEntry] = []
+                if self.active_job is not None:
+                    if self.active_job not in self.jobs or self.active_task is None:
+                        return UpgradeOwnerInventory(
+                            owner="files", status="unknown", reason="worker_identity_uncertain"
+                        )
+                    entries.append(
+                        UpgradeInventoryEntry(
+                            owner="files",
+                            kind="worker-process",
+                            work_id=self.active_job,
+                            state="active",
+                        )
+                    )
+                elif self.active_task is not None:
+                    return UpgradeOwnerInventory(
+                        owner="files", status="unknown", reason="worker_task_uncertain"
+                    )
+                if self.recipe_active:
+                    entries.append(
+                        UpgradeInventoryEntry(
+                            owner="files", kind="worker-parser", work_id="parser", state="active"
+                        )
+                    )
+                return UpgradeOwnerInventory(
+                    owner="files", status="complete", entries=tuple(entries)
+                )
 
     async def submit(self, request: FileProcessRequest) -> FileProcessStatus:
         async with self.lock:
@@ -313,6 +345,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/health", response_model=FileWorkerHealth, dependencies=[Depends(authenticated)])
     async def health() -> FileWorkerHealth:
         return FileWorkerHealth()
+
+    @app.get(
+        "/internal/upgrades/inventory",
+        response_model=UpgradeOwnerInventory,
+        dependencies=[Depends(authenticated)],
+    )
+    async def upgrade_inventory() -> UpgradeOwnerInventory:
+        return await worker.upgrade_inventory()
 
     @app.post(
         "/v1/process",

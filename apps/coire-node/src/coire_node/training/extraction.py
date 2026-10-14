@@ -34,6 +34,7 @@ from coire_core.models.training_node import (
     TrainingArtifactManifest,
     parse_checkpoint_worker_state,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry
 from coire_core.settings import Settings
 from coire_node.reservations import ReservationLedger, ReservationRefused
 from coire_node.store import Store, write_atomic
@@ -136,6 +137,35 @@ class AdapterExtractor:
 
     def status(self, identity: uuid.UUID) -> TrainingAdapterExtractionStatus:
         return TrainingAdapterExtractionStatus.model_validate(self._read(identity)["status"])
+
+    def upgrade_entries(self) -> tuple[UpgradeInventoryEntry, ...]:
+        with self.lock:
+            entries: list[UpgradeInventoryEntry] = []
+            for path in self.root.iterdir():
+                identity = uuid.UUID(path.stem)
+                if path.name != f"{identity}.json":
+                    raise TrainingValidationError("Extraction owner journal is uncertain")
+                record = self._read(identity)
+                command = TrainingAdapterExtractRequest.model_validate(record["request"])
+                status = TrainingAdapterExtractionStatus.model_validate(record["status"])
+                staging = self._staging(command)
+                held = self.reservations.get(command.disk_reservation_id)
+                active = status.state in {"queued", "running"}
+                cleaning = (
+                    staging.exists()
+                    or staging.is_symlink()
+                    or (held is not None and held.state is not ReservationState.RELEASED)
+                )
+                if active or cleaning:
+                    entries.append(
+                        UpgradeInventoryEntry(
+                            owner="artifacts",
+                            kind="adapter-extraction",
+                            work_id=str(identity),
+                            state="active" if active else "cleaning",
+                        )
+                    )
+            return tuple(entries)
 
     def _status(self, record: dict[str, Any], **changes: Any) -> None:
         status = TrainingAdapterExtractionStatus.model_validate({**record["status"], **changes})

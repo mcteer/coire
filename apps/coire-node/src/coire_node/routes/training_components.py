@@ -6,7 +6,7 @@ import uuid
 from typing import Annotated, cast
 
 import anyio
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
 from coire_core.errors import TrainingConflict, TrainingValidationError
@@ -23,6 +23,7 @@ from coire_core.models.training_node import (
     TrainingRankVerificationReceipt,
 )
 from coire_core.models.training_types import TrainingId
+from coire_node.maintenance import require_admission
 from coire_node.routes.training import invoke, native, scope
 from coire_node.training.checkpoints import _private_file
 from coire_node.training.components import RankImporter, TrainingComponents
@@ -99,7 +100,10 @@ async def revoke(grant_id: uuid.UUID, request: Request) -> Response:
 
 
 @control_router.post(
-    "/components/imports", response_model=TrainingRankImportStatus, status_code=202
+    "/components/imports",
+    response_model=TrainingRankImportStatus,
+    status_code=202,
+    dependencies=[Depends(require_admission)],
 )
 async def start(body: TrainingRankImportRequest, request: Request) -> TrainingRankImportStatus:
     return await invoke(lambda: importer(request).start(body))

@@ -113,6 +113,15 @@ class EvaluationSubject(EvaluationWire):
 
 
 class EvaluationRuntime(EvaluationWire):
+    harness_image: str | None = Field(
+        default=None,
+        max_length=512,
+        pattern=r"^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$",
+        exclude_if=lambda value: value is None,
+    )
+    native_runtime_sha256: Digest | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     engine_version: str = Field(min_length=1, max_length=64)
     harness_version: str = Field(min_length=1, max_length=64)
     runtime_sha256: Digest

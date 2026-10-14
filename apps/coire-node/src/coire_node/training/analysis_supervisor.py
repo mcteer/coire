@@ -13,7 +13,8 @@ import signal
 import subprocess
 import sys
 import uuid
-from contextlib import suppress
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ import httpx
 import psutil
 from opentelemetry import metrics, trace
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.models.acquisition import ReservationRequest
 from coire_core.models.datasets import DatasetAnalysis
 from coire_core.models.training_node import (
@@ -31,9 +33,11 @@ from coire_core.models.training_node import (
     NodeDatasetAnalysisRequest,
     NodeDatasetAnalysisStatus,
 )
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
 from coire_node.reservations import ReservationLedger
 from coire_node.store import write_atomic
+from coire_node.upgrade_inventory import native_process_entries, read_owner_json
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("coire.node.training.analysis")
@@ -43,9 +47,16 @@ outcomes = metrics.get_meter("coire.node.training.analysis").create_counter(
 
 
 class AnalysisSupervisor:
-    def __init__(self, settings: Settings, reservations: ReservationLedger) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        reservations: ReservationLedger,
+        *,
+        admission_context: Callable[[], AbstractContextManager[None]] | None = None,
+    ) -> None:
         self.settings = settings
         self.reservations = reservations
+        self._admission_context = admission_context or nullcontext
         self.root = Path(settings.node_state_dir) / "training-analyses"
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         if self.root.is_symlink() or self.root.stat().st_mode & 0o077:
@@ -231,9 +242,53 @@ class AnalysisSupervisor:
         return result
 
     async def start(self, command: NodeDatasetAnalysisRequest) -> NodeDatasetAnalysisStatus:
-        with tracer.start_as_current_span("coire.node.training.analysis.start") as span:
+        with (
+            self._admission_context(),
+            tracer.start_as_current_span("coire.node.training.analysis.start") as span,
+        ):
             span.set_attribute("coire.analysis_id", str(command.analysis_id))
             return await self._start(command)
+
+    def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        entries = list(native_process_entries("analysis", ("coire_node.training.analysis_worker",)))
+        for path in self.root.iterdir():
+            if path.is_symlink() or not path.is_dir() or path.stat().st_mode & 0o077:
+                raise UpgradeUnavailable("Analysis owner directory is uncertain")
+            identity = uuid.UUID(path.name)
+            record = read_owner_json(path / "journal.json")
+            if not isinstance(record, dict) or record.get("analysis_id") != str(identity):
+                raise UpgradeUnavailable("Analysis journal identity is uncertain")
+            state = record.get("state")
+            if state not in {
+                "preparing",
+                "launching",
+                "running",
+                "succeeded",
+                "failed",
+                "cancelled",
+            }:
+                raise UpgradeUnavailable("Analysis journal state is uncertain")
+            terminal = state in {"succeeded", "failed", "cancelled"}
+            if (
+                terminal
+                and record.get("stop_proven") is True
+                and record.get("release_pending") is False
+                and self._stopped(identity, record)
+                and not any(
+                    (path / name).exists() or (path / name).is_symlink()
+                    for name in ("source.jsonl", "worker-home")
+                )
+            ):
+                continue
+            entries.append(
+                UpgradeInventoryEntry(
+                    owner="analysis",
+                    kind="dataset-analysis",
+                    work_id=str(identity),
+                    state="cleaning" if terminal else "active",
+                )
+            )
+        return UpgradeOwnerInventory(owner="analysis", status="complete", entries=tuple(entries))
 
     async def _start(self, command: NodeDatasetAnalysisRequest) -> NodeDatasetAnalysisStatus:
         if platform.node().lower().split(".", 1)[0] == "coire-core":
@@ -412,6 +467,9 @@ class AnalysisSupervisor:
                     }
                 )
                 env["OTLP_ENDPOINT"] = self.settings.otlp_endpoint
+                from coire_node.upgrade_runtime import managed_worker_environment
+
+                env.update(managed_worker_environment(self.settings))
                 home = path / "worker-home"
                 await anyio.to_thread.run_sync(lambda: home.mkdir(mode=0o700))
                 env.update(

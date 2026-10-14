@@ -72,6 +72,9 @@ def _parser() -> argparse.ArgumentParser:
     from coire_api.evaluation.cli import parsers as evaluation_parsers
 
     evaluation_parsers(commands)
+    from coire_api.upgrades.cli import parsers as upgrade_parsers
+
+    upgrade_parsers(commands)
     run = commands.add_parser("run")
     run_commands = run.add_subparsers(dest="run_command", required=True)
     submit = run_commands.add_parser("submit")
@@ -231,6 +234,10 @@ def main(argv: list[str] | None = None) -> int:
         _parser().error("--token or COIRE_API_TOKEN is required")
     headers = {"Authorization": f"Bearer {args.token}"}
     try:
+        if args.command == "upgrades":
+            from coire_api.upgrades.cli import command as upgrade_command
+
+            return upgrade_command(args)
         if args.command == "run":
             return _run_command(args, headers)
         if args.command == "feedback":

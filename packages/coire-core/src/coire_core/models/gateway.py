@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from coire_core.models.adapters import InferenceTarget, ModelSelector
 from coire_core.models.registry import ModelSource
+from coire_core.models.upgrades import CoreNodeSmokeScope
 
 
 class OpenAITextPart(BaseModel):
@@ -174,12 +175,19 @@ class TextCompletionChoice(BaseModel):
     logprobs: None = None
 
 
+class CompletionPromptTokensDetails(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cached_tokens: int = Field(ge=0)
+
+
 class TextCompletionUsage(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     prompt_tokens: int = Field(ge=0)
     completion_tokens: int = Field(ge=0)
     total_tokens: int = Field(ge=0)
+    prompt_tokens_details: CompletionPromptTokensDetails | None = None
 
 
 class TextCompletionResponse(BaseModel):
@@ -191,6 +199,30 @@ class TextCompletionResponse(BaseModel):
     model: str
     choices: list[TextCompletionChoice]
     usage: TextCompletionUsage | None = None
+    system_fingerprint: str | None = Field(default=None, max_length=128)
+
+
+class EngineChatSmokeChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int = Field(ge=0)
+    message: ChatMessage
+    finish_reason: Literal["stop", "length"]
+    logprobs: None = None
+
+
+class EngineChatSmokeResponse(BaseModel):
+    """Fixed text-only engine response used by bounded maintenance verification."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1, max_length=255)
+    object: Literal["chat.completion"]
+    created: int = Field(ge=0)
+    model: str = Field(min_length=1, max_length=4096)
+    choices: list[EngineChatSmokeChoice] = Field(min_length=1, max_length=1)
+    usage: TextCompletionUsage
+    system_fingerprint: str | None = Field(default=None, max_length=128)
 
 
 class AnthropicMessage(BaseModel):
@@ -240,6 +272,7 @@ class EngineChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str = Field(min_length=1, max_length=4096)
+    coire_upgrade_scope: CoreNodeSmokeScope | None = None
     messages: list[ChatMessage] = Field(min_length=1)
     stream: bool = False
     stream_options: EngineStreamOptions | None = None

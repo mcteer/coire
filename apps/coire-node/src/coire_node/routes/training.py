@@ -7,10 +7,15 @@ from typing import cast
 
 import httpx
 import psutil
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from opentelemetry import metrics, trace
 
-from coire_core.errors import TrainingConflict, TrainingValidationError
+from coire_core.errors import (
+    TrainingConflict,
+    TrainingUnavailable,
+    TrainingValidationError,
+    UpgradeUnavailable,
+)
 from coire_core.models.training_node import (
     CheckpointAcknowledgementDocument,
     CheckpointCommitAcknowledgementV2,
@@ -36,6 +41,7 @@ from coire_core.models.training_node import (
     TrainingStopRequest,
 )
 from coire_core.models.training_types import TrainingId
+from coire_node.maintenance import require_admission
 from coire_node.reservations import ReservationLedgerUnavailable, ReservationRefused
 from coire_node.training.analysis_supervisor import AnalysisSupervisor
 from coire_node.training.supervisor import TrainingSupervisor
@@ -82,6 +88,14 @@ async def invoke[T](operation: Callable[[], Awaitable[T]]) -> T:
             result = await operation()
         commands.add(1, {"outcome": "succeeded"})
         return result
+    except (UpgradeUnavailable, TrainingUnavailable) as error:
+        commands.add(
+            1,
+            {"outcome": "maintenance" if isinstance(error, UpgradeUnavailable) else "unavailable"},
+        )
+        raise HTTPException(
+            error.status, error.to_problem().model_dump(mode="json"), headers={"Retry-After": "5"}
+        ) from error
     except (
         TrainingConflict,
         TrainingValidationError,
@@ -99,7 +113,11 @@ async def invoke[T](operation: Callable[[], Awaitable[T]]) -> T:
 router = APIRouter(prefix="/node/training", tags=["training:analysis"])
 
 
-@router.post("/attempts/{attempt_id}/prepare", response_model=TrainingPrepared)
+@router.post(
+    "/attempts/{attempt_id}/prepare",
+    response_model=TrainingPrepared,
+    dependencies=[Depends(require_admission)],
+)
 async def prepare(
     attempt_id: TrainingId, command: TrainingPrepareRequest, request: Request
 ) -> TrainingPrepared:
@@ -119,7 +137,11 @@ async def inputs(
     )
 
 
-@router.post("/attempts/{attempt_id}/start", response_model=TrainingStartReceipt)
+@router.post(
+    "/attempts/{attempt_id}/start",
+    response_model=TrainingStartReceipt,
+    dependencies=[Depends(require_admission)],
+)
 async def start(
     attempt_id: TrainingId, command: TrainingStartRequest, request: Request
 ) -> TrainingStartReceipt:
@@ -214,7 +236,12 @@ def manager(request: Request) -> AnalysisSupervisor:
     return cast(AnalysisSupervisor, value)
 
 
-@router.post("/analyses", response_model=NodeDatasetAnalysisStatus, status_code=202)
+@router.post(
+    "/analyses",
+    response_model=NodeDatasetAnalysisStatus,
+    status_code=202,
+    dependencies=[Depends(require_admission)],
+)
 async def start_analysis(
     command: NodeDatasetAnalysisRequest, request: Request
 ) -> NodeDatasetAnalysisStatus:

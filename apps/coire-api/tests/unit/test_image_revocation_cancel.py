@@ -15,6 +15,7 @@ from coire_api.db import ImageJobRow
 from coire_api.images.quota import _QUOTA_LOCK
 from coire_core.errors import ImageConflict
 from coire_core.models.images import ImageJobState
+from coire_core.settings import Settings
 from coire_scheduler import image_dispatch, images
 
 JOB = "01J00000000000000000000000"
@@ -126,9 +127,7 @@ async def test_recovered_dispatch_cancels_revoked_placed_job_before_worker_comma
     monkeypatch.setattr(image_dispatch, "_access_current", access)
     monkeypatch.setattr(image_dispatch, "write_audit", audit)
     assert (
-        await image_dispatch.prepare_image_dispatch(
-            cast(AsyncSession, session), JOB, cast(Any, object())
-        )
+        await image_dispatch.prepare_image_dispatch(cast(AsyncSession, session), JOB, Settings())
         is None
     )
     assert session.row.state == ImageJobState.CANCELLING

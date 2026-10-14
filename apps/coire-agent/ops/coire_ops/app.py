@@ -11,6 +11,7 @@ from fastapi import FastAPI, Header, HTTPException, status
 
 from coire_core.models.health import HealthResponse, HealthStatus, ReadyResponse
 from coire_core.models.ops import OpsServiceTurnRequest, OpsTurnResponse
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import get_settings
 from coire_ops.admin_client import AdminClient
 from coire_ops.model import OPS_ANTHROPIC_MODEL, OpsModel
@@ -72,6 +73,7 @@ def create_app(
     )
     app.state.ready = False
     app.state.expected_token = expected_token
+    app.state.active_turns = 0
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
@@ -88,24 +90,55 @@ def create_app(
         # FastAPI does not serve requests before lifespan startup, so a handled request is ready.
         return ReadyResponse(service="coire-ops", version="0.1.0", ready=app.state.ready)
 
+    def check_credential(authorization: str) -> None:
+        expected = app.state.expected_token
+        if expected is None:
+            expected = get_settings().ops_service_token.get_secret_value()
+        if not expected or not hmac.compare_digest(expected, authorization.removeprefix("Bearer ")):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "ops service credential required")
+
+    @app.get("/internal/upgrades/inventory", response_model=UpgradeOwnerInventory)
+    async def upgrade_inventory(authorization: str = Header(default="")) -> UpgradeOwnerInventory:
+        check_credential(authorization)
+        return UpgradeOwnerInventory(
+            owner="ops",
+            status="complete",
+            entries=()
+            if not app.state.active_turns
+            else (
+                UpgradeInventoryEntry(
+                    owner="ops", kind="core-requests", work_id="inflight", state="active"
+                ),
+            ),
+        )
+
     @app.post("/turn", response_model=OpsTurnResponse)
     async def turn(
         body: OpsServiceTurnRequest,
         authorization: str = Header(default=""),
     ) -> OpsTurnResponse:
-        expected = app.state.expected_token
-        if expected is None:
-            expected = get_settings().ops_service_token.get_secret_value()
-        presented = authorization.removeprefix("Bearer ")
-        if not expected or not hmac.compare_digest(expected, presented):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "ops service credential required")
+        check_credential(authorization)
         service: OpsService = app.state.ops_service
+        app.state.active_turns += 1
         try:
-            return await service.turn(
-                conversation_id=body.conversation_id,
-                question=body.question,
-            )
-        except RuntimeError as exc:
-            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+            if get_settings().upgrades_enabled:
+                try:
+                    allowed = await service.upgrade_admission()
+                except Exception:
+                    raise HTTPException(
+                        503, "ops maintenance authority unavailable", headers={"Retry-After": "5"}
+                    ) from None
+                if not allowed:
+                    raise HTTPException(
+                        503, "ops is draining for an upgrade", headers={"Retry-After": "5"}
+                    )
+            try:
+                return await service.turn(
+                    conversation_id=body.conversation_id, question=body.question
+                )
+            except RuntimeError as exc:
+                raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+        finally:
+            app.state.active_turns -= 1
 
     return app

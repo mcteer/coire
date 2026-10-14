@@ -14,7 +14,7 @@ from coire_api.db import (
     NodeMemoryLedgerRow,
 )
 from coire_api.placement.service import node_admission_lock
-from coire_core.errors import ChatModelUnavailable
+from coire_core.errors import ChatModelUnavailable, UpgradeUnavailable
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, ReservationHolder
 
@@ -23,6 +23,10 @@ async def ensure_legacy_model_hold(
     session: AsyncSession, node_id: uuid.UUID, model_id: uuid.UUID, estimate_bytes: int
 ) -> MemoryReservationRow:
     """Reserve a legacy model under the caller's node admission transaction lock."""
+    from coire_scheduler.maintenance import allows_admission
+
+    if not await allows_admission(session, [node_id]):
+        raise UpgradeUnavailable("Node is draining for an upgrade; retry after maintenance")
     existing = await session.scalar(
         select(MemoryReservationRow).where(
             MemoryReservationRow.node_id == node_id,

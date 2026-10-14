@@ -269,3 +269,55 @@ async def test_plan_pins_prior_research_revision(monkeypatch: MonkeyPatch) -> No
         )
     assert response.status_code == 200, response.text
     assert response.json()["result"]["structuredContent"]["source_revision"] == "a" * 40
+
+
+async def test_mcp_upgrade_inventory_requires_exact_executor_identity(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from coire_core.settings import Settings
+
+    current = [_principal()]
+
+    async def authenticate(_request: object) -> Principal:
+        return current[0]
+
+    monkeypatch.setattr(main, "authenticate_request", authenticate)
+    monkeypatch.setattr(main, "get_settings", lambda: Settings())
+    app = main.create_app()
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://localhost:8001"
+    ) as client:
+        assert (await client.get("/internal/upgrades/inventory")).status_code == 403
+        current[0] = Principal(
+            kind=PrincipalKind.UPGRADE_EXECUTOR,
+            subject="coire-upgrade-executor",
+            scopes=frozenset({"upgrades:execute"}),
+        )
+        response = await client.get("/internal/upgrades/inventory")
+        assert response.status_code == 200
+        assert response.json()["owner"] == "mcp" and response.json()["entries"] == []
+        current[0] = current[0].model_copy(update={"subject": "other-executor"})
+        assert (await client.get("/internal/upgrades/inventory")).status_code == 403
+
+
+async def test_authenticated_mcp_calls_refuse_new_work_while_fenced(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from unittest.mock import AsyncMock
+
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from coire_core.settings import Settings
+
+    session = AsyncMock(spec=AsyncSession)
+    session.scalar.return_value = "coire-mcp"
+
+    @asynccontextmanager
+    async def sessions() -> AsyncIterator[AsyncSession]:
+        yield session
+
+    monkeypatch.setattr("coire_api.upgrades.admission.session_scope", sessions)
+    monkeypatch.setattr(main, "get_settings", lambda: Settings(upgrades_enabled=True))
+    response = await _request(monkeypatch, _principal())
+    assert response.status_code == 503 and response.headers["retry-after"] == "5"
+    session.scalar.assert_awaited_once()

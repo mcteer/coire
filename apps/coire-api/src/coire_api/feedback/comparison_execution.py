@@ -8,8 +8,11 @@ import json
 import logging
 import uuid
 from collections.abc import AsyncIterator, Awaitable
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Literal, cast
+
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.auth import Principal
 from coire_api.chat.maintenance import PROCESS_ID
@@ -76,6 +79,22 @@ async def while_live[T](operation: Awaitable[T], pair_id: str, principal: Princi
             await asyncio.gather(task, return_exceptions=True)
 
 
+@asynccontextmanager
+async def admitted_comparison_session(settings: Settings) -> AsyncIterator[AsyncSession]:
+    """Keep accepted queued regeneration waiting until its Core claim is permitted."""
+    from coire_scheduler.maintenance import allows_core_work
+
+    while True:
+        async with session_scope() as session:
+            if not settings.upgrades_enabled or await allows_core_work(
+                session, ("coire-api", "coire-scheduler")
+            ):
+                yield session
+                return
+        # No transaction or user lock remains held while maintenance proceeds.
+        await asyncio.sleep(0.5)
+
+
 async def run_comparison(pair_id: str, principal: Principal, settings: Settings) -> None:
     usage: UsageTracker | None = None
     source: AsyncIterator[bytes] | None = None
@@ -85,8 +104,8 @@ async def run_comparison(pair_id: str, principal: Principal, settings: Settings)
         "coire.api.feedback.regenerate", record_exception=False, set_status_on_exception=False
     ):
         try:
-            current = await refreshed_principal(principal)
-            async with session_scope() as session:
+            async with admitted_comparison_session(settings) as session:
+                current = await refresh_owner_principal(session, principal)
                 saved = await session.get(ComparisonPairRow, pair_id)
                 if saved is None:
                     return

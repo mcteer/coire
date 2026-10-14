@@ -276,10 +276,38 @@ async def confirmed_evictions(session: AsyncSession, decision_id: uuid.UUID) -> 
     return list(dict.fromkeys(str(value) for value in values))
 
 
-async def _run_decision(decision_id: uuid.UUID) -> None:
+async def _run_decision(decision_id: uuid.UUID) -> bool:
+    from coire_api.upgrades.gateway_smoke_scope import placement_smoke_scope
+    from coire_core.models.upgrades import CoreNodeSmokeScope
+
+    async with session_scope() as session:
+        instance = await session.scalar(
+            select(ModelInstanceRow).where(ModelInstanceRow.placement_decision_id == decision_id)
+        )
+        private = instance.upgrade_smoke_payload if instance is not None else None
+        instance_id = instance.id if instance is not None else None
+    if private is None:
+        return await _run_ordinary_decision(decision_id)
+    if instance_id is None:
+        raise RuntimeError("Core smoke placement has no durable instance")
+    scope = CoreNodeSmokeScope.model_validate(private)
+    with placement_smoke_scope(scope, get_settings(), instance_id):
+        return await _run_ordinary_decision(decision_id)
+
+
+async def _run_ordinary_decision(decision_id: uuid.UUID) -> bool:
+    from coire_api.upgrades.gateway_smoke_scope import current_loading_smoke
+    from coire_scheduler.maintenance import allows_admission, allows_core_work
+
+    smoke = current_loading_smoke()
+
     started = datetime.now(UTC)
     async with session_scope() as session:
         settings = get_settings()
+        if settings.upgrades_enabled and not await allows_core_work(
+            session, ("coire-api", "coire-scheduler")
+        ):
+            return False
         await ensure_ledgers(
             session,
             budget_bytes=settings.placement_default_budget_bytes,
@@ -288,25 +316,32 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
         )
         decision = await session.get(PlacementDecisionRow, decision_id)
         if decision is None or decision.state is PlacementState.READY:
-            return
+            return True
         model = await session.get(ModelRow, decision.model_id)
         variant = await session.get(ModelVariantRow, decision.variant_id)
         if model is None or variant is None:
             raise RuntimeError("placement references missing registry state")
         nodes, health_reasons = await _candidate_nodes(session, decision)
+        if smoke is not None:
+            nodes = [item for item in nodes if item[0].name == smoke.node]
         if not nodes:
             decision.state = PlacementState.REFUSED
             decision.refusal_code = "no_healthy_verified_copy"
             suffix = f" ({'; '.join(health_reasons)})" if health_reasons else ""
             decision.refusal_detail = "no healthy node with a fresh verified variant copy" + suffix
             refusals.add(1, {"reason": decision.refusal_code})
-            return
+            return True
 
     last_refusal: CapacityRefused | None = None
     profile_refused = False
+    maintenance_wait = False
     for node, _ in nodes:
         required_bytes = 0
         async with session_scope() as session:
+            if settings.upgrades_enabled and not await allows_core_work(
+                session, ("coire-api", "coire-scheduler")
+            ):
+                return False
             decision = await session.get(PlacementDecisionRow, decision_id)
             model = await session.get(ModelRow, decision.model_id) if decision else None
             variant = await session.get(ModelVariantRow, decision.variant_id) if decision else None
@@ -320,6 +355,9 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             )
             target_holder_id = str(instance.id if instance is not None else model.id)
             async with node_admission_lock(session, node.id):
+                if settings.upgrades_enabled and not await allows_admission(session, [node.id]):
+                    maintenance_wait = True
+                    continue
                 if not await new_chat_mix_allowed(session, node.id, variant.id, datetime.now(UTC)):
                     profile_refused = True
                     continue
@@ -397,6 +435,8 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                     )
                 except CapacityRefused as exc:
                     last_refusal = exc
+                    if smoke is not None:
+                        continue
                     busy = any(item.reason is OccupantReason.IN_USE for item in exc.occupants)
                     drain_seconds = get_settings().placement_busy_drain_timeout_s
                     if not busy or drain_seconds <= 0:
@@ -444,6 +484,8 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                     except CapacityRefused as drained_exc:
                         last_refusal = drained_exc
                         continue
+                if smoke is not None and plan.evictions:
+                    continue
                 decision.selected_node_id = node.id
                 decision.state = (
                     PlacementState.EVICTING if plan.evictions else PlacementState.RESERVING
@@ -522,6 +564,10 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             evictions.add(1, {"node": node.name, "reason": "pressure"})
 
         async with session_scope() as session:
+            if settings.upgrades_enabled and not await allows_core_work(
+                session, ("coire-api", "coire-scheduler")
+            ):
+                return False
             decision = await session.get(PlacementDecisionRow, decision_id)
             model = await session.get(ModelRow, decision.model_id) if decision else None
             variant = await session.get(ModelVariantRow, decision.variant_id) if decision else None
@@ -534,6 +580,8 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             )
             target_holder_id = str(instance.id if instance is not None else model.id)
             async with node_admission_lock(session, node.id):
+                if settings.upgrades_enabled and not await allows_admission(session, [node.id]):
+                    return False
                 reservation = await session.scalar(
                     select(MemoryReservationRow).where(
                         MemoryReservationRow.node_id == node.id,
@@ -567,6 +615,7 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                 )
                 if engine is None:
                     engine = EngineProcessRow(
+                        **({"id": smoke.engine_id} if smoke is not None else {}),
                         instance_id=instance.id if instance is not None else None,
                         model_id=model.id,
                         variant_id=variant.id,
@@ -597,12 +646,19 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
                             operation="load",
                             payload={
                                 **(
+                                    {"coire_upgrade_scope": smoke.model_dump(mode="json")}
+                                    if smoke is not None
+                                    else {}
+                                ),
+                                **(
                                     {"target": identity.model_dump(mode="json")} if identity else {}
                                 ),
                                 "slug": variant.slug,
                                 "estimate_bytes": decision.required_bytes,
                                 "chat_template": (
-                                    model.chat_template if model.backend == "mlx_lm" else None
+                                    model.chat_template
+                                    if model.backend == "mlx_lm" and smoke is None
+                                    else None
                                 ),
                                 "backend": model.backend,
                             },
@@ -626,8 +682,10 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
         admissions.add(1, {"node": node.name, "outcome": "ready"})
         reserved_gauge.set(required_bytes, {"node": node.name})
         queue_seconds.record((datetime.now(UTC) - started).total_seconds(), {"outcome": "ready"})
-        return
+        return True
 
+    if maintenance_wait:
+        return False
     async with session_scope() as session:
         decision = await session.get(PlacementDecisionRow, decision_id)
         if decision is not None:
@@ -644,14 +702,16 @@ async def _run_decision(decision_id: uuid.UUID) -> None:
             ]
     refusals.add(1, {"reason": "unmeasured_image_mix" if profile_refused else "capacity"})
 
+    return True
+
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0)
-async def execute_placement(decision_id: str) -> None:
+async def execute_placement(decision_id: str) -> bool:
     with tracer.start_as_current_span("coire.scheduler.placement") as span:
         span.set_attribute("coire.placement.decision_id", decision_id)
         parsed = uuid.UUID(decision_id)
         try:
-            await _run_decision(parsed)
+            return await _run_decision(parsed)
         except ExactTargetUnconfirmed as exc:
             span.record_exception(exc)
             raise
@@ -670,13 +730,14 @@ async def execute_placement(decision_id: str) -> None:
                         .where(
                             PlacementCommandRow.decision_id == decision.id,
                             PlacementCommandRow.operation == "load",
-                            ModelInstanceRow.adapter_id.is_not(None),
+                            ModelInstanceRow.adapter_id.is_not(None)
+                            | ModelInstanceRow.upgrade_smoke_payload.is_not(None),
                         )
                         .limit(1)
                     )
                     if smoke_load is not None:
                         raise ExactTargetUnconfirmed(
-                            "adapter load needs node reconciliation"
+                            "private load needs node reconciliation"
                         ) from exc
                     decision.state = PlacementState.FAILED
                     decision.refusal_code = type(exc).__name__.lower()[:64]
@@ -703,7 +764,8 @@ async def execute_placement(decision_id: str) -> None:
 
 @DBOS.workflow(name="coire.placement.workflow", max_recovery_attempts=100)
 async def placement_workflow(decision_id: str) -> None:
-    await execute_placement(decision_id)
+    while not await execute_placement(decision_id):
+        await DBOS.sleep_async(1)
 
 
 @DBOS.step(retries_allowed=True, max_attempts=3, interval_seconds=1.0)

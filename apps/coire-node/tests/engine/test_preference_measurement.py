@@ -200,11 +200,27 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         + "import json, os, psutil, importlib.metadata\n"
         + "from coire_node.footprint import phys_footprint\n"
         + "from coire_node.metrics import read_thermal_state\n"
+        + "from coire_node.swap import read_swap_sample\n"
         + "print(json.dumps({'mlx': importlib.metadata.version('mlx'), "
         + "'available': psutil.virtual_memory().available, "
-        + "'swap_used': psutil.swap_memory().used, 'swap_out': psutil.swap_memory().sout, "
+        + "'swap_used': read_swap_sample().used, 'swap_out': read_swap_sample().out, "
+        + "'filesystem_page_out': psutil.swap_memory().sout, "
         + "'footprint': phys_footprint(os.getpid()), 'thermal': read_thermal_state()}), "
         + "file=sys.stderr, flush=True)\n"
+        + "original_exit = os._exit\n"
+        + "def observed_exit(code):\n"
+        + "    try:\n"
+        + "        print(json.dumps({'guard_exit_code': code, "
+        + "'footprint': phys_footprint(os.getpid()), "
+        + "'memory_limit': "
+        + str(prepared.resolved.resource_envelope.memory_bytes)
+        + ", 'available': psutil.virtual_memory().available, "
+        + "'swap_used': read_swap_sample().used, 'swap_out': read_swap_sample().out, "
+        + "'filesystem_page_out': psutil.swap_memory().sout, "
+        + "'thermal': read_thermal_state()}), file=sys.stderr, flush=True)\n"
+        + "    finally:\n"
+        + "        original_exit(code)\n"
+        + "os._exit = observed_exit\n"
     )
 
     class SourceProcesses(NativeProcesses):

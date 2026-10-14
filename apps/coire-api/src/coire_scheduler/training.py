@@ -640,14 +640,20 @@ async def advance_training(session: AsyncSession, job_id: str) -> None:
     """One durable scheduler tick. API only dispatches committed node commands."""
     from coire_api.training.checkpoints import recovery_checkpoint
     from coire_core.errors import TrainingForbidden
+    from coire_core.settings import get_settings
     from coire_scheduler.training_admission import admit_training
     from coire_scheduler.training_recovery import release_unstarted_job
 
+    allowed = True
+    if get_settings().upgrades_enabled:
+        from coire_scheduler.maintenance import allows_core_work
+
+        allowed = await allows_core_work(session, ("coire-api", "coire-scheduler"))
     job = await current_job(session, job_id)
     authorized = True
     try:
         await authorize_live_training_action(
-            session, Principal.model_validate(job.authorization_snapshot)
+            session, Principal.model_validate(job.authorization_snapshot), shared=True
         )
     except TrainingForbidden:
         authorized = False
@@ -693,6 +699,8 @@ async def advance_training(session: AsyncSession, job_id: str) -> None:
         return
     if job.state == "recovering" and active is not None:
         await enqueue_controls(session, active.id, "stop")
+        return
+    if job.state in {"queued", "preflighting", "recovering"} and active is None and not allowed:
         return
     if job.state == "queued" and active is None:
         from coire_api.training.events import append_event

@@ -279,3 +279,65 @@ async def test_rejected_prepare_survives_restart_and_proves_fenced_no_start(
     with pytest.raises(TrainingConflict, match="ownership"):
         await runtime.stop(stop)
     journal.close()
+
+
+async def test_managed_probe_spawn_preserves_identity_and_excludes_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercise the durable start path with a captured process, without loading weights."""
+    from unittest.mock import AsyncMock, Mock
+
+    from coire_core.settings import Settings
+    from coire_node.upgrade_runtime import managed_worker_environment
+
+    monkeypatch.setenv("NODE_TOKEN", "control-secret-not-for-workers")
+    monkeypatch.setattr("coire_node.training.measurement.platform.node", lambda: "coire-edge-a")
+    _, dispatch = experiment()
+    probe = dispatch.commands[0]
+    settings = Settings(
+        upgrades_enabled=True,
+        node_name="coire-edge-a",
+        upgrade_environment_root=str(tmp_path / "envs"),
+    )
+    journal = TrainingJournal(
+        tmp_path / "journal", node=probe.prepare.node, admission_lock=threading.RLock()
+    )
+    try:
+        runtime = MeasurementSupervisor(
+            journal,
+            interpreter=Path("/opt/coire/envs/pinned/bin/python"),
+            runtime_environment=managed_worker_environment(settings),
+            accelerator_guard=lambda _: None,
+            hardware_sha256=lambda: probe.hardware_sha256,
+            store_root=tmp_path,
+            artifact_root=tmp_path / "artifacts",
+            memory_available=lambda: 16 * 1024**3,
+            disk_available=lambda: 100 * 1024**3,
+        )
+        await runtime.prepare_measurement(probe)
+        # CPU contract coverage: asset verification and Popen are exercised by native acceptance.
+        monkeypatch.setattr(runtime, "validate_assets", AsyncMock())
+        spawn = Mock(return_value=(1234, 100.0))
+        monkeypatch.setattr(runtime.processes, "spawn", spawn)
+        prepared = probe.prepare
+        command = TrainingStartRequest.model_validate(
+            {
+                **{name: getattr(prepared, name) for name in TrainingLeaseRenewal.model_fields},
+                "command_id": uuid.uuid4(),
+                "prepared_command_id": prepared.command_id,
+                "spawn_nonce": dispatch.spawn_nonce,
+            }
+        )
+        await runtime.start(command)
+        argv, environment = spawn.call_args.args
+        assert argv[1:3] == ["-m", "coire_node.training.measurement"]
+        assert "NODE_TOKEN" not in environment
+        assert environment["HF_HUB_OFFLINE"] == "1"
+        for name in ("UPGRADES_ENABLED", "NODE_NAME", "UPGRADE_ENVIRONMENT_ROOT"):
+            monkeypatch.setenv(name, environment[name])
+        child_settings = Settings()
+        assert child_settings.upgrades_enabled
+        assert child_settings.node_name == settings.node_name
+        assert child_settings.upgrade_environment_root == settings.upgrade_environment_root
+    finally:
+        journal.close()

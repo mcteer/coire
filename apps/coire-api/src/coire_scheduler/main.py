@@ -21,7 +21,7 @@ import uvicorn
 from dbos import DBOS, SetWorkflowID
 from fastapi import FastAPI
 from opentelemetry import metrics
-from sqlalchemy import literal, select, union_all
+from sqlalchemy import exists, literal, or_, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.db import (
@@ -38,6 +38,8 @@ from coire_api.db import (
     PreferenceExportRow,
     RunCommandRow,
     TrainingEvaluationTriggerRow,
+    UpgradeMaintenanceRow,
+    UpgradeOperationRow,
     dispose_engine,
     init_engine,
     session_scope,
@@ -77,6 +79,7 @@ from coire_scheduler.instances import instance_drain_workflow, instance_launch_w
 from coire_scheduler.mcp_cleanup import sweep_mcp_workspaces
 from coire_scheduler.placement import idle_ttl_workflow, placement_workflow
 from coire_scheduler.runs import run_kill_workflow, run_workflow
+from coire_scheduler.upgrades import core_upgrade_workflow, studio_upgrade_workflow
 from coire_scheduler.workers import SchedulerWorkers
 
 SERVICE_NAME = "coire-scheduler"
@@ -596,6 +599,61 @@ async def dispatch_file_purge(stop: asyncio.Event) -> None:
         await wait_or_stop(stop, 5.0)
 
 
+async def dispatch_upgrades(stop: asyncio.Event) -> None:
+    from coire_api.upgrades.telemetry import collect_health, enabled
+
+    settings = get_settings()
+    enabled.set(int(settings.upgrades_enabled))
+    if not settings.upgrades_enabled:
+        return
+    while not stop.is_set():
+        try:
+            async with session_scope() as telemetry_session:
+                await collect_health(telemetry_session, settings)
+        except Exception:
+            logger.warning("upgrade health collection unavailable")
+        try:
+            async with session_scope() as session:
+                jobs = list(
+                    (
+                        await session.execute(
+                            select(
+                                UpgradeOperationRow.id, UpgradeOperationRow.payload["kind"].astext
+                            )
+                            .where(
+                                UpgradeOperationRow.payload["kind"].astext.in_(
+                                    ("studio", "control_plane")
+                                ),
+                                UpgradeOperationRow.execution_plan.is_not(None),
+                                or_(
+                                    UpgradeOperationRow.active_slot == 1,
+                                    exists(
+                                        select(UpgradeMaintenanceRow.target).where(
+                                            UpgradeMaintenanceRow.job_id == UpgradeOperationRow.id,
+                                            UpgradeMaintenanceRow.released.is_(False),
+                                        )
+                                    ),
+                                ),
+                            )
+                            .order_by(UpgradeOperationRow.generation)
+                            .limit(1)
+                        )
+                    ).all()
+                )
+            for job_id, kind in jobs:
+                workflow = (
+                    core_upgrade_workflow if kind == "control_plane" else studio_upgrade_workflow
+                )
+                prefix = "studio" if kind == "studio" else "control-plane"
+                with SetWorkflowID(f"upgrade-{prefix}:{job_id}"):
+                    DBOS.start_workflow(workflow, job_id)
+        except Exception as error:
+            logger.warning(
+                "upgrade dispatch retains durable jobs", extra={"reason_type": type(error).__name__}
+            )
+        await wait_or_stop(stop, 1)
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_telemetry(SERVICE_NAME, settings.service_version, settings.otlp_endpoint)
@@ -610,6 +668,9 @@ def create_app() -> FastAPI:
         try:
             runtime.launch()
             await workers.start()
+            background.append(
+                asyncio.create_task(dispatch_upgrades(stop), name="upgrade-dispatcher")
+            )
             background.append(
                 asyncio.create_task(dispatch_queued(stop), name="acquisition-dispatcher")
             )

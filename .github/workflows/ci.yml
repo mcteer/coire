@@ -24,6 +24,41 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  upgrade-kernel-identity:
+    runs-on: macos-15
+    steps:
+      - name: require an isolated hosted Apple Silicon Mac
+        id: native_preflight
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          test "$RUNNER_ARCH" = ARM64
+          case "$(hostname)" in
+            coire-core|coire-core.*|coire-edge-a|coire-edge-a.*|coire-edge-b|coire-edge-b.*) exit 1 ;;
+          esac
+          test ! -e /opt/coire/envs/current
+          test ! -e /Library/LaunchDaemons/com.coire.node.plist
+          test ! -e /Library/LaunchDaemons/com.coire.upgrade-guard.plist
+          hostname > "$RUNNER_TEMP/coire-original-hostname"
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --all-packages --frozen
+      - name: actual Darwin swap counter and fail-closed native telemetry
+        run: uv run pytest -q tests/unit/test_swap_telemetry.py
+      - name: declare the isolated fixture hostname
+        run: sudo scutil --set HostName coire-edge-a
+      - name: actual fixed kernel read and expired epoch refusal
+        run: uv run pytest -q -m integration tests/integration/test_upgrade_kernel_identity.py
+      - name: build locked native wheels without contacting Studios
+        run: scripts/build-node-wheel.sh --local-only
+      - name: actual installed Source and independent guard across SIGKILL
+        run: uv run pytest -q -m integration tests/integration/test_upgrade_hosted_runtime.py
+      - name: restore the isolated runner hostname
+        if: always() && steps.native_preflight.outcome == 'success'
+        run: sudo scutil --set HostName "$(cat "$RUNNER_TEMP/coire-original-hostname")"
+
   lint:
     runs-on: ubuntu-24.04-arm
     steps:
@@ -95,6 +130,8 @@ jobs:
             dockerfile: apps/coire-api/docker/scheduler.Dockerfile
           - name: coire-file-worker
             dockerfile: apps/coire-file-worker/Dockerfile
+          - name: coire-upgrade-executor
+            dockerfile: apps/coire-upgrade-executor/Dockerfile
           - name: coire-migrate
             dockerfile: apps/coire-api/docker/migrate.Dockerfile
           - name: coire-agent
@@ -167,6 +204,168 @@ jobs:
           path: /tmp/${{ matrix.name }}.tar
           retention-days: 1
 
+  upgrade-alerts:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --all-packages --frozen
+      - uses: actions/download-artifact@v8
+        with:
+          name: image-coire-prometheus
+          path: /tmp/upgrade-prometheus
+      - name: load policy-checked baseline Prometheus
+        run: docker load -i /tmp/upgrade-prometheus/coire-prometheus.tar
+      - uses: actions/download-artifact@v8
+        with:
+          name: image-coire-otel
+          path: /tmp/upgrade-otel
+      - name: load policy-checked baseline collector
+        run: docker load -i /tmp/upgrade-otel/coire-otel.tar
+      - name: actual upgrade instrument export matches rule names
+        run: uv run pytest -q tests/integration/test_upgrade_metric_export.py --tb=short
+      - name: upgrade observation and absent-heartbeat rule scenarios
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --user 65534:65534 \
+            --tmpfs /tmp:rw,nosuid,nodev,size=64m --entrypoint /bin/promtool \
+            --mount "type=bind,src=${{ github.workspace }}/deploy/observability,dst=/fixtures,readonly" \
+            coire-prometheus:ci test rules /fixtures/tests/upgrades.test.yaml
+
+  upgrade-backup:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --all-packages --frozen
+      - uses: actions/download-artifact@v8
+        with:
+          name: image-coire-upgrade-executor
+          path: /tmp/upgrade-image
+      - uses: actions/download-artifact@v8
+        with:
+          name: image-coire-api
+          path: /tmp/upgrade-api-image
+      - name: load the policy-checked executor and pinned PostgreSQL fixture
+        run: |
+          docker load -i /tmp/upgrade-image/coire-upgrade-executor.tar
+          docker load -i /tmp/upgrade-api-image/coire-api.tar
+          docker tag coire-upgrade-executor:ci coire-019-upgrade-executor:dev
+          uv run python - <<'PY'
+          import subprocess
+          from pathlib import Path
+          import yaml
+          image = yaml.safe_load(Path("deploy/compose/compose.yaml").read_text())["services"]["postgres"]["image"]
+          assert "@sha256:" in image
+          subprocess.run(["docker", "pull", image], check=True)
+          subprocess.run(["docker", "tag", image, "postgres:17"], check=True)
+          PY
+      - name: actual isolated backup restore and service-owned publication
+        run: uv run pytest -q tests/integration/test_upgrade_backup_preparation.py
+      - name: actual expired-recovery transactions and cold continuation boundaries
+        # These tests create their own PostgreSQL instance and private journals.
+        # Native PID/runtime facts are fixtures; no Studio endpoint is consulted.
+        run: >-
+          uv run pytest -q
+          tests/unit/test_upgrade_expired_recovery_transfer_postgres.py
+          tests/unit/test_upgrade_recovery_cold_schema_prepare.py
+          tests/unit/test_upgrade_recovery_cold_continuation_schema.py
+          tests/unit/test_upgrade_recovery_cold_retained_source.py
+          tests/unit/test_upgrade_recovery_cold_archive.py
+          tests/unit/test_upgrade_recovery_cold_smoke.py
+          tests/unit/test_upgrade_recovery_cold_pair.py
+          tests/unit/test_upgrade_recovery_cold_handback.py
+          tests/unit/test_upgrade_recovery_cold_supervision.py
+          tests/unit/test_upgrade_recovery_cold_closure.py
+          tests/contract/test_upgrade_cold_continuation_surfaces.py
+      - name: prepare private same-UID bootstrap fixture
+        run: |
+          sudo useradd --uid 65532 --user-group --create-home --groups docker coire019-ci
+          sudo install -d -o 65532 -g 65532 -m 0700 /tmp/coire019-ci /tmp/coire019-ci/bin
+          sudo rsync -a --exclude=.venv "$GITHUB_WORKSPACE/" /tmp/coire019-ci/repo/
+          sudo install -o 65532 -g 65532 -m 0755 "$(command -v uv)" /tmp/coire019-ci/bin/uv
+          sudo chown -R 65532:65532 /tmp/coire019-ci/repo
+      - name: isolated bootstrap ownership and serialized handover authority
+        env:
+          COIRE_UPGRADE_EXECUTOR_TEST_IMAGE: coire-upgrade-executor:ci
+          COIRE_UPGRADE_LOCK_TEST_IMAGE: coire-api:ci
+        run: |
+          sudo -u coire019-ci -- bash -c '
+            export PATH="/tmp/coire019-ci/bin:$PATH"
+            export COIRE_UPGRADE_EXECUTOR_TEST_IMAGE=coire-upgrade-executor:ci
+            export COIRE_UPGRADE_LOCK_TEST_IMAGE=coire-api:ci
+            cd /tmp/coire019-ci/repo
+            uv sync --all-packages --frozen
+            uv run pytest -q \
+              tests/integration/test_upgrade_bootstrap.py \
+              tests/integration/test_upgrade_host_ownership.py \
+              tests/integration/test_upgrade_persistence.py \
+              tests/integration/test_upgrade_core_inventory.py \
+              tests/integration/test_upgrade_preservation.py \
+              tests/integration/test_upgrade_bootstrap_persistence.py \
+              tests/integration/test_upgrade_handover_authority.py \
+              tests/integration/test_upgrade_handover_transfer.py \
+              tests/integration/test_upgrade_handover_unchanged.py \
+              tests/integration/test_upgrade_journal_process_crash.py
+          '
+
+  upgrade-control-plane:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: image-*
+          path: /tmp/upgrade-cohort-images
+          merge-multiple: true
+      - name: load policy-checked composed cohort
+        run: for image in /tmp/upgrade-cohort-images/*.tar; do docker load -i "$image"; done
+      - name: prepare private same-UID Linux host fixture
+        # Linux binds preserve numeric UIDs. Run the isolated host/test account at
+        # the production service UID instead of broadening private directory modes.
+        # This account and checkout exist only on this disposable CI runner.
+        run: |
+          sudo useradd --uid 65532 --user-group --create-home --groups docker coire019-ci
+          sudo install -d -o 65532 -g 65532 -m 0700 /tmp/coire019-ci /tmp/coire019-ci/bin
+          sudo rsync -a --exclude=.venv "$GITHUB_WORKSPACE/" /tmp/coire019-ci/repo/
+          sudo install -o 65532 -g 65532 -m 0755 "$(command -v uv)" /tmp/coire019-ci/bin/uv
+          sudo chown -R 65532:65532 /tmp/coire019-ci/repo
+      - name: actual Source qualification, executor handover and restoration
+        run: |
+          sudo -u coire019-ci -- bash -c '
+            export PATH="/tmp/coire019-ci/bin:$PATH"
+            cd /tmp/coire019-ci/repo
+            uv sync --all-packages --frozen
+            COIRE_UPGRADE_ACCEPTANCE_RESULTS=/tmp/coire019-ci/results \
+              COIRE_UPGRADE_COHORT_TEST_TAG=ci COIRE_UPGRADE_EXECUTOR_TEST_IMAGE=coire-upgrade-executor:ci \
+              uv run pytest -q tests/integration/test_upgrade_control_plane.py tests/integration/test_upgrade_observability_registration.py
+          '
+      - name: collect bounded acceptance identities
+        if: always()
+        run: |
+          if sudo test -d /tmp/coire019-ci/results; then
+            sudo cp -a /tmp/coire019-ci/results "$RUNNER_TEMP/coire-019-results"
+            sudo chown -R "$(id -u):$(id -g)" "$RUNNER_TEMP/coire-019-results"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: upgrade-control-plane-identities
+          path: ${{ runner.temp }}/coire-019-results
+          if-no-files-found: warn
+
   integration:
     needs: build
     runs-on: ubuntu-24.04-arm
@@ -220,6 +419,8 @@ jobs:
       - name: bring up and validate
         env:
           COIRE_TAG: ci
+          COIRE_UPGRADE_EXECUTOR_TEST_IMAGE: coire-upgrade-executor:ci
+          COIRE_UPGRADE_LOCK_TEST_IMAGE: coire-api:ci
           COIRE_SECRETS_DIR: ${{ runner.temp }}/coire-secrets
           # Optional. The acquisition test uses an ungated repository, so it passes without a
           # token; set the secret only if a gated repository is ever needed. It reaches
@@ -228,7 +429,18 @@ jobs:
         run: |
           export COIRE_SECRET_POSTGRES_PASSWORD="$(openssl rand -base64 24)"
           export COIRE_SECRET_KEY_SIGNING_SECRET="$(openssl rand -base64 32)"
-          COIRE_INTEGRATION=1 uv run pytest -m integration -q
+          # These suites run in the required upgrade-backup/upgrade-control-plane
+          # jobs above, with their isolated image and private UID prerequisites.
+          COIRE_INTEGRATION=1 uv run pytest -m "integration and not native_upgrade and not upgrade_stream" -q \
+            --ignore=tests/integration/test_upgrade_bootstrap.py \
+            --ignore=tests/integration/test_upgrade_host_ownership.py \
+            --ignore=tests/integration/test_upgrade_control_plane.py \
+            --ignore=tests/integration/test_upgrade_backup_preparation.py \
+            --ignore=tests/integration/test_upgrade_observability_registration.py
+      - name: one hundred controlled streams survive unrelated restarts
+        env:
+          COIRE_IT_GATEWAY_STREAM_CAPACITY: "100"
+        run: COIRE_INTEGRATION=1 uv run pytest -m upgrade_stream -q tests/integration/test_upgrade_stream_isolation.py
       - name: prove the token reached only the acquisition node
         if: always()
         working-directory: deploy/compose
@@ -410,7 +622,7 @@ jobs:
       fail-fast: false
       matrix:
         objective: [dpo, orpo]
-        suffix: ['', '.preference-dense-fp16']
+        suffix: ["", ".preference-dense-fp16"]
     env:
       # Framework Python rewrites argv[0] after exec; native ownership requires
       # the exact configured command. Node deployments use standalone Python.
@@ -476,14 +688,48 @@ jobs:
   publish:
     # Only tagged releases publish. Pull requests never push an image.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [lint, test, build, integration, pin-check, image-engine, evaluation-engine, preference-engine, preference-measurement-engine]
+    needs:
+      [
+        lint,
+        test,
+        build,
+        integration,
+        upgrade-backup,
+        upgrade-control-plane,
+        upgrade-alerts,
+        upgrade-kernel-identity,
+        pin-check,
+        image-engine,
+        evaluation-engine,
+        preference-engine,
+        preference-measurement-engine,
+      ]
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: read
       packages: write
     strategy:
       matrix:
-        name: [coire-api, coire-mcp, coire-scheduler, coire-file-worker, coire-migrate, coire-agent, coire-agent-ops, coire-run-relay, coire-web, coire-otel, coire-prometheus, coire-alertmanager, coire-loki, coire-tempo, coire-grafana, coire-failover]
+        name:
+          [
+            coire-api,
+            coire-mcp,
+            coire-scheduler,
+            coire-file-worker,
+            coire-upgrade-executor,
+            coire-migrate,
+            coire-agent,
+            coire-agent-ops,
+            coire-run-relay,
+            coire-web,
+            coire-otel,
+            coire-prometheus,
+            coire-alertmanager,
+            coire-loki,
+            coire-tempo,
+            coire-grafana,
+            coire-failover,
+          ]
     steps:
       - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4

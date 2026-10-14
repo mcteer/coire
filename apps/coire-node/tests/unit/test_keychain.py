@@ -6,6 +6,7 @@ a configured one.
 
 from __future__ import annotations
 
+import pytest
 from pydantic import SecretStr
 
 from coire_core.settings import Settings
@@ -69,3 +70,20 @@ def test_read_item_strips_the_trailing_newline(monkeypatch) -> None:  # type: ig
 def test_read_item_returns_empty_off_macos(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr("coire_node.keychain.shutil.which", lambda _: None)
     assert keychain.read_item("x").get_secret_value() == ""
+
+
+def test_isolated_node_does_not_read_the_cluster_registration_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reads: list[str] = []
+
+    def read(service: str, **_kwargs: object) -> SecretStr:
+        reads.append(service)
+        return SecretStr("fixture-only")
+
+    monkeypatch.setattr(keychain, "read_item", read)
+    settings = _settings(node_registration_enabled=False)
+    keychain.load_node_secrets(settings)
+    assert keychain.NODE_REGISTRATION_TOKEN_ITEM not in reads
+    assert settings.node_registration_token.get_secret_value() == ""
+    assert keychain.NODE_TOKEN_ITEM in reads

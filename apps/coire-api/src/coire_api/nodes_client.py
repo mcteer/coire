@@ -24,6 +24,7 @@ from types import TracebackType
 from typing import Any
 
 import httpx
+from pydantic import TypeAdapter
 
 from coire_core.models.acquisition import Reservation, ReservationRequest, VariantRecipe
 from coire_core.models.adapters import InferenceTarget
@@ -90,6 +91,20 @@ from coire_core.models.training_node import (
     NodeAnalysisCancelRequest,
     NodeDatasetAnalysisRequest,
     NodeDatasetAnalysisStatus,
+)
+from coire_core.models.upgrades import (
+    CoreNodeSmokeCleanupReceipt,
+    CoreNodeSmokeScope,
+    NodeMaintenanceAck,
+    NodeMaintenanceCommand,
+    NodeUpgradeCancel,
+    NodeUpgradeCollectiveCleanup,
+    NodeUpgradeCollectiveCleanupReceipt,
+    NodeUpgradeCollectiveScope,
+    NodeUpgradeCommand,
+    NodeUpgradeInventory,
+    NodeUpgradeStatus,
+    UpgradeId,
 )
 from coire_core.net import ControlClient, FabricUnreachable
 from coire_core.settings import Settings
@@ -435,6 +450,49 @@ class NodeClient:
         )
         return LinkObservation.model_validate(body)
 
+    async def cleanup_upgrade_collective(
+        self, request: NodeUpgradeCollectiveCleanup
+    ) -> NodeUpgradeCollectiveCleanupReceipt:
+        request = NodeUpgradeCollectiveCleanup.model_validate(request.model_dump(mode="json"))
+        scope = request.scope
+        _, body = await self._call(
+            "POST",
+            "coire-edge-a",
+            f"/node/upgrades/{scope.plan.operation.job_id}/collective-cleanup",
+            json=request.model_dump(mode="json"),
+            request_timeout_s=10.0,
+            expect=(200,),
+        )
+        receipt = NodeUpgradeCollectiveCleanupReceipt.model_validate(body)
+        if (receipt.job_id, receipt.generation, receipt.command_id, receipt.scope_sha256) != (
+            scope.plan.operation.job_id,
+            scope.request.generation,
+            scope.command_id,
+            scope.sha256(),
+        ):
+            raise NodeError(
+                NodeErrorKind.UNAVAILABLE,
+                "coire-edge-a",
+                detail="collective cleanup authority differs",
+            )
+        return receipt
+
+    async def run_upgrade_collective(self, scope: NodeUpgradeCollectiveScope) -> LinkObservation:
+        remaining = (scope.request.deadline_at - datetime.now(UTC)).total_seconds()
+        if remaining <= 0:
+            raise NodeError(
+                NodeErrorKind.UNAVAILABLE, "coire-edge-a", detail="collective deadline elapsed"
+            )
+        _, body = await self._call(
+            "POST",
+            "coire-edge-a",
+            f"/node/upgrades/{scope.plan.operation.job_id}/collective",
+            json=scope.model_dump(mode="json"),
+            request_timeout_s=min(120.0, remaining),
+            expect=(200,),
+        )
+        return LinkObservation.model_validate(body)
+
     async def run_benchmark(self, node: str, command: BenchmarkCommand) -> BenchmarkMeasurement:
         _, body = await self._call(
             "POST",
@@ -688,6 +746,103 @@ class NodeClient:
     async def cancel_job(self, node: str, job_id: uuid.UUID) -> None:
         await self._call("DELETE", node, f"/node/jobs/{job_id}", expect=(202, 404))
 
+    # -- managed upgrade control -------------------------------------------
+    async def upgrade_status(
+        self, node: str, job_id: str | None = None, *, after_sequence: int = 0
+    ) -> NodeUpgradeStatus:
+        if after_sequence < 0:
+            raise ValueError("receipt cursor must be non-negative")
+        path = (
+            "/node/upgrades/status"
+            if job_id is None
+            else f"/node/upgrades/{TypeAdapter(UpgradeId).validate_python(job_id)}?after_sequence={after_sequence}"
+        )
+        _, body = await self._call("GET", node, path, expect=(200,))
+        result = NodeUpgradeStatus.model_validate(body)
+        if result.node != node or (job_id is not None and result.job_id != job_id):
+            raise NodeError(NodeErrorKind.PROTOCOL, node, detail="upgrade status identity differs")
+        return result
+
+    async def apply_upgrade_maintenance(
+        self, node: str, command: NodeMaintenanceCommand
+    ) -> NodeMaintenanceAck:
+        owner = command.maintenance
+        _, body = await self._call(
+            "PUT",
+            node,
+            f"/node/maintenance/{owner.job_id}",
+            json=command.model_dump(mode="json"),
+            expect=(200,),
+        )
+        result = NodeMaintenanceAck.model_validate(body)
+        if (result.node, result.job_id, result.generation) != (
+            node,
+            owner.job_id,
+            owner.generation,
+        ):
+            raise NodeError(
+                NodeErrorKind.PROTOCOL, node, detail="maintenance acknowledgment differs"
+            )
+        return result
+
+    async def upgrade_inventory(
+        self, node: str, job_id: str, generation: int
+    ) -> NodeUpgradeInventory:
+        identity = TypeAdapter(UpgradeId).validate_python(job_id)
+        if generation < 1:
+            raise ValueError("maintenance generation must be positive")
+        _, body = await self._call(
+            "GET",
+            node,
+            f"/node/maintenance/{identity}/inventory?generation={generation}",
+            expect=(200,),
+        )
+        result = NodeUpgradeInventory.model_validate(body)
+        if (result.node, result.job_id, result.generation) != (node, identity, generation):
+            raise NodeError(NodeErrorKind.PROTOCOL, node, detail="inventory authority differs")
+        return result
+
+    async def execute_upgrade(self, node: str, command: NodeUpgradeCommand) -> NodeUpgradeStatus:
+        op = command.operation
+        _, body = await self._call(
+            "PUT",
+            node,
+            f"/node/upgrades/{op.job_id}",
+            json=command.model_dump(mode="json"),
+            expect=(200, 202),
+        )
+        result = NodeUpgradeStatus.model_validate(body)
+        if (result.node, result.job_id, result.generation) != (node, op.job_id, op.generation):
+            raise NodeError(
+                NodeErrorKind.PROTOCOL, node, detail="upgrade execution authority differs"
+            )
+        return result
+
+    async def cancel_upgrade(
+        self, node: str, job_id: str, command: NodeUpgradeCancel, *, after_sequence: int = 0
+    ) -> NodeUpgradeStatus:
+        if not 0 <= after_sequence <= 2**63 - 1:
+            raise ValueError("cancellation receipt cursor is outside its bound")
+        identity = TypeAdapter(UpgradeId).validate_python(job_id)
+        _, body = await self._call(
+            "POST",
+            node,
+            f"/node/upgrades/{identity}/cancel"
+            + (f"?after_sequence={after_sequence}" if after_sequence else ""),
+            json=command.model_dump(mode="json"),
+            expect=(200, 202),
+        )
+        result = NodeUpgradeStatus.model_validate(body)
+        if (result.node, result.job_id, result.generation) != (node, identity, command.generation):
+            raise NodeError(
+                NodeErrorKind.PROTOCOL, node, detail="upgrade cancellation authority differs"
+            )
+        if result.phase is None or result.receipt_sequence < after_sequence:
+            raise NodeError(
+                NodeErrorKind.PROTOCOL, node, detail="upgrade cancellation progress differs"
+            )
+        return result
+
     # -- engines -----------------------------------------------------------
     async def list_engines(self, node: str) -> list[EngineStatus]:
         _, body = await self._call("GET", node, "/node/engines", expect=(200,))
@@ -706,6 +861,7 @@ class NodeClient:
         max_num_seqs: int | None = None,
         max_kv_size: int | None = None,
         target: InferenceTarget | None = None,
+        coire_upgrade_scope: CoreNodeSmokeScope | None = None,
     ) -> tuple[bool, EngineStatus]:
         """Returns `(already_running, status)`.
 
@@ -735,6 +891,11 @@ class NodeClient:
                 "max_num_seqs": max_num_seqs,
                 "max_kv_size": max_kv_size,
                 **({"target": target.model_dump(mode="json")} if target else {}),
+                **(
+                    {"coire_upgrade_scope": coire_upgrade_scope.model_dump(mode="json")}
+                    if coire_upgrade_scope
+                    else {}
+                ),
             },
             expect=(200, 202),
         )
@@ -748,6 +909,26 @@ class NodeClient:
     async def get_engine(self, node: str, engine_id: uuid.UUID) -> EngineStatus:
         _, body = await self._call("GET", node, f"/node/engines/{engine_id}", expect=(200,))
         return EngineStatus.model_validate(body)
+
+    async def cleanup_core_smoke(self, scope: CoreNodeSmokeScope) -> CoreNodeSmokeCleanupReceipt:
+        _, body = await self._call(
+            "POST",
+            scope.node,
+            f"/node/upgrades/{scope.plan.operation.job_id}/smoke/{scope.engine_id}/cleanup",
+            json=scope.model_dump(mode="json"),
+            expect=(200,),
+            request_timeout_s=5.0,
+        )
+        receipt = CoreNodeSmokeCleanupReceipt.model_validate(body)
+        if (receipt.scope_sha256, receipt.engine_id, receipt.runtime_sha256) != (
+            scope.sha256(),
+            scope.engine_id,
+            scope.runtime_sha256,
+        ) or not 0 <= (datetime.now(UTC) - receipt.observed_at).total_seconds() <= 5:
+            raise NodeError(
+                NodeErrorKind.PROTOCOL, scope.node, detail="Core smoke cleanup proof differs"
+            )
+        return receipt
 
     async def stop_engine(self, node: str, engine_id: uuid.UUID) -> EngineStatus | None:
         status, body = await self._call(

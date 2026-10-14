@@ -22,11 +22,16 @@ from coire_core.settings import Settings
 logger = logging.getLogger(__name__)
 
 
-def versions_need_probe(rows: list[LinkObservationRow], signature: tuple[str, str, str]) -> bool:
+def versions_need_probe(
+    rows: list[LinkObservationRow],
+    signature: tuple[str, str, str],
+    runtime_pair: tuple[str, str] | None = None,
+) -> bool:
     current = {
         row.transport
         for row in rows
         if (row.os_version_a, row.os_version_b, row.engine_version) == signature
+        and (runtime_pair is None or (row.runtime_sha256_a, row.runtime_sha256_b) == runtime_pair)
     }
     return current != {ProbeTransport.JACCL, ProbeTransport.RING}
 
@@ -36,8 +41,8 @@ class LinkProbeCoordinator:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._versions: dict[str, tuple[str, str]] = {}
-        self._attempted: tuple[str, str, str] | None = None
+        self._versions: dict[str, tuple[str, str, str | None]] = {}
+        self._attempted: tuple[str, str, str, str | None, str | None] | None = None
         self._wake = asyncio.Event()
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -54,7 +59,7 @@ class LinkProbeCoordinator:
     def observe(self, node: str, status: NodeStatus | NodeStatusV2) -> None:
         if node not in {"coire-edge-a", "coire-edge-b"}:
             return
-        observed = (status.os_version, status.engine_version)
+        observed = (status.os_version, status.engine_version, status.runtime_sha256)
         if self._versions.get(node) != observed:
             self._versions[node] = observed
             self._wake.set()
@@ -79,9 +84,11 @@ class LinkProbeCoordinator:
     async def pass_once(self) -> None:
         if set(self._versions) != {"coire-edge-a", "coire-edge-b"}:
             return
-        os_a, engine_a = self._versions["coire-edge-a"]
-        os_b, engine_b = self._versions["coire-edge-b"]
-        if engine_a != engine_b:
+        os_a, engine_a, runtime_a = self._versions["coire-edge-a"]
+        os_b, engine_b, runtime_b = self._versions["coire-edge-b"]
+        if self.settings.upgrades_enabled and (runtime_a is None or runtime_b is None):
+            return
+        if engine_a != engine_b and not self.settings.upgrades_enabled:
             logger.info(
                 "deferring link probe while engine versions differ edge_a=%s edge_b=%s",
                 engine_a,
@@ -89,7 +96,13 @@ class LinkProbeCoordinator:
             )
             return
         signature = (os_a, os_b, engine_a)
-        if self._attempted == signature:
+        identity = (*signature, runtime_a, runtime_b)
+        runtime_pair = (
+            (runtime_a, runtime_b)
+            if self.settings.upgrades_enabled and runtime_a is not None and runtime_b is not None
+            else None
+        )
+        if self._attempted == identity:
             return
         async with session_scope() as session:
             healthy = set(
@@ -115,8 +128,8 @@ class LinkProbeCoordinator:
                 .scalars()
                 .all()
             )
-            if not versions_need_probe(latest, signature):
-                self._attempted = signature
+            if not versions_need_probe(latest, signature, runtime_pair):
+                self._attempted = identity
                 return
             commands: list[LinkProbeCommand] = []
             for transport, configured in (
@@ -136,6 +149,12 @@ class LinkProbeCoordinator:
             ) as client:
                 for command in commands:
                     observation = await client.run_link_probe("coire-edge-a", command)
+                    if (
+                        runtime_pair is not None
+                        and (observation.runtime_sha256_a, observation.runtime_sha256_b)
+                        != runtime_pair
+                    ):
+                        raise ValueError("collective observed another installed runtime pair")
                     await append_observation(session, observation)
             await write_audit(
                 session,
@@ -152,4 +171,4 @@ class LinkProbeCoordinator:
                 engine_a,
             )
         # Only suppress another attempt once observations and audit have committed.
-        self._attempted = signature
+        self._attempted = identity

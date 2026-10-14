@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import psutil
 from sqlalchemy.engine import make_url
 
 
@@ -23,7 +24,7 @@ def disposable_postgres() -> Iterator[str]:
         with native_postgres(Path(native)) as native_url:
             yield native_url
         return
-    name = f"coire-016-test-{secrets.token_hex(8)}"
+    name = f"coire-test-postgres-{secrets.token_hex(8)}"
     password = secrets.token_urlsafe(24)
     run = subprocess.run(
         [
@@ -33,17 +34,25 @@ def disposable_postgres() -> Iterator[str]:
             "--name",
             name,
             "--label",
-            "com.coire.test=016",
+            "com.coire.test=postgres",
+            "--label",
+            f"com.coire.test.owner_pid={os.getpid()}",
+            "--label",
+            f"com.coire.test.owner_birth={psutil.Process().create_time()}",
+            "--memory=512m",
+            "--pids-limit=128",
+            "--restart=no",
             "--publish",
             "127.0.0.1::5432",
             "--env",
-            f"POSTGRES_PASSWORD={password}",
+            "POSTGRES_PASSWORD",
             "--env",
             "POSTGRES_DB=training_test",
             "postgres:17-alpine",
         ],
         capture_output=True,
         text=True,
+        env={**os.environ, "POSTGRES_PASSWORD": password},
     )
     if run.returncode:
         raise RuntimeError("cannot create isolated Postgres 17 training container")

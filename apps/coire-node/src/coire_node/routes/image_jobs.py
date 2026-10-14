@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Path, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 
 from coire_core.models.files import ULID_PATTERN
 from coire_core.models.image_worker import (
@@ -24,11 +24,16 @@ from coire_node.image_cleanup import ImageCleanupUnavailable
 from coire_node.image_dispatch import ImageDispatchConflict, ImageDispatchUnavailable
 from coire_node.image_jobs import ImageJournalConflict, ImageJournalUnavailable
 from coire_node.image_transfer import ImageTransferUnavailable
+from coire_node.maintenance import require_admission
 
 router = APIRouter(prefix="/node/images/jobs", tags=["image-jobs"])
 
 
-@router.put("/{job_id}/reserve-inputs", response_model=NodeImageJob)
+@router.put(
+    "/{job_id}/reserve-inputs",
+    response_model=NodeImageJob,
+    dependencies=[Depends(require_admission)],
+)
 async def reserve_image_inputs(
     job_id: str, request: NodeImageStartRequest, response: Response, dispatcher: ImageDispatcherDep
 ) -> NodeImageJob:
@@ -76,7 +81,7 @@ async def stage_image_input(
         ) from None
 
 
-@router.put("/{job_id}", response_model=NodeImageJob)
+@router.put("/{job_id}", response_model=NodeImageJob, dependencies=[Depends(require_admission)])
 async def start_image_job(
     job_id: str, request: NodeImageStartRequest, response: Response, dispatcher: ImageDispatcherDep
 ) -> NodeImageJob:

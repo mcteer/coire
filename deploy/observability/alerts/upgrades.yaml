@@ -1,0 +1,144 @@
+groups:
+  - name: coire-upgrades
+    interval: 15s
+    rules:
+      - alert: CoireUpgradeNativeFailureReconciled
+        expr: sum(increase(coire_upgrade_native_failure_replays_total[5m])) > 0
+        for: 0m
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: Independent native guard reconciled expired failure; maintenance remains held
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeColdContinuationAccepted
+        expr: sum by (node) (increase(coire_upgrade_cold_continuations_total{outcome="accepted"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: Cold recovery predecessor superseded and original maintenance remains held
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeUnstartedRecoveryClosed
+        expr: sum(increase(coire_upgrade_unstarted_recovery_closures_total{outcome="closed"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: Unstarted recovery attempt closed and original maintenance remains held
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeRecoverySupportLaunchRefused
+        expr: sum by (node) (increase(coire_upgrade_recovery_support_launches_total{outcome="refused"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: Immutable recovery support startup refused and original authority remains retained
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeSourceSupervisorMissing
+        expr: (time() - coire_upgrade_source_supervisor_heartbeat_seconds > 15) and on (node) (coire_upgrade_source_supervisor_required == 1)
+        for: 0m
+        labels: {severity: critical, subject: upgrades}
+        annotations:
+          summary: Source supervisor readiness is stale after an ownership handback
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeColdRecoveryRefused
+        expr: sum by (node) (increase(coire_upgrade_cold_recovery_effects_total{outcome="refused"}[5m])) > 0
+        for: 0m
+        labels: {severity: critical, subject: upgrades}
+        annotations:
+          summary: Cold recovery refused an effect and original maintenance remains held
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeSuccessorControllerRefused
+        expr: sum by (node) (increase(coire_upgrade_recovery_successor_controller_total{outcome="refused"}[5m])) > 0
+        for: 0m
+        labels: {severity: critical, subject: upgrades}
+        annotations:
+          summary: A distinct recovery successor controller refused authority
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeHandoverDeadlineExceeded
+        expr: max by (boundary) (coire_upgrade_handover_deadline_overdue_seconds) > 0
+        for: 0m
+        labels: {severity: critical, subject: upgrades}
+        annotations:
+          summary: An original executor handover deadline expired while authority remains held
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeExecutorDeadlineExceeded
+        expr: max by (boundary) (coire_upgrade_executor_deadline_overdue_seconds) > 0
+        for: 0m
+        labels: {severity: critical, subject: upgrades}
+        annotations:
+          summary: An original Core upgrade deadline expired without completed verification
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeBaselineUnavailable
+        expr: (max(coire_upgrades_enabled) == 1) and (absent(coire_upgrade_snapshot_timestamp_seconds) or max(time() - coire_upgrade_snapshot_timestamp_seconds) > 30)
+        for: 30s
+        labels: {severity: critical, subject: upgrades}
+        annotations:
+          summary: Upgrade ownership observations are missing or stale
+          runbook_url: /docs/runbooks/upgrades#observe
+      - alert: CoireUpgradeExecutorUnavailable
+        expr: (sum(coire_upgrade_operations{kind="control_plane"}) > 0) and (absent(coire_upgrade_executor_ready) or max(coire_upgrade_executor_ready) == 0 or absent(coire_upgrade_executor_heartbeat_age_seconds) or max(coire_upgrade_executor_heartbeat_age_seconds) > 10)
+        for: 15s
+        labels: {severity: critical, subject: upgrades}
+        annotations:
+          summary: A retained Core operation has no fresh independent recovery executor
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeCollectiveCleanupRefused
+        expr: sum by (node) (increase(coire_upgrade_collective_cleanup_total{outcome="refused"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: Interrupted collective cleanup refused uncertain evidence or authority
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeRetirementReconciliationRefused
+        expr: (sum(increase(coire_upgrade_recovery_stop_reconciliation_total{outcome="refused"}[5m])) > 0) or (sum(increase(coire_upgrade_recovery_stop_budget_total{outcome="refused"}[5m])) > 0)
+        for: 0m
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: Managed retirement reconciliation refused uncertain evidence or authority
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeRecoveryCancelled
+        expr: sum(increase(coire_upgrade_recovery_cancellations_total{outcome="cancelled"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: Separate recovery authority was cancelled and original obligations remain held
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeRecoveryRequired
+        expr: sum(coire_upgrade_recovery_required) > 0
+        for: 0m
+        labels: {severity: critical, subject: upgrades}
+        annotations:
+          summary: Upgrade restoration is uncertain and maintenance remains held
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeProgressStalled
+        expr: max(coire_upgrade_phase_age_seconds) > 900
+        for: 15s
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: A retained upgrade obligation has made no progress for fifteen minutes
+          runbook_url: /docs/runbooks/upgrades#observe
+      - alert: CoireUpgradeTerminalHostHold
+        expr: max(coire_upgrade_terminal_host_hold) > 0
+        for: 15s
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: A completed recovery retains its exact shared deployment hold
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeUnclaimedCancellationPending
+        expr: max(coire_upgrade_unclaimed_cancellation_pending) > 0
+        for: 30s
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: An unstarted native cancellation retains an unpublished preparation
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeNativeTerminalRefused
+        expr: sum(increase(coire_upgrade_native_terminal_acknowledgements_total{outcome="refused"}[5m])) > 0
+        for: 0m
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: Legacy native acknowledgement refused uncertain canonical resolution or ownership
+          runbook_url: /docs/runbooks/upgrades#recover
+      - alert: CoireUpgradeStagingQuarantineRetained
+        expr: max(coire_upgrade_native_terminal_quarantined_bytes) > 0
+        for: 0m
+        labels: {severity: warning, subject: upgrades}
+        annotations:
+          summary: Reboot-renumbered upgrade staging bytes are preserved in quarantine
+          runbook_url: /docs/runbooks/upgrades#recover

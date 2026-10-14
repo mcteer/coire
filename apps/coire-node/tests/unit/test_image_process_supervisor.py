@@ -22,7 +22,7 @@ from coire_core.models.image_worker import (
 )
 from coire_core.settings import Settings
 from coire_node.image_runtime import supervisor
-from coire_node.store import Store
+from coire_node.store import Store, write_atomic
 
 SLUG = "studio--z-image-turbo"
 
@@ -344,6 +344,41 @@ def _unload(request: ImageWorkerLoadRequest) -> ImageWorkerUnloadRequest:
     return ImageWorkerUnloadRequest(
         instance_id=request.instance_id, reason="admin", requested_at=datetime.now(UTC)
     )
+
+
+def test_maintenance_resident_requires_current_ready_owned_process(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from coire_core.models.upgrades import UpgradeInventoryEntry
+
+    manager, request = _started(tmp_path, monkeypatch)
+    monkeypatch.setattr("coire_node.upgrade_inventory.native_process_entries", lambda *_: ())
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        manager._idle_resident_identity()
+    record = manager._record
+    assert record is not None
+    ready_record = ImageWorkerProcessRecord(
+        config=record.config, status=record.status.model_copy(update={"state": "ready"})
+    )
+    manager._record = ready_record
+    write_atomic(manager.record_path, ready_record.model_dump_json().encode())
+    assert manager._idle_resident_identity() == request.instance_id
+    monkeypatch.setattr(
+        "coire_node.upgrade_inventory.native_process_entries",
+        lambda *_: (
+            UpgradeInventoryEntry(
+                owner="images",
+                kind="native-process",
+                work_id="foreign",
+                state="active",
+                process_id=123,
+                process_created_at=200.0,
+            ),
+        ),
+    )
+    with pytest.raises(supervisor.ImageProcessUnavailable):
+        manager._idle_resident_identity()
+    assert manager.committed_bytes() == request.reservation_bytes
 
 
 def test_stop_term_confirms_death_before_releasing_hold(

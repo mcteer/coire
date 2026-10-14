@@ -6,7 +6,7 @@ import asyncio
 import json
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Sequence
-from typing import Any, Literal, cast
+from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
@@ -78,6 +78,15 @@ from coire_core.models.gateway import (
 )
 from coire_core.models.registry import EngineBackend, LoadState, ModelSource
 from coire_core.settings import Settings
+
+
+class _VariantResolutionOptions(TypedDict):
+    variant_id: NotRequired[uuid.UUID]
+
+
+def _variant_options(identity: uuid.UUID | None) -> _VariantResolutionOptions:
+    return {"variant_id": identity} if identity is not None else {}
+
 
 router = APIRouter(prefix="/v1", tags=["compatible"], dependencies=[Depends(require_scope("chat"))])
 
@@ -218,7 +227,7 @@ async def _openai_cold_stream(
             session,
             settings,
             body.coire_affinity_node,
-            **({"variant_id": body.coire_variant_id} if body.coire_variant_id else {}),
+            **_variant_options(body.coire_variant_id),
         )
     )
     async with cancel_pending_load(task):
@@ -267,7 +276,7 @@ async def _anthropic_cold_stream(
             session,
             settings,
             body.coire_affinity_node,
-            **({"variant_id": body.coire_variant_id} if body.coire_variant_id else {}),
+            **_variant_options(body.coire_variant_id),
         )
     )
     async with cancel_pending_load(task):
@@ -423,7 +432,7 @@ async def chat_completions(
             body.model,
             principal,
             body.coire_affinity_node,
-            **({"variant_id": body.coire_variant_id} if body.coire_variant_id else {}),
+            **_variant_options(body.coire_variant_id),
         )
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
@@ -510,7 +519,7 @@ async def chat_completions(
                 session,
                 settings,
                 body.coire_affinity_node,
-                **({"variant_id": body.coire_variant_id} if body.coire_variant_id else {}),
+                **_variant_options(body.coire_variant_id),
             )
         except (ModelLoadError, TimeoutError) as exc:
             await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")
@@ -602,7 +611,7 @@ async def anthropic_messages(
             body.model,
             principal,
             body.coire_affinity_node,
-            **({"variant_id": body.coire_variant_id} if body.coire_variant_id else {}),
+            **_variant_options(body.coire_variant_id),
         )
     except ModelNotFoundError as exc:
         await usage.finish(UsageOutcome.REFUSED, failure_code="model_not_found")
@@ -662,7 +671,7 @@ async def anthropic_messages(
                 session,
                 settings,
                 body.coire_affinity_node,
-                **({"variant_id": body.coire_variant_id} if body.coire_variant_id else {}),
+                **_variant_options(body.coire_variant_id),
             )
         except (ModelLoadError, TimeoutError) as exc:
             await usage.finish(UsageOutcome.FAILED, failure_code="model_load_failed")

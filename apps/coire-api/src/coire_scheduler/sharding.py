@@ -27,6 +27,7 @@ def project_link(
     freshness_s: float = 120.0,
     failures_before_down: int = 2,
     successes_before_up: int = 3,
+    current_runtime_pair: tuple[str | None, str | None] | None = None,
 ) -> StudioLinkProjection:
     """Project damped eligibility from append-only evidence.
 
@@ -36,7 +37,16 @@ def project_link(
     current = now or datetime.now(UTC)
     ordered = sorted(observations, key=lambda item: item.observed_at, reverse=True)
     fresh = [
-        item for item in ordered if current - item.observed_at <= timedelta(seconds=freshness_s)
+        item
+        for item in ordered
+        if timedelta(0) <= current - item.observed_at <= timedelta(seconds=freshness_s)
+        and (
+            current_runtime_pair is None
+            or (
+                all(identity is not None for identity in current_runtime_pair)
+                and (item.runtime_sha256_a, item.runtime_sha256_b) == current_runtime_pair
+            )
+        )
     ]
     latest_transport = {
         transport: next((o for o in fresh if o.transport is transport), None)
@@ -44,6 +54,16 @@ def project_link(
     }
     jaccl = latest_transport[ProbeTransport.JACCL]
     ring = latest_transport[ProbeTransport.RING]
+    if (
+        current_runtime_pair is not None
+        and jaccl is not None
+        and jaccl.outcome is ProbeOutcome.FAILED
+        and ring is not None
+        and ring.observed_at <= jaccl.observed_at
+    ):
+        # A failed qualification of these exact managed graphs invalidates
+        # historical fallback too. A new real ring measurement can restore it.
+        ring = None
 
     consecutive_successes = 0
     consecutive_failures = 0

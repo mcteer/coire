@@ -104,6 +104,9 @@ class OpsService:
                 logger.exception("ops model health probe failed")
             model_health_checks.add(1, {"outcome": "healthy" if self.model_healthy else "degraded"})
 
+    async def upgrade_admission(self) -> bool:
+        return await self._admin.upgrade_admission()
+
     async def turn(self, *, conversation_id: uuid.UUID, question: str) -> OpsTurnResponse:
         with tracer.start_as_current_span("coire.ops.turn") as span:
             span.set_attribute("conversation_id", str(conversation_id))

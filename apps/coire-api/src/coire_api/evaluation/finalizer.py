@@ -184,6 +184,8 @@ async def finalize(
                         verdict=EvaluationVerdict(verdict),
                         harness_version=subjects[0].runtime.harness_version,
                         engine_version=subjects[0].runtime.engine_version,
+                        runtime_sha256=subjects[0].runtime.native_runtime_sha256,
+                        harness_image=subjects[0].runtime.harness_image,
                         diagnostics=[],
                     ),
                 )

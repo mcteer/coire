@@ -64,12 +64,16 @@ def profile_identity(request: TrainingMeasurementRequest, runtime_sha256: str) -
 
 
 def hardware_digest(node: NodeRow) -> str:
+    from coire_core.settings import get_settings
+
     value = {
         "node": node.name,
         "memory_total_bytes": node.memory_total_bytes,
         "gpu_cores": node.gpu_cores,
         "agent_version": node.agent_version,
     }
+    if get_settings().upgrades_enabled:
+        value["native_runtime_sha256"] = node.runtime_sha256
     return hashlib.sha256(
         json.dumps(
             value, sort_keys=True, ensure_ascii=False, separators=(",", ":"), allow_nan=False
@@ -235,6 +239,10 @@ async def matching_profile(
 
     resolved = parse_resolved_training_spec(job.resolved_spec)
     if payload_digest(resolved) != job.resolved_sha256:
+        return None
+    from coire_api.upgrades.qualification import training_runtimes_current
+
+    if not training_runtimes_current(nodes, get_settings()):
         return None
     now = datetime.now(UTC)
     profiles = (

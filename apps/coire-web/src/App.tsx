@@ -18,6 +18,7 @@ import { Chat } from "./pages/Chat";
 import { Images } from "./pages/Images";
 import { Training } from "./pages/Training";
 import { TrainingRunbook } from "./pages/TrainingRunbook";
+import { UpgradesPage, clearUpgradeRequest } from "./pages/UpgradesPage";
 import { TrainingActivity } from "./components/training/TrainingActivity";
 import { killAdminImageJob, listAdminImageJobs, type ImageActivityItem } from "./api/images";
 import { clearChatDrafts } from "./api/chatDrafts";
@@ -26,7 +27,11 @@ const gb = (n: number) => `${(n / 1024 ** 3).toFixed(1)} GB`;
 function requestedChatTarget(hash: string): string | undefined {
   if (!hash.startsWith("#chat/target/")) return undefined;
   const target = hash.slice("#chat/target/".length);
-  try { return decodeURIComponent(target); } catch { return target; }
+  try {
+    return decodeURIComponent(target);
+  } catch {
+    return target;
+  }
 }
 export function Overview({ snapshot }: { snapshot: ConsoleSnapshot }) {
   return (
@@ -1131,11 +1136,14 @@ export function App() {
     [hash, setHash] = useState(() => location.hash);
   const admin = hash.startsWith("#admin");
   const images = hash === "#images";
-  const training = hash === "#training" || hash === "#training/evaluations" || hash.startsWith("#training/run/");
+  const training =
+    hash === "#training" || hash === "#training/evaluations" || hash.startsWith("#training/run/");
   const trainingRunbook = location.pathname === "/docs/runbooks/sft-training";
-  const requested = hash.replace("#admin/", "");
+  const requested = hash.replace("#admin/", "").split("/")[0];
   const tab: AdminTab = (
-    ["overview", "models", "instances", "activity", "identity", "audit"].includes(requested)
+    ["overview", "models", "instances", "activity", "identity", "audit", "upgrades"].includes(
+      requested,
+    )
       ? requested
       : "overview"
   ) as AdminTab;
@@ -1163,6 +1171,7 @@ export function App() {
     setHash(location.hash);
   };
   const signOut = () => {
+    clearUpgradeRequest();
     if (me) clearChatDrafts(me.id);
   };
   if (authError)
@@ -1192,7 +1201,11 @@ export function App() {
       </main>
     );
   if (trainingRunbook)
-    return <AppShell view="training" canAdmin onSignOut={signOut}><TrainingRunbook isAdmin /></AppShell>;
+    return (
+      <AppShell view="training" canAdmin onSignOut={signOut}>
+        <TrainingRunbook isAdmin />
+      </AppShell>
+    );
   if (images)
     return (
       <AppShell view="images" canAdmin={me.role === "admin"} onSignOut={signOut}>
@@ -1200,11 +1213,19 @@ export function App() {
       </AppShell>
     );
   if (training)
-    return <AppShell view="training" canAdmin onSignOut={signOut}><Training isAdmin /></AppShell>;
+    return (
+      <AppShell view="training" canAdmin onSignOut={signOut}>
+        <Training isAdmin />
+      </AppShell>
+    );
   if (!admin)
     return (
       <AppShell view="chat" canAdmin={me.role === "admin"} onSignOut={signOut}>
-        <Chat ownerId={me.id} isAdmin={me.role === "admin"} requestedTarget={requestedChatTarget(hash)} />
+        <Chat
+          ownerId={me.id}
+          isAdmin={me.role === "admin"}
+          requestedTarget={requestedChatTarget(hash)}
+        />
       </AppShell>
     );
   return (
@@ -1229,6 +1250,11 @@ export function App() {
         <DataPage kind="instances" />
       ) : tab === "identity" ? (
         <IdentityPage />
+      ) : tab === "upgrades" ? (
+        <UpgradesPage
+          enabled={!!stream.data?.capabilities.upgrades}
+          initialJobId={hash.split("/")[2] ?? ""}
+        />
       ) : tab === "audit" ? (
         <AuditPage />
       ) : (

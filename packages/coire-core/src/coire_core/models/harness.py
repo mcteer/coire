@@ -208,6 +208,10 @@ class HarnessEvaluationSubmission(HarnessEvaluationRequest):
     verdict: EvaluationVerdict
     harness_version: str = Field(max_length=32)
     engine_version: str = Field(max_length=64)
+    runtime_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    harness_image: str | None = Field(
+        default=None, max_length=512, pattern=r"^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$"
+    )
     diagnostics: list[str] = Field(default_factory=list, max_length=32)
 
 
@@ -222,5 +226,9 @@ class HarnessEvaluation(BaseModel):
     verdict: EvaluationVerdict
     harness_version: str = Field(max_length=32)
     engine_version: str = Field(max_length=64)
+    runtime_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    harness_image: str | None = Field(
+        default=None, max_length=512, pattern=r"^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$"
+    )
     diagnostics: list[str] = Field(default_factory=list, max_length=32)
     run_at: datetime

@@ -20,13 +20,16 @@ import subprocess
 import sys
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import psutil
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.models.jobs import JobErrorKind, JobKind, JobStage, JobStatus
+from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
 from coire_node.store import Store, write_atomic
 
@@ -51,13 +54,21 @@ class InsufficientSpace(RuntimeError):
 class JobSupervisor:
     """Starts, tracks, resumes and cancels acquisition workers."""
 
-    def __init__(self, settings: Settings, store: Store) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        store: Store,
+        *,
+        memory_lock: threading.RLock | None = None,
+        admission_check: Callable[[], None] | None = None,
+    ) -> None:
         self._settings = settings
         self._store = store
         self._dir = Path(settings.node_state_dir) / "jobs"
         self._dir.mkdir(parents=True, exist_ok=True)
         self._procs: dict[uuid.UUID, subprocess.Popen[bytes]] = {}
-        self._lock = threading.Lock()
+        self._lock = memory_lock or threading.RLock()
+        self._admission_check = admission_check or (lambda: None)
 
     # -- state files -------------------------------------------------------
     def _path(self, job_id: uuid.UUID) -> Path:
@@ -125,6 +136,37 @@ class JobSupervisor:
             pass
         return status
 
+    def upgrade_inventory(self) -> UpgradeOwnerInventory:
+        from coire_node.upgrade_inventory import native_process_entries, read_owner_json
+
+        with self._lock:
+            entries = list(native_process_entries("acquisition", ("coire_node.worker",)))
+            for path in sorted(self._dir.iterdir()):
+                if not path.name.endswith(JOB_FILE_SUFFIX):
+                    raise UpgradeUnavailable("Acquisition journal has an unreconciled file")
+                try:
+                    identity = uuid.UUID(path.stem)
+                except ValueError:
+                    raise UpgradeUnavailable("Acquisition journal identity is invalid") from None
+                raw = read_owner_json(path)
+                if not isinstance(raw, dict) or set(raw) != {"params", "status"}:
+                    raise UpgradeUnavailable("Acquisition journal shape is invalid")
+                status = JobStatus.model_validate(raw["status"])
+                if status.job_id != identity:
+                    raise UpgradeUnavailable("Acquisition journal identity differs")
+                if not status.is_terminal:
+                    entries.append(
+                        UpgradeInventoryEntry(
+                            owner="acquisition",
+                            kind="job",
+                            work_id=str(identity),
+                            state="active",
+                        )
+                    )
+            return UpgradeOwnerInventory(
+                owner="acquisition", status="complete", entries=tuple(entries)
+            )
+
     def active(self) -> list[JobStatus]:
         """Every job the agent knows, freshest first. Reported on `/node/health`."""
         out: list[JobStatus] = []
@@ -165,6 +207,7 @@ class JobSupervisor:
                 logger.info("job %s already exists; returning it unchanged", job_id)
                 return False, self._with_worker_stats(existing[1])
 
+            self._admission_check()
             other = self._writer_for(slug)
             if other is not None:
                 raise JobConflict(f"job {other} is already writing {slug}")
@@ -197,6 +240,11 @@ class JobSupervisor:
             return True, status
 
     def _spawn(self, job_id: uuid.UUID) -> None:
+        with self._lock:
+            self._admission_check()
+            self._spawn_admitted(job_id)
+
+    def _spawn_admitted(self, job_id: uuid.UUID) -> None:
         env = dict(os.environ)
         found = self._read(job_id)
         if found is None:

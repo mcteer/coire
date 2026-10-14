@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from opentelemetry import metrics, trace
 from pydantic import BaseModel, ConfigDict, Field
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.models.acquisition import NodeValidateRequest, Reservation, ReservationRequest
 from coire_core.models.image_worker import ImageAssetValidateRequest
 from coire_core.models.jobs import ChecksumManifest, JobKind, JobStatus, ModelPullRequest
@@ -113,6 +114,10 @@ def _start(jobs: JobSupervisor, response: Response, **kw: Any) -> JobStatus:
             span.set_attribute("coire.backend", str(backend))
         try:
             created, job_status = jobs.start(**kw)
+        except UpgradeUnavailable as exc:
+            raise HTTPException(
+                exc.status, exc.to_problem().model_dump(mode="json"), headers={"Retry-After": "5"}
+            ) from exc
         except JobConflict as exc:
             raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
         except InsufficientSpace as exc:

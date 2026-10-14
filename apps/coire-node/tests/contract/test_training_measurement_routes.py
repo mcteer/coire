@@ -8,6 +8,8 @@ import pytest
 from fastapi import FastAPI, Header, HTTPException
 from training_measurement_fixtures import experiment
 
+from coire_core.errors import TrainingUnavailable
+from coire_core.models.training_node import TrainingMeasurementNodeStatus
 from coire_core.settings import Settings
 from coire_node.routes.training_measurements import attach
 from coire_node.training.journal import TrainingJournal
@@ -76,4 +78,15 @@ async def test_authenticated_control_mount_and_strict_probe_contract(
             url, json=probe.model_dump(mode="json"), headers={"Authorization": "Bearer test-node"}
         )
         assert receipt.status_code == 200 and not receipt.json()["ready"]
+
+        def unavailable(attempt: str) -> TrainingMeasurementNodeStatus:
+            raise TrainingUnavailable("Native swap telemetry cannot be verified")
+
+        monkeypatch.setattr(native, "measurement_status", unavailable)
+        status_url = f"/node/training/measurements/{probe.prepare.attempt_id}"
+        assert (await client.get(status_url)).status_code == 401
+        failed = await client.get(status_url, headers={"Authorization": "Bearer test-node"})
+        assert failed.status_code == 503 and failed.headers["Retry-After"] == "5"
+        assert failed.json()["detail"]["status"] == 503
+        assert "Traceback" not in failed.text
     journal.close()

@@ -38,6 +38,7 @@ from coire_api.routes import (
     admin_runs,
     admin_sharding,
     admin_training,
+    admin_upgrades,
     admin_variants,
     chat,
     chat_feedback,
@@ -50,6 +51,7 @@ from coire_api.routes import (
     internal_images,
     internal_ops,
     internal_training,
+    internal_upgrades,
     mcp_artifacts,
     me,
     models,
@@ -165,6 +167,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/openapi.json",
     )
     app.state.settings = settings
+    from coire_api.upgrades.expired_recovery_observation_relay import SuccessionObservationRelay
+
+    app.state.upgrade_succession_observations = SuccessionObservationRelay()
+    from coire_api.upgrades.expired_recovery_initial_relay import InitialRecoveryObservationRelay
+
+    app.state.upgrade_initial_recovery_observations = InitialRecoveryObservationRelay()
+    from coire_api.upgrades.expired_recovery_unstarted import UnstartedObservationRelay
+
+    app.state.upgrade_unstarted_recovery_observations = UnstartedObservationRelay()
+    from coire_api.upgrades.cold_continuation_relay import ColdContinuationObservationRelay
+
+    app.state.upgrade_cold_continuation_observations = ColdContinuationObservationRelay()
     from coire_api.console.service import SnapshotCache
 
     app.state.console_snapshot_cache = SnapshotCache()
@@ -206,16 +220,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(admin_ops.router)
     app.include_router(admin_runs.router)
     app.include_router(admin_sharding.router)
+    app.include_router(admin_upgrades.router)
     app.include_router(admin_failover.router)
     app.include_router(failover.router)
     app.include_router(internal_ops.router)
     app.include_router(internal_images.router)
     app.include_router(internal_training.router)
+    app.include_router(internal_upgrades.router)
     app.include_router(v1.router)
     app.include_router(v1_images.router)
     from coire_api.images.openapi import install_image_event_openapi
 
     install_image_event_openapi(app)
+
+    from coire_api.upgrades.admission import CoreAdmissionMiddleware, CoreAdmissions
+
+    admissions = CoreAdmissions(enabled=settings.upgrades_enabled)
+    app.state.upgrade_admissions = admissions
+    app.add_middleware(CoreAdmissionMiddleware, admissions=admissions)
 
     @app.middleware("http")
     async def authenticate_application_request(request: Request, call_next):  # type: ignore[no-untyped-def]
@@ -237,7 +259,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "/api/v1/failover/snapshot",
             "/api/v1/failover/events",
         }
-        if request.url.path.startswith(("/api/v1/internal/images/", "/api/v1/internal/training/")):
+        native_peer_read = (
+            (
+                request.method == "POST"
+                or (
+                    request.method == "GET"
+                    and request.url.path.rsplit("/", 1)[-1]
+                    in {"unclaimed-cancellation", "native-terminal"}
+                )
+            )
+            and request.url.path.startswith("/api/v1/internal/upgrades/")
+            and request.url.path.rsplit("/", 1)[-1]
+            in {
+                "peer-inventory",
+                "collective",
+                "collective-cleanup-peer",
+                "recovery-consumption",
+                "recovery-successor-claim",
+                "recovery-successor-check",
+                "recovery-successor-state",
+                "recovery-succession-delivery",
+                "recovery-succession-observation",
+                "recovery-initial-observation",
+                "native-failure-receipts",
+                "recovery-cold-continuation-context",
+                "recovery-cold-continuation-observation",
+                "recovery-cold-continuation-binding",
+                "recovery-unstarted-context",
+                "recovery-unstarted-observation",
+                "recovery-cold-claim",
+                "recovery-cold-check",
+                "recovery-cold-state",
+                "recovery-cold-smoke",
+                "recovery-cold-verification",
+                "recovery-cold-verification-check",
+                "recovery-cold-handback",
+                "recovery-cold-handback-check",
+                "recovery-cold-handback-receipt",
+                "recovery-cold-resolve",
+                "recovery-cold-resolution-state",
+                "recovery-owner-check",
+                "recovery-owner-state",
+                "recovery-support-context",
+                "recovery-consumption-delivery",
+                "recovery-owner-claim",
+                "unclaimed-cancellation",
+                "native-terminal",
+            }
+            and len(request.url.path.split("/")) == 7
+        )
+        if native_peer_read or request.url.path.startswith(
+            ("/api/v1/internal/images/", "/api/v1/internal/training/")
+        ):
             node = request.headers.get("x-coire-node", "")
             authorization = request.headers.get("authorization", "")
             try:

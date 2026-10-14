@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
@@ -190,8 +191,28 @@ def _ops_recovery_debug(client: httpx.Client) -> str:
 
 
 def _recreate_ops(model_id: str) -> None:
+    def dependency_identities() -> list[tuple[str, str, str]]:
+        dependencies = subprocess.run(
+            [
+                "docker",
+                "inspect",
+                "coire-it-postgres-1",
+                "coire-it-coire-api-1",
+                "coire-it-coire-scheduler-1",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return [
+            (container["Id"], container["Image"], container["State"]["StartedAt"])
+            for container in json.loads(dependencies.stdout)
+        ]
+
+    before = dependency_identities()
     INTEGRATION_SECRETS["COIRE_OPS_MODEL_ID"] = model_id
-    subprocess.run(
+    recreated = subprocess.run(
         [
             "docker",
             "compose",
@@ -199,14 +220,19 @@ def _recreate_ops(model_id: str) -> None:
             "coire-it",
             "up",
             "-d",
+            "--no-deps",
             "--force-recreate",
             "coire-ops",
         ],
         cwd=COMPOSE_DIR,
         env=integration_env(COMPOSE_PROJECT_NAME="coire-it"),
-        check=True,
+        check=False,
         capture_output=True,
+        text=True,
+        timeout=90,
     )
+    assert recreated.returncode == 0, recreated.stderr[-2048:]
+    assert dependency_identities() == before, "Ops recreation changed its running dependency cohort"
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         health = subprocess.run(

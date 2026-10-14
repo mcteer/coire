@@ -13,12 +13,14 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import AsyncIterator
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, JSONResponse
 
 from coire_node.deps import GrantsDep, StoreDep
+from coire_node.maintenance import NodeMaintenance
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/node/export", tags=["export"])
@@ -40,7 +42,20 @@ def _resolve(grants, grant: str) -> str:  # type: ignore[no-untyped-def]
     return str(slug)
 
 
-@router.get("/{grant}/manifest")
+async def require_export_admission(request: Request, grants: GrantsDep) -> AsyncIterator[None]:
+    def authorize() -> None:
+        _resolve(grants, str(request.path_params["grant"]))
+
+    gate: NodeMaintenance | None = getattr(request.app.state, "maintenance", None)
+    if gate is None:
+        authorize()
+        yield
+    else:
+        with gate.transfer_continuation(authorize):
+            yield
+
+
+@router.get("/{grant}/manifest", dependencies=[Depends(require_export_admission)])
 async def export_manifest(grant: str, grants: GrantsDep, store: StoreDep) -> JSONResponse:
     slug = _resolve(grants, grant)
     manifest = store.read_manifest(slug)
@@ -49,7 +64,7 @@ async def export_manifest(grant: str, grants: GrantsDep, store: StoreDep) -> JSO
     return JSONResponse(manifest.model_dump(mode="json"))
 
 
-@router.get("/{grant}/files/{path:path}")
+@router.get("/{grant}/files/{path:path}", dependencies=[Depends(require_export_admission)])
 async def export_file(
     grant: str, path: str, request: Request, grants: GrantsDep, store: StoreDep
 ) -> FileResponse:

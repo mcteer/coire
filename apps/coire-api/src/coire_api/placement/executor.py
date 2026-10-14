@@ -28,6 +28,7 @@ from coire_core.models.engine import EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.placement import MemoryReservationState, PlacementState
 from coire_core.models.registry import EngineBackend
+from coire_core.models.upgrades import CoreNodeSmokeScope
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,28 @@ class PlacementCommandExecutor:
             engine = await session.get(EngineProcessRow, row.engine_id)
             if node is None:
                 raise RuntimeError("placement command node disappeared")
+            if row.operation == "load" and row.payload.get("coire_upgrade_scope") is not None:
+                from coire_api.placement.service import lock_nodes_for_admission
+                from coire_api.upgrades.gateway_smoke_scope import (
+                    placement_smoke_scope,
+                    smoke_admission_exemption,
+                )
+
+                await lock_nodes_for_admission(session, [node.id])
+                await session.refresh(row)
+                if (
+                    row.state not in {"pending", "running"}
+                    or engine is None
+                    or engine.instance_id is None
+                ):
+                    raise RuntimeError("owned smoke load command was closed")
+                admission_scope = CoreNodeSmokeScope.model_validate(
+                    row.payload["coire_upgrade_scope"]
+                )
+                if admission_scope.engine_id != row.engine_id or admission_scope.node != node.name:
+                    raise RuntimeError("owned smoke load command changed its engine or Studio")
+                with placement_smoke_scope(admission_scope, self.settings, engine.instance_id):
+                    await smoke_admission_exemption(session, [node.id])
             row.state = "running"
             row.updated_at = datetime.now(UTC)
             operation, payload, node_name = row.operation, dict(row.payload), node.name
@@ -202,6 +225,11 @@ class PlacementCommandExecutor:
                             event.outcome = "confirmed"
                 return {"state": status.state.value if status else "absent"}
             if operation == "load":
+                scope = (
+                    CoreNodeSmokeScope.model_validate(payload["coire_upgrade_scope"])
+                    if payload.get("coire_upgrade_scope") is not None
+                    else None
+                )
                 target = (
                     InferenceTarget.model_validate(payload["target"])
                     if payload.get("target") is not None
@@ -219,8 +247,15 @@ class PlacementCommandExecutor:
                     ),
                     backend=EngineBackend(str(payload.get("backend", "mlx_lm"))),
                     target=target,
+                    coire_upgrade_scope=scope,
                 )
                 deadline = time.monotonic() + self.settings.gateway_wait_ceiling_s
+                if scope is not None:
+                    deadline = min(
+                        deadline,
+                        time.monotonic()
+                        + max(0, (scope.deadline_at - datetime.now(UTC)).total_seconds()),
+                    )
                 while status.state is EngineState.STARTING and time.monotonic() < deadline:
                     await asyncio.sleep(self.settings.node_engine_health_interval_s)
                     status = await client.get_engine(node_name, row.engine_id)
@@ -235,6 +270,23 @@ class PlacementCommandExecutor:
                         status.state_reason or f"engine entered {status.state.value}"
                     )
                 async with session_scope() as session:
+                    if scope is not None:
+                        from coire_api.placement.service import lock_nodes_for_admission
+                        from coire_api.upgrades.gateway_smoke_scope import (
+                            placement_smoke_scope,
+                            smoke_admission_exemption,
+                        )
+
+                        await lock_nodes_for_admission(session, [row.node_id])
+                        current_engine = await session.get(
+                            EngineProcessRow, row.engine_id, populate_existing=True
+                        )
+                        if current_engine is None or current_engine.instance_id is None:
+                            raise RuntimeError("owned smoke engine lost its instance")
+                        with placement_smoke_scope(
+                            scope, self.settings, current_engine.instance_id
+                        ):
+                            await smoke_admission_exemption(session, [row.node_id])
                     reservation = (
                         await session.get(MemoryReservationRow, row.reservation_id)
                         if row.reservation_id

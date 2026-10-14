@@ -1,5 +1,71 @@
 # Core compose deployment
 
+### Distinct native recovery support mode (019, not Core model work)
+
+`UPGRADE_RECOVERY_SUPPORT_JOB_ID`, `UPGRADE_RECOVERY_SUPPORT_GENERATION` and
+`UPGRADE_RECOVERY_SUPPORT_SOURCE_SHA256` select the complete original scope for
+`coire_api.upgrades.recovery_support` in the ordinary hardened API image. All three
+and enabled upgrades are required. The compatibility instance exposes readiness
+and authenticated recovery/schema paths, retains the standard credential and
+role/scope gates, and runs no ordinary API lifespan workers. Its configured tuple
+supplies no native authority or recovery budget. Other failures and API concerns
+are unavailable. The frozen incumbent remains intact. Isolated acceptance uses
+loopback publication and existing authenticated SSH transport; production network
+or firewall policy must not be widened to reach this endpoint.
+
+`UPGRADE_RECOVERY_CORE_API_PORT` optionally selects the separately scoped Core
+compatibility endpoint on the Studio's existing `CORE_CONTROL_HOST`. It requires
+enabled upgrades and a Studio identity; its default is unset, preserving
+`CORE_API_PORT`. Immutable support observer/startup/guard/supervisor processes use
+this port. Fixed Source node and guard launch producers remove it from the child
+environment so ordinary lease, workload and upgrade traffic keeps the incumbent
+Core endpoint. No request may supply a URL, hostname or port as effect authority.
+
+`UPGRADE_RECOVERY_SCHEMA_ADMIN_TOKEN_FILE` defaults to
+`/run/secrets/upgrade_recovery_schema_admin_token`. The fixed one-shot
+`coire_api.upgrades.recovery_schema_bootstrap` utility reads this Keychain-sourced
+mounted admin secret and invokes the ordinary authenticated admin API in process.
+Its bounded strict stdin command is `observe` or `prepare` for an exact original
+Studio failure. It exposes no listener and accepts no SQL, credential or budget
+in its command. The preparation leaves the original operation and Alembic history
+unchanged; it cannot be used as execution authority. Unknown schema preimages,
+partial protocols, invalid credentials and revoked administrator roles refuse.
+
+`UPGRADE_RECOVERY_SUPERVISION_FD` is internal to the fixed Studio fixture
+supervisor handback. The trusted producer passes an already held private
+descriptor to `coire_node.expired_recovery_source_supervisor`; its child retains
+the same kernel lock after the parent closes its descriptor. It requires enabled
+upgrades, a Studio node and the scoped recovery selector. A configured integer or
+portable receipt supplies no ownership. This is neither a Core deployment setting
+nor a file descriptor that operators should manufacture. Source node/guard children
+receive no recovery selectors or supervision descriptor.
+
+`UPGRADE_RECOVERY_SUCCESSION_ID` optionally selects a distinct uppercase
+ULID successor under `UPGRADE_RECOVERY_ID`; missing/equal parent ids refuse
+configuration. `UPGRADE_RECOVERY_SUCCESSION_MODE` defaults to `resume`
+(existing exact scoped claim); the only other value is explicit `initial`, which
+requires both selectors and exact verified original startup/predecessor. Initial
+mode composes passive authenticated grant delivery with the actual-exclusion
+controller and refuses retained claims rather than recapturing their epoch.
+These selectors are not grants, deadline overrides or permission to acquire a
+replaced PID. Core explicit state and actual lifetime/physical gates remain
+mandatory; missing/corrupt/mismatched context never changes selected mode or falls
+back to legacy. Trusted initial observation/launch remains incomplete. Do not
+deploy partial 019 support.
+
+`UPGRADE_RECOVERY_ID` is an optional 26-character uppercase ULID selector
+for the installed Studio-only `coire_node.upgrade_guard` support mode. Leave it
+unset for normal legacy guard operation. It is metadata, not authorization or a
+budget override. The supported recovery preparation producer must first retain
+verified immutable `expired-recovery/<id>/startup.json` under the configured
+bootstrap root. Missing/corrupt/mismatched context, disabled upgrades or failed
+fresh Core authority refuse; support exit never falls back to legacy recovery or
+its expired deadline. Credentials continue to come from the existing Keychain
+node item. Do not set this on Core, edit sealed Source files, manually manufacture
+startup/claim records, or treat an unready holding controller as serving proof.
+Installation/launch and complete Source handback/native acceptance gates remain
+required before deploying this mode; this setting alone must not activate it.
+
 `coire-up` resolves `coire-core` through UniFi DNS and installs an image-ID-pinned Compose
 manifest under `~/.coire/projects/<project>/releases/`. The active release is the `current`
 symlink in that project directory. The manifest, copied cluster config and mounted credential
@@ -43,8 +109,11 @@ test deployments. `COMPOSE_PROJECT_NAME` must be a single validated project comp
 
 `COMPOSE_PROFILES=chat-files` starts the private CPU file worker. It requires the
 `coire-file-worker-service-token` Keychain item created by `scripts/coire-secrets-init.sh`;
-the generated `file_worker_service_token` secret is mounted only in the scheduler and worker.
-Only those services join the internal `coire-file-processing` network. The worker has no
+the generated `file_worker_service_token` secret is mounted in the scheduler, worker and API.
+Those services join the internal `coire-file-processing` network. The API reads the worker's
+authenticated upgrade inventory so an active or unknown conversion prevents Core activation.
+The additional API membership and credential mount were explicitly approved for feature 019.
+The worker has no
 published port, database mount, model weights, or harness. It reads `coire-chat-originals`
 read-only and writes `coire-chat-derived`; both are private named volumes. The image seeds
 non-root ownership for its writable volume. `COIRE_FILE_WORKER_TIMEOUT_SECONDS` defaults to
@@ -404,3 +473,86 @@ See [feedback operations](../../docs/runbooks/feedback.md) for published dataset
 retention, source withdrawal and export cleanup, and [preference training](../../docs/runbooks/preference-training.md)
 for v3 compatibility, exact profile requirements and drained rollback. Admission
 flags do not disable baseline sampling, cancellation or withdrawal maintenance.
+
+### Managed upgrade configuration (019)
+
+Managed admission defaults off (`UPGRADES_ENABLED=false`) until independent recovery bootstrap
+and acceptance pass. `UPGRADE_PROJECT` (`coire`) and `UPGRADE_EXECUTOR_ID`
+(`coire-upgrade-executor`) bind executor authority. `upgrade_executor_token` is a
+Keychain-sourced file secret with a `coire_upgrade_` prefix, mounted only to API, MCP and executor;
+it cannot initiate administrator operations. Never place it in a command or environment dump.
+
+`UPGRADE_API_URL` (`http://coire-api:8000`) and `UPGRADE_PROXY_URL`
+(`http://docker-socket-proxy:2375`) are internal configured origins. Prepared manifests use
+`UPGRADE_PREPARED_DIR` (`/opt/coire/upgrades/prepared`, read-only), including its protected
+`backups/` subdirectory for database dumps and isolated restore receipts.
+Its `latest.json` is an operator-prepared backup pointer; acceptance retains the exact
+receipt and both migration authorization boundaries recheck dump bytes, restored
+schema identity, private ownership and the 24-hour limit. It does not authorize a
+production restore. Execution receipts use
+`UPGRADE_STATE_DIR` (`/opt/coire/upgrades/state`, private); host/executor coordination uses
+`UPGRADE_COORDINATION_DIR` (`/opt/coire/upgrades/coordination`). Studio selection uses
+`UPGRADE_ENVIRONMENT_ROOT` (`/opt/coire/envs`) and retained recovery interpreters use
+`UPGRADE_BOOTSTRAP_ROOT` (`/opt/coire/upgrade-bootstrap`). These files are immutable operation
+data/journals, not additional configuration sources.
+
+Native acceptance fixtures set `NODE_REGISTRATION_ENABLED=false` (default `true`)
+to run an authenticated node on a private loopback listener without constructing
+cluster endpoints or reading the one-time registration secret. This affects only
+registration; managed startup verification, maintenance and token checks remain
+active. Normal Studio installations retain the default.
+
+With bootstrap ownership committed, `uv run python scripts/coire-deploy.py prepare-backup
+/private/operator/backup-catalog --publisher-image sha256:<verified-executor-image-id>`
+prepares and publishes the backup through the existing private catalog volume. It takes
+the shared deployment lease, refuses active/uncertain ownership or a managed operation
+hold, and leaves the selected runtime owner unchanged. The dump and isolated PostgreSQL
+17 restore are each bounded to 4 GiB; transfer requires the dump size plus 1 GiB of staging
+headroom. Publication uses a disconnected, read-only, capability-dropped container under
+UID 65532 and does not mount credentials or the Docker socket. Retried publication verifies
+the same immutable bytes; preparation retains private partial artifacts on failure.
+
+`UPGRADE_SMOKE_MODEL_ID` selects an already acquired, registry-verified tiny asset; unset blocks
+managed upgrades. `UPGRADE_DRAIN_S` (900, maximum 900), `UPGRADE_READINESS_S` (120, maximum 120),
+`UPGRADE_RECOVERY_S` (300, maximum 300), and `UPGRADE_GATEWAY_OUTAGE_S` (300, maximum 300) are
+captured at acceptance. `UPGRADE_POLL_S` (2, maximum 5) bounds progress observation;
+`UPGRADE_DISK_MARGIN_BYTES` (1 GiB, positive) protects staging headroom. Expired deadlines never
+release uncertain maintenance or resource holds. Executor network access was approved on
+2026-10-11. The `upgrades` Compose profile starts the independent executor;
+`COIRE_UPGRADES_ENABLED` still defaults false until mandatory acceptance passes.
+`COIRE_UPGRADE_SMOKE_MODEL_ID` supplies the already verified tiny model UUID to API;
+an empty value leaves managed operations blocked. The catalog and journal use private
+service-owned `coire-upgrade-prepared` and `coire-upgrade-state` named volumes.
+API mounts both read-only; only executor writes the journal. `coire-up` exports
+`COIRE_UPGRADE_COORDINATION_DIR` as the project's host deployment coordination path,
+and API, scheduler and executor share that exact private bind. Bootstrap must verify
+ownership and the namespace UID mapping before qualification; it never widens permissions.
+
+`COIRE_UPGRADE_MCP_URL` defaults to `http://coire-mcp:8001` and selects the private, authenticated MCP request-owner inventory. It does not publish a port. MCP must receive the existing restricted executor credential before managed bootstrap can be ready; an unavailable credential or source inventory keeps upgrades closed.
+
+Prepared Core catalogs must be owned by service UID `65532` with private directories
+and `0600` artifact files. A private host catalog owned by the operator is suitable
+for local verification, but must not be mounted as the services' readable catalog.
+For the service-owned catalog, trusted host preparation uses
+`uv run scripts/coire-deploy.py prepare-upgrade <private-host-path> --release-document <private-release.json> --artifact compose.json=<frozen-compose.json> --publisher-image sha256:<verified-executor-image-id>`.
+The publisher image must already be present, verified, Linux ARM64, and configured
+for UID `65532:65532`. This fixed helper transfers bounded artifact bytes on stdin
+into the existing `<project>_coire-upgrade-prepared` volume. It runs without networking,
+host bind mounts, secrets, additional capabilities or a writable root filesystem.
+It does not acquire images or create catalog volumes. The trusted bootstrap path
+must initialize that named volume first. The resulting registration request still
+goes through the authenticated, audited admin release API; publication alone does
+not authorize an upgrade or establish recovery readiness.
+
+Core release manifests include `host_release_key`, the exact existing directory key
+under the project's owned `releases/` catalog. Trusted preparation checks that this
+release's frozen Compose bytes match `compose_sha256`; missing keys, symbolic links
+and changed bytes are refused. The published artifact catalog and host release key
+have separate identities, and both remain retained for runtime selection and rollback.
+
+`UPGRADE_MIGRATION_JOB_ID` and `UPGRADE_MIGRATION_GENERATION` are an optional paired
+operation identity for the fixed one-shot migration image. Only the managed executor
+supplies them from its accepted plan. Without either value the image performs ordinary
+installation migrations. Managed execution requires enabled upgrades, the retained
+consumed migration grant, exact source schema, current actor/fences and restore-validated
+backup; uncertain attempts remain recorded and cannot rerun automatically.

@@ -3,7 +3,7 @@
 import asyncio
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from coire_core.models.evaluation import (
     EvaluationCapabilities,
@@ -19,13 +19,16 @@ from coire_core.models.evaluation import (
     EvaluationWorkspaceReceipt,
 )
 from coire_core.models.evaluation_inputs import EvaluationTrainingInputsRequest
+from coire_node.maintenance import require_admission
 from coire_node.routes.workspaces import _manager, _translate
 from coire_node.workspaces import WorkspaceError
 
 router = APIRouter(prefix="/node/evaluations", tags=["evaluations"])
 
 
-@router.post("/probes", response_model=EvaluationProbePrepared)
+@router.post(
+    "/probes", response_model=EvaluationProbePrepared, dependencies=[Depends(require_admission)]
+)
 async def prepare_probes(body: EvaluationProbePrepare, request: Request) -> EvaluationProbePrepared:
     from coire_core.evaluation_suites.measurement import prompt_digest
     from coire_node.evaluation_tokenizer_process import inspect_tokenizer
@@ -73,7 +76,12 @@ async def stage_input(run_id: uuid.UUID, name: str, request: Request) -> Evaluat
         raise _translate(error) from error
 
 
-@router.post("/workspaces", response_model=EvaluationWorkspaceReceipt, status_code=201)
+@router.post(
+    "/workspaces",
+    response_model=EvaluationWorkspaceReceipt,
+    status_code=201,
+    dependencies=[Depends(require_admission)],
+)
 async def prepare(body: EvaluationWorkspacePrepare, request: Request) -> EvaluationWorkspaceReceipt:
     if body.workload.target.variant_slug is None:
         raise HTTPException(422, "evaluation requires registry variant identity")
@@ -132,7 +140,9 @@ async def capabilities(request: Request) -> EvaluationCapabilities:
     )
 
 
-@router.post("/identity", response_model=EvaluationRuntime)
+@router.post(
+    "/identity", response_model=EvaluationRuntime, dependencies=[Depends(require_admission)]
+)
 async def identity(body: EvaluationIdentityRequest, request: Request) -> EvaluationRuntime:
     from coire_node.evaluation_tokenizer_process import inspect_tokenizer
 
@@ -169,7 +179,11 @@ async def identity(body: EvaluationIdentityRequest, request: Request) -> Evaluat
         raise HTTPException(409, "evaluation runtime identity is unavailable") from None
 
 
-@router.post("/workspaces/{run_id}/training-inputs", response_model=EvaluationTrainingInputsReceipt)
+@router.post(
+    "/workspaces/{run_id}/training-inputs",
+    response_model=EvaluationTrainingInputsReceipt,
+    dependencies=[Depends(require_admission)],
+)
 async def stage_training_inputs(
     run_id: uuid.UUID, body: EvaluationTrainingInputsRequest, request: Request
 ) -> EvaluationTrainingInputsReceipt:

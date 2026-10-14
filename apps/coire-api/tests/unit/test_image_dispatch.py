@@ -239,18 +239,21 @@ async def test_draining_worker_blocks_new_image_placement() -> None:
             assert "pg_advisory_xact_lock" in str(statement)
 
         async def scalars(self, statement: object) -> SimpleNamespace:
+            if "FROM nodes" in str(statement):
+                return SimpleNamespace(all=lambda: ["coire-edge-a"])
             assert "memory_reservations" in str(statement)
             return SimpleNamespace(all=lambda: [])
 
         async def scalar(self, statement: object) -> object | None:
             self.queries.append(str(statement))
-            return "draining-instance" if len(self.queries) == 2 else None
+            return "draining-instance" if "model_instances.state" in str(statement) else None
 
     session = Session()
     assert await image_dispatch._image_busy(cast(AsyncSession, session), uuid.uuid4(), MODEL)
-    assert len(session.queries) == 2
-    assert "image_execution_leases" in session.queries[0]
-    assert "model_instances.state" in session.queries[1]
+    assert len(session.queries) == 3
+    assert "upgrade_maintenance" in session.queries[0]
+    assert "image_execution_leases" in session.queries[1]
+    assert "model_instances.state" in session.queries[2]
 
 
 async def test_draining_chat_remains_in_unmeasured_mix_until_stop_proof(

@@ -249,6 +249,11 @@ acceptance targets, not measured results here. Node-local watchdog checks at mos
 the renewable 30-second lease must stop unauthorized orphan work on core loss; runtime verification
 remains a gate. Keep the kill lane and node watchdog available during draining.
 
+Measurement input preparation and start allow a bounded 30-second Node response for every
+dataset format because both verify acquired weight bytes. Lease renewal and stop run
+independently with their existing bounds. An input timeout produces an inconclusive
+measurement; it does not create a memory profile or authorize training.
+
 Memory/swap growth, footprint above the reserved envelope, serious/critical thermal state or a
 confirmed per-target chat first-token p95 breach require protection. Chat latency uses nearest-rank
 `coire-ttft-v1`, five-minute per-target window, >=30 samples and <=60-second freshness; >1.5 seconds

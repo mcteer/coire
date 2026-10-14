@@ -265,3 +265,34 @@ def test_journal_rejects_wrong_node_and_expired_new_request(tmp_path: Path) -> N
             request.model_copy(update={"deadline_at": datetime.now(UTC) - timedelta(seconds=1)})
         )
     assert journal.get(JOB) is None
+
+
+def test_upgrade_inventory_retains_terminal_cleanup_obligation(tmp_path: Path) -> None:
+    journal = ImageJobJournal(tmp_path, NODE)
+    queued = journal.begin(_request())
+    assert journal.upgrade_entries()[0].state == "active"
+    failed = queued.model_copy(
+        update={"state": "failed", "updated_at": queued.updated_at + timedelta(seconds=1)}
+    )
+    journal.advance(failed)
+    assert journal.upgrade_entries()[0].state == "cleaning"
+    journal.advance(
+        failed.model_copy(
+            update={"scratch_cleaned": True, "updated_at": failed.updated_at + timedelta(seconds=1)}
+        )
+    )
+    assert journal.upgrade_entries() == ()
+
+
+def test_upgrade_inventory_refuses_unrecognized_or_corrupt_owner_files(tmp_path: Path) -> None:
+    journal = ImageJobJournal(tmp_path, NODE)
+    journal.begin(_request())
+    unknown = journal.root / "unknown.json"
+    unknown.write_bytes(b"{}")
+    unknown.chmod(0o600)
+    with pytest.raises(ImageJournalUnavailable):
+        journal.upgrade_entries()
+    unknown.unlink()
+    journal._path(JOB).write_bytes(b"corrupt")
+    with pytest.raises(ImageJournalUnavailable):
+        journal.upgrade_entries()

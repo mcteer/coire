@@ -68,7 +68,12 @@ def main() -> int:
                 base_manifest_sha256=body.target.base_manifest_sha256,
                 template_override=body.template_override,
             )
+            from coire_core.settings import Settings
+            from coire_node.upgrade_runtime import running_runtime_sha256
+
             result = EvaluationRuntime(
+                native_runtime_sha256=running_runtime_sha256(Settings()),
+                harness_image=args.agent_image or None,
                 engine_version=engine_runtime_version(body.engine_backend),
                 harness_version="0.1.0",
                 runtime_sha256=hashlib.sha256(

@@ -272,6 +272,7 @@ class NodeStatus(BaseModel):
     agent_version: str
     os_version: str = "unknown"
     engine_version: str = "unknown"
+    runtime_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     uptime_seconds: float
     cpu_percent: float = Field(ge=0, le=100)
     gpu_percent: float | None = Field(default=None, ge=0, le=100)
@@ -312,6 +313,7 @@ class NodeStatusV2(BaseModel):
     agent_version: str
     os_version: str = "unknown"
     engine_version: str = "unknown"
+    runtime_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     uptime_seconds: float = Field(ge=0)
     cpu_percent: float = Field(ge=0, le=100)
     gpu_percent: float | None = Field(default=None, ge=0, le=100)

@@ -308,6 +308,26 @@ def run_target(row: AgentRunRow) -> InferenceTarget | None:
 
 
 async def _legacy_variant(session: AsyncSession, request: AgentRunCreate) -> ModelVariantRow:
+    from coire_api.evaluations import variant_is_write_verified
+    from coire_core.settings import get_settings
+
+    if request.task_class is TaskClass.WRITE and get_settings().upgrades_enabled:
+        candidates = (
+            await session.scalars(
+                select(ModelVariantRow).where(
+                    ModelVariantRow.model_id.in_(request.permitted_model_ids),
+                    *variant_gate(request.task_class),
+                )
+            )
+        ).all()
+        qualified_models = set()
+        for candidate in candidates:
+            if await variant_is_write_verified(session, candidate.id):
+                qualified_models.add(candidate.model_id)
+        if qualified_models != set(request.permitted_model_ids):
+            raise RunConflict(
+                "every permitted model needs a current runtime-qualified harness variant"
+            )
     eligible_model_ids = set(
         (
             await session.scalars(
@@ -341,6 +361,12 @@ async def _legacy_variant(session: AsyncSession, request: AgentRunCreate) -> Mod
             else "published validated"
         )
         raise RunConflict(f"primary model has no {needed} variant")
+    if (
+        request.task_class is TaskClass.WRITE
+        and get_settings().upgrades_enabled
+        and not await variant_is_write_verified(session, variant.id)
+    ):
+        raise RunConflict("primary model variant needs current runtime harness qualification")
     return variant
 
 

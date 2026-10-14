@@ -173,6 +173,19 @@ def test_reserved_base_smoke_produces_narrow_capability_and_thumbnail_digest(
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
     monkeypatch.delenv("HF_TOKEN", raising=False)
+    # This fake-pipeline test verifies capability/pixels, with a deterministic
+    # footprint. The full pytest process can already exceed the fixture's hold;
+    # separate tests below exercise real admission against sampled peaks.
+    monkeypatch.setattr(
+        image_validation,
+        "psutil",
+        SimpleNamespace(
+            Process=lambda: SimpleNamespace(
+                pid=123, memory_info=lambda: SimpleNamespace(rss=1_000_000)
+            )
+        ),
+    )
+    monkeypatch.setattr(image_validation, "resident_bytes", lambda _pid: 2_000_000)
 
     class FakePipeline:
         def generate(

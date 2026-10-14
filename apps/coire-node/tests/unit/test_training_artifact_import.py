@@ -157,3 +157,70 @@ async def test_expired_grant_refresh_resumes_same_intent_and_checksum_failure_st
         assert importer.status(command.command_id).reason == "replication_failed"
         assert not (tmp_path / "artifacts" / str(identity)).exists()
         await importer.aclose()
+
+
+async def test_new_import_and_refresh_restart_require_maintenance_admission(tmp_path: Path) -> None:
+    from collections.abc import Iterator
+    from contextlib import contextmanager
+
+    import pytest
+
+    from coire_core.errors import UpgradeUnavailable
+    from coire_core.models.training_node import (
+        TrainingArtifactImportIntent,
+        TrainingArtifactImportJournal,
+        TrainingArtifactImportStatus,
+    )
+
+    @contextmanager
+    def fenced() -> Iterator[None]:
+        if tmp_path.exists():
+            raise UpgradeUnavailable("maintenance")
+        yield
+
+    manifest = TrainingArtifactManifest(
+        artifact_id=uuid.uuid4(),
+        kind="adapter",
+        total_bytes=1,
+        files=[
+            TrainingArtifactFile(id="adapter", name="adapter.safetensors", bytes=1, sha256="a" * 64)
+        ],
+    )
+    command = request(manifest)
+    importer = ArtifactImporter(
+        TrainingArtifacts(tmp_path / "artifacts", node_name="coire-edge-b"),
+        tmp_path / "journal",
+        port=9401,
+        admission_context=fenced,
+    )
+    try:
+        with pytest.raises(UpgradeUnavailable):
+            await importer.start(command)
+        assert not list(importer.root.iterdir()) and not importer._tasks
+        intent = TrainingArtifactImportIntent.model_validate(
+            command.model_dump(exclude={"grant_secret"})
+        )
+        record = TrainingArtifactImportJournal(
+            intent=intent,
+            status=TrainingArtifactImportStatus(
+                import_id=command.command_id,
+                artifact_id=command.artifact_id,
+                manifest_sha256=command.manifest_sha256,
+                state="failed",
+                transferred_bytes=0,
+            ),
+        )
+        importer._persist(record)
+        refresh = TrainingArtifactGrantRefresh.model_validate(
+            command.model_dump(
+                exclude={
+                    "source_node",
+                    "destination_node",
+                }
+            )
+        )
+        with pytest.raises(UpgradeUnavailable):
+            await importer.refresh(command.command_id, refresh)
+        assert importer.status(command.command_id).state == "failed" and not importer._tasks
+    finally:
+        await importer.aclose()

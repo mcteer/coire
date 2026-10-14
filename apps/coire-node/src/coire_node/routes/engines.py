@@ -9,11 +9,12 @@ from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
 from opentelemetry import trace
 from opentelemetry.propagate import extract
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.models.engine import (
     EngineStartRequest,
     EngineState,
@@ -25,6 +26,7 @@ from coire_core.models.gateway import EngineChatRequest
 from coire_core.net import shared_http_ssl_context
 from coire_node.deps import EngineDep, StoreDep
 from coire_node.engines import BackendMismatch, BudgetExceeded, CopyMissing, NoFreePort
+from coire_node.maintenance import require_admission
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer("coire.node.engine.proxy")
@@ -36,7 +38,9 @@ def _engine_client() -> httpx.AsyncClient:
     global _proxy_client
     if _proxy_client is None:
         _proxy_client = httpx.AsyncClient(
-            limits=httpx.Limits(max_connections=32, max_keepalive_connections=8),
+            # Match the gateway's bounded streaming transport capacity. Engine
+            # admission and model memory reservations remain independent gates.
+            limits=httpx.Limits(max_connections=128, max_keepalive_connections=8),
             verify=shared_http_ssl_context(),
         )
     return _proxy_client
@@ -54,7 +58,7 @@ async def list_engines(engines: EngineDep) -> list[EngineStatus]:
     return engines.statuses()
 
 
-@router.post("", response_model=EngineStatus)
+@router.post("", response_model=EngineStatus, dependencies=[Depends(require_admission)])
 async def start_engine(
     request: EngineStartRequest, response: Response, engines: EngineDep
 ) -> EngineStatus:
@@ -72,6 +76,10 @@ async def start_engine(
             max_num_seqs=request.max_num_seqs,
             max_kv_size=request.max_kv_size,
         )
+    except UpgradeUnavailable as exc:
+        raise HTTPException(
+            exc.status, exc.to_problem().model_dump(mode="json"), headers={"Retry-After": "5"}
+        ) from exc
     except CopyMissing as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     except BackendMismatch as exc:
@@ -99,7 +107,7 @@ async def get_engine(engine_id: uuid.UUID, engines: EngineDep) -> EngineStatus:
     return found
 
 
-@router.post("/{engine_id}/proxy/v1/chat/completions")
+@router.post("/{engine_id}/proxy/v1/chat/completions", dependencies=[Depends(require_admission)])
 async def proxy_chat_completion(
     engine_id: uuid.UUID,
     request: EngineChatRequest,
@@ -121,6 +129,7 @@ async def proxy_chat_completion(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "model does not match engine")
     url = f"http://127.0.0.1:{engine.port}/v1/chat/completions"
     payload = request.model_dump(mode="json", exclude_none=True)
+    payload.pop("coire_upgrade_scope", None)
     # Variant-copy contracts store the validated registry slug, while the bare engine must
     # receive the node-local absolute path. Resolve it only after matching the running
     # engine's immutable slug so no caller-controlled path can cross this boundary.

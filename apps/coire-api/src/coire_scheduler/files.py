@@ -61,6 +61,13 @@ async def _prepare(job_id: str, settings: Settings) -> tuple[FileProcessRequest,
     """Commit running/request before any external POST; recover from it by GET only."""
 
     async with session_scope() as session:
+        allowed = True
+        if settings.upgrades_enabled:
+            from coire_scheduler.maintenance import allows_core_work
+
+            allowed = await allows_core_work(
+                session, ("coire-api", "coire-scheduler", "coire-file-worker")
+            )
         job = await session.get(ChatFileProcessingRow, job_id, with_for_update=True)
         if job is None or job.state in TERMINAL:
             return None
@@ -135,7 +142,7 @@ async def _prepare(job_id: str, settings: Settings) -> tuple[FileProcessRequest,
                     attachment.state = "failed"
                     attachment.safe_error = job.safe_error
                 return None
-        if job.state != "queued":
+        if job.state != "queued" or not allowed:
             return None
         deadline = datetime.now(UTC) + timedelta(seconds=settings.file_worker_process_timeout_s)
         output_ids = (
@@ -458,10 +465,15 @@ async def purge_failed_file_outputs(settings: Settings) -> int:
 
 
 @DBOS.step(retries_allowed=True, max_attempts=100, interval_seconds=1.0)
-async def file_processing_step(job_id: str) -> None:
+async def file_processing_step(job_id: str) -> bool:
     await drive_file_job(job_id)
+    async with session_scope() as session:
+        job = await session.get(ChatFileProcessingRow, job_id)
+        return job is None or job.state in TERMINAL
 
 
 @DBOS.workflow(name="coire.file.process", max_recovery_attempts=100)
 async def file_processing_workflow(job_id: str) -> None:
-    await file_processing_step(job_id)
+    while not await file_processing_step(job_id):
+        # A fenced queued command stays durable and resumes without a new job ID.
+        await DBOS.sleep_async(1)

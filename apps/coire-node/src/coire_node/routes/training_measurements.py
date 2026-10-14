@@ -18,6 +18,7 @@ from coire_core.models.training_node import (
     TrainingStopRequest,
 )
 from coire_core.models.training_types import TrainingId
+from coire_node.maintenance import require_admission
 from coire_node.routes.training import invoke, scope
 from coire_node.training.measurement import MeasurementSupervisor
 
@@ -44,7 +45,11 @@ async def capabilities(request: Request) -> TrainingMeasurementCapabilities:
     return result
 
 
-@router.post("/{attempt_id}/prepare", response_model=TrainingPrepared)
+@router.post(
+    "/{attempt_id}/prepare",
+    response_model=TrainingPrepared,
+    dependencies=[Depends(require_admission)],
+)
 async def prepare(
     attempt_id: TrainingId, body: TrainingMeasurementPrepare, request: Request
 ) -> TrainingPrepared:
@@ -64,7 +69,11 @@ async def inputs(
     )
 
 
-@router.post("/{attempt_id}/start", response_model=TrainingStartReceipt)
+@router.post(
+    "/{attempt_id}/start",
+    response_model=TrainingStartReceipt,
+    dependencies=[Depends(require_admission)],
+)
 async def start(
     attempt_id: TrainingId, body: TrainingStartRequest, request: Request
 ) -> TrainingStartReceipt:

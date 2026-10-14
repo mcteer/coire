@@ -5,13 +5,14 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from coire_core.models.files import SLUG_PATTERN
 from coire_core.models.jobs import JobErrorKind, RepoInspection
 from coire_node import hub
 from coire_node.deps import EngineDep, GrantsDep, SettingsDep, StoreDep
+from coire_node.maintenance import require_admission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/node/models", tags=["models"])
@@ -50,7 +51,7 @@ _ERROR_STATUS = {
 }
 
 
-@router.post("/inspect", response_model=RepoInspection)
+@router.post("/inspect", response_model=RepoInspection, dependencies=[Depends(require_admission)])
 async def inspect_repo(request: InspectRequest, settings: SettingsDep) -> RepoInspection:
     """Read repository metadata. The only component that talks to Hugging Face (FR-005)."""
     try:
@@ -91,7 +92,9 @@ async def list_local(store: StoreDep, engines: EngineDep) -> list[LocalCopy]:
     return copies
 
 
-@router.delete("/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/{slug}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admission)]
+)
 async def delete_local(slug: str, store: StoreDep, engines: EngineDep) -> Response:
     """Remove a copy. Refused while an engine serves it — deleting the weights out from under
     a running process produces a confusing failure much later."""
@@ -108,7 +111,11 @@ async def delete_local(slug: str, store: StoreDep, engines: EngineDep) -> Respon
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{slug}/export", status_code=status.HTTP_204_NO_CONTENT)
+@router.post(
+    "/{slug}/export",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_admission)],
+)
 async def grant_export(
     slug: str, request: ExportGrantRequest, store: StoreDep, grants: GrantsDep
 ) -> Response:

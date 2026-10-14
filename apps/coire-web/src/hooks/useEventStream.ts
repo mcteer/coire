@@ -2,7 +2,12 @@ import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 
 import { openChatEvents, sendChatTurn, type ChatEvent, type ChatTurnCreate } from "../api/chat";
 import { openEventStream, readEventStream, type SseFrame } from "../api/eventStream";
 
-type State<T> = { data: T | null; connected: boolean; error: string | null };
+type State<T> = {
+  data: T | null;
+  connected: boolean;
+  error: string | null;
+  accessDenied?: boolean;
+};
 type StreamOptions<T> = {
   decode?: (frame: SseFrame) => T | undefined;
   isTerminal?: (data: T) => boolean;
@@ -35,12 +40,15 @@ export function useEventStream<T>(
     };
     const canConnect = () => document.visibilityState !== "hidden" && navigator.onLine !== false;
     const connect = async () => {
-      if (disposed || !canConnect() || controller) return;
+      if (disposed || permanent || !canConnect() || controller) return;
       const active = new AbortController();
       controller = active;
       try {
         const response = await openEventStream(url, lastId.current, active.signal);
         if ([401, 403, 404].includes(response.status)) permanent = true;
+        if ([401, 403].includes(response.status)) {
+          setState((value) => ({ ...value, accessDenied: true }));
+        }
         if (!response.ok || !response.body) throw new Error(`stream refused (${response.status})`);
         setState((value) => ({ ...value, connected: true, error: null }));
         await readEventStream(response, active.signal, (frame) => {
@@ -65,7 +73,10 @@ export function useEventStream<T>(
         if (controller === active) controller = null;
         if (!disposed && !terminal && !permanent && canConnect()) {
           const delay = Math.min(10_000, 500 * 2 ** Math.min(failures++, 5));
-          retry = window.setTimeout(() => void connect(), delay * (0.8 + Math.random() * 0.4));
+          retry = window.setTimeout(
+            () => void connect(),
+            Math.min(10_000, delay * (0.8 + Math.random() * 0.4)),
+          );
         }
       }
     };

@@ -181,6 +181,15 @@ async def execute_instance_launch(instance_id_text: str) -> None:
 
             while True:
                 async with session_scope() as session:
+                    instance = await session.get(
+                        ModelInstanceRow, instance_id, populate_existing=True
+                    )
+                    if instance is None or instance.state in {
+                        InstanceState.FAILED,
+                        InstanceState.DRAINING,
+                        InstanceState.STOPPED,
+                    }:
+                        return
                     decision = await session.get(PlacementDecisionRow, decision_id)
                     if decision is None:
                         raise RuntimeError("instance placement decision disappeared")
@@ -216,8 +225,9 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                             .all()
                         )
                         for reservation in reservations:
-                            reservation.state = MemoryReservationState.FAILED
-                            reservation.released_at = datetime.now(UTC)
+                            if instance.upgrade_smoke_payload is None:
+                                reservation.state = MemoryReservationState.FAILED
+                                reservation.released_at = datetime.now(UTC)
                         failures.add(1, {"reason": decision.refusal_code or "placement_failed"})
                         return
                     if state is PlacementState.LOADING:
@@ -238,6 +248,12 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                 decision = await session.get(PlacementDecisionRow, decision_id)
                 if instance is None or decision is None or decision.selected_node_id is None:
                     raise RuntimeError("ready placement has no selected node")
+                if instance.state in {
+                    InstanceState.FAILED,
+                    InstanceState.DRAINING,
+                    InstanceState.STOPPED,
+                }:
+                    return
                 ready_reservation = await session.scalar(
                     select(MemoryReservationRow).where(
                         MemoryReservationRow.node_id == decision.selected_node_id,
@@ -341,8 +357,9 @@ async def execute_instance_launch(instance_id_text: str) -> None:
                         .all()
                     )
                     for reservation in reservations:
-                        reservation.state = MemoryReservationState.FAILED
-                        reservation.released_at = datetime.now(UTC)
+                        if instance.upgrade_smoke_payload is None:
+                            reservation.state = MemoryReservationState.FAILED
+                            reservation.released_at = datetime.now(UTC)
                     failures.add(1, {"reason": type(exc).__name__.lower()[:64]})
             raise
 

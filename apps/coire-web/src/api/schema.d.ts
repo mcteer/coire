@@ -1701,6 +1701,381 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/upgrades/control-plane": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Core */
+        post: operations["start_core_api_v1_admin_upgrades_control_plane_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/executor-handover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Executor Handover */
+        post: operations["start_executor_handover_api_v1_admin_upgrades_executor_handover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/executor-handover/{handover_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Executor Handover Status */
+        get: operations["executor_handover_status_api_v1_admin_upgrades_executor_handover__handover_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/nodes/{node_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Studio */
+        post: operations["start_studio_api_v1_admin_upgrades_nodes__node_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recoveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Recovery */
+        post: operations["accept_recovery_api_v1_admin_upgrades_recoveries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recoveries/continuations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Continuation Start */
+        post: operations["cold_continuation_start_api_v1_admin_upgrades_recoveries_continuations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recoveries/{recovery_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recovery Status */
+        get: operations["recovery_status_api_v1_admin_upgrades_recoveries__recovery_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recoveries/{recovery_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Expired Recovery */
+        post: operations["cancel_expired_recovery_api_v1_admin_upgrades_recoveries__recovery_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recoveries/{recovery_id}/close-unstarted": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Close Unstarted Recovery */
+        post: operations["close_unstarted_recovery_api_v1_admin_upgrades_recoveries__recovery_id__close_unstarted_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recoveries/{recovery_id}/continuation-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Continuation Schema Preparation */
+        post: operations["cold_continuation_schema_preparation_api_v1_admin_upgrades_recoveries__recovery_id__continuation_schema_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recoveries/{recovery_id}/continuation-schema-observation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Continuation Schema Observation */
+        post: operations["cold_continuation_schema_observation_api_v1_admin_upgrades_recoveries__recovery_id__continuation_schema_observation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recoveries/{recovery_id}/host-hold": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reconcile Recovered Host Hold */
+        post: operations["reconcile_recovered_host_hold_api_v1_admin_upgrades_recoveries__recovery_id__host_hold_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recoveries/{recovery_id}/native-terminal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Legacy Native Terminal */
+        post: operations["prepare_legacy_native_terminal_api_v1_admin_upgrades_recoveries__recovery_id__native_terminal_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recovery-schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recovery Schema Preparation */
+        post: operations["recovery_schema_preparation_api_v1_admin_upgrades_recovery_schema_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/recovery-schema/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recovery Schema Observation */
+        get: operations["recovery_schema_observation_api_v1_admin_upgrades_recovery_schema__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Releases */
+        get: operations["releases_api_v1_admin_upgrades_releases_get"];
+        put?: never;
+        /** Register */
+        post: operations["register_api_v1_admin_upgrades_releases_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/targets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Targets */
+        get: operations["targets_api_v1_admin_upgrades_targets_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operation */
+        get: operations["operation_api_v1_admin_upgrades__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Operation */
+        post: operations["cancel_operation_api_v1_admin_upgrades__job_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/{job_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Events */
+        get: operations["events_api_v1_admin_upgrades__job_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/{job_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Operation */
+        post: operations["rollback_operation_api_v1_admin_upgrades__job_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrades/{job_id}/unclaimed-cancellation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Prepare Unclaimed Cancellation */
+        post: operations["prepare_unclaimed_cancellation_api_v1_admin_upgrades__job_id__unclaimed_cancellation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/users": {
         parameters: {
             query?: never;
@@ -2592,6 +2967,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/ops/upgrade-admission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Upgrade Admission */
+        get: operations["upgrade_admission_api_v1_internal_ops_upgrade_admission_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/training/datasets/{dataset_id}/content": {
         parameters: {
             query?: never;
@@ -2640,6 +3032,924 @@ export interface paths {
         get: operations["training_node_leases_api_v1_internal_training_nodes__node__leases_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/handover-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Handover Claim */
+        post: operations["handover_claim_api_v1_internal_upgrades_bootstrap_handover_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/handover-commit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Handover Commit */
+        post: operations["handover_commit_api_v1_internal_upgrades_bootstrap_handover_commit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/handover-committed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Handover Committed */
+        post: operations["handover_committed_api_v1_internal_upgrades_bootstrap_handover_committed_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/handover-recovery-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Handover Recovery Claim */
+        post: operations["handover_recovery_claim_api_v1_internal_upgrades_bootstrap_handover_recovery_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/handover-restored": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Handover Restored */
+        post: operations["handover_restored_api_v1_internal_upgrades_bootstrap_handover_restored_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/handover-restoring": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Handover Restoring */
+        post: operations["handover_restoring_api_v1_internal_upgrades_bootstrap_handover_restoring_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/handover-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Handover Transfer */
+        post: operations["handover_transfer_api_v1_internal_upgrades_bootstrap_handover_transfer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/handover-unchanged": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Handover Unchanged */
+        post: operations["handover_unchanged_api_v1_internal_upgrades_bootstrap_handover_unchanged_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/handover/{preparation_sha256}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Handover Status */
+        get: operations["handover_status_api_v1_internal_upgrades_bootstrap_handover__preparation_sha256__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/bootstrap/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Bootstrap Heartbeat */
+        post: operations["bootstrap_heartbeat_api_v1_internal_upgrades_bootstrap_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Claim */
+        post: operations["claim_api_v1_internal_upgrades_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Operation Status */
+        get: operations["operation_status_api_v1_internal_upgrades__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/collective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Collective */
+        post: operations["collective_api_v1_internal_upgrades__job_id__collective_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/collective-cleanup-peer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cleanup Peer Inventory */
+        post: operations["cleanup_peer_inventory_api_v1_internal_upgrades__job_id__collective_cleanup_peer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/consume-activation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Consume Activation */
+        post: operations["consume_activation_api_v1_internal_upgrades__job_id__consume_activation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inventory */
+        get: operations["inventory_api_v1_internal_upgrades__job_id__inventory_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/migration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Migration Proof */
+        get: operations["migration_proof_api_v1_internal_upgrades__job_id__migration_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/migration-not-started": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Migration Not Started */
+        post: operations["migration_not_started_api_v1_internal_upgrades__job_id__migration_not_started_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/native-failure-receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Native Failure Receipts */
+        post: operations["native_failure_receipts_api_v1_internal_upgrades__job_id__native_failure_receipts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/peer-inventory": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Peer Inventory */
+        post: operations["peer_inventory_api_v1_internal_upgrades__job_id__peer_inventory_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/ready-to-activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ready To Activate */
+        post: operations["ready_to_activate_api_v1_internal_upgrades__job_id__ready_to_activate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Receipts */
+        post: operations["receipts_api_v1_internal_upgrades__job_id__receipts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/recovery-initial-observation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Initial Recovery Observation */
+        post: operations["initial_recovery_observation_api_v1_internal_upgrades__job_id__recovery_initial_observation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/schema": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Schema Observation */
+        get: operations["schema_observation_api_v1_internal_upgrades__job_id__schema_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/smoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Gateway Smoke */
+        post: operations["gateway_smoke_api_v1_internal_upgrades__job_id__smoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{job_id}/unclaimed-cancellation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Unclaimed Cancellation State */
+        get: operations["unclaimed_cancellation_state_api_v1_internal_upgrades__job_id__unclaimed_cancellation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/native-terminal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Legacy Native Terminal */
+        get: operations["read_legacy_native_terminal_api_v1_internal_upgrades__recovery_id__native_terminal_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Check */
+        post: operations["cold_recovery_check_api_v1_internal_upgrades__recovery_id__recovery_cold_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Accept */
+        post: operations["cold_recovery_accept_api_v1_internal_upgrades__recovery_id__recovery_cold_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-continuation-binding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Continuation Binding */
+        post: operations["cold_continuation_binding_api_v1_internal_upgrades__recovery_id__recovery_cold_continuation_binding_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-continuation-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Continuation Context */
+        post: operations["cold_continuation_context_api_v1_internal_upgrades__recovery_id__recovery_cold_continuation_context_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-continuation-observation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Continuation Observation */
+        post: operations["cold_continuation_observation_api_v1_internal_upgrades__recovery_id__recovery_cold_continuation_observation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-handback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Handback */
+        post: operations["cold_recovery_handback_api_v1_internal_upgrades__recovery_id__recovery_cold_handback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-handback-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Handback Check */
+        post: operations["cold_recovery_handback_check_api_v1_internal_upgrades__recovery_id__recovery_cold_handback_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-handback-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Handback Receipt */
+        post: operations["cold_recovery_handback_receipt_api_v1_internal_upgrades__recovery_id__recovery_cold_handback_receipt_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-resolution-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Resolution State */
+        post: operations["cold_recovery_resolution_state_api_v1_internal_upgrades__recovery_id__recovery_cold_resolution_state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Resolve */
+        post: operations["cold_recovery_resolve_api_v1_internal_upgrades__recovery_id__recovery_cold_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-smoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Smoke */
+        post: operations["cold_recovery_smoke_api_v1_internal_upgrades__recovery_id__recovery_cold_smoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery State */
+        post: operations["cold_recovery_state_api_v1_internal_upgrades__recovery_id__recovery_cold_state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Verification */
+        post: operations["cold_recovery_verification_api_v1_internal_upgrades__recovery_id__recovery_cold_verification_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-cold-verification-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cold Recovery Verification Check */
+        post: operations["cold_recovery_verification_check_api_v1_internal_upgrades__recovery_id__recovery_cold_verification_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-consumption": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recovery Consumption Gate */
+        post: operations["recovery_consumption_gate_api_v1_internal_upgrades__recovery_id__recovery_consumption_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-consumption-delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recovery Consumption Delivery */
+        post: operations["recovery_consumption_delivery_api_v1_internal_upgrades__recovery_id__recovery_consumption_delivery_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-owner-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recovery Owner Gate */
+        post: operations["recovery_owner_gate_api_v1_internal_upgrades__recovery_id__recovery_owner_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-owner-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recovery Owner Accept */
+        post: operations["recovery_owner_accept_api_v1_internal_upgrades__recovery_id__recovery_owner_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-owner-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recovery Owner State */
+        post: operations["recovery_owner_state_api_v1_internal_upgrades__recovery_id__recovery_owner_state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-succession-delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Succession Delivery */
+        post: operations["succession_delivery_api_v1_internal_upgrades__recovery_id__recovery_succession_delivery_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-succession-observation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Succession Observation */
+        post: operations["succession_observation_api_v1_internal_upgrades__recovery_id__recovery_succession_observation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-support-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recovery Support Context */
+        post: operations["recovery_support_context_api_v1_internal_upgrades__recovery_id__recovery_support_context_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-unstarted-context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recovery Unstarted Context */
+        post: operations["recovery_unstarted_context_api_v1_internal_upgrades__recovery_id__recovery_unstarted_context_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{recovery_id}/recovery-unstarted-observation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recovery Unstarted Observation */
+        post: operations["recovery_unstarted_observation_api_v1_internal_upgrades__recovery_id__recovery_unstarted_observation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{succession_id}/recovery-successor-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Successor Gate */
+        post: operations["successor_gate_api_v1_internal_upgrades__succession_id__recovery_successor_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{succession_id}/recovery-successor-claim": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Successor Accept */
+        post: operations["successor_accept_api_v1_internal_upgrades__succession_id__recovery_successor_claim_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/internal/upgrades/{succession_id}/recovery-successor-state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Successor State */
+        post: operations["successor_state_api_v1_internal_upgrades__succession_id__recovery_successor_state_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3660,6 +4970,31 @@ export interface components {
          * @enum {string}
          */
         AuthScope: "chat" | "images" | "images:explicit" | "mcp" | "admin";
+        /** BackupEvidence */
+        BackupEvidence: {
+            /** Backup Id */
+            backup_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Project */
+            project: string;
+            /** Schema Head */
+            schema_head: string;
+            /** Sha256 Digest */
+            sha256_digest: string;
+            /** Size Bytes */
+            size_bytes: number;
+            /**
+             * Validated At
+             * Format: date-time
+             */
+            validated_at: string;
+            /** Validation Sha256 */
+            validation_sha256: string;
+        };
         /** BenchmarkRequest */
         BenchmarkRequest: {
             /**
@@ -3783,6 +5118,91 @@ export interface components {
             filename: string;
             /** Purpose */
             purpose: string;
+        };
+        /**
+         * BootstrapSourceObservation
+         * @description Whole prepared Source identity from original bounded physical reads.
+         */
+        BootstrapSourceObservation: {
+            /**
+             * Configuration Verified
+             * @constant
+             */
+            configuration_verified: true;
+            /** Container Ids */
+            container_ids: {
+                [key: string]: string;
+            };
+            /** Image Ids */
+            image_ids: {
+                [key: string]: string;
+            };
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Project */
+            project: string;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /**
+             * Source Healthy
+             * @constant
+             */
+            source_healthy: true;
+            /** Source Sha256 */
+            source_sha256: string;
+        };
+        /**
+         * BootstrapStabilityObservation
+         * @description Original physical reads of both retained executor owners during handover.
+         */
+        BootstrapStabilityObservation: {
+            /** Candidate Container Id */
+            candidate_container_id: string;
+            /**
+             * Candidate Healthy
+             * @constant
+             */
+            candidate_healthy: true;
+            /** Candidate Id */
+            candidate_id: string;
+            /** Candidate Image Id */
+            candidate_image_id: string;
+            /**
+             * Candidate Started At
+             * Format: date-time
+             */
+            candidate_started_at: string;
+            /**
+             * Exclusive Writer Verified
+             * @constant
+             */
+            exclusive_writer_verified: true;
+            /** Generation */
+            generation: number;
+            /** Incumbent Container Id */
+            incumbent_container_id: string;
+            /**
+             * Incumbent Healthy
+             * @constant
+             */
+            incumbent_healthy: true;
+            /** Incumbent Id */
+            incumbent_id: string;
+            /** Incumbent Image Id */
+            incumbent_image_id: string;
+            /** Kernel Boot Identity */
+            kernel_boot_identity: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
         };
         /** BranchArtifact */
         BranchArtifact: {
@@ -4766,6 +6186,11 @@ export interface components {
         };
         /** @enum {string} */
         ComparisonState: "queued" | "running" | "ready" | "failed" | "cancelled" | "identical" | "expired" | "withdrawn";
+        /** CompletionPromptTokensDetails */
+        CompletionPromptTokensDetails: {
+            /** Cached Tokens */
+            cached_tokens: number;
+        };
         /** ConsoleAlert */
         ConsoleAlert: {
             /** Detail */
@@ -4819,6 +6244,11 @@ export interface components {
              * @default false
              */
             training: boolean;
+            /**
+             * Upgrades
+             * @default false
+             */
+            upgrades: boolean;
         };
         /** ConsoleSnapshot */
         ConsoleSnapshot: {
@@ -4845,6 +6275,371 @@ export interface components {
             items: components["schemas"]["MessageFeedback"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /**
+         * CoreBootstrapHeartbeat
+         * @description Qualified physical Source and a held effect-free recovery owner.
+         */
+        CoreBootstrapHeartbeat: {
+            /**
+             * Exclusive Writer Verified
+             * @constant
+             */
+            exclusive_writer_verified: true;
+            /** Executor Id */
+            executor_id: string;
+            lease: components["schemas"]["DeploymentLease"];
+            ownership: components["schemas"]["DeploymentOwnership"];
+            physical: components["schemas"]["CoreBootstrapPhysicalObservation"];
+            seed: components["schemas"]["CoreBootstrapSeed"];
+        };
+        /**
+         * CoreBootstrapPhysicalObservation
+         * @description Read-only bootstrap proof; a separate held writer is required for readiness.
+         */
+        CoreBootstrapPhysicalObservation: {
+            /**
+             * Configuration Verified
+             * @constant
+             */
+            configuration_verified: true;
+            /** Executor Container Id */
+            executor_container_id: string;
+            /** Executor Image Id */
+            executor_image_id: string;
+            /** Executor Runtime Id */
+            executor_runtime_id: string;
+            /**
+             * Executor Started At
+             * Format: date-time
+             */
+            executor_started_at: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Seed Sha256 */
+            seed_sha256: string;
+            source: components["schemas"]["BootstrapSourceObservation"];
+        };
+        /**
+         * CoreBootstrapSeed
+         * @description Trusted administrative first-install data, with no application mutation authority.
+         */
+        CoreBootstrapSeed: {
+            /** Executor Container Id */
+            executor_container_id: string;
+            /** Executor Image Id */
+            executor_image_id: string;
+            executor_release?: components["schemas"]["UpgradeRelease"] | null;
+            /** Executor Runtime Id */
+            executor_runtime_id: string;
+            /** Generation */
+            generation: number;
+            /**
+             * Prepared At
+             * Format: date-time
+             */
+            prepared_at: string;
+            source: components["schemas"]["UpgradeRelease"];
+            /** Source Container Ids */
+            source_container_ids: {
+                [key: string]: string;
+            };
+        };
+        /** CoreHandoverCommitIntent */
+        CoreHandoverCommitIntent: {
+            /**
+             * Action
+             * @default select_candidate_executor
+             * @constant
+             */
+            action: "select_candidate_executor";
+            /** Candidate Seed Sha256 */
+            candidate_seed_sha256: string;
+            /**
+             * Decided At
+             * Format: date-time
+             */
+            decided_at: string;
+            /**
+             * Decision Id
+             * Format: uuid
+             */
+            decision_id: string;
+            /** Generation */
+            generation: number;
+            /**
+             * Handover Id
+             * Format: uuid
+             */
+            handover_id: string;
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+            /** Stability Sha256 */
+            stability_sha256: string;
+        };
+        /** CoreHandoverCommitRequest */
+        CoreHandoverCommitRequest: {
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+            stability: components["schemas"]["BootstrapStabilityObservation"];
+        };
+        /** CoreHandoverCommittedRequest */
+        CoreHandoverCommittedRequest: {
+            candidate: components["schemas"]["CoreBootstrapHeartbeat"];
+            incumbent: components["schemas"]["CoreHandoverIncumbentObservation"];
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+        };
+        /** CoreHandoverIncumbentObservation */
+        CoreHandoverIncumbentObservation: {
+            /** Incumbent Container Id */
+            incumbent_container_id: string;
+            /**
+             * Incumbent Healthy
+             * @constant
+             */
+            incumbent_healthy: true;
+            /** Incumbent Image Id */
+            incumbent_image_id: string;
+            /** Incumbent Runtime Id */
+            incumbent_runtime_id: string;
+            /**
+             * Incumbent Started At
+             * Format: date-time
+             */
+            incumbent_started_at: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+        };
+        /**
+         * CoreHandoverPreparation
+         * @description Fixed executor bootstrap preparation; carries no application upgrade authority.
+         */
+        CoreHandoverPreparation: {
+            /** Candidate Image Id */
+            candidate_image_id: string;
+            candidate_release: components["schemas"]["UpgradeRelease"];
+            /** Candidate Runtime Id */
+            candidate_runtime_id: string;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            /** Generation */
+            generation: number;
+            /**
+             * Idempotency Key
+             * Format: uuid
+             */
+            idempotency_key: string;
+            incumbent: components["schemas"]["CoreBootstrapSeed"];
+            /**
+             * Initiator User Id
+             * Format: uuid
+             */
+            initiator_user_id: string;
+            /**
+             * Prepared At
+             * Format: date-time
+             */
+            prepared_at: string;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+        };
+        /**
+         * CoreHandoverRecoveryIntent
+         * @description Independent Source recovery, bounded from first failure rather than a retry.
+         */
+        CoreHandoverRecoveryIntent: {
+            /**
+             * Action
+             * @default restore_incumbent
+             * @constant
+             */
+            action: "restore_incumbent";
+            /** Candidate Container Id */
+            candidate_container_id: string;
+            /** Candidate Seed Sha256 */
+            candidate_seed_sha256: string;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            /**
+             * Detected At
+             * Format: date-time
+             */
+            detected_at: string;
+            /** Generation */
+            generation: number;
+            /** Incumbent Container Id */
+            incumbent_container_id: string;
+            /**
+             * Outcome
+             * @default intent
+             * @enum {string}
+             */
+            outcome: "intent" | "dispatched" | "stopped";
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+            /** Stopped Observed At */
+            stopped_observed_at?: string | null;
+        };
+        /**
+         * CoreHandoverRecoveryRequest
+         * @description Serialize restoration against final SQL commit before any candidate stop.
+         */
+        CoreHandoverRecoveryRequest: {
+            recovery: components["schemas"]["CoreHandoverRecoveryIntent"];
+        };
+        /** CoreHandoverRestoreRequest */
+        CoreHandoverRestoreRequest: {
+            candidate: components["schemas"]["CoreHandoverStoppedObservation"];
+            incumbent: components["schemas"]["CoreBootstrapHeartbeat"];
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+        };
+        /**
+         * CoreHandoverStartRequest
+         * @description Admin chooses registered content; runtime/container paths remain server owned.
+         */
+        CoreHandoverStartRequest: {
+            /** Expected Incumbent Seed Sha256 */
+            expected_incumbent_seed_sha256: string;
+            /**
+             * Idempotency Key
+             * Format: uuid
+             */
+            idempotency_key: string;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+        };
+        /** CoreHandoverStoppedObservation */
+        CoreHandoverStoppedObservation: {
+            /** Candidate Container Id */
+            candidate_container_id: string;
+            /** Candidate Seed Sha256 */
+            candidate_seed_sha256: string;
+            /** Generation */
+            generation: number;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+            /**
+             * Running
+             * @default false
+             * @constant
+             */
+            running: false;
+        };
+        /** CoreHandoverSummary */
+        CoreHandoverSummary: {
+            /** Candidate Image Id */
+            candidate_image_id: string;
+            /**
+             * Candidate Release Id
+             * Format: uuid
+             */
+            candidate_release_id: string;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            /** Generation */
+            generation: number;
+            /**
+             * Handover Id
+             * Format: uuid
+             */
+            handover_id: string;
+            /** Incumbent Image Id */
+            incumbent_image_id: string;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "accepted" | "passive" | "verified" | "transfer_consumed" | "claimed" | "stable" | "committing" | "committed" | "restoring" | "restored" | "failed_unchanged";
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+            /**
+             * Prepared At
+             * Format: date-time
+             */
+            prepared_at: string;
+            /** Project */
+            project: string;
+        };
+        /** CoreHandoverTransferIntent */
+        CoreHandoverTransferIntent: {
+            /**
+             * Action
+             * @default writer_transfer
+             * @constant
+             */
+            action: "writer_transfer";
+            /** Candidate Seed Sha256 */
+            candidate_seed_sha256: string;
+            /**
+             * Consumed At
+             * Format: date-time
+             */
+            consumed_at: string;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            /** Generation */
+            generation: number;
+            /**
+             * Handover Id
+             * Format: uuid
+             */
+            handover_id: string;
+            /**
+             * Intent Id
+             * Format: uuid
+             */
+            intent_id: string;
+            /** Passive Proof Sha256 */
+            passive_proof_sha256: string;
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+        };
+        /** CoreHandoverTransferRequest */
+        CoreHandoverTransferRequest: {
+            /** Passive Proof Sha256 */
+            passive_proof_sha256: string;
+            /** Preparation Sha256 */
+            preparation_sha256: string;
+        };
+        /** CoreHandoverUnchangedRequest */
+        CoreHandoverUnchangedRequest: {
+            incumbent: components["schemas"]["CoreBootstrapHeartbeat"];
+            /** Preparation Sha256 */
+            preparation_sha256: string;
         };
         /**
          * CoreHostCapacity
@@ -4879,6 +6674,24 @@ export interface components {
              * @constant
              */
             source: "core-control-plane-runtime";
+        };
+        /** CoreUpgradeInventory */
+        CoreUpgradeInventory: {
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Owners */
+            owners: components["schemas"]["UpgradeOwnerInventory"][];
+            /** Project */
+            project: string;
+            /** Release Sha256 */
+            release_sha256: string;
         };
         /** CursorPage[ActivityItem] */
         CursorPage_ActivityItem_: {
@@ -5169,6 +6982,77 @@ export interface components {
              * @constant
              */
             split: "validation";
+        };
+        /** DeploymentLease */
+        DeploymentLease: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Kernel Boot Identity */
+            kernel_boot_identity: string;
+            /**
+             * Kernel Platform
+             * @enum {string}
+             */
+            kernel_platform: "darwin" | "linux";
+            /** Owner Identity */
+            owner_identity: string;
+            /** Project */
+            project: string;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+        };
+        /** DeploymentOwnership */
+        DeploymentOwnership: {
+            /** Boot Identity */
+            boot_identity: string;
+            /** Committed Sha256 */
+            committed_sha256?: string | null;
+            /** Executor Container Id */
+            executor_container_id?: string | null;
+            /** Executor Runtime Id */
+            executor_runtime_id?: string | null;
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id?: string | null;
+            /** Operation Generation */
+            operation_generation?: number | null;
+            /** Owner Identity */
+            owner_identity: string;
+            /**
+             * Owner Kind
+             * @enum {string}
+             */
+            owner_kind: "host" | "executor";
+            /** Project */
+            project: string;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /** Source Sha256 */
+            source_sha256?: string | null;
+            /**
+             * Stage
+             * @default mutating
+             * @enum {string}
+             */
+            stage: "preparing" | "mutating" | "selected";
+            /**
+             * State
+             * @default active
+             * @enum {string}
+             */
+            state: "active" | "committed";
         };
         Digest: string;
         /** DpoOptions */
@@ -5735,8 +7619,11 @@ export interface components {
             capability_sha256: components["schemas"]["Digest"];
             /** Engine Version */
             engine_version: string;
+            /** Harness Image */
+            harness_image?: string | null;
             /** Harness Version */
             harness_version: string;
+            native_runtime_sha256?: components["schemas"]["Digest"] | null;
             runtime_sha256: components["schemas"]["Digest"];
             template_sha256: components["schemas"]["Digest"];
             tokenizer_sha256: components["schemas"]["Digest"];
@@ -6272,6 +8159,8 @@ export interface components {
             diagnostics?: string[];
             /** Engine Version */
             engine_version: string;
+            /** Harness Image */
+            harness_image?: string | null;
             /** Harness Version */
             harness_version: string;
             /**
@@ -6286,6 +8175,8 @@ export interface components {
              * Format: date-time
              */
             run_at: string;
+            /** Runtime Sha256 */
+            runtime_sha256?: string | null;
             scores: components["schemas"]["CategoryScores"];
             target?: components["schemas"]["InferenceTarget"] | null;
             /**
@@ -6304,8 +8195,12 @@ export interface components {
             diagnostics?: string[];
             /** Engine Version */
             engine_version: string;
+            /** Harness Image */
+            harness_image?: string | null;
             /** Harness Version */
             harness_version: string;
+            /** Runtime Sha256 */
+            runtime_sha256?: string | null;
             scores: components["schemas"]["CategoryScores"];
             target?: components["schemas"]["InferenceTarget"] | null;
             /**
@@ -7442,6 +9337,7 @@ export interface components {
              */
             target_type: "instance";
         };
+        JsonValue: unknown;
         /** JudgePairwiseOutput */
         JudgePairwiseOutput: {
             /**
@@ -7509,6 +9405,24 @@ export interface components {
             outcome: components["schemas"]["ProbeOutcome"];
             /** Reason */
             reason?: string | null;
+            /** Runtime Sha256 A */
+            runtime_sha256_a?: string | null;
+            /** Runtime Sha256 B */
+            runtime_sha256_b?: string | null;
+            transport: components["schemas"]["ProbeTransport"];
+        };
+        /**
+         * LinkProbeCommand
+         * @description Control-plane-authored probe command; inventory paths remain node configuration.
+         */
+        LinkProbeCommand: {
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /** Hostfile Sha256 */
+            hostfile_sha256: string;
             transport: components["schemas"]["ProbeTransport"];
         };
         /** LinkProbeRequest */
@@ -7982,6 +9896,227 @@ export interface components {
              */
             top_p: number;
         };
+        /** NativeGuardStatus */
+        NativeGuardStatus: {
+            bootstrap_runtime: components["schemas"]["PreparedNativeRuntime"];
+            /**
+             * Node
+             * @enum {string}
+             */
+            node: "coire-edge-a" | "coire-edge-b";
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /**
+             * Ready
+             * @default false
+             */
+            ready: boolean;
+            selected: components["schemas"]["NativeRuntimeSelection"];
+        };
+        /** NativeNodeProcess */
+        NativeNodeProcess: {
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            selected: components["schemas"]["NativeRuntimeSelection"];
+        };
+        /** NativeRecoveryFailureReplay */
+        NativeRecoveryFailureReplay: {
+            batch: components["schemas"]["UpgradeReceiptBatch"];
+            native: components["schemas"]["NativeRecoveryIntent"];
+        };
+        /** NativeRecoveryIntent */
+        NativeRecoveryIntent: {
+            /** Activation Grant Id */
+            activation_grant_id?: string | null;
+            /** Activation Started At */
+            activation_started_at?: string | null;
+            candidate: components["schemas"]["PreparedNativeRuntime"];
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Phase
+             * @default prepared
+             * @enum {string}
+             */
+            phase: "prepared" | "activation_intent" | "candidate_selected" | "restoring" | "source_selected" | "unchanged_verified" | "candidate_verified" | "source_verified" | "committed" | "recovery_required";
+            /** Plan Sha256 */
+            plan_sha256: string;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /** Readiness Deadline At */
+            readiness_deadline_at?: string | null;
+            /** Recovery Deadline At */
+            recovery_deadline_at?: string | null;
+            /** Recovery Started At */
+            recovery_started_at?: string | null;
+            source: components["schemas"]["NativeRuntimeSelection"];
+            source_process: components["schemas"]["NodeAgentProcessIdentity"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * NativeRuntimeSelection
+         * @description Independent source selection survives candidate failure and checkout removal.
+         */
+        NativeRuntimeSelection: {
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id?: string | null;
+            /**
+             * Node
+             * @enum {string}
+             */
+            node: "coire-edge-a" | "coire-edge-b";
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /** Release Sha256 */
+            release_sha256: string;
+            runtime: components["schemas"]["PreparedNativeRuntime"];
+            /**
+             * Selected At
+             * Format: date-time
+             */
+            selected_at: string;
+        };
+        /**
+         * NativeSmokeAttempt
+         * @description Owned child intent survives a lost response or independent guard restart.
+         */
+        NativeSmokeAttempt: {
+            /**
+             * Cleanup Verified
+             * @default false
+             */
+            cleanup_verified: boolean;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            evidence?: components["schemas"]["UpgradeEvidence"] | null;
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /** Plan Sha256 */
+            plan_sha256: string;
+            process?: components["schemas"]["NodeAgentProcessIdentity"] | null;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /** Runtime Sha256 */
+            runtime_sha256: string;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "candidate-smoke" | "candidate-serving" | "source-serving";
+            /**
+             * State
+             * @default intent
+             * @enum {string}
+             */
+            state: "intent" | "running" | "complete" | "failed" | "uncertain";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * NativeSmokeCommand
+         * @description Bounded private child input; all local paths resolve from configured roots.
+         */
+        NativeSmokeCommand: {
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            plan: components["schemas"]["UpgradeExecutionPlan"];
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /** Runtime Sha256 */
+            runtime_sha256: string;
+            /**
+             * Stage
+             * @default candidate-smoke
+             * @enum {string}
+             */
+            stage: "candidate-smoke" | "candidate-serving" | "source-serving";
+        };
+        /** NativeUpgradeClaim */
+        NativeUpgradeClaim: {
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Node
+             * @enum {string}
+             */
+            node: "coire-edge-a" | "coire-edge-b";
+            /** Plan Sha256 */
+            plan_sha256: string;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /**
+             * State
+             * @default active
+             * @enum {string}
+             */
+            state: "active" | "released";
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /**
          * Node
          * @description A declared Studio, as persisted and returned by the registration endpoint.
@@ -8023,6 +10158,15 @@ export interface components {
             registered_at: string;
             role: components["schemas"]["NodeRole"];
         };
+        /** NodeAgentProcessIdentity */
+        NodeAgentProcessIdentity: {
+            /** Create Time S */
+            create_time_s: number;
+            /** Environment Sha256 */
+            environment_sha256: string;
+            /** Pid */
+            pid: number;
+        };
         /** NodeDeclaration */
         NodeDeclaration: {
             /** Control Host */
@@ -8053,6 +10197,28 @@ export interface components {
             control_host: string;
             /** Data Host */
             data_host?: string | null;
+        };
+        /** NodeMaintenanceAck */
+        NodeMaintenanceAck: {
+            /**
+             * Applied At
+             * Format: date-time
+             */
+            applied_at: string;
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Node
+             * @enum {string}
+             */
+            node: "coire-edge-a" | "coire-edge-b";
+            /**
+             * Released
+             * @default false
+             */
+            released: boolean;
         };
         /**
          * NodeRegistration
@@ -8144,6 +10310,125 @@ export interface components {
              * Format: date-time
              */
             sampled_at: string;
+            /** Unfinished Jobs */
+            unfinished_jobs?: components["schemas"]["TrainingId"][] | null;
+        };
+        /**
+         * NodeUpgradeCollectiveCleanup
+         * @description Cleanup-only authority: retains the original scope and grants no new probe.
+         */
+        NodeUpgradeCollectiveCleanup: {
+            /**
+             * Cleanup Only
+             * @default true
+             * @constant
+             */
+            cleanup_only: true;
+            scope: components["schemas"]["NodeUpgradeCollectiveScope"];
+        };
+        /**
+         * NodeUpgradeCollectiveRead
+         * @description Bound collective observation requested by the changed Studio's guard.
+         */
+        NodeUpgradeCollectiveRead: {
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            /** Generation */
+            generation: number;
+            /** Plan Sha256 */
+            plan_sha256: string;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /** Runtime Sha256 */
+            runtime_sha256: string;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "candidate" | "source";
+        };
+        /** NodeUpgradeCollectiveResult */
+        NodeUpgradeCollectiveResult: {
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /** Observations */
+            observations: components["schemas"]["LinkObservation"][];
+            /** Plan Sha256 */
+            plan_sha256: string;
+            /**
+             * Stage
+             * @enum {string}
+             */
+            stage: "candidate" | "source";
+        };
+        /**
+         * NodeUpgradeCollectiveScope
+         * @description Core-authored fixed rank-zero collective within accepted paired maintenance.
+         */
+        NodeUpgradeCollectiveScope: {
+            /**
+             * Command Id
+             * Format: uuid
+             */
+            command_id: string;
+            /**
+             * Index
+             * @enum {integer}
+             */
+            index: 0 | 1 | 2;
+            plan: components["schemas"]["UpgradeExecutionPlan"];
+            request: components["schemas"]["NodeUpgradeCollectiveRead"];
+        };
+        /** NodeUpgradeInventory */
+        NodeUpgradeInventory: {
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Node
+             * @enum {string}
+             */
+            node: "coire-edge-a" | "coire-edge-b";
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Owners */
+            owners: components["schemas"]["UpgradeOwnerInventory"][];
+            /** Runtime Sha256 */
+            runtime_sha256: string;
+        };
+        /**
+         * NodeUpgradePeerRead
+         * @description A changed Studio can observe only the peer fenced by its accepted operation.
+         */
+        NodeUpgradePeerRead: {
+            /** Generation */
+            generation: number;
+            /** Plan Sha256 */
+            plan_sha256: string;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
         };
         /**
          * NodeV2
@@ -9040,6 +11325,20 @@ export interface components {
             metric: components["schemas"]["PreferenceMetricSample"];
         };
         /**
+         * PreparedNativeRuntime
+         * @description Private preparation receipt lives outside the sealed runtime graph.
+         */
+        PreparedNativeRuntime: {
+            /** Environment Id */
+            environment_id: string;
+            /** Environment Sha256 */
+            environment_sha256: string;
+            /** Interpreter Id */
+            interpreter_id: string;
+            /** Interpreter Sha256 */
+            interpreter_sha256: string;
+        };
+        /**
          * ProbeOutcome
          * @enum {string}
          */
@@ -9653,6 +11952,8 @@ export interface components {
              * @constant
              */
             object: "text_completion";
+            /** System Fingerprint */
+            system_fingerprint?: string | null;
             usage?: components["schemas"]["TextCompletionUsage"] | null;
         };
         /** TextCompletionUsage */
@@ -9661,6 +11962,7 @@ export interface components {
             completion_tokens: number;
             /** Prompt Tokens */
             prompt_tokens: number;
+            prompt_tokens_details?: components["schemas"]["CompletionPromptTokensDetails"] | null;
             /** Total Tokens */
             total_tokens: number;
         };
@@ -10558,6 +12860,2526 @@ export interface components {
             reasons?: components["schemas"]["TrainingReason"][];
             resolved?: components["schemas"]["ResolvedTrainingSpecDocument"] | null;
             spec: components["schemas"]["TrainingSpecDocument"];
+        };
+        /**
+         * UpgradeAction
+         * @enum {string}
+         */
+        UpgradeAction: "upgrade" | "rollback" | "bootstrap_handover";
+        /** UpgradeActivationConsume */
+        UpgradeActivationConsume: {
+            grant: components["schemas"]["UpgradeActivationGrant"];
+            intent: components["schemas"]["UpgradeReceipt"];
+        };
+        /** UpgradeActivationGrant */
+        UpgradeActivationGrant: {
+            /**
+             * Boundary
+             * @enum {string}
+             */
+            boundary: "migration" | "runtime";
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Generation */
+            generation: number;
+            /**
+             * Grant Id
+             * Format: uuid
+             */
+            grant_id: string;
+            /** Job Id */
+            job_id: string;
+        };
+        /** UpgradeActivationRequest */
+        UpgradeActivationRequest: {
+            /**
+             * Boundary
+             * @default runtime
+             * @enum {string}
+             */
+            boundary: "migration" | "runtime";
+            /** Generation */
+            generation: number;
+            /** Source Sha256 */
+            source_sha256: string;
+        };
+        /** UpgradeAdmissionStatus */
+        UpgradeAdmissionStatus: {
+            /** Allowed */
+            allowed: boolean;
+        };
+        /** UpgradeCancelRequest */
+        UpgradeCancelRequest: {
+            /**
+             * Reason
+             * @default administrator_cancelled
+             */
+            reason: string;
+        };
+        /** UpgradeClaimIdle */
+        UpgradeClaimIdle: {
+            /**
+             * Idle
+             * @default true
+             * @constant
+             */
+            idle: true;
+        };
+        /** UpgradeClaimRequest */
+        UpgradeClaimRequest: {
+            /** Executor Id */
+            executor_id: string;
+            /** Observed Source Sha256 */
+            observed_source_sha256: string;
+            /** Project */
+            project: string;
+        };
+        /**
+         * UpgradeColdClosureSupervision
+         * @description Exact retained supervision evidence without repeating the full handback.
+         */
+        UpgradeColdClosureSupervision: {
+            /** Definition Sha256 */
+            definition_sha256?: string | null;
+            /** Handback Sha256 */
+            handback_sha256: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "fixture" | "launchd";
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+            /**
+             * Protocol
+             * @default cold-closure-supervision-v1
+             * @constant
+             */
+            protocol: "cold-closure-supervision-v1";
+            /** Receipt Sha256 */
+            receipt_sha256: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
+        /**
+         * UpgradeColdContinuationBinding
+         * @description Metadata only; an installed producer must independently acquire exclusion.
+         *
+         *     Prior owner/source payloads stay in their original journals. Fixed digests and
+         *     native preimages avoid recursively embedding the entire predecessor chain.
+         */
+        UpgradeColdContinuationBinding: {
+            /** Core Data Baseline Sha256 */
+            core_data_baseline_sha256: string;
+            /** Native Data Baseline Sha256 */
+            native_data_baseline_sha256: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            original_claim: components["schemas"]["NativeUpgradeClaim"];
+            /**
+             * Original Maintenance Retained
+             * @default true
+             * @constant
+             */
+            original_maintenance_retained: true;
+            original_native: components["schemas"]["NativeRecoveryIntent"];
+            post_handback?: components["schemas"]["UpgradeColdPostHandbackBinding"] | null;
+            /** Previous Archive Sha256 */
+            previous_archive_sha256?: string | null;
+            /**
+             * Previous Deadline At
+             * Format: date-time
+             */
+            previous_deadline_at: string;
+            previous_guard: components["schemas"]["NativeGuardStatus"];
+            /** Previous History Sha256 */
+            previous_history_sha256?: string | null;
+            /** Previous Intent Sha256 */
+            previous_intent_sha256: string;
+            /** Previous Kernel Boot Identity */
+            previous_kernel_boot_identity: string;
+            previous_local_recovery_maintenance?: components["schemas"]["UpgradeMaintenance"] | null;
+            /**
+             * Previous Owner Retired
+             * @default true
+             * @constant
+             */
+            previous_owner_retired: true;
+            /** Previous Owner Sha256 */
+            previous_owner_sha256: string;
+            /** Previous Pair Qualification Sha256 */
+            previous_pair_qualification_sha256?: string | null;
+            /** Previous Pair Result Sha256S */
+            previous_pair_result_sha256s?: string[] | null;
+            /** Previous Recovery Id */
+            previous_recovery_id: string;
+            /** Previous Smoke Sha256 */
+            previous_smoke_sha256?: string | null;
+            /** Previous Source Sha256 */
+            previous_source_sha256: string;
+            /** Previous Verification Request Sha256 */
+            previous_verification_request_sha256?: string | null;
+            projected_native: components["schemas"]["NativeRecoveryIntent"];
+            /**
+             * Protocol
+             * @default cold-source-continuation-v1
+             * @constant
+             */
+            protocol: "cold-source-continuation-v1";
+            retained_node: components["schemas"]["NativeNodeProcess"];
+            /** Retired Supervisor Sha256 */
+            retired_supervisor_sha256: string;
+            /** Untransferred Archive Custodian */
+            untransferred_archive_custodian?: string | null;
+            /** Untransferred Archive Sha256 */
+            untransferred_archive_sha256?: string | null;
+            /** Untransferred History Sha256 */
+            untransferred_history_sha256?: string | null;
+        };
+        /** UpgradeColdContinuationBindingRead */
+        UpgradeColdContinuationBindingRead: {
+            /** Intent Sha256 */
+            intent_sha256: string;
+        };
+        /** UpgradeColdContinuationBindingState */
+        UpgradeColdContinuationBindingState: {
+            grant?: components["schemas"]["UpgradeColdContinuationGrant"] | null;
+            /** Intent Sha256 */
+            intent_sha256: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+        };
+        /** UpgradeColdContinuationContext */
+        UpgradeColdContinuationContext: {
+            current_data: components["schemas"]["UpgradeExpiredRecoveryDataSnapshot"];
+            data_baseline: components["schemas"]["UpgradeExpiredRecoveryDataSnapshot"];
+            intent: components["schemas"]["UpgradeExpiredRecoveryIntent"];
+            native_baseline: components["schemas"]["UpgradeExpiredRecoveryNativeDataSnapshot"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            owner: components["schemas"]["UpgradeExpiredRecoveryColdClaim"];
+            previous_handback?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackReceipt"] | null;
+            previous_handback_intent?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackIntent"] | null;
+            previous_smoke_command?: components["schemas"]["UpgradeExpiredRecoveryColdSmokeCommand"] | null;
+            unstarted_grant?: components["schemas"]["UpgradeColdContinuationGrant"] | null;
+            unstarted_intent?: components["schemas"]["UpgradeExpiredRecoveryIntent"] | null;
+        };
+        /** UpgradeColdContinuationGrant */
+        UpgradeColdContinuationGrant: {
+            binding: components["schemas"]["UpgradeColdContinuationBinding"];
+            /** Grant Id */
+            grant_id: string;
+            intent: components["schemas"]["UpgradeExpiredRecoveryIntent"];
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Issued By
+             * Format: uuid
+             */
+            issued_by: string;
+            /**
+             * Protocol
+             * @default cold-source-continuation-v1
+             * @constant
+             */
+            protocol: "cold-source-continuation-v1";
+            /** Request Sha256 */
+            request_sha256: string;
+            unstarted_startup?: components["schemas"]["UpgradeExpiredRecoverySupportProcess"] | null;
+        };
+        /** UpgradeColdContinuationObservation */
+        UpgradeColdContinuationObservation: {
+            binding: components["schemas"]["UpgradeColdContinuationBinding"];
+            /** Interrupted Scope Sha256S */
+            interrupted_scope_sha256s: string[];
+            local: components["schemas"]["NodeUpgradeInventory"] | null;
+            native_baseline: components["schemas"]["UpgradeExpiredRecoveryNativeDataSnapshot"];
+            native_data: components["schemas"]["UpgradeExpiredRecoveryNativeDataSnapshot"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            observer: components["schemas"]["NodeAgentProcessIdentity"];
+            observer_release: components["schemas"]["UpgradeRelease"];
+            observer_runtime: components["schemas"]["PreparedNativeRuntime"];
+            peer: components["schemas"]["NodeUpgradeInventory"];
+            previous_archive?: components["schemas"]["UpgradeExpiredRecoveryColdCollectiveArchiveReceipt"] | null;
+            previous_owner: components["schemas"]["UpgradeExpiredRecoveryColdClaim"];
+            /** Previous Pair Results */
+            previous_pair_results?: components["schemas"]["UpgradeExpiredRecoveryColdPairResult"][] | null;
+            previous_smoke?: components["schemas"]["UpgradeExpiredRecoveryColdSmokeReceipt"] | null;
+            previous_source: components["schemas"]["UpgradeExpiredRecoveryColdSourceProcess"];
+            previous_unreceipted_helper?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackHelper"] | null;
+            /** Scopes */
+            scopes: components["schemas"]["NodeUpgradeCollectiveScope"][];
+            unstarted_custody_grant?: components["schemas"]["UpgradeColdContinuationGrant"] | null;
+            unstarted_keeper_retirement?: components["schemas"]["UpgradeColdSourceKeeperRetirement"] | null;
+            unstarted_startup?: components["schemas"]["UpgradeExpiredRecoverySupportProcess"] | null;
+        };
+        /** UpgradeColdContinuationRead */
+        UpgradeColdContinuationRead: {
+            /** Previous Intent Sha256 */
+            previous_intent_sha256: string;
+            /** Previous Owner Sha256 */
+            previous_owner_sha256: string;
+        };
+        /** UpgradeColdContinuationRequest */
+        UpgradeColdContinuationRequest: {
+            /** Observation Sha256 */
+            observation_sha256: string;
+            /** Previous Intent Sha256 */
+            previous_intent_sha256: string;
+            /** Previous Owner Sha256 */
+            previous_owner_sha256: string;
+            /** Previous Recovery Id */
+            previous_recovery_id: string;
+            request: components["schemas"]["UpgradeExpiredRecoveryRequest"];
+        };
+        /** UpgradeColdContinuationSchemaObservation */
+        UpgradeColdContinuationSchemaObservation: {
+            /** Continuation State Ready */
+            continuation_state_ready: boolean;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /** Previous Intent Sha256 */
+            previous_intent_sha256: string;
+            /** Previous Owner Sha256 */
+            previous_owner_sha256: string;
+            /** Previous Recovery Id */
+            previous_recovery_id: string;
+            /**
+             * Schema Head
+             * @default 0034_upgrades
+             * @constant
+             */
+            schema_head: "0034_upgrades";
+            /** Schema Sha256 */
+            schema_sha256: string;
+        };
+        /** UpgradeColdContinuationSchemaReceipt */
+        UpgradeColdContinuationSchemaReceipt: {
+            /** After Schema Sha256 */
+            after_schema_sha256: string;
+            /** Before Schema Sha256 */
+            before_schema_sha256: string;
+            /**
+             * Continuation State Ready
+             * @default true
+             * @constant
+             */
+            continuation_state_ready: true;
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /**
+             * Prepared At
+             * Format: date-time
+             */
+            prepared_at: string;
+            /**
+             * Prepared By
+             * Format: uuid
+             */
+            prepared_by: string;
+            /** Previous Intent Sha256 */
+            previous_intent_sha256: string;
+            /** Previous Owner Sha256 */
+            previous_owner_sha256: string;
+            /** Previous Recovery Id */
+            previous_recovery_id: string;
+            /** Request Sha256 */
+            request_sha256: string;
+        };
+        /** UpgradeColdContinuationSchemaRequest */
+        UpgradeColdContinuationSchemaRequest: {
+            /** Expected Schema Sha256 */
+            expected_schema_sha256: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Previous Intent Sha256 */
+            previous_intent_sha256: string;
+            /** Previous Owner Sha256 */
+            previous_owner_sha256: string;
+            /** Previous Recovery Id */
+            previous_recovery_id: string;
+        };
+        /**
+         * UpgradeColdPostHandbackBinding
+         * @description Recorded released preimages and positively identified idle Source writer.
+         */
+        UpgradeColdPostHandbackBinding: {
+            /** Closure Intent Sha256 */
+            closure_intent_sha256?: string | null;
+            /** Handback Sha256 */
+            handback_sha256: string;
+            /** Helper Sha256 */
+            helper_sha256?: string | null;
+            /** Keeper Custodian Recovery Id */
+            keeper_custodian_recovery_id?: string | null;
+            /** Keeper Retirement Sha256 */
+            keeper_retirement_sha256?: string | null;
+            released_claim: components["schemas"]["NativeUpgradeClaim"];
+            released_maintenance: components["schemas"]["UpgradeMaintenance"];
+            retired_supervisor?: components["schemas"]["NodeAgentProcessIdentity"] | null;
+            source_helper: components["schemas"]["NativeGuardStatus"];
+            /**
+             * Stage
+             * @default completed
+             * @enum {string}
+             */
+            stage: "completed" | "ready_unreceipted" | "keeper_retired";
+            /** Supervision Sha256 */
+            supervision_sha256?: string | null;
+        };
+        /**
+         * UpgradeColdSourceKeeperRetirement
+         * @description Fixed guard-only transfer step under a separately accepted late continuation.
+         */
+        UpgradeColdSourceKeeperRetirement: {
+            actor: components["schemas"]["NodeAgentProcessIdentity"];
+            grant: components["schemas"]["UpgradeColdContinuationGrant"];
+            /**
+             * Protocol
+             * @default cold-source-keeper-retirement-v1
+             * @constant
+             */
+            protocol: "cold-source-keeper-retirement-v1";
+            /** Retired At */
+            retired_at?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
+        /** UpgradeCompatibility */
+        UpgradeCompatibility: {
+            /**
+             * Bootstrap Protocol
+             * @default 1
+             * @constant
+             */
+            bootstrap_protocol: 1;
+            /** Evidence Sha256 */
+            evidence_sha256?: string | null;
+            /**
+             * Native Journal Versions
+             * @default [
+             *       3
+             *     ]
+             */
+            native_journal_versions: number[];
+            /**
+             * Privacy Semantics
+             * @default 1
+             * @constant
+             */
+            privacy_semantics: 1;
+            /** Readable Schema Heads */
+            readable_schema_heads: string[];
+            /** Source Sha256S */
+            source_sha256s: string[];
+        };
+        /** UpgradeEvent */
+        UpgradeEvent: {
+            /** Effect Id */
+            effect_id: string;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /** Observed Sha256 */
+            observed_sha256?: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "intent" | "complete" | "failed" | "unknown";
+            phase: components["schemas"]["UpgradePhase"];
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Restoration
+             * @default not_required
+             * @enum {string}
+             */
+            restoration: "not_required" | "pending" | "verified" | "failed";
+            /** Sequence */
+            sequence: number;
+        };
+        /** UpgradeEventPage */
+        UpgradeEventPage: {
+            /** Cursor */
+            cursor: number;
+            /** Events */
+            events: components["schemas"]["UpgradeEvent"][];
+            operation: components["schemas"]["UpgradeOperation"];
+            /**
+             * Reset
+             * @default false
+             */
+            reset: boolean;
+        };
+        /**
+         * UpgradeEvidence
+         * @description Diagnostic evidence carries verified identities and outcomes, never raw logs/input.
+         */
+        UpgradeEvidence: {
+            /** Artifacts Verified */
+            artifacts_verified?: boolean | null;
+            /** Backup Validation Sha256 */
+            backup_validation_sha256?: string | null;
+            /** Check */
+            check?: ("node" | "gateway" | "collective" | "source") | null;
+            /** Cleanup Verified */
+            cleanup_verified?: boolean | null;
+            /** Collective Verified */
+            collective_verified?: boolean | null;
+            /** Configuration Verified */
+            configuration_verified?: boolean | null;
+            /** Container Id */
+            container_id?: string | null;
+            /** Elapsed S */
+            elapsed_s?: number | null;
+            /** Generated Tokens */
+            generated_tokens?: number | null;
+            /** Migration Exit Code */
+            migration_exit_code?: number | null;
+            /** Migration Not Started Sha256 */
+            migration_not_started_sha256?: string | null;
+            /** Model Id */
+            model_id?: string | null;
+            /** Model Manifest Sha256 */
+            model_manifest_sha256?: string | null;
+            /** Model Variant Id */
+            model_variant_id?: string | null;
+            /** Output Sha256 */
+            output_sha256?: string | null;
+            /** Peer Runtime Sha256 */
+            peer_runtime_sha256?: string | null;
+            /** Process Created At */
+            process_created_at?: number | null;
+            /** Process Id */
+            process_id?: number | null;
+            /** Release Sha256 */
+            release_sha256?: string | null;
+            /** Runtime Sha256 */
+            runtime_sha256?: string | null;
+            /** Schema After Sha256 */
+            schema_after_sha256?: string | null;
+            /** Schema Before Sha256 */
+            schema_before_sha256?: string | null;
+            /** Schema Head */
+            schema_head?: string | null;
+            /** Service Image Ids */
+            service_image_ids?: {
+                [key: string]: string;
+            };
+            /** Source Verified */
+            source_verified?: boolean | null;
+        };
+        /** UpgradeExecutionPlan */
+        UpgradeExecutionPlan: {
+            /**
+             * Authorization Expires At
+             * Format: date-time
+             */
+            authorization_expires_at: string;
+            backup?: components["schemas"]["BackupEvidence"] | null;
+            /** Initial Schema Head */
+            initial_schema_head?: string | null;
+            /** Initial Schema Sha256 */
+            initial_schema_sha256?: string | null;
+            maintenance: components["schemas"]["UpgradeMaintenance"];
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Model Manifest Sha256 */
+            model_manifest_sha256: string;
+            /** Model Slug */
+            model_slug: string;
+            /**
+             * Model Variant Id
+             * Format: uuid
+             */
+            model_variant_id: string;
+            operation: components["schemas"]["UpgradeOperation"];
+            /** Peer Runtime Sha256 */
+            peer_runtime_sha256?: string | null;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /** Schema Head After */
+            schema_head_after?: string | null;
+            source: components["schemas"]["UpgradeRelease"];
+            target: components["schemas"]["UpgradeRelease"];
+        };
+        /**
+         * UpgradeExpiredRecoveryCancelRequest
+         * @description Cancel exact separate authority; never release original obligations.
+         */
+        UpgradeExpiredRecoveryCancelRequest: {
+            /** Intent Sha256 */
+            intent_sha256: string;
+        };
+        /** UpgradeExpiredRecoveryCancellation */
+        UpgradeExpiredRecoveryCancellation: {
+            /**
+             * Cancelled At
+             * Format: date-time
+             */
+            cancelled_at: string;
+            /**
+             * Cancelled By
+             * Format: uuid
+             */
+            cancelled_by: string;
+            /** Intent Sha256 */
+            intent_sha256: string;
+            /**
+             * Maintenance Retained
+             * @default true
+             * @constant
+             */
+            maintenance_retained: true;
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /**
+             * Phase
+             * @default recovery_required
+             * @constant
+             */
+            phase: "recovery_required";
+            /** Recovery Id */
+            recovery_id: string;
+        };
+        /** UpgradeExpiredRecoveryColdCheck */
+        UpgradeExpiredRecoveryColdCheck: {
+            /** Claim Sha256 */
+            claim_sha256: string;
+            consumer: components["schemas"]["NodeAgentProcessIdentity"];
+        };
+        /**
+         * UpgradeExpiredRecoveryColdClaim
+         * @description Separate physical owner evidence; native producer must hold both locks.
+         */
+        UpgradeExpiredRecoveryColdClaim: {
+            /**
+             * Claimed At
+             * Format: date-time
+             */
+            claimed_at: string;
+            continuation?: components["schemas"]["UpgradeColdContinuationBinding"] | null;
+            intent: components["schemas"]["UpgradeExpiredRecoveryIntent"];
+            /** Kernel Boot Identity */
+            kernel_boot_identity: string;
+            last_node: components["schemas"]["NativeNodeProcess"];
+            /** Managed Definition Sha256 */
+            managed_definition_sha256?: string | null;
+            original_claim: components["schemas"]["NativeUpgradeClaim"];
+            original_native: components["schemas"]["NativeRecoveryIntent"];
+            previous_guard: components["schemas"]["NativeGuardStatus"];
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+            retired_supervisor?: components["schemas"]["UpgradeRecoveryRetiredSupervisor"] | null;
+            runtime: components["schemas"]["PreparedNativeRuntime"];
+            /**
+             * Supervision
+             * @enum {string}
+             */
+            supervision: "launchd" | "fixture";
+        };
+        /**
+         * UpgradeExpiredRecoveryColdClosure
+         * @description Trusted native closure after Source handback; never an effect grant.
+         */
+        UpgradeExpiredRecoveryColdClosure: {
+            handback: components["schemas"]["UpgradeExpiredRecoveryColdHandbackReceipt"];
+            local_observation?: components["schemas"]["UpgradeRecoveryLocalFenceObservation"] | null;
+            local_release: components["schemas"]["NodeMaintenanceAck"];
+            node: components["schemas"]["NativeNodeProcess"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            status: components["schemas"]["NativeGuardStatus"];
+            /** Supervision */
+            supervision: components["schemas"]["UpgradeExpiredRecoveryColdSupervisionReceipt"] | components["schemas"]["UpgradeColdClosureSupervision"];
+        };
+        /**
+         * UpgradeExpiredRecoveryColdCollectiveArchive
+         * @description Fresh cleanup and immutable history retained before legacy inventory projection.
+         */
+        UpgradeExpiredRecoveryColdCollectiveArchive: {
+            /** History Sha256 */
+            history_sha256: string;
+            /** Interrupted Scope Sha256S */
+            interrupted_scope_sha256s: string[];
+            local: components["schemas"]["NodeUpgradeInventory"];
+            peer: components["schemas"]["NodeUpgradeInventory"];
+            /**
+             * Prepared At
+             * Format: date-time
+             */
+            prepared_at: string;
+            /** Previous Archive Sha256 */
+            previous_archive_sha256?: string | null;
+            /** Scopes */
+            scopes: components["schemas"]["NodeUpgradeCollectiveScope"][];
+            source: components["schemas"]["UpgradeExpiredRecoveryColdSourceProcess"];
+        };
+        /** UpgradeExpiredRecoveryColdCollectiveArchiveReceipt */
+        UpgradeExpiredRecoveryColdCollectiveArchiveReceipt: {
+            archive: components["schemas"]["UpgradeExpiredRecoveryColdCollectiveArchive"];
+            /**
+             * Archived At
+             * Format: date-time
+             */
+            archived_at: string;
+            /** Initial Archive Sha256 */
+            initial_archive_sha256: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryColdHandbackHelper
+         * @description Exact fixed Source guard process; no ordinary work or Core resolution grant.
+         */
+        UpgradeExpiredRecoveryColdHandbackHelper: {
+            handback: components["schemas"]["UpgradeExpiredRecoveryColdHandbackIntent"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+        };
+        /**
+         * UpgradeExpiredRecoveryColdHandbackIntent
+         * @description Fixed Source owner handback; original history is retained in full preimages.
+         */
+        UpgradeExpiredRecoveryColdHandbackIntent: {
+            before_accepted_claim: components["schemas"]["NativeUpgradeClaim"];
+            before_runtime: components["schemas"]["PreparedNativeRuntime"];
+            before_selection: components["schemas"]["NativeRuntimeSelection"];
+            released_claim: components["schemas"]["NativeUpgradeClaim"];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            verification: components["schemas"]["UpgradeExpiredRecoveryColdVerification"];
+        };
+        /** UpgradeExpiredRecoveryColdHandbackReceipt */
+        UpgradeExpiredRecoveryColdHandbackReceipt: {
+            helper: components["schemas"]["UpgradeExpiredRecoveryColdHandbackHelper"];
+            node: components["schemas"]["NativeNodeProcess"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            status: components["schemas"]["NativeGuardStatus"];
+        };
+        /**
+         * UpgradeExpiredRecoveryColdPairCommand
+         * @description New qualification dispatch; cannot reuse an interrupted original command.
+         */
+        UpgradeExpiredRecoveryColdPairCommand: {
+            archive: components["schemas"]["UpgradeExpiredRecoveryColdCollectiveArchiveReceipt"];
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            command: components["schemas"]["LinkProbeCommand"];
+            /** Index */
+            index: number;
+            smoke: components["schemas"]["UpgradeExpiredRecoveryColdSmokeReceipt"];
+        };
+        /** UpgradeExpiredRecoveryColdPairQualification */
+        UpgradeExpiredRecoveryColdPairQualification: {
+            local: components["schemas"]["NodeUpgradeInventory"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            peer: components["schemas"]["NodeUpgradeInventory"];
+            /** Results */
+            results: components["schemas"]["UpgradeExpiredRecoveryColdPairResult"][];
+        };
+        /**
+         * UpgradeExpiredRecoveryColdPairResult
+         * @description Actual new worker result retained even when it fails exact-pair qualification.
+         */
+        UpgradeExpiredRecoveryColdPairResult: {
+            dispatch: components["schemas"]["UpgradeExpiredRecoveryColdPairCommand"];
+            observation: components["schemas"]["LinkObservation"];
+        };
+        /**
+         * UpgradeExpiredRecoveryColdResolution
+         * @description Linked late recovery, retaining original upgrade failure and history.
+         */
+        UpgradeExpiredRecoveryColdResolution: {
+            before_operation: components["schemas"]["UpgradeOperation"];
+            closure: components["schemas"]["UpgradeExpiredRecoveryColdClosure"];
+            event: components["schemas"]["UpgradeEvent"];
+            observation: components["schemas"]["UpgradeExpiredRecoveryColdResolutionObservation"];
+            operation: components["schemas"]["UpgradeOperation"];
+            /**
+             * Original Upgrade Succeeded
+             * @default false
+             * @constant
+             */
+            original_upgrade_succeeded: false;
+            /**
+             * Outcome
+             * @default recovered_after_deadline
+             * @constant
+             */
+            outcome: "recovered_after_deadline";
+            peer_release?: components["schemas"]["NodeMaintenanceAck"] | null;
+            /**
+             * Resolved At
+             * Format: date-time
+             */
+            resolved_at: string;
+        };
+        /** UpgradeExpiredRecoveryColdResolutionObservation */
+        UpgradeExpiredRecoveryColdResolutionObservation: {
+            /** Closure Sha256 */
+            closure_sha256: string;
+            maintenance: components["schemas"]["UpgradeMaintenance"];
+            node: components["schemas"]["NativeNodeProcess"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            status: components["schemas"]["NativeGuardStatus"];
+        };
+        /** UpgradeExpiredRecoveryColdResolutionRead */
+        UpgradeExpiredRecoveryColdResolutionRead: {
+            /** Closure Sha256 */
+            closure_sha256: string;
+            /** Intent Sha256 */
+            intent_sha256: string;
+        };
+        /** UpgradeExpiredRecoveryColdResolutionRequest */
+        UpgradeExpiredRecoveryColdResolutionRequest: {
+            closure: components["schemas"]["UpgradeExpiredRecoveryColdClosure"];
+            observation: components["schemas"]["UpgradeExpiredRecoveryColdResolutionObservation"];
+        };
+        /** UpgradeExpiredRecoveryColdResolutionState */
+        UpgradeExpiredRecoveryColdResolutionState: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Closure Sha256 */
+            closure_sha256: string;
+            /** Intent Sha256 */
+            intent_sha256: string;
+            resolution?: components["schemas"]["UpgradeExpiredRecoveryColdResolution"] | null;
+        };
+        /**
+         * UpgradeExpiredRecoveryColdSmokeCommand
+         * @description Registry-bound Source probe in a distinct recovery ownership namespace.
+         */
+        UpgradeExpiredRecoveryColdSmokeCommand: {
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            command: components["schemas"]["NativeSmokeCommand"];
+            source: components["schemas"]["UpgradeExpiredRecoveryColdSourceProcess"];
+        };
+        /** UpgradeExpiredRecoveryColdSmokeReceipt */
+        UpgradeExpiredRecoveryColdSmokeReceipt: {
+            attempt: components["schemas"]["NativeSmokeAttempt"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            smoke: components["schemas"]["UpgradeExpiredRecoveryColdSmokeCommand"];
+        };
+        /**
+         * UpgradeExpiredRecoveryColdSourceIntent
+         * @description Write-ahead exact Source projection, preserving all old authority history.
+         */
+        UpgradeExpiredRecoveryColdSourceIntent: {
+            before_bootstrap_runtime: components["schemas"]["PreparedNativeRuntime"];
+            before_pointer: components["schemas"]["PreparedNativeRuntime"];
+            before_pointer_selection?: components["schemas"]["NativeRuntimeSelection"] | null;
+            owner: components["schemas"]["UpgradeExpiredRecoveryColdClaim"];
+            /**
+             * Prepared At
+             * Format: date-time
+             */
+            prepared_at: string;
+            projected_native: components["schemas"]["NativeRecoveryIntent"];
+            source_selection: components["schemas"]["NativeRuntimeSelection"];
+        };
+        /**
+         * UpgradeExpiredRecoveryColdSourceLaunch
+         * @description One fixed Source-node spawn intent; no arbitrary argv or caller deadline.
+         */
+        UpgradeExpiredRecoveryColdSourceLaunch: {
+            /** Attempt */
+            attempt: number;
+            retained_process?: components["schemas"]["NodeAgentProcessIdentity"] | null;
+            source: components["schemas"]["UpgradeExpiredRecoveryColdSourceReceipt"];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryColdSourceProcess
+         * @description Positive owned process identity only; never application/serving readiness.
+         */
+        UpgradeExpiredRecoveryColdSourceProcess: {
+            launch: components["schemas"]["UpgradeExpiredRecoveryColdSourceLaunch"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+        };
+        /** UpgradeExpiredRecoveryColdSourceReceipt */
+        UpgradeExpiredRecoveryColdSourceReceipt: {
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            projection: components["schemas"]["UpgradeExpiredRecoveryColdSourceIntent"];
+        };
+        /** UpgradeExpiredRecoveryColdState */
+        UpgradeExpiredRecoveryColdState: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Claim Sha256 */
+            claim_sha256: string;
+            owner?: components["schemas"]["UpgradeExpiredRecoveryColdClaim"] | null;
+        };
+        /** UpgradeExpiredRecoveryColdSupervisionIntent */
+        UpgradeExpiredRecoveryColdSupervisionIntent: {
+            handback: components["schemas"]["UpgradeExpiredRecoveryColdHandbackReceipt"];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
+        /** UpgradeExpiredRecoveryColdSupervisionReceipt */
+        UpgradeExpiredRecoveryColdSupervisionReceipt: {
+            /** Definition Sha256 */
+            definition_sha256?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "fixture" | "launchd";
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+            supervision: components["schemas"]["UpgradeExpiredRecoveryColdSupervisionIntent"];
+        };
+        /**
+         * UpgradeExpiredRecoveryColdVerification
+         * @description Core-produced bounded verification; handback and release remain separate.
+         */
+        UpgradeExpiredRecoveryColdVerification: {
+            data_after: components["schemas"]["UpgradeExpiredRecoveryDataSnapshot"];
+            data_before: components["schemas"]["UpgradeExpiredRecoveryDataSnapshot"];
+            local: components["schemas"]["NodeUpgradeInventory"];
+            native_before: components["schemas"]["UpgradeExpiredRecoveryNativeDataSnapshot"];
+            peer?: components["schemas"]["NodeUpgradeInventory"] | null;
+            request: components["schemas"]["UpgradeExpiredRecoveryColdVerificationRequest"];
+            /**
+             * Verified At
+             * Format: date-time
+             */
+            verified_at: string;
+        };
+        /** UpgradeExpiredRecoveryColdVerificationRead */
+        UpgradeExpiredRecoveryColdVerificationRead: {
+            consumer: components["schemas"]["NodeAgentProcessIdentity"];
+            /** Verification Sha256 */
+            verification_sha256: string;
+        };
+        /** UpgradeExpiredRecoveryColdVerificationRequest */
+        UpgradeExpiredRecoveryColdVerificationRequest: {
+            archive?: components["schemas"]["UpgradeExpiredRecoveryColdCollectiveArchiveReceipt"] | null;
+            native_after: components["schemas"]["UpgradeExpiredRecoveryNativeDataSnapshot"];
+            pair?: components["schemas"]["UpgradeExpiredRecoveryColdPairQualification"] | null;
+            smoke: components["schemas"]["UpgradeExpiredRecoveryColdSmokeReceipt"];
+        };
+        /**
+         * UpgradeExpiredRecoveryConsumptionCheck
+         * @description Fixed-node callback bindings only; no URL, credentials or effect argv.
+         */
+        UpgradeExpiredRecoveryConsumptionCheck: {
+            consumer: components["schemas"]["NodeAgentProcessIdentity"];
+            /** Consumption Sha256 */
+            consumption_sha256: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryConsumptionDeliveryRead
+         * @description Fixed delivery request; no paths, deadlines or credential fields.
+         */
+        UpgradeExpiredRecoveryConsumptionDeliveryRead: {
+            consumer: components["schemas"]["NodeAgentProcessIdentity"];
+            /** Intent Sha256 */
+            intent_sha256: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryConsumptionState
+         * @description Fresh pending/consumed delivery state, never inferred from an error.
+         */
+        UpgradeExpiredRecoveryConsumptionState: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            consumption: components["schemas"]["UpgradeExpiredRecoveryTransferConsumption"] | null;
+            /** Intent Sha256 */
+            intent_sha256: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryDataSnapshot
+         * @description Core-produced data fingerprints only; no private records in the wire shape.
+         */
+        UpgradeExpiredRecoveryDataSnapshot: {
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /** Recovery Id */
+            recovery_id: string;
+            /** Row Counts */
+            row_counts: {
+                [key: string]: number;
+            };
+            /** Source Sha256 */
+            source_sha256: string;
+            /** Table Sha256S */
+            table_sha256s: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * UpgradeExpiredRecoveryIntent
+         * @description Immutable server-captured intent; effect authorization remains separate.
+         */
+        UpgradeExpiredRecoveryIntent: {
+            /**
+             * Accepted At
+             * Format: date-time
+             */
+            accepted_at: string;
+            /**
+             * Accepted By
+             * Format: uuid
+             */
+            accepted_by: string;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            inherited_local_maintenance?: components["schemas"]["UpgradeMaintenance"] | null;
+            local_recovery_maintenance?: components["schemas"]["UpgradeMaintenance"] | null;
+            original_plan: components["schemas"]["UpgradeExecutionPlan"];
+            /**
+             * Original Recovery Deadline At
+             * Format: date-time
+             */
+            original_recovery_deadline_at: string;
+            /** Recovery Id */
+            recovery_id: string;
+            request: components["schemas"]["UpgradeExpiredRecoveryRequest"];
+            support_release: components["schemas"]["UpgradeRelease"];
+        };
+        /**
+         * UpgradeExpiredRecoveryLegacyService
+         * @description Positive managed-service observation; not ownership transfer or cleanup.
+         */
+        UpgradeExpiredRecoveryLegacyService: {
+            /**
+             * Abandon Process Group
+             * @constant
+             */
+            abandon_process_group: true;
+            /** Observation Sha256 */
+            observation_sha256: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Owner Uid */
+            owner_uid: number;
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+            /** Target */
+            target: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryLegacyStopIntent
+         * @description Persist before a fixed legacy stop; never proof that stop occurred.
+         */
+        UpgradeExpiredRecoveryLegacyStopIntent: {
+            /** Consumption Sha256 */
+            consumption_sha256: string;
+            /** Definition Sha256 */
+            definition_sha256?: string | null;
+            legacy_guard: components["schemas"]["NativeGuardStatus"];
+            preserved_source?: components["schemas"]["NativeNodeProcess"] | null;
+            /** Recovery Id */
+            recovery_id: string;
+            service?: components["schemas"]["UpgradeExpiredRecoveryLegacyService"] | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            successor: components["schemas"]["NodeAgentProcessIdentity"];
+        };
+        /**
+         * UpgradeExpiredRecoveryLegacyStopReceipt
+         * @description Verified fixed service stop; not new ownership or complete physical cleanup.
+         */
+        UpgradeExpiredRecoveryLegacyStopReceipt: {
+            effect: components["schemas"]["UpgradeExpiredRecoveryLegacyStopIntent"];
+            preserved_source: components["schemas"]["NativeNodeProcess"];
+            /**
+             * Stopped At
+             * Format: date-time
+             */
+            stopped_at: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryLegacyStopReconciliation
+         * @description Fresh observed retirement, never an invented bootout acknowledgement.
+         *
+         *     Producer must independently verify kernel exclusion, authority, actual legacy
+         *     identity absence, service unload and exact Source preservation. DTO alone is
+         *     neither ownership nor cleanup/serving qualification.
+         */
+        UpgradeExpiredRecoveryLegacyStopReconciliation: {
+            consumption: components["schemas"]["UpgradeExpiredRecoveryTransferConsumption"];
+            effect: components["schemas"]["UpgradeExpiredRecoveryLegacyStopIntent"];
+            /**
+             * Legacy Identity Retired
+             * @constant
+             */
+            legacy_identity_retired: true;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            preserved_source: components["schemas"]["NativeNodeProcess"];
+            /**
+             * Service Unloaded
+             * @constant
+             */
+            service_unloaded: true;
+        };
+        /**
+         * UpgradeExpiredRecoveryNativeDataSnapshot
+         * @description Native fixed-store content fingerprints, with no private filenames/content.
+         */
+        UpgradeExpiredRecoveryNativeDataSnapshot: {
+            /** File Counts */
+            file_counts: {
+                [key: string]: number;
+            };
+            /**
+             * Node
+             * @enum {string}
+             */
+            node: "coire-edge-a" | "coire-edge-b";
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /** Root Sha256S */
+            root_sha256s: {
+                [key: string]: string;
+            };
+            /** Source Sha256 */
+            source_sha256: string;
+            /** Total Bytes */
+            total_bytes: number;
+        };
+        /**
+         * UpgradeExpiredRecoveryObservation
+         * @description Passive retained metadata; not Source-serving or cleanup qualification.
+         *
+         *     Producers must independently verify installed observer bytes and authenticate
+         *     transport. Consumers must check freshness and recheck live Core authority.
+         */
+        UpgradeExpiredRecoveryObservation: {
+            claim: components["schemas"]["NativeUpgradeClaim"];
+            native: components["schemas"]["NativeRecoveryIntent"];
+            native_data?: components["schemas"]["UpgradeExpiredRecoveryNativeDataSnapshot"] | null;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            observer_runtime: components["schemas"]["PreparedNativeRuntime"];
+            plan: components["schemas"]["UpgradeExecutionPlan"];
+            request: components["schemas"]["UpgradeExpiredRecoveryRequest"];
+            /** Scopes */
+            scopes: components["schemas"]["NodeUpgradeCollectiveScope"][];
+            support: components["schemas"]["UpgradeRelease"];
+        };
+        /**
+         * UpgradeExpiredRecoveryOwnerCheck
+         * @description Fixed-node fresh owner callback; no caller deadline or target URL.
+         */
+        UpgradeExpiredRecoveryOwnerCheck: {
+            consumer: components["schemas"]["NodeAgentProcessIdentity"];
+            /** Owner Sha256 */
+            owner_sha256: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryOwnerClaim
+         * @description Claim evidence, not proof by DTO shape; producer must hold kernel exclusion.
+         *
+         *     Actual process/module/bytes, positive retirement, authenticated current Core
+         *     scope and Source preservation must be verified before retaining this record.
+         *     Maintenance/serving/qualification cannot be inferred from claim publication.
+         */
+        UpgradeExpiredRecoveryOwnerClaim: {
+            /**
+             * Claimed At
+             * Format: date-time
+             */
+            claimed_at: string;
+            consumption: components["schemas"]["UpgradeExpiredRecoveryTransferConsumption"];
+            /** Kernel Boot Identity */
+            kernel_boot_identity: string;
+            /** Legacy Stop */
+            legacy_stop: components["schemas"]["UpgradeExpiredRecoveryLegacyStopReceipt"] | components["schemas"]["UpgradeExpiredRecoveryLegacyStopReconciliation"];
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+            runtime: components["schemas"]["PreparedNativeRuntime"];
+        };
+        /**
+         * UpgradeExpiredRecoveryOwnerState
+         * @description Fresh accepted/unaccepted result, never infer from generic failure.
+         *
+         *     An unaccepted observation is not an effect grant; initial transfer gates
+         *     remain mandatory. Accepted state still requires actual lifetime ownership.
+         */
+        UpgradeExpiredRecoveryOwnerState: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            owner: components["schemas"]["UpgradeExpiredRecoveryOwnerClaim"] | null;
+            /** Owner Sha256 */
+            owner_sha256: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryOwnerTransfer
+         * @description Retain before handover; not an authenticated effect grant or completion.
+         *
+         *     Producers must reauthorize the admin, verify both process identities and
+         *     exclusive kernel/launchd ownership, retain fences and consume once durably.
+         */
+        UpgradeExpiredRecoveryOwnerTransfer: {
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            intent: components["schemas"]["UpgradeExpiredRecoveryIntent"];
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            legacy_guard: components["schemas"]["NativeGuardStatus"];
+            successor: components["schemas"]["NodeAgentProcessIdentity"];
+            /**
+             * Transfer Id
+             * Format: uuid
+             */
+            transfer_id: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryRequest
+         * @description Optimistic bindings and catalog ID only; server captures the new epoch.
+         *
+         *     Original deadlines, effect argv, artifact paths and peer credentials cannot
+         *     be caller fields. Acceptance must resolve the retained plan/scopes and the
+         *     immutable support release, authenticate/admin-audit and pin ownership before
+         *     producing any execution authority. This request itself grants none.
+         */
+        UpgradeExpiredRecoveryRequest: {
+            /** Expected Source Sha256 */
+            expected_source_sha256: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /** Original Plan Sha256 */
+            original_plan_sha256: string;
+            /** Original Scope Sha256S */
+            original_scope_sha256s: string[];
+            /**
+             * Recovery Mode
+             * @default preserve
+             * @enum {string}
+             */
+            recovery_mode: "preserve" | "cold";
+            /**
+             * Recovery S
+             * @default 300
+             */
+            recovery_s: number;
+            /**
+             * Supervision
+             * @default launchd
+             * @enum {string}
+             */
+            supervision: "launchd" | "fixture";
+            /**
+             * Support Release Id
+             * Format: uuid
+             */
+            support_release_id: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryStatus
+         * @description Durable administrative inspection; no executable owner capability.
+         */
+        UpgradeExpiredRecoveryStatus: {
+            /** Active */
+            active: boolean;
+            cancellation?: components["schemas"]["UpgradeExpiredRecoveryCancellation"] | null;
+            intent: components["schemas"]["UpgradeExpiredRecoveryIntent"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Owner Sha256 */
+            owner_sha256?: string | null;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "accepted" | "transferring" | "transfer_consumed" | "recovering" | "verifying" | "cold_recovering" | "handback_prepared" | "handing_back" | "resolving" | "recovery_required" | "recovered" | "cancelled_unchanged" | "superseded";
+        };
+        /**
+         * UpgradeExpiredRecoverySuccessionDeliveryRead
+         * @description Fixed passive successor inspection, never a caller destination or authority.
+         */
+        UpgradeExpiredRecoverySuccessionDeliveryRead: {
+            /** Predecessor Sha256 */
+            predecessor_sha256: string;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /** Succession Id */
+            succession_id: string;
+            successor: components["schemas"]["NodeAgentProcessIdentity"];
+        };
+        /**
+         * UpgradeExpiredRecoverySuccessionDeliveryState
+         * @description Explicit pending/grant result; neither grants native effect permission.
+         */
+        UpgradeExpiredRecoverySuccessionDeliveryState: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            grant: components["schemas"]["UpgradeExpiredRecoverySuccessionGrant"] | null;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            request: components["schemas"]["UpgradeExpiredRecoverySuccessionDeliveryRead"];
+        };
+        /**
+         * UpgradeExpiredRecoverySuccessionGrant
+         * @description Audited scope DTO, not lifetime ownership or permission by shape alone.
+         *
+         *     Core must separately reauthorize admin and persist this exact captured window.
+         *     Neither replay nor crash may change the original intent's recovery deadline.
+         */
+        UpgradeExpiredRecoverySuccessionGrant: {
+            /**
+             * Accepted At
+             * Format: date-time
+             */
+            accepted_at: string;
+            /** Credential Version */
+            credential_version: number | null;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+            /** Key Id */
+            key_id: string | null;
+            observation: components["schemas"]["UpgradeExpiredRecoverySuccessionObservation"];
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /**
+         * UpgradeExpiredRecoverySuccessionObservation
+         * @description Same-kernel crash preconditions, not a new grant or absence-based takeover.
+         *
+         *     A separately authenticated/audited succession protocol must capture authority
+         *     before effects. Changed boot requires its own supported fresh Source protocol.
+         */
+        UpgradeExpiredRecoverySuccessionObservation: {
+            /** Kernel Boot Identity */
+            kernel_boot_identity: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            preserved_source: components["schemas"]["NativeNodeProcess"];
+            previous_owner: components["schemas"]["UpgradeExpiredRecoveryOwnerClaim"];
+            /**
+             * Previous Owner Retired
+             * @constant
+             */
+            previous_owner_retired: true;
+            /** Succession Id */
+            succession_id: string;
+            successor: components["schemas"]["NodeAgentProcessIdentity"];
+        };
+        /** UpgradeExpiredRecoverySuccessorCheck */
+        UpgradeExpiredRecoverySuccessorCheck: {
+            /** Claim Sha256 */
+            claim_sha256: string;
+            consumer: components["schemas"]["NodeAgentProcessIdentity"];
+        };
+        /**
+         * UpgradeExpiredRecoverySuccessorClaim
+         * @description Distinct successor preimage: shape alone is never kernel ownership.
+         *
+         *     A trusted producer must retain the actual lifetime exclusion capability and
+         *     repeat fresh Core/physical gates. The original consumption is preserved,
+         *     never rewritten to make the successor look like the initial consumer.
+         */
+        UpgradeExpiredRecoverySuccessorClaim: {
+            /**
+             * Claimed At
+             * Format: date-time
+             */
+            claimed_at: string;
+            grant: components["schemas"]["UpgradeExpiredRecoverySuccessionGrant"];
+            /** Kernel Boot Identity */
+            kernel_boot_identity: string;
+            preserved_source: components["schemas"]["NativeNodeProcess"];
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+            runtime: components["schemas"]["PreparedNativeRuntime"];
+        };
+        /**
+         * UpgradeExpiredRecoverySuccessorState
+         * @description Positive authenticated inspection, never error-based initial fallback.
+         */
+        UpgradeExpiredRecoverySuccessorState: {
+            /**
+             * Checked At
+             * Format: date-time
+             */
+            checked_at: string;
+            /** Claim Sha256 */
+            claim_sha256: string;
+            owner: components["schemas"]["UpgradeExpiredRecoverySuccessorClaim"] | null;
+        };
+        /** UpgradeExpiredRecoverySuccessorStateCheck */
+        UpgradeExpiredRecoverySuccessorStateCheck: {
+            /** Claim Sha256 */
+            claim_sha256: string;
+            consumer: components["schemas"]["NodeAgentProcessIdentity"];
+            /** Grant Sha256 */
+            grant_sha256: string;
+        };
+        /**
+         * UpgradeExpiredRecoverySupportContextRead
+         * @description Fixed startup context read; no caller paths, budgets or credentials.
+         */
+        UpgradeExpiredRecoverySupportContextRead: {
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+        };
+        /**
+         * UpgradeExpiredRecoverySupportProcess
+         * @description Verified passive support identity, not serving or transferred ownership.
+         */
+        UpgradeExpiredRecoverySupportProcess: {
+            intent: components["schemas"]["UpgradeExpiredRecoveryIntent"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            process: components["schemas"]["NodeAgentProcessIdentity"];
+            runtime: components["schemas"]["PreparedNativeRuntime"];
+        };
+        /**
+         * UpgradeExpiredRecoveryTransferConsumption
+         * @description Core-produced one-time consumption evidence, not completed native handover.
+         *
+         *     Receiving a structurally valid receipt is insufficient: transport and durable
+         *     Core/local provenance, current admin authority and physical ownership must be
+         *     verified by producers. No receipt changes original deadlines or fencing.
+         */
+        UpgradeExpiredRecoveryTransferConsumption: {
+            /**
+             * Consumed At
+             * Format: date-time
+             */
+            consumed_at: string;
+            consumer: components["schemas"]["NodeAgentProcessIdentity"];
+            /**
+             * Consumption Id
+             * Format: uuid
+             */
+            consumption_id: string;
+            transfer: components["schemas"]["UpgradeExpiredRecoveryOwnerTransfer"];
+        };
+        /** UpgradeExpiredRecoveryUnstartedCloseRequest */
+        UpgradeExpiredRecoveryUnstartedCloseRequest: {
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Intent Sha256 */
+            intent_sha256: string;
+            /** Observation Sha256 */
+            observation_sha256: string;
+        };
+        /** UpgradeExpiredRecoveryUnstartedClosure */
+        UpgradeExpiredRecoveryUnstartedClosure: {
+            /**
+             * Closed At
+             * Format: date-time
+             */
+            closed_at: string;
+            /**
+             * Closed By
+             * Format: uuid
+             */
+            closed_by: string;
+            /** Intent Sha256 */
+            intent_sha256: string;
+            /** Observation Sha256 */
+            observation_sha256: string;
+            /**
+             * Observer Release Id
+             * Format: uuid
+             */
+            observer_release_id: string;
+            /**
+             * Original Deadline At
+             * Format: date-time
+             */
+            original_deadline_at: string;
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /**
+             * Original Maintenance Retained
+             * @default true
+             * @constant
+             */
+            original_maintenance_retained: true;
+            /**
+             * Original Upgrade Succeeded
+             * @default false
+             * @constant
+             */
+            original_upgrade_succeeded: false;
+            /**
+             * Phase
+             * @default cancelled_unchanged
+             * @enum {string}
+             */
+            phase: "cancelled_unchanged" | "superseded";
+            /** Pre Projection Owner Sha256 */
+            pre_projection_owner_sha256?: string | null;
+            /**
+             * Recovery Deadline At
+             * Format: date-time
+             */
+            recovery_deadline_at: string;
+            /** Recovery Id */
+            recovery_id: string;
+            /** Request Sha256 */
+            request_sha256: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            /** Startup Sha256 */
+            startup_sha256: string;
+        };
+        /**
+         * UpgradeExpiredRecoveryUnstartedObservation
+         * @description Retired startup and retained original preimages; no cleanup/serving claim.
+         */
+        UpgradeExpiredRecoveryUnstartedObservation: {
+            bootstrap_runtime: components["schemas"]["PreparedNativeRuntime"];
+            claim: components["schemas"]["NativeUpgradeClaim"];
+            guard: components["schemas"]["NativeGuardStatus"];
+            intent: components["schemas"]["UpgradeExpiredRecoveryIntent"];
+            native: components["schemas"]["NativeRecoveryIntent"];
+            native_data: components["schemas"]["UpgradeExpiredRecoveryNativeDataSnapshot"];
+            node: components["schemas"]["NativeNodeProcess"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            observer: components["schemas"]["NodeAgentProcessIdentity"];
+            observer_release: components["schemas"]["UpgradeRelease"];
+            observer_runtime: components["schemas"]["PreparedNativeRuntime"];
+            /**
+             * Original Maintenance Retained
+             * @default true
+             * @constant
+             */
+            original_maintenance_retained: true;
+            pointer: components["schemas"]["PreparedNativeRuntime"];
+            pre_projection_owner?: components["schemas"]["UpgradeExpiredRecoveryColdClaim"] | null;
+            startup: components["schemas"]["UpgradeExpiredRecoverySupportProcess"];
+            /**
+             * Startup Retired
+             * @default true
+             * @constant
+             */
+            startup_retired: true;
+        };
+        /** UpgradeExpiredRecoveryUnstartedRead */
+        UpgradeExpiredRecoveryUnstartedRead: {
+            /** Intent Sha256 */
+            intent_sha256: string;
+        };
+        /** UpgradeInventoryEntry */
+        UpgradeInventoryEntry: {
+            /**
+             * Holds
+             * @default []
+             */
+            holds: string[];
+            /** Kind */
+            kind: string;
+            /** Owner */
+            owner: string;
+            /** Process Created At */
+            process_created_at?: number | null;
+            /** Process Id */
+            process_id?: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "active" | "cleaning" | "standing" | "unknown";
+            /** Work Id */
+            work_id: string;
+        };
+        /**
+         * UpgradeKind
+         * @enum {string}
+         */
+        UpgradeKind: "studio" | "control_plane";
+        /** UpgradeMaintenance */
+        UpgradeMaintenance: {
+            /** Acknowledged Generations */
+            acknowledged_generations?: {
+                [key: string]: number;
+            };
+            /**
+             * Drain Deadline At
+             * Format: date-time
+             */
+            drain_deadline_at: string;
+            /** Generation */
+            generation: number;
+            /** Initiator User Id */
+            initiator_user_id?: string | null;
+            /** Job Id */
+            job_id: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "fencing" | "draining" | "active" | "recovering" | "released";
+            /** Targets */
+            targets: ("cluster" | "core" | "coire-edge-a" | "coire-edge-b" | "coire-file-worker" | "coire-ops" | "coire-mcp" | "coire-scheduler" | "coire-api" | "coire-web")[];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * UpgradeMigrationExecution
+         * @description A consumed migration attempt is never permission to run the schema change twice.
+         */
+        UpgradeMigrationExecution: {
+            /**
+             * Captured At
+             * Format: date-time
+             */
+            captured_at: string;
+            /** Completed At */
+            completed_at?: string | null;
+            /**
+             * Deadline At
+             * Format: date-time
+             */
+            deadline_at: string;
+            /** Exit Code */
+            exit_code?: number | null;
+            /** Expected Schema Head */
+            expected_schema_head: string;
+            /** Generation */
+            generation: number;
+            /**
+             * Grant Id
+             * Format: uuid
+             */
+            grant_id: string;
+            /** Job Id */
+            job_id: string;
+            /** Plan Sha256 */
+            plan_sha256: string;
+            /** Schema After Head */
+            schema_after_head?: string | null;
+            /** Schema After Sha256 */
+            schema_after_sha256?: string | null;
+            /** Schema Before Head */
+            schema_before_head: string;
+            /** Schema Before Sha256 */
+            schema_before_sha256: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "intent" | "complete" | "uncertain";
+        };
+        /**
+         * UpgradeMigrationNotStarted
+         * @description An authoritative execution fence, distinct from a completed migration.
+         */
+        UpgradeMigrationNotStarted: {
+            /**
+             * Execution Fenced
+             * @default true
+             * @constant
+             */
+            execution_fenced: true;
+            /** Generation */
+            generation: number;
+            /**
+             * Grant Id
+             * Format: uuid
+             */
+            grant_id: string;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Plan Sha256 */
+            plan_sha256: string;
+            /** Schema Head */
+            schema_head: string;
+            /** Schema Sha256 */
+            schema_sha256: string;
+            /**
+             * State
+             * @default not_started
+             * @constant
+             */
+            state: "not_started";
+        };
+        /** UpgradeNativeTerminalGrant */
+        UpgradeNativeTerminalGrant: {
+            /**
+             * Approved At
+             * Format: date-time
+             */
+            approved_at: string;
+            /**
+             * Approved By
+             * Format: uuid
+             */
+            approved_by: string;
+            resolution: components["schemas"]["UpgradeExpiredRecoveryColdResolution"];
+        };
+        /** UpgradeNativeTerminalRequest */
+        UpgradeNativeTerminalRequest: {
+            /** Resolution Sha256 */
+            resolution_sha256: string;
+        };
+        /** UpgradeNativeTerminalState */
+        UpgradeNativeTerminalState: {
+            grant: components["schemas"]["UpgradeNativeTerminalGrant"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+        };
+        /** UpgradeOperation */
+        UpgradeOperation: {
+            /**
+             * Accepted At
+             * Format: date-time
+             */
+            accepted_at: string;
+            action: components["schemas"]["UpgradeAction"];
+            /**
+             * Cancel Requested
+             * @default false
+             */
+            cancel_requested: boolean;
+            /**
+             * Cancellation Allowed
+             * @default true
+             */
+            cancellation_allowed: boolean;
+            /**
+             * Cohort
+             * @default []
+             */
+            cohort: ("coire-file-worker" | "coire-ops" | "coire-mcp" | "coire-scheduler" | "coire-api" | "coire-web")[];
+            /** Finished At */
+            finished_at?: string | null;
+            /** Generation */
+            generation: number;
+            /**
+             * Idempotency Key
+             * Format: uuid
+             */
+            idempotency_key: string;
+            /** Job Id */
+            job_id: string;
+            /** Key Id */
+            key_id?: string | null;
+            kind: components["schemas"]["UpgradeKind"];
+            /** Node */
+            node?: ("coire-edge-a" | "coire-edge-b") | null;
+            /** Parent Job Id */
+            parent_job_id?: string | null;
+            /** @default accepted */
+            phase: components["schemas"]["UpgradePhase"];
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Receipt Sequence
+             * @default 0
+             */
+            receipt_sequence: number;
+            /** Request Sha256 */
+            request_sha256: string;
+            /** Retained Schema Head */
+            retained_schema_head?: string | null;
+            /**
+             * Source Release Id
+             * Format: uuid
+             */
+            source_release_id: string;
+            /** Source Sha256 */
+            source_sha256: string;
+            /**
+             * Target Release Id
+             * Format: uuid
+             */
+            target_release_id: string;
+            /** Target Sha256 */
+            target_sha256: string;
+            timing?: components["schemas"]["UpgradeTiming"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * User Id
+             * Format: uuid
+             */
+            user_id: string;
+        };
+        /** UpgradeOwnerInventory */
+        UpgradeOwnerInventory: {
+            /**
+             * Entries
+             * @default []
+             */
+            entries: components["schemas"]["UpgradeInventoryEntry"][];
+            /** Owner */
+            owner: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "complete" | "blocked" | "unknown";
+        };
+        /**
+         * UpgradePhase
+         * @enum {string}
+         */
+        UpgradePhase: "accepted" | "preflight" | "fencing" | "draining" | "staged" | "smoke_before" | "migrating" | "activating" | "verifying" | "qualifying" | "committing" | "restoring" | "verifying_source" | "recovery_required" | "succeeded" | "failed_unchanged" | "cancelled_unchanged" | "rolled_back";
+        /** UpgradeQualification */
+        UpgradeQualification: {
+            /**
+             * Capability
+             * @enum {string}
+             */
+            capability: "serving" | "paired" | "training" | "evaluation" | "image";
+            /** Peer Runtime Sha256 */
+            peer_runtime_sha256?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Runtime Sha256 */
+            runtime_sha256?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "unavailable" | "stale" | "qualified";
+        };
+        /** UpgradeReceipt */
+        UpgradeReceipt: {
+            /** Effect Id */
+            effect_id: string;
+            /**
+             * Evidence
+             * @default
+             */
+            evidence: string;
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /** Observed Sha256 */
+            observed_sha256?: string | null;
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "intent" | "complete" | "failed" | "unknown";
+            phase: components["schemas"]["UpgradePhase"];
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Restoration
+             * @default not_required
+             * @enum {string}
+             */
+            restoration: "not_required" | "pending" | "verified" | "failed";
+            /** Sequence */
+            sequence: number;
+        };
+        /** UpgradeReceiptAck */
+        UpgradeReceiptAck: {
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /** Sequence */
+            sequence: number;
+        };
+        /** UpgradeReceiptBatch */
+        UpgradeReceiptBatch: {
+            /** Receipts */
+            receipts: components["schemas"]["UpgradeReceipt"][];
+        };
+        /** UpgradeRecoveryHostHoldReceipt */
+        UpgradeRecoveryHostHoldReceipt: {
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /** Plan Sha256 */
+            plan_sha256: string;
+            /**
+             * Reconciled At
+             * Format: date-time
+             */
+            reconciled_at: string;
+            /**
+             * Reconciled By
+             * Format: uuid
+             */
+            reconciled_by: string;
+            /** Recovery Id */
+            recovery_id: string;
+            /**
+             * Released
+             * @default true
+             * @constant
+             */
+            released: true;
+            /** Resolution Sha256 */
+            resolution_sha256: string;
+        };
+        /** UpgradeRecoveryHostHoldRequest */
+        UpgradeRecoveryHostHoldRequest: {
+            /** Resolution Sha256 */
+            resolution_sha256: string;
+        };
+        /** UpgradeRecoveryLocalFenceObservation */
+        UpgradeRecoveryLocalFenceObservation: {
+            maintenance: components["schemas"]["UpgradeMaintenance"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+        };
+        /**
+         * UpgradeRecoveryRetiredSupervisor
+         * @description Fixed private fixture supervisor preimage; not permission from absence.
+         */
+        UpgradeRecoveryRetiredSupervisor: {
+            /** Create Time S */
+            create_time_s: number;
+            /** Owner Uid */
+            owner_uid: number;
+            /** Pid */
+            pid: number;
+            /** Script Sha256 */
+            script_sha256: string;
+        };
+        /** UpgradeRecoverySchemaObservation */
+        UpgradeRecoverySchemaObservation: {
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /** Original Plan Sha256 */
+            original_plan_sha256: string;
+            /** Recovery Tables Absent */
+            recovery_tables_absent: boolean;
+            /**
+             * Schema Head
+             * @default 0034_upgrades
+             * @constant
+             */
+            schema_head: "0034_upgrades";
+            /** Schema Sha256 */
+            schema_sha256: string;
+            /** Source Sha256 */
+            source_sha256: string;
+        };
+        /** UpgradeRecoverySchemaReceipt */
+        UpgradeRecoverySchemaReceipt: {
+            after: components["schemas"]["UpgradeRecoverySchemaObservation"];
+            before: components["schemas"]["UpgradeRecoverySchemaObservation"];
+            /**
+             * Preparation Kind
+             * @default legacy_tables
+             * @enum {string}
+             */
+            preparation_kind: "legacy_tables" | "cancelled_unstarted_constraint";
+            /**
+             * Prepared At
+             * Format: date-time
+             */
+            prepared_at: string;
+            /**
+             * Prepared By
+             * Format: uuid
+             */
+            prepared_by: string;
+            request: components["schemas"]["UpgradeRecoverySchemaRequest"];
+        };
+        /**
+         * UpgradeRecoverySchemaRequest
+         * @description Prepare only the known pre-recovery 0034 shape; no caller SQL or budget.
+         */
+        UpgradeRecoverySchemaRequest: {
+            /** Expected Schema Sha256 */
+            expected_schema_sha256: string;
+            /** Expected Source Sha256 */
+            expected_source_sha256: string;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Original Generation */
+            original_generation: number;
+            /** Original Job Id */
+            original_job_id: string;
+            /** Original Plan Sha256 */
+            original_plan_sha256: string;
+        };
+        /** UpgradeRelease */
+        UpgradeRelease: {
+            manifest: components["schemas"]["UpgradeReleaseManifest"];
+            /** Manifest Sha256 */
+            manifest_sha256: string;
+            /** Prepared Artifact Id */
+            prepared_artifact_id: string;
+            /**
+             * Prepared By
+             * Format: uuid
+             */
+            prepared_by: string;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /**
+             * Status
+             * @default prepared
+             * @enum {string}
+             */
+            status: "prepared" | "invalid" | "retired";
+        };
+        /** UpgradeReleaseManifest */
+        UpgradeReleaseManifest: {
+            /** Artifact Sha256S */
+            artifact_sha256s: {
+                [key: string]: string;
+            };
+            compatibility: components["schemas"]["UpgradeCompatibility"];
+            /** Compose Sha256 */
+            compose_sha256?: string | null;
+            /** Environment Id */
+            environment_id?: string | null;
+            /** Environment Sha256 */
+            environment_sha256?: string | null;
+            /** Host Release Key */
+            host_release_key?: string | null;
+            kind: components["schemas"]["UpgradeKind"];
+            /**
+             * Paired Required
+             * @default false
+             */
+            paired_required: boolean;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "macos-arm64" | "linux-arm64";
+            /**
+             * Prepared At
+             * Format: date-time
+             */
+            prepared_at: string;
+            /** Project */
+            project?: string | null;
+            /**
+             * Protocol
+             * @default 1
+             * @constant
+             */
+            protocol: 1;
+            /** Schema Head */
+            schema_head?: string | null;
+            /**
+             * Services
+             * @default []
+             */
+            services: components["schemas"]["UpgradeServiceSpec"][];
+            /** Source Revision */
+            source_revision: string;
+            /** Staged Bytes */
+            staged_bytes: number;
+            /** Version */
+            version: string;
+        };
+        /** UpgradeReleasePage */
+        UpgradeReleasePage: {
+            /** Items */
+            items: components["schemas"]["UpgradeReleaseSummary"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** UpgradeReleaseRegister */
+        UpgradeReleaseRegister: {
+            /** Expected Sha256 */
+            expected_sha256: string;
+            /** Prepared Artifact Id */
+            prepared_artifact_id: string;
+        };
+        /**
+         * UpgradeReleaseSummary
+         * @description Public release metadata excludes executor configuration and private mount paths.
+         */
+        UpgradeReleaseSummary: {
+            compatibility: components["schemas"]["UpgradeCompatibility"];
+            kind: components["schemas"]["UpgradeKind"];
+            /** Manifest Sha256 */
+            manifest_sha256: string;
+            /** Paired Required */
+            paired_required: boolean;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "macos-arm64" | "linux-arm64";
+            /**
+             * Prepared At
+             * Format: date-time
+             */
+            prepared_at: string;
+            /**
+             * Prepared By
+             * Format: uuid
+             */
+            prepared_by: string;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+            /** Services */
+            services: ("coire-file-worker" | "coire-ops" | "coire-mcp" | "coire-scheduler" | "coire-api" | "coire-web")[];
+            /** Staged Bytes */
+            staged_bytes: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "prepared" | "invalid" | "retired";
+            /** Version */
+            version: string;
+        };
+        /** UpgradeRollbackRequest */
+        UpgradeRollbackRequest: {
+            /**
+             * Acknowledge Maintenance
+             * @constant
+             */
+            acknowledge_maintenance: true;
+            /** Expected Source Sha256 */
+            expected_source_sha256: string;
+            /**
+             * Idempotency Key
+             * Format: uuid
+             */
+            idempotency_key: string;
+        };
+        /** UpgradeSchemaObservation */
+        UpgradeSchemaObservation: {
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Schema Head */
+            schema_head: string;
+            /** Schema Sha256 */
+            schema_sha256: string;
+        };
+        /** UpgradeServiceSpec */
+        UpgradeServiceSpec: {
+            /** Configuration */
+            configuration: {
+                [key: string]: components["schemas"]["JsonValue"];
+            };
+            /** Configuration Sha256 */
+            configuration_sha256: string;
+            /** Image Id */
+            image_id: string;
+            /**
+             * Service
+             * @enum {string}
+             */
+            service: "coire-file-worker" | "coire-ops" | "coire-mcp" | "coire-scheduler" | "coire-api" | "coire-web";
+        };
+        /** UpgradeSmokeRequest */
+        UpgradeSmokeRequest: {
+            /**
+             * Check
+             * @enum {string}
+             */
+            check: "gateway" | "node" | "collective" | "source";
+            /** Generation */
+            generation: number;
+        };
+        /** UpgradeSmokeResult */
+        UpgradeSmokeResult: {
+            /**
+             * Check
+             * @enum {string}
+             */
+            check: "gateway" | "node" | "collective" | "source";
+            /**
+             * Finished At
+             * Format: date-time
+             */
+            finished_at: string;
+            /** Generated Tokens */
+            generated_tokens: number;
+            /** Generation */
+            generation: number;
+            /** Job Id */
+            job_id: string;
+            /**
+             * Model Id
+             * Format: uuid
+             */
+            model_id: string;
+            /** Model Manifest Sha256 */
+            model_manifest_sha256: string;
+            /**
+             * Model Variant Id
+             * Format: uuid
+             */
+            model_variant_id: string;
+            /** Output Sha256 */
+            output_sha256: string;
+            /** Passed */
+            passed: boolean;
+            /** Peer Runtime Sha256 */
+            peer_runtime_sha256?: string | null;
+            /** Runtime Sha256 */
+            runtime_sha256: string;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+        };
+        /** UpgradeStartRequest */
+        UpgradeStartRequest: {
+            /**
+             * Acknowledge Maintenance
+             * @constant
+             */
+            acknowledge_maintenance: true;
+            /** Expected Source Sha256 */
+            expected_source_sha256: string;
+            /**
+             * Idempotency Key
+             * Format: uuid
+             */
+            idempotency_key: string;
+            /**
+             * Release Id
+             * Format: uuid
+             */
+            release_id: string;
+        };
+        /** UpgradeTargetList */
+        UpgradeTargetList: {
+            /** Items */
+            items: components["schemas"]["UpgradeTargetStatus"][];
+        };
+        /** UpgradeTargetStatus */
+        UpgradeTargetStatus: {
+            /**
+             * Blocking Reasons
+             * @default []
+             */
+            blocking_reasons: string[];
+            /**
+             * Bootstrap Ready
+             * @default false
+             */
+            bootstrap_ready: boolean;
+            /** Desired Sha256 */
+            desired_sha256?: string | null;
+            kind: components["schemas"]["UpgradeKind"];
+            /** Node */
+            node?: ("coire-edge-a" | "coire-edge-b") | null;
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
+            /** Observed Sha256 */
+            observed_sha256?: string | null;
+            /**
+             * Qualifications
+             * @default []
+             */
+            qualifications: components["schemas"]["UpgradeQualification"][];
+            /**
+             * Readiness
+             * @enum {string}
+             */
+            readiness: "ready" | "maintenance" | "recovering" | "not_ready" | "drifted";
+            /** Release Id */
+            release_id?: string | null;
+            /** Retained Sha256 */
+            retained_sha256?: string | null;
+            /**
+             * Rollback Blocking Reasons
+             * @default []
+             */
+            rollback_blocking_reasons: string[];
+            /**
+             * Rollback Eligible
+             * @default false
+             */
+            rollback_eligible: boolean;
+            /** Rollback Job Id */
+            rollback_job_id?: string | null;
+            /** Service Image Ids */
+            service_image_ids?: {
+                [key: string]: string;
+            };
+        };
+        /** UpgradeTiming */
+        UpgradeTiming: {
+            /**
+             * Drain S
+             * @default 900
+             */
+            drain_s: number;
+            /**
+             * Gateway Outage S
+             * @default 300
+             */
+            gateway_outage_s: number;
+            /**
+             * Readiness S
+             * @default 120
+             */
+            readiness_s: number;
+            /**
+             * Recovery S
+             * @default 300
+             */
+            recovery_s: number;
+        };
+        /** UpgradeUnclaimedCancellationGrant */
+        UpgradeUnclaimedCancellationGrant: {
+            plan: components["schemas"]["UpgradeExecutionPlan"];
+            /**
+             * Requested At
+             * Format: date-time
+             */
+            requested_at: string;
+            /**
+             * Requested By
+             * Format: uuid
+             */
+            requested_by: string;
+        };
+        /** UpgradeUnclaimedCancellationRequest */
+        UpgradeUnclaimedCancellationRequest: {
+            /** Plan Sha256 */
+            plan_sha256: string;
+        };
+        /** UpgradeUnclaimedCancellationState */
+        UpgradeUnclaimedCancellationState: {
+            grant: components["schemas"]["UpgradeUnclaimedCancellationGrant"];
+            /**
+             * Observed At
+             * Format: date-time
+             */
+            observed_at: string;
         };
         /** User */
         User: {
@@ -14866,6 +19688,821 @@ export interface operations {
             };
         };
     };
+    start_core_api_v1_admin_upgrades_control_plane_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeOperation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_executor_handover_api_v1_admin_upgrades_executor_handover_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreHandoverStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    executor_handover_status_api_v1_admin_upgrades_executor_handover__handover_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                handover_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_studio_api_v1_admin_upgrades_nodes__node_id__post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                node_id: "coire-edge-a" | "coire-edge-b";
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeOperation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_recovery_api_v1_admin_upgrades_recoveries_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryIntent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_continuation_start_api_v1_admin_upgrades_recoveries_continuations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeColdContinuationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryIntent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_status_api_v1_admin_upgrades_recoveries__recovery_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_expired_recovery_api_v1_admin_upgrades_recoveries__recovery_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryCancellation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    close_unstarted_recovery_api_v1_admin_upgrades_recoveries__recovery_id__close_unstarted_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryUnstartedCloseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryUnstartedClosure"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_continuation_schema_preparation_api_v1_admin_upgrades_recoveries__recovery_id__continuation_schema_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeColdContinuationSchemaRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeColdContinuationSchemaReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_continuation_schema_observation_api_v1_admin_upgrades_recoveries__recovery_id__continuation_schema_observation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeColdContinuationRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeColdContinuationSchemaObservation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reconcile_recovered_host_hold_api_v1_admin_upgrades_recoveries__recovery_id__host_hold_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeRecoveryHostHoldRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeRecoveryHostHoldReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_legacy_native_terminal_api_v1_admin_upgrades_recoveries__recovery_id__native_terminal_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeNativeTerminalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeNativeTerminalGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_schema_preparation_api_v1_admin_upgrades_recovery_schema_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeRecoverySchemaRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeRecoverySchemaReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_schema_observation_api_v1_admin_upgrades_recovery_schema__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeRecoverySchemaObservation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    releases_api_v1_admin_upgrades_releases_get: {
+        parameters: {
+            query?: {
+                cursor?: string | null;
+                kind?: components["schemas"]["UpgradeKind"] | null;
+                limit?: number;
+            };
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeReleasePage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_api_v1_admin_upgrades_releases_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeReleaseRegister"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeReleaseSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    targets_api_v1_admin_upgrades_targets_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeTargetList"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operation_api_v1_admin_upgrades__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeOperation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_operation_api_v1_admin_upgrades__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeOperation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    events_api_v1_admin_upgrades__job_id__events_get: {
+        parameters: {
+            query?: {
+                after?: number;
+                limit?: number;
+            };
+            header?: {
+                "last-event-id"?: string | null;
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeEventPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_operation_api_v1_admin_upgrades__job_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeRollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeOperation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_unclaimed_cancellation_api_v1_admin_upgrades__job_id__unclaimed_cancellation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeUnclaimedCancellationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeUnclaimedCancellationGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_users_api_v1_admin_users_get: {
         parameters: {
             query?: {
@@ -17021,6 +22658,37 @@ export interface operations {
             };
         };
     };
+    upgrade_admission_api_v1_internal_ops_upgrade_admission_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeAdmissionStatus"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     source_content_api_v1_internal_training_datasets__dataset_id__content_get: {
         parameters: {
             query?: never;
@@ -17114,6 +22782,1986 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NodeTrainingLeaseSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handover_claim_api_v1_internal_upgrades_bootstrap_handover_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreBootstrapSeed"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverPreparation"] | components["schemas"]["UpgradeClaimIdle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handover_commit_api_v1_internal_upgrades_bootstrap_handover_commit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreHandoverCommitRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverCommitIntent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handover_committed_api_v1_internal_upgrades_bootstrap_handover_committed_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreHandoverCommittedRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handover_recovery_claim_api_v1_internal_upgrades_bootstrap_handover_recovery_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreBootstrapSeed"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverPreparation"] | components["schemas"]["UpgradeClaimIdle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handover_restored_api_v1_internal_upgrades_bootstrap_handover_restored_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreHandoverRestoreRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handover_restoring_api_v1_internal_upgrades_bootstrap_handover_restoring_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreHandoverRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handover_transfer_api_v1_internal_upgrades_bootstrap_handover_transfer_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreHandoverTransferRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverTransferIntent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handover_unchanged_api_v1_internal_upgrades_bootstrap_handover_unchanged_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreHandoverUnchangedRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handover_status_api_v1_internal_upgrades_bootstrap_handover__preparation_sha256__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                preparation_sha256: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreHandoverSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bootstrap_heartbeat_api_v1_internal_upgrades_bootstrap_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CoreBootstrapHeartbeat"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreBootstrapHeartbeat"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    claim_api_v1_internal_upgrades_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExecutionPlan"] | components["schemas"]["UpgradeClaimIdle"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    operation_status_api_v1_internal_upgrades__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeOperation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    collective_api_v1_internal_upgrades__job_id__collective_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeUpgradeCollectiveRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeUpgradeCollectiveResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cleanup_peer_inventory_api_v1_internal_upgrades__job_id__collective_cleanup_peer_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeUpgradeCollectiveCleanup"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeUpgradeInventory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    consume_activation_api_v1_internal_upgrades__job_id__consume_activation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeActivationConsume"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeReceiptAck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inventory_api_v1_internal_upgrades__job_id__inventory_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoreUpgradeInventory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    migration_proof_api_v1_internal_upgrades__job_id__migration_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeMigrationExecution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    migration_not_started_api_v1_internal_upgrades__job_id__migration_not_started_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeMigrationNotStarted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    native_failure_receipts_api_v1_internal_upgrades__job_id__native_failure_receipts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NativeRecoveryFailureReplay"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeReceiptAck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    peer_inventory_api_v1_internal_upgrades__job_id__peer_inventory_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NodeUpgradePeerRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NodeUpgradeInventory"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ready_to_activate_api_v1_internal_upgrades__job_id__ready_to_activate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeActivationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeActivationGrant"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    receipts_api_v1_internal_upgrades__job_id__receipts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeReceiptBatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeReceiptAck"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    initial_recovery_observation_api_v1_internal_upgrades__job_id__recovery_initial_observation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryObservation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryObservation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schema_observation_api_v1_internal_upgrades__job_id__schema_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeSchemaObservation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    gateway_smoke_api_v1_internal_upgrades__job_id__smoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-api-key"?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeSmokeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeSmokeResult"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unclaimed_cancellation_state_api_v1_internal_upgrades__job_id__unclaimed_cancellation_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeUnclaimedCancellationState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_legacy_native_terminal_api_v1_internal_upgrades__recovery_id__native_terminal_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeNativeTerminalState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_check_api_v1_internal_upgrades__recovery_id__recovery_cold_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdClaim"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_accept_api_v1_internal_upgrades__recovery_id__recovery_cold_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdClaim"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdClaim"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_continuation_binding_api_v1_internal_upgrades__recovery_id__recovery_cold_continuation_binding_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeColdContinuationBindingRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeColdContinuationBindingState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_continuation_context_api_v1_internal_upgrades__recovery_id__recovery_cold_continuation_context_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeColdContinuationRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeColdContinuationContext"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_continuation_observation_api_v1_internal_upgrades__recovery_id__recovery_cold_continuation_observation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeColdContinuationObservation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeColdContinuationObservation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_handback_api_v1_internal_upgrades__recovery_id__recovery_cold_handback_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdHandbackIntent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdHandbackIntent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_handback_check_api_v1_internal_upgrades__recovery_id__recovery_cold_handback_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdHandbackIntent"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdHandbackIntent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_handback_receipt_api_v1_internal_upgrades__recovery_id__recovery_cold_handback_receipt_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdHandbackReceipt"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdHandbackReceipt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_resolution_state_api_v1_internal_upgrades__recovery_id__recovery_cold_resolution_state_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdResolutionRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdResolutionState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_resolve_api_v1_internal_upgrades__recovery_id__recovery_cold_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdResolutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdResolution"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_smoke_api_v1_internal_upgrades__recovery_id__recovery_cold_smoke_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdSmokeCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdSmokeCommand"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_state_api_v1_internal_upgrades__recovery_id__recovery_cold_state_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_verification_api_v1_internal_upgrades__recovery_id__recovery_cold_verification_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdVerificationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdVerification"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cold_recovery_verification_check_api_v1_internal_upgrades__recovery_id__recovery_cold_verification_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryColdVerificationRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryColdVerification"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_consumption_gate_api_v1_internal_upgrades__recovery_id__recovery_consumption_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryConsumptionCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryTransferConsumption"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_consumption_delivery_api_v1_internal_upgrades__recovery_id__recovery_consumption_delivery_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryConsumptionDeliveryRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryConsumptionState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_owner_gate_api_v1_internal_upgrades__recovery_id__recovery_owner_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryOwnerCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryOwnerClaim"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_owner_accept_api_v1_internal_upgrades__recovery_id__recovery_owner_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryOwnerClaim"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryOwnerClaim"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_owner_state_api_v1_internal_upgrades__recovery_id__recovery_owner_state_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryOwnerCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryOwnerState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    succession_delivery_api_v1_internal_upgrades__recovery_id__recovery_succession_delivery_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessionDeliveryRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessionDeliveryState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    succession_observation_api_v1_internal_upgrades__recovery_id__recovery_succession_observation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessionObservation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessionObservation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_support_context_api_v1_internal_upgrades__recovery_id__recovery_support_context_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoverySupportContextRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryIntent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_unstarted_context_api_v1_internal_upgrades__recovery_id__recovery_unstarted_context_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryUnstartedRead"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryIntent"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recovery_unstarted_observation_api_v1_internal_upgrades__recovery_id__recovery_unstarted_observation_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                recovery_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoveryUnstartedObservation"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoveryUnstartedObservation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    successor_gate_api_v1_internal_upgrades__succession_id__recovery_successor_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                succession_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessorCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessorClaim"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    successor_accept_api_v1_internal_upgrades__succession_id__recovery_successor_claim_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                succession_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessorClaim"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessorClaim"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    successor_state_api_v1_internal_upgrades__succession_id__recovery_successor_state_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                succession_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessorStateCheck"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeExpiredRecoverySuccessorState"];
                 };
             };
             /** @description Validation Error */

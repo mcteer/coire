@@ -27,6 +27,7 @@ COPY deploy/observability/alerts/image.yaml /etc/prometheus/rules/image.yml
 COPY deploy/observability/alerts/training.yaml /etc/prometheus/rules/training.yml
 COPY deploy/observability/alerts/evaluations.yaml /etc/prometheus/rules/evaluations.yml
 COPY deploy/observability/alerts/feedback.yaml /etc/prometheus/rules/feedback.yml
+COPY deploy/observability/alerts/upgrades.yaml /etc/prometheus/rules/upgrades.yml
 COPY --from=build /src/web/ui /web/ui
 COPY --from=build --chown=65534:65534 /data/prometheus /prometheus
 USER 65534:65534

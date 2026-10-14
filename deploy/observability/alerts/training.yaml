@@ -5,6 +5,13 @@ groups:
   - name: coire-training
     interval: 15s
     rules:
+      - alert: CoireTrainingSwapTelemetryUnavailable
+        expr: sum(increase(coire_training_swap_sample_failures_total[5m])) > 0
+        for: 0m
+        labels: {severity: warning, subject: training}
+        annotations:
+          summary: Native training cannot verify actual swap telemetry
+          runbook_url: /docs/runbooks/preference-training#native-swap-telemetry
       - alert: CoireTrainingBaselineUnavailable
         expr: >-
           absent(coire_training_snapshot_timestamp_seconds)

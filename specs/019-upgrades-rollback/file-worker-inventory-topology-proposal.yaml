@@ -1,0 +1,22 @@
+# Proposed additional access; apply only after user approval under AGENTS.md.
+# The API's strict Core census reads the file worker's authenticated inventory.
+services:
+  coire-api:
+    networks:
+      - coire-edge
+      - coire-db
+      - coire-internal
+      - coire-telemetry
+      - coire-file-processing
+    secrets:
+      - postgres_password
+      - key_signing_secret
+      - node_tokens
+      - admin_token
+      - bootstrap_admin_email
+      - ops_service_token
+      - failover_peer_key
+      - openai_api_key
+      - anthropic_api_key
+      - upgrade_executor_token
+      - file_worker_service_token

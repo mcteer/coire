@@ -16,6 +16,9 @@ from coire_api.db import (
     ModelInstanceRow,
     NodeRow,
     RequestLeaseRow,
+    TrainingAttemptRow,
+    TrainingJobRow,
+    TrainingParticipantRow,
 )
 from coire_api.placement.service import lock_nodes_for_admission
 from coire_api.training.telemetry import observed
@@ -182,6 +185,26 @@ async def node_lease_snapshot(session: AsyncSession, node_name: str) -> NodeTrai
         counts[identity] = max(counts.get(identity, 0), 1)
         if len(counts) > _MAX_IDENTITIES:
             raise TrainingConflict("Node lease inventory exceeds its identity bound")
+    unfinished_jobs = tuple(
+        await session.scalars(
+            select(TrainingJobRow.id)
+            .join(TrainingAttemptRow, TrainingAttemptRow.job_id == TrainingJobRow.id)
+            .join(
+                TrainingParticipantRow, TrainingParticipantRow.attempt_id == TrainingAttemptRow.id
+            )
+            .where(
+                TrainingParticipantRow.node_id == node.id,
+                TrainingJobRow.state.not_in(
+                    ("queued", "paused", "succeeded", "failed", "cancelled")
+                ),
+            )
+            .distinct()
+            .order_by(TrainingJobRow.id)
+            .limit(_MAX_IDENTITIES + 1)
+        )
+    )
+    if len(unfinished_jobs) > _MAX_IDENTITIES:
+        raise TrainingConflict("Node training lifecycle inventory exceeds its identity bound")
     expires_at = sampled_at + timedelta(seconds=SNAPSHOT_VALIDITY_SECONDS)
     publication_time: datetime = (
         await session.execute(select(func.clock_timestamp()))
@@ -201,4 +224,5 @@ async def node_lease_snapshot(session: AsyncSession, node_name: str) -> NodeTrai
         sampled_at=sampled_at,
         expires_at=expires_at,
         active_leases=counts,
+        unfinished_jobs=unfinished_jobs,
     )

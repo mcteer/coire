@@ -297,6 +297,8 @@ async def test_node_proxy_refuses_unreserved_engine_inference(
             return None
 
         async def scalars(self, statement: object) -> SimpleNamespace:
+            if "FROM nodes" in str(statement):
+                return SimpleNamespace(all=lambda: ["coire-edge-a"])
             return SimpleNamespace(all=lambda: [])
 
     @asynccontextmanager
@@ -321,10 +323,10 @@ async def test_legacy_engine_hold_is_bounded_and_excludes_image_worker() -> None
     )
 
     class Rows:
-        def __init__(self, items: list[MemoryReservationRow]) -> None:
+        def __init__(self, items: list[MemoryReservationRow] | list[str]) -> None:
             self.items = items
 
-        def all(self) -> list[MemoryReservationRow]:
+        def all(self) -> list[MemoryReservationRow] | list[str]:
             return self.items
 
     class Session:
@@ -347,6 +349,8 @@ async def test_legacy_engine_hold_is_bounded_and_excludes_image_worker() -> None
             return None if self.ledger_missing else SimpleNamespace(budget_bytes=10)
 
         async def scalars(self, statement: object) -> Rows:
+            if "nodes.name" in str(statement):
+                return Rows(["coire-edge-a"])
             return Rows(self.reservations)
 
         def add(self, row: MemoryReservationRow) -> None:
