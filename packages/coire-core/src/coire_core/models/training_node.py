@@ -556,6 +556,7 @@ class TrainingMeasurementNodeStatus(TrainingWire):
     ready: bool = False
     training_started_at: AwareDatetime | None = None
     swap_used_bytes: int | None = Field(default=None, ge=0)
+    # Cumulative bytes actually swapped out; filesystem page-outs are excluded.
     swap_out_bytes: int | None = Field(default=None, ge=0)
     thermal_state: MeasurementThermalState = "unknown"
     sampled_at: AwareDatetime | None = None

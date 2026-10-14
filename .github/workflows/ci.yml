@@ -45,6 +45,8 @@ jobs:
           version: ${{ env.UV_VERSION }}
           enable-cache: true
       - run: uv sync --all-packages --frozen
+      - name: actual Darwin swap counter and fail-closed native telemetry
+        run: uv run pytest -q tests/unit/test_swap_telemetry.py
       - name: declare the isolated fixture hostname
         run: sudo scutil --set HostName coire-edge-a
       - name: actual fixed kernel read and expired epoch refusal

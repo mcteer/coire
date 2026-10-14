@@ -233,3 +233,22 @@ these jobs required by publication; neither skipping them nor pointing them at
 the production Studios satisfies the gate.
 
 Native resource CI requires uv-managed standalone Python (`UV_MANAGED_PYTHON=true`). macOS framework Python can rewrite argv[0] after exec, causing the exact native ownership check to return unknown even when birth and group match. Inspect configured/observed commands before attributing this refusal to memory. Do not normalize away command differences or renew unknown work. The standalone interpreter changes CI setup only; all physical resource and positive-stop assertions remain required.
+
+## Native swap telemetry
+
+Darwin probes use `HOST_VM_INFO64.swapouts` multiplied by the kernel page size,
+alongside actual current swap usage. `psutil.sout` on macOS reports general
+filesystem page-outs and cannot establish swap pressure. A missing syscall,
+short ABI result, invalid page size or unreleased host port refuses qualification;
+there is no zero or filesystem-counter fallback. Any true swap growth still
+terminates the probe. Historical failed observations remain failed.
+
+`coire.node.training.swap_sample` traces and
+`coire_training_swap_sample_failures_total` identify unavailable readings; the
+jobs dashboard and `CoireTrainingSwapTelemetryUnavailable` alert expose them.
+Inspect the bounded worker diagnostics for actual footprint, reserved limit,
+true swap counters and separately labelled filesystem page-outs. Compare with
+`vm_stat`'s `Swapouts` and page size. Retain the journal and resource hold until
+normal positive process-stop proof; retry only after telemetry is trustworthy.
+Rollback uses the retained compatible node release and invalidates qualification
+for a changed runtime identity. Do not alter memory/swap guards to approve a probe.

@@ -98,3 +98,11 @@ operation-scoped authenticated release remains the authority. Every required inv
 owner must be complete and every entry reconciled; unknown owners/holds still block.
 This exception preserves existing work and resumes admission; it grants no permission
 to select another runtime or stop a workload. Activated release keeps the full idle gate.
+
+Native qualification retains strict zero-swap growth. `swap_out_bytes` means
+actual cumulative swap-out bytes: Darwin `HOST_VM_INFO64.swapouts` times the
+kernel page size, or the existing Linux swap counter. Filesystem page-outs do
+not establish swap pressure. Unavailable/short native telemetry refuses with
+the existing typed503 dependency problem and retry guidance; retry never changes
+an accepted budget. Wire fields are unchanged. Issue97 records the acceptance
+bug, native ABI proof and required objective/dense matrix validation.

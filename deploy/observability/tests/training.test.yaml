@@ -2,6 +2,19 @@ rule_files:
   - ../alerts/training.yaml
 evaluation_interval: 15s
 tests:
+  - name: native-swap-telemetry-failure-is-visible
+    interval: 15s
+    input_series:
+      - {series: 'coire_training_swap_sample_failures_total{platform="darwin"}', values: '0 0 1 1 1'}
+    alert_rule_test:
+      - eval_time: 30s
+        alertname: CoireTrainingSwapTelemetryUnavailable
+        exp_alerts:
+          - exp_labels: {severity: warning, subject: training}
+            exp_annotations:
+              summary: Native training cannot verify actual swap telemetry
+              runbook_url: /docs/runbooks/preference-training#native-swap-telemetry
+      - {eval_time: 6m, alertname: CoireTrainingSwapTelemetryUnavailable, exp_alerts: []}
   - name: healthy-idle-snapshot-does-not-alert
     interval: 15s
     input_series:

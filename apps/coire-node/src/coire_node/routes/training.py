@@ -10,7 +10,12 @@ import psutil
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from opentelemetry import metrics, trace
 
-from coire_core.errors import TrainingConflict, TrainingValidationError, UpgradeUnavailable
+from coire_core.errors import (
+    TrainingConflict,
+    TrainingUnavailable,
+    TrainingValidationError,
+    UpgradeUnavailable,
+)
 from coire_core.models.training_node import (
     CheckpointAcknowledgementDocument,
     CheckpointCommitAcknowledgementV2,
@@ -83,8 +88,11 @@ async def invoke[T](operation: Callable[[], Awaitable[T]]) -> T:
             result = await operation()
         commands.add(1, {"outcome": "succeeded"})
         return result
-    except UpgradeUnavailable as error:
-        commands.add(1, {"outcome": "maintenance"})
+    except (UpgradeUnavailable, TrainingUnavailable) as error:
+        commands.add(
+            1,
+            {"outcome": "maintenance" if isinstance(error, UpgradeUnavailable) else "unavailable"},
+        )
         raise HTTPException(
             error.status, error.to_problem().model_dump(mode="json"), headers={"Retry-After": "5"}
         ) from error

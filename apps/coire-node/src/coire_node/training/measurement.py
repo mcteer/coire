@@ -55,6 +55,7 @@ from coire_core.settings import get_settings
 from coire_node.footprint import phys_footprint
 from coire_node.metrics import read_thermal_state
 from coire_node.store import Store, write_atomic
+from coire_node.swap import read_swap_sample
 from coire_node.training.checkpoints import CheckpointStore, _fsync_directory
 from coire_node.training.components import descriptor, verify_directory
 from coire_node.training.datasets import load_analysis_tokenizer
@@ -560,6 +561,7 @@ class MeasurementSupervisor(TrainingSupervisor):
                     },
                 )
             observation = candidate
+        swap = read_swap_sample()
         return TrainingMeasurementNodeStatus(
             measurement_id=probe.measurement_id,
             status=status,
@@ -571,8 +573,8 @@ class MeasurementSupervisor(TrainingSupervisor):
             )
             if (path.parent / "training-started").exists()
             else None,
-            swap_used_bytes=psutil.swap_memory().used,
-            swap_out_bytes=psutil.swap_memory().sout,
+            swap_used_bytes=swap.used,
+            swap_out_bytes=swap.out,
             thermal_state=read_thermal_state().value,
             sampled_at=datetime.now(UTC),
         )
@@ -730,7 +732,7 @@ def native_measurement(
     write_atomic(directory / "birth.json", birth.model_dump_json().encode())
     _fsync_directory(directory)
     started, stop = time.monotonic(), threading.Event()
-    swap_start = psutil.swap_memory()
+    swap_start = read_swap_sample()
     peak, swap_growth, samples, checkpoint_peak = 0, 0, 0, 0
     serializing = threading.Event()
     guardian: DeadlineGuardian | None = None
@@ -741,7 +743,7 @@ def native_measurement(
         nonlocal peak, swap_growth, samples, thermal_ok, checkpoint_peak
         with lock:
             footprint = phys_footprint(os.getpid())
-            swap = psutil.swap_memory()
+            swap = read_swap_sample()
             thermal = read_thermal_state()
             if footprint is None or thermal not in {"nominal", "fair"}:
                 thermal_ok = False
@@ -749,7 +751,9 @@ def native_measurement(
             peak = max(peak, footprint)
             if serializing.is_set():
                 checkpoint_peak = max(checkpoint_peak, footprint)
-            swap_growth = max(swap_growth, swap.used - swap_start.used, swap.sout - swap_start.sout)
+            if swap.out < swap_start.out:
+                raise TrainingConflict("Probe cumulative swap telemetry regressed")
+            swap_growth = max(swap_growth, swap.used - swap_start.used, swap.out - swap_start.out)
             samples += 1
             if (
                 swap_growth

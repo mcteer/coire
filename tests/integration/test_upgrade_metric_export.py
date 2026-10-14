@@ -19,6 +19,7 @@ from coire_core.settings import Settings
 from coire_api.telemetry import configure_telemetry
 from coire_api.upgrades import telemetry, handover_telemetry, cold_continuation_telemetry
 from coire_upgrade_executor import telemetry as executor, passive, worker
+from coire_node import swap
 body = json.load(sys.stdin)
 settings = Settings(diagnostics_enabled=body['diagnostics'], otlp_endpoint=body['endpoint'])
 configure_telemetry('coire-upgrade-metric-export-test', '019', settings.otlp_endpoint)
@@ -38,6 +39,7 @@ passive.observations.add(1)
 worker.failures.add(1)
 cold_continuation_telemetry.accepted.add(1, {'node': 'coire-edge-a', 'outcome': 'accepted'})
 cold_continuation_telemetry.prepared.add(1, {'outcome': 'prepared'})
+swap.failures.add(1, {'platform': 'darwin'})
 assert metrics.get_meter_provider().force_flush(timeout_millis=10000)
 metrics.get_meter_provider().shutdown(timeout_millis=10000)
 """
@@ -112,6 +114,7 @@ def test_real_collector_exports_exact_upgrade_rule_and_counter_names(diagnostics
                 input=json.dumps({"endpoint": endpoint, "diagnostics": diagnostics}),
                 capture_output=True,
                 text=True,
+                env={**os.environ, "OTEL_SDK_DISABLED": "false"},
                 timeout=30,
             )
             assert produced.returncode == 0, "Actual metric export failed"
@@ -132,6 +135,7 @@ def test_real_collector_exports_exact_upgrade_rule_and_counter_names(diagnostics
             "coire_upgrade_executor_step_failures_total",
             "coire_upgrade_cold_continuations_total",
             "coire_upgrade_cold_continuation_schema_preparations_total",
+            "coire_training_swap_sample_failures_total",
         }
         # The production collector batches OTLP for five seconds. A successful
         # SDK flush acknowledges receipt, not completion of that batch.
