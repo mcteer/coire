@@ -157,7 +157,10 @@ def retire_adopted_fixture(settings: Settings, job_id: str) -> UpgradeNativeFixt
             engine_inventory = UpgradeOwnerInventory(
                 owner="engines", status="complete", entries=entries
             )
-        if not inventory.idle(REQUIRED_OWNERS - {"engines"}):
+        non_engine_inventory = inventory.model_copy(
+            update={"owners": tuple(o for o in inventory.owners if o.owner != "engines")}
+        )
+        if not non_engine_inventory.idle(REQUIRED_OWNERS - {"engines"}):
             raise UpgradeUnavailable("Fixture retirement has active or unknown Source work")
         retained = UpgradeNativeFixtureRetirement(
             claim=claim,

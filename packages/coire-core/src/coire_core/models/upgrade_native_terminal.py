@@ -117,7 +117,9 @@ class UpgradeNativeFixtureRetirement(UpgradeWire):
             or self.engine_inventory.owner != "engines"
             or self.engine_inventory.status != "complete"
             or self.engine_inventory.entries
-            or not self.inventory.idle(NODE_UPGRADE_OWNERS - {"engines"})
+            or not self.inventory.model_copy(
+                update={"owners": tuple(o for o in self.inventory.owners if o.owner != "engines")}
+            ).idle(NODE_UPGRADE_OWNERS - {"engines"})
             or (self.retired_at is not None and self.retired_at < self.observed_at)
         ):
             raise ValueError("fixture retirement is not the exact fenced current Source")
