@@ -308,7 +308,9 @@ def test_first_install_remains_unready_across_executor_restart(
                             assert after["Image"] == before["Image"]
                             assert after["Config"] == before["Config"]
                             assert after["HostConfig"] == before["HostConfig"]
-                            assert after["Mounts"] == before["Mounts"]
+                            assert sorted(
+                                after["Mounts"], key=lambda mount: mount["Destination"]
+                            ) == sorted(before["Mounts"], key=lambda mount: mount["Destination"])
                             if after["State"].get("Health", {}).get("Status") == "healthy":
                                 break
                             assert time.monotonic() < service_deadline, (
@@ -367,7 +369,11 @@ def test_first_install_remains_unready_across_executor_restart(
                             assert restarted["Image"] == predecessor["Image"]
                             assert restarted["Config"] == predecessor["Config"]
                             assert restarted["HostConfig"] == predecessor["HostConfig"]
-                            assert restarted["Mounts"] == predecessor["Mounts"]
+                            assert sorted(
+                                restarted["Mounts"], key=lambda mount: mount["Destination"]
+                            ) == sorted(
+                                predecessor["Mounts"], key=lambda mount: mount["Destination"]
+                            )
                         subprocess.run(
                             ["docker", "stop", "--time=5", candidate["Id"]],
                             capture_output=True,
