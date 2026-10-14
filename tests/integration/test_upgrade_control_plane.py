@@ -23,6 +23,49 @@ pytestmark = pytest.mark.integration
 REPO = Path(__file__).resolve().parents[2]
 
 
+def test_upgrade_inventory_requires_quorum_and_drained_core_requests() -> None:
+    """Actual signed election members supply upgrade admission's handback inventory."""
+    from datetime import UTC, datetime, timedelta
+
+    from pydantic import SecretStr
+    from test_control_plane_failover import _members, _settle
+
+    from coire_api.failover.participant import CoreParticipant
+    from coire_api.routes import failover
+    from coire_api.upgrades.inventory import failover_inventory
+    from coire_core.failover_election import ElectionTimings
+    from coire_core.settings import Settings
+
+    private, members, membership = _members()
+    core = CoreParticipant(
+        name="coire-core",
+        membership=membership,
+        private_key_b64=private["coire-core"],
+        timings=ElectionTimings(
+            promotion=timedelta(seconds=10),
+            demotion=timedelta(seconds=30),
+            lease=timedelta(minutes=5),
+            drain=timedelta(seconds=30),
+        ),
+    )
+    members["coire-core"] = core
+    settings = Settings(
+        failover_member_name="coire-core", failover_peer_key=SecretStr(private["coire-core"])
+    )
+    failover.set_participant(core)
+    try:
+        _settle(members, datetime.now(UTC))
+        assert core.frontend_ready()
+        inventory = failover_inventory(settings)
+        assert inventory.status == "complete" and inventory.entries[0].state == "standing"
+        core.in_flight = 1
+        assert failover_inventory(settings).entries[0].state == "active"
+        core.in_flight = 0
+        assert failover_inventory(settings).entries[0].state == "standing"
+    finally:
+        failover.set_participant(None)
+
+
 @pytest.mark.parametrize(
     "handover,crash_candidate,restart_candidate,restart_incumbent,restart_committed,restart_service",
     [

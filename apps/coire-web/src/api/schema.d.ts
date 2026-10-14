@@ -3344,6 +3344,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/internal/upgrades/{job_id}/native-failure-receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Native Failure Receipts */
+        post: operations["native_failure_receipts_api_v1_internal_upgrades__job_id__native_failure_receipts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/internal/upgrades/{job_id}/peer-inventory": {
         parameters: {
             query?: never;
@@ -9921,6 +9938,11 @@ export interface components {
              */
             recorded_at: string;
             selected: components["schemas"]["NativeRuntimeSelection"];
+        };
+        /** NativeRecoveryFailureReplay */
+        NativeRecoveryFailureReplay: {
+            batch: components["schemas"]["UpgradeReceiptBatch"];
+            native: components["schemas"]["NativeRecoveryIntent"];
         };
         /** NativeRecoveryIntent */
         NativeRecoveryIntent: {
@@ -23388,6 +23410,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UpgradeMigrationNotStarted"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    native_failure_receipts_api_v1_internal_upgrades__job_id__native_failure_receipts_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "x-coire-node"?: ("coire-edge-a" | "coire-edge-b") | null;
+                authorization?: string | null;
+            };
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NativeRecoveryFailureReplay"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeReceiptAck"];
                 };
             };
             /** @description Validation Error */

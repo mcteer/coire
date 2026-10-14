@@ -146,7 +146,35 @@ def observe_fixture_supervisor(
             or set(record) != {"pid", "create_time"}
             or (record["pid"], record["create_time"]) != (identity.pid, identity.create_time_s)
         ):
-            raise UpgradeConflict("Cold fixture child provenance differs")
+            if role != "node" or current_claim is None:
+                raise UpgradeConflict("Cold fixture child provenance differs")
+            from coire_core.models.upgrade_native_terminal import UpgradeNativeFixtureUnstartedChild
+
+            retained = records.read(
+                "retired-unstarted-" + current_claim.job_id + ".json",
+                UpgradeNativeFixtureUnstartedChild,
+            )
+            if (
+                retained is None
+                or retained.claim != (original_claim or current_claim)
+                or retained.original_node != last
+                or not isinstance(record, dict)
+                or set(record) != {"pid", "create_time"}
+                or (record["pid"], record["create_time"])
+                != (retained.candidate_process.pid, retained.candidate_process.create_time_s)
+                or (parent["pid"], parent["create_time"])
+                != (retained.supervisor.pid, retained.supervisor.create_time_s)
+                or retained.native.source_process != last.process
+                or (retained.native.job_id, retained.native.generation, retained.native.plan_sha256)
+                != (current_claim.job_id, current_claim.generation, current_claim.plan_sha256)
+                or hashlib.sha256(
+                    read_definition_file(base / "fixture-supervisor.py", os.getuid())
+                ).hexdigest()
+                != retained.definition_sha256
+            ):
+                raise UpgradeConflict("Cold unpublished fixture child provenance differs")
+            for retired in (retained.supervisor, retained.candidate_process, last.process):
+                verify_retired_identity(retired)
     script = read_definition_file(base / "fixture-supervisor.py", os.getuid())
     return UpgradeRecoveryRetiredSupervisor.model_validate(
         {

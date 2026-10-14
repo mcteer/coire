@@ -687,7 +687,12 @@ Immutable native support checks the canonical local/Core resolution, actual
 Source process and supervision, released claim/fences and the exact mutable
 native preimage. It transfers the completed source-serving scope once to the
 legacy reader's standard custody, retaining the original attempt/deadline and
-actual output evidence. It retires only the scoped sparse staging allocation by
+actual output evidence. If the original scope already contains different completed
+Source evidence, support verifies both exact clean scopes and retired smoke
+processes under their ownership locks and records `native-terminal.serving-history.json`
+with both byte digests and the canonical resolution. Both namespaces and the
+original serving attempt remain intact. Incomplete or changed custody refuses.
+It retires only the scoped sparse staging allocation by
 its recorded inode/owner. It preserves and hashes the original receipt prefix,
 appends linked after-deadline verification/rollback acknowledgements and records
 source verification without changing original deadline fields or failure rows.
@@ -742,3 +747,11 @@ custodian and preserves its retirement history. Applying the next local fence
 uses the captured old held preimage, under one maintenance lock, with a higher
 generation and single-node target; ordinary apply still refuses a different held
 owner. No intermediate released state or reopening is published.
+
+The independent guard can reconcile retained expired failure receipts through
+`/api/v1/internal/upgrades/{job_id}/native-failure-receipts` even when its Node API
+cannot start. The node credential, exact accepted plan/Source/generation and
+native expired intent are required. The route accepts only failure history and
+uses ordinary atomic receipt/audit ingestion; it grants no success, fence release
+or recovery budget. Lost responses replay retained bytes. The dashboard and
+`CoireUpgradeNativeFailureReconciled` alert identify this reconciliation.

@@ -15,6 +15,7 @@ from coire_api.upgrades.peer_inventory import guard_peer_inventory
 from coire_api.upgrades.service import ingest_receipt
 from coire_core.errors import CoireError, UpgradeConflict, UpgradeUnavailable
 from coire_core.models.upgrade_collective import NodeUpgradeCollectiveResult
+from coire_core.models.upgrade_native_progress import NativeRecoveryFailureReplay
 from coire_core.models.upgrade_native_terminal import UpgradeNativeTerminalState
 from coire_core.models.upgrade_recovery import (
     UpgradeExpiredRecoveryColdCheck,
@@ -376,6 +377,26 @@ def require_successor_node(
         ) from None
     enabled(request, response)
     return node
+
+
+@router.post("/{job_id}/native-failure-receipts", response_model=UpgradeReceiptAck)
+async def native_failure_receipts(
+    job_id: UpgradeId,
+    body: NativeRecoveryFailureReplay,
+    request: Request,
+    response: Response,
+    x_coire_node: Annotated[StudioName | None, Header()] = None,
+    authorization: Annotated[str | None, Header(max_length=4096)] = None,
+) -> UpgradeReceiptAck:
+    from coire_api.upgrades.native_failure_replay import reconcile_native_failure, replays
+
+    node = require_successor_node(request, response, x_coire_node, authorization)
+    if job_id != body.native.job_id:
+        raise UpgradeConflict("Native failure receipt path differs")
+    async with session_scope() as session:
+        result = await reconcile_native_failure(session, body, node)
+    replays.add(1, {"node": node})
+    return result
 
 
 @router.post("/{recovery_id}/recovery-cold-claim", response_model=UpgradeExpiredRecoveryColdClaim)

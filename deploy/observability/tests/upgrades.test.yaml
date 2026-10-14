@@ -484,3 +484,16 @@ tests:
       exp_annotations:
         summary: Reboot-renumbered upgrade staging bytes are preserved in quarantine
         runbook_url: /docs/runbooks/upgrades#recover
+- name: native-failure-reconciliation
+  interval: 15s
+  input_series:
+  - series: coire_upgrade_native_failure_replays_total{node="coire-edge-a"}
+    values: 0 1 1
+  alert_rule_test:
+  - eval_time: 30s
+    alertname: CoireUpgradeNativeFailureReconciled
+    exp_alerts:
+    - exp_labels: {severity: warning, subject: upgrades}
+      exp_annotations:
+        summary: Independent native guard reconciled expired failure; maintenance remains held
+        runbook_url: /docs/runbooks/upgrades#recover

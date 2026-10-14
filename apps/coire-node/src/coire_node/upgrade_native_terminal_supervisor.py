@@ -69,6 +69,18 @@ def current_children(settings: Settings) -> tuple[NativeGuardStatus, NativeNodeP
     return guard, node
 
 
+def stable_current_children(settings: Settings) -> tuple[NativeGuardStatus, NativeNodeProcess]:
+    """An atomic heartbeat replacement may retire the opened inode mid-read."""
+    deadline = time.monotonic() + 2
+    while True:
+        try:
+            return current_children(settings)
+        except UpgradeUnavailable:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.02)
+
+
 @tracer.start_as_current_span("coire.node.native_terminal_supervisor.adopt", record_exception=False)
 def adopt_fixture(settings: Settings, stopped: threading.Event) -> None:
     recovery_id = settings.upgrade_recovery_id
@@ -149,7 +161,7 @@ def adopt_fixture(settings: Settings, stopped: threading.Event) -> None:
     while not stopped.wait(0.2):
         verify_inherited_fixture_lock(settings, descriptor)
         heartbeat.set(time.time(), {"node": settings.node_name})
-        guard, node = current_children(settings)
+        guard, node = stable_current_children(settings)
         guard_python = checked_python(guard.bootstrap_runtime)
         guard_child = _owned_native_process(guard.process, guard_python, "coire_node.upgrade_guard")
         if guard_child is None:

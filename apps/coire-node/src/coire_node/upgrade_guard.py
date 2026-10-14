@@ -20,6 +20,7 @@ from opentelemetry import metrics, trace
 
 from coire_core.errors import CoireError, UpgradeConflict, UpgradeUnavailable
 from coire_core.models.upgrade_collective import NodeUpgradeCollectiveResult
+from coire_core.models.upgrade_native_progress import NativeRecoveryFailureReplay
 from coire_core.models.upgrade_recovery import (
     UpgradeExpiredRecoveryColdCheck,
     UpgradeExpiredRecoveryColdClaim,
@@ -491,6 +492,29 @@ class NativeGuardTransport:
         ):
             raise UpgradeUnavailable("Cold owner state differs or is stale")
         return observed
+
+    def relay_expired_failure(self, journal: "NativeGuardJournal") -> None:
+        from coire_core.models.upgrades import UpgradeReceiptAck, UpgradeReceiptBatch
+
+        native = journal.current()
+        latest = journal.receipts.latest()
+        if native.phase != "recovery_required" or latest is None:
+            return
+        if journal.receipts.acknowledged_sequence() >= latest.sequence:
+            return
+        receipts = journal.receipts.page(max(0, latest.sequence - 32))
+        body = NativeRecoveryFailureReplay(
+            native=native, batch=UpgradeReceiptBatch(receipts=receipts)
+        )
+        ack = self._read(
+            f"/api/v1/internal/upgrades/{native.job_id}/native-failure-receipts",
+            UpgradeReceiptAck,
+            datetime.now(UTC) + timedelta(seconds=5),
+            core=True,
+            method="POST",
+            payload=body,
+        )
+        journal.receipts.acknowledge(ack)
 
     def publish_initial_recovery_observation(
         self, proof: UpgradeExpiredRecoveryObservation
@@ -1747,6 +1771,7 @@ def run_native_guard(settings: Settings, stopped: threading.Event) -> PreparedNa
                         if claim is not None and claim.state == "active":
                             journal = NativeUpgradeControl(settings).journal(claim.job_id)
                             advance_guard_step(settings, journal, transport)
+                            transport.relay_expired_failure(journal)
                         elif claim is not None and claim.state == "released":
                             delegate = refresh_running_guard(settings, process)
                             if delegate is not None:

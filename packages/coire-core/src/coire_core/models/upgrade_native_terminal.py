@@ -54,6 +54,39 @@ class UpgradeNativeTerminalServingHistory(UpgradeWire):
     recovered_scope_sha256: Sha256
 
 
+class UpgradeNativeFixtureUnstartedChild(UpgradeWire):
+    claim: NativeUpgradeClaim
+    native: NativeRecoveryIntent
+    original_node: NativeNodeProcess
+    candidate_process: NodeAgentProcessIdentity
+    supervisor: NodeAgentProcessIdentity
+    definition_sha256: Sha256
+    observed_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def exact_retired_candidate(self) -> "UpgradeNativeFixtureUnstartedChild":
+        native = self.native
+        if (
+            self.claim.state != "active"
+            or (self.claim.job_id, self.claim.generation, self.claim.plan_sha256)
+            != (native.job_id, native.generation, native.plan_sha256)
+            or native.phase != "recovery_required"
+            or native.activation_started_at is None
+            or native.recovery_deadline_at is None
+            or native.recovery_deadline_at > self.observed_at
+            or self.original_node.process != native.source_process
+            or self.original_node.selected.runtime != native.source.runtime
+            or self.original_node.selected.release_sha256 != native.source.release_sha256
+            or self.candidate_process.environment_sha256 != native.candidate.environment_sha256
+            or self.supervisor.environment_sha256 != native.source.runtime.environment_sha256
+            or not max(self.supervisor.create_time_s, native.activation_started_at.timestamp())
+            <= self.candidate_process.create_time_s
+            <= self.observed_at.timestamp()
+        ):
+            raise ValueError("fixture unpublished child does not bind the expired candidate")
+        return self
+
+
 class UpgradeNativeTerminalIntent(UpgradeWire):
     resolution_sha256: Sha256
     before_native: "NativeRecoveryIntent"

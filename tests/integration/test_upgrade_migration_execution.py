@@ -32,7 +32,9 @@ from coire_core.models.upgrades import (
 from coire_core.settings import Settings
 
 
-@pytest.mark.parametrize("scenario", ["completed", "fenced", "race"])
+@pytest.mark.parametrize(
+    "scenario", ["completed", "fenced", "race", "transaction_failure", "partial"]
+)
 async def test_one_migration_attempt_survives_restart_and_returns_verified_schema(
     training_postgres_url: str,
     scenario: str,
@@ -194,6 +196,40 @@ async def test_one_migration_attempt_survives_restart_and_returns_verified_schem
         async with sessions.begin() as session:
             with pytest.raises(UpgradeConflict, match="re-execution"):
                 await claim_migration(session, operation.job_id, 1, settings)
+        if scenario in {"transaction_failure", "partial"}:
+            if scenario == "transaction_failure":
+                from sqlalchemy.exc import DBAPIError
+
+                with pytest.raises(DBAPIError):
+                    async with engine.begin() as connection:
+                        await connection.execute(
+                            text("CREATE TABLE migration_preserved (id integer PRIMARY KEY)")
+                        )
+                        await connection.execute(text("SELECT 1 / 0"))
+            else:
+                async with engine.begin() as connection:
+                    await connection.execute(
+                        text("CREATE TABLE migration_preserved (id integer PRIMARY KEY)")
+                    )
+            async with sessions.begin() as session:
+                observed = await record_migration(session, plan, intent, exit_code=1)
+                assert observed.state == "uncertain"
+                assert observed.schema_after_head == head
+                assert (observed.schema_after_sha256 == digest) == (
+                    scenario == "transaction_failure"
+                )
+            async with sessions.begin() as session:
+                with pytest.raises(UpgradeConflict):
+                    await claim_migration(session, operation.job_id, 1, settings)
+                retained = await session.get(UpgradeOperationRow, operation.job_id)
+                assert retained is not None and retained.active_slot == 1
+                assert retained.phase == UpgradePhase.MIGRATING.value
+                assert retained.migration_execution == observed.model_dump(mode="json")
+                assert await session.scalar(
+                    text("SELECT to_regclass('migration_preserved') IS NOT NULL")
+                ) == (scenario == "partial")
+                assert (await inspect_schema(session))[0] == head
+            return
         # A small real additive schema effect stands in for the future candidate migration.
         async with engine.begin() as connection:
             await connection.execute(

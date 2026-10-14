@@ -281,6 +281,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "recovery-succession-delivery",
                 "recovery-succession-observation",
                 "recovery-initial-observation",
+                "native-failure-receipts",
                 "recovery-cold-continuation-context",
                 "recovery-cold-continuation-observation",
                 "recovery-cold-continuation-binding",

@@ -22,6 +22,7 @@ ADMIN_PATHS = frozenset(
 NODE_SUFFIXES = frozenset(
     {
         "recovery-initial-observation",
+        "native-failure-receipts",
         "recovery-cold-continuation-context",
         "recovery-cold-continuation-observation",
         "recovery-cold-continuation-binding",

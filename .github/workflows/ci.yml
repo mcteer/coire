@@ -288,7 +288,7 @@ jobs:
         run: |
           sudo useradd --uid 65532 --user-group --create-home --groups docker coire019-ci
           sudo install -d -o 65532 -g 65532 -m 0700 /tmp/coire019-ci /tmp/coire019-ci/bin
-          sudo cp -a "$GITHUB_WORKSPACE" /tmp/coire019-ci/repo
+          sudo rsync -a --exclude=.venv "$GITHUB_WORKSPACE/" /tmp/coire019-ci/repo/
           sudo install -o 65532 -g 65532 -m 0755 "$(command -v uv)" /tmp/coire019-ci/bin/uv
           sudo chown -R 65532:65532 /tmp/coire019-ci/repo
       - name: isolated bootstrap ownership and serialized handover authority
@@ -334,7 +334,7 @@ jobs:
         run: |
           sudo useradd --uid 65532 --user-group --create-home --groups docker coire019-ci
           sudo install -d -o 65532 -g 65532 -m 0700 /tmp/coire019-ci /tmp/coire019-ci/bin
-          sudo cp -a "$GITHUB_WORKSPACE" /tmp/coire019-ci/repo
+          sudo rsync -a --exclude=.venv "$GITHUB_WORKSPACE/" /tmp/coire019-ci/repo/
           sudo install -o 65532 -g 65532 -m 0755 "$(command -v uv)" /tmp/coire019-ci/bin/uv
           sudo chown -R 65532:65532 /tmp/coire019-ci/repo
       - name: actual Source qualification, executor handover and restoration

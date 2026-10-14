@@ -688,6 +688,23 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "id": 27,
+      "title": "Retained native failures reconciled",
+      "type": "stat",
+      "gridPos": {
+        "h": 4,
+        "w": 12,
+        "x": 0,
+        "y": 152
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(coire_upgrade_native_failure_replays_total[5m]))",
+          "refId": "A"
+        }
+      ]
     }
   ]
 }

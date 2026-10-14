@@ -15524,6 +15524,23 @@
         "title": "NativeNodeProcess",
         "type": "object"
       },
+      "NativeRecoveryFailureReplay": {
+        "additionalProperties": false,
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/UpgradeReceiptBatch"
+          },
+          "native": {
+            "$ref": "#/components/schemas/NativeRecoveryIntent"
+          }
+        },
+        "required": [
+          "native",
+          "batch"
+        ],
+        "title": "NativeRecoveryFailureReplay",
+        "type": "object"
+      },
       "NativeRecoveryIntent": {
         "additionalProperties": false,
         "properties": {
@@ -46308,6 +46325,96 @@
           }
         ],
         "summary": "Migration Not Started",
+        "tags": [
+          "internal:upgrades"
+        ]
+      }
+    },
+    "/api/v1/internal/upgrades/{job_id}/native-failure-receipts": {
+      "post": {
+        "operationId": "native_failure_receipts_api_v1_internal_upgrades__job_id__native_failure_receipts_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-coire-node",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "coire-edge-a",
+                    "coire-edge-b"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Coire-Node"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NativeRecoveryFailureReplay"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpgradeReceiptAck"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Native Failure Receipts",
         "tags": [
           "internal:upgrades"
         ]
