@@ -302,15 +302,18 @@ jobs:
             export COIRE_UPGRADE_LOCK_TEST_IMAGE=coire-api:ci
             cd /tmp/coire019-ci/repo
             uv sync --all-packages --frozen
-            uv run pytest -q tests/integration/test_upgrade_bootstrap.py tests/integration/test_upgrade_host_ownership.py tests/integration/test_upgrade_persistence.py
+            uv run pytest -q \
+              tests/integration/test_upgrade_bootstrap.py \
+              tests/integration/test_upgrade_host_ownership.py \
+              tests/integration/test_upgrade_persistence.py \
+              tests/integration/test_upgrade_core_inventory.py \
+              tests/integration/test_upgrade_preservation.py \
+              tests/integration/test_upgrade_bootstrap_persistence.py \
+              tests/integration/test_upgrade_handover_authority.py \
+              tests/integration/test_upgrade_handover_transfer.py \
+              tests/integration/test_upgrade_handover_unchanged.py \
+              tests/integration/test_upgrade_journal_process_crash.py
           '
-          tests/integration/test_upgrade_core_inventory.py
-          tests/integration/test_upgrade_preservation.py
-          tests/integration/test_upgrade_bootstrap_persistence.py
-          tests/integration/test_upgrade_handover_authority.py
-          tests/integration/test_upgrade_handover_transfer.py
-          tests/integration/test_upgrade_handover_unchanged.py
-          tests/integration/test_upgrade_journal_process_crash.py
 
   upgrade-control-plane:
     needs: build

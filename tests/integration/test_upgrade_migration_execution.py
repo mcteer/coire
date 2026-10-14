@@ -225,6 +225,18 @@ async def test_one_migration_attempt_survives_restart_and_returns_verified_schem
                 assert retained is not None and retained.active_slot == 1
                 assert retained.phase == UpgradePhase.MIGRATING.value
                 assert retained.migration_execution == observed.model_dump(mode="json")
+                from coire_api.upgrades.grants import verify_current_schema
+
+                with pytest.raises(UpgradeConflict, match="completed migration"):
+                    await verify_current_schema(session, operation, plan)
+                assert (
+                    await session.scalar(
+                        text(
+                            "SELECT count(*) FROM upgrade_activation_grants WHERE boundary='runtime'"
+                        )
+                    )
+                    == 0
+                )
                 assert await session.scalar(
                     text("SELECT to_regclass('migration_preserved') IS NOT NULL")
                 ) == (scenario == "partial")
