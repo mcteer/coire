@@ -434,6 +434,44 @@ def test_first_install_remains_unready_across_executor_restart(
                     terminal = "restored" if crash_candidate else "committed"
                     if current["phase"] == terminal:
                         break
+                    if current["phase"] in {"committed", "restored", "failed_unchanged"}:
+                        failures: dict[str, list[str]] = {}
+                        for role, identity in {
+                            "incumbent": seed.executor_container_id,
+                            "candidate": actual_owner["executor_container_id"],
+                        }.items():
+                            output = subprocess.run(
+                                ["docker", "logs", "--tail=100", identity],
+                                capture_output=True,
+                                text=True,
+                                timeout=10,
+                            )
+                            messages = []
+                            for line in (output.stdout + output.stderr).splitlines():
+                                try:
+                                    entry = json.loads(line)
+                                except ValueError:
+                                    continue
+                                if (
+                                    isinstance(entry, dict)
+                                    and entry.get("logger") == "coire_upgrade_executor.supervisor"
+                                    and entry.get("level") == "WARNING"
+                                    and isinstance(entry.get("msg"), str)
+                                ):
+                                    messages.append(entry["msg"][:1024])
+                            failures[role] = messages[-8:]
+                        record_measurement(
+                            tmp_path,
+                            project,
+                            "unexpected-terminal",
+                            {
+                                "status": current,
+                                "phases": phases,
+                                "restarted_service": restart_service,
+                                "service_outage_seconds": service_outage_s,
+                                "executor_failures": failures,
+                            },
+                        )
                     assert current["phase"] not in {"committed", "restored", "failed_unchanged"}, (
                         "executor handover reached an unexpected terminal phase"
                     )

@@ -653,7 +653,7 @@ async def advance_training(session: AsyncSession, job_id: str) -> None:
     authorized = True
     try:
         await authorize_live_training_action(
-            session, Principal.model_validate(job.authorization_snapshot)
+            session, Principal.model_validate(job.authorization_snapshot), shared=True
         )
     except TrainingForbidden:
         authorized = False

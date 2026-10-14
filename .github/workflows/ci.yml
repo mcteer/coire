@@ -427,12 +427,14 @@ jobs:
         run: |
           export COIRE_SECRET_POSTGRES_PASSWORD="$(openssl rand -base64 24)"
           export COIRE_SECRET_KEY_SIGNING_SECRET="$(openssl rand -base64 32)"
-          # These three suites require the private service UID and run in the
-          # required upgrade-backup/upgrade-control-plane jobs above.
+          # These suites run in the required upgrade-backup/upgrade-control-plane
+          # jobs above, with their isolated image and private UID prerequisites.
           COIRE_INTEGRATION=1 uv run pytest -m "integration and not native_upgrade and not upgrade_stream" -q \
             --ignore=tests/integration/test_upgrade_bootstrap.py \
             --ignore=tests/integration/test_upgrade_host_ownership.py \
-            --ignore=tests/integration/test_upgrade_control_plane.py
+            --ignore=tests/integration/test_upgrade_control_plane.py \
+            --ignore=tests/integration/test_upgrade_backup_preparation.py \
+            --ignore=tests/integration/test_upgrade_observability_registration.py
       - name: one hundred controlled streams survive unrelated restarts
         env:
           COIRE_IT_GATEWAY_STREAM_CAPACITY: "100"

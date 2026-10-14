@@ -119,6 +119,7 @@ def test_actual_upgrade_metrics_rules_and_dashboard_registration(
         rules = next(group for group in groups if group["name"] == "coire-upgrades")["rules"]
         assert {rule["name"] for rule in rules} == {
             "CoireUpgradeColdContinuationAccepted",
+            "CoireUpgradeNativeFailureReconciled",
             "CoireUpgradeUnstartedRecoveryClosed",
             "CoireUpgradeRecoverySupportLaunchRefused",
             "CoireUpgradeSourceSupervisorMissing",

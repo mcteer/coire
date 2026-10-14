@@ -353,6 +353,11 @@ recovery owner. Never edit ownership to make backup preparation proceed.
 
 Once the approved executor topology and its private catalog/state volumes exist,
 finish the normal host-owned bring-up before qualifying the independent executor.
+An application-network database credential preflight refusal leaves the current
+release unchanged and releases the effect-free host claim. After reviewing the
+retained release and backup location, retry with `coire-up --recover-db-role`.
+Once role recovery or service activation begins, a failure retains host ownership
+for runtime reconciliation; do not clear that ownership manually.
 Retain a mode-0600 `CoreBootstrapSeed` document outside Git containing the sealed
 registered Source, exact Source container IDs, and the independent executor's
 runtime, container and immutable Linux ARM64 image identities. Publish that
