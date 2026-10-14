@@ -104,3 +104,52 @@ def test_cold_source_fixed_launch_never_blindly_retries(tmp_path, monkeypatch, f
             )
             assert receipt.process.pid == 98765
     assert popen.call_count == (0 if fault == "revoked" else 1)
+
+
+@pytest.mark.parametrize("fault", [None, "foreign_helper", "unknown_guard"])
+def test_fresh_source_discovery_distinguishes_its_recorded_handback_guard(
+    tmp_path, monkeypatch, fault
+):
+    from test_upgrade_recovery_cold_handback import perform_source_handback_fixture
+
+    from coire_node import expired_recovery_cold_launch as launcher
+
+    def inspect(settings, owner, bootstrap, run, receipt, control):
+        source = receipt.helper.handback.verification.request.smoke.smoke.source
+        python = str(tmp_path / "graphs/envs/source/bin/python3")
+        identities = [source.process, receipt.helper.process]
+        if fault == "unknown_guard":
+            identities.append(receipt.helper.process.model_copy(update={"pid": 98767}))
+        entries = tuple(
+            UpgradeInventoryEntry(
+                owner="cold-recovery",
+                kind="native-process",
+                work_id=f"pid-{p.pid}",
+                state="active",
+                process_id=p.pid,
+                process_created_at=p.create_time_s,
+            )
+            for p in identities
+        )
+        monkeypatch.setattr(launcher, "native_process_entries", lambda *_: entries)
+
+        def node(identity, executable):
+            if identity != source.process:
+                raise UpgradeUnavailable("Unknown actor is not the recorded Source node")
+            child = Mock()
+            child.cmdline.return_value = [python, "-I", "-B", "-m", "coire_node"]
+            return child
+
+        monkeypatch.setattr(launcher, "_owned_node_process", node)
+        guard = Mock()
+        guard.cmdline.return_value = [python, "-I", "-B", "-m", "coire_node.upgrade_guard"]
+        if fault == "foreign_helper":
+            guard.cmdline.return_value = [python, "-m", "foreign_module"]
+        monkeypatch.setattr(launcher, "_owned_native_process", lambda *_: guard)
+        if fault:
+            with pytest.raises(UpgradeUnavailable):
+                launcher.observed_source_process(settings, source.launch)
+        else:
+            assert launcher.observed_source_process(settings, source.launch) == source.process
+
+    perform_source_handback_fixture(tmp_path, monkeypatch, callback=inspect)

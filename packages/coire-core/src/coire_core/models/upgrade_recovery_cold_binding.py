@@ -24,12 +24,36 @@ class UpgradeColdPostHandbackBinding(UpgradeWire):
     """Recorded released preimages and positively identified idle Source writer."""
 
     handback_sha256: Sha256
-    supervision_sha256: Sha256
-    closure_intent_sha256: Sha256
+    stage: Literal["completed", "ready_unreceipted"] = Field(
+        default="completed", exclude_if=lambda v: v == "completed"
+    )
+    helper_sha256: Sha256 | None = Field(default=None, exclude_if=lambda v: v is None)
+    supervision_sha256: Sha256 | None = Field(default=None, exclude_if=lambda v: v is None)
+    closure_intent_sha256: Sha256 | None = Field(default=None, exclude_if=lambda v: v is None)
     released_claim: NativeUpgradeClaim
     released_maintenance: UpgradeMaintenance
     source_helper: NativeGuardStatus
-    retired_supervisor: NodeAgentProcessIdentity
+    retired_supervisor: NodeAgentProcessIdentity | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+
+    @model_validator(mode="after")
+    def exact_stage(self) -> UpgradeColdPostHandbackBinding:
+        completed = (self.supervision_sha256, self.closure_intent_sha256, self.retired_supervisor)
+        if self.stage == "completed":
+            if (
+                any(v is None for v in completed)
+                or self.helper_sha256 is not None
+                or self.released_maintenance.state != "released"
+            ):
+                raise ValueError("completed handback requires all retained completion preimages")
+        elif (
+            self.helper_sha256 is None
+            or any(v is not None for v in completed)
+            or self.released_maintenance.state != "active"
+        ):
+            raise ValueError("unreceipted ready handback requires its helper and held maintenance")
+        return self
 
 
 class UpgradeColdContinuationBinding(UpgradeWire):
@@ -117,7 +141,8 @@ class UpgradeColdContinuationBinding(UpgradeWire):
             late.released_claim.state != "released"
             or late.released_claim.model_dump(exclude={"state", "updated_at"})
             != claim.model_dump(exclude={"state", "updated_at"})
-            or late.released_maintenance.state != "released"
+            or late.released_maintenance.state
+            != ("released" if late.stage == "completed" else "active")
             or (
                 (late.released_maintenance.job_id, late.released_maintenance.generation)
                 != (claim.job_id, claim.generation)
@@ -128,7 +153,11 @@ class UpgradeColdContinuationBinding(UpgradeWire):
             )
             or late.source_helper != guard
             or not guard.ready
-            or late.retired_supervisor.pid in {guard.process.pid, self.retained_node.process.pid}
+            or (
+                late.retired_supervisor is not None
+                and late.retired_supervisor.pid
+                in {guard.process.pid, self.retained_node.process.pid}
+            )
         ):
             raise ValueError("post-handback continuation has foreign or incomplete preimages")
         archive_fields = (

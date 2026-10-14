@@ -286,6 +286,18 @@ def test_native_acknowledgement_preserves_history_and_references_canonical_resol
                 proof = observe_real(configured, handback.status, handback.node)
                 assert proof.pid == adopted.process.pid
                 assert checked == [adopted.process, handback.status.process, handback.node.process]
+                bootstrap.write("claim.json", claim.model_copy(update={"state": "released"}))
+                with pytest.raises(UpgradeConflict):
+                    observe_real(configured, handback.status, handback.node)
+                assert observe_real(configured, handback.status, handback.node, claim) == proof
+                with pytest.raises(UpgradeConflict):
+                    observe_real(
+                        configured,
+                        handback.status,
+                        handback.node,
+                        claim.model_copy(update={"generation": claim.generation + 1}),
+                    )
+                bootstrap.write("claim.json", claim)
                 records.write(key, snapshot.model_copy(update={"retired_at": None}))
                 with pytest.raises(UpgradeConflict):
                     observe_real(configured, handback.status, handback.node)

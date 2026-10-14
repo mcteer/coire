@@ -30,6 +30,9 @@ async def verify_observation_context(
     )
     post = proof.binding.post_handback
     handback = context.previous_handback
+    partial = context.previous_handback_intent
+    helper = proof.previous_unreceipted_helper
+    has_writer = handback is not None or partial is not None
     held = proof.binding.previous_local_recovery_maintenance
     pending = (
         proof.binding.untransferred_archive_custodian,
@@ -59,7 +62,7 @@ async def verify_observation_context(
         raise UpgradeConflict("Cold continuation changes held local recovery scope")
     if (
         context.intent.local_maintenance() != context.intent.original_plan.maintenance
-        and handback is None
+        and not has_writer
         and held is None
     ):
         raise UpgradeConflict("Cold continuation omitted held recovery fence")
@@ -68,8 +71,22 @@ async def verify_observation_context(
         and proof.unstarted_startup.intent != context.unstarted_intent
     ):
         raise UpgradeConflict("Cold unstarted custody evidence differs from Core")
-    if (post is None) != (handback is None):
+    if (post is None) != (not has_writer):
         raise UpgradeConflict("Cold continuation handback boundary differs from Core")
+    if partial is not None and (
+        post is None
+        or post.stage != "ready_unreceipted"
+        or helper is None
+        or helper.handback != partial
+        or helper.sha256() != post.helper_sha256
+        or partial.sha256() != post.handback_sha256
+        or post.released_claim != partial.released_claim
+        or post.source_helper.process != helper.process
+        or not post.released_maintenance.matches_plan(context.intent.local_inventory_plan())
+    ):
+        raise UpgradeConflict("Cold continuation partial ready Source differs from Core")
+    if partial is None and helper is not None:
+        raise UpgradeConflict("Cold continuation invents partial handback")
     if (
         post is not None
         and handback is not None
@@ -88,13 +105,15 @@ async def verify_observation_context(
         or proof.binding.core_data_baseline_sha256 != context.data_baseline.sha256()
         or proof.native_baseline != context.native_baseline
         or proof.binding.previous_guard.process
-        != (handback.helper.process if handback is not None else context.owner.process)
-        or proof.binding.previous_guard.bootstrap_runtime
         != (
-            context.owner.original_native.source.runtime
+            handback.helper.process
             if handback is not None
-            else context.owner.runtime
+            else helper.process
+            if helper is not None
+            else context.owner.process
         )
+        or proof.binding.previous_guard.bootstrap_runtime
+        != (context.owner.original_native.source.runtime if has_writer else context.owner.runtime)
         or not 0 <= (datetime.now(UTC) - proof.observed_at).total_seconds() <= 5
         or (proof.previous_smoke.smoke if proof.previous_smoke is not None else None)
         != context.previous_smoke_command

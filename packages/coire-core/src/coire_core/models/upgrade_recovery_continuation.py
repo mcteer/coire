@@ -10,6 +10,8 @@ from pydantic import AwareDatetime, Field, model_validator
 from coire_core.models.upgrade_recovery import (
     UpgradeExpiredRecoveryColdClaim,
     UpgradeExpiredRecoveryColdCollectiveArchiveReceipt,
+    UpgradeExpiredRecoveryColdHandbackHelper,
+    UpgradeExpiredRecoveryColdHandbackIntent,
     UpgradeExpiredRecoveryColdHandbackReceipt,
     UpgradeExpiredRecoveryColdPairResult,
     UpgradeExpiredRecoveryColdSmokeCommand,
@@ -57,12 +59,16 @@ class UpgradeColdContinuationObservation(UpgradeWire):
     observer: NodeAgentProcessIdentity
     native_baseline: UpgradeExpiredRecoveryNativeDataSnapshot
     native_data: UpgradeExpiredRecoveryNativeDataSnapshot
-    scopes: tuple[NodeUpgradeCollectiveScope, ...] = Field(min_length=1, max_length=6)
+    scopes: tuple[NodeUpgradeCollectiveScope, ...] = Field(max_length=6)
     interrupted_scope_sha256s: tuple[Sha256, ...] = Field(max_length=6)
     local: NodeUpgradeInventory | None
     peer: NodeUpgradeInventory
     observed_at: AwareDatetime
     unstarted_startup: UpgradeExpiredRecoverySupportProcess | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+
+    previous_unreceipted_helper: UpgradeExpiredRecoveryColdHandbackHelper | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
 
@@ -90,6 +96,20 @@ class UpgradeColdContinuationObservation(UpgradeWire):
             and binding.previous_pair_qualification_sha256 is None
         ):
             raise ValueError("post-handback continuation has no required historical qualification")
+        partial = self.previous_unreceipted_helper
+        late = binding.post_handback
+        if (partial is not None) != (late is not None and late.stage == "ready_unreceipted") or (
+            partial is not None
+            and (
+                late is None
+                or partial.sha256() != late.helper_sha256
+                or partial.handback.sha256() != late.handback_sha256
+                or partial.handback.verification.request.smoke.smoke.source != source
+                or partial.process != late.source_helper.process
+                or partial.handback.released_claim != late.released_claim
+            )
+        ):
+            raise ValueError("unreceipted handback metadata changes exact helper provenance")
         archive = self.previous_archive
         if archive is None:
             if (
@@ -360,6 +380,9 @@ class UpgradeColdContinuationContext(UpgradeWire):
         default=None, exclude_if=lambda v: v is None
     )
     previous_smoke_command: UpgradeExpiredRecoveryColdSmokeCommand | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    previous_handback_intent: UpgradeExpiredRecoveryColdHandbackIntent | None = Field(
         default=None, exclude_if=lambda v: v is None
     )
     previous_handback: UpgradeExpiredRecoveryColdHandbackReceipt | None = Field(

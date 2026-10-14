@@ -17,6 +17,7 @@ from coire_core.errors import UpgradeConflict, UpgradeForbidden, UpgradeUnavaila
 from coire_core.models.upgrade_recovery import (
     UpgradeExpiredRecoveryCancellation,
     UpgradeExpiredRecoveryColdClaim,
+    UpgradeExpiredRecoveryColdHandbackIntent,
     UpgradeExpiredRecoveryColdHandbackReceipt,
     UpgradeExpiredRecoveryColdSmokeCommand,
     UpgradeExpiredRecoveryDataSnapshot,
@@ -84,10 +85,17 @@ async def load_expired_cold_predecessor(
         raise UpgradeConflict("Cold continuation predecessor scope or boundary differs")
     handback = row.cold_handback_receipt_payload
     if handback is None:
-        if (
-            row.cold_verification_payload is not None
-            or row.cold_handback_intent_payload is not None
-        ):
+        if row.cold_handback_intent_payload is not None:
+            partial = UpgradeExpiredRecoveryColdHandbackIntent.model_validate(
+                row.cold_handback_intent_payload
+            )
+            if (
+                row.cold_verification_payload != partial.verification.model_dump(mode="json")
+                or partial.verification.request.smoke.smoke.source.launch.source.projection.owner
+                != owner
+            ):
+                raise UpgradeConflict("Cold continuation partial handback provenance differs")
+        elif row.cold_verification_payload is not None:
             raise UpgradeConflict("Cold continuation verification or handback outcome is uncertain")
     else:
         receipt = UpgradeExpiredRecoveryColdHandbackReceipt.model_validate(handback)
@@ -161,6 +169,14 @@ async def read_cold_predecessor_context(
                 row.cold_handback_receipt_payload
             )
             if row.cold_handback_receipt_payload is not None
+            else None
+        ),
+        previous_handback_intent=(
+            UpgradeExpiredRecoveryColdHandbackIntent.model_validate(
+                row.cold_handback_intent_payload
+            )
+            if row.cold_handback_intent_payload is not None
+            and row.cold_handback_receipt_payload is None
             else None
         ),
         data_baseline=before,

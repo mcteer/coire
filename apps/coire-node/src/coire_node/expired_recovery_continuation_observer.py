@@ -110,6 +110,12 @@ def observe_continuation(
     ):
         raise UpgradeConflict("Cold continuation context changes predecessor")
     bootstrap = PrivateUpgradeStore(Path(settings.upgrade_bootstrap_root), create=False)
+    if captured.previous_handback_intent is not None:
+        from coire_node.expired_recovery_partial_handback import observe_partial_handback
+
+        return observe_partial_handback(
+            settings, body, control, captured, actor, context, io_deadline
+        )
     runs = PrivateUpgradeStore(bootstrap.path("expired-recovery"), create=False)
     run = PrivateUpgradeStore(runs.path(body.previous_recovery_id), create=False)
     records = PrivateUpgradeStore(bootstrap.root.parent / "fixture-records", create=False)
@@ -163,7 +169,9 @@ def observe_continuation(
         origin = fixture_origin(settings, owner)
         if (
             owner.retired_supervisor is None
-            or observe_fixture_supervisor(settings, origin.previous_guard, origin.last_node)
+            or observe_fixture_supervisor(
+                settings, origin.previous_guard, origin.last_node, origin.original_claim
+            )
             != owner.retired_supervisor
         ):
             raise UpgradeConflict("Cold continuation fixture restart provenance differs")

@@ -62,7 +62,22 @@ def previous_source(
             )
         ):
             raise UpgradeConflict("Cold continuation retained archive or failed results changed")
-    if binding.post_handback is not None:
+    if binding.post_handback is not None and binding.post_handback.stage == "ready_unreceipted":
+        from coire_core.models.upgrade_recovery import UpgradeExpiredRecoveryColdHandbackIntent
+        from coire_node.expired_recovery_partial_handback import retained_unreceipted_helper
+
+        late = binding.post_handback
+        intent = run.read("cold.handback.intent.json", UpgradeExpiredRecoveryColdHandbackIntent)
+        if intent is None or intent.sha256() != late.handback_sha256:
+            raise UpgradeConflict("Partial Source changes retained handback intent")
+        helper = retained_unreceipted_helper(run, source, intent)
+        if (
+            helper.sha256() != late.helper_sha256
+            or helper.process != late.source_helper.process
+            or helper.handback.released_claim != late.released_claim
+        ):
+            raise UpgradeConflict("Partial Source changes retained helper")
+    elif binding.post_handback is not None:
         from coire_core.models.upgrade_recovery import UpgradeExpiredRecoveryColdHandbackReceipt
         from coire_node.expired_recovery_post_handback import retained_post_handback
 

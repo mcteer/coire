@@ -716,3 +716,16 @@ retained byte, and journals the exact move before changing namespace ownership.
 Original-operation scopes stay in place. Lost replies reconcile the one remaining
 namespace owner and exact bytes. Unknown ownership or changed evidence refuses;
 sealed Source code and original receipts/deadlines are never edited.
+
+A cancelled, expired recovery may have a positively ready Source guard after
+handback effects but no completed old handback receipt. The fixed continuation
+observer captures `ready_unreceipted` metadata only when Core retains the exact
+verification and handback intent, the native helper record matches that intent,
+both exact Source processes are live, its independent writer lock is held, the
+claim is released, original maintenance remains active, and data/qualification
+history is unchanged. Later handback, supervision, closure or resolution records
+refuse this path. The proof preserves the observed current readiness timestamp;
+it never claims the old deadline was met. An explicit authenticated audited new
+continuation may retire only that recorded Source guard, install its newly
+captured local fence, retain the Source node, and run fresh qualification and
+handback under its own budget. Old failure history and deadlines remain intact.

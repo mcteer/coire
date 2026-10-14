@@ -57,6 +57,7 @@ from coire_core.models.upgrades import NativeUpgradeClaim, UpgradePhase
         "cold_continued",
         "archived_continued",
         "post_handback_continued",
+        "partial_handback_continued",
         "unstarted_continued",
         "inherited_continued",
     ],
@@ -66,8 +67,12 @@ async def test_initial_relay_atomic_acceptance_concurrency_replay_and_authority(
 ):
     unstarted_continued = mode == "unstarted_continued"
     inherited_continued = mode == "inherited_continued"
+    partial_handback_continued = mode == "partial_handback_continued"
     post_handback_continued = (
-        mode == "post_handback_continued" or unstarted_continued or inherited_continued
+        partial_handback_continued
+        or mode == "post_handback_continued"
+        or unstarted_continued
+        or inherited_continued
     )
     archived_continued = mode == "archived_continued" or post_handback_continued
     continued = mode == "cold_continued" or archived_continued
@@ -383,6 +388,7 @@ async def test_initial_relay_atomic_acceptance_concurrency_replay_and_authority(
                     monkeypatch,
                     archived=archived_continued,
                     post_handback=post_handback_continued,
+                    partial_handback=partial_handback_continued,
                     unstarted=unstarted_continued,
                     inherited=inherited_continued,
                 )

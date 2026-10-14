@@ -13056,6 +13056,7 @@ export interface components {
             observed_at: string;
             owner: components["schemas"]["UpgradeExpiredRecoveryColdClaim"];
             previous_handback?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackReceipt"] | null;
+            previous_handback_intent?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackIntent"] | null;
             previous_smoke_command?: components["schemas"]["UpgradeExpiredRecoveryColdSmokeCommand"] | null;
             unstarted_intent?: components["schemas"]["UpgradeExpiredRecoveryIntent"] | null;
         };
@@ -13108,6 +13109,7 @@ export interface components {
             previous_pair_results?: components["schemas"]["UpgradeExpiredRecoveryColdPairResult"][] | null;
             previous_smoke?: components["schemas"]["UpgradeExpiredRecoveryColdSmokeReceipt"] | null;
             previous_source: components["schemas"]["UpgradeExpiredRecoveryColdSourceProcess"];
+            previous_unreceipted_helper?: components["schemas"]["UpgradeExpiredRecoveryColdHandbackHelper"] | null;
             /** Scopes */
             scopes: components["schemas"]["NodeUpgradeCollectiveScope"][];
             unstarted_startup?: components["schemas"]["UpgradeExpiredRecoverySupportProcess"] | null;
@@ -13213,15 +13215,23 @@ export interface components {
          */
         UpgradeColdPostHandbackBinding: {
             /** Closure Intent Sha256 */
-            closure_intent_sha256: string;
+            closure_intent_sha256?: string | null;
             /** Handback Sha256 */
             handback_sha256: string;
+            /** Helper Sha256 */
+            helper_sha256?: string | null;
             released_claim: components["schemas"]["NativeUpgradeClaim"];
             released_maintenance: components["schemas"]["UpgradeMaintenance"];
-            retired_supervisor: components["schemas"]["NodeAgentProcessIdentity"];
+            retired_supervisor?: components["schemas"]["NodeAgentProcessIdentity"] | null;
             source_helper: components["schemas"]["NativeGuardStatus"];
+            /**
+             * Stage
+             * @default completed
+             * @enum {string}
+             */
+            stage: "completed" | "ready_unreceipted";
             /** Supervision Sha256 */
-            supervision_sha256: string;
+            supervision_sha256?: string | null;
         };
         /** UpgradeCompatibility */
         UpgradeCompatibility: {

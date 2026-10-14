@@ -130,6 +130,7 @@ async def exercise_continuation(
     *,
     archived=False,
     post_handback=False,
+    partial_handback=False,
     unstarted=False,
     inherited=False,
 ):
@@ -322,6 +323,28 @@ async def exercise_continuation(
                 mode="json"
             )
             predecessor.cold_handback_receipt_payload = handback.model_dump(mode="json")
+            if partial_handback:
+                from sqlalchemy import null
+
+                predecessor.cold_handback_receipt_payload = null()
+                binding = UpgradeColdContinuationBinding.model_validate(
+                    binding.model_dump(mode="json")
+                    | {
+                        "post_handback": {
+                            "stage": "ready_unreceipted",
+                            "handback_sha256": handback.helper.handback.sha256(),
+                            "helper_sha256": handback.helper.sha256(),
+                            "released_claim": handback.helper.handback.released_claim.model_dump(
+                                mode="json"
+                            ),
+                            "released_maintenance": plan.maintenance.model_copy(
+                                update={"state": "active"}
+                            ).model_dump(mode="json"),
+                            "source_helper": guard.model_dump(mode="json"),
+                        }
+                    }
+                )
+
     proof = UpgradeColdContinuationObservation(
         binding=binding,
         previous_owner=owner,
@@ -329,6 +352,7 @@ async def exercise_continuation(
         previous_archive=previous_archive,
         previous_smoke=previous_smoke,
         previous_pair_results=previous_pair_results,
+        previous_unreceipted_helper=handback.helper if partial_handback else None,
         observer_release=intent.support_release,
         observer_runtime=owner.runtime,
         observer=NodeAgentProcessIdentity(

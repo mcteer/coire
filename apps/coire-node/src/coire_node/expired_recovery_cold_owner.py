@@ -56,7 +56,10 @@ def retained_cold_preimages(
 
 
 def observe_fixture_supervisor(
-    settings: Settings, previous: NativeGuardStatus, last: NativeNodeProcess
+    settings: Settings,
+    previous: NativeGuardStatus,
+    last: NativeNodeProcess,
+    original_claim: NativeUpgradeClaim | None = None,
 ) -> UpgradeRecoveryRetiredSupervisor:
     """Positive fixed private fixture provenance; missing service is insufficient."""
     base = Path(settings.upgrade_bootstrap_root).parent
@@ -73,6 +76,13 @@ def observe_fixture_supervisor(
 
     bootstrap = PrivateUpgradeStore(Path(settings.upgrade_bootstrap_root), create=False)
     current_claim = bootstrap.read("claim.json", NativeUpgradeClaim)
+    if original_claim is not None and (
+        current_claim is None
+        or current_claim.state not in {"active", "released"}
+        or current_claim.model_dump(exclude={"state", "updated_at"})
+        != original_claim.model_dump(exclude={"state", "updated_at"})
+    ):
+        raise UpgradeConflict("Retired fixture historical claim differs from current scope")
     if current_claim is not None:
         recorded = records.read(
             "retired-adopted-" + current_claim.job_id + ".json", UpgradeNativeFixtureRetirement
@@ -80,7 +90,7 @@ def observe_fixture_supervisor(
         if recorded is not None:
             if (
                 recorded.retired_at is None
-                or recorded.claim != current_claim
+                or recorded.claim != (original_claim or current_claim)
                 or recorded.guard.model_dump(exclude={"observed_at"})
                 != previous.model_dump(exclude={"observed_at"})
                 or recorded.node_process != last
@@ -220,7 +230,9 @@ def verify_cold_physical(
         from coire_node.expired_recovery_cold_continuation import fixture_origin
 
         origin = fixture_origin(settings, claim)
-        supervisor = observe_fixture_supervisor(settings, origin.previous_guard, origin.last_node)
+        supervisor = observe_fixture_supervisor(
+            settings, origin.previous_guard, origin.last_node, origin.original_claim
+        )
         if supervisor != claim.retired_supervisor:
             raise UpgradeConflict("Cold fixture supervisor preimage changed")
         verify_retired_identity(supervisor)

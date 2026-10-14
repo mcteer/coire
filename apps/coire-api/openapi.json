@@ -23554,6 +23554,16 @@
               }
             ]
           },
+          "previous_handback_intent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpgradeExpiredRecoveryColdHandbackIntent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "previous_smoke_command": {
             "anyOf": [
               {
@@ -23732,12 +23742,21 @@
           "previous_source": {
             "$ref": "#/components/schemas/UpgradeExpiredRecoveryColdSourceProcess"
           },
+          "previous_unreceipted_helper": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpgradeExpiredRecoveryColdHandbackHelper"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "scopes": {
             "items": {
               "$ref": "#/components/schemas/NodeUpgradeCollectiveScope"
             },
             "maxItems": 6,
-            "minItems": 1,
             "title": "Scopes",
             "type": "array"
           },
@@ -24007,14 +24026,33 @@
         "description": "Recorded released preimages and positively identified idle Source writer.",
         "properties": {
           "closure_intent_sha256": {
-            "pattern": "^[a-f0-9]{64}$",
-            "title": "Closure Intent Sha256",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closure Intent Sha256"
           },
           "handback_sha256": {
             "pattern": "^[a-f0-9]{64}$",
             "title": "Handback Sha256",
             "type": "string"
+          },
+          "helper_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Helper Sha256"
           },
           "released_claim": {
             "$ref": "#/components/schemas/NativeUpgradeClaim"
@@ -24023,25 +24061,45 @@
             "$ref": "#/components/schemas/UpgradeMaintenance"
           },
           "retired_supervisor": {
-            "$ref": "#/components/schemas/NodeAgentProcessIdentity"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NodeAgentProcessIdentity"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "source_helper": {
             "$ref": "#/components/schemas/NativeGuardStatus"
           },
-          "supervision_sha256": {
-            "pattern": "^[a-f0-9]{64}$",
-            "title": "Supervision Sha256",
+          "stage": {
+            "default": "completed",
+            "enum": [
+              "completed",
+              "ready_unreceipted"
+            ],
+            "title": "Stage",
             "type": "string"
+          },
+          "supervision_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[a-f0-9]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supervision Sha256"
           }
         },
         "required": [
           "handback_sha256",
-          "supervision_sha256",
-          "closure_intent_sha256",
           "released_claim",
           "released_maintenance",
-          "source_helper",
-          "retired_supervisor"
+          "source_helper"
         ],
         "title": "UpgradeColdPostHandbackBinding",
         "type": "object"

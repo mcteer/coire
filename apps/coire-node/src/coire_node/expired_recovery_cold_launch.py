@@ -10,9 +10,11 @@ from opentelemetry import trace
 
 from coire_core.errors import UpgradeConflict, UpgradeUnavailable
 from coire_core.models.upgrade_recovery import (
+    UpgradeExpiredRecoveryColdHandbackHelper,
     UpgradeExpiredRecoveryColdSourceLaunch,
     UpgradeExpiredRecoveryColdSourceProcess,
     UpgradeExpiredRecoveryColdSourceReceipt,
+    UpgradeExpiredRecoveryColdSupervisionReceipt,
 )
 from coire_core.models.upgrades import NodeAgentProcessIdentity
 from coire_core.settings import Settings
@@ -22,7 +24,11 @@ from coire_node.expired_recovery_cold_source import (
     verify_projection_boundary,
 )
 from coire_node.expired_recovery_cold_telemetry import record_cold_effect
-from coire_node.upgrade_guard import NativeGuardTransport, _owned_node_process
+from coire_node.upgrade_guard import (
+    NativeGuardTransport,
+    _owned_native_process,
+    _owned_node_process,
+)
 from coire_node.upgrade_inventory import native_process_entries
 from coire_node.upgrade_runtime import verify_prepared_runtime
 
@@ -69,11 +75,49 @@ def observed_source_process(
             raise UpgradeUnavailable("Cold retained Source argv differs")
         return retained.process
     matches = []
+    _, run, _ = stores(settings, effect.owner)
+    helper = run.read("cold.handback.helper.json", UpgradeExpiredRecoveryColdHandbackHelper)
+    supervisor = run.read(
+        "cold.supervision.receipt.json", UpgradeExpiredRecoveryColdSupervisionReceipt
+    )
+    if (
+        supervisor is not None
+        and supervisor.supervision.handback.helper.handback.verification.request.smoke.smoke.source.launch
+        != launch
+    ):
+        raise UpgradeConflict("Cold Source supervisor belongs to another launch")
+    if (
+        helper is not None
+        and helper.handback.verification.request.smoke.smoke.source.launch != launch
+    ):
+        raise UpgradeConflict("Cold Source helper belongs to another launch")
     for entry in native_process_entries("cold-recovery", (str(envs.parent),)):
+        if supervisor is not None and (entry.process_id, entry.process_created_at) == (
+            supervisor.process.pid,
+            supervisor.process.create_time_s,
+        ):
+            from coire_node.expired_recovery_cold_supervision import verify_fixture_supervisor
+
+            verify_fixture_supervisor(settings, supervisor)
+            continue
         if (entry.process_id, entry.process_created_at) == (
             effect.owner.process.pid,
             effect.owner.process.create_time_s,
         ):
+            continue
+        if helper is not None and (entry.process_id, entry.process_created_at) == (
+            helper.process.pid,
+            helper.process.create_time_s,
+        ):
+            actor = _owned_native_process(helper.process, python, "coire_node.upgrade_guard")
+            if actor is None or actor.cmdline() != [
+                str(python),
+                "-I",
+                "-B",
+                "-m",
+                "coire_node.upgrade_guard",
+            ]:
+                raise UpgradeUnavailable("Cold Source helper has no exact live argv")
             continue
         if entry.process_id is None or entry.process_created_at is None:
             raise UpgradeUnavailable("Cold launch inventory has no positive identity")
