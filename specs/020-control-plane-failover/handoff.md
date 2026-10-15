@@ -43,3 +43,5 @@ The owner did not authorize a merge of 020. Unrelated preexisting edits to `.age
 `.claude/skills/`, `.specify/templates/tasks-template.md` and Spec Kit workflow files are preserved
 and excluded from feature commits. No extension hooks were configured. Credentials and raw model/
 image/test artifacts stay outside Git. Reuse passing evidence and rerun only affected checks.
+
+Implemented runtime source commit: `817ff11b2beb74c0c3f2d6a227d24fb5b2761302`.

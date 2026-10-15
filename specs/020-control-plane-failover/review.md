@@ -440,3 +440,6 @@ Final integrated rerun after the recovery-expiry, membership-cache and active-st
 **302 passed, no skipped tests, 45.56 seconds** (`/tmp/coire-020-final-verified.log`). Ruff check,
 format freshness and `git diff --check` remain clean. `.specify/extensions.yml` is absent, so no
 post-implementation extension hooks apply. The five explicitly open tasks remain release gates.
+
+Runtime/native-wheel source commit: `817ff11b2beb74c0c3f2d6a227d24fb5b2761302`. Production image IDs above were built from this
+runtime source; subsequent record-only commits do not change their source.
