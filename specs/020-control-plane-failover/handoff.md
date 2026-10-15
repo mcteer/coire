@@ -19,25 +19,25 @@ node service/configuration was replaced, no image published, and no merge perfor
 
 Continue with these open gates, preserving their task status:
 
-- T056/T057: provider-supported Cloudflare monitors/pools/fallback and public acceptance are
-  owner-deferred. `deploy/cloudflared/load-balancer.yaml.tmpl` is explicitly a design manifest,
-  not a deployable provider API payload.
-- T065: full armed-020 upgrade-success and failed-candidate rollback matrix remains unqualified.
-  Full API middleware fences and signed exchanges, actual node streaming/start admission,
-  cohort-readiness and SQL ownership checks pass; do not present those as a full live upgrade.
-- T073: live TP failed because RDMA en5 lacks IPv4 on both Studios (fabric IPv4 is on bridge0).
-  An async owner question is pending for temporary `169.254.200.11/16` and `.12/16` en5 aliases,
-  with cleanup after the isolated test. **No approval was received and no aliases were added.**
-  AGENTS.md requires permission for network changes. The operator-only reproducible runner is
-  `validation/native_cluster.py`; copy it and the latest native/core source to both isolated
-  `/tmp/coire-020-qualification` checkouts before rerunning. It preflights native capability.
-- PP also needs an acquired/verified pipeline-capable asset: the available tiny Qwen and SmolLM
-  assets do not implement PP in the pinned MLX-LM. Do not silently substitute or acquire one.
-- Real Core power loss needs a verified independent recovery path. Core is the agent host.
-  Fifteen-minute armed resource deltas, Studio swap/coexistence, deployed rollback and public
-  60/90-second timings remain unmeasured. The 79 MiB frontend sample is only a short container test.
-- T036 closes only after required live evidence. Never convert these open gates to checked tasks
-  on the strength of the passing unit/process tests.
+- T056/T057: provider-dependent Cloudflare configuration and public acceptance are owner-deferred.
+- T065: 35 full-middleware/workflow/node-race/actual-SQL checks pass. Physical replacement remains
+  a workflow-test seam; the full live armed upgrade/failed-candidate matrix is still required.
+- T073: PP now passes with the admin-acquired, checksum-verified MIT GLM-4.7-Flash-4bit asset.
+  Buffered/streaming generation and both owned-rank faults pass with zero swap growth. Live TP
+  awaits interactive sudo to apply the **already approved** en5 aliases `169.254.200.11/16` and
+  `.12/16`. Neither was applied by the agent. Commands were supplied in a copyable normal message;
+  the owner explicitly says never put commands inside question widgets. Remove aliases afterward.
+- A new audited task key exists in Keychain as `coire-020-qualification-key`; no credential question
+  is needed. Production `/api/v1/admin/upgrades/targets` currently returns 404, so old 019 fixture
+  records do not establish a current armed upgrade deployment.
+- The approved OrbStack force-stop/restart completed and restored Core health. It does not prove
+  physical power loss. A question for an independent power/recovery controller is pending.
+- Final lean/diagnostic participant baseline/armed windows are running under
+  `/tmp/coire-020-resources-final-{lean,diagnostic}.json`. Each window is fifteen minutes.
+  Preflight and source hashes passed; earlier setup runs were discarded. The resource fixture
+  measures signed participants/subscribers, without Docker lifecycle or inference coexistence.
+- T036 closes only after required live evidence. Deployed frontend/coexistence, physical faults,
+  and drained rollback remain required; public timing is deferred with Cloudflare.
 
 The owner did not authorize a merge of 020. Unrelated preexisting edits to `.agents/skills/`,
 `.claude/skills/`, `.specify/templates/tasks-template.md` and Spec Kit workflow files are preserved
@@ -56,6 +56,5 @@ existing verified Qwen Coder 0.5B asset. Hosted CI confirmed it, plus 6,069 unit
 tests. A subsequent existing extraction test exposed retained hard links from our new fixture;
 native/operator qualification now uses independent model copies, preserving acquisition inode
 identity. Owned links were removed on both Studios with source link count one verified. Sequential
-failover and training/extraction/evaluation now pass on edge-a (2 tests, 51.45 s); hosted CI must
-confirm this final fixture correction. Persistent private evidence is in
+failover and training/extraction/evaluation now pass on edge-a (2 tests, 51.45 s); hosted CI 38685425820 confirms this correction and all 35 validation jobs pass. Persistent private evidence is in
 `data/qualification/020/484b3861/`, with a SHA-256 manifest. Runtime images still correspond to 484b3861.

@@ -23,9 +23,50 @@ from uuid import uuid4
 ROOT = "/tmp/coire-020-qualification"
 WORK = "/tmp/coire-020-sharded-" + str(uuid4())
 MODE = os.environ.get("COIRE_QUALIFY_SHARD_MODE", "tp")
+FAULT_RANK = int(os.environ.get("COIRE_QUALIFY_FAULT_RANK", "1"))
+MODEL = os.environ.get(
+    "COIRE_QUALIFY_MODEL", "/opt/coire/models/mlx-community--Qwen2.5-0.5B-Instruct-4bit"
+)
 assert MODE in {"tp", "pp"}
+assert FAULT_RANK in (0, 1)
 SCRIPT = "specs/020-control-plane-failover/validation/native_cluster.py"
 NAMES = ("coire-core", "coire-edge-a", "coire-edge-b")
+
+
+def acquired_asset(value: str) -> Path:
+    """Verify an operator-selected acquired asset; CI's tiny-model gate is separate."""
+    from coire_node.store import Store
+
+    assert os.uname().nodename.split(".")[0] in NAMES[1:], "native work requires a Studio"
+    path = Path(value)
+    if not path.is_absolute() or path.is_symlink() or not path.is_dir():
+        raise ValueError("qualification requires an acquired local directory")
+    path = path.resolve()
+    if not path.is_relative_to("/opt/coire/models"):
+        raise ValueError("qualification asset must belong to the acquired model store")
+    store = Store(path.parent)
+    manifest_path = store.manifest_path(path.name)
+    manifest = store.read_manifest(path.name)
+    if manifest_path.is_symlink() or manifest is None or manifest.slug != path.name:
+        raise ValueError("qualification requires the acquisition checksum manifest")
+    for file in path.rglob("*"):
+        if file.relative_to(path).parts[0] == ".cache":
+            continue
+        if file.is_symlink() or (file.is_file() and file.stat().st_nlink != 1):
+            raise ValueError("qualification asset contains linked model files")
+    if not manifest.files or len(manifest.by_path()) != len(manifest.files):
+        raise ValueError("qualification manifest must contain unique files")
+    if (
+        store.verify_against(path.name, manifest)
+        or store.size_bytes(path.name) != manifest.total_bytes
+    ):
+        raise ValueError("qualification asset failed acquisition checksum verification")
+    config = json.loads((path / "config.json").read_bytes())
+    if not isinstance(config, dict) or config.get("auto_map") or config.get("model_file"):
+        raise ValueError("qualification asset requires executable model configuration")
+    if not any(entry.path.endswith(".safetensors") for entry in manifest.files):
+        raise ValueError("qualification asset has no safetensors weights")
+    return path
 
 
 async def worker() -> None:
@@ -45,12 +86,11 @@ async def worker() -> None:
     from coire_node.metrics import MetricsCollector
     from coire_node.routes import failover
     from coire_node.testing.harness import TOKEN, Agent
-    from coire_node.testing.training import offline_training_model
 
     initial = json.loads(sys.stdin.readline())
     name = initial["name"]
     assert os.uname().nodename.split(".")[0] == name
-    source = offline_training_model("/opt/coire/models/mlx-community--Qwen2.5-0.5B-Instruct-4bit")
+    source = await asyncio.to_thread(acquired_asset, initial["model"])
     root = Path(initial["work"])
     await asyncio.to_thread(root.mkdir, mode=0o700, exist_ok=False)
     agent = Agent(
@@ -155,6 +195,7 @@ async def worker() -> None:
         {
             "manifest": manifest.sha256(),
             "slug": source.name,
+            "bytes": manifest.total_bytes,
             "supported": (
                 await asyncio.to_thread(
                     agent.shard_groups.capability, source.name, ShardingMode(initial["mode"])
@@ -257,6 +298,9 @@ async def worker() -> None:
             forward.terminate()
             await asyncio.wait_for(forward.wait(), timeout=5)
         agent.close()
+        # Only independent copies in this run's owned model store are removed.
+        # Native groups have been stopped above; acquired source bytes stay intact.
+        await asyncio.to_thread(shutil.rmtree, agent.store.root)
 
 
 def run() -> None:
@@ -350,6 +394,7 @@ def run() -> None:
                         "name": name,
                         "work": WORK,
                         "mode": MODE,
+                        "model": MODEL,
                         "private": private[name],
                         "core_public": public_key_b64(private[NAMES[0]]),
                         "membership": membership.model_dump(mode="json"),
@@ -382,7 +427,7 @@ def run() -> None:
             },
             "slug": results[NAMES[1]]["slug"],
             "mode": MODE,
-            "estimate_bytes_per_rank": 1024**3,
+            "estimate_bytes_per_rank": max(1024**3, results[NAMES[1]]["bytes"] * 2),
             "hostfile_sha256": results[NAMES[1]]["hostfile"],
             "ranks": [
                 {"rank": i, "node_name": name, "host": name + ".fabric", "port": 9600}
@@ -499,14 +544,25 @@ def run() -> None:
                 },
             )
             assert result["status"] == 200, result
-            assert (
-                ("[DONE]" in result["body"])
-                if stream
-                else json.loads(result["body"])["choices"][0]["message"]["content"]
-            )
+            if stream:
+                assert "[DONE]" in result["body"]
+            else:
+                completion = json.loads(result["body"])
+                message = completion["choices"][0]["message"]
+                # Reasoning models may spend the bounded eight-token fixture entirely
+                # in the reasoning channel. Require actual generated text and usage.
+                assert any(
+                    isinstance(message.get(channel), str) and message[channel].strip()
+                    for channel in ("content", "reasoning_content", "reasoning")
+                ), message
+                assert completion["usage"]["completion_tokens"] > 0
+                results["buffered_completion_tokens"] = completion["usage"]["completion_tokens"]
         started = time.monotonic()
-        rpc(NAMES[2], operation="kill_rank", group_id=group_id)
-        assert request(NAMES[1], "GET", "/node/failover/resident", headers=headers) == []
+        rpc(NAMES[FAULT_RANK + 1], operation="kill_rank", group_id=group_id)
+        while request(NAMES[1], "GET", "/node/failover/resident", headers=headers):
+            assert time.monotonic() - started < 3, "failed rank remained admissible"
+            time.sleep(0.05)
+        results["failed_rank"] = FAULT_RANK
         results["rank_loss_refusal_s"] = time.monotonic() - started
         assert results["rank_loss_refusal_s"] < 3
         results["placement"] = placement.model_dump(mode="json")

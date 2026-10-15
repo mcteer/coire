@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 from pydantic import SecretStr
+from upgrade_failover_fixtures import ArmedCoreProbe
 from upgrade_fixtures import core_plan
 
 from coire_api.upgrades.state import validate_progress
@@ -69,6 +70,7 @@ async def test_core_steps_follow_actual_progress_validator(
     operation = plan.operation
     history: list[UpgradeReceipt] = []
     events: list[str] = []
+    failover = ArmedCoreProbe(monkeypatch)
 
     def ingest(receipt: UpgradeReceipt, *, activation: bool = False) -> None:
         nonlocal operation
@@ -289,6 +291,7 @@ async def test_core_steps_follow_actual_progress_validator(
             )
             monkeypatch.setattr(executor, "replace_cohort", replace)
             for _ in range(18):
+                await failover.probe(tmp_path / "coordination")
                 try:
                     await advance_core_step(executor)
                 except UpgradeConflict:
@@ -322,6 +325,11 @@ async def test_core_steps_follow_actual_progress_validator(
             # This is an orchestration contract test; publication is covered by
             # physical-selection tests, and bootstrap readiness stays false.
             assert authority.claim.state == "active"
+            # Even terminal SQL progress cannot release the still-active physical
+            # writer. Signed peer liveness remains reachable through every stage.
+            await failover.probe(tmp_path / "coordination")
+            assert failover.probes >= 3 and failover.reached == 0
     finally:
+        await failover.close()
         await client.close()
         await docker.close()

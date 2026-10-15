@@ -524,3 +524,57 @@ acquired/verified model with native pipeline support in the pinned runtime, not 
 tiny model. Diagnostics: `/tmp/coire-020-existing-pipeline-capability.log` (also retained privately).
 `COIRE_UPGRADE_NATIVE_FIXTURE` is not configured in this session; historical 019 qualification
 identities do not supply a currently armed 020 acceptance fixture. T065 remains explicitly open.
+
+### Resumed live PP and maintenance qualification — 2026-10-15
+
+CI [38685425820](https://github.com/mcteer/coire/actions/runs/38685425820), on `6fff5414`,
+completed successfully: all **35 validation jobs passed**, including native failover,
+training/extraction/evaluation, installed-node SIGKILL recovery, composed Core ownership,
+image policy/scans and integration. Publish remained inactive. This supersedes the pending
+hosted confirmation above; runtime production source remains `484b3861`.
+
+Core's OrbStack VM became unresponsive during acceptance. Graceful stop timed out; the owner
+explicitly approved force-stop/restart. That completed and Core health recovered without deleting
+volumes or images. This incident is not a physical power-loss acceptance result.
+
+The owner also explicitly authorized key generation and temporary en5 addresses. A task-specific
+administrator key was created through the authenticated audited admin API and retained in Keychain
+as `coire-020-qualification-key`; no legacy authentication exception was enabled. Admin acquisition
+of **mlx-community/GLM-4.7-Flash-4bit**, MIT, revision
+`1454cffb1a21737e162f508e5bc70be9def89276`, completed on both Studios: **12 files,
+16,872,850,407 bytes**, registry model `4eecee75-36fd-4aa2-b9ca-818949deb610`. The model remains
+admin-only. Its acquisition manifests and all local bytes were verified before native work.
+
+Operator runner `validation/native_cluster.py` now accepts an acquired local asset without
+changing CI's <=1 GiB restriction. Real **PP buffered and streaming inference passed** on both
+Studios with the pinned bare runtime. Separate exact-owned rank faults refused the group in
+**0.5623 s (rank 0)** and **0.4881 s (rank 1)**, within the three-second bound. Buffered requests
+produced eight tokens; the reasoning model emits its text in `reasoning`, and the fixture accepts
+nonempty declared output channels plus positive token usage. Earlier runner attempts incorrectly
+required `content` and then immediate process exit; they remain failed attempts. The corrected
+runner polls within the unchanged three-second requirement. Both Studios had **zero actual swap
+before and after**. Owned engine groups and independent model copies were removed after testing.
+These are isolated native node-route tests with signed qualification identities, not public ingress,
+full deployment or physical Core-loss evidence. Logs: `/tmp/coire-020-pp-final-rank{0,1}.log`.
+
+The complete Core executor success/failure workflow matrix now probes the full API middleware and
+signed peer heartbeat at every step, checking unchanged physical-owner files and rejected user work.
+An additional actual-PostgreSQL race commits maintenance while an admitted stream is active: new
+requests and DB-backed failover operations are refused, signed peer liveness remains available,
+the stream completes, and exact operation/maintenance rows remain unchanged. Combined affected
+workflow, node admission/stream and SQL checks: **35 passed, zero skips, 8.81 s**
+(`/tmp/coire-020-final-boundaries.log`). Ruff and strict helper typing pass. Physical Docker replacement
+remains an explicit workflow-test seam; this does not close the full live armed-upgrade matrix.
+
+The participant resource runner verifies matching source hashes on all three real hosts before
+measuring separate fifteen-minute baseline/armed windows in lean and diagnostic modes. Both final
+runs are in progress. Earlier setup attempts exposed a missing fixture verifier and stale isolated
+edge-b schema; those were corrected and the invalid windows discarded. The production signatures,
+expiry, CPU/RSS budgets and deadlines remain unchanged. Preflight now requires a verified fresh
+snapshot and propagates publisher failure. Final result paths are
+`/tmp/coire-020-resources-final-{lean,diagnostic}.json`.
+
+Live TP still requires the approved en5 addresses to be applied with interactive OS sudo. The agent
+cannot supply that password; neither address has been applied by the agent. Physical Core power-loss
+acceptance still requires an independently controlled recovery path. Cloudflare remains owner-deferred.
+T036/T065/T073 stay open for their remaining mandatory evidence.

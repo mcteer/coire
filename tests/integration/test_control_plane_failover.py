@@ -570,3 +570,145 @@ async def test_full_core_middleware_preserves_safety_exchanges_during_019_fence(
             assert owner == {**preimage, "released": True}
     finally:
         core_failover_routes.set_participant(None)
+
+
+async def test_signed_peer_liveness_preserves_sql_owner_and_inflight_stream(
+    training_postgres_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real SQL fence acquisition and full middleware; no Docker transition is simulated."""
+    import asyncio
+
+    from fastapi.responses import StreamingResponse
+    from sqlalchemy import select, text
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from upgrade_failover_fixtures import ArmedCoreProbe
+    from upgrade_fixtures import core_plan
+
+    from coire_api.auth import Principal, PrincipalKind
+    from coire_api.db import Base, UpgradeMaintenanceRow, UpgradeOperationRow, UserRow
+    from coire_api.upgrades import admission
+    from coire_api.upgrades.persistence import accept, register_release
+    from coire_core.models.auth import UserRole
+    from coire_core.models.upgrades import UpgradeStartRequest
+    from coire_scheduler.maintenance import fence
+
+    schema = f"failover_upgrade_race_{uuid4().hex}"
+    owner_engine = create_async_engine(training_postgres_url)
+    async with owner_engine.begin() as connection:
+        await connection.execute(text(f"CREATE SCHEMA {schema}"))
+    engine = create_async_engine(
+        training_postgres_url, connect_args={"server_settings": {"search_path": schema}}
+    )
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    probe = ArmedCoreProbe(monkeypatch)
+    # Replace the helper's explicit unit-test SQL seam with actual committed transactions.
+    monkeypatch.setattr(admission, "session_scope", sessions.begin)
+    probe.fenced = False
+    started, finish = asyncio.Event(), asyncio.Event()
+    request = None
+
+    @probe.app.get("/v1/qualification-stream")
+    async def stream() -> StreamingResponse:
+        async def body() -> AsyncIterator[bytes]:
+            started.set()
+            yield b"before-maintenance\n"
+            await finish.wait()
+            yield b"completed-after-maintenance\n"
+
+        return StreamingResponse(body())
+
+    async def retained_owner() -> list[dict[str, object]]:
+        async with sessions.begin() as session:
+            rows = (await session.scalars(select(UpgradeMaintenanceRow))).all()
+            operation = await session.scalar(select(UpgradeOperationRow))
+            assert operation is not None
+            return [
+                {"operation": operation.payload, "active_slot": operation.active_slot},
+                *[
+                    {
+                        "target": row.target,
+                        "job_id": row.job_id,
+                        "generation": row.generation,
+                        "released": row.released,
+                        "payload": row.payload,
+                    }
+                    for row in sorted(rows, key=lambda value: value.target)
+                ],
+            ]
+
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.execute(text("CREATE SEQUENCE upgrade_generation_seq"))
+        plan = core_plan()
+        owner = plan.source.prepared_by
+        principal = Principal(kind=PrincipalKind.ADMIN, user_id=owner, role=UserRole.ADMIN)
+        manifest = plan.target.manifest.model_copy(
+            update={
+                "services": (
+                    plan.target.manifest.services[0].model_copy(
+                        update={"image_id": "sha256:" + "b" * 64}
+                    ),
+                )
+            }
+        )
+        target = plan.target.model_copy(
+            update={"manifest": manifest, "manifest_sha256": manifest.sha256()}
+        )
+        async with sessions.begin() as session:
+            session.add(
+                UserRow(
+                    id=owner,
+                    email=f"{owner}@fixture.test",
+                    display_name="Admin",
+                    role=UserRole.ADMIN,
+                )
+            )
+        async with sessions.begin() as session:
+            await register_release(session, principal, plan.source)
+            await register_release(session, principal, target)
+            operation, created = await accept(
+                session,
+                principal,
+                UpgradeStartRequest(
+                    release_id=target.release_id,
+                    expected_source_sha256=plan.source.manifest_sha256,
+                    idempotency_key=uuid4(),
+                    acknowledge_maintenance=True,
+                ),
+                plan.source.release_id,
+            )
+            assert created
+        await probe.probe(tmp_path)
+        request = asyncio.create_task(probe.client.get("/v1/qualification-stream"))
+        await asyncio.wait_for(started.wait(), timeout=2)
+        async with sessions.begin() as session:
+            await fence(
+                session,
+                plan.maintenance.model_copy(
+                    update={"job_id": operation.job_id, "generation": operation.generation}
+                ),
+            )
+        probe.fenced = True
+        before = await retained_owner()
+        assert len(before) == 5 and all(not row["released"] for row in before[1:])
+        for _ in range(3):
+            await probe.probe(tmp_path, expect_inflight=True)
+            assert await retained_owner() == before
+        assert (await probe.client.get("/v1/qualification-stream")).status_code == 503
+        finish.set()
+        completed = await asyncio.wait_for(request, timeout=2)
+        assert completed.status_code == 200
+        assert completed.content == b"before-maintenance\ncompleted-after-maintenance\n"
+        await probe.probe(tmp_path)
+        assert await retained_owner() == before
+        assert probe.reached == 1
+    finally:
+        finish.set()
+        if request is not None:
+            await asyncio.gather(request, return_exceptions=True)
+        await probe.close()
+        await engine.dispose()
+        async with owner_engine.begin() as connection:
+            await connection.execute(text(f"DROP SCHEMA {schema} CASCADE"))
+        await owner_engine.dispose()

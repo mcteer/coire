@@ -23,8 +23,9 @@ fault coverage; physical link qualification remains in T073. T065 remains open f
 armed-020 upgrade-success/failed-candidate rollback matrix: full application maintenance fencing,
 frontend-start admission, cohort recovery and SQL handover ownership checks pass, but these do
 not establish the entire live operation. T056/T057 provider-dependent work is owner-deferred.
-T073/T036 remain open: live RDMA needs the requested temporary network-alias approval; Core
-power-off needs independently verified recovery, and deployed resource/coexistence/public timing
+T073/T036 remain open: temporary RDMA aliases are approved but need interactive OS sudo; Core
+power-off needs independently verified recovery. Real PP buffered/streaming and both rank faults
+pass with zero swap; participant resource windows are running. Deployed coexistence/public timing
 trials are not claimed. All passing and failed attempts are recorded without counting skips as passes.
 
 ## Phase 1: Setup
