@@ -33,11 +33,20 @@ Continue with these open gates, preserving their task status:
 - The approved OrbStack force-stop/restart completed and restored Core health. It does not prove
   physical power loss. The owner confirms automatic restart after power restoration; `pmset -g`
   verifies `autorestart 1`. No remotely controlled outlet has been identified.
-- Final lean/diagnostic windows failed the Studio CPU budget (1.14–1.22% against 1%).
-  Redundant lease requests are corrected; fresh windows are running under
-  `/tmp/coire-020-resources-reclaim-{lean,diagnostic}.json`. Each window is fifteen minutes.
-  Preflight and source hashes passed; earlier setup runs were discarded. The resource fixture
-  measures signed participants/subscribers, without Docker lifecycle or inference coexistence.
+- Participant CPU qualification remains open. Full trials with the stub collector and actual Docker
+  lifecycle failed (lean 1.502%/1.347%, diagnostic 1.594%/1.486%). The fixture now runs the real
+  native metrics collector in both baseline/armed windows and reads kernel swap without forking.
+  A short diagnostic still exceeded CPU. The controller now inspects on the existing two-second
+  bound; election participants reuse member-owned parsed signing keys and immutable peer URLs.
+  No signature/authority result is cached. The latest short diagnostic is
+  `/tmp/coire-020-cpu-prepared-runtime.log`; full replacement windows are still required.
+- Actual hardened frontend lifecycle passed again with the two-second inspection cadence:
+  promotion 21.437 s, hand-back 48.627 s. Containers/networks were removed. Component native
+  coexistence passed separately; it does not prove a request through the container.
+- CI 38751556045 completed 34 jobs successfully but composed integration failed one existing
+  instance-drain deadline (12.746 s against 10 s). Preserve that failure; do not loosen the bound.
+  Changed crypto/election/controller suites pass 215 tests, zero skips; strict typing passes all
+  1,304 source files. Hosted CI must run again on the final source.
 - T036 closes only after required live evidence. Deployed frontend/coexistence, physical faults,
   and drained rollback remain required; public timing is deferred with Cloudflare.
 

@@ -295,7 +295,10 @@ class StudioFailoverController:
                     await self._sync_frontend()
             except (DockerAPIError, httpx.HTTPError, ValueError, UpgradeUnavailable):
                 logger.exception("failover frontend lifecycle update failed")
-            await asyncio.sleep(1)
+            # Match the election's two-second evaluation bound. Inspecting the
+            # stopped container twice per election tick adds idle Studio work;
+            # the frontend independently rejects expired authority on admission.
+            await asyncio.sleep(min(2.0, self.settings.failover_election_interval_s))
 
     async def _sync_frontend(self) -> None:
         poller = self._poller

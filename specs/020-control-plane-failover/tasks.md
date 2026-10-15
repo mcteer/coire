@@ -26,7 +26,9 @@ not establish the entire live operation. T056/T057 provider-dependent work is ow
 T073/T036 remain open: real TP/PP buffered/streaming and both rank faults pass with zero swap;
 all four mid-stream interruption cases pass. Temporary en5 aliases were applied and removed by
 the owner, with cleanup readback. Core auto-restart is confirmed; physical power loss is untested.
-Participant resource windows failed the Studio CPU budget; the renewal correction is under retest. Deployed coexistence/public timing
+Participant resource windows failed the Studio CPU budget; idle lifecycle/key/URL overhead
+corrections are under retest. Signed real-host process and actual-container promotion/hand-back
+pass within 60/90 seconds. Deployed inference coexistence/public timing
 trials are not claimed. All passing and failed attempts are recorded without counting skips as passes.
 
 ## Phase 1: Setup

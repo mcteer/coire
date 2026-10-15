@@ -92,3 +92,29 @@ source/image identity and cleanup outcome. Separate real public ingress, real mo
 and simulated-clock evidence. Every required failure must be fixed or explicitly remain open; do not
 mark T036 done with skipped required tests. Preserve private raw evidence outside Git and commit only
 redacted measurements and references. Runbook must explain how to observe, fence, kill and roll back.
+
+## Operator-only real-host runners
+
+`validation/participant_resources.py` runs signed production HTTP participants through private
+SSH Unix sockets on Core and both Studios. The source tree under `/tmp/coire-020-qualification`
+on each Studio must match Core; the runner checks runtime and fixture hashes. Set
+`COIRE_RESOURCE_RESULT` to a private JSON output path. Normal execution takes a full fifteen-minute
+baseline and fifteen-minute armed window; `--diagnostics` enables the diagnostic profile.
+Both Studio windows include the normal native metrics collector and OTLP export. Actual host
+swap comes from the kernel through psutil, without launching a subprocess inside the instrumented
+worker. Supply
+`COIRE_RESOURCE_FRONTEND_IMAGE` with an already-loaded, policy/scanned digest to include the real
+Docker lifecycle loop. Each trial precreates and later removes its own hardened containers/internal
+networks; it does not adopt an installed frontend. No new listener or firewall rule is required.
+
+`--faults` waits out the real missing-record and recovery guards, kills only its owned Core process,
+and measures promotion and restart/hand-back against the unchanged 60/90-second bounds. With a
+frontend image, readiness is checked using its scoped monitor inside the private container network;
+anonymous inference must be refused. This does not prove physical power loss, public ingress,
+or Core SQL/cohort recovery. Keep those acceptance rows separate. The fixture's lifecycle status
+path is unavailable, deliberately exercising conservative drain accounting.
+
+`validation/native_cluster.py` runs only on the Studios through native node-owned managers, with
+admin-acquired checksum-verified assets. It covers TP/PP buffered and streaming output plus either
+rank's mid-stream loss. The approved temporary RDMA address setup is an operator prerequisite;
+remove it after the run. Never place commands inside question widgets.

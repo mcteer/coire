@@ -19,7 +19,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from coire_core.failover_crypto import sign_ed25519, verify_ed25519
+from coire_core.failover_crypto import Ed25519Signer, verify_ed25519
 from coire_core.failover_safety import ElectionSafety, ElectionSafetyError
 from coire_core.failover_telemetry import elections_total, handbacks_total, readiness, tracer
 from coire_core.models.failover import (
@@ -124,7 +124,7 @@ class ElectionParticipant:
         self.reservation_held = standing_reservation
         self.in_flight = 0
         self.engines_evicted = 0
-        self._private_key = private_key_b64
+        self._signer = Ed25519Signer(private_key_b64)
         self._journal = journal
         self._on_change = on_change
         self._observations: list[MemberObservation] = []
@@ -255,7 +255,7 @@ class ElectionParticipant:
                 return existing
             reply = existing.model_copy(update={"request_id": request_id})
             return reply.model_copy(
-                update={"signature": sign_ed25519(reply.canonical_bytes(), self._private_key)}
+                update={"signature": self._signer.sign(reply.canonical_bytes())}
             )
         unsigned = ElectionVoteGrant(
             epoch=epoch,
@@ -269,7 +269,7 @@ class ElectionParticipant:
         if request_id is not None:
             unsigned = unsigned.model_copy(update={"request_id": request_id})
         signed = unsigned.model_copy(
-            update={"signature": sign_ed25519(unsigned.canonical_bytes(), self._private_key)}
+            update={"signature": self._signer.sign(unsigned.canonical_bytes())}
         )
         if self.safety is not None:
             try:
@@ -529,7 +529,7 @@ class ElectionParticipant:
             signature="unsigned",
         )
         signed = unsigned.model_copy(
-            update={"signature": sign_ed25519(unsigned.canonical_bytes(), self._private_key)}
+            update={"signature": self._signer.sign(unsigned.canonical_bytes())}
         )
         if self.safety is not None:
             try:
@@ -663,7 +663,7 @@ class ElectionParticipant:
         if challenge is not None:
             unsigned = unsigned.model_copy(update={"challenge": challenge})
         return unsigned.model_copy(
-            update={"signature": sign_ed25519(unsigned.canonical_bytes(), self._private_key)}
+            update={"signature": self._signer.sign(unsigned.canonical_bytes())}
         )
 
     def issue_vote_request(self, now: datetime) -> ElectionVoteRequest | None:
@@ -689,12 +689,12 @@ class ElectionParticipant:
             signature="unsigned",
         )
         return unsigned.model_copy(
-            update={"signature": sign_ed25519(unsigned.canonical_bytes(), self._private_key)}
+            update={"signature": self._signer.sign(unsigned.canonical_bytes())}
         )
 
     def sign_payload(self, payload: bytes) -> str:
         """Sign a locally constructed typed acknowledgement, never caller-selected bytes."""
-        return sign_ed25519(payload, self._private_key)
+        return self._signer.sign(payload)
 
     def member_public_key(self, name: str) -> str:
         return self._public_key(name)

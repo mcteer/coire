@@ -648,3 +648,63 @@ upgrade/rollback remains a separate T073 acceptance case.
 The superseded resource trials were stopped and retained as partial evidence because runtime source
 changed. Full replacement windows use `/tmp/coire-020-resources-reclaim-{lean,diagnostic}.json`;
 the new real-host process trial uses `/tmp/coire-020-participant-faults-reclaim.json`.
+
+### 2026-10-15 real-host process and frontend lifecycle results
+
+On runtime `314524d1c5c687a08a980a120bf9938d2306caf2`, the owned Core participant SIGKILL trial
+passes: edge-a promotion **21.488 s**, Core restart/hand-back **49.205 s**, no double-elected
+sample. A second trial includes the actual digest-pinned hardened frontend on both Studios,
+started/stopped by `StudioFailoverController`: authenticated readiness **21.918 s**, hand-back
+**49.458 s**, anonymous requests refused, and owned containers/networks removed. The observer
+probes the HTTP monitor inside the private container network. The first container trial's host
+observer could not reach that internal network; that failed trial is retained rather than
+relaxing network isolation. The lifecycle HTTP counter is deliberately unreachable in this
+fixture, so hand-back exercises conservative in-flight accounting and bounded authority expiry.
+Neither trial cuts host power, routes through Cloudflare, or tests an authoritative Core SQL cohort.
+
+While the actual frontend was healthy on edge-a, the separate authenticated ASGI/native tiny-model
+gate passed **1 test, 3.05 s**. The container remained running before/after, measured **83.45 MiB /
+256 MiB**, **0.23%** sampled CPU, no OOM, and actual host swap stayed **0.00 MiB**. Requests used
+the separate ASGI frontend fixture, so this is component coexistence evidence rather than an
+end-to-end request through the container. Logs and hashes are in `data/qualification/020/314524d1/`.
+
+Final built/scanned runtime images (seven policy rules passed, zero CRITICAL vulnerabilities,
+SPDX SBOM and locked native wheel build retained):
+
+| Image | Immutable local digest |
+| --- | --- |
+| coire-failover | `sha256:8184c2d9440536227cb5609ade0ebdeb289f47e1549368a37b85da7b658a0eee` |
+| coire-api | `sha256:e4db1f5e89988bdd582f65333d43a06eb41cad507c19ba9d60b2f581c1997aa5` |
+| coire-scheduler | `sha256:2347ecbb84581f1de00e85f45c95c9532f7b81fbe2d8dfda87134316fe0b28d1` |
+
+Full resource trials now include actual Docker lifecycle inspection and use isolated per-trial
+container names. The first complete-lifecycle attempts exposed a measurement defect: spawning
+`sysctl` from the telemetry-enabled worker invoked gRPC fork handlers and could hang. The sampler
+now reads the actual kernel swap counter through psutil. Its readings matched independent sysctl
+readback. The replacement `/tmp/coire-020-resources-kernel-{lean,diagnostic}.json` trials completed
+both full windows on runtime `314524d1` but failed Studio CPU: lean **1.502% / 1.347%**, diagnostic
+**1.594% / 1.486%**. Incremental RSS stayed **3.00–4.75 MiB**, actual swap growth **0 MiB**, and
+the final roles were Core elected/both Studios standby. These are failed resource results.
+
+A second fixture correction replaces the harness's stub collector with the normal native metrics
+collector in both Studio windows. A short diagnostic still exceeded CPU (**1.210% / 1.200%**),
+so the baseline correction is not presented as a pass. An event-loop comparison did not materially
+help and was discarded. Runtime Docker inspection now uses the existing two-second evaluation
+bound; its short diagnostic improved to **1.158% / 1.093%**, still above the limit. The affected
+controller/poller tests pass **16 tests, zero skips, 1.02 s**; lint/format and strict changed-file
+typing pass. Full resource qualification remains open while the residual cost is investigated.
+No production node installation was changed. All failed and incomplete attempts remain private
+evidence; profiles and short diagnostics do not replace the required fifteen-minute gate.
+
+The lifecycle retest with the two-second inspection cadence passed: actual container readiness
+after owned Core process loss **21.437 s**, restart/hand-back **48.627 s**, followed by cleanup.
+A parsed-key diagnostic improved the Studio CPU deltas to **1.029% / 0.959%**. The implementation
+now retains a parsed private key only on its owning election participant, caches bounded public
+key parsing (no verification results), and reuses fixed peer URLs. The affected crypto/election/
+controller suite passes **215 tests, zero skips, 9.78 s**; strict typing passes **1,304 sources**.
+The current full resource result is still pending.
+
+Hosted CI `38751556045` passed 34 jobs but failed composed integration's existing instance-drain
+deadline: **12.746 s** against **10 s**. That limit is unchanged; this run is not green and the
+remaining stream step did not execute. The failure log is retained for investigation and the
+final source requires a new CI run.

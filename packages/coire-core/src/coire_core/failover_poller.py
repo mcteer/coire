@@ -123,6 +123,18 @@ class HttpPeerExchange:
         self._participant = participant
         self._settings = settings
         self._client = client
+        # Membership and control addresses are fixed for this exchange's lifetime.
+        # Reuse parsed URLs instead of reparsing them on every signed heartbeat.
+        self._heartbeat_urls = {
+            member.name: httpx.URL(peer_url(settings, member.name, "/heartbeat"))
+            for member in participant.membership.members
+            if member.name != participant.name
+        }
+        self._vote_urls = {
+            member.name: httpx.URL(peer_url(settings, member.name, "/votes"))
+            for member in participant.membership.members
+            if member.name != participant.name
+        }
         self.recovery_since: dict[str, datetime] = {}
 
     async def heartbeat(self, peer: str, body: FailoverHeartbeat) -> tuple[bool, float]:
@@ -130,7 +142,7 @@ class HttpPeerExchange:
         prior_ready = self.recovery_since.pop(peer, None)
         try:
             response = await self._client.post(
-                peer_url(self._settings, peer, "/heartbeat"),
+                self._heartbeat_urls[peer],
                 json=body.model_dump(mode="json"),
                 timeout=1.0,
             )
@@ -157,7 +169,7 @@ class HttpPeerExchange:
     async def request_vote(self, peer: str, body: ElectionVoteRequest) -> ElectionVoteGrant | None:
         try:
             response = await self._client.post(
-                peer_url(self._settings, peer, "/votes"),
+                self._vote_urls[peer],
                 json=body.model_dump(mode="json"),
                 timeout=1.0,
             )

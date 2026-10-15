@@ -3,8 +3,9 @@
 Uses the production signed HTTP routes, subscriber, poller and durable safety files.
 SSH forwards private Unix sockets; it creates no public listener or network rule.
 The isolated Core publishes empty signed snapshots. No engines or application data
-are loaded. This measures the participant/subscriber and collector-loss overhead;
-frontend Docker lifecycle and inference coexistence require separate acceptance.
+are loaded. The normal Studio metrics collector runs in both windows. An optional
+preloaded frontend image includes the Docker lifecycle loop; inference coexistence
+requires separate acceptance.
 """
 
 from __future__ import annotations
@@ -14,9 +15,7 @@ import base64
 import hashlib
 import json
 import os
-import re
 import statistics
-import subprocess
 import sys
 import time
 from contextlib import ExitStack
@@ -30,11 +29,21 @@ SCRIPT = "specs/020-control-plane-failover/validation/participant_resources.py"
 SOURCES = (
     "packages/coire-core/src/coire_core/models/failover.py",
     "packages/coire-core/src/coire_core/failover_election.py",
+    "packages/coire-core/src/coire_core/failover_crypto.py",
     "packages/coire-core/src/coire_core/failover_poller.py",
     "packages/coire-core/src/coire_core/failover_journal.py",
+    "packages/coire-core/src/coire_core/failover_safety.py",
+    "packages/coire-core/src/coire_core/failover_telemetry.py",
+    "apps/coire-node/src/coire_node/metrics.py",
+    "apps/coire-node/src/coire_node/native_probe.py",
+    "apps/coire-node/src/coire_node/otel.py",
+    "apps/coire-node/src/coire_node/failover/participant.py",
     "apps/coire-node/src/coire_node/failover/poller.py",
     "apps/coire-node/src/coire_node/routes/failover.py",
     "apps/coire-api/src/coire_api/routes/failover.py",
+    "apps/coire-api/src/coire_api/failover/participant.py",
+    SCRIPT,
+    "specs/020-control-plane-failover/validation/frontend_container.py",
 )
 
 
@@ -127,9 +136,11 @@ async def worker() -> None:
         mounts=mounts, trust_env=False, event_hooks={"response": [response_diagnostic]}
     )
     agent = None
+    collector = None
     controller = None
     poller = None
     publish = None
+    frontend = None
     snapshot_ready = asyncio.Event()
     if name == NAMES[0]:
         from coire_api.failover.participant import core_participant
@@ -177,14 +188,43 @@ async def worker() -> None:
                 await asyncio.sleep(30)
     else:
         from coire_node.failover.poller import StudioFailoverController
+        from coire_node.metrics import MetricsCollector
         from coire_node.testing.harness import Agent
 
         agent = Agent(root / "agent", node_name=name)
+        # The normal node collects metrics even with failover disabled. Preserve
+        # that baseline, including its OTLP exporter, in both measurement windows.
+        collector = MetricsCollector(
+            node_name=name,
+            agent_version="020-resource-acceptance",
+            interval_s=agent.settings.node_probe_interval_s,
+            budget_cpu_pct=agent.settings.node_collection_budget_cpu_pct,
+            budget_rss_bytes=agent.settings.node_collection_budget_rss_bytes,
+        )
+        collector.attach(
+            store=agent.store,
+            jobs=agent.jobs,
+            engines=agent.engines,
+            reservations=agent.reservations,
+        )
+        agent.collector = collector
+        await asyncio.to_thread(collector.start)
+        if initial.get("frontend_image"):
+            from frontend_container import FrontendContainer
+
+            frontend = FrontendContainer(root, settings, initial["frontend_image"])
+            try:
+                await frontend.prepare()
+            except BaseException:
+                await frontend.close()
+                raise
         for field in type(settings).model_fields:
             if field.startswith("failover_"):
                 setattr(agent.settings, field, getattr(settings, field))
         app = agent.app()
-        controller = StudioFailoverController(agent.settings, client=client)
+        controller = StudioFailoverController(
+            agent.settings, client=client, docker=frontend.docker if frontend else None
+        )
     started = asyncio.Event()
 
     class ReadyServer(uvicorn.Server):
@@ -201,9 +241,9 @@ async def worker() -> None:
 
     def sample() -> dict:
         cpu = process.cpu_times()
-        swap = subprocess.check_output(["/usr/sbin/sysctl", "-n", "vm.swapusage"], text=True)
-        match = re.search(r"used = ([0-9.]+)M", swap)
-        assert match, swap
+        # Read the kernel counter directly. Forking sysctl inside an instrumented
+        # process invokes gRPC's fork handlers and can distort CPU or hang the sampler.
+        swap_used_mib = psutil.swap_memory().used / 1024**2
         member = (
             poller.participant
             if poller
@@ -213,7 +253,7 @@ async def worker() -> None:
             "at": time.monotonic(),
             "rss": process.memory_info().rss,
             "cpu_s": cpu.user + cpu.system,
-            "swap_used_mib": float(match[1]),
+            "swap_used_mib": swap_used_mib,
             "role": member.role.value if member else "unarmed",
             "pid": process.pid,
         }
@@ -241,7 +281,10 @@ async def worker() -> None:
                         assert time.monotonic() < deadline, "signed snapshot preflight failed"
                         await asyncio.sleep(0.25)
                     await controller.start()
-            output(await asyncio.to_thread(sample))
+            measured = await asyncio.to_thread(sample)
+            if frontend:
+                measured["frontend"] = await frontend.observe()
+            output(measured)
     finally:
         if publish:
             publish.cancel()
@@ -250,9 +293,13 @@ async def worker() -> None:
             await poller.stop()
         if controller:
             await controller.stop()
+        if frontend:
+            await frontend.close()
         server.should_exit = True
         await serving
         await client.aclose()
+        if collector:
+            await asyncio.to_thread(collector.stop)
         if agent:
             agent.close()
 
@@ -327,6 +374,7 @@ async def run() -> None:
                 "membership": membership.model_dump(mode="json"),
                 "diagnostics": diagnostics,
                 "source_identity": selected_source,
+                "frontend_image": os.environ.get("COIRE_RESOURCE_FRONTEND_IMAGE", ""),
             }
             workers[name].stdin.write(json.dumps(initials[name]).encode() + b"\n")
             await workers[name].stdin.drain()
@@ -374,8 +422,24 @@ async def run() -> None:
                     }
                     assert sum(role == "elected" for role in roles.values()) <= 1, roles
                     elapsed = time.monotonic() - started_at
-                    transitions.append({"elapsed_s": elapsed, "roles": roles})
-                    if roles == expected:
+                    frontends = {
+                        name: item["frontend"]
+                        for name, item in zip(expected, samples, strict=True)
+                        if "frontend" in item
+                    }
+                    transitions.append(
+                        {"elapsed_s": elapsed, "roles": roles, "frontends": frontends}
+                    )
+                    await asyncio.to_thread(
+                        output.write_text, json.dumps({"transitions": transitions}, indent=2)
+                    )
+                    settled = all(
+                        bool(value["ready"])
+                        if expected[name] == "elected"
+                        else not value["running"]
+                        for name, value in frontends.items()
+                    )
+                    if roles == expected and settled:
                         return elapsed
                     assert elapsed < bound, {"expected": expected, "observed": roles}
                     await asyncio.sleep(2)
@@ -414,7 +478,8 @@ async def run() -> None:
             result = {
                 "scope": "real-host signed participant HTTP; owned Core process SIGKILL/restart",
                 "physical_power_loss": False,
-                "frontend_or_public_ingress": False,
+                "frontend_lifecycle": bool(os.environ.get("COIRE_RESOURCE_FRONTEND_IMAGE")),
+                "public_ingress": False,
                 "promotion_s": promotion,
                 "handback_s": recovery,
                 "transitions": transitions,
