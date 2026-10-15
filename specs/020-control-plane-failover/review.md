@@ -1018,3 +1018,39 @@ With a fresh external root, all 62 tests across the affected deployment/report/c
 files pass in 2.72 seconds, with unchanged assertions and budgets. A final whole CI
 unit/contract selection is running with a unique external basetemp. Earlier failed
 invocations remain historical evidence, not passing full-run claims.
+
+
+### Final local regression and cleanup correction — 2026-10-15
+
+The whole CI unit/contract selection with a fresh external temporary root passes:
+**6,100 passed, 75 existing skips, 655 integration deselections, 569.85 seconds**.
+The timeout and external-state guards are unchanged. Their earlier failing invocations
+remain above; no assertion or check was loosened. All 11 corrected-artifact composed
+cohort/observability and six bootstrap integration cases also pass.
+
+The owner correctly identified accumulated OrbStack debris. The earlier cleanup check
+counted running containers and missed stopped replaced API containers; older 019 fixtures
+and power-interrupted 020 resource fixtures also remained. An ownership audit found 153
+Core containers (130 retired fixtures, 15 production, eight current unit databases).
+Removed all 130 retired Core containers, including five still-running historical web/
+telemetry/proxy services, plus six stopped/created Studio fixtures. The active unit databases
+removed themselves at normal teardown. Core now contains only its 15 production containers;
+both Studios contain zero containers. Production identities and health were preserved.
+
+Removed 289 unused positively identified test volumes and 11 empty test networks. Only
+the five required SQL/recovery-state volumes from the two explicitly unresolved cohorts
+were archived first: 37,916,001 bytes total, tar-readable and SHA-256 recorded, outside Docker
+under `~/.coire/qualification/cleanup-20261015-33490dee5b/`. Their original holds/history
+were not changed or declared recovered. Ordinary successful fixture data was deleted.
+Six unattributed anonymous volumes were inspected read-only and not assumed disposable;
+production volumes were untouched. No global prune or force removal was used.
+
+`validation/fixture_cleanup.py` now verifies every container, including stopped replaced
+Sources, refuses live/foreign/incomplete projects, requires an empty container inventory,
+and removes the exact successful fixture's unused named volumes. Both successful runners
+call it before claiming cleanup complete. Eight boundary tests pass with no skips; strict
+mypy passes all 18 operator scripts. A real Docker smoke created two stopped generation
+containers and one volume, then removed all three and verified zero remaining resources.
+Ruff format/check and whitespace checks pass. Hosted CI for production commit `5b5d818`
+was running without failures; the cleanup follow-up requires its own current-head checks.
+Final hosted results are linked from PR #98 and retained in private qualification evidence.

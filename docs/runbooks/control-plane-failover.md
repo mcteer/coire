@@ -124,3 +124,14 @@ frontend <=256 MiB, no resident evictions and zero actual swap growth. Record na
 `vm.swapusage`, image/source identity, timings and cleanup in `specs/020-control-plane-failover/review.md`.
 A real Core power-off requires a demonstrated independent recovery route. Process tests are not
 physical power-loss evidence. See the feature quickstart for the full acceptance matrix.
+
+
+Operator qualification cleanup must inspect `docker ps -a`, including replaced Source
+containers, and assert zero containers for the retired fixture project. A running-only
+check is insufficient. Completed fixtures remove their disposable volumes; keep redacted
+results outside Docker. Do not retain whole container stacks merely as historical evidence.
+Before decommissioning an unresolved fixture, positively verify idle native work and stopped
+coordinators, preserve the necessary recovery history in a private archive, and record that
+the unresolved state remains unresolved. Never prune production resources or infer ownership
+from an anonymous volume name. The 020 runners use `specs/020-control-plane-failover/validation/fixture_cleanup.py` and
+refuse live containers, foreign labels, incomplete operations and in-use volumes.

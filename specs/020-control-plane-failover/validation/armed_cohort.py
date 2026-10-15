@@ -3,8 +3,8 @@
 Run from the repository root after loading policy/scanned :020-cohort images and
 copying cohort_peer.py plus its matching runtime to /tmp/coire-020-qualification
 on each Studio. This runner binds temporary control listeners on port 19460.
-It retains private authority/evidence and volumes; it removes owned containers
-and networks on success. A failed Core cohort is retained for normal recovery.
+It retains private authority/evidence outside Docker; it removes owned containers,
+networks and disposable volumes on success. A failed Core cohort is retained for normal recovery.
 Application upgrades, native environment replacement and physical power loss
 require separate acceptance.
 """
@@ -25,6 +25,7 @@ from uuid import UUID, uuid4
 
 import httpx
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fixture_cleanup import retire_completed_project
 
 sys.path.insert(0, "tests")
 from upgrade_composed_fixtures import candidate_image, prepare_executor_candidate, qualify_source
@@ -406,6 +407,7 @@ def main() -> None:
                             check=True,
                             timeout=10,
                         )
+                    retire_completed_project(project, terminal=True)
         except Exception as exc:
             cleanup_errors.append(exc)
         for p in peers.values():

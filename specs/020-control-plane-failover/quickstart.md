@@ -153,7 +153,7 @@ and protected Source qualification paths, then runs actual failed-candidate exec
 and a successful executor handover while native Studio peers participate. It uses temporary
 control port 19460 and records observed ownership, phases and ready-origin exclusivity. On success
 it removes owned containers/networks, including retired executor containers, while retaining the
-private authority records and volumes. This is executor handover evidence; full application
+private authority records outside Docker; successful disposable volumes are removed. This is executor handover evidence; full application
 maintenance, Studio environment replacement and physical power loss are separate acceptance cases.
 
 
@@ -183,8 +183,10 @@ After interruption use `validation/application_resume.py` against the original c
 private configuration and receipts. It refuses active operations, unreleased maintenance,
 wrong immutable Source, or missing positive custody. Never reset a hold to make it resume.
 Cleanup stops only positively owned fixture processes and frontends; genuinely failed
-fixture engines are closed through authenticated node stop routes. Retain volumes and
-journals. A suspended/expired cohort is historical failed evidence, not a clean baseline.
+fixture engines are closed through authenticated node stop routes. Retain redacted results and necessary host journals, then remove
+all stopped project containers and disposable volumes after terminal success. A failed
+fixture needs explicit idle/ownership verification and archived recovery evidence before
+decommission; retaining historical evidence does not require keeping containers in OrbStack. A suspended/expired cohort is historical failed evidence, not a clean baseline.
 
 The prepared Cloudflare resource bundle and credential-file placeholders are described in
 `deploy/cloudflared/README.md`. Public acceptance requires actual account entitlement,

@@ -1,7 +1,7 @@
 """Operator-only Core and native upgrade/restoration with armed native peers.
 
 Run after resource measurement. Retires only the positively idle prepared 020
-cohort, retains its volumes, and provisions a fresh cohort with scoped native
+cohort and provisions a fresh cohort with scoped native
 credentials before qualifying Source. Never targets the production project.
 """
 
@@ -24,6 +24,7 @@ from typing import Any, BinaryIO, cast
 from uuid import UUID, uuid4
 
 import httpx
+from fixture_cleanup import retire_completed_project
 from resource_collector import ResourceCollector
 
 sys.path.insert(0, "tests")
@@ -485,6 +486,7 @@ def retire_matrix(
         peers[name].wait(timeout=30)
         assert peers[name].returncode == 0
     command(*compose, "down", "--remove-orphans")
+    save("docker-retirement", retire_completed_project(project, terminal=True))
     for tag in tags:
         command("docker", "image", "rm", tag)
     asyncio.run(telemetry.close())
@@ -588,6 +590,7 @@ asyncio.run(main())
         )
         assert counts.splitlines()[-1] == "idle"
         command(*old_compose, "down", "--remove-orphans")
+        retire_completed_project(previous["project"], terminal=True)
         assert not command(
             "docker",
             "ps",

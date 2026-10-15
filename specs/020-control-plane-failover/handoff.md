@@ -1,33 +1,34 @@
 # Implementation handoff: 020 control-plane failover
 
 Updated 2026-10-15 on `feat/020-control-plane-failover`, based on merged 019 (`cd355554`).
-Current state: the live Core/native success, exact manual rollback and failed-candidate
-restoration matrix PASSED, including final metadata preservation and owned cleanup.
-`coire-020-application-bb59eadcfb` has no running test containers. Both Studio test
-supervisors, nodes and guards are stopped; owned frontends are removed. Volumes and
-journals are retained. See the final success table in review.md and private results.
-The older failed `304b0b9db7` cohort is suspended with unresolved historical holds;
-its native prefix is not reusable. Supported Cloudflare resource bodies and local ingress policy/scope/isolation tests are
-prepared. Owner reaffirmed on 2026-10-15: Cloudflare stays deferred; stop requesting
-account setup, since the platform has not yet been used locally. Continue local
-implementation, tests and PR validation. Do not treat provider prerequisites as blocking
-this local work or resume the rollout without a later owner request. Physical fault
-acceptance remains separately unqualified. No connector is installed on Core. Unrestricted `uv run pytest -q` finished with 6,359 passed, 445 skipped, 25 failed
-and one setup error. Failures are isolated integration prerequisites: missing hosted-native
-fixture/RUNNER_TEMP, absent controlled-stream API, stale local executor image, and missing
-current composed cohort images. Report: `/tmp/coire-020-full-pytest-report.txt`. The first exact CI
-unit selection had one one-second subprocess timeout; its unchanged seven-test file passed.
-A later invocation used an in-repository temp root and correctly hit five external-path
-security guards (6,095 other tests passed). With a unique external temp root, all 62 tests
-in the affected deployment/report/command files pass. The final whole CI unit selection
-now runs in session 39269, log `/tmp/coire-020-unit-external-final.log`, basetemp
-`/tmp/coire-020-unit-external-final-20261015`. Never reuse a basetemp; pytest clears it.
-Six corrected-image bootstrap integration cases pass. All 11 actual composed cohort and
-observability cases pass (session 74218 completed), log `/tmp/coire-020-cohort-regression.log`.
-Owned cohort containers are removed. Current images use private `020-regression` tags;
-no production tag/container was replaced. Hosted native and controlled-stream fixtures
-belong to their provisioned CI jobs.
-Unrelated skill/workflow edits remain outside feature commits.
+Current state: the full six-case real Core/native upgrade/rollback/restoration matrix
+passes with unchanged metadata. Both healthy-collector resource profiles pass. Full local
+unit/contract regression passes 6,100 tests (75 existing skips/655 integration deselections);
+11 composed cohort/observability and six bootstrap integration cases pass. Eight new
+cleanup boundary tests and a real stopped-container/volume cleanup smoke pass. All 18
+operator scripts pass strict typing; production/deployment typing covers 1,304 sources.
+
+Owner steering: Cloudflare remains deferred; stop asking for account setup and prioritize
+local implementation/use. Physical power/cable acceptance is still unclaimed. Do not mark
+T036/T073 release acceptance complete from software/process tests.
+
+Cleanup was corrected after the owner's OrbStack report: removed 130 retired Core and six
+Studio containers, 289 known test volumes and 11 empty networks. Core has only 15 production
+containers; both Studios have zero. Current unit databases self-removed on test teardown.
+The old unresolved `304b0b9db7` and historical Core19 recovery records were moved intact
+into five private forensic volume archives (37,916,001 bytes total) under
+`~/.coire/qualification/cleanup-20261015-33490dee5b/`; holds were not cleared and recovery
+is not claimed. Its native prefix remains non-reusable. Six anonymous volumes with no
+proven test provenance remain untouched. Successful future runs remove disposable volumes
+and ALL project containers, including stopped upgraded generations, before reporting cleanup.
+
+Production corrections/evidence were pushed as `5b5d818`. Its hosted CI run 38818306046
+was in progress with no failures. The cleanup follow-up should be committed/pushed and its
+current-head checks observed; final results belong in PR #98 and private qualification
+receipts. No local test process remains. Unrelated skill/workflow edits stay outside commits.
+
+Historical attempts below retain their original observations and superseded retention
+statements; the cleanup audit above is the current resource inventory.
 
 Power-interruption recovery on 2026-10-15: the production Core and isolated application cohort
 `coire-020-application-35c13da42b` restarted healthy. Studio temporary qualification checkouts
