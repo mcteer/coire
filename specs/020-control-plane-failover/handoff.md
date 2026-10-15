@@ -44,4 +44,12 @@ The owner did not authorize a merge of 020. Unrelated preexisting edits to `.age
 and excluded from feature commits. No extension hooks were configured. Credentials and raw model/
 image/test artifacts stay outside Git. Reuse passing evidence and rerun only affected checks.
 
-Implemented runtime source commit: `817ff11b2beb74c0c3f2d6a227d24fb5b2761302`.
+Implemented runtime source commit: `484b38619d03a8633dafbdb5885d5c34fe7ce248`.
+This includes the durable Core journal/commit-before-ack path and the direct PyJWT dependency
+needed by standalone native wheels. The final image table is at the end of review.md.
+CI on that source passed lint, installed Source/guard SIGKILL recovery, native engine and image
+engine gates. Its new failover engine test exposed a test setup mismatch: the fake-engine harness
+used 30 seconds while this test and the existing evaluation fixture allow 120 seconds for model
+warm-up. The fixture now sets that same 120-second setup bound and includes redacted diagnostics;
+all failover deadline assertions remain unchanged. The corrected test passed on edge-a with the
+existing verified Qwen Coder 0.5B asset. Hosted CI still needs to confirm the correction.

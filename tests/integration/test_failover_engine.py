@@ -64,7 +64,14 @@ def test_real_resident_failover_completion_and_stale_process_refusal(
     monkeypatch.delenv("COIRE_TEST_FAKE_VALIDATION", raising=False)
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setenv("TRANSFORMERS_OFFLINE", "1")
-    agent = Agent(tmp_path / "node", node_name="coire-edge-a", node_engine_port_range="19500-19509")
+    agent = Agent(
+        tmp_path / "node",
+        node_name="coire-edge-a",
+        node_engine_port_range="19500-19509",
+        # Match the existing offline evaluation fixture and this test's 120-second
+        # setup bound; Agent's 30-second default is for fake-engine contract tests.
+        node_engine_start_timeout_s=120,
+    )
     shutil.copytree(
         source,
         agent.store.path_for(source.name),
@@ -98,7 +105,15 @@ def test_real_resident_failover_completion_and_stale_process_refusal(
             while True:
                 engine = agent.engines.get(engine_id)
                 assert engine is not None
-                assert engine.state is not EngineState.FAILED, engine.state_reason
+                if engine.state is EngineState.FAILED:
+                    owned = agent.engines._engines[str(engine_id)]
+                    detail = agent.engines._read_stderr(owned)[-8000:]
+                    for name, value in os.environ.items():
+                        if len(value) >= 8 and any(
+                            marker in name.upper() for marker in ("TOKEN", "SECRET", "KEY")
+                        ):
+                            detail = detail.replace(value, "[redacted]")
+                    pytest.fail(f"{engine.state_reason}\n{detail}")
                 if engine.state is EngineState.READY:
                     break
                 assert time.monotonic() < deadline, "tiny engine did not become ready"

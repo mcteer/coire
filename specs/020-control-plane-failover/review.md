@@ -467,3 +467,32 @@ include a bounded, token/key/secret-redacted native log tail.
 The previous image/source table remains historical; final packaging-adjusted image IDs and source
 revision are recorded by the following evidence update. Logs: `/tmp/coire-020-node-isolated-import.log`,
 `/tmp/coire-020-node-wheel-jwt.log`, `/tmp/coire-020-final2-types.log`.
+
+### Final packaged images and CI follow-up — 2026-10-15
+
+Runtime source: `484b38619d03a8633dafbdb5885d5c34fe7ce248`. These packaging-adjusted images
+supersede earlier image tables. All four passed build, seven image-policy rules, Trivy with
+zero CRITICAL findings including unfixed findings, and SPDX SBOM generation.
+
+| Image | Local immutable image ID |
+| --- | --- |
+| `coire-failover:020-qualification` | `sha256:c6e0718a53b6c7661eaa890c740398febd8bceac9906db74e6dd2051e867a4b0` |
+| `coire-api:020-qualification` | `sha256:572eec35a412f0c7214da0c0c087bfb2c8be7104dc728fa7707468e34b9abf29` |
+| `coire-scheduler:020-qualification` | `sha256:4df1f2f4c3ddd694408a1714ca7215cd087b0b7bc697994f791c537b0ae7d2ad` |
+| `coire-web:020-qualification` | `sha256:f1ff3c95e0c62d62f260bf362856eef1953fd41c2661e79eb25c040f8f54c9e1` |
+
+Manifest with SBOM hashes: `/tmp/coire-020-release-images.json`; policy, scans and SBOMs:
+`/tmp/coire-020-<image>-release-{policy,scan,sbom}.log`,
+`/tmp/coire-020-<image>-release-trivy.json`, `/tmp/coire-020-<image>-release.spdx.json`.
+The final hardened frontend image also passed anonymous refusal before and after 31 seconds of
+unreachable telemetry, with no OOM: **84.8 MiB / 256 MiB**, CPU sample **0.10%**
+(`/tmp/coire-020-container-release-smoke.json`). This remains a short sample, not sustained acceptance.
+
+CI run `38681800306` on the runtime source passed lint, native installed Source/guard SIGKILL
+recovery, engine and image-engine gates. The failover tiny-engine test exposed an inconsistent
+setup bound: its polling loop and the existing evaluation fixture allow 120 seconds for warm-up,
+but the Agent helper defaulted to 30 seconds. The test now explicitly selects the existing
+120-second native setup bound and emits bounded, redacted engine diagnostics on failure. No
+failover lease, request, drain or fencing deadline changed. The corrected test passed with the
+already acquired/verified Qwen Coder 0.5B fabric-acceptance asset on edge-a: **1 passed, 3.00 s**
+(`/tmp/coire-020-native-coder-final.log`). Hosted CI confirmation remains pending.
