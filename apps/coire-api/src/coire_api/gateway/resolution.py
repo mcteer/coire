@@ -32,6 +32,7 @@ from coire_core.models.engine import EngineRenderingIdentity, EngineState
 from coire_core.models.instance import InstanceState
 from coire_core.models.registry import EngineBackend, ModelSource, ModelState, VisualCapability
 from coire_core.models.sharding import ShardGroupState
+from coire_core.settings import get_settings
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,7 +258,7 @@ async def resolve_model(
             copy.path,
             None,
             node.name,
-            f"http://{node.name}.lab:9400/node/shard-groups/{group.id}/proxy",
+            f"http://{node.name}.lab:{get_settings().node_listen_port}/node/shard-groups/{group.id}/proxy",
             backend,
             visual_capability,
             target=selected.identity,
@@ -323,7 +324,7 @@ async def resolve_model(
             copy.path,
             engine.id,
             node.name,
-            f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
+            f"http://{node.name}.lab:{get_settings().node_listen_port}/node/engines/{engine.id}/proxy",
             backend,
             visual_capability,
         )
@@ -335,7 +336,7 @@ async def resolve_model(
         copy.path,
         engine.id,
         node.name,
-        f"http://{node.name}.lab:9400/node/engines/{engine.id}/proxy",
+        f"http://{node.name}.lab:{get_settings().node_listen_port}/node/engines/{engine.id}/proxy",
         backend,
         visual_capability,
         target=selected.identity,

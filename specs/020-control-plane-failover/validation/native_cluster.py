@@ -13,12 +13,14 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from uuid import uuid4
+from typing import Any, cast
+from uuid import UUID, uuid4
 
 ROOT = "/tmp/coire-020-qualification"
 WORK = "/tmp/coire-020-sharded-" + str(uuid4())
@@ -151,14 +153,14 @@ async def worker() -> None:
     started = asyncio.Event()
 
     class ReadyServer(uvicorn.Server):
-        async def startup(self, sockets=None):
+        async def startup(self, sockets: list[socket.socket] | None = None) -> None:
             await super().startup(sockets)
             started.set()
 
     server = ReadyServer(uvicorn.Config(app, uds=str(uds), log_level="warning"))
     serving = asyncio.create_task(server.serve())
     await asyncio.wait_for(started.wait(), timeout=10)
-    mounts = {
+    mounts: dict[str, httpx.AsyncBaseTransport] = {
         "https://isolated.fixture": httpx.MockTransport(
             lambda _: httpx.Response(200, json={"keys": [initial["jwk"]]})
         )
@@ -389,35 +391,47 @@ def run() -> None:
     jwk = jwt.algorithms.RSAAlgorithm.to_jwk(signing.public_key(), as_dict=True)
     jwk.update(kid="test", alg="RS256", use="sig")
     relay_token = secrets.token_urlsafe(24)
-    workers = {}
+    workers: dict[str, subprocess.Popen[str]] = {}
     peer_host_key = subprocess.check_output(
         ["ssh", "-o", "BatchMode=yes", "coire-edge-b.lab", "cat /etc/ssh/ssh_host_ed25519_key.pub"],
         text=True,
     ).strip()
 
-    def receive(name: str) -> dict:
+    def receive(name: str) -> dict[str, Any]:
         stream = workers[name].stdout
+        assert stream is not None
         assert select.select([stream], [], [], 160)[0], f"{name} timed out"
         line = stream.readline()
         assert line, f"{name} worker exited; inspect its private qualification log"
-        return json.loads(line)
+        return cast(dict[str, Any], json.loads(line))
 
-    def rpc(name: str, **value: object) -> dict:
-        workers[name].stdin.write(json.dumps(value) + "\n")
-        workers[name].stdin.flush()
+    def rpc(name: str, **value: object) -> dict[str, Any]:
+        input_stream = workers[name].stdin
+        assert input_stream is not None
+        input_stream.write(json.dumps(value) + "\n")
+        input_stream.flush()
         return receive(name)
 
     def request(
-        name: str, method: str, path: str, body: object = None, headers: dict | None = None
-    ) -> dict:
-        value = {"operation": "request", "method": method, "path": path, "body": body}
+        name: str,
+        method: str,
+        path: str,
+        body: object = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        value: dict[str, Any] = {
+            "operation": "request",
+            "method": method,
+            "path": path,
+            "body": body,
+        }
         if headers:
             value["headers"] = headers
         result = rpc(name, **value)
         assert result["status"] in (200, 202), result
-        return json.loads(result["body"])
+        return cast(dict[str, Any], json.loads(result["body"]))
 
-    results = {}
+    results: dict[str, Any] = {}
     group_id = str(uuid4())
     try:
         for name in reversed(NAMES[1:]):
@@ -437,6 +451,7 @@ def run() -> None:
                     bufsize=1,
                 )
             workers[name] = process
+            assert process.stdin is not None
             process.stdin.write(
                 json.dumps(
                     {
@@ -497,7 +512,7 @@ def run() -> None:
         assert placement is not None, "native worker ownership was not established"
         now = datetime.now(UTC)
         model = FailoverModel(
-            id=model_id,
+            id=UUID(model_id),
             slug="native-sharded",
             display_name="Native sharded",
             context_window=2048,
@@ -620,7 +635,9 @@ def run() -> None:
             {"engine_id": group_id, "request": body, "access_assertion": assertion},
             headers,
         )
-        workers[NAMES[1]].stdin.write(
+        input_stream = workers[NAMES[1]].stdin
+        assert input_stream is not None
+        input_stream.write(
             json.dumps(
                 {
                     "operation": "interrupt_stream",
@@ -639,7 +656,7 @@ def run() -> None:
             )
             + "\n"
         )
-        workers[NAMES[1]].stdin.flush()
+        input_stream.flush()
         assert receive(NAMES[1])["stream_started"]
         started = time.monotonic()
         if FAULT_RANK == 1:
@@ -663,6 +680,7 @@ def run() -> None:
         for process in workers.values():
             if process.poll() is None:
                 try:
+                    assert process.stdin is not None
                     process.stdin.write('{"operation":"exit"}\n')
                     process.stdin.flush()
                     process.wait(timeout=45)

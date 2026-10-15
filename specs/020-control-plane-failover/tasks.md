@@ -8,28 +8,38 @@
 **Tests**: Contract, unit, composed integration, topology/image-policy, and real-cluster fault
 tests are required by the specification and Constitution v2.0.0.
 
-## Execution status — 2026-10-14
+## Execution status — 2026-10-15
 
 **Scope amendment — 2026-10-14:** The owner explicitly directed that Cloudflare goes in last.
 Implementation and authenticated local/Studio qualification continue now. Provider account
-configuration and public-edge acceptance in T057/T073 are deferred to the Cloudflare rollout;
+configuration and public-edge acceptance in T057/T073 are deferred to the Cloudflare rollout
+(reaffirmed 2026-10-15: stop requesting Cloudflare setup; prioritize local implementation/use);
 they are not passing results. Origin authentication, fencing, partitions, resident inference,
 resource bounds and recovery remain required. No authentication or network exception is implied.
 
 T001–T040 retain their historical status (T036 remains open). Corrective implementation
 T041–T055, T059–T064 and T066–T072 is implemented and validated as recorded in `review.md`.
 T058 has independent process restart/partition/epoch admission coverage and isolated rank/link
-fault coverage; physical link qualification remains in T073. T065 automated coverage is complete; T073 retains the live
-armed-020 upgrade-success/failed-candidate rollback matrix: full application maintenance fencing,
-frontend-start admission, cohort recovery and SQL handover ownership checks pass, but these do
-not establish the entire live operation. T056/T057 provider-dependent work is owner-deferred.
+fault coverage; physical link qualification remains in T073. T065 automated coverage and
+the full six-case armed Core/native upgrade, exact rollback and failed-candidate restoration
+matrix pass, including final metadata preservation and owned cleanup. T056 local ingress
+policy/scope/isolation tests pass. T057 resource bodies are prepared; deployment and public
+acceptance remain explicitly owner-deferred. Do not request provider setup during local work.
 T073/T036 remain open: real TP/PP buffered/streaming and both rank faults pass with zero swap;
 all four mid-stream interruption cases pass. Temporary en5 aliases were applied and removed by
 the owner, with cleanup readback. Core auto-restart is confirmed; physical power loss is untested.
-Participant resource windows failed the Studio CPU budget; idle lifecycle/key/URL overhead
-corrections are under retest. Signed real-host process and actual-container promotion/hand-back
-pass within 60/90 seconds. Deployed inference coexistence/public timing
-trials are not claimed. All passing and failed attempts are recorded without counting skips as passes.
+After idle lifecycle/key/URL overhead corrections, full lean resource windows pass. The closed-port
+diagnostic edge-a attempt remains a failed result (1.0241% against 1%). The replacement full
+healthy-collector diagnostic passes: CPU 0.8600% / 0.8601% / 0.9122% (Core/A/B), added RSS
+2.97 / 2.18 / 2.15 MiB, zero swap, actual three-host metrics and diagnostic traces, normal cleanup.
+The corrected healthy-collector lean trial also passes: CPU 0.8106% / 0.7939% / 0.8087%, added
+RSS 2.89 / 2.17 / 2.12 MiB, zero swap, full counter intervals, real metrics and normal cleanup.
+The earlier lean timing shortfall is retained as unqualified evidence. Actual container-to-native-engine buffered/streamed inference
+passes with 150.55 MiB frontend RSS and zero swap. Signed real-host process and actual-container
+promotion/hand-back pass within 60/90 seconds. Actual armed executor handover and failed-candidate
+restoration pass; the full six-case Core/native application upgrade, manual rollback and broken-candidate
+restoration matrix now passes with unchanged metadata and complete owned cleanup. Public timing is
+deferred. All passing and failed attempts are recorded without counting skips as passes.
 
 ## Phase 1: Setup
 
@@ -162,7 +172,7 @@ works on exactly one host and expires. FR-003–007, FR-020/021/025/027; SC-002/
 **Independent test**: All induced partitions, stale routes and all-unhealthy monitor states admit
 through at most one authority. FR-004–007/019/026/027; SC-002/003/012/016.
 
-- [ ] T056 [P] [US3] Replace placeholder-only ingress assertions with supported-policy, monitor-scope, fallback and stale-origin refusal tests in `tests/integration/test_topology.py` and `tests/integration/test_control_plane_failover.py`; include control/data listener isolation.
+- [X] T056 [P] [US3] Replace placeholder-only ingress assertions with supported-policy, monitor-scope, fallback and stale-origin refusal tests in `tests/integration/test_topology.py` and `tests/integration/test_control_plane_failover.py`; include control/data listener isolation.
 - [ ] T057 [US3] Reconcile `deploy/cloudflared/load-balancer.yaml.tmpl`, tunnel templates, `deploy/cloudflared/README.md`, and `deploy/compose/compose.yaml` with authenticated no-cache readiness, ordered provider-supported pools and disabled non-serving fallback; keep secrets outside Git and require separate approval for any necessary network/Access expansion.
 - [X] T058 [US3] Add process-boundary participant restart, every majority/minority partition, stale Core route, epoch rotation and data-link-loss cases in `tests/integration/test_control_plane_failover.py`; independently observe proof lifetime and actual request admission rather than only participant roles.
 

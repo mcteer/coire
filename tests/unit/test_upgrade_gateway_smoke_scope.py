@@ -124,3 +124,58 @@ async def test_core_smoke_admission_is_bound_to_live_operation_and_exact_instanc
     assert await service.smoke_admission_exemption(session, [node_id]) is None
     if restored:
         authorized.assert_not_awaited()
+
+
+@pytest.mark.parametrize("restored", [False, True])
+@pytest.mark.parametrize(
+    "fault", [None, "engine", "node", "port", "expired", "loading", "actor", "settings"]
+)
+def test_fenced_core_forwards_only_exact_executor_smoke(
+    monkeypatch: pytest.MonkeyPatch, restored: bool, fault: str | None
+) -> None:
+    from pydantic import SecretStr
+
+    from coire_api.gateway.proxy import _node_headers
+    from coire_api.routes import failover
+    from coire_core.errors import ChatModelUnavailable
+
+    monkeypatch.setattr(failover, "get_participant", lambda: None)
+    settings = Settings(
+        failover_member_name="coire-core",
+        failover_peer_key=SecretStr("configured"),
+        node_tokens=SecretStr('{"coire-edge-a":"a-token","coire-edge-b":"b-token"}'),
+        node_listen_port=19470,
+    )
+    scope = CoreNodeSmokeScope(
+        plan=core_plan(),
+        node="coire-edge-a",
+        engine_id=uuid4(),
+        runtime_sha256="a" * 64,
+        deadline_at=datetime.now(UTC) + timedelta(seconds=-1 if fault == "expired" else 60),
+    )
+    principal = Principal(
+        kind=PrincipalKind.API_KEY if fault == "actor" else PrincipalKind.UPGRADE_EXECUTOR,
+        subject="fixture",
+        scopes=frozenset({"upgrades:execute"}),
+    )
+    node = "coire-edge-b" if fault == "node" else scope.node
+    engine = uuid4() if fault == "engine" else scope.engine_id
+    port = 9400 if fault == "port" else settings.node_listen_port
+    url = f"http://{node}.lab:{port}/node/engines/{engine}/proxy"
+    with service.gateway_smoke_scope(
+        scope,
+        principal,
+        settings.model_copy() if fault == "settings" else settings,
+        uuid4(),
+        restored=restored,
+        loading=fault == "loading",
+    ):
+        if fault is None:
+            assert _node_headers(url, settings)["Authorization"] == "Bearer a-token"
+            assert "X-Coire-Core-Failover" not in _node_headers(url, settings)
+        else:
+            with pytest.raises(ChatModelUnavailable):
+                _node_headers(url, settings)
+    # Caller payloads and a preceding internal smoke cannot grant public authority.
+    with pytest.raises(ChatModelUnavailable):
+        _node_headers(url, settings)

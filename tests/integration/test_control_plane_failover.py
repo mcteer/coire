@@ -460,13 +460,37 @@ def test_ingress_fails_closed_and_the_frontend_is_a_separate_hardened_service() 
 
     root = Path(__file__).resolve().parents[2]
     balancer = yaml.safe_load((root / "deploy/cloudflared/load-balancer.yaml.tmpl").read_text())
-    assert balancer["fallback_pool"] is None
-    assert balancer["access_application"]
-    monitors = {pool["name"]: pool["monitor"] for pool in balancer["pools"]}
-    assert monitors["coire-core"]["path"] == "/failover/ready"
-    assert monitors["coire-edge-a"]["path"] == "/ready"
-    assert monitors["coire-edge-b"]["expected_code"] == 200
-    assert all(pool["monitor"]["no_cache"] is True for pool in balancer["pools"])
+    policy = balancer["load_balancer"]
+    assert policy["proxied"] is True
+    assert policy["steering_policy"] == "off"
+    assert policy["session_affinity"] == "none"
+    assert policy["default_pools"] == [
+        "${COIRE_CORE_POOL_ID}",
+        "${COIRE_EDGE_A_POOL_ID}",
+        "${COIRE_EDGE_B_POOL_ID}",
+    ]
+    assert policy["fallback_pool"] == "${COIRE_DISABLED_POOL_ID}"
+    assert policy["fallback_pool"] not in policy["default_pools"]
+    fallback = balancer["pools"]["coire-disabled-fallback"]
+    assert fallback["enabled"] is False
+    assert all(origin["enabled"] is False for origin in fallback["origins"])
+    monitors = balancer["monitors"]
+    for member, monitor in monitors.items():
+        assert monitor["path"] == ("/failover/ready" if member == "coire-core" else "/ready")
+        assert monitor["expected_codes"] == "200"
+        assert monitor["type"] == "https"
+        assert monitor["allow_insecure"] is False
+        assert monitor["follow_redirects"] is False
+        assert monitor["interval"] == 15
+        assert monitor["timeout"] == 5
+        assert monitor["retries"] == 0
+        assert monitor["header"]["Host"] == ["${COIRE_PUBLIC_HOSTNAME}"]
+        assert monitor["header"]["Cache-Control"] == ["no-cache, no-store"]
+        assert len(monitor["header"]["X-Coire-Failover-Monitor"]) == 1
+        pool = balancer["pools"][member]
+        assert pool["enabled"] is True
+        assert pool["minimum_origins"] == 1
+        assert pool["origins"][0]["address"].endswith(".cfargotunnel.com")
     compose = (root / "deploy/compose/compose.yaml").read_text()
     assert 'profiles: ["studio-failover"]' in compose or "studio-failover" in compose
     assert "coire-failover" in compose

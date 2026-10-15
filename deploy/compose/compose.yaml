@@ -11,7 +11,7 @@
 # Docker socket proxy (FR-006, FR-007).
 #
 # Absent by design: cloudflared (no tunnel until the platform faces external traffic —
-# ADR-0001), coire-agent (the user harness is built but never run on core — FR-017), and
+# ADR-0001; see ../cloudflared/README.md for the staged 020 rollout), coire-agent (the user harness is built but never run on core — FR-017), and
 # the observability backends (feature 009 — ADR-0003).
 
 name: coire

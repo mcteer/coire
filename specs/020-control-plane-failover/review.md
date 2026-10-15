@@ -10,8 +10,9 @@ Cloudflare Access verifier and is now a direct, pinned security dependency.
 
 ## Mandatory real-cluster verification
 
-Not yet performed. T036 remains open until the power-loss, partition, ingress, break-glass,
-and hand-back observations from `quickstart.md` are recorded here. Do not include credentials,
+Partially performed; see the dated measurements below, including completed resource and
+Core/native upgrade matrices. T036 remains open until every required physical fault and
+public ingress observation from `quickstart.md` is recorded here. Do not include credentials,
 keys, or model data. The local integration suite does not substitute for those observations.
 
 ## Local verification on 2026-09-25
@@ -743,4 +744,277 @@ and listeners **19440/19441** were gone. Result: `/tmp/coire-020-native-containe
 
 Core still has `autorestart=1`, and FileVault is enabled. No independent power controller has been
 identified, so physical power-loss acceptance remains open. The old 019 live fixture paths are
-absent; a fresh isolated armed cohort is being prepared for actual executor handover/restoration.
+absent; the new isolated armed cohort results follow below.
+
+### 2026-10-15 native idle resources and actual armed executor handover
+
+Runtime `20e4390d` completed both full baseline/armed idle windows with real native collectors,
+actual Docker lifecycle inspection and zero swap growth. Lean passed on all hosts: incremental
+CPU **0.9148% / 0.9633% / 0.8645%** (Core/A/B), RSS **3.26 / 2.73 / 2.30 MiB**. Diagnostic mode
+measured **0.9237% / 1.0241% / 0.9311%**, RSS **3.80 / 3.15 / 2.87 MiB**; edge-a failed the
+unchanged 1% CPU limit. Both used an unreachable OTLP destination and included exporter retries.
+These results remain in `data/qualification/020/20e4390d/`; they are not healthy-collector evidence.
+The replacement fixture uses an isolated production collector and verifies actual metrics from
+all three hosts plus diagnostic trace batches. Its full resource result is pending.
+
+Fresh project `coire-020-cohort-97da4be97a` exercised the real Core deployment, protected Source
+publisher, authenticated admin API, independent executor and native Studio election peers. Failed
+candidate restoration completed in **89.603 s**; successful handover completed in **182.297 s**,
+including the actual 120-second stability interval. No sample observed overlapping ready origins.
+This proves executor handover/restoration, not the full application upgrade or native environment
+transition matrix. Both Studio frontends, all owned Core containers (including three retained
+executor containers), networks and port 19460 were cleaned up; private volumes/authority remain.
+Results and hashes are under `data/qualification/020/20e4390d/armed-cohort-*`.
+
+Hosted CI [38762523175](https://github.com/mcteer/coire/actions/runs/38762523175), on parent
+`084db8cf`, passed **all 35 jobs**: 6,074 unit/contract tests, 245 web tests, 579 composed integration
+tests, the 100-stream test, 11 actual Core bootstrap/handover tests and native installed Source/guard
+recovery. Existing platform/optional skips are retained in its logs; required selected failover,
+native and upgrade gates passed. The earlier instance-drain failure did not recur and its original
+failure remains recorded. Current `20e4390d` CI is
+[38772733967](https://github.com/mcteer/coire/actions/runs/38772733967); completion is pending.
+
+The full application-upgrade fixture has a real registered smoke asset: model
+`de13bd16-f67e-4966-a2ac-b7c31362d848`, default variant
+`66cf33ff-83bd-4798-a102-bca1bb2b5410`, **880,172,100 bytes**, validated and harness-verified.
+Both admin-acquired Studio copies have manifest
+`52ca3aa8671bc0aecbe59fbdd79ca1dd60636acb2a986f253e702c8ac613beaa`.
+Read-only registry/evaluation evidence is retained privately. A fresh isolated Core Source is
+prepared; native installation and live application operations have not yet run.
+
+### Power-interruption recovery — 2026-10-15
+
+Core's production containers and the isolated application cohort
+`coire-020-application-35c13da42b` restarted healthy. The temporary native qualification checkouts
+were absent on both Studios; they were restored from the current source with the frozen workspace
+lockfile. Both Studio Docker daemons were stopped. GUI startup over SSH failed because no GUI
+session existed; the installed `orb start` CLI succeeded, and both daemons report Docker 29.8.2.
+No installed node service or production configuration was replaced.
+
+The first healthy-collector preflight failed before measurement because Docker's network pool was
+exhausted. Two empty 020 resource networks were positively identified by exact qualification labels,
+inspected for absence of attached containers, and removed. The retry passed signed snapshots on
+both Studios, actual participant metric reception from all three hosts, and diagnostic trace batches.
+Its owned collector and network were removed normally. The first full trial then failed during setup
+against the stopped Studio Docker daemon; that is not a resource measurement. All attempt logs remain
+under `data/qualification/020/20e4390d/resources-healthy-*`.
+
+The replacement diagnostic trial is running with the pinned production collector and actual hardened
+frontend lifecycle. `validation/resource_sequence.py` observes only its explicit same-user runner,
+waits for actual exit, then runs the independent full lean trial. It retains persistent result/log
+paths and verifies window length, bounds and telemetry before reporting measurement qualification.
+An adopted diagnostic process's exit status is unavailable to the supervisor; the original session
+and cleanup log must also be reviewed. `resources-healthy-sequence.json` records progress; no new
+resource pass or release completion is claimed until final evidence is reviewed.
+
+Focused failover regression: **113 passed, zero skips**. Both generated OpenAPI freshness checks,
+validation-runner Ruff checks/formatting and strict typing pass. Hosted CI
+[38772733967](https://github.com/mcteer/coire/actions/runs/38772733967) completed successfully on
+`20e4390d`: all 35 validation jobs passed; publishing was skipped.
+
+The owner confirmed that contractors caused the outage and no remote power control exists. No
+independent observer recorded the transition, so this restart is not SC-001/SC-007 timing evidence.
+Controlled physical power/data-link tests, the full application/native upgrade matrix and the
+owner-deferred Cloudflare gates remain open. T073 and T036 remain unchecked.
+
+### Healthy-collector diagnostic resource result — 2026-10-15
+
+The replacement full diagnostic trial passed with a 901-second baseline, the normal guarded
+startup, and a full 15-minute armed window. Incremental CPU was **0.8600% / 0.8601% / 0.9122%**
+(Core/A/B), and added participant RSS **2.97 / 2.18 / 2.15 MiB**. Actual swap growth was zero
+on all three hosts. Core remained elected; both Studio frontends remained stopped in standby.
+Actual participant metrics from all three hosts and diagnostic trace batches reached the isolated
+production collector. The original runner exited **0**, including owned worker, frontend,
+collector and network cleanup; its observed exit receipt is retained separately.
+
+Evidence: `data/qualification/020/20e4390d/resources-healthy-diagnostic-retry*` and
+`resources-healthy-diagnostic-exit.json`. The earlier failed closed-port result is retained.
+The sequential healthy-collector lean trial has now started; its result is pending. This passes
+the diagnostic idle resource gate only, not the remaining coexistence/upgrade/physical release gates.
+
+The first healthy-collector lean trial exited 0 and measured CPU **0.8384% / 0.7901% / 0.8135%**,
+added RSS **2.84 / 2.03 / 2.10 MiB**, and zero swap. The independent sequence validator correctly
+refused qualification: its baseline counter intervals were **899.9959 / 899.9946 / 899.9942 s**,
+although the coordinator loop ran 900.0305 s. The first sample was taken after that timer started.
+No resource limit or 900-second requirement was relaxed. The resource fixture now waits for
+every host's actual first-to-last counter interval to reach the full duration. A complete lean
+retry is running under `resources-healthy-lean-full-window*`; prior results and the failed sequence
+are retained as `resources-healthy-lean*` and `resources-healthy-sequence-first.json`. Upgrade tests
+remain queued, not started, until that full-window retry passes and cleans up.
+
+The corrected lean retry passed and exited **0** with normal cleanup. All baseline counter
+intervals exceed **900.217 s** and all armed intervals exceed **900 s**. Added CPU was
+**0.8106% / 0.7939% / 0.8087%** (Core/A/B), added RSS **2.89 / 2.17 / 2.12 MiB**, and actual
+swap growth zero on every host. Real participant metrics reached the production collector.
+`resources-healthy-sequence.json` now records both profiles qualified; raw evidence is in
+`resources-healthy-lean-full-window*`. This closes the idle resource measurements, not T073.
+
+The queued application/native runner first refused in preflight because the saved Source is
+a `CoreBootstrapSeed`, not a direct release. No deployment mutation occurred. The parser now
+validates that actual model; lint/format/typing passed and attempt 2 has started. Authenticated
+production node engine inventories were empty before testing, with approximately 248/247 GiB
+available and zero swap; see `upgrade-production-preflight.json`.
+
+
+Resumed application-cohort validation (2026-10-15): the first accepted Core job
+`01M50JJRH6HC7CWYGGEH423NRE` remained in drain because the isolated fixture omitted
+the file-processing service. Normal admin cancellation completed `cancelled_unchanged`;
+no candidate was activated. Terminal cleanup initially remained fenced because both native
+fixtures used the default production training-lease callback, which rejected their isolated
+tokens. Identity-verified idle Source node processes were restarted with the same sealed
+runtime and the correct isolated callback. The ordinary scheduler then released peer and
+host holds; authenticated targets confirmed Core and both Studios ready. Project
+`coire-020-application-d8d299ba40` was retired with journals and volumes retained.
+
+The runner now includes every managed service (`upgrades,chat-files,mcp,ops` profiles),
+the isolated training callback, and a pinned existing admin-verified ops model ID.
+File-worker, ops and MCP images passed image policy, CRITICAL scanning and SPDX SBOM.
+Two incomplete subsequent startups were positively retired before another attempt; no
+native children or accepted operations existed in those startup failures. The live transition
+matrix is still open. This evidence does not qualify upgrade/rollback or physical fault cases.
+
+
+Attempt 9 (`coire-020-application-52d526f866`) started all six managed services
+healthy, waited the real election safety quarantine, and accepted Core operation
+`01M50MGR741ZZDDP0DR0PKJJME`. It progressed through preflight/fencing/draining/staged,
+then refused activation and safely completed `failed_unchanged`. The fresh Core SQL
+generation 1 conflicted with a different released generation 1 in the reused native test
+state. No candidate was activated. This is fixture isolation failure, not successful
+upgrade qualification. Both native state roots were separated only after verifying the
+prior fence was released, engines empty, no native claim, and exact Source/guard identities;
+the prior state and journals were retained. The normal scheduler established/released the
+current terminal epoch and all three targets returned ready. SSH briefly refused both
+Studios, then recovered; no physical power event is inferred from this observation.
+The runner now gives each disposable Core cohort its own native state directory and passes
+that directory explicitly to native candidate preparation. Ruff and strict mypy pass.
+
+
+Attempt 10 (`coire-020-application-304b0b9db7`) activated the replacement API,
+which became healthy. Real node-owned tiny engines loaded, but the serving check
+failed: `_node_headers` unconditionally required public election authority while
+maintenance intentionally fenced it. Resolution also hard-coded port 9400 instead
+of the configured isolated listener. Source restoration encountered the same bug.
+The retained original recovery budget expired without extension; job
+`01M50N4E9MME5TZE3WJT96XMVV` is `recovery_required`, with no finish time. Source,
+independent executor, native guards/agents and holds are retained, not manually
+cleared. Authenticated inventories show all nine edge-a smoke engines stopped,
+edge-b empty. No weights ran on Core.
+
+Corrective code now admits only the exact task-local executor serving scope after
+ordinary lease admission, keeps independent node scope validation, and uses the
+configured node port. Public/expired/loading/unrelated actor or transport scopes
+still refuse. Scope/proxy/native tests: 76 passed; resolution: 6 passed; additional
+lifecycle/cleanup/node-contract/execution checks: 61 passed (resolution overlaps).
+Ruff/format and strict typing pass. A corrected API image was built for policy,
+CRITICAL scanning and SPDX SBOM; it has not replaced the immutable retained Source.
+Live acceptance remains open, including explicit recovery of this isolated owner
+and the complete application/native success/manual rollback/fault matrix.
+
+
+Corrected-image continuation: fresh native Sources were installed through the ordinary
+locked installer and first-install bootstrap under independent `source-4c951b7bd8`
+prefixes. Suspended `304b0b9db7` state was not reused. Attempt 12 uses Core project
+`coire-020-application-bb59eadcfb` and corrected Source API image
+`sha256:52229a13343ea2b8f4dd04be6dda5c6e0c37fde1a5afb9d695505055bd69fd27`.
+Core job `01M50PGAMPPWX93WG7703WNAYY` succeeded with real-model serving and
+terminal cleanup in 71.717 seconds. Manual rollback job `01M50PM3XJBCY1KWPY0QJSEQCS`
+also succeeded. All targets returned ready and the registry/account fingerprint
+remained identical. Observer metadata checks now resolve the actual committed
+container ID rather than a replaced Compose container name. Resume verifies original
+successful operation/rollback receipts, current Source, released maintenance, and
+metadata before submitting any new case. Only exact orphan SSH observers were
+retired by UID/argv/executable/birth identity; node and guard processes continued.
+Current remaining cases run under `application-upgrade-resume4.log`; no full matrix
+qualification is claimed yet. Gateway resolution coverage is 8 tests across single,
+sharded and legacy paths; additional current checks are 10 failover integration and
+23 gateway contracts, all passing with no skips.
+
+
+Completed live application/native matrix (2026-10-15):
+
+| Job | Case | Result | Seconds |
+|---|---|---|---|
+| `01M50PGAMPPWX93WG7703WNAYY` | control_plane upgrade | succeeded | 71.717 |
+| `01M50PM3XJBCY1KWPY0QJSEQCS` | control_plane rollback | succeeded | 57.780 |
+| `01M50Q5GQXN39F1DRFM7Y5WXY0` | control_plane upgrade | rolled_back | 180.408 |
+| `01M50R5HY01JEQMFNCBJC6KJM7` | studio upgrade | succeeded | 89.926 |
+| `01M50R8PVMN6PB2P80FMQZ4SPG` | studio rollback | succeeded | 91.796 |
+| `01M50REHEJ3AB5TQGS3K95T3J8` | studio upgrade | rolled_back | 215.565 |
+
+All six cases passed on the corrected API Source and real installed native runtimes.
+The initially failed native healthy case remains historical: the private fixture lacked
+launchd-equivalent restart supervision. Its Source recovery completed under the original
+budget. The corrected private supervisor follows only verified guard selection and never
+changes pointers, fences, grants or deadlines. Subsequent cases used new admin operations.
+The independent read-only final fingerprint matches the initial registry/account baseline.
+No overlapping origin readiness was observed. An exited failed engine was closed through
+the normal authenticated node stop API before shutdown. Both Studio supervisors, nodes,
+guards and owned frontends are retired; Core test containers/networks are removed, with
+volumes and journals retained. Evidence: `application-native-final-cleanup.log`,
+`final-native-metadata.log`, private `results/outcome.json`, and per-job records in
+`coire-020-application-bb59eadcfb`. The earlier failed `304b0b9db7` cohort remains suspended
+with unresolved historical holds; no recovery success is claimed for it.
+Physical power/cable faults and provider/public-edge acceptance remain separate open gates.
+
+
+### Final ingress preparation — 2026-10-15
+
+Replaced the unsupported design-only load-balancer fields with a grouped bundle of
+individual provider request bodies. HTTPS monitors require exact `200`, verified TLS,
+scoped per-host secrets and no redirects/cache; ordered default pools use
+`steering_policy: off`. The separate fallback pool and its origin
+are disabled and excluded from the normal order. Credential-file paths are private
+render-time inputs. Access remains a separate policy, never an invented LB field.
+The deployment README cites provider API and behavior references, explains connector
+namespace placement, the Business/Enterprise prerequisite for 15-second probes, and
+requires measured public acceptance. No connector, DNS, Access or network change was applied.
+
+T056 local policy/scope/stale-origin/isolation coverage is complete: ten failover integration
+tests passed; the focused ready/scope/tunnel run passed 29 tests with no skips. Existing
+full topology coverage passed except its preexisting third-party-supervision healthcheck
+skip, which is not counted as feature acceptance. Strict mypy passed 1,303 production
+sources; API and failover OpenAPI freshness passed. Strict typing also passes all 17 operator validation scripts after annotation/pipe-narrowing
+corrections; no acceptance limit or production gate was loosened. Core Access issuer/audience
+are unset, its `.cloudflared` directory is absent, and no host has a cloudflared binary.
+Unrestricted regression ended with 6,359 passed, 445 skipped, 25 failed and one setup
+error in 922.46 seconds. The failed cases require missing hosted-native/100-stream
+fixtures or current composed images; the local old executor image lacks the required
+`idle_executor_owner` symbol, and cohort setup explicitly reports missing built executor
+images. This is a failed unrestricted invocation, not green acceptance. The actual CI
+unit/contract selection (`-m "not integration"`) is running separately. Integration jobs
+must use their provisioned fixtures; no skip or assertion was added to mask the result.
+T057 retains account-specific deployment/public verification: Core has no installed
+cloudflared binary/container; account/zone/hostname and credential location were requested.
+Physical Core power interruption and physical Thunderbolt disconnection remain unperformed;
+the owner reports no remotely controlled outlet. Software/process tests do not qualify them.
+
+
+Unrestricted-run triage: rebuilding the current executor under private
+`coire-upgrade-executor:020-regression` and explicitly selecting the corrected API for
+ownership probes makes all six bootstrap integration cases pass (32.21 seconds).
+Its image policy and CRITICAL scan pass; SPDX SBOM is generated. Current Compose
+artifacts were rebuilt under the separate `020-regression` tag for the cohort/observability
+rerun. No production tag or running container was replaced. Hosted-native and controlled
+100-stream fixtures remain separate provisioned CI jobs, not local prerequisites to fake.
+
+
+Owner steering, 2026-10-15: Cloudflare is explicitly deferred again because the platform
+has not yet been used locally. Stop requesting account/tunnel prerequisites; finish the
+local implementation and validation. Prepared provider templates remain unapplied, and
+public acceptance is future work rather than a blocker to this local execution scope.
+
+
+Corrected-artifact composed regression: all 11 control-plane bootstrap/handover/restart
+and lean/diagnostic observability registration cases passed in 1,069.74 seconds, with no
+skips. Owned cohort containers were removed; no new bootstrap/observability cohort remains
+running. The source-scope and configured-port corrections introduced no fixture-image failure.
+
+Unit-run triage remains explicit: the first CI selection had 6,099 passed, 75 skipped and
+one one-second command timeout; the unchanged seven-test command file passed on rerun.
+A later run had 6,095 passed and five path-refusal failures because the chosen temporary
+root was inside ignored repository data. Those guards correctly require external state,
+reports and catalogs. This was an invocation mistake, not a reason to loosen the guards.
+With a fresh external root, all 62 tests across the affected deployment/report/command
+files pass in 2.72 seconds, with unchanged assertions and budgets. A final whole CI
+unit/contract selection is running with a unique external basetemp. Earlier failed
+invocations remain historical evidence, not passing full-run claims.

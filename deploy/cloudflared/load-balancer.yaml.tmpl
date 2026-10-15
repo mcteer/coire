@@ -1,17 +1,118 @@
-# DEFERRED DESIGN MANIFEST — not a Cloudflare API payload. See README.md.
-# Applied by the reviewed edge deployment, never from a Studio.
-# Each pool has an HTTPS monitor for /ready with expected_code 200 and no cached response.
-hostname: ${COIRE_PUBLIC_HOSTNAME}
-access_application: ${COIRE_ACCESS_APPLICATION_ID}
+# Resource bundle: each mapping value is a separate Cloudflare API request body.
+# Render secrets privately; create monitors, pools, then the zone load balancer.
+monitors:
+  coire-core:
+    description: coire-core election readiness
+    type: https
+    method: GET
+    path: /failover/ready
+    expected_codes: '200'
+    follow_redirects: false
+    allow_insecure: false
+    interval: 15
+    timeout: 5
+    retries: 0
+    consecutive_up: 1
+    consecutive_down: 1
+    header:
+      Host:
+      - ${COIRE_PUBLIC_HOSTNAME}
+      Cache-Control:
+      - no-cache, no-store
+      X-Coire-Failover-Monitor:
+      - ${COIRE_CORE_MONITOR_SECRET}
+  coire-edge-a:
+    description: coire-edge-a election readiness
+    type: https
+    method: GET
+    path: /ready
+    expected_codes: '200'
+    follow_redirects: false
+    allow_insecure: false
+    interval: 15
+    timeout: 5
+    retries: 0
+    consecutive_up: 1
+    consecutive_down: 1
+    header:
+      Host:
+      - ${COIRE_PUBLIC_HOSTNAME}
+      Cache-Control:
+      - no-cache, no-store
+      X-Coire-Failover-Monitor:
+      - ${COIRE_EDGE_A_MONITOR_SECRET}
+  coire-edge-b:
+    description: coire-edge-b election readiness
+    type: https
+    method: GET
+    path: /ready
+    expected_codes: '200'
+    follow_redirects: false
+    allow_insecure: false
+    interval: 15
+    timeout: 5
+    retries: 0
+    consecutive_up: 1
+    consecutive_down: 1
+    header:
+      Host:
+      - ${COIRE_PUBLIC_HOSTNAME}
+      Cache-Control:
+      - no-cache, no-store
+      X-Coire-Failover-Monitor:
+      - ${COIRE_EDGE_B_MONITOR_SECRET}
 pools:
-  - name: coire-core
-    tunnel: ${COIRE_CORE_TUNNEL_ID}
-    monitor: {path: /failover/ready, expected_code: 200, no_cache: true, follow_redirects: false}
-  - name: coire-edge-a
-    tunnel: ${COIRE_EDGE_A_TUNNEL_ID}
-    monitor: {path: /ready, expected_code: 200, no_cache: true, follow_redirects: false}
-  - name: coire-edge-b
-    tunnel: ${COIRE_EDGE_B_TUNNEL_ID}
-    monitor: {path: /ready, expected_code: 200, no_cache: true, follow_redirects: false}
-fallback_pool: null
-steering: priority
+  coire-core:
+    name: coire-core
+    enabled: true
+    minimum_origins: 1
+    monitor: ${COIRE_CORE_MONITOR_ID}
+    origins:
+    - name: coire-core
+      address: ${COIRE_CORE_TUNNEL_ID}.cfargotunnel.com
+      enabled: true
+      header:
+        Host:
+        - ${COIRE_PUBLIC_HOSTNAME}
+  coire-edge-a:
+    name: coire-edge-a
+    enabled: true
+    minimum_origins: 1
+    monitor: ${COIRE_EDGE_A_MONITOR_ID}
+    origins:
+    - name: coire-edge-a
+      address: ${COIRE_EDGE_A_TUNNEL_ID}.cfargotunnel.com
+      enabled: true
+      header:
+        Host:
+        - ${COIRE_PUBLIC_HOSTNAME}
+  coire-edge-b:
+    name: coire-edge-b
+    enabled: true
+    minimum_origins: 1
+    monitor: ${COIRE_EDGE_B_MONITOR_ID}
+    origins:
+    - name: coire-edge-b
+      address: ${COIRE_EDGE_B_TUNNEL_ID}.cfargotunnel.com
+      enabled: true
+      header:
+        Host:
+        - ${COIRE_PUBLIC_HOSTNAME}
+  coire-disabled-fallback:
+    name: coire-disabled-fallback
+    enabled: false
+    minimum_origins: 1
+    origins:
+    - name: disabled
+      address: ${COIRE_CORE_TUNNEL_ID}.cfargotunnel.com
+      enabled: false
+load_balancer:
+  name: ${COIRE_PUBLIC_HOSTNAME}
+  proxied: true
+  steering_policy: 'off'
+  default_pools:
+  - ${COIRE_CORE_POOL_ID}
+  - ${COIRE_EDGE_A_POOL_ID}
+  - ${COIRE_EDGE_B_POOL_ID}
+  fallback_pool: ${COIRE_DISABLED_POOL_ID}
+  session_affinity: none

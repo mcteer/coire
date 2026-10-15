@@ -34,7 +34,12 @@ Peer control uses signed, challenge-bound messages and separate host keys. Do no
    The node owns its activation under the same maintenance admission guard as engine lifecycle.
    Frontends have no peer private key. Node listeners retain existing control DNS/port bindings.
 4. Confirm Core alone is ready while healthy and direct anonymous/stale-origin requests refuse.
-   A provider monitor/pool template is not evidence of deployed ingress readiness.
+   A provider monitor/pool template is not evidence of deployed ingress readiness. Follow
+   [the ingress rollout](../../deploy/cloudflared/README.md): create separate authenticated
+   HTTPS monitors and ordered pools, use the disabled non-serving fallback, and inspect Access
+   and cache rules before routing traffic. Studio tunnel connectors must reach the native host's
+   loopback frontend; a container's loopback cannot do so. Never publish the node listener or
+   enable host networking to work around a connector deployment prerequisite.
 
 Defaults: snapshot horizon 120 seconds, promotion 15 seconds, demotion 45 seconds, lease 15
 seconds, drain 30 seconds, polling 2 seconds. Snapshot refresh stops with Core; the remaining

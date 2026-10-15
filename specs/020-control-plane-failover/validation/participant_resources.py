@@ -2,6 +2,7 @@
 
 Uses the production signed HTTP routes, subscriber, poller and durable safety files.
 SSH forwards private Unix sockets; it creates no public listener or network rule.
+An isolated production collector accepts telemetry through loopback/SSH forwards.
 The isolated Core publishes empty signed snapshots. No engines or application data
 are loaded. The normal Studio metrics collector runs in both windows. An optional
 preloaded frontend image includes the Docker lifecycle loop; inference coexistence
@@ -15,12 +16,15 @@ import base64
 import hashlib
 import json
 import os
+import socket
 import statistics
 import sys
 import time
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, TextIO, cast
+from unittest.mock import patch
 from uuid import uuid4
 
 NAMES = ("coire-core", "coire-edge-a", "coire-edge-b")
@@ -44,6 +48,7 @@ SOURCES = (
     "apps/coire-api/src/coire_api/failover/participant.py",
     SCRIPT,
     "specs/020-control-plane-failover/validation/frontend_container.py",
+    "specs/020-control-plane-failover/validation/resource_collector.py",
 )
 
 
@@ -83,12 +88,13 @@ async def worker() -> None:
     assert details.st_mode & 0o077 == 0
     configure_node_telemetry(
         "020-resource-acceptance",
-        "http://127.0.0.1:1",
+        initial["otlp_endpoint"],
         diagnostics_enabled=initial["diagnostics"],
     )
     membership = FailoverMembershipConfig.model_validate(initial["membership"])
+    secrets_options: dict[str, Any] = {"_secrets_dir": "/nonexistent"}
     settings = Settings(
-        _secrets_dir="/nonexistent",
+        **secrets_options,
         failover_member_name=name,
         failover_peer_key=SecretStr(initial["key"]),
         failover_core_public_key=membership.members[0].public_key,
@@ -151,7 +157,7 @@ async def worker() -> None:
         # This resource fixture has no application cohort; readiness is a fixture input.
         participant.recovery_ready = True
         failover.set_participant(participant)
-        failover.get_settings = lambda: settings
+        patch.object(failover, "get_settings", lambda: settings).start()
         app = FastAPI()
         app.include_router(failover.router)
         poller = FailoverPoller(
@@ -207,7 +213,7 @@ async def worker() -> None:
             engines=agent.engines,
             reservations=agent.reservations,
         )
-        agent.collector = collector
+        patch.object(agent, "collector", collector).start()
         await asyncio.to_thread(collector.start)
         if initial.get("frontend_image"):
             from frontend_container import FrontendContainer
@@ -228,7 +234,7 @@ async def worker() -> None:
     started = asyncio.Event()
 
     class ReadyServer(uvicorn.Server):
-        async def startup(self, sockets=None):
+        async def startup(self, sockets: list[socket.socket] | None = None) -> None:
             await super().startup(sockets)
             started.set()
 
@@ -239,7 +245,7 @@ async def worker() -> None:
     await asyncio.wait_for(started.wait(), timeout=10)
     process = psutil.Process()
 
-    def sample() -> dict:
+    def sample() -> dict[str, Any]:
         cpu = process.cpu_times()
         # Read the kernel counter directly. Forking sysctl inside an instrumented
         # process invokes gRPC's fork handlers and can distort CPU or hang the sampler.
@@ -306,6 +312,7 @@ async def worker() -> None:
 
 async def run() -> None:
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from resource_collector import ResourceCollector
 
     from coire_core.failover_crypto import public_key_b64
     from coire_core.models.failover import FailoverMember, FailoverMembershipConfig
@@ -316,6 +323,7 @@ async def run() -> None:
     assert duration >= 900, "acceptance requires full fifteen-minute windows"
     root = Path("/tmp/coire-020-resources-" + uuid4().hex[:10])
     output = Path(os.environ["COIRE_RESOURCE_RESULT"])
+    telemetry = ResourceCollector(root.name, os.environ["COIRE_RESOURCE_OTEL_IMAGE"], output)
     keys = {
         name: base64.b64encode(Ed25519PrivateKey.generate().private_bytes_raw()).decode()
         for name in NAMES
@@ -328,29 +336,34 @@ async def run() -> None:
             for i, name in enumerate(NAMES)
         ],
     )
-    workers = {}
+    workers: dict[str, asyncio.subprocess.Process] = {}
     initials = {}
     forwards = []
     logs = []
     log_stack = ExitStack()
-    measurements = {name: {} for name in NAMES}
+    measurements: dict[str, dict[str, list[dict[str, Any]]]] = {name: {} for name in NAMES}
     warmup = []
     selected_source = await asyncio.to_thread(source_identity)
 
-    def open_log(name: str):
+    def open_log(name: str) -> TextIO:
         return log_stack.enter_context(Path(str(output) + "." + name + ".log").open("w"))
 
-    async def receive(name: str) -> dict:
-        line = await asyncio.wait_for(workers[name].stdout.readline(), timeout=30)
+    async def receive(name: str) -> dict[str, Any]:
+        stream = workers[name].stdout
+        assert stream is not None
+        line = await asyncio.wait_for(stream.readline(), timeout=30)
         assert line, f"{name} resource worker exited; inspect its private log"
-        return json.loads(line)
+        return cast(dict[str, Any], json.loads(line))
 
-    async def rpc(name: str, operation: str) -> dict:
-        workers[name].stdin.write(json.dumps({"op": operation}).encode() + b"\n")
-        await workers[name].stdin.drain()
+    async def rpc(name: str, operation: str) -> dict[str, Any]:
+        stream = workers[name].stdin
+        assert stream is not None
+        stream.write(json.dumps({"op": operation}).encode() + b"\n")
+        await stream.drain()
         return await receive(name)
 
     try:
+        await telemetry.prepare()
         for name in NAMES:
             log = await asyncio.to_thread(open_log, name)
             logs.append(log)
@@ -376,9 +389,14 @@ async def run() -> None:
                 "diagnostics": diagnostics,
                 "source_identity": selected_source,
                 "frontend_image": os.environ.get("COIRE_RESOURCE_FRONTEND_IMAGE", ""),
+                "otlp_endpoint": telemetry.endpoint
+                if name == NAMES[0]
+                else f"unix:{root}/otel.sock",
             }
-            workers[name].stdin.write(json.dumps(initials[name]).encode() + b"\n")
-            await workers[name].stdin.drain()
+            input_stream = workers[name].stdin
+            assert input_stream is not None
+            input_stream.write(json.dumps(initials[name]).encode() + b"\n")
+            await input_stream.drain()
             assert (await receive(name))["ready"]
         for name in NAMES[1:]:
             other = NAMES[2] if name == NAMES[1] else NAMES[1]
@@ -396,6 +414,8 @@ async def run() -> None:
                     f"{root}/{NAMES[0]}.sock:{root}/node.sock",
                     "-R",
                     f"{root}/{other}.sock:{root}/{other}.sock",
+                    "-R",
+                    f"{root}/otel.sock:127.0.0.1:{telemetry.port}",
                     name + ".lab",
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=logs[0],
@@ -407,6 +427,7 @@ async def run() -> None:
             await rpc(NAMES[0], "arm")
             samples = await asyncio.gather(*(rpc(name, "arm") for name in NAMES[1:]))
             assert all(sample["role"] != "unarmed" for sample in samples)
+            await telemetry.verify(NAMES, diagnostics=diagnostics)
             print("signed snapshot/subscriber preflight passed on both Studios", flush=True)
             return
         if "--faults" in sys.argv:
@@ -469,10 +490,10 @@ async def run() -> None:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=logs[0],
             )
-            workers[NAMES[0]].stdin.write(
-                json.dumps({**initials[NAMES[0]], "resume": True}).encode() + b"\n"
-            )
-            await workers[NAMES[0]].stdin.drain()
+            input_stream = workers[NAMES[0]].stdin
+            assert input_stream is not None
+            input_stream.write(json.dumps({**initials[NAMES[0]], "resume": True}).encode() + b"\n")
+            await input_stream.drain()
             assert (await receive(NAMES[0]))["ready"]
             await rpc(NAMES[0], "arm")
             recovery = await wait_roles(healthy, 90)
@@ -485,6 +506,7 @@ async def run() -> None:
                 "handback_s": recovery,
                 "transitions": transitions,
                 "source_identity": selected_source,
+                "telemetry": await telemetry.verify(NAMES, diagnostics=diagnostics),
             }
             await asyncio.to_thread(output.write_text, json.dumps(result, indent=2))
             print(json.dumps({"Core_process_restart_handback_s": recovery}), flush=True)
@@ -503,13 +525,13 @@ async def run() -> None:
                     roles = {
                         name: sample["role"] for name, sample in zip(NAMES, samples, strict=True)
                     }
-                    healthy = roles == {
+                    is_healthy = roles == {
                         NAMES[0]: "elected",
                         NAMES[1]: "standby",
                         NAMES[2]: "standby",
                     }
                     moment = time.monotonic()
-                    stable_since = (stable_since or moment) if healthy else None
+                    stable_since = (stable_since or moment) if is_healthy else None
                     warmup.append({"elapsed_s": moment - setup_started, "samples": samples})
                     await asyncio.to_thread(
                         output.write_text,
@@ -548,7 +570,14 @@ async def run() -> None:
                         indent=2,
                     ),
                 )
-                if time.monotonic() - start >= duration:
+                # The CPU counters are sampled after the coordinator starts its
+                # timer. Bound the actual counter intervals on every host; a
+                # 900-second coordinator loop can otherwise contain slightly
+                # less than 900 seconds of baseline evidence.
+                if all(
+                    windows[phase][-1]["at"] - windows[phase][0]["at"] >= duration
+                    for windows in measurements.values()
+                ):
                     break
                 await asyncio.sleep(10)
             print(json.dumps({"phase": phase, "seconds": time.monotonic() - start}), flush=True)
@@ -556,8 +585,8 @@ async def run() -> None:
         for name, windows in measurements.items():
             baseline, armed = windows["baseline"], windows["armed"]
 
-            def cpu(values):
-                return (
+            def cpu(values: list[dict[str, Any]]) -> float:
+                return float(
                     100
                     * (values[-1]["cpu_s"] - values[0]["cpu_s"])
                     / (values[-1]["at"] - values[0]["at"])
@@ -584,6 +613,7 @@ async def run() -> None:
                     "warmup": warmup,
                     "summary": summary,
                     "source_identity": selected_source,
+                    "telemetry": await telemetry.verify(NAMES, diagnostics=diagnostics),
                 },
                 indent=2,
             ),
@@ -595,20 +625,35 @@ async def run() -> None:
         assert all(item["incremental_cpu_percent"] <= 1 for item in summary.values())
         assert all(item["swap_growth_mib"] == 0 for item in summary.values())
     finally:
+        cleanup_errors = []
         for process in workers.values():
-            if process.returncode is None:
-                process.stdin.write(b'{"op":"exit"}\n')
-                try:
-                    await process.stdin.drain()
-                    await asyncio.wait_for(process.wait(), timeout=30)
-                except (TimeoutError, BrokenPipeError):
+            try:
+                if process.returncode is None:
+                    assert process.stdin is not None
+                    process.stdin.write(b'{"op":"exit"}\n')
+                    try:
+                        await process.stdin.drain()
+                        await asyncio.wait_for(process.wait(), timeout=30)
+                    except (TimeoutError, BrokenPipeError):
+                        process.terminate()
+                        await process.wait()
+                assert process.returncode == 0, "resource worker failed; inspect private log"
+            except Exception as exc:
+                cleanup_errors.append(exc)
+        for process in forwards:
+            try:
+                if process.returncode is None:
                     process.terminate()
                     await process.wait()
-        for process in forwards:
-            if process.returncode is None:
-                process.terminate()
-                await process.wait()
+            except Exception as exc:
+                cleanup_errors.append(exc)
         log_stack.close()
+        try:
+            await telemetry.close()
+        except Exception as exc:
+            cleanup_errors.append(exc)
+        if cleanup_errors:
+            raise ExceptionGroup("Resource qualification cleanup incomplete", cleanup_errors)
 
 
 if __name__ == "__main__":

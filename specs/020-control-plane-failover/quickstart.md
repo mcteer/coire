@@ -1,5 +1,9 @@
 # Quickstart: Control-Plane Failover Qualification
 
+**Owner steering 2026-10-15:** Cloudflare stays deferred while local implementation,
+validation and first local platform use take priority. Do not request account/tunnel setup
+or treat it as a blocker to local work. Public acceptance below remains future, unclaimed work.
+
 **Prepared**: 2026-10-14. **Scope amendment 2026-10-15**: owner deferred Cloudflare installation
 and provider/public-edge qualification until last; origin/Studio checks continue. This is the validation procedure for the next implementation pass, not
 an execution record. Record actual outcomes in [review.md](review.md). Historical September results
@@ -103,12 +107,19 @@ baseline, the real cold-start/recovery guard, and a separate fifteen-minute arme
 `--diagnostics` enables the diagnostic profile. The idle window begins only after Core is elected
 and both Studios remain standby for fifteen seconds. Setup samples are retained separately;
 startup/campaign CPU must not be presented as the steady idle measurement.
-Both Studio windows include the normal native metrics collector and OTLP export. Actual host
+Both Studio windows include the normal native metrics collector and OTLP export. Set
+`COIRE_RESOURCE_OTEL_IMAGE` to a locally loaded, policy/scanned collector digest. The runner
+creates an isolated production collector with loopback-only OTLP and scrape ports; Studios reach
+it through private SSH Unix-socket forwards. Completion requires actual participant metrics from
+all three hosts and, with diagnostics enabled, accepted trace batches. Collector evidence is saved
+beside the resource JSON, then its owned container/network are removed. Closed-port exporter
+failure measurements remain separate from the normal healthy-collector idle gate. Actual host
 swap comes from the kernel through psutil, without launching a subprocess inside the instrumented
 worker. Supply
 `COIRE_RESOURCE_FRONTEND_IMAGE` with an already-loaded, policy/scanned digest to include the real
 Docker lifecycle loop. Each trial precreates and later removes its own hardened containers/internal
-networks; it does not adopt an installed frontend. No new listener or firewall rule is required.
+networks; it does not adopt an installed frontend. The collector's temporary listeners bind only
+to Core loopback; no firewall rule is required.
 
 `--faults` waits out the real missing-record and recovery guards, kills only its owned Core process,
 and measures promotion and restart/hand-back against the unchanged 60/90-second bounds. With a
@@ -129,3 +140,54 @@ network, with a local TLS identity issuer and signed quorum fixture. Supply the 
 flag, checksum-verified model path, pinned image, source identity manifest and private result path.
 The fixture removes its container/network, stops its engine and closes both listeners. This proves
 the container-to-engine path; real election timing, physical faults and Cloudflare remain separate.
+
+`validation/resource_sequence.py` can watch an explicitly identified same-user diagnostic runner
+and start the lean trial only after that process exits. It verifies the runner's result path and
+pinned images, retains separate logs and measurements, and writes a persistent sequence status.
+Its measurement summary requires full baseline/armed windows and real telemetry. An adopted
+process's exit code is unavailable to this supervisor: inspect the original session and cleanup
+log before accepting it. The sequence never closes T073 or the release gate automatically.
+
+`validation/armed_cohort.py` installs a fresh isolated Core cohort through the normal deployment
+and protected Source qualification paths, then runs actual failed-candidate executor restoration
+and a successful executor handover while native Studio peers participate. It uses temporary
+control port 19460 and records observed ownership, phases and ready-origin exclusivity. On success
+it removes owned containers/networks, including retired executor containers, while retaining the
+private authority records and volumes. This is executor handover evidence; full application
+maintenance, Studio environment replacement and physical power loss are separate acceptance cases.
+
+
+`validation/application_upgrade.py` is the live application/native matrix on Core with installed
+Studio Sources and guards. It first requires both full resource profiles to qualify. Its isolated
+cohort enables `upgrades,chat-files,mcp,ops`, pins ops to the existing verified registry UUID,
+and directs native training lifecycle callbacks to its isolated Core port 19470. All inventory
+owners must report authoritative observations; an omitted service or a callback using production
+credentials must be corrected, never treated as empty work. Allow the real 301-second initial
+election safety quarantine and normal terminal cleanup before another operation. The runner
+covers Core upgrade/manual rollback/broken-candidate restoration, then real installed native
+replacement and restoration, and records ready-origin observations and metadata fingerprints.
+A failed runner preserves children, volumes and ownership journals for normal recovery; inspect
+its private root before retrying. The six-case matrix passed on 2026-10-15 in private project
+`coire-020-application-bb59eadcfb`, with unchanged metadata and complete owned cleanup;
+see `review.md` for exact jobs, durations and retained failed attempts. Physical
+power/cable faults and provider ingress remain separate acceptance gates.
+
+
+For a fresh application matrix, set `COIRE_020_API_IMAGE` to the tested immutable API
+image ID and `COIRE_020_NATIVE_SOURCES` to the private JSON map produced by
+`validation/application_source.py` on the two Studios. The latter installs an independent
+locked Source and ordinary first-install bootstrap; it never adopts an unresolved old
+maintenance prefix. The private node supervisor supplies only launchd-equivalent process
+restart after verified guard selection; it does not select a runtime or mutate authority.
+After interruption use `validation/application_resume.py` against the original cohort's
+private configuration and receipts. It refuses active operations, unreleased maintenance,
+wrong immutable Source, or missing positive custody. Never reset a hold to make it resume.
+Cleanup stops only positively owned fixture processes and frontends; genuinely failed
+fixture engines are closed through authenticated node stop routes. Retain volumes and
+journals. A suspended/expired cohort is historical failed evidence, not a clean baseline.
+
+The prepared Cloudflare resource bundle and credential-file placeholders are described in
+`deploy/cloudflared/README.md`. Public acceptance requires actual account entitlement,
+account/zone/hostname, three tunnel IDs/credentials, monitor secrets, and inspection of
+Access/cache policy. None can be inferred from a passing local template test. As inspected
+on 2026-10-15, no host has a cloudflared binary; Core's Access issuer and audience are unset.

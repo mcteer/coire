@@ -38,7 +38,14 @@ async def test_ready_is_success_only_for_a_current_proof() -> None:
         base_url="http://test",
         headers={"X-Coire-Failover-Monitor": "isolated-monitor"},
     ) as client:
-        assert (await client.get("/ready")).status_code == 200
+        healthy = await client.get("/ready")
+        assert healthy.status_code == 200
+        assert healthy.headers["cache-control"] == "no-store"
+        # Even an elected origin cannot use the monitor identity for inference.
+        assert (await client.get("/v1/models")).status_code == 401
+        assert (
+            await client.get("/ready", headers={"X-Coire-Failover-Monitor": "wrong"})
+        ).status_code == 401
         runtime.load_lease = lambda: None
         assert (await client.get("/ready")).status_code == 503
         proof = current.proof
@@ -58,6 +65,15 @@ async def test_ready_is_success_only_for_a_current_proof() -> None:
             }
         )
         runtime.load_lease = lambda: expired
+        stale = await client.get("/ready")
+        assert stale.status_code == 503
+        assert stale.headers["cache-control"] == "no-store"
+        # Valid signatures also fail when their original authority has expired.
+        signed_expired = _HELPERS._lease(private, now - timedelta(minutes=6))
+        runtime.load_lease = lambda: signed_expired
+        assert (await client.get("/ready")).status_code == 503
+        runtime.load_lease = lambda: current
+        runtime.load_snapshot = lambda: _HELPERS._snapshot(private, membership, model, expired=True)
         assert (await client.get("/ready")).status_code == 503
 
 

@@ -364,3 +364,27 @@ class TestImagesAndSecrets:
     def test_secrets_live_outside_the_repository(self, config: dict[str, Any]) -> None:
         for name, secret in config["secrets"].items():
             assert not str(secret["file"]).startswith(str(REPO)), f"{name} is inside the repo"
+
+
+def test_tunnels_target_only_the_public_frontend_and_reject_other_hosts() -> None:
+    """Studio connectors run natively; loopback never exposes a node/admin listener."""
+    import yaml
+
+    for member in ("core", "edge-a", "edge-b"):
+        template = REPO / "deploy/cloudflared" / f"{member}.tunnel.yaml.tmpl"
+        tunnel = yaml.safe_load(template.read_text())
+        routes = tunnel["ingress"]
+        assert len(routes) == 2
+        assert routes[0]["hostname"] == "${COIRE_PUBLIC_HOSTNAME}"
+        assert routes[0]["service"] == (
+            "http://coire-web:8080" if member == "core" else "http://127.0.0.1:8004"
+        )
+        assert routes[1] == {"service": "http_status:404"}
+        assert tunnel["credentials-file"].startswith("${COIRE_")
+        assert not any("9400" in str(route) or "/node/" in str(route) for route in routes)
+    compose = yaml.safe_load(COMPOSE.read_text())
+    frontend = compose["services"]["coire-failover"]
+    assert frontend["ports"] == ["127.0.0.1:8004:8004"]
+    assert frontend["networks"] == ["coire-edge"]
+    assert "coire-db" not in frontend["networks"]
+    assert "coire-docker" not in frontend["networks"]
