@@ -628,3 +628,23 @@ The new real-host process-fault runner initially exhausted its setup allowance: 
 301-second guard is followed by Core's 45-second recovery confirmation. Setup now includes both;
 the separate 60/90-second fault/recovery assertions are unchanged. A new trial is running. It stops
 only its owned Core participant process and does not claim physical power loss or public ingress.
+
+### 2026-10-15 cold-start recovery state correction
+
+The real-host Core process-loss trial passed setup but failed its **60-second** promotion bound:
+both Studios remained standby. A regression reproduced the cause: a completed cold-start quarantine
+left `_outage` set even after a Studio had voted for and rejoined a live higher-priority Core.
+Its next ordinary promotion incorrectly added a 45-second reclamation delay after loss detection.
+Observing the live higher-priority leader with a current locally issued grant now completes that
+recovery state. Missing/corrupt-record quarantine, retained-grant lifetime, quorum checks, and the
+45-second confirmation when reclaiming from a lower tier are unchanged.
+
+The affected suite passes **235 tests, zero skips, 27.56 s**. The 019 boundary matrix also passes
+**35 tests, zero skips, 9.30 s**, including real concurrent maintenance application while Docker
+start is pending, native relay streaming under maintenance, all seven executor workflow outcomes,
+and actual SQL owner/data preservation. This closes T065's automated coverage; physical deployed
+upgrade/rollback remains a separate T073 acceptance case.
+
+The superseded resource trials were stopped and retained as partial evidence because runtime source
+changed. Full replacement windows use `/tmp/coire-020-resources-reclaim-{lean,diagnostic}.json`;
+the new real-host process trial uses `/tmp/coire-020-participant-faults-reclaim.json`.

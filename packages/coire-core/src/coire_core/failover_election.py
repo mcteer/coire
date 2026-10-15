@@ -387,6 +387,17 @@ class ElectionParticipant:
     def _campaign(self, now: datetime) -> None:
         leader = self.eligible_leader(now)
         if leader != self.name or not self._may_campaign(now, leader):
+            if (
+                leader is not None
+                and leader != self.name
+                and any(
+                    grant.candidate == leader and grant.is_current(now)
+                    for grant in self._issued.values()
+                )
+            ):
+                # Rejoining a live higher-priority leader completes our recovery.
+                # A later loss is a new promotion, not reclamation from a lower tier.
+                self._outage = False
             self._reclaim_since = None if leader != self.name else self._reclaim_since
             if self.role is ServiceRole.CANDIDATE:
                 self.role = ServiceRole.STANDBY

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,7 +24,7 @@ from coire_core.models.failover import (
     FailoverMembershipConfig,
     FailoverSnapshot,
 )
-from coire_core.models.upgrades import UpgradeMaintenance
+from coire_core.models.upgrades import NodeMaintenanceCommand, UpgradeMaintenance
 from coire_core.settings import Settings
 from coire_node.failover.poller import StudioFailoverController
 from coire_node.maintenance import NodeMaintenance
@@ -236,9 +237,13 @@ async def test_frontend_start_holds_019_admission_across_docker_io(tmp_path: Pat
             "State": {"Running": False},
         }
     )
+    starting = asyncio.Event()
+    finish_start = asyncio.Event()
 
     async def start(_name: str) -> None:
         assert gate._admitting == 1, "019 must inventory a frontend start while Docker awaits"
+        starting.set()
+        await finish_start.wait()
 
     docker.start_container = AsyncMock(side_effect=start)
     controller = StudioFailoverController(
@@ -247,8 +252,6 @@ async def test_frontend_start_holds_019_admission_across_docker_io(tmp_path: Pat
         maintenance=gate,
     )
     controller._poller = SimpleNamespace(participant=SimpleNamespace(role=ServiceRole.ELECTED))  # type: ignore[assignment]
-    await controller._sync_frontend()
-    assert gate._admitting == 0
     now = datetime.now(UTC)
     maintenance = UpgradeMaintenance(
         job_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
@@ -258,7 +261,17 @@ async def test_frontend_start_holds_019_admission_across_docker_io(tmp_path: Pat
         updated_at=now,
         drain_deadline_at=now + timedelta(seconds=30),
     )
-    gate.store.write("maintenance.json", maintenance)
+    pending = asyncio.create_task(controller._sync_frontend())
+    try:
+        await asyncio.wait_for(starting.wait(), timeout=2)
+        gate.apply(NodeMaintenanceCommand(action="apply", maintenance=maintenance))
+        inventory = gate.inventory(maintenance.job_id, maintenance.generation, "a" * 64)
+        assert next(item for item in inventory.owners if item.owner == "requests").entries
+        assert gate.current() == maintenance
+    finally:
+        finish_start.set()
+        await pending
+    assert gate._admitting == 0
     with pytest.raises(UpgradeUnavailable):
         await controller._sync_frontend()
     assert docker.start_container.await_count == 1

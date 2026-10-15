@@ -162,7 +162,8 @@ async def test_current_lease_avoids_redundant_votes_but_keeps_renewal_and_fencin
     assert core.role is ServiceRole.STANDBY
 
 
-async def test_core_loss_elects_only_edge_a() -> None:
+@pytest.mark.parametrize("after_cold_guard", [False, True])
+async def test_core_loss_elects_only_edge_a(after_cold_guard: bool) -> None:
     private, membership = _material()
     timings = ElectionTimings(
         promotion=timedelta(seconds=15),
@@ -180,6 +181,9 @@ async def test_core_loss_elects_only_edge_a() -> None:
         for name in NAMES
     }
     bus = _Bus(members)
+    if after_cold_guard:
+        for name in NAMES[1:]:
+            members[name]._fence(outage=True)
     settings = Settings(  # type: ignore[call-arg]
         _secrets_dir="/nonexistent",
         failover_peer_key=SecretStr("unused"),
@@ -191,6 +195,10 @@ async def test_core_loss_elects_only_edge_a() -> None:
         await pollers[name].tick(now)
     assert _role(members["coire-core"]) is ServiceRole.ELECTED
     assert _role(members["coire-edge-a"]) is not ServiceRole.ELECTED
+    # Both Studios have rejoined and granted the healthy higher-priority Core.
+    now += timedelta(seconds=2)
+    for name in reversed(NAMES):
+        await pollers[name].tick(now)
 
     bus.down.add("coire-core")
     for step in range(3):

@@ -19,7 +19,7 @@ resource bounds and recovery remain required. No authentication or network excep
 T001–T040 retain their historical status (T036 remains open). Corrective implementation
 T041–T055, T059–T064 and T066–T072 is implemented and validated as recorded in `review.md`.
 T058 has independent process restart/partition/epoch admission coverage and isolated rank/link
-fault coverage; physical link qualification remains in T073. T065 remains open for the complete
+fault coverage; physical link qualification remains in T073. T065 automated coverage is complete; T073 retains the live
 armed-020 upgrade-success/failed-candidate rollback matrix: full application maintenance fencing,
 frontend-start admission, cohort recovery and SQL handover ownership checks pass, but these do
 not establish the entire live operation. T056/T057 provider-dependent work is owner-deferred.
@@ -183,7 +183,7 @@ FR-006/007/015–018/021/027/028; SC-005/007–010/012/015/016.
 - [X] T062 [US5] Preserve bounded drain authority, monitor lease/snapshot/JWT expiry throughout requests, cancel upstream work and require fence acknowledgement or conservative expiry before successor admission in `packages/coire-core/src/coire_core/failover_election.py`, `apps/coire-failover/src/coire_failover/app.py`, `apps/coire-failover/src/coire_failover/proxy.py`, `apps/coire-node/src/coire_node/failover/relay.py`, and `apps/coire-node/src/coire_node/failover/poller.py`.
 - [X] T063 [P] [US5] Add full/corrupt/unwritable journal, reserved terminal-event, restart recovery and concurrent duplicate acknowledgement tests in `apps/coire-node/tests/unit/test_failover_auth.py` and `apps/coire-api/tests/unit/test_failover_reconcile.py`.
 - [X] T064 [US5] Implement non-lossy bounded journals, acknowledged compaction, audit-before-admission transition ordering and idempotent concurrent receipt reconciliation in `apps/coire-node/src/coire_node/failover/journal.py`, `apps/coire-node/src/coire_node/failover/poller.py`, `apps/coire-api/src/coire_api/failover/reconcile.py`, and `apps/coire-api/src/coire_api/routes/failover.py`; include Core event retention and actor/reason evidence. Add one reversible new migration only if receipt storage requires it; preserve migration 0013 and existing audit rows.
-- [ ] T065 [US5] Add full-middleware Core upgrade success/failed-candidate rollback and Studio maintenance-acquisition races with frontend start/streaming relay in `tests/integration/test_control_plane_failover.py` and `tests/integration/test_upgrade_handover_authority.py`; assert exact owner/data preservation and no fabricated heartbeat failure.
+- [X] T065 [US5] Add full-middleware Core upgrade success/failed-candidate rollback and Studio maintenance-acquisition races with frontend start/streaming relay in `tests/integration/test_control_plane_failover.py` and `tests/integration/test_upgrade_handover_authority.py`; assert exact owner/data preservation and no fabricated heartbeat failure.
 - [X] T066 [US5] Integrate authenticated safety exchanges, authoritative-cohort hand-back, node relay/start admission and active-stream inventory with existing 019 guards in `apps/coire-api/src/coire_api/upgrades/admission.py`, `apps/coire-api/src/coire_api/upgrades/inventory.py`, `apps/coire-api/src/coire_api/failover/participant.py`, `apps/coire-node/src/coire_node/failover/poller.py`, and `apps/coire-node/src/coire_node/routes/failover.py`; never transfer writer ownership or bypass guarded database writes.
 
 ## Phase 15: Qualification and handoff

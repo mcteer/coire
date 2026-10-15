@@ -20,8 +20,8 @@ node service/configuration was replaced, no image published, and no merge perfor
 Continue with these open gates, preserving their task status:
 
 - T056/T057: provider-dependent Cloudflare configuration and public acceptance are owner-deferred.
-- T065: 35 full-middleware/workflow/node-race/actual-SQL checks pass. Physical replacement remains
-  a workflow-test seam; the full live armed upgrade/failed-candidate matrix is still required.
+- T065 is complete: 35 full-middleware/workflow/node-race/actual-SQL checks pass. Physical
+  replacement remains a workflow-test seam; T073 retains the live armed upgrade/rollback matrix.
 - T073: PP now passes with the admin-acquired, checksum-verified MIT GLM-4.7-Flash-4bit asset.
   TP and PP buffered/streaming generation and both owned-rank faults now pass with zero swap.
   All four mid-stream faults terminate in 0.027–0.333 s without false completion. The owner applied
@@ -35,7 +35,7 @@ Continue with these open gates, preserving their task status:
   verifies `autorestart 1`. No remotely controlled outlet has been identified.
 - Final lean/diagnostic windows failed the Studio CPU budget (1.14–1.22% against 1%).
   Redundant lease requests are corrected; fresh windows are running under
-  `/tmp/coire-020-resources-renewal-{lean,diagnostic}.json`. Each window is fifteen minutes.
+  `/tmp/coire-020-resources-reclaim-{lean,diagnostic}.json`. Each window is fifteen minutes.
   Preflight and source hashes passed; earlier setup runs were discarded. The resource fixture
   measures signed participants/subscribers, without Docker lifecycle or inference coexistence.
 - T036 closes only after required live evidence. Deployed frontend/coexistence, physical faults,
@@ -46,7 +46,8 @@ The owner did not authorize a merge of 020. Unrelated preexisting edits to `.age
 and excluded from feature commits. No extension hooks were configured. Credentials and raw model/
 image/test artifacts stay outside Git. Reuse passing evidence and rerun only affected checks.
 
-Implemented runtime source commit: `484b38619d03a8633dafbdb5885d5c34fe7ce248`.
+Prior validated runtime source: `484b38619d03a8633dafbdb5885d5c34fe7ce248`.
+Current election fixes are under fresh real-host and artifact qualification; see the latest review entries.
 This includes the durable Core journal/commit-before-ack path and the direct PyJWT dependency
 needed by standalone native wheels. The final image table is at the end of review.md.
 CI on that source passed lint, installed Source/guard SIGKILL recovery, native engine and image
