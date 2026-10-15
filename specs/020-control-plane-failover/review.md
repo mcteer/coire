@@ -515,3 +515,12 @@ extraction validation or timing assertion was loosened. Logs: `/tmp/coire-020-ci
 Selected raw evidence, scans, SBOMs and their SHA-256 manifest are retained outside Git under
 `data/qualification/020/484b3861/` so they survive an interruption. Runtime image/source identities
 above remain unchanged by these test-only corrections.
+
+Additional PP prerequisite check: authenticated node capability queries for the already acquired
+larger Qwen3.8 Flash Next and GLM-5.3 Flash assets returned unavailable. The bounded native worker
+reported that the pinned MLX-LM does not support their `qwen4_exp` and `glm5_next` model types.
+No acquisition, model substitution or runtime upgrade was attempted. The required asset is an
+acquired/verified model with native pipeline support in the pinned runtime, not necessarily a
+tiny model. Diagnostics: `/tmp/coire-020-existing-pipeline-capability.log` (also retained privately).
+`COIRE_UPGRADE_NATIVE_FIXTURE` is not configured in this session; historical 019 qualification
+identities do not supply a currently armed 020 acceptance fixture. T065 remains explicitly open.
