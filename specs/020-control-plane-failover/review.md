@@ -443,3 +443,27 @@ post-implementation extension hooks apply. The five explicitly open tasks remain
 
 Runtime/native-wheel source commit: `817ff11b2beb74c0c3f2d6a227d24fb5b2761302`. Production image IDs above were built from this
 runtime source; subsequent record-only commits do not change their source.
+
+### Audit and packaged-runtime closure — 2026-10-15
+
+Final audit review found and corrected a missing Core journal attachment. The bounded journal is
+now shared in coire-core; Core retains its own transitions, reconciles under the actual 019
+admission guard, and acknowledges only after SQL commit. Real isolated PostgreSQL tests prove
+commit failure/restart retention and exactly-once replay. Signed override bodies retain actor,
+reason and independent fencing evidence through durable events into audit details. Journal reads
+have a four-MiB bound before JSON decoding. Latest integrated evidence: **306 passed**, no skips,
+45.65 s (`/tmp/coire-020-final2-tests.log`); strict mypy: **1,303 files passed**.
+
+The initial PR CI run found a nullable test assertion (fixed with an explicit non-None assertion)
+and an installed-node startup failure. Packaging inspection found the shared JWT verifier's
+PyJWT dependency missing from the standalone node graph; the workspace had masked it. Added
+`PyJWT[crypto]==2.14.0` directly to coire-core, already pinned in the workspace, **MIT** (confirmed
+from installed distribution metadata). A fresh isolated `--no-dev --package coire-node` environment
+now imports `coire_node.agent` successfully with only production dependencies. The locked native
+wheel set now contains **89** wheels. The next CI run must confirm full installed Source/guard
+startup on its hosted Mac; no test or host restriction was loosened. Failure diagnostics now
+include a bounded, token/key/secret-redacted native log tail.
+
+The previous image/source table remains historical; final packaging-adjusted image IDs and source
+revision are recorded by the following evidence update. Logs: `/tmp/coire-020-node-isolated-import.log`,
+`/tmp/coire-020-node-wheel-jwt.log`, `/tmp/coire-020-final2-types.log`.

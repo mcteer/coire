@@ -43,7 +43,15 @@ async def _insert_event(session: AsyncSession, event: FailoverEvent) -> None:
         target_type="failover",
         target_id=str(event.event_id),
         outcome=AuditOutcome.OK,
-        detail={"term": event.term, "proof_digest": event.proof_digest},
+        detail={
+            "term": event.term,
+            "proof_digest": event.proof_digest,
+            **(
+                {"signed_override": event.override.model_dump(mode="json")}
+                if event.override
+                else {}
+            ),
+        },
         context={"occurred_at": event.occurred_at.isoformat()},
     )
     session.add(

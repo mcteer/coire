@@ -178,7 +178,8 @@ def test_native_relay_rechecks_exact_process_before_engine_work(
             if fault == "maintenance_stream":
                 assert "[DONE]" in result.text
                 assert gate._admitting == 0
-                assert gate.current().generation == 7
+                retained = gate.current()
+                assert retained is not None and retained.generation == 7
                 refused = http.post(
                     "/node/failover/authority",
                     headers={"X-Coire-Failover-Relay": "relay-only-token"},

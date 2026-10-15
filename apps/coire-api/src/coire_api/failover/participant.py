@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import UUID
 
 from coire_core.failover_election import ElectionParticipant, timings_from_settings
+from coire_core.failover_journal import ElectionJournal
 from coire_core.models.failover import FailoverHeartbeat, FailoverMembershipConfig
 from coire_core.settings import Settings
 
@@ -43,6 +44,9 @@ def core_participant(
         membership=membership,
         private_key_b64=private_key,
         timings=timings_from_settings(settings),
+        journal=ElectionJournal(
+            Path(settings.failover_snapshot_path).with_name("coire-core.events.json")
+        ),
         safety_path=(
             Path(settings.failover_safety_path)
             if settings.failover_safety_path

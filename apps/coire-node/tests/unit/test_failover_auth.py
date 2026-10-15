@@ -116,3 +116,12 @@ def test_unknown_acknowledgement_never_discards_evidence(tmp_path: Path) -> None
     with pytest.raises(ElectionJournalError, match="unknown"):
         journal.acknowledge([uuid4()])
     assert journal.entries() == [event]
+
+
+def test_oversized_journal_fails_closed_before_decoding(tmp_path: Path) -> None:
+    path = tmp_path / "journal.json"
+    path.write_bytes(b" " * (ElectionJournal._max_bytes + 1))
+    journal = ElectionJournal(path)
+    assert not journal.admission_available()
+    with pytest.raises(ElectionJournalError):
+        journal.entries()

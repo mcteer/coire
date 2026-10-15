@@ -445,7 +445,7 @@ class FailoverEventKind(StrEnum):
 
 
 class FailoverEvent(BaseModel):
-    """A bounded, non-authoritative Studio journal entry."""
+    """A bounded, non-authoritative participant journal entry."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -455,6 +455,13 @@ class FailoverEvent(BaseModel):
     host: str = Field(pattern=r"^coire-(core|edge-[ab])$")
     occurred_at: datetime
     proof_digest: str = Field(min_length=64, max_length=64)
+    override: FailoverOverride | None = None
+
+    @model_validator(mode="after")
+    def override_belongs_to_host(self) -> Self:
+        if self.override is not None and self.override.target_host != self.host:
+            raise ValueError("event override belongs to another host")
+        return self
 
 
 class FailoverOverrideKind(StrEnum):

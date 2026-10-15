@@ -133,7 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if snapshot_service is not None:
             await snapshot_service.start()
         app.state.failover_snapshot_service = snapshot_service
-        failover_poller = build_poller(settings)
+        failover_poller = build_poller(settings, app.state.upgrade_admissions)
         if failover_poller is not None:
             await failover_poller.start()
         app.state.failover_poller = failover_poller

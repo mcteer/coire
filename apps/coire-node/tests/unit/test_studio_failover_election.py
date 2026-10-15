@@ -183,6 +183,7 @@ def test_lone_survivor_fails_closed_until_break_glass(tmp_path: Path) -> None:
     )
     assert edge_b.observe(alone, now, override=override) is ServiceRole.ELECTED
     assert edge_b.serving(now)
+    assert ElectionJournal(tmp_path / "coire-edge-b.json").entries()[-1].override == override
     expired = override.model_copy(update={"expires_at": now - timedelta(seconds=1)})
     assert edge_b.observe(alone, now, override=expired) is ServiceRole.STANDBY
 

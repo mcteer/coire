@@ -90,6 +90,8 @@ Keep the existing native engine ownership and user data intact. Verify direct or
 then wait out the maximum outstanding authority lifetime plus clock uncertainty before allowing
 an incompatible old protocol to serve. Preserve the trusted epoch high-water mark.
 
+Core and both Studios retain their own durable election journal. Core reconciles its local
+transitions through the existing 019 admission guard and compacts only after the database commit.
 Ordinary journal capacity is bounded with reserved terminal-event space. Full, corrupt or unwritable
 evidence closes admission; fencing still proceeds. Preserve the journal and safety files, fix
 storage permissions/capacity, and reconcile through signed committed-event acknowledgements.

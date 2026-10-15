@@ -97,6 +97,14 @@ def test_installed_source_and_independent_guard_survive_node_sigkill() -> None:
             processes.append(child)
             return child
 
+        def startup_failure() -> str:
+            output.flush()
+            diagnostic = (root / "log/hosted-runtime.log").read_text(errors="replace")[-8000:]
+            for name, value in environment.items():
+                if value and any(part in name for part in ("TOKEN", "SECRET", "KEY")):
+                    diagnostic = diagnostic.replace(value, "[redacted]")
+            return diagnostic
+
         try:
             guard = start("coire_node.upgrade_guard")
             deadline = time.monotonic() + 60
@@ -105,7 +113,7 @@ def test_installed_source_and_independent_guard_survive_node_sigkill() -> None:
                 status = guard_store.read("status.json", NativeGuardStatus)
                 if status is not None and status.ready:
                     break
-                assert guard.poll() is None
+                assert guard.poll() is None, startup_failure()
                 time.sleep(0.2)
             assert status is not None and status.ready
             guard_identity = status.process
@@ -121,7 +129,7 @@ def test_installed_source_and_independent_guard_survive_node_sigkill() -> None:
                     deadline = time.monotonic() + 60
                     ready = False
                     while time.monotonic() < deadline:
-                        assert node.poll() is None
+                        assert node.poll() is None, startup_failure()
                         with suppress(httpx.TransportError):
                             ready = client.get("/node/health").status_code == 200
                         if ready:

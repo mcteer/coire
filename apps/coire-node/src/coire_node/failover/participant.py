@@ -101,6 +101,7 @@ class StudioParticipant(ElectionParticipant):
                     host=self.name,
                     occurred_at=datetime.now(UTC),
                     proof_digest=hashlib.sha256(override.canonical_bytes()).hexdigest(),
+                    override=override,
                 )
             )
         self._delivered_override = override

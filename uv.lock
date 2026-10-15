@@ -382,6 +382,7 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyjwt", extra = ["crypto"] },
 ]
 
 [package.metadata]
@@ -391,6 +392,7 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.29" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pydantic-settings", specifier = ">=2.7" },
+    { name = "pyjwt", extras = ["crypto"], specifier = "==2.14.0" },
 ]
 
 [[package]]

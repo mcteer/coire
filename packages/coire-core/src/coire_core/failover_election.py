@@ -692,6 +692,7 @@ class ElectionParticipant:
                 host=self.name,
                 occurred_at=self._now,
                 proof_digest=proof_digest(proof),
+                override=self._override,
             )
         )
 

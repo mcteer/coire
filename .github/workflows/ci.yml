@@ -45,7 +45,7 @@ jobs:
       - run: docker load -i /tmp/failover-otel/coire-otel.tar
       - run: docker load -i /tmp/failover-prometheus/coire-prometheus.tar
       - name: isolated signed service, process restart and collector gates
-        run: uv run pytest -q -m integration tests/integration/test_control_plane_failover.py tests/integration/test_failover_processes.py tests/integration/test_failover_metric_export.py
+        run: uv run pytest -q -m integration tests/integration/test_control_plane_failover.py tests/integration/test_failover_processes.py tests/integration/test_failover_metric_export.py tests/integration/test_failover_core_journal.py
       - name: failover absence, audit pressure, resource and deadline alerts
         run: >-
           docker run --rm --network none --read-only --cap-drop ALL
