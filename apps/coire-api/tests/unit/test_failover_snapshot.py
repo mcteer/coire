@@ -85,7 +85,7 @@ def test_snapshot_loader_rejects_a_signed_but_stale_file(tmp_path: Path) -> None
     issued = datetime.now(UTC)
     path = tmp_path / "snapshot.json"
     SnapshotPublisher(path, _private_key_bytes(private)).publish(
-        _snapshot(public, expiry=issued + timedelta(minutes=5))
+        _snapshot(public, expiry=issued + timedelta(seconds=120))
     )
     with pytest.raises(SnapshotError, match="stale"):
         load_verified_snapshot(path, public, max_age_s=120, now=issued + timedelta(seconds=121))

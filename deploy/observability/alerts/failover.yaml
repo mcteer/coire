@@ -2,7 +2,7 @@ groups:
   - name: coire-failover
     rules:
       - alert: CoireFailoverNoReadyMember
-        expr: max(coire_failover_readiness) == 0
+        expr: max(coire_failover_readiness) == 0 or absent(coire_failover_readiness)
         for: 2m
         labels: {severity: critical}
         annotations: {summary: "No failover member is election-ready"}
@@ -20,3 +20,23 @@ groups:
         expr: increase(coire_failover_ingress_refusals_total[10m]) > 20
         labels: {severity: warning}
         annotations: {summary: "Degraded ingress is refusing requests"}
+      - alert: CoireFailoverParticipantMissing
+        expr: count(count by (host) (coire_failover_participant_last_seen_seconds)) < 3 or absent(coire_failover_participant_last_seen_seconds) or time() - coire_failover_participant_last_seen_seconds > 30
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "A failover participant is absent or has stopped polling"}
+      - alert: CoireFailoverAuditPressure
+        expr: coire_failover_audit_utilization >= 0.8 or coire_failover_audit_available == 0
+        for: 30s
+        labels: {severity: critical}
+        annotations: {summary: "Failover security journal requires reconciliation or repair"}
+      - alert: CoireFailoverFrontendMemory
+        expr: coire_failover_frontend_rss_bytes > 268435456
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "Failover frontend exceeded its 256 MiB allowance"}
+      - alert: CoireFailoverDrainDeadline
+        expr: coire_failover_drain_remaining_seconds > 30
+        for: 15s
+        labels: {severity: critical}
+        annotations: {summary: "Failover drain authority exceeds its bounded deadline"}

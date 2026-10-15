@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock
 
@@ -14,7 +15,7 @@ from fastapi import HTTPException, Request
 
 from coire_core.models.adapters import InferenceTarget
 from coire_core.models.engine import EngineState, ReconcileExpectation, ReconcileRequest
-from coire_core.models.failover import FailoverRelayRequest
+from coire_core.models.failover import FailoverRelayAuthority, FailoverRelayRequest
 from coire_core.models.gateway import ChatCompletionRequest, ChatMessage, EngineChatRequest
 from coire_core.models.training_node import TrainingArtifactFile, TrainingArtifactManifest
 from coire_node.engines import (
@@ -151,6 +152,7 @@ async def test_proxy_rewrites_exact_adapter_and_never_caller_path(
             agent.engines,
             agent.store,
             Request({"type": "http", "headers": []}),
+            agent.settings,
         )
         assert seen[0]["model"] == str(agent.store.path_for(slug))
         assert seen[0]["adapters"] == str(agent.engines.adapter_path(target, slug))
@@ -163,6 +165,7 @@ async def test_proxy_rewrites_exact_adapter_and_never_caller_path(
                 agent.engines,
                 agent.store,
                 Request({"type": "http", "headers": []}),
+                agent.settings,
             )
         assert refusal.value.status_code == 400 and len(seen) == 1
 
@@ -189,9 +192,53 @@ async def test_failover_rejects_adapter_engine_even_base_slug_collision(
         request=ChatCompletionRequest(
             model=target.model_id, messages=[ChatMessage(role="user", content="hi")]
         ),
+        authority=FailoverRelayAuthority.model_validate(
+            {
+                "request_id": uuid.uuid4(),
+                "holder": "coire-edge-a",
+                "epoch": 1,
+                "lease": {
+                    "holder": "coire-edge-a",
+                    "proof": {
+                        "epoch": 1,
+                        "term": 1,
+                        "candidate": "coire-edge-a",
+                        "grants": [
+                            {
+                                "epoch": 1,
+                                "term": 1,
+                                "candidate": "coire-edge-a",
+                                "voter": voter,
+                                "issued_at": datetime.now(UTC),
+                                "expires_at": datetime.now(UTC) + timedelta(seconds=15),
+                                "signature": "isolated-unverified-proof",
+                            }
+                            for voter in ("coire-edge-a", "coire-edge-b")
+                        ],
+                    },
+                },
+                "snapshot_id": uuid.uuid4(),
+                "snapshot_digest": "0" * 64,
+                "engine_id": identity,
+                "model_id": target.model_id,
+                "request_digest": "0" * 64,
+                "identity_subject": "isolated-adapter-test",
+                "issued_at": datetime.now(UTC),
+                "expires_at": datetime.now(UTC) + timedelta(seconds=14),
+                "signature": "isolated-unverified-authority",
+            }
+        ),
+        access_assertion="isolated-adapter-test",
     )
     with pytest.raises(HTTPException) as refusal:
-        await failover.relay_completion(identity, body, agent.engines, agent.store, agent.settings)
+        await failover.relay_completion(
+            identity,
+            body,
+            Request({"type": "http", "app": agent.app()}),
+            agent.engines,
+            agent.store,
+            agent.settings,
+        )
     assert refusal.value.status_code == 503
 
 

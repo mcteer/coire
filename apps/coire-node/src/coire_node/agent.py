@@ -638,6 +638,12 @@ def create_app(
                 raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "link probe unavailable")
             return measure(port=settings.node_data_listen_port)
 
+        measure_link = getattr(collector, "data_link_status", None)
+        if measure_link is not None:
+            app.state.failover_measure_link = lambda: measure_link(
+                port=settings.node_data_listen_port
+            )
+
     @app.get("/ready")
     async def ready() -> dict[str, object]:
         return {"service": "coire-node", "version": settings.service_version, "ready": True}
@@ -1248,7 +1254,7 @@ async def serve(
 
     from coire_node.failover.poller import build_controller
 
-    failover_controller = build_controller(settings, docker)
+    failover_controller = build_controller(settings, docker, maintenance=maintenance)
     if failover_controller is not None:
         if maintenance is not None:
             maintenance.register_async("failover", failover_controller.upgrade_inventory)

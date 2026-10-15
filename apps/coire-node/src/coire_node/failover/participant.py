@@ -7,9 +7,11 @@ import os
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import UUID
 
 from coire_core.failover_crypto import verify_ed25519
 from coire_core.failover_election import ElectionParticipant, ElectionTimings, ServiceRole
+from coire_core.failover_telemetry import drain_remaining
 from coire_core.models.failover import (
     ElectionVoteGrant,
     FailoverEvent,
@@ -35,9 +37,11 @@ class StudioParticipant(ElectionParticipant):
         proof_path: Path,
         journal: ElectionJournal | None = None,
         restart_hold: bool = False,
+        safety_path: Path | None = None,
     ) -> None:
         self.proof_path = proof_path
         self._delivered_override: FailoverOverride | None = None
+        self._published_role = ServiceRole.STANDBY
         self._restart_fence_until = (
             datetime.now(UTC) + timings.lease if restart_hold else datetime.min.replace(tzinfo=UTC)
         )
@@ -51,30 +55,39 @@ class StudioParticipant(ElectionParticipant):
             journal=journal,
             on_change=self.publish_lease,
             standing_reservation=True,
+            safety_path=safety_path,
         )
 
     def vote(
-        self, epoch: int, term: int, candidate: str, now: datetime
+        self,
+        epoch: int,
+        term: int,
+        candidate: str,
+        now: datetime,
+        request_id: UUID | None = None,
     ) -> ElectionVoteGrant | None:
         if now < self._restart_fence_until:
             return None
-        return super().vote(epoch, term, candidate, now)
+        return super().vote(epoch, term, candidate, now, request_id=request_id)
 
     def _may_campaign(self, now: datetime, leader: str | None) -> bool:
         return now >= self._restart_fence_until and super()._may_campaign(now, leader)
 
     def deliver_override(self, override: FailoverOverride) -> bool:
         core_key = self.member_public_key("coire-core")
-        if not override.is_current() or not verify_ed25519(
-            override.canonical_bytes(), override.signature, core_key
-        ):
+        if (
+            not override.is_current()
+            or override.target_host != self.name
+            or override.epoch != self.membership.epoch
+        ) or not verify_ed25519(override.canonical_bytes(), override.signature, core_key):
             return False
         if (
             self._delivered_override is not None
             and self._delivered_override.signature == override.signature
         ):
-            return True
-        self._delivered_override = override
+            return False
+        if self.safety is not None and not self.safety.remember_override(override.override_id):
+            return False
         if self._journal is not None:
             kind = (
                 FailoverEventKind.OVERRIDE_INHIBIT
@@ -90,6 +103,7 @@ class StudioParticipant(ElectionParticipant):
                     proof_digest=hashlib.sha256(override.canonical_bytes()).hexdigest(),
                 )
             )
+        self._delivered_override = override
         return True
 
     def active_override(self) -> FailoverOverride | None:
@@ -100,9 +114,23 @@ class StudioParticipant(ElectionParticipant):
         return override
 
     def publish_lease(self, role: ServiceRole, proof: PromotionProof | None) -> None:
-        """Replace the lease file only while elected. Every other role deletes it."""
-        del role, proof
+        """Publish serving or bounded drain authority; standby removes the file."""
+        del proof
+        if (
+            role is ServiceRole.STANDBY
+            and self._published_role in (ServiceRole.ELECTED, ServiceRole.DRAINING)
+            and self._delivered_override is not None
+            and self._delivered_override.kind is FailoverOverrideKind.BREAK_GLASS_PROMOTE
+        ):
+            self._delivered_override = None
+        self._published_role = role
         lease = self.lease()
+        drain_remaining.set(
+            max(0, (lease.drain_deadline - datetime.now(UTC)).total_seconds())
+            if lease is not None and lease.drain_deadline is not None
+            else 0,
+            {"host": self.name},
+        )
         if lease is None:
             self.proof_path.unlink(missing_ok=True)
             return

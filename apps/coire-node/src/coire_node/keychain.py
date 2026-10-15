@@ -36,6 +36,8 @@ HF_TOKEN_ITEM = "coire-hf-token"
 FAILOVER_PEER_KEY_ITEM = "coire-failover-peer-key"
 FAILOVER_RELAY_TOKEN_ITEM = "coire-failover-relay-token"
 FAILOVER_CORE_PUBLIC_KEY_ITEM = "coire-failover-core-public-key"
+FAILOVER_MONITOR_TOKEN_ITEM = "coire-failover-monitor-token"
+FAILOVER_LIFECYCLE_TOKEN_ITEM = "coire-failover-lifecycle-token"
 _TIMEOUT_S = 10.0
 
 
@@ -122,3 +124,7 @@ def load_node_secrets(settings: object) -> None:
         ).get_secret_value()
     if not settings.failover_relay_token.get_secret_value():
         settings.failover_relay_token = read_item(FAILOVER_RELAY_TOKEN_ITEM)
+    if not settings.failover_monitor_token.get_secret_value():
+        settings.failover_monitor_token = read_item(FAILOVER_MONITOR_TOKEN_ITEM)
+    if not settings.failover_lifecycle_token.get_secret_value():
+        settings.failover_lifecycle_token = read_item(FAILOVER_LIFECYCLE_TOKEN_ITEM)

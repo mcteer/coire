@@ -8,15 +8,19 @@ until a higher-priority member has been healthy for the longer demotion threshol
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from pathlib import Path
 from typing import Protocol
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from coire_core.failover_crypto import sign_ed25519, verify_ed25519
+from coire_core.failover_safety import ElectionSafety, ElectionSafetyError
 from coire_core.failover_telemetry import elections_total, handbacks_total, readiness, tracer
 from coire_core.models.failover import (
     FAILOVER_MEMBER_NAMES,
@@ -54,6 +58,8 @@ class MemberObservation(BaseModel):
     name: str = Field(pattern=r"^coire-(core|edge-[ab])$")
     health: MemberHealth
     since: datetime
+    recovery_ready: bool = True
+    recovery_ready_since: datetime | None = None
 
 
 class ElectionTimings(BaseModel):
@@ -103,6 +109,7 @@ class ElectionParticipant:
         journal: ElectionJournalSink | None = None,
         on_change: RoleListener | None = None,
         standing_reservation: bool = False,
+        safety_path: Path | None = None,
     ) -> None:
         if name not in FAILOVER_MEMBER_NAMES:
             raise ValueError("participant is not a configured failover member")
@@ -111,6 +118,7 @@ class ElectionParticipant:
         self.membership = membership
         self.timings = timings
         self.role = ServiceRole.STANDBY
+        self.recovery_ready = True
         self.term = 1
         self.proof: PromotionProof | None = None
         self.reservation_held = standing_reservation
@@ -129,6 +137,20 @@ class ElectionParticipant:
         self._drain_started: datetime | None = None
         self._now = datetime.now(UTC)
         self._published: tuple[ServiceRole, str | None] | None = None
+        self.safety = (
+            ElectionSafety(
+                safety_path,
+                member=name,
+                epoch=membership.epoch,
+                lifetime_s=timings.lease.total_seconds(),
+                now=self._now,
+            )
+            if safety_path is not None
+            else None
+        )
+        if self.safety is not None:
+            self.term = self.safety.record.highest_term
+            self._issued = {grant.term: grant for grant in self.safety.record.outstanding_grants}
 
     def observe(
         self,
@@ -145,12 +167,35 @@ class ElectionParticipant:
         self._now = now
         with tracer.start_as_current_span("coire.failover.election") as span:
             span.set_attribute("coire.failover.host", self.name)
-            role = self._advance(now)
+            try:
+                role = self._advance(now)
+            except (OSError, ValueError):
+                self.role = ServiceRole.STANDBY
+                self.proof = None
+                self._closed = True
+                with contextlib.suppress(OSError, ValueError):
+                    self._record(FailoverEventKind.FENCED, None)
+                self._emit()
+                role = self.role
             span.set_attribute("coire.failover.role", role.value)
             readiness.set(1 if self.serving(now) else 0, {"host": self.name})
             return role
 
     def _advance(self, now: datetime) -> ServiceRole:
+        if not self.recovery_ready:
+            self._reclaim_since = None
+            self._fence(outage=True)
+            self._emit()
+            return self.role
+        available = getattr(self._journal, "admission_available", lambda: True)
+        if not available():
+            self._fence(outage=True)
+            self._emit()
+            return self.role
+        if self.safety is not None and not self.safety.check_clock(now):
+            self._fence(outage=True)
+            self._emit()
+            return self.role
         if self._inhibit_applies(now):
             self._fence(outage=False)
             self._emit()
@@ -173,9 +218,16 @@ class ElectionParticipant:
         return self.role
 
     def vote(
-        self, epoch: int, term: int, candidate: str, now: datetime
+        self,
+        epoch: int,
+        term: int,
+        candidate: str,
+        now: datetime,
+        request_id: UUID | None = None,
     ) -> ElectionVoteGrant | None:
         """Grant one vote for the current priority leader, replaying the same grant."""
+        if self.safety is not None and not self.safety.permits(candidate, now):
+            return None
         if epoch != self.membership.epoch or candidate == self.name:
             return None
         if candidate not in FAILOVER_MEMBER_NAMES or self.eligible_leader(now) != candidate:
@@ -199,18 +251,33 @@ class ElectionParticipant:
             and existing.is_current(now)
             and existing.expires_at - now > self.timings.lease / 3
         ):
-            return existing
+            if request_id is None:
+                return existing
+            reply = existing.model_copy(update={"request_id": request_id})
+            return reply.model_copy(
+                update={"signature": sign_ed25519(reply.canonical_bytes(), self._private_key)}
+            )
         unsigned = ElectionVoteGrant(
             epoch=epoch,
             term=self.term,
             candidate=candidate,
             voter=self.name,
+            issued_at=now,
             expires_at=now + self.timings.lease,
             signature="unsigned",
         )
+        if request_id is not None:
+            unsigned = unsigned.model_copy(update={"request_id": request_id})
         signed = unsigned.model_copy(
             update={"signature": sign_ed25519(unsigned.canonical_bytes(), self._private_key)}
         )
+        if self.safety is not None:
+            try:
+                self.safety.grant(signed, now)
+            except ElectionSafetyError:
+                self._fence(outage=True)
+                self._emit()
+                return None
         self._issued[self.term] = signed
         return signed
 
@@ -241,6 +308,8 @@ class ElectionParticipant:
         if (
             notice.holder != self.name
             or notice.epoch != self.membership.epoch
+            or notice.term < self.term
+            or (self.safety is not None and not self.safety.check_clock(now))
             or not notice.is_current(now)
             or self._priority(notice.successor) >= self._priority(self.name)
         ):
@@ -261,24 +330,46 @@ class ElectionParticipant:
 
     def serving(self, now: datetime | None = None) -> bool:
         """True only for the current elected lease. Draining and standby both refuse."""
-        moment = now or self._now
+        moment = now or datetime.now(UTC)
         if self.role is not ServiceRole.ELECTED:
+            return False
+        if self.safety is not None:
+            try:
+                if not self.safety.check_clock(moment):
+                    return False
+            except ElectionSafetyError:
+                return False
+        if not getattr(self._journal, "admission_available", lambda: True)():
             return False
         if self._break_glass_ok(moment) and self.proof is None:
             return True
         return self._proof_ok(moment)
 
     def lease(self) -> FailoverLease | None:
-        if self.role is not ServiceRole.ELECTED:
+        if self.role not in (ServiceRole.ELECTED, ServiceRole.DRAINING):
             return None
         if self.proof is not None:
-            return FailoverLease(holder=self.name, proof=self.proof)
-        if (
+            lease = FailoverLease(holder=self.name, proof=self.proof)
+        elif (
             self._override is not None
             and self._override.kind is FailoverOverrideKind.BREAK_GLASS_PROMOTE
         ):
-            return FailoverLease(holder=self.name, break_glass=self._override)
-        return None
+            lease = FailoverLease(holder=self.name, break_glass=self._override)
+        else:
+            return None
+        if self.role is ServiceRole.DRAINING:
+            if self._drain_started is None:
+                return None
+            return FailoverLease.model_validate(
+                {
+                    **lease.model_dump(),
+                    "phase": "draining",
+                    "drain_deadline": min(
+                        self._drain_started + self.timings.drain, lease.authority_expires_at
+                    ),
+                }
+            )
+        return lease
 
     def eligible_leader(self, now: datetime) -> str | None:
         """The highest-priority member who is not confirmed unreachable past the threshold."""
@@ -354,22 +445,21 @@ class ElectionParticipant:
 
     def _promote(self, proof: PromotionProof | None, *, break_glass: bool) -> None:
         first = self.role is not ServiceRole.ELECTED
+        if first:
+            kind = FailoverEventKind.BREAK_GLASS if break_glass else FailoverEventKind.PROMOTED
+            self._record(kind, proof)
+            elections_total.add(1, {"host": self.name, "kind": kind.value})
         self.proof = proof
         self.role = ServiceRole.ELECTED
         self.reservation_held = True
         self._outage = False
         self._reclaim_since = None
-        if first:
-            kind = FailoverEventKind.BREAK_GLASS if break_glass else FailoverEventKind.PROMOTED
-            self._record(kind, proof)
-            elections_total.add(1, {"host": self.name, "kind": kind.value})
 
     def _begin_drain(self, now: datetime) -> None:
         if self.role is ServiceRole.DRAINING:
             return
         previous = self.proof
         self.role = ServiceRole.DRAINING
-        self.proof = None
         self._drain_started = now
         self._record(FailoverEventKind.DRAINING, previous)
         handbacks_total.add(1, {"host": self.name})
@@ -381,11 +471,15 @@ class ElectionParticipant:
             self.in_flight > 0
             and self._drain_started is not None
             and self._now - self._drain_started < self.timings.drain
+            and (lease := self.lease()) is not None
+            and self._now < lease.authority_expires_at
         ):
             return
+        previous = self.proof
         self.role = ServiceRole.STANDBY
+        self.proof = None
         self._closed = True
-        self._record(FailoverEventKind.HANDBACK, None)
+        self._record(FailoverEventKind.HANDBACK, previous)
 
     def _fence(self, *, outage: bool) -> None:
         previous = self.proof
@@ -399,6 +493,8 @@ class ElectionParticipant:
             self._record(FailoverEventKind.FENCED, previous)
 
     def _ensure_self_grant(self, now: datetime) -> None:
+        if self.safety is not None and not self.safety.permits(self.name, now):
+            return
         if any(
             grant.candidate != self.name and grant.is_current(now)
             for grant in self._issued.values()
@@ -417,12 +513,21 @@ class ElectionParticipant:
             term=self.term,
             candidate=self.name,
             voter=self.name,
+            issued_at=now,
             expires_at=now + self.timings.lease,
             signature="unsigned",
         )
-        self._received[(self.term, self.name)] = unsigned.model_copy(
+        signed = unsigned.model_copy(
             update={"signature": sign_ed25519(unsigned.canonical_bytes(), self._private_key)}
         )
+        if self.safety is not None:
+            try:
+                self.safety.grant(signed, now)
+            except ElectionSafetyError:
+                self._fence(outage=True)
+                return
+        self._issued[self.term] = signed
+        self._received[(self.term, self.name)] = signed
 
     def _try_proof(self, now: datetime) -> PromotionProof | None:
         grants = {
@@ -487,7 +592,9 @@ class ElectionParticipant:
             if (
                 observed is not None
                 and observed.health is MemberHealth.HEALTHY
-                and now - observed.since >= self.timings.demotion
+                and observed.recovery_ready
+                and now - max(observed.since, observed.recovery_ready_since or observed.since)
+                >= self.timings.demotion
             ):
                 return True
         return False
@@ -512,13 +619,19 @@ class ElectionParticipant:
             self._override is not None
             and self._override.kind is FailoverOverrideKind.BREAK_GLASS_PROMOTE
             and self._override.is_current(now)
+            and self.name != "coire-core"
+            and self._higher_status("coire-core", now) == "down"
         )
 
     def _override_is_authentic(self, override: FailoverOverride | None) -> bool:
         if override is None:
             return False
-        return verify_ed25519(
-            override.canonical_bytes(), override.signature, self._public_key("coire-core")
+        return (
+            override.target_host == self.name
+            and override.epoch == self.membership.epoch
+            and verify_ed25519(
+                override.canonical_bytes(), override.signature, self._public_key("coire-core")
+            )
         )
 
     def _observed(self, name: str) -> MemberObservation | None:
@@ -527,16 +640,23 @@ class ElectionParticipant:
     def _priority(self, name: str) -> int:
         return next(member.priority for member in self.membership.members if member.name == name)
 
-    def issue_heartbeat(self, now: datetime) -> FailoverHeartbeat:
+    def issue_heartbeat(self, now: datetime, challenge: UUID | None = None) -> FailoverHeartbeat:
         """Sign one liveness beat. Peers time the round trip; they do not trust `sent_at` alone."""
-        unsigned = FailoverHeartbeat(member=self.name, sent_at=now, signature="unsigned")
+        unsigned = FailoverHeartbeat(
+            member=self.name,
+            epoch=self.membership.epoch,
+            sent_at=now,
+            recovery_ready=self.recovery_ready,
+            signature="unsigned",
+        )
+        if challenge is not None:
+            unsigned = unsigned.model_copy(update={"challenge": challenge})
         return unsigned.model_copy(
             update={"signature": sign_ed25519(unsigned.canonical_bytes(), self._private_key)}
         )
 
     def issue_vote_request(self, now: datetime) -> ElectionVoteRequest | None:
         """Ask peers for this term when we are the eligible leader and still need a lease."""
-        del now
         if self.role not in (ServiceRole.CANDIDATE, ServiceRole.ELECTED):
             return None
         if self.eligible_leader(self._now) != self.name:
@@ -545,11 +665,16 @@ class ElectionParticipant:
             epoch=self.membership.epoch,
             term=self.term,
             candidate=self.name,
+            issued_at=now,
             signature="unsigned",
         )
         return unsigned.model_copy(
             update={"signature": sign_ed25519(unsigned.canonical_bytes(), self._private_key)}
         )
+
+    def sign_payload(self, payload: bytes) -> str:
+        """Sign a locally constructed typed acknowledgement, never caller-selected bytes."""
+        return sign_ed25519(payload, self._private_key)
 
     def member_public_key(self, name: str) -> str:
         return self._public_key(name)
@@ -571,7 +696,8 @@ class ElectionParticipant:
         )
 
     def _emit(self) -> None:
-        signature = (self.role, None if self.proof is None else self.proof.model_dump_json())
+        lease = self.lease()
+        signature = (self.role, None if lease is None else lease.model_dump_json())
         if signature == self._published:
             return
         self._published = signature

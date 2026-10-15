@@ -1,76 +1,114 @@
 # Control-plane failover
 
-Core stays the system of record. A Studio serves inference only after it holds a current quorum
-lease or an unexpired break-glass override. Postgres, the scheduler, MCP, admin routes, and
-telemetry backends never move.
+Core remains the system of record. A Studio admits supported resident text chat only while its
+signed snapshot, user identity and elected authority are current. Postgres, scheduler, MCP, admin
+mutations and telemetry backends remain on Core. Cloudflare deployment/public-edge qualification
+is deferred by the owner; use authenticated origin checks until that deployment is qualified.
 
-## See it
+## Observe and authenticate
 
-- Grafana dashboard `coire-failover`: readiness, snapshot freshness, elections, hand-backs, refusals.
-- Alerts: `CoireFailoverNoReadyMember`, `CoireFailoverSnapshotStale`, `CoireFailoverSplitBrain`,
-  `CoireFailoverIngressRefusals`.
-- Core's public monitor is `GET /failover/ready` (200 only with a lease). Studio monitors are
-  `GET /ready` on `coire-failover`. Anything else fails closed. Process liveness stays on core's
-  `/ready` and is not the load-balancer probe.
-- Audit actions `failover.promoted`, `failover.draining`, `failover.fenced`, `failover.handback`,
-  `failover.break_glass`, and `failover.override.*` after reconciliation.
+Use Grafana `coire-failover` for readiness, snapshot age, participant last-seen, audit pressure,
+drain deadline and frontend RSS. Alerts cover absent telemetry/participants, no ready authority,
+split brain, stale snapshots, refusal rate, audit exhaustion, resource and drain limits.
+Core's election monitor is `GET /failover/ready`; Studio's is `GET /ready` on the frontend.
+Both require `X-Coire-Failover-Monitor` and return 200 only for current serving authority, with
+no-cache headers. Core `/ready` remains process liveness, not election readiness.
 
-## Activate
+Browser/API/assets require a valid approved Access JWT; local testing may use an isolated signed
+identity fixture but production has no anonymous bypass. `X-Coire-Failover-Lifecycle` permits only
+local in-flight accounting on `/api/v1/failover/status`. Relay credentials do not grant inference
+by themselves: the node verifies a signed, request-bound authority and the original user JWT.
+Peer control uses signed, challenge-bound messages and separate host keys. Do not print credentials.
 
-1. Confirm three healthy members and a fresh signed snapshot on each Studio
-   (`FAILOVER_SNAPSHOT_PATH`, mode `0644`; it contains signed public metadata).
-2. Confirm distinct Keychain items `coire-failover-peer-key` and `coire-failover-relay-token`.
-   Do not reuse a node registration token.
-   Confirm `FAILOVER_CORE_PUBLIC_KEY` matches the separately provisioned core signing key,
-   and both Studio relay URLs name their control listeners from inside the frontend container.
-3. On each Studio, set `COIRE_FAILOVER_IMAGE` to the same digest-pinned image installed as
-   `FAILOVER_FRONTEND_IMAGE` in coire-node. Set `COIRE_FAILOVER_LOCAL_RELAY_URL` and
-   `COIRE_FAILOVER_PEER_RELAY_URL` to the two Studio control-listener URLs. Run
-   `deploy/compose/coire-studio-failover-create`. It materializes the Keychain relay
-   credential outside the repository and creates the container with `--no-deps`.
-   The node starts this precreated container only after election and stops it after
-   hand-back or fencing.
-4. Confirm only core's `/failover/ready` is 200 while core is healthy.
+## Arm and scope
 
-Thresholds default to promotion 15s, demotion 45s, lease 15s, drain 30s, and a poll every 2s.
-A heartbeat slower than 50ms is degraded. Three missed beats mark a peer unreachable, and the
-promotion threshold is then counted from the first miss. Demotion must stay longer than
-promotion. Changing them is a reviewed recovery edit, not a hot fix. Each host sets
-`FAILOVER_MEMBER_NAME` to its own name; an empty name leaves the poller off.
+1. Use matching protocol-v2 Core, node and frontend artifacts, trusted membership epoch and keys.
+   Provision Keychain items and environment settings as listed in `deploy/compose/README.md`.
+   Preserve the persistent safety/journal directory. First installation or missing/corrupt safety
+   state imposes a conservative 301-second quarantine; lowering the lease TTL cannot bypass it.
+2. Confirm all three hosts through authenticated status paths, no active 019 maintenance owner,
+   valid snapshots and standing 256 MiB reservations. Core signs registry-verified exact resident
+   placements; empty capabilities, old slug-only metadata, adapter/image/tool targets and subjects
+   needing mutable policy/budget lookups are ineligible.
+3. Precreate the digest-pinned Studio frontend using `deploy/compose/coire-studio-failover-create`.
+   The node owns its activation under the same maintenance admission guard as engine lifecycle.
+   Frontends have no peer private key. Node listeners retain existing control DNS/port bindings.
+4. Confirm Core alone is ready while healthy and direct anonymous/stale-origin requests refuse.
+   A provider monitor/pool template is not evidence of deployed ingress readiness.
 
-## Break glass
+Defaults: snapshot horizon 120 seconds, promotion 15 seconds, demotion 45 seconds, lease 15
+seconds, drain 30 seconds, polling 2 seconds. Snapshot refresh stops with Core; the remaining
+signed horizon bounds the outage service, including break-glass. There is no local renewal or
+cached-user fallback after expiry. Prompt, output, rate and concurrency use the stricter signed
+subject/model limits. No failover path loads a model, acquires an artifact or replaces placement.
 
-A lone Studio does not promote. An admin posts a core-signed override:
+Single-node residency binds instance, immutable artifact, PID and process creation time. Sharded
+residency binds the exact group/command generation and both owned workers, with authenticated
+all-rank and fabric observations. Rank, artifact, process or link loss refuses admission and
+interrupts streams within three seconds. TP additionally requires working RDMA; PP requires the
+existing IP fabric. A generic RDMA-enabled status cannot establish a working native group. Old
+or adopted groups without verified worker ownership require a new normal admin placement before
+they can qualify; failover never restarts them automatically.
 
-`POST /api/v1/admin/failover/overrides`
+## Partition and one-host break-glass
 
-Body: `kind` `break_glass_promote` or `inhibit`, `actor_id`, `reason`, `expires_at`, `signature`.
-The signature is Ed25519 over the canonical JSON without the signature field, using the core
-peer key. The row is audited. The override stops working at `expires_at` with no further action.
-`inhibit` keeps Studios from promoting while core is still the authority.
+A minority never promotes automatically. Readiness and actual gateway/node admission independently
+fence expired or conflicting authority even if ingress still routes there. Investigate split-brain
+alerts immediately; compare signed epochs/terms and independently fence the unintended origin.
+Do not delete durable election records to force promotion.
 
-## Partition
+While Core is available, `POST /api/v1/admin/failover/overrides` requires an authenticated admin
+whose UUID matches `actor_id`. The signed protocol-v2 body includes `override_id`, `target_host`,
+`epoch`, `issued_at`, `expires_at`, `kind` (`inhibit` or `break_glass_promote`), `actor_id`, `reason`,
+`fencing_evidence` and `signature`. Sign canonical model JSON excluding signature. Lifetime is at
+most 300 seconds, with exactly one target and current epoch. Record independent fencing evidence
+for every competing origin before activation. Core audits intent before delivery and validates
+the target's signed acknowledgement. Replay remains rejected across restarts.
 
-- A member that sees fewer than two hosts fences. Its lease file is removed and `/ready` is 503.
-- Core in a minority partition returns 503 from `/failover/ready` and the load balancer stops
-  using it. `/ready` on the API process stays a liveness check so compose does not restart it.
-- Two ready members is a split brain. Treat `CoireFailoverSplitBrain` as a page and fence the
-  member whose proof is older.
+For Core-down activation, prepare and safeguard the bounded signed override while the authorized
+signer is available, then deliver it through the documented signed node override route after the
+independent fencing is established. Do not copy Core's private key to a Studio. A pre-authorized
+override cannot outlive snapshot/JWT validity or create eligibility; an inhibit is not a serving
+proof. Record actor, reason, fence evidence, override UUID and expiry in the execution record.
 
-## Hand-back
+## Drain, kill and audit repair
 
-When core has been healthy for the demotion threshold, the elected Studio drains in-flight
-completions, deletes its lease, and stops the emergency frontend. The standing 256 MiB ledger
-reservation remains held for the next failover. Core waits out the same
-window before it campaigns, so a flap does not oscillate. New requests stop as soon as drain
-starts; requests already running are allowed to finish.
+Healthy Core must remain stable for the demotion window. Signed heartbeats carry a separate
+recovery-readiness bit: PostgreSQL, enabled service probes and 019's retained qualified writer
+must pass without an active Core maintenance fence. This observation expires locally within
+five seconds at default polling; a live but unready Core does not trigger drain. Hand-back stops new admission before
+drain, and active requests continue only until the earliest JWT/snapshot/lease/drain deadline.
+Cancellation closes upstream work. Core requires a matching signed fence acknowledgement or
+conservative authority expiry before taking over; a draining response is not a fence acknowledgement.
+The frontend stops after fencing and the standing memory reservation stays held.
 
-## Roll back
+For an emergency stop, disarm the node failover controller through the 019-owned configuration
+transition (`FAILOVER_MEMBER_NAME` empty), then stop its precreated frontend. Disarm both Studios
+when disabling the feature, and stop Core's failover publisher/poller as part of the coordinated
+transition. Removing proof.json alone is insufficient because a running poller can recreate it.
+Keep the existing native engine ownership and user data intact. Verify direct origins refuse,
+then wait out the maximum outstanding authority lifetime plus clock uncertainty before allowing
+an incompatible old protocol to serve. Preserve the trusted epoch high-water mark.
 
-1. `docker compose --profile studio-failover stop coire-failover` on both Studios.
-2. Remove `/opt/coire/failover/proof.json` if a lease file remains.
-3. Point the load balancer at core only, or leave the empty fallback so a dark Studio is not used.
-4. Do not delete `failover_event_receipts`; reconciled audit rows stay.
+Ordinary journal capacity is bounded with reserved terminal-event space. Full, corrupt or unwritable
+evidence closes admission; fencing still proceeds. Preserve the journal and safety files, fix
+storage permissions/capacity, and reconcile through signed committed-event acknowledgements.
+Core receipt IDs deduplicate concurrent replays. Never truncate unacknowledged events or delete
+`failover_event_receipts`/audit rows to regain readiness. Archive corrupted evidence for diagnosis;
+restore only verified durable state through an operator recovery, then re-observe quarantine.
 
-Record timings and the elected host in `specs/020-control-plane-failover/review.md`. Do not record
-keys, tokens, or model bytes.
+## Update, rollback and resources
+
+Drain/disarm all participants before mixed-version updates. Use 019 to retain/restore compatible
+artifacts and writer ownership, then install matching schemas/settings, obtain fresh snapshots,
+wait out any quarantine and re-arm. Rollback also requires disarming first; it cannot roll back
+the trusted epoch, erase outstanding grants or discard audit evidence. Cloudflare eligibility
+must remain off until its separately qualified setup is applied.
+
+Metrics use the existing Studio-to-Core OTLP endpoint; diagnostic traces have bounded queues and
+are disabled by default. Collector loss must not block inference. Measure fifteen minutes of idle
+baseline and armed operation per profile: incremental participant RSS <=32 MiB and CPU <=1%,
+frontend <=256 MiB, no resident evictions and zero actual swap growth. Record native PID/create-time,
+`vm.swapusage`, image/source identity, timings and cleanup in `specs/020-control-plane-failover/review.md`.
+A real Core power-off requires a demonstrated independent recovery route. Process tests are not
+physical power-loss evidence. See the feature quickstart for the full acceptance matrix.

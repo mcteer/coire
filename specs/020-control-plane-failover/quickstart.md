@@ -1,24 +1,94 @@
-# Quickstart: Control-Plane Failover
+# Quickstart: Control-Plane Failover Qualification
 
-## Preconditions
+**Prepared**: 2026-10-14. **Scope amendment 2026-10-15**: owner deferred Cloudflare installation
+and provider/public-edge qualification until last; origin/Studio checks continue. This is the validation procedure for the next implementation pass, not
+an execution record. Record actual outcomes in [review.md](review.md). Historical September results
+remain historical; do not replace missing evidence with task checkmarks or fabricated measurements.
 
-- All three members are healthy; each has a current verified snapshot.
-- Separate core, edge-a, and edge-b tunnel endpoints and LB readiness monitors are provisioned.
-- A resident published test model exists on each required Studio.
+## Preconditions and stop conditions
 
-## Validate
+1. Use `feat/020-control-plane-failover` based on merged 019. Complete the corrective tasks before
+   release qualification. Record source commit and digest-pinned images, schema/protocol version,
+   membership epoch and effective timing/resource limits.
+2. Inspect all three members through documented authenticated status paths. Verify healthy baseline,
+   declared VLAN DNS/ports, no use of core Thunderbolt, standing 256 MiB reservations, no unresolved
+   maintenance owner, and valid signed snapshot/identity authority on both Studios.
+3. Confirm Keychain-backed independent peer, relay, monitor, lifecycle and operator credentials.
+   Never print secret values or place them in shell history, fixture logs, Git, or this record.
+4. Verify existing Cloudflare LB entitlement, stable Access hostname, three distinct outbound tunnels,
+   supported ordered-pool policy, authenticated monitors, and an explicitly non-serving fallback.
+   Read actual account configuration and measure propagation; template syntax is insufficient.
+5. Confirm the approved failover image is precreated through `deploy/compose/coire-studio-failover-create`
+   and the node owns activation. Do not start engines with shell commands or use caller-provided paths.
+6. Obtain published, unrestricted, registry-approved resident test models through normal admin paths.
+   Isolated CI uses `COIRE_TEST_MODEL` <=1 GB and never targets real Studios. Live acceptance may use
+   existing verified lab assets under AGENTS.md authorisation. Scope must match FR-013.
+7. Prepare an independently verified recovery route for Core power/network fault tests, a bounded
+   reversible fault procedure, and the approved independent-origin fencing method for break-glass.
+   Verify a fresh snapshot and sufficient remaining authority before **each** trial.
 
-1. Confirm only core readiness is successful and the public hostname is Access-protected.
-2. Power off or isolate core. After the configured health, election, and LB-monitor windows, confirm
-   only edge-a readiness succeeds and an authenticated browser request completes against the resident
-   model. Confirm no database, admin, MCP, scheduler, or write route exists on edge-a.
-3. Partition edge-a from core and edge-b. Confirm it self-fences and never serves without quorum.
-4. Make core and edge-a unavailable. Confirm edge-b does not auto-promote; exercise the expiring
-   break-glass path and confirm its event reconciles after recovery.
-5. Restore core. Confirm edge-a drains in-flight requests, fences readiness, core regains the lease,
-   and the LB returns traffic to core without flapping.
-6. Tamper with or age a test snapshot. Confirm degraded inference refuses authentication and no
-   unauthenticated request succeeds.
+A missing credential, account capability, asset, recovery mechanism or required network approval
+blocks only the dependent live case. Identify it precisely, continue independent work, and leave
+that acceptance task open. Do not widen firewall, network, CORS, capabilities or Access scope to make
+a test pass. Agent-run Studio acceptance is authorised; CI access to Studios is prohibited.
 
-Record timings, elected host, ingress monitor states, traces, and reconciled audit events. Do not
-record credentials, private keys, or model contents.
+## Local and isolated validation
+
+Run from the repository root after corrective implementation. Use existing locked dependencies.
+
+```bash
+uv run pytest -q packages/coire-core/tests/test_failover_models.py packages/coire-core/tests/test_failover_poller.py apps/coire-failover/tests apps/coire-node/tests/contract/test_node_failover.py
+uv run pytest -q apps/coire-api/tests/unit apps/coire-node/tests/unit -k failover
+uv run pytest -q tests/integration/test_control_plane_failover.py -m integration
+pnpm -C apps/coire-web test
+pnpm -C apps/coire-web lint
+uv run ruff check
+uv run mypy
+uv run python -m coire_api.openapi --check
+uv run python -m coire_failover.openapi --check
+```
+
+Include the new restart/split-brain, middleware-maintenance, rate-limit, stream-expiry, journal fault,
+monitor-scope and real tiny-engine tests listed in tasks.md. Inspect pytest collection and marker
+requirements before selecting new cases; a deselected/skipped required case is not a passing gate.
+Run the repository's required image/build/scan/SBOM, schema/type and alert gates once the integrated
+change is stable. Re-run failed/changed areas as needed rather than repeatedly rerunning everything.
+
+## Independent fault matrix
+
+Use monotonic timestamps and an independent request/health observer. Record the authoritative host,
+proof/epoch identity, public request result, live engine identities, maintenance owner, actual swap
+counter, and audit event/receipt IDs. Redact identity and secrets. Restore a healthy fresh-snapshot
+baseline between cases; do not extend the snapshot expiry to make a longer trial succeed.
+
+| Case | Action | Required result |
+|---|---|---|
+| Baseline | Send authenticated browser/model/completion requests and negative requests to every route/origin. | Core alone admits; absent/wrong identity is refused. Monitor and lifecycle credentials cannot infer; user credentials cannot control peers. |
+| Core loss | Make Core unreachable using the prepared reversible fault. | Edge-a alone admits supported resident inference through the public hostname within 60 s; record detection/election/start/monitor phases. |
+| Snapshot horizon | Keep Core down beyond the remaining signed freshness window. | Readiness/inference fail closed at expiry, including break-glass; no local renewal or identity fallback. |
+| Membership partitions | Test each isolated member and each majority side, including Core alive but isolated. | No automatic minority serving; expired proofs fail immediately; fencing within remaining lease plus 2 s evaluation. Direct/stale-origin traffic is refused too. |
+| Restart and clocks | Restart a voter/leader with a live grant; test older TTL, missing/corrupt record, epoch change and clock jumps in isolation. | No overlapping admission; conservative guard persists; unsafe clock state fences. Replayed signed heartbeat does not prove liveness. |
+| Lone survivor | Make Core and edge-a unavailable. Deliver a pre-authorised edge-b override after independent public-origin fencing. | No automatic promotion; only intended host serves until earliest authority expiry. Wrong target/epoch, replay, wrong kind, duplicate activation and missing fencing evidence are refused and audited. |
+| Scope and limits | Send unavailable/nonresident/exact/unsupported targets, visual/tool inputs, overlong prompts and rate/concurrency bursts. | Stable refusal before engine work; no fallback, acquisition, placement, user harness, image or training action. |
+| Sharded inference | With Core down and both Studios healthy, send a request to an already-resident approved sharded base model; then fail each rank in turn in a reversible isolated/live procedure. | Exact group serves while healthy; missing/failed rank interrupts within 2 s plus 1 s probe timeout; zero fallback, lifecycle or re-placement action. Record every rank identity and group generation. |
+| Data link loss | Disconnect only the Studio data link while VLAN remains healthy. | Control election and supported single-node serving remain healthy; sharded admission/streams refuse or interrupt within 3 s; no control traffic shifts to Thunderbolt. |
+| Recovery and streams | Restore authoritative Core during buffered and streaming requests; include long stream, disconnect, expired JWT/snapshot/proof and cancellation. | Admission stops before drain; only still-authorised work finishes within 30 s. Deadline/authority loss closes upstream work truthfully. Core admits only after fencing and becomes public within 90 s of continuous readiness. |
+| Flapping | Produce ten Core healthy pulses each shorter than 45 s, then stable recovery. | Zero premature hand-backs, then one clean hand-back. Standing reservations remain. |
+| Audit fault | Fill the unacknowledged journal; inject corruption/write failure and concurrent duplicate replay in isolation. | No silent loss; admission closes before exhaustion; reserved terminal record survives; safety fencing proceeds; acknowledged events reconcile exactly once. |
+| Ingress fault | Make all pools unhealthy/unknown, stale-ready, draining, or credential-invalid. | Non-serving fallback; application and relay reject stale routing independently. No anonymous Access bypass. |
+| 019 coexistence | Run Core upgrade success, failed-candidate rollback, and Studio environment transition with failover requests racing maintenance acquisition. | Exact writer/maintenance ownership and data preserved; no fabricated peer health; no forbidden lifecycle action; active streams remain inventoried. |
+| Resource/telemetry | Compare a 15-minute idle baseline with failover armed, then exercise promotion alongside resident inference in lean and diagnostic profiles. | Incremental participant <=32 MiB RSS/1% CPU; frontend <=256 MiB; zero evictions and actual swap growth; real metric export, alerts and audit work without optional stores. |
+| Rollback | Drain/disarm failover, restore compatible source artifacts via 019, and re-establish Core-only service. | No stale lease/override reactivates; audit/receipts and standing reservations remain; direct Studio origins refuse. |
+
+Power/network interruptions are real-cluster acceptance only. Clock, corruption, pressure and replay
+injection use isolated fixtures; do not tamper with production evidence stores or host clocks.
+A live power-off trial needs demonstrated independent recovery; if none exists, record that exact
+prerequisite rather than substituting a process stop and claiming power-loss acceptance.
+
+## Evidence and closure
+
+For each case record configuration, expected versus measured result, start/end times, artifact path,
+source/image identity and cleanup outcome. Separate real public ingress, real model, composed ASGI,
+and simulated-clock evidence. Every required failure must be fixed or explicitly remain open; do not
+mark T036 done with skipped required tests. Preserve private raw evidence outside Git and commit only
+redacted measurements and references. Runbook must explain how to observe, fence, kill and roll back.

@@ -13,6 +13,7 @@ from fastapi import Request
 
 from coire_core.models.engine import EngineState
 from coire_core.models.gateway import ChatMessage, EngineChatRequest
+from coire_core.settings import Settings
 from coire_node.routes import engines as routes
 
 
@@ -44,6 +45,7 @@ async def test_proxy_ownership_wait_leaves_request_loop_responsive(
             BusyEngines(),  # type: ignore[arg-type]
             SimpleNamespace(path_for=lambda _: Path("/models/fixture")),  # type: ignore[arg-type]
             Request({"type": "http", "headers": []}),
+            Settings(_secrets_dir="/nonexistent"),  # type: ignore[call-arg]
         )
     )
     try:

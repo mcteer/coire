@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import base64
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+import httpx
+import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import SecretStr
@@ -16,7 +19,8 @@ from coire_core.failover_election import (
     MemberHealth,
     ServiceRole,
 )
-from coire_core.failover_poller import FailoverPoller, PeerLiveness
+from coire_core.failover_poller import FailoverPoller, HttpPeerExchange, PeerLiveness, peer_url
+from coire_core.failover_safety import ElectionSafety
 from coire_core.models.failover import (
     ElectionVoteGrant,
     ElectionVoteRequest,
@@ -141,3 +145,161 @@ async def test_core_loss_elects_only_edge_a() -> None:
         await pollers["coire-edge-a"].tick(elected)
     assert _role(members["coire-edge-a"]) is ServiceRole.ELECTED
     assert _role(members["coire-edge-b"]) is not ServiceRole.ELECTED
+
+
+async def test_captured_signed_heartbeat_does_not_prove_fresh_liveness() -> None:
+    private, membership = _material()
+    timings = ElectionTimings(
+        promotion=timedelta(seconds=15),
+        demotion=timedelta(seconds=45),
+        lease=timedelta(seconds=15),
+        drain=timedelta(seconds=30),
+    )
+    origin = ElectionParticipant(
+        name="coire-edge-a",
+        membership=membership,
+        private_key_b64=private["coire-edge-a"],
+        timings=timings,
+    )
+    peer = ElectionParticipant(
+        name="coire-edge-b",
+        membership=membership,
+        private_key_b64=private["coire-edge-b"],
+        timings=timings,
+    )
+    now = datetime.now(UTC)
+    captured = peer.issue_heartbeat(now)
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _: httpx.Response(200, json=captured.model_dump(mode="json")),
+        )
+    ) as client:
+        exchange = HttpPeerExchange(origin, Settings(_secrets_dir="/nonexistent"), client)  # type: ignore[call-arg]
+        ok, _ = await exchange.heartbeat("coire-edge-b", origin.issue_heartbeat(now))
+    assert not ok
+
+
+def test_control_endpoints_are_declared_dns_not_bare_hostnames() -> None:
+    settings = Settings(
+        _secrets_dir="/nonexistent",
+        failover_control_hosts={  # type: ignore[call-arg]
+            "coire-core": "primary.control.lab",
+            "coire-edge-a": "secondary.control.lab",
+            "coire-edge-b": "tertiary.control.lab",
+        },
+    )
+    assert (
+        peer_url(settings, "coire-core", "/heartbeat")
+        == "http://primary.control.lab:8180/api/v1/failover/heartbeat"
+    )
+    assert (
+        peer_url(settings, "coire-edge-a", "/votes")
+        == "http://secondary.control.lab:9400/node/failover/election/votes"
+    )
+    with pytest.raises(ValueError):
+        Settings(
+            _secrets_dir="/nonexistent",
+            failover_control_hosts={  # type: ignore[call-arg]
+                "coire-core": "127.0.0.1",
+                "coire-edge-a": "coire-edge-a.lab",
+                "coire-edge-b": "coire-edge-b.lab",
+            },
+        )
+
+
+@pytest.mark.parametrize("restarted", NAMES)
+@pytest.mark.parametrize("order", [NAMES, tuple(reversed(NAMES))])
+async def test_independent_participant_restart_and_partition_never_overlap_admission(
+    tmp_path: Path,
+    restarted: str,
+    order: tuple[str, ...],
+) -> None:
+    private, membership = _material()
+    now = datetime.now(UTC)
+    elapsed = 0.0
+    timings = ElectionTimings(
+        promotion=timedelta(seconds=15),
+        demotion=timedelta(seconds=45),
+        lease=timedelta(seconds=15),
+        drain=timedelta(seconds=30),
+    )
+    members: dict[str, ElectionParticipant] = {}
+
+    def member(name: str) -> ElectionParticipant:
+        participant = ElectionParticipant(
+            name=name, membership=membership, private_key_b64=private[name], timings=timings
+        )
+        participant.safety = ElectionSafety(
+            tmp_path / f"{name}.json",
+            member=name,
+            epoch=1,
+            lifetime_s=15,
+            now=now,
+            monotonic=lambda: elapsed,
+        )
+        participant.term = participant.safety.record.highest_term
+        participant._issued = {
+            grant.term: grant for grant in participant.safety.record.outstanding_grants
+        }
+        return participant
+
+    partitions: set[tuple[str, str]] = set()
+
+    class PartitionBus(_Bus):
+        def __init__(self, sender: str) -> None:
+            super().__init__(members)
+            self.sender = sender
+
+        async def heartbeat(self, peer: str, body: FailoverHeartbeat) -> tuple[bool, float]:
+            if (self.sender, peer) in partitions:
+                return False, 0
+            return await super().heartbeat(peer, body)
+
+        async def request_vote(
+            self, peer: str, body: ElectionVoteRequest
+        ) -> ElectionVoteGrant | None:
+            if (self.sender, peer) in partitions:
+                return None
+            voter = self.members[peer]
+            if not verify_ed25519(
+                body.canonical_bytes(), body.signature, voter.member_public_key(body.candidate)
+            ):
+                return None
+            return voter.vote(
+                body.epoch, body.term, body.candidate, now, request_id=body.request_id
+            )
+
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    for name in NAMES:
+        members[name] = member(name)
+    pollers = {name: FailoverPoller(members[name], settings, PartitionBus(name)) for name in NAMES}
+    # Establish a healthy baseline *after* the mandatory first-boot quarantine.
+    elapsed = 301
+    now += timedelta(seconds=301)
+    for _ in range(3):
+        for name in order:
+            await pollers[name].tick(now)
+    assert members["coire-core"].serving(now)
+    # Restart while its grants may still be live. This is a new object and durable reload.
+    members[restarted] = member(restarted)
+    pollers[restarted] = FailoverPoller(members[restarted], settings, PartitionBus(restarted))
+    partitions.update((a, b) for a in NAMES for b in NAMES if a != b and "coire-core" in (a, b))
+    observed_edge_a = False
+    for _ in range(25):
+        elapsed += 2
+        now += timedelta(seconds=2)
+        for name in order:
+            await pollers[name].tick(now)
+            # Inspect signatures/deadlines, not just the campaign roles, after each
+            # independently scheduled participant. These gates feed actual origin admission.
+            admitted = [
+                owner
+                for owner, item in members.items()
+                if item.serving(now)
+                and (lease := item.lease()) is not None
+                and lease.proof is not None
+                and lease.proof.is_valid_for(membership, now)
+            ]
+            assert len(admitted) <= 1
+            observed_edge_a |= admitted == ["coire-edge-a"]
+    assert observed_edge_a

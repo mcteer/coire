@@ -209,6 +209,10 @@ def test_term_change_does_not_forget_an_unexpired_competing_vote() -> None:
 def _override(private_key: str, kind: FailoverOverrideKind, expires: datetime) -> FailoverOverride:
     unsigned = FailoverOverride(
         kind=kind,
+        target_host="coire-edge-a",
+        epoch=1,
+        issued_at=expires - timedelta(minutes=5),
+        fencing_evidence="isolated operator fixture",
         actor_id=uuid4(),
         reason="operator action",
         expires_at=expires,
@@ -249,6 +253,7 @@ def test_an_older_term_cannot_displace_the_current_lease() -> None:
         term=1,
         candidate="coire-core",
         voter="coire-edge-a",
+        issued_at=now,
         expires_at=now + timedelta(seconds=30),
         signature="unsigned",
     )
@@ -384,3 +389,53 @@ def test_inhibit_blocks_studio_promotion() -> None:
         MemberObservation(name="coire-edge-b", health=MemberHealth.HEALTHY, since=now),
     ]
     assert members["coire-edge-a"].observe(confirmed, now, override=override) is ServiceRole.STANDBY
+
+
+def test_live_but_unready_core_does_not_drain_a_studio() -> None:
+    material = _keys()
+    participants = _participants(material, _membership(material))
+    now = datetime.now(UTC)
+    view = _view(
+        now, **{"coire-core": "unreachable", "coire-edge-a": "healthy", "coire-edge-b": "healthy"}
+    )
+    for participant in participants.values():
+        participant.observe(view, now)
+    edge = participants["coire-edge-a"]
+    grant = participants["coire-edge-b"].vote(1, edge.term, edge.name, now)
+    assert grant is not None and edge.receive_grant(grant, now)
+    edge.observe(view, now)
+    assert edge.role is ServiceRole.ELECTED
+    recovered = [
+        item.model_copy(
+            update={
+                "health": MemberHealth.HEALTHY,
+                "since": now - timedelta(seconds=60),
+                "recovery_ready": False,
+            }
+        )
+        if item.name == "coire-core"
+        else item
+        for item in view
+    ]
+    assert edge.observe(recovered, now) is ServiceRole.ELECTED
+    core_observation = recovered[0]
+    assert core_observation.health is MemberHealth.HEALTHY
+    recovered[0] = core_observation.model_copy(
+        update={"recovery_ready": True, "recovery_ready_since": now}
+    )
+    assert edge.observe(recovered, now + timedelta(seconds=29)) is ServiceRole.ELECTED
+    assert edge.observe(recovered, now + timedelta(seconds=31), in_flight=1) is ServiceRole.DRAINING
+
+
+def test_core_recovery_observation_expires_without_a_new_probe() -> None:
+    import time
+
+    material = _keys()
+    participants = _participants(material, _membership(material))
+    core = participants["coire-core"]
+    assert isinstance(core, CoreParticipant)
+    core.recovery_ready = True
+    core.recovery_deadline = time.monotonic() - 1
+    beat = core.issue_heartbeat(datetime.now(UTC))
+    assert not beat.recovery_ready
+    assert not core.frontend_ready()

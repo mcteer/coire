@@ -7203,6 +7203,22 @@
             "title": "Expires At",
             "type": "string"
           },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
           "signature": {
             "minLength": 1,
             "title": "Signature",
@@ -7223,6 +7239,7 @@
           "term",
           "candidate",
           "voter",
+          "issued_at",
           "expires_at",
           "signature"
         ],
@@ -9621,6 +9638,53 @@
         ],
         "type": "string"
       },
+      "FailoverAccessSubject": {
+        "additionalProperties": false,
+        "properties": {
+          "eligible": {
+            "title": "Eligible",
+            "type": "boolean"
+          },
+          "issuer": {
+            "minLength": 1,
+            "title": "Issuer",
+            "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/FailoverLimits"
+          },
+          "mutable_budget_required": {
+            "default": false,
+            "title": "Mutable Budget Required",
+            "type": "boolean"
+          },
+          "policy_version": {
+            "minimum": 1.0,
+            "title": "Policy Version",
+            "type": "integer"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "subject": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "issuer",
+          "subject",
+          "eligible",
+          "policy_version"
+        ],
+        "title": "FailoverAccessSubject",
+        "type": "object"
+      },
       "FailoverAccessVerifier": {
         "additionalProperties": false,
         "description": "Public Cloudflare Access verification material safe for a Studio snapshot.",
@@ -9649,13 +9713,78 @@
         "title": "FailoverAccessVerifier",
         "type": "object"
       },
+      "FailoverEventAcknowledgement": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "committed_event_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 256,
+            "title": "Committed Event Ids",
+            "type": "array"
+          },
+          "host": {
+            "pattern": "^coire-(core|edge-[ab])$",
+            "title": "Host",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "signature": {
+            "minLength": 1,
+            "title": "Signature",
+            "type": "string"
+          }
+        },
+        "required": [
+          "batch_id",
+          "signature",
+          "host",
+          "committed_event_ids"
+        ],
+        "title": "FailoverEventAcknowledgement",
+        "type": "object"
+      },
       "FailoverHeartbeat": {
         "additionalProperties": false,
         "description": "A signed liveness beat. Latency of the exchange is measured by the caller.",
         "properties": {
+          "challenge": {
+            "format": "uuid",
+            "title": "Challenge",
+            "type": "string"
+          },
+          "epoch": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          },
           "member": {
             "title": "Member",
             "type": "string"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "recovery_ready": {
+            "default": false,
+            "title": "Recovery Ready",
+            "type": "boolean"
           },
           "sent_at": {
             "format": "date-time",
@@ -9674,6 +9803,47 @@
           "signature"
         ],
         "title": "FailoverHeartbeat",
+        "type": "object"
+      },
+      "FailoverLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "concurrency": {
+            "default": 1,
+            "maximum": 1.0,
+            "minimum": 1.0,
+            "title": "Concurrency",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "default": 1024,
+            "maximum": 1024.0,
+            "minimum": 1.0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "default": 4096,
+            "maximum": 4096.0,
+            "minimum": 1.0,
+            "title": "Prompt Tokens",
+            "type": "integer"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "requests_per_minute": {
+            "default": 10,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Requests Per Minute",
+            "type": "integer"
+          }
+        },
+        "title": "FailoverLimits",
         "type": "object"
       },
       "FailoverMember": {
@@ -9721,6 +9891,12 @@
             "title": "Members",
             "type": "array"
           },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
           "signing_key_id": {
             "minLength": 1,
             "title": "Signing Key Id",
@@ -9738,6 +9914,15 @@
       "FailoverModel": {
         "additionalProperties": false,
         "properties": {
+          "capabilities": {
+            "items": {
+              "const": "text_chat",
+              "type": "string"
+            },
+            "title": "Capabilities",
+            "type": "array",
+            "uniqueItems": true
+          },
           "context_window": {
             "exclusiveMinimum": 0.0,
             "title": "Context Window",
@@ -9759,6 +9944,35 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/FailoverLimits"
+          },
+          "placement": {
+            "anyOf": [
+              {
+                "discriminator": {
+                  "mapping": {
+                    "pp": "#/components/schemas/FailoverShardedPlacement",
+                    "single": "#/components/schemas/FailoverSinglePlacement",
+                    "tp": "#/components/schemas/FailoverShardedPlacement"
+                  },
+                  "propertyName": "mode"
+                },
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/FailoverSinglePlacement"
+                  },
+                  {
+                    "$ref": "#/components/schemas/FailoverShardedPlacement"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placement"
           },
           "slug": {
             "title": "Slug",
@@ -9782,13 +9996,40 @@
             "title": "Actor Id",
             "type": "string"
           },
+          "epoch": {
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          },
           "expires_at": {
             "format": "date-time",
             "title": "Expires At",
             "type": "string"
           },
+          "fencing_evidence": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Fencing Evidence",
+            "type": "string"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
           "kind": {
             "$ref": "#/components/schemas/FailoverOverrideKind"
+          },
+          "override_id": {
+            "format": "uuid",
+            "title": "Override Id",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
           },
           "reason": {
             "maxLength": 1000,
@@ -9800,9 +10041,18 @@
             "minLength": 1,
             "title": "Signature",
             "type": "string"
+          },
+          "target_host": {
+            "pattern": "^coire-edge-[ab]$",
+            "title": "Target Host",
+            "type": "string"
           }
         },
         "required": [
+          "target_host",
+          "epoch",
+          "issued_at",
+          "fencing_evidence",
           "kind",
           "actor_id",
           "reason",
@@ -9812,6 +10062,50 @@
         "title": "FailoverOverride",
         "type": "object"
       },
+      "FailoverOverrideAcknowledgement": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "epoch": {
+            "minimum": 1.0,
+            "title": "Epoch",
+            "type": "integer"
+          },
+          "host": {
+            "pattern": "^coire-(core|edge-[ab])$",
+            "title": "Host",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "signature": {
+            "minLength": 1,
+            "title": "Signature",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "host",
+          "epoch",
+          "accepted",
+          "signature"
+        ],
+        "title": "FailoverOverrideAcknowledgement",
+        "type": "object"
+      },
       "FailoverOverrideKind": {
         "enum": [
           "inhibit",
@@ -9819,6 +10113,158 @@
         ],
         "title": "FailoverOverrideKind",
         "type": "string"
+      },
+      "FailoverRankIdentity": {
+        "additionalProperties": false,
+        "description": "Opaque process identity: no pid, port, path or weight contents cross this view.",
+        "properties": {
+          "generation": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "node": {
+            "enum": [
+              "coire-edge-a",
+              "coire-edge-b"
+            ],
+            "title": "Node",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "rank": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Rank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rank",
+          "node",
+          "generation"
+        ],
+        "title": "FailoverRankIdentity",
+        "type": "object"
+      },
+      "FailoverShardedPlacement": {
+        "additionalProperties": false,
+        "properties": {
+          "engine_id": {
+            "format": "uuid",
+            "title": "Engine Id",
+            "type": "string"
+          },
+          "generation": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "group_id": {
+            "format": "uuid",
+            "title": "Group Id",
+            "type": "string"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "tp",
+              "pp"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "ranks": {
+            "items": {
+              "$ref": "#/components/schemas/FailoverRankIdentity"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Ranks",
+            "type": "array"
+          },
+          "target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          }
+        },
+        "required": [
+          "mode",
+          "instance_id",
+          "engine_id",
+          "group_id",
+          "generation",
+          "target",
+          "ranks"
+        ],
+        "title": "FailoverShardedPlacement",
+        "type": "object"
+      },
+      "FailoverSinglePlacement": {
+        "additionalProperties": false,
+        "properties": {
+          "engine_id": {
+            "format": "uuid",
+            "title": "Engine Id",
+            "type": "string"
+          },
+          "generation": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Generation",
+            "type": "string"
+          },
+          "instance_id": {
+            "format": "uuid",
+            "title": "Instance Id",
+            "type": "string"
+          },
+          "mode": {
+            "const": "single",
+            "default": "single",
+            "title": "Mode",
+            "type": "string"
+          },
+          "node": {
+            "enum": [
+              "coire-edge-a",
+              "coire-edge-b"
+            ],
+            "title": "Node",
+            "type": "string"
+          },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
+          "target": {
+            "$ref": "#/components/schemas/InferenceTarget"
+          }
+        },
+        "required": [
+          "instance_id",
+          "engine_id",
+          "node",
+          "generation",
+          "target"
+        ],
+        "title": "FailoverSinglePlacement",
+        "type": "object"
       },
       "FailoverSnapshot": {
         "additionalProperties": false,
@@ -9846,6 +10292,12 @@
             "title": "Models",
             "type": "array"
           },
+          "protocol_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Protocol Version",
+            "type": "integer"
+          },
           "signature": {
             "minLength": 1,
             "title": "Signature",
@@ -9855,6 +10307,14 @@
             "format": "uuid",
             "title": "Snapshot Id",
             "type": "string"
+          },
+          "subjects": {
+            "items": {
+              "$ref": "#/components/schemas/FailoverAccessSubject"
+            },
+            "maxItems": 10000,
+            "title": "Subjects",
+            "type": "array"
           }
         },
         "required": [
@@ -33368,7 +33828,14 @@
           "required": true
         },
         "responses": {
-          "204": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FailoverOverrideAcknowledgement"
+                }
+              }
+            },
             "description": "Successful Response"
           },
           "422": {
@@ -42792,11 +43259,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "integer"
-                  },
-                  "title": "Response Reconcile Api V1 Failover Events Post",
-                  "type": "object"
+                  "$ref": "#/components/schemas/FailoverEventAcknowledgement"
                 }
               }
             },
@@ -50277,6 +50740,24 @@
       "get": {
         "description": "Election gate for the public load balancer. Process liveness stays on `/ready`.",
         "operationId": "failover_ready_failover_ready_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-coire-failover-monitor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Coire-Failover-Monitor"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -50285,6 +50766,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Failover Ready",

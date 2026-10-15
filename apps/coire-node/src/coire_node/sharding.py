@@ -28,6 +28,7 @@ from coire_core.models import (
     ShardGroupState,
     ShardGroupStatus,
     ShardingMode,
+    ShardRank,
 )
 from coire_core.models.upgrades import UpgradeInventoryEntry, UpgradeOwnerInventory
 from coire_core.settings import Settings
@@ -55,6 +56,14 @@ def build_shard_argv(
         "jaccl" if command.mode is ShardingMode.TENSOR_PARALLEL else "ring",
         "--env",
         "MLX_METAL_FAST_SYNCH=1",
+        "--env",
+        f"COIRE_SHARD_GROUP_ID={command.group_id}",
+        "--env",
+        f"COIRE_SHARD_COMMAND_ID={command.command_id}",
+        "--env",
+        "HF_HUB_OFFLINE=1",
+        "--env",
+        "TRANSFORMERS_OFFLINE=1",
         "--",
         sys.executable,
         "-m",
@@ -68,6 +77,8 @@ def build_shard_argv(
         "--log-level",
         "INFO",
     ]
+    if command.mode is ShardingMode.PIPELINE_PARALLEL:
+        argv.append("--pipeline")
     return argv
 
 
@@ -86,6 +97,7 @@ class ShardGroupManager:
         self._processes: dict[uuid.UUID, subprocess.Popen[bytes]] = {}
         self._commands: dict[uuid.UUID, uuid.UUID] = {}
         self._model_paths: dict[uuid.UUID, str] = {}
+        self._outputs: dict[uuid.UUID, bytes] = {}
         self._state_file = Path(settings.node_state_dir) / GROUPS_FILE
         self._lock = memory_lock or threading.RLock()
         self._admission_check = admission_check
@@ -146,10 +158,16 @@ class ShardGroupManager:
             model_path = self._store.path_for(command.slug)
             if not model_path.is_dir():
                 raise FileNotFoundError(command.slug)
+            if command.target is not None:
+                manifest = self._store.read_manifest(command.slug)
+                if manifest is None or manifest.sha256() != command.target.base_manifest_sha256:
+                    raise ValueError("sharded artifact does not match its immutable target")
             hostfile = self._verified_hostfile(command)
             status = ShardGroupStatus(
                 group_id=command.group_id,
                 instance_id=command.instance_id,
+                command_id=command.command_id,
+                target=command.target,
                 mode=command.mode,
                 state=ShardGroupState.PREPARING,
                 ranks=command.ranks,
@@ -176,11 +194,23 @@ class ShardGroupManager:
                     env={**os.environ, "HF_HUB_OFFLINE": "1"},
                 )
                 self._processes[command.group_id] = proc
-                command.ranks[0].pid = proc.pid
-                command.ranks[0].process_create_time = psutil.Process(proc.pid).create_time()
+                threading.Thread(
+                    target=self._capture_output,
+                    args=(command.group_id, proc),
+                    daemon=True,
+                    name=f"shard-output-{command.group_id}",
+                ).start()
             status.state = ShardGroupState.STARTING
             self._persist()
             return status
+
+    def _capture_output(self, group_id: uuid.UUID, proc: subprocess.Popen[bytes]) -> None:
+        """Drain the launcher's pipe so native startup cannot block on diagnostic output."""
+        if proc.stdout is None:
+            return
+        with proc.stdout:
+            while chunk := proc.stdout.read(1024):
+                self._outputs[group_id] = (self._outputs.get(group_id, b"") + chunk)[-4096:]
 
     def get(self, group_id: uuid.UUID) -> ShardGroupStatus | None:
         with self._lock:
@@ -205,6 +235,58 @@ class ShardGroupManager:
     def model_path(self, group_id: uuid.UUID) -> str | None:
         with self._lock:
             return self._model_paths.get(group_id)
+
+    def local_rank(self, group_id: uuid.UUID) -> ShardRank | None:
+        """Prove the exact local worker, never the launcher or a stale ready label.
+
+        The launcher's fixed environment binds workers on both hosts to the command.
+        Once observed, PID and creation time are immutable for this group generation.
+        A restarted node deliberately cannot adopt this authority from a JSON file.
+        """
+        with self._lock:
+            status = self.get(group_id)
+            path = self._model_paths.get(group_id)
+            if (
+                status is None
+                or status.state is not ShardGroupState.READY
+                or status.target is None
+                or status.command_id is None
+                or path is None
+            ):
+                return None
+            rank = next(r for r in status.ranks if r.node_name == self._settings.node_name)
+            try:
+                processes = [psutil.Process(rank.pid)] if rank.pid else psutil.process_iter()
+                matches: list[tuple[int, float]] = []
+                for proc in processes:
+                    try:
+                        argv = proc.cmdline()
+                        if "mlx_lm.server" not in argv or path not in argv:
+                            continue
+                        env = proc.environ()
+                        created = proc.create_time()
+                        if (
+                            env.get("COIRE_SHARD_GROUP_ID") == str(group_id)
+                            and env.get("COIRE_SHARD_COMMAND_ID") == str(status.command_id)
+                            and created >= status.started_at.timestamp() - 1
+                            and proc.status() != psutil.STATUS_ZOMBIE
+                            and (
+                                rank.process_create_time is None
+                                or created == rank.process_create_time
+                            )
+                        ):
+                            matches.append((proc.pid, created))
+                    except (psutil.Error, OSError):
+                        continue
+            except (psutil.Error, OSError):
+                return None
+            if len(matches) != 1:
+                return None
+            pid, created = matches[0]
+            if rank.pid is None:
+                rank.pid, rank.process_create_time = pid, created
+                self._persist()
+            return rank.model_copy()
 
     def upgrade_inventory(self) -> UpgradeOwnerInventory:
         with self._lock:
@@ -298,6 +380,10 @@ class ShardGroupManager:
         }
         last_error = "not ready"
         while time.monotonic() < deadline:
+            process = self._processes.get(status.group_id)
+            if process is not None and process.poll() is not None:
+                self.get(status.group_id)
+                raise ValueError("distributed launcher exited before readiness")
             try:
                 response = httpx.post(
                     f"http://{rank_zero.host}:{rank_zero.port}/v1/chat/completions",

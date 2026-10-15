@@ -5,9 +5,101 @@
         "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}@[a-z0-9][a-z0-9-]{0,62}$",
         "type": "string"
       },
-      "FailoverStatus": {
+      "FailoverPublicStatus": {
         "additionalProperties": false,
         "properties": {
+          "admission_available": {
+            "default": false,
+            "title": "Admission Available",
+            "type": "boolean"
+          },
+          "authority_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority Expires At"
+          },
+          "elected_host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elected Host"
+          },
+          "reachable_members": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reachable Members",
+            "type": "array",
+            "uniqueItems": true
+          },
+          "reason": {
+            "default": "not_elected",
+            "title": "Reason",
+            "type": "string"
+          },
+          "snapshot_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Expires At"
+          },
+          "tier": {
+            "$ref": "#/components/schemas/FailoverTier"
+          },
+          "unavailable_capabilities": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Unavailable Capabilities",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tier"
+        ],
+        "title": "FailoverPublicStatus",
+        "type": "object"
+      },
+      "FailoverStatus": {
+        "additionalProperties": false,
+        "description": "Scoped lifecycle view; browser clients only receive the public base.",
+        "properties": {
+          "admission_available": {
+            "default": false,
+            "title": "Admission Available",
+            "type": "boolean"
+          },
+          "authority_expires_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority Expires At"
+          },
           "elected_host": {
             "anyOf": [
               {
@@ -32,6 +124,11 @@
             "title": "Reachable Members",
             "type": "array",
             "uniqueItems": true
+          },
+          "reason": {
+            "default": "not_elected",
+            "title": "Reason",
+            "type": "string"
           },
           "snapshot_expires_at": {
             "anyOf": [
@@ -210,19 +307,6 @@
         "title": "GatewayModelList",
         "type": "object"
       },
-      "HTTPValidationError": {
-        "properties": {
-          "detail": {
-            "items": {
-              "$ref": "#/components/schemas/ValidationError"
-            },
-            "title": "Detail",
-            "type": "array"
-          }
-        },
-        "title": "HTTPValidationError",
-        "type": "object"
-      },
       "ModelSelector": {
         "anyOf": [
           {
@@ -242,64 +326,33 @@
         ],
         "title": "ModelSource",
         "type": "string"
-      },
-      "ValidationError": {
-        "properties": {
-          "ctx": {
-            "title": "Context",
-            "type": "object"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "loc": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "integer"
-                }
-              ]
-            },
-            "title": "Location",
-            "type": "array"
-          },
-          "msg": {
-            "title": "Message",
-            "type": "string"
-          },
-          "type": {
-            "title": "Error Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
-        "title": "ValidationError",
-        "type": "object"
       }
     }
   },
   "info": {
     "title": "Coire Failover",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "openapi": "3.1.0",
   "paths": {
     "/failover/tier": {
       "get": {
+        "description": "Browser view excludes lifecycle counters; scoped lifecycle credentials select the extended view.",
         "operationId": "tier_failover_tier_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FailoverStatus"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/FailoverPublicStatus"
+                    },
+                    {
+                      "$ref": "#/components/schemas/FailoverStatus"
+                    }
+                  ],
+                  "title": "Response Tier Failover Tier Get"
                 }
               }
             },
@@ -312,24 +365,6 @@
     "/v1/chat/completions": {
       "post": {
         "operationId": "completions_v1_chat_completions_post",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "cf-access-jwt-assertion",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cf-Access-Jwt-Assertion"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -338,16 +373,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Completions"
@@ -356,24 +381,6 @@
     "/v1/models": {
       "get": {
         "operationId": "models_v1_models_get",
-        "parameters": [
-          {
-            "in": "header",
-            "name": "cf-access-jwt-assertion",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Cf-Access-Jwt-Assertion"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -384,16 +391,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Models"

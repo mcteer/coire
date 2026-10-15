@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from coire_api.audit import write_audit
@@ -17,7 +18,23 @@ async def reconcile_event(session: AsyncSession, event: FailoverEvent) -> bool:
     """Append an event to the authoritative audit log once; return false on replay."""
     existing = await session.get(FailoverEventReceiptRow, event.event_id)
     if existing is not None:
+        if existing.host != event.host or existing.term != event.term:
+            raise ValueError("event receipt identity conflicts with replay")
         return False
+    try:
+        async with session.begin_nested():
+            await _insert_event(session, event)
+        return True
+    except IntegrityError:
+        # The savepoint rolls back the losing audit row too; a concurrent winner
+        # commits its audit and receipt together before this unique-key conflict.
+        receipt = await session.get(FailoverEventReceiptRow, event.event_id)
+        if receipt is None or receipt.host != event.host or receipt.term != event.term:
+            raise
+        return False
+
+
+async def _insert_event(session: AsyncSession, event: FailoverEvent) -> None:
     audit = await write_audit(
         session,
         actor=event.host,
@@ -39,7 +56,6 @@ async def reconcile_event(session: AsyncSession, event: FailoverEvent) -> bool:
         )
     )
     await session.flush()
-    return True
 
 
 async def reconcile_events(session: AsyncSession, events: list[FailoverEvent]) -> int:

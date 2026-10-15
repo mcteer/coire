@@ -7,6 +7,12 @@ COMPOSE_FILE="$COMPOSE_DIR/compose.yaml"
 COIRE_SECRETS_DIR="${COIRE_SECRETS_DIR:-/opt/coire/secrets}"
 export COIRE_SECRETS_DIR
 
+if [[ ! "${COIRE_FAILOVER_MEMBER_NAME:-}" =~ ^coire-edge-[ab]$ ]] || \
+   [[ "$(hostname)" != "$COIRE_FAILOVER_MEMBER_NAME" && "$(hostname)" != "$COIRE_FAILOVER_MEMBER_NAME.lab" ]]; then
+  echo "precreation requires the named Studio host; never run on core" >&2
+  exit 2
+fi
+
 if [[ ! "${COIRE_FAILOVER_IMAGE:-}" =~ ^[A-Za-z0-9._:/-]+@sha256:[a-f0-9]{64}$ ]]; then
   echo "COIRE_FAILOVER_IMAGE must be a digest-pinned reference" >&2
   exit 2
@@ -29,8 +35,16 @@ fi
 
 relay_token="$(security find-generic-password -w \
   -s coire-failover-relay-token /Library/Keychains/System.keychain)"
-if [[ -z "$relay_token" ]]; then
-  echo "Studio relay token is missing" >&2
+monitor_token="$(security find-generic-password -w \
+  -s coire-failover-monitor-token /Library/Keychains/System.keychain)"
+lifecycle_token="$(security find-generic-password -w \
+  -s coire-failover-lifecycle-token /Library/Keychains/System.keychain)"
+if [[ -z "$relay_token" || -z "$monitor_token" || -z "$lifecycle_token" ]]; then
+  echo "scoped Studio relay, monitor and lifecycle tokens are required" >&2
+  exit 2
+fi
+if [[ "$relay_token" == "$monitor_token" || "$relay_token" == "$lifecycle_token" || "$monitor_token" == "$lifecycle_token" ]]; then
+  echo "scoped credentials must be distinct" >&2
   exit 2
 fi
 mkdir -p "$COIRE_SECRETS_DIR" /opt/coire/failover
@@ -38,8 +52,10 @@ chmod 700 "$COIRE_SECRETS_DIR"
 chmod 755 /opt/coire/failover
 umask 077
 printf '%s' "$relay_token" > "$COIRE_SECRETS_DIR/failover_relay_token"
-chmod 644 "$COIRE_SECRETS_DIR/failover_relay_token"
-unset relay_token
+printf '%s' "$monitor_token" > "$COIRE_SECRETS_DIR/failover_monitor_token"
+printf '%s' "$lifecycle_token" > "$COIRE_SECRETS_DIR/failover_lifecycle_token"
+chmod 644 "$COIRE_SECRETS_DIR"/failover_{relay,monitor,lifecycle}_token
+unset relay_token monitor_token lifecycle_token
 
 docker compose --profile studio-failover -f "$COMPOSE_FILE" create --no-deps coire-failover
 echo "coire-failover is precreated; coire-node starts it after election"

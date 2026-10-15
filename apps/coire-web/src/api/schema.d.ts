@@ -7071,6 +7071,22 @@ export interface components {
              * Format: date-time
              */
             expires_at: string;
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id?: string;
             /** Signature */
             signature: string;
             /** Term */
@@ -7819,6 +7835,29 @@ export interface components {
         };
         /** @enum {string} */
         ExportState: "queued" | "staging" | "publishing" | "succeeded" | "failed" | "cancelled";
+        /** FailoverAccessSubject */
+        FailoverAccessSubject: {
+            /** Eligible */
+            eligible: boolean;
+            /** Issuer */
+            issuer: string;
+            limits?: components["schemas"]["FailoverLimits"];
+            /**
+             * Mutable Budget Required
+             * @default false
+             */
+            mutable_budget_required: boolean;
+            /** Policy Version */
+            policy_version: number;
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
+            /** Subject */
+            subject: string;
+        };
         /**
          * FailoverAccessVerifier
          * @description Public Cloudflare Access verification material safe for a Studio snapshot.
@@ -7831,13 +7870,54 @@ export interface components {
             /** Jwks Url */
             jwks_url: string;
         };
+        /** FailoverEventAcknowledgement */
+        FailoverEventAcknowledgement: {
+            /**
+             * Batch Id
+             * Format: uuid
+             */
+            batch_id: string;
+            /** Committed Event Ids */
+            committed_event_ids: string[];
+            /** Host */
+            host: string;
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
+            /** Signature */
+            signature: string;
+        };
         /**
          * FailoverHeartbeat
          * @description A signed liveness beat. Latency of the exchange is measured by the caller.
          */
         FailoverHeartbeat: {
+            /**
+             * Challenge
+             * Format: uuid
+             */
+            challenge?: string;
+            /**
+             * Epoch
+             * @default 1
+             */
+            epoch: number;
             /** Member */
             member: string;
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
+            /**
+             * Recovery Ready
+             * @default false
+             */
+            recovery_ready: boolean;
             /**
              * Sent At
              * Format: date-time
@@ -7845,6 +7925,35 @@ export interface components {
             sent_at: string;
             /** Signature */
             signature: string;
+        };
+        /** FailoverLimits */
+        FailoverLimits: {
+            /**
+             * Concurrency
+             * @default 1
+             */
+            concurrency: number;
+            /**
+             * Output Tokens
+             * @default 1024
+             */
+            output_tokens: number;
+            /**
+             * Prompt Tokens
+             * @default 4096
+             */
+            prompt_tokens: number;
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
+            /**
+             * Requests Per Minute
+             * @default 10
+             */
+            requests_per_minute: number;
         };
         /** FailoverMember */
         FailoverMember: {
@@ -7861,11 +7970,19 @@ export interface components {
             epoch: number;
             /** Members */
             members: components["schemas"]["FailoverMember"][];
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
             /** Signing Key Id */
             signing_key_id: string;
         };
         /** FailoverModel */
         FailoverModel: {
+            /** Capabilities */
+            capabilities?: "text_chat"[];
             /** Context Window */
             context_window: number;
             /** Display Name */
@@ -7877,6 +7994,9 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            limits?: components["schemas"]["FailoverLimits"];
+            /** Placement */
+            placement?: (components["schemas"]["FailoverSinglePlacement"] | components["schemas"]["FailoverShardedPlacement"]) | null;
             /** Slug */
             slug: string;
         };
@@ -7887,14 +8007,58 @@ export interface components {
              * Format: uuid
              */
             actor_id: string;
+            /** Epoch */
+            epoch: number;
             /**
              * Expires At
              * Format: date-time
              */
             expires_at: string;
+            /** Fencing Evidence */
+            fencing_evidence: string;
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
             kind: components["schemas"]["FailoverOverrideKind"];
+            /**
+             * Override Id
+             * Format: uuid
+             */
+            override_id?: string;
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
             /** Reason */
             reason: string;
+            /** Signature */
+            signature: string;
+            /** Target Host */
+            target_host: string;
+        };
+        /** FailoverOverrideAcknowledgement */
+        FailoverOverrideAcknowledgement: {
+            /** Accepted */
+            accepted: boolean;
+            /** Epoch */
+            epoch: number;
+            /** Host */
+            host: string;
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
+            /**
+             * Request Id
+             * Format: uuid
+             */
+            request_id: string;
             /** Signature */
             signature: string;
         };
@@ -7903,6 +8067,93 @@ export interface components {
          * @enum {string}
          */
         FailoverOverrideKind: "inhibit" | "break_glass_promote";
+        /**
+         * FailoverRankIdentity
+         * @description Opaque process identity: no pid, port, path or weight contents cross this view.
+         */
+        FailoverRankIdentity: {
+            /** Generation */
+            generation: string;
+            /**
+             * Node
+             * @enum {string}
+             */
+            node: "coire-edge-a" | "coire-edge-b";
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
+            /** Rank */
+            rank: number;
+        };
+        /** FailoverShardedPlacement */
+        FailoverShardedPlacement: {
+            /**
+             * Engine Id
+             * Format: uuid
+             */
+            engine_id: string;
+            /** Generation */
+            generation: string;
+            /**
+             * Group Id
+             * Format: uuid
+             */
+            group_id: string;
+            /**
+             * Instance Id
+             * Format: uuid
+             */
+            instance_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "pp" | "tp";
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
+            /** Ranks */
+            ranks: components["schemas"]["FailoverRankIdentity"][];
+            target: components["schemas"]["InferenceTarget"];
+        };
+        /** FailoverSinglePlacement */
+        FailoverSinglePlacement: {
+            /**
+             * Engine Id
+             * Format: uuid
+             */
+            engine_id: string;
+            /** Generation */
+            generation: string;
+            /**
+             * Instance Id
+             * Format: uuid
+             */
+            instance_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "single";
+            /**
+             * Node
+             * @enum {string}
+             */
+            node: "coire-edge-a" | "coire-edge-b";
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
+            target: components["schemas"]["InferenceTarget"];
+        };
         /** FailoverSnapshot */
         FailoverSnapshot: {
             access_verifier: components["schemas"]["FailoverAccessVerifier"];
@@ -7919,6 +8170,12 @@ export interface components {
             membership: components["schemas"]["FailoverMembershipConfig"];
             /** Models */
             models?: components["schemas"]["FailoverModel"][];
+            /**
+             * Protocol Version
+             * @default 2
+             * @constant
+             */
+            protocol_version: 2;
             /** Signature */
             signature: string;
             /**
@@ -7926,6 +8183,8 @@ export interface components {
              * Format: uuid
              */
             snapshot_id: string;
+            /** Subjects */
+            subjects?: components["schemas"]["FailoverAccessSubject"][];
         };
         /** @enum {string} */
         FeedbackEligibilityReason: "eligible" | "capture_disabled" | "withdrawn" | "source_provenance_unavailable" | "unsupported_content" | "source_not_latest" | "source_incomplete" | "source_too_large" | "expired";
@@ -17073,11 +17332,13 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            204: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["FailoverOverrideAcknowledgement"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -21648,9 +21909,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: number;
-                    };
+                    "application/json": components["schemas"]["FailoverEventAcknowledgement"];
                 };
             };
         };
@@ -25201,7 +25460,9 @@ export interface operations {
     failover_ready_failover_ready_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "x-coire-failover-monitor"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -25214,6 +25475,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

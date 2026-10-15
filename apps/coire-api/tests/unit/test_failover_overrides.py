@@ -13,6 +13,10 @@ from coire_core.models.failover import FailoverOverride, FailoverOverrideKind
 def _signed(private: str, *, expires: datetime) -> FailoverOverride:
     unsigned = FailoverOverride(
         kind=FailoverOverrideKind.INHIBIT,
+        target_host="coire-edge-a",
+        epoch=1,
+        issued_at=expires - timedelta(seconds=30),
+        fencing_evidence="isolated operator fixture",
         actor_id=uuid4(),
         reason="hold promotion",
         expires_at=expires,

@@ -24,6 +24,37 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  failover-safety:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: true
+      - run: uv sync --all-packages --frozen
+      - uses: actions/download-artifact@v8
+        with:
+          name: image-coire-otel
+          path: /tmp/failover-otel
+      - uses: actions/download-artifact@v8
+        with:
+          name: image-coire-prometheus
+          path: /tmp/failover-prometheus
+      - run: docker load -i /tmp/failover-otel/coire-otel.tar
+      - run: docker load -i /tmp/failover-prometheus/coire-prometheus.tar
+      - name: isolated signed service, process restart and collector gates
+        run: uv run pytest -q -m integration tests/integration/test_control_plane_failover.py tests/integration/test_failover_processes.py tests/integration/test_failover_metric_export.py
+      - name: failover absence, audit pressure, resource and deadline alerts
+        run: >-
+          docker run --rm --network none --read-only --cap-drop ALL
+          --security-opt no-new-privileges:true --user 65534:65534
+          --tmpfs /tmp:rw,nosuid,nodev,size=64m --entrypoint /bin/promtool
+          --mount "type=bind,src=${{ github.workspace }}/deploy/observability/alerts,dst=/rules,readonly"
+          --mount "type=bind,src=${{ github.workspace }}/tests/observability,dst=/fixtures,readonly"
+          coire-prometheus:ci test rules /fixtures/failover.alert.test.yaml
+
   upgrade-kernel-identity:
     runs-on: macos-15
     steps:
@@ -526,6 +557,12 @@ jobs:
           echo "COIRE_TEST_POSTGRES_BIN=$(brew --prefix postgresql@17)/bin" >> "$GITHUB_ENV"
       - name: acquire and verify isolated tiny evaluation assets
         run: uv run python tests/integration/build_evaluation_fixture.py
+      - name: offline native failover through authenticated origin and node routes
+        env:
+          COIRE_FAILOVER_ENGINE: "1"
+          HF_HUB_OFFLINE: "1"
+          TRANSFORMERS_OFFLINE: "1"
+        run: uv run pytest -q -m integration tests/integration/test_failover_engine.py
       - name: real offline evaluation generation gate
         env:
           HF_HUB_OFFLINE: "1"

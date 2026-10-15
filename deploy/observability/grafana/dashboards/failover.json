@@ -3,10 +3,109 @@
   "uid": "coire-failover",
   "schemaVersion": 39,
   "panels": [
-    {"id": 1, "title": "Election readiness", "type": "stat", "targets": [{"expr": "coire_failover_readiness", "legendFormat": "{{host}}"}]},
-    {"id": 2, "title": "Snapshot freshness", "type": "stat", "targets": [{"expr": "coire_failover_snapshot_fresh"}]},
-    {"id": 3, "title": "Elections", "type": "timeseries", "targets": [{"expr": "sum by (host, kind) (rate(coire_failover_elections_total[5m]))", "legendFormat": "{{host}} {{kind}}"}]},
-    {"id": 4, "title": "Hand-backs", "type": "timeseries", "targets": [{"expr": "sum by (host) (rate(coire_failover_handbacks_total[15m]))", "legendFormat": "{{host}}"}]},
-    {"id": 5, "title": "Ingress refusals", "type": "timeseries", "targets": [{"expr": "sum by (reason) (rate(coire_failover_ingress_refusals_total[5m]))", "legendFormat": "{{reason}}"}]}
+    {
+      "id": 1,
+      "title": "Election readiness",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "coire_failover_readiness",
+          "legendFormat": "{{host}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Snapshot freshness",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "coire_failover_snapshot_fresh"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Elections",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (host, kind) (rate(coire_failover_elections_total[5m]))",
+          "legendFormat": "{{host}} {{kind}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Hand-backs",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (host) (rate(coire_failover_handbacks_total[15m]))",
+          "legendFormat": "{{host}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Ingress refusals",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(coire_failover_ingress_refusals_total[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Participant freshness",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "time() - coire_failover_participant_last_seen_seconds"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Unacknowledged audit capacity",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "coire_failover_audit_utilization"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Audit availability",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "coire_failover_audit_available"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "title": "Frontend peak RSS",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "coire_failover_frontend_rss_bytes"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "title": "Remaining drain deadline",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "coire_failover_drain_remaining_seconds"
+        }
+      ]
+    }
   ]
 }

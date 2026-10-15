@@ -104,10 +104,11 @@ class PeerLiveness:
 
 def peer_url(settings: Settings, peer: str, route: str) -> str:
     """Core is reached through the published control port. Studios use the node listener."""
+    host = settings.failover_control_hosts[peer]
     if peer == "coire-core":
-        return f"http://coire-core:{settings.core_api_port}/api/v1/failover{route}"
+        return f"http://{host}:{settings.core_api_port}/api/v1/failover{route}"
     prefix = "/election" if route in {"/votes", "/handback", "/override"} else ""
-    return f"http://{peer}:{settings.node_listen_port}/node/failover{prefix}{route}"
+    return f"http://{host}:{settings.node_listen_port}/node/failover{prefix}{route}"
 
 
 class HttpPeerExchange:
@@ -122,9 +123,11 @@ class HttpPeerExchange:
         self._participant = participant
         self._settings = settings
         self._client = client
+        self.recovery_since: dict[str, datetime] = {}
 
     async def heartbeat(self, peer: str, body: FailoverHeartbeat) -> tuple[bool, float]:
         started = time.perf_counter()
+        prior_ready = self.recovery_since.pop(peer, None)
         try:
             response = await self._client.post(
                 peer_url(self._settings, peer, "/heartbeat"),
@@ -135,11 +138,20 @@ class HttpPeerExchange:
         except (httpx.HTTPError, ValidationError, ValueError):
             return False, (time.perf_counter() - started) * 1000
         latency_ms = (time.perf_counter() - started) * 1000
-        if response.status_code != 200 or reply.member != peer:
+        if (
+            response.status_code != 200
+            or reply.member != peer
+            or reply.epoch != self._participant.membership.epoch
+            or reply.challenge != body.challenge
+            or abs((datetime.now(UTC) - reply.sent_at).total_seconds()) > 1.0
+            or latency_ms > 1000.0
+        ):
             return False, latency_ms
         ok = verify_ed25519(
             reply.canonical_bytes(), reply.signature, self._participant.member_public_key(peer)
         )
+        if ok and reply.recovery_ready:
+            self.recovery_since[peer] = prior_ready or datetime.now(UTC)
         return ok, latency_ms
 
     async def request_vote(self, peer: str, body: ElectionVoteRequest) -> ElectionVoteGrant | None:
@@ -151,7 +163,10 @@ class HttpPeerExchange:
             )
             if response.status_code != 200:
                 return None
-            return ElectionVoteGrant.model_validate(response.json())
+            grant = ElectionVoteGrant.model_validate(response.json())
+            if grant.request_id != body.request_id:
+                return None
+            return grant
         except (httpx.HTTPError, ValidationError, ValueError):
             return None
 
@@ -186,7 +201,10 @@ class FailoverPoller:
         self._task: asyncio.Task[None] | None = None
 
     async def tick(self, now: datetime | None = None) -> None:
+        from coire_core.failover_telemetry import participant_last_seen
+
         moment = now or datetime.now(UTC)
+        participant_last_seen.set(moment.timestamp(), {"host": self.participant.name})
         peers = [
             member.name
             for member in self.participant.membership.members
@@ -197,6 +215,7 @@ class FailoverPoller:
             *(self._exchange.heartbeat(peer, beat) for peer in peers),
             return_exceptions=True,
         )
+        moment = now or datetime.now(UTC)
         for peer, result in zip(peers, probed, strict=True):
             if isinstance(result, BaseException):
                 self._liveness.note(peer, ok=False, latency_ms=0, now=moment)
@@ -204,24 +223,40 @@ class FailoverPoller:
             ok, latency_ms = result
             self._liveness.note(peer, ok=ok, latency_ms=latency_ms, now=moment)
         observations = self._liveness.observations(self.participant.name, moment)
+        if isinstance(self._exchange, HttpPeerExchange):
+            observations = [
+                item.model_copy(
+                    update={
+                        "recovery_ready": item.name in self._exchange.recovery_since,
+                        "recovery_ready_since": self._exchange.recovery_since.get(item.name),
+                    }
+                )
+                if item.name != self.participant.name
+                else item
+                for item in observations
+            ]
         active = self._in_flight()
         if inspect.isawaitable(active):
             active = await active
+        moment = now or datetime.now(UTC)
         self.participant.observe(observations, moment, in_flight=active, override=self._override())
         request = self.participant.issue_vote_request(moment)
         if request is None:
             return
         grants = await self._collect_grants(peers, request, moment)
+        moment = now or datetime.now(UTC)
         if not grants and self.participant.role is ServiceRole.CANDIDATE:
             self.participant.adopt_term(self.participant.term + 1)
             request = self.participant.issue_vote_request(moment)
             if request is not None:
                 grants = await self._collect_grants(peers, request, moment)
+        moment = now or datetime.now(UTC)
         for grant in grants:
             self.participant.receive_grant(grant, moment)
         active = self._in_flight()
         if inspect.isawaitable(active):
             active = await active
+        moment = now or datetime.now(UTC)
         self.participant.observe(observations, moment, in_flight=active, override=self._override())
 
     async def _collect_grants(

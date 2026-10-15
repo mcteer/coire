@@ -11,11 +11,13 @@ from uuid import uuid4
 
 from sqlalchemy import select
 
-from coire_api.db import ModelRow, session_scope
+from coire_api.db import ModelRow, UserRow, session_scope
+from coire_api.failover.residency import resident_placements
 from coire_api.failover.snapshot import SnapshotPublisher
 from coire_core.failover_crypto import public_key_b64
 from coire_core.failover_telemetry import snapshot_fresh, tracer
 from coire_core.models.failover import (
+    FailoverAccessSubject,
     FailoverAccessVerifier,
     FailoverMember,
     FailoverMembershipConfig,
@@ -80,6 +82,13 @@ class CoreSnapshotService:
                         )
                     )
                 ).all()
+                users = (
+                    await session.scalars(select(UserRow).where(UserRow.active.is_(True)))
+                ).all()
+                eligible_emails = {user.email.casefold() for user in users}
+                placements = await resident_placements(
+                    session, self.settings, [row.id for row in rows]
+                )
             snapshot = FailoverSnapshot(
                 snapshot_id=uuid4(),
                 issued_at=moment,
@@ -92,17 +101,30 @@ class CoreSnapshotService:
                         display_name=row.display_name,
                         entitlement=frozenset(row.entitlement or []),
                         context_window=row.context_window or 4096,
+                        placement=placements[row.id],
+                        capabilities=frozenset({"text_chat"}),
                     )
                     for row in rows
                     if (row.source or "studio") == ModelSource.STUDIO
                     and row.backend == EngineBackend.MLX_LM
                     and row.kind == ModelKind.LANGUAGE_MODEL
+                    and row.id in placements
                 ],
                 access_verifier=FailoverAccessVerifier(
                     issuer=issuer,
                     audience=audience,
                     jwks_url=f"{issuer}/cdn-cgi/access/certs",
                 ),
+                subjects=[
+                    FailoverAccessSubject(
+                        issuer=issuer,
+                        subject=subject,
+                        eligible=True,
+                        policy_version=1,
+                    )
+                    for subject, email in self.settings.failover_access_subjects.items()
+                    if email.casefold() in eligible_emails
+                ],
                 signature="unsigned",
             )
             signed = await asyncio.to_thread(self.publisher.publish, snapshot)

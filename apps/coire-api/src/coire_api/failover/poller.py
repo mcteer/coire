@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, datetime, timedelta
 
 import httpx
 
+from coire_api.failover.cohort import authoritative_cohort_ready
 from coire_api.failover.participant import CoreParticipant, core_participant
 from coire_api.failover.publication import configured_membership
 from coire_api.routes.failover import set_participant
-from coire_core.failover_crypto import sign_ed25519
+from coire_core.failover_crypto import sign_ed25519, verify_ed25519
 from coire_core.failover_election import ServiceRole
 from coire_core.failover_poller import FailoverPoller, peer_url
-from coire_core.models.failover import HandbackNotice
+from coire_core.models.failover import HandbackAcknowledgement, HandbackNotice
 from coire_core.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -24,6 +26,7 @@ class CoreFailoverPoller(FailoverPoller):
 
     def __init__(self, participant: CoreParticipant, settings: Settings) -> None:
         super().__init__(participant, settings)
+        self._core = participant
         self._handback_client = httpx.AsyncClient()
         self._signing_key = settings.failover_peer_key.get_secret_value()
         self._settings = settings
@@ -31,7 +34,21 @@ class CoreFailoverPoller(FailoverPoller):
         self._acked: set[str] = set()
 
     async def tick(self, now: datetime | None = None) -> None:
+        previously_ready = self._core.cohort_current()
+        self.participant.recovery_ready = await authoritative_cohort_ready(
+            self._settings, self._handback_client
+        )
+        if previously_ready != self.participant.recovery_ready:
+            logger.info(
+                "failover Core cohort readiness changed",
+                extra={"host": "coire-core", "recovery_ready": self.participant.recovery_ready},
+            )
+        self._core.recovery_deadline = (
+            time.monotonic() + 2 * self._settings.failover_election_interval_s + 1
+        )
         await super().tick(now)
+        if not self._core.cohort_current():
+            return
         if self.participant.role not in (ServiceRole.CANDIDATE, ServiceRole.ELECTED):
             return
         if self.participant.term != self._ack_term:
@@ -46,6 +63,7 @@ class CoreFailoverPoller(FailoverPoller):
                 term=self.participant.term,
                 holder=holder,
                 successor="coire-core",
+                issued_at=moment,
                 expires_at=moment + timedelta(seconds=30),
                 signature="unsigned",
             )
@@ -58,11 +76,31 @@ class CoreFailoverPoller(FailoverPoller):
                     json=notice.model_dump(mode="json"),
                     timeout=1.0,
                 )
-                if response.status_code != 204:
-                    logger.warning("failover hand-back not acknowledged by %s", holder)
-                else:
+                response.raise_for_status()
+                acknowledgement = HandbackAcknowledgement.model_validate(response.json())
+                public = next(
+                    member.public_key
+                    for member in self.participant.membership.members
+                    if member.name == holder
+                )
+                checked_at = now or datetime.now(UTC)
+                if (
+                    acknowledgement.request_id == notice.request_id
+                    and acknowledgement.host == holder
+                    and acknowledgement.epoch == notice.epoch
+                    and acknowledgement.term == notice.term
+                    and acknowledgement.successor == notice.successor
+                    and acknowledgement.accepted
+                    and acknowledgement.fenced
+                    and checked_at < acknowledgement.expires_at <= notice.expires_at
+                    and verify_ed25519(
+                        acknowledgement.canonical_bytes(), acknowledgement.signature, public
+                    )
+                ):
                     self._acked.add(holder)
-            except httpx.HTTPError:
+                else:
+                    logger.warning("failover hand-back not fenced or correlated by %s", holder)
+            except (httpx.HTTPError, ValueError):
                 logger.warning("failover hand-back unreachable at %s", holder)
 
     async def stop(self) -> None:

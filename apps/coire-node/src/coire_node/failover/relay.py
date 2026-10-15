@@ -21,9 +21,12 @@ async def forward_engine_completion(
     port: int,
     request: EngineChatRequest,
     client: httpx.AsyncClient,
+    host: str = "127.0.0.1",
 ) -> Response:
     """Proxy one completion to a loopback engine without persisting it."""
-    url = f"http://127.0.0.1:{port}/v1/chat/completions"
+    if host not in {"127.0.0.1", "coire-edge-a.fabric"}:
+        raise ValueError("undeclared bare-engine endpoint")
+    url = f"http://{host}:{port}/v1/chat/completions"
     forwarded = request.model_dump(mode="json", exclude_none=True)
     if not request.stream:
         upstream = await client.post(url, json=forwarded, timeout=300)

@@ -175,6 +175,31 @@ async def _execute_sharded_launch(instance_id: uuid.UUID) -> None:
                 failure_code="shard_nodes_ineligible",
             )
             return
+        from coire_core.models.adapters import InferenceTarget
+
+        digests = list(
+            (
+                await session.scalars(
+                    select(VariantCopyRow.manifest_sha256).where(
+                        VariantCopyRow.variant_id == variant.id,
+                        VariantCopyRow.node_id.in_([node.id for node in nodes]),
+                        VariantCopyRow.verified.is_(True),
+                    )
+                )
+            ).all()
+        )
+        if len(digests) != 2 or digests[0] is None or len(set(digests)) != 1:
+            await transition(
+                session,
+                instance.id,
+                InstanceState.FAILED,
+                reason="both ranks require the same verified immutable artifact",
+                failure_code="shard_artifact_mismatch",
+            )
+            return
+        target = InferenceTarget(
+            model_id=instance.model_id, variant_id=variant.id, base_manifest_sha256=digests[0]
+        )
         async with NodeClient(settings, timeout=60) as client:
             capability = await client.shard_capability(
                 nodes[0].name,
@@ -413,6 +438,7 @@ async def _execute_sharded_launch(instance_id: uuid.UUID) -> None:
                 instance_id=instance.id,
                 variant_id=variant.id,
                 slug=variant.slug,
+                target=target,
                 mode=mode,
                 ranks=ranks,
                 estimate_bytes_per_rank=required,

@@ -14,3 +14,16 @@ def test_network_alerts_cover_each_failure_domain() -> None:
         "CoireDataLinkDown",
         "CoireForbiddenCrossFabricTraffic",
     }
+
+
+def test_failover_alerts_include_absence_audit_resources_and_deadlines() -> None:
+    path = Path(__file__).parents[1] / "deploy/observability/alerts/failover.yaml"
+    document = yaml.safe_load(path.read_text())
+    rules = {rule["alert"]: rule for group in document["groups"] for rule in group["rules"]}
+    assert "absent(" in rules["CoireFailoverNoReadyMember"]["expr"]
+    assert {
+        "CoireFailoverParticipantMissing",
+        "CoireFailoverAuditPressure",
+        "CoireFailoverFrontendMemory",
+        "CoireFailoverDrainDeadline",
+    } <= rules.keys()

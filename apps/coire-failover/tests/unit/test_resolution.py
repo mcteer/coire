@@ -3,11 +3,13 @@ from uuid import uuid4
 
 import pytest
 
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.failover import (
     FailoverAccessVerifier,
     FailoverMember,
     FailoverMembershipConfig,
     FailoverModel,
+    FailoverSinglePlacement,
     FailoverSnapshot,
 )
 from coire_failover.resolution import FailoverModelUnavailable, resolve_resident_model
@@ -17,12 +19,23 @@ def _snapshot(
     *, entitlement: frozenset[str] = frozenset()
 ) -> tuple[FailoverSnapshot, FailoverModel]:
     now = datetime.now(UTC)
+    model_id = uuid4()
     model = FailoverModel(
-        id=uuid4(),
+        id=model_id,
         slug="tiny-test-model",
         display_name="Tiny test model",
         entitlement=entitlement,
         context_window=2048,
+        capabilities=frozenset({"text_chat"}),
+        placement=FailoverSinglePlacement(
+            instance_id=uuid4(),
+            engine_id=uuid4(),
+            node="coire-edge-a",
+            generation="a" * 64,
+            target=InferenceTarget(
+                model_id=model_id, variant_id=uuid4(), base_manifest_sha256="b" * 64
+            ),
+        ),
     )
     snapshot = FailoverSnapshot(
         snapshot_id=uuid4(),

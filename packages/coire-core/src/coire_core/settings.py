@@ -414,7 +414,7 @@ class Settings(BaseSettings):
     # --- stateless control-plane failover ------------------------------
     failover_snapshot_path: str = "/opt/coire/failover/snapshot.json"
     failover_proof_path: str = "/opt/coire/failover/proof.json"
-    failover_snapshot_max_age_s: float = Field(default=120.0, gt=0.0, le=3600.0)
+    failover_snapshot_max_age_s: float = Field(default=120.0, gt=0.0, le=120.0)
     failover_reservation_bytes: int = Field(default=256 * 1024 * 1024, ge=0)
     failover_lease_ttl_s: float = Field(default=15.0, gt=0.0, le=300.0)
     failover_election_interval_s: float = Field(default=2.0, gt=0.0, le=30.0)
@@ -423,7 +423,38 @@ class Settings(BaseSettings):
     failover_drain_timeout_s: float = Field(default=30.0, gt=0.0, le=300.0)
     failover_heartbeat_latency_budget_ms: float = Field(default=50.0, gt=0.0, le=1000.0)
     """A beat slower than this is degraded, not unreachable. Control-path RTT on the lab is ~1 ms."""
+    failover_safety_path: str = ""
+    """Empty derives a member-specific file alongside the configured proof/snapshot, never /tmp."""
+    failover_control_hosts: dict[str, str] = Field(
+        default_factory=lambda: {
+            "coire-core": "coire-core.lab",
+            "coire-edge-a": "coire-edge-a.lab",
+            "coire-edge-b": "coire-edge-b.lab",
+        }
+    )
+    failover_access_subjects: dict[str, str] = Field(default_factory=dict)
+    """Explicit Access subject -> registered user email bindings; empty means no eligible users."""
+    failover_monitor_token: SecretStr = SecretStr("")
+    failover_lifecycle_token: SecretStr = SecretStr("")
     failover_member_name: str = ""
+
+    @field_validator("failover_control_hosts")
+    @classmethod
+    def failover_hosts_are_control_dns(cls, value: dict[str, str]) -> dict[str, str]:
+        import re
+
+        if set(value) != {"coire-core", "coire-edge-a", "coire-edge-b"}:
+            raise ValueError("failover requires the fixed three control endpoints")
+        if any(
+            not re.fullmatch(r"[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+", host)
+            or host.endswith(".mesh")
+            for host in value.values()
+        ):
+            raise ValueError("failover endpoints must be control DNS names, not data hosts or IPs")
+        if len(set(value.values())) != 3:
+            raise ValueError("failover control endpoints must be distinct")
+        return value
+
     failover_core_public_key: str = ""
     failover_edge_a_public_key: str = ""
     failover_edge_b_public_key: str = ""

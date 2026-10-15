@@ -31,6 +31,7 @@ from coire_core.failover_election import (
 from coire_core.models.failover import (
     FailoverAccessVerifier,
     FailoverEvent,
+    FailoverLease,
     FailoverMember,
     FailoverMembershipConfig,
     FailoverModel,
@@ -49,6 +50,7 @@ from coire_node.failover.poller import StudioFailoverController
 from coire_node.routes import failover as node_failover_routes
 
 NAMES = ("coire-core", "coire-edge-a", "coire-edge-b")
+pytestmark = pytest.mark.integration
 
 
 def _members() -> tuple[dict[str, str], dict[str, ElectionParticipant], FailoverMembershipConfig]:
@@ -79,7 +81,7 @@ def _members() -> tuple[dict[str, str], dict[str, ElectionParticipant], Failover
     timings = ElectionTimings(
         promotion=timedelta(seconds=10),
         demotion=timedelta(seconds=30),
-        lease=timedelta(minutes=5),
+        lease=timedelta(seconds=15),
         drain=timedelta(seconds=30),
     )
     participants = {
@@ -165,6 +167,10 @@ def test_lone_edge_b_does_not_auto_promote() -> None:
     assert edge_b.observe(alone, now) is ServiceRole.STANDBY
     unsigned = FailoverOverride(
         kind=FailoverOverrideKind.BREAK_GLASS_PROMOTE,
+        target_host="coire-edge-b",
+        epoch=1,
+        issued_at=now,
+        fencing_evidence="isolated other public origins fenced",
         actor_id=uuid4(),
         reason="operator break glass",
         expires_at=now + timedelta(minutes=5),
@@ -192,6 +198,9 @@ def test_core_reclaim_waits_out_a_flap_then_edge_a_drains() -> None:
         )
     assert edge_a.observe(flap["coire-edge-a"], now) is ServiceRole.ELECTED
     assert not core.serving(now)
+    # Renew the Studio lease during the simulated outage instead of attempting
+    # to drain an already expired request after a thirty-second time jump.
+    _settle(participants, now + timedelta(seconds=16), absent=frozenset({"coire-core"}))
     later = now + timedelta(seconds=30)
     for name in NAMES:
         flap[name][0] = MemberObservation(
@@ -202,7 +211,9 @@ def test_core_reclaim_waits_out_a_flap_then_edge_a_drains() -> None:
     core._outage = True
     core._reclaim_since = now
     _settle(participants, later)
-    assert core.serving(later)
+    assert not core.serving(later), "the predecessor's outstanding grants must expire first"
+    _settle(participants, later + timedelta(seconds=2))
+    assert core.serving(later + timedelta(seconds=2))
 
 
 @pytest.mark.asyncio
@@ -218,7 +229,7 @@ async def test_elected_edge_refuses_an_anonymous_completion() -> None:
     unsigned = FailoverSnapshot(
         snapshot_id=uuid4(),
         issued_at=now,
-        expires_at=now + timedelta(minutes=5),
+        expires_at=now + timedelta(seconds=120),
         membership=membership,
         models=[model],
         access_verifier=FailoverAccessVerifier(
@@ -326,6 +337,10 @@ async def test_studio_subscribes_to_the_core_snapshot_route(
             )
             unsigned_override = FailoverOverride(
                 kind=FailoverOverrideKind.INHIBIT,
+                target_host="coire-edge-a",
+                epoch=1,
+                issued_at=now,
+                fencing_evidence="isolated maintenance inhibition",
                 actor_id=uuid4(),
                 reason="pause election during maintenance",
                 expires_at=now + timedelta(minutes=1),
@@ -346,7 +361,9 @@ async def test_studio_subscribes_to_the_core_snapshot_route(
                 delivered = await node_client.post(
                     "/node/failover/election/override", json=override.model_dump(mode="json")
                 )
-            assert delivered.status_code == 204
+            assert delivered.status_code == 200
+            assert delivered.json()["request_id"] == str(override.override_id)
+            assert delivered.json()["host"] == "coire-edge-a"
             participant = node_failover_routes.get_participant()
             assert participant is not None and participant.active_override() == override
             assert any(
@@ -369,6 +386,7 @@ async def test_studio_subscribes_to_the_core_snapshot_route(
             monkeypatch.setattr(core_failover_routes, "reconcile_events", fake_reconcile)
             assert await controller.refresh_once()
             assert reconciled == ["override_inhibit"]
+            assert ElectionJournal(tmp_path / "edge" / "coire-edge-a.journal.json").entries() == []
             await controller.stop()
     finally:
         core_failover_routes.set_participant(None)
@@ -403,6 +421,7 @@ async def test_signed_handback_route_fences_and_drains_a_promoted_studio(tmp_pat
         term=edge.term,
         holder=edge.name,
         successor="coire-core",
+        issued_at=now,
         expires_at=now + timedelta(seconds=30),
         signature="unsigned",
     )
@@ -419,10 +438,17 @@ async def test_signed_handback_route_fences_and_drains_a_promoted_studio(tmp_pat
             response = await client.post(
                 "/node/failover/election/handback", json=notice.model_dump(mode="json")
             )
-        assert response.status_code == 204
+        assert response.status_code == 200
+        acknowledgement = response.json()
+        assert acknowledgement["request_id"] == str(notice.request_id)
+        assert acknowledgement["host"] == edge.name and acknowledgement["accepted"] is True
         assert edge.role is ServiceRole.DRAINING
-        assert not edge.proof_path.exists()
+        retained = FailoverLease.model_validate_json(edge.proof_path.read_text())
+        assert retained.phase == "draining" and retained.drain_deadline is not None
+        assert retained.drain_deadline <= retained.authority_expires_at
+        assert not edge.serving(now)
         assert edge.observe(view, now + timedelta(seconds=1), in_flight=0) is ServiceRole.STANDBY
+        assert not edge.proof_path.exists()
     finally:
         node_failover_routes.set_participant(None)
 
@@ -448,3 +474,99 @@ def test_ingress_fails_closed_and_the_frontend_is_a_separate_hardened_service() 
     nginx = (root / "apps/coire-web/nginx/nginx.conf").read_text()
     assert "location /failover/" in nginx
     assert "/nginx-health" in nginx
+
+
+async def test_full_core_middleware_preserves_safety_exchanges_during_019_fence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exercise the full app stack; the SQL fence observation is an isolated store seam."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    from coire_api import auth
+    from coire_api.app import create_app as core_app
+    from coire_api.auth import Principal, PrincipalKind
+    from coire_api.upgrades import admission
+    from coire_core.failover_crypto import verify_ed25519
+    from coire_core.models.failover import FailoverHeartbeat
+
+    private, participants, membership = _members()
+    now = datetime.now(UTC)
+    core = CoreParticipant(
+        name="coire-core",
+        membership=membership,
+        private_key_b64=private["coire-core"],
+        timings=participants["coire-core"].timings,
+    )
+    participants["coire-core"] = core
+    _settle(participants, now)
+    assert core.serving()
+    settings = Settings(
+        _secrets_dir="/nonexistent",
+        upgrades_enabled=True,
+        failover_member_name="coire-core",
+        failover_peer_key=SecretStr(private["coire-core"]),
+    )
+    app = core_app(settings)
+    reached: list[str] = []
+
+    @app.get("/v1/qualification")
+    async def guarded_operation() -> dict[str, bool]:
+        reached.append("admitted")
+        return {"ok": True}
+
+    owner = {"job_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV", "generation": 9, "released": False}
+    preimage = dict(owner)
+    reads: list[str] = []
+
+    async def fence_query(_statement: object) -> str | None:
+        reads.append("fence")
+        return None if owner["released"] else "coire-api"
+
+    @asynccontextmanager
+    async def session():
+        yield SimpleNamespace(scalar=fence_query)
+
+    monkeypatch.setattr(admission, "session_scope", session)
+    monkeypatch.setattr(
+        auth,
+        "authenticate_request",
+        AsyncMock(return_value=Principal(kind=PrincipalKind.USER, user_id=uuid4())),
+    )
+    core_failover_routes.set_participant(core)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://core") as client:
+            assert (await client.get("/v1/qualification")).status_code == 503
+            assert not reached
+            before = len(reads)
+            heartbeat = participants["coire-edge-a"].issue_heartbeat(datetime.now(UTC))
+            result = await client.post(
+                "/api/v1/failover/heartbeat", json=heartbeat.model_dump(mode="json")
+            )
+            assert result.status_code == 200
+            reply = FailoverHeartbeat.model_validate(result.json())
+            assert reply.challenge == heartbeat.challenge
+            assert verify_ed25519(
+                reply.canonical_bytes(), reply.signature, core.member_public_key(core.name)
+            )
+            assert len(reads) == before, "signed non-DB safety exchange must survive maintenance"
+            assert (await client.post("/api/v1/failover/heartbeat", json={})).status_code == 401
+            # DB-backed snapshot/event work retains the original maintenance fence.
+            assert (
+                await client.post(
+                    "/api/v1/failover/snapshot", json=heartbeat.model_dump(mode="json")
+                )
+            ).status_code == 503
+            assert (await client.post("/api/v1/failover/events", json={})).status_code == 503
+            assert owner == preimage
+            assert not (await app.state.upgrade_admissions.inventory(("coire-api",))).entries
+            # 019 alone releases ownership; failover never mutates it. Both successful
+            # activation and verified rollback use this same released-fence observation.
+            owner["released"] = True
+            assert (await client.get("/v1/qualification")).status_code == 200
+            core._fence(outage=True)
+            assert (await client.get("/v1/qualification")).status_code == 503
+            assert reached == ["admitted"], "a stale Core route must never reach user work"
+            assert owner == {**preimage, "released": True}
+    finally:
+        core_failover_routes.set_participant(None)

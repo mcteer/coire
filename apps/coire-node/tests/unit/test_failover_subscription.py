@@ -13,6 +13,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import SecretStr
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.failover_crypto import sign_ed25519, verify_ed25519
 from coire_core.failover_election import ServiceRole
 from coire_core.models.failover import (
@@ -22,8 +23,10 @@ from coire_core.models.failover import (
     FailoverMembershipConfig,
     FailoverSnapshot,
 )
+from coire_core.models.upgrades import UpgradeMaintenance
 from coire_core.settings import Settings
 from coire_node.failover.poller import StudioFailoverController
+from coire_node.maintenance import NodeMaintenance
 
 
 def _key() -> tuple[str, str]:
@@ -217,3 +220,46 @@ async def test_frontend_runs_only_for_elected_or_draining_role(tmp_path: Path) -
     await controller.stop()
     assert not (tmp_path / "proof.json").exists()
     assert docker.actions == ["start", "stop", "stop"]
+
+
+async def test_frontend_start_holds_019_admission_across_docker_io(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    gate = NodeMaintenance(tmp_path / "maintenance", "coire-edge-a")
+    image = "example@sha256:" + "a" * 64
+    docker = Mock()
+    docker.inspect_container = AsyncMock(
+        return_value={
+            "Config": {"Image": image, "User": "65532:65532"},
+            "HostConfig": {"ReadonlyRootfs": True, "CapDrop": ["ALL"]},
+            "State": {"Running": False},
+        }
+    )
+
+    async def start(_name: str) -> None:
+        assert gate._admitting == 1, "019 must inventory a frontend start while Docker awaits"
+
+    docker.start_container = AsyncMock(side_effect=start)
+    controller = StudioFailoverController(
+        Settings(_secrets_dir="/nonexistent", failover_frontend_image=image),  # type: ignore[call-arg]
+        docker=docker,
+        maintenance=gate,
+    )
+    controller._poller = SimpleNamespace(participant=SimpleNamespace(role=ServiceRole.ELECTED))  # type: ignore[assignment]
+    await controller._sync_frontend()
+    assert gate._admitting == 0
+    now = datetime.now(UTC)
+    maintenance = UpgradeMaintenance(
+        job_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        generation=1,
+        targets=("coire-edge-a",),
+        state="draining",
+        updated_at=now,
+        drain_deadline_at=now + timedelta(seconds=30),
+    )
+    gate.store.write("maintenance.json", maintenance)
+    with pytest.raises(UpgradeUnavailable):
+        await controller._sync_frontend()
+    assert docker.start_container.await_count == 1
+    assert gate.current() == maintenance

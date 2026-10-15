@@ -68,6 +68,7 @@ async def capability(body: ShardCapabilityRequest, request: Request) -> ShardCap
 
 @router.get("/{group_id}", response_model=ShardGroupStatus)
 async def get(group_id: uuid.UUID, request: Request) -> ShardGroupStatus:
+    await asyncio.to_thread(manager(request).local_rank, group_id)
     found = manager(request).get(group_id)
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "no such shard group")

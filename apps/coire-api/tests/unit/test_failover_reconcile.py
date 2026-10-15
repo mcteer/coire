@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import cast
@@ -23,6 +25,10 @@ class FakeSession:
 
     async def flush(self) -> None:
         return None
+
+    @asynccontextmanager
+    async def begin_nested(self) -> AsyncIterator[None]:
+        yield
 
 
 @pytest.mark.asyncio
