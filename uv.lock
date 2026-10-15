@@ -382,6 +382,7 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "pyjwt", extra = ["crypto"] },
 ]
 
 [package.metadata]
@@ -391,6 +392,7 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.29" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pydantic-settings", specifier = ">=2.7" },
+    { name = "pyjwt", extras = ["crypto"], specifier = "==2.14.0" },
 ]
 
 [[package]]
@@ -401,6 +403,8 @@ dependencies = [
     { name = "coire-core" },
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-sdk" },
     { name = "pyjwt", extra = ["crypto"] },
     { name = "uvicorn" },
 ]
@@ -410,6 +414,8 @@ requires-dist = [
     { name = "coire-core", editable = "packages/coire-core" },
     { name = "fastapi", specifier = "==0.135.1" },
     { name = "httpx", specifier = "==0.28.1" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = "==1.44.0" },
+    { name = "opentelemetry-sdk", specifier = "==1.44.0" },
     { name = "pyjwt", extras = ["crypto"], specifier = "==2.14.0" },
     { name = "uvicorn", specifier = "==0.41.0" },
 ]

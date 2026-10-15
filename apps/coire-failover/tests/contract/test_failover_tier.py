@@ -37,7 +37,9 @@ async def test_mutation_routes_are_absent_and_tier_is_explicit() -> None:
     for forbidden in ("/api/v1/admin/models", "/api/v1/runs", "/mcp", "/v1/images"):
         assert forbidden not in paths
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        tier = await client.get("/failover/tier")
+        tier = await client.get(
+            "/failover/tier", headers={"X-Coire-Failover-Lifecycle": "isolated-lifecycle"}
+        )
     body = tier.json()
     assert body["tier"] == "minimal"
     assert "conversation_persistence" in body["unavailable_capabilities"]

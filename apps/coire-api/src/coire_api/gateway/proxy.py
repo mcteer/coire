@@ -94,6 +94,20 @@ def _node_headers(engine_url: str, settings: Settings) -> dict[str, str]:
     if not token:
         return {}
     headers = {"Authorization": f"Bearer {token}"}
+    from coire_api.upgrades.gateway_smoke_scope import serving_smoke_transport
+
+    if (
+        settings.failover_member_name == "coire-core"
+        and settings.failover_peer_key.get_secret_value()
+        and not serving_smoke_transport(engine_url, settings)
+    ):
+        from coire_api.routes.failover import get_participant
+
+        participant = get_participant()
+        lease = participant.lease() if participant is not None else None
+        if participant is None or not participant.frontend_ready() or lease is None:
+            raise ChatModelUnavailable("Core does not hold current inference authority")
+        headers["X-Coire-Core-Failover"] = lease.model_dump_json()
     inject(headers)
     return headers
 

@@ -33,8 +33,9 @@ def command() -> ShardGroupCommand:
 
 def test_shard_argv_is_bare_fixed_and_uses_data_hosts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("COIRE_SHARD_COMMAND", raising=False)
+    cmd = command()
     argv = build_shard_argv(
-        command(),
+        cmd,
         model_path="/opt/coire/models/coire--qwen-4bit",
         hostfile_path="/state/hosts.json",
     )
@@ -42,8 +43,16 @@ def test_shard_argv_is_bare_fixed_and_uses_data_hosts(monkeypatch: pytest.Monkey
     assert "jaccl" in argv and "mlx_lm.server" in argv
     assert "-n" not in argv
     assert "MLX_METAL_FAST_SYNCH=1" in argv
+    assert f"COIRE_SHARD_GROUP_ID={cmd.group_id}" in argv
+    assert f"COIRE_SHARD_COMMAND_ID={cmd.command_id}" in argv
     assert "/opt/coire/models/coire--qwen-4bit" in argv
     assert not any("coire-core" in value for value in argv)
+    assert "HF_HUB_OFFLINE=1" in argv
+    assert "--pipeline" not in argv
+    cmd.mode = ShardingMode.PIPELINE_PARALLEL
+    assert "--pipeline" in build_shard_argv(
+        cmd, model_path="/models/trusted", hostfile_path="/state/ring.json"
+    )
 
 
 def test_rank_one_prepare_is_persisted_and_idempotent(tmp_path: Path) -> None:

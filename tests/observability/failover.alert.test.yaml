@@ -1,0 +1,41 @@
+rule_files:
+  - /rules/failover.yaml
+evaluation_interval: 15s
+tests:
+  - interval: 15s
+    input_series: []
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: CoireFailoverNoReadyMember
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations: {summary: "No failover member is election-ready"}
+      - eval_time: 2m
+        alertname: CoireFailoverParticipantMissing
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: "A failover participant is absent or has stopped polling"}
+  - interval: 15s
+    input_series:
+      - series: 'coire_failover_audit_utilization{host="coire-edge-a"}'
+        values: '0.9+0x20'
+      - series: 'coire_failover_frontend_rss_bytes'
+        values: '300000000+0x20'
+      - series: 'coire_failover_drain_remaining_seconds{host="coire-edge-a"}'
+        values: '40+0x20'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: CoireFailoverAuditPressure
+        exp_alerts:
+          - exp_labels: {severity: critical, host: coire-edge-a}
+            exp_annotations: {summary: "Failover security journal requires reconciliation or repair"}
+      - eval_time: 2m
+        alertname: CoireFailoverFrontendMemory
+        exp_alerts:
+          - exp_labels: {severity: warning}
+            exp_annotations: {summary: "Failover frontend exceeded its 256 MiB allowance"}
+      - eval_time: 1m
+        alertname: CoireFailoverDrainDeadline
+        exp_alerts:
+          - exp_labels: {severity: critical, host: coire-edge-a}
+            exp_annotations: {summary: "Failover drain authority exceeds its bounded deadline"}

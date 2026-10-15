@@ -41,6 +41,8 @@ OPTIONAL_SECRET_FILES = (
     "file_worker_service_token",
     "failover_peer_key",
     "failover_relay_token",
+    "failover_monitor_token",
+    "failover_lifecycle_token",
     "openai_api_key",
     "anthropic_api_key",
 )
@@ -54,6 +56,7 @@ KEYCHAIN_ITEMS = {
     "ops_service_token": "coire-ops-service-token",
     "file_worker_service_token": "coire-file-worker-service-token",
     "failover_peer_key": "coire-failover-peer-key",
+    "failover_monitor_token": "coire-failover-monitor-token",
     "openai_api_key": "coire-openai-api-key",
     "anthropic_api_key": "coire-anthropic-api-key",
 }
@@ -820,9 +823,12 @@ def read_secret_inputs(*, from_env: bool) -> dict[str, str]:
                 raise ReleaseInputError(f"missing failover membership key: {key}")
         if not values["failover_peer_key"]:
             raise ReleaseInputError("missing core failover signing key")
+        if not values["failover_monitor_token"]:
+            raise ReleaseInputError("missing scoped failover monitor token")
     else:
         values["failover_peer_key"] = ""
     values["failover_relay_token"] = ""
+    values["failover_lifecycle_token"] = ""
     return values
 
 

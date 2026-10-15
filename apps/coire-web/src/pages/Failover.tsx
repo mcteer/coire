@@ -29,9 +29,16 @@ export function FailoverPage({
   const [responseText, setResponseText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (status) {
+      setLive(status);
       return;
     }
     void readFailoverStatus()
@@ -40,7 +47,8 @@ export function FailoverPage({
         setLive({
           tier: "minimal",
           elected_host: null,
-          in_flight: 0,
+          admission_available: false,
+          reason: "snapshot_unavailable",
           unavailable_capabilities: ["conversation_persistence"],
         }),
       );
@@ -53,6 +61,11 @@ export function FailoverPage({
   }, [status]);
 
   const tier = live?.tier ?? "minimal";
+  const authorityExpiry = Math.min(
+    Date.parse(live?.authority_expires_at ?? ""),
+    Date.parse(live?.snapshot_expires_at ?? ""),
+  );
+  const available = live?.admission_available === true && authorityExpiry > now;
   return (
     <main className="app">
       <section className="panel glass" aria-label="Degraded mode">
@@ -60,7 +73,9 @@ export function FailoverPage({
           Coire is in degraded mode. Nothing you send is persisted — there is no conversation
           history, usage record, or feedback.
         </p>
-        <h1>{TIER_LABEL[tier]}</h1>
+        <h1>{available ? TIER_LABEL[tier] : "Inference unavailable"}</h1>
+        <p>Authority expires: {live?.authority_expires_at ?? "No current authority"}.</p>
+        <p>Text-only base models are supported. Visual inputs, adapters, tools and agents are unavailable.</p>
         <p>
           {live?.elected_host
             ? `Served by ${live.elected_host}.`
@@ -108,7 +123,8 @@ export function FailoverPage({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (!selected || !draft.trim() || busy) return;
+            if (!available || !selected || !draft.trim() || busy) return;
+            const submitted = draft;
             const next: CompletionRequest["messages"] = [
               ...messages,
               { role: "user", content: draft.trim() },
@@ -127,7 +143,11 @@ export function FailoverPage({
                 setMessages([...next, { role: "assistant", content: completed }]);
                 setResponseText("");
               })
-              .catch(() => setError("Inference is unavailable. Your message was not saved."))
+              .catch((cause: unknown) => {
+                setDraft(submitted);
+                setMessages(messages);
+                setError(cause instanceof Error ? cause.message : "Inference is unavailable. Your message was not saved.");
+              })
               .finally(() => setBusy(false));
           }}
         >
@@ -137,10 +157,11 @@ export function FailoverPage({
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               aria-describedby="failover-persistence"
+              disabled={busy}
             />
           </label>
           <p id="failover-persistence">This message will not be saved.</p>
-          <button type="submit" disabled={!selected || busy}>
+          <button type="submit" disabled={!available || !selected || busy}>
             {busy ? "Receiving…" : "Send"}
           </button>
         </form>

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
+from coire_core.failover_residency import eligible_model
 from coire_core.models.failover import FailoverModel, FailoverSnapshot
 
 
@@ -44,7 +45,7 @@ def choose_relay(
 ) -> tuple[FailoverModel, Literal["local", "peer"]]:
     """Pick the local node relay, or the peer relay when only the other Studio holds the model."""
     model = next((item for item in snapshot.models if item.id == model_id), None)
-    if model is None or model.entitlement:
+    if model is None or not eligible_model(model):
         raise FailoverModelUnavailable(str(model_id))
     if model.id in local_resident_ids:
         return model, "local"

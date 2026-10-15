@@ -11,6 +11,9 @@ dependencies = [
     "httpx==0.28.1",
     # MIT. Validate Cloudflare Access identity against the snapshot's pinned issuer/audience.
     "PyJWT[crypto]==2.14.0",
+    # Apache-2.0. The stateless frontend exports bounded metrics and optional traces locally.
+    "opentelemetry-sdk==1.44.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.44.0",
 ]
 
 [build-system]

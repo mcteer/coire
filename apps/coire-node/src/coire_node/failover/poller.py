@@ -7,18 +7,21 @@ import json
 import logging
 import os
 import tempfile
-from contextlib import suppress
+import time
+from contextlib import nullcontext, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
 
 from coire_core.errors import UpgradeUnavailable
-from coire_core.failover_crypto import public_key_b64, sign_ed25519
+from coire_core.failover_crypto import public_key_b64, sign_ed25519, verify_ed25519
 from coire_core.failover_election import ServiceRole, timings_from_settings
-from coire_core.failover_poller import FailoverPoller, peer_url
+from coire_core.failover_poller import FailoverPoller, HttpPeerExchange, peer_url
 from coire_core.failover_telemetry import snapshot_fresh, tracer
 from coire_core.models.failover import (
+    ElectionSafetyRecord,
+    FailoverEventAcknowledgement,
     FailoverEventBatch,
     FailoverHeartbeat,
     FailoverSnapshot,
@@ -29,6 +32,7 @@ from coire_core.settings import Settings
 from coire_node.docker_api import DockerAPI, DockerAPIError
 from coire_node.failover.journal import ElectionJournal
 from coire_node.failover.participant import StudioParticipant
+from coire_node.maintenance import NodeMaintenance
 from coire_node.routes.failover import set_participant
 
 logger = logging.getLogger(__name__)
@@ -42,6 +46,7 @@ class StudioFailoverController:
         settings: Settings,
         client: httpx.AsyncClient | None = None,
         docker: DockerAPI | None = None,
+        maintenance: NodeMaintenance | None = None,
     ) -> None:
         self.settings = settings
         self._client = client or httpx.AsyncClient()
@@ -50,8 +55,10 @@ class StudioFailoverController:
         self._task: asyncio.Task[None] | None = None
         self._lifecycle_task: asyncio.Task[None] | None = None
         self._docker = docker
+        self._maintenance = maintenance
         self._last_issued_at: datetime | None = None
         self._last_epoch = 0
+        self._stopped_frontend_until = 0.0
 
     async def upgrade_inventory(self) -> UpgradeOwnerInventory:
         poller = self._poller
@@ -87,7 +94,8 @@ class StudioFailoverController:
             if member.name == self.settings.failover_member_name
         )
         return (
-            snapshot.signature_is_valid(self.settings.failover_core_public_key)
+            snapshot.membership.epoch == self.settings.failover_membership_epoch
+            and snapshot.signature_is_valid(self.settings.failover_core_public_key)
             and (not require_fresh or snapshot.is_fresh(self.settings.failover_snapshot_max_age_s))
             and mine.public_key == public_key_b64(key)
         )
@@ -97,7 +105,10 @@ class StudioFailoverController:
         now = datetime.now(UTC)
         key = self.settings.failover_peer_key.get_secret_value().strip()
         unsigned = FailoverHeartbeat(
-            member=self.settings.failover_member_name, sent_at=now, signature="unsigned"
+            member=self.settings.failover_member_name,
+            epoch=self.settings.failover_membership_epoch,
+            sent_at=now,
+            signature="unsigned",
         )
         beat = unsigned.model_copy(
             update={"signature": sign_ed25519(unsigned.canonical_bytes(), key)}
@@ -117,6 +128,35 @@ class StudioFailoverController:
             ) or snapshot.membership.epoch < self._last_epoch:
                 return False
         except (httpx.HTTPError, ValueError, StopIteration):
+            return False
+        safety_path = (
+            Path(self.settings.failover_safety_path)
+            if self.settings.failover_safety_path
+            else Path(self.settings.failover_proof_path).with_name(
+                f"{self.settings.failover_member_name}.safety.json"
+            )
+        )
+        try:
+            record = ElectionSafetyRecord.model_validate_json(
+                await asyncio.to_thread(safety_path.read_text, encoding="utf-8")
+            )
+            if record.epoch > snapshot.membership.epoch or (
+                record.snapshot_issued_at is not None
+                and record.snapshot_issued_at > snapshot.issued_at
+            ):
+                return False
+        except FileNotFoundError:
+            pass
+        except (OSError, ValueError):
+            # Corrupt safety state cannot be silently replaced through snapshot refresh.
+            return False
+        if (
+            self._poller is not None
+            and self._poller.participant.safety is not None
+            and not self._poller.participant.safety.accept_snapshot(
+                snapshot.membership.epoch, snapshot.issued_at
+            )
+        ):
             return False
         await asyncio.to_thread(self._write_snapshot, snapshot)
         self._last_issued_at = snapshot.issued_at
@@ -138,7 +178,7 @@ class StudioFailoverController:
         journal = ElectionJournal(
             path.with_name(f"{self.settings.failover_member_name}.journal.json")
         )
-        entries = await asyncio.to_thread(journal.entries)
+        entries = (await asyncio.to_thread(journal.entries))[:256]
         if not entries:
             return
         unsigned = FailoverEventBatch(
@@ -159,7 +199,21 @@ class StudioFailoverController:
                 timeout=5.0,
             )
             response.raise_for_status()
-        except httpx.HTTPError:
+            acknowledgement = FailoverEventAcknowledgement.model_validate(response.json())
+            if (
+                acknowledgement.host != batch.host
+                or acknowledgement.batch_id != batch.batch_id
+                or not set(acknowledgement.committed_event_ids)
+                <= {event.event_id for event in entries}
+                or not verify_ed25519(
+                    acknowledgement.canonical_bytes(),
+                    acknowledgement.signature,
+                    self.settings.failover_core_public_key,
+                )
+            ):
+                raise ValueError("event acknowledgement authority is invalid")
+            await asyncio.to_thread(journal.acknowledge, acknowledgement.committed_event_ids)
+        except (httpx.HTTPError, ValueError):
             logger.warning("failover event reconciliation deferred")
 
     def _write_snapshot(self, snapshot: FailoverSnapshot) -> None:
@@ -191,11 +245,22 @@ class StudioFailoverController:
             proof_path=proof,
             journal=ElectionJournal(proof.with_name(f"{name}.journal.json")),
             restart_hold=True,
+            safety_path=(
+                Path(self.settings.failover_safety_path)
+                if self.settings.failover_safety_path
+                else proof.with_name(f"{name}.safety.json")
+            ),
         )
+        if participant.safety is not None and not participant.safety.accept_snapshot(
+            snapshot.membership.epoch,
+            snapshot.issued_at,
+        ):
+            raise ValueError("trusted snapshot high-water guard refused publication")
         set_participant(participant)
         self._poller = FailoverPoller(
             participant,
             self.settings,
+            exchange=HttpPeerExchange(participant, self.settings, self._client),
             override=participant.active_override,
             in_flight=self._in_flight,
         )
@@ -206,6 +271,7 @@ class StudioFailoverController:
             )
 
     async def _disarm(self) -> None:
+        self._stopped_frontend_until = 0.0
         lifecycle = self._lifecycle_task
         self._lifecycle_task = None
         if lifecycle is not None:
@@ -230,15 +296,25 @@ class StudioFailoverController:
             try:
                 with tracer.start_as_current_span("coire.node.failover_frontend_lifecycle"):
                     await self._sync_frontend()
-            except (DockerAPIError, httpx.HTTPError, ValueError):
+            except (DockerAPIError, httpx.HTTPError, ValueError, UpgradeUnavailable):
                 logger.exception("failover frontend lifecycle update failed")
-            await asyncio.sleep(1)
+            # Match the election's two-second evaluation bound. Inspecting the
+            # stopped container twice per election tick adds idle Studio work;
+            # the frontend independently rejects expired authority on admission.
+            await asyncio.sleep(min(2.0, self.settings.failover_election_interval_s))
 
     async def _sync_frontend(self) -> None:
         poller = self._poller
         docker = self._docker
         if poller is None or docker is None:
             return
+        needed = poller.participant.role in (ServiceRole.ELECTED, ServiceRole.DRAINING)
+        if not needed and time.monotonic() < self._stopped_frontend_until:
+            return
+        # Only a positively stopped container may defer idle inspection. Every
+        # promotion and running/draining check still reads Docker's current policy.
+        # No lease, signature, maintenance or admission decision is retained here.
+        self._stopped_frontend_until = 0.0
         container = await docker.inspect_container("coire-failover")
         if container is None:
             logger.error("precreated coire-failover container is missing")
@@ -255,12 +331,22 @@ class StudioFailoverController:
             raise ValueError(
                 "precreated failover container does not match the approved image and policy"
             )
-        running = state.get("Running") is True
+        if type(state.get("Running")) is not bool:
+            raise ValueError("precreated failover container running state is uncertain")
+        running = state["Running"]
         needed = poller.participant.role in (ServiceRole.ELECTED, ServiceRole.DRAINING)
         if needed and not running:
-            await docker.start_container("coire-failover")
+            # Hold the existing 019 admission permit across Docker I/O. Its inventory
+            # cannot declare idle while this start is in progress, and a maintenance
+            # fence prevents a late election from starting a new container.
+            with self._maintenance.admission() if self._maintenance else nullcontext():
+                await docker.start_container("coire-failover")
         elif running and not needed:
             await docker.stop_container("coire-failover")
+        if not needed:
+            # A stopped standby has no serving authority. Audit unexpected external
+            # starts at most thirty seconds later; role changes bypass this delay.
+            self._stopped_frontend_until = time.monotonic() + 30.0
 
     async def _in_flight(self) -> int:
         poller = self._poller
@@ -270,7 +356,13 @@ class StudioFailoverController:
         ):
             return 0
         try:
-            response = await self._client.get("http://127.0.0.1:8004/failover/tier", timeout=1.0)
+            response = await self._client.get(
+                "http://127.0.0.1:8004/failover/tier",
+                timeout=1.0,
+                headers={
+                    "X-Coire-Failover-Lifecycle": self.settings.failover_lifecycle_token.get_secret_value()
+                },
+            )
             response.raise_for_status()
             return FailoverStatus.model_validate(response.json()).in_flight
         except (httpx.HTTPError, ValueError):
@@ -313,7 +405,9 @@ class StudioFailoverController:
             await self._client.aclose()
 
 
-def build_controller(settings: Settings, docker: DockerAPI) -> StudioFailoverController | None:
+def build_controller(
+    settings: Settings, docker: DockerAPI, *, maintenance: NodeMaintenance | None = None
+) -> StudioFailoverController | None:
     name = settings.failover_member_name.strip()
     key = settings.failover_peer_key.get_secret_value().strip()
     if name not in {"coire-edge-a", "coire-edge-b"} or not key:
@@ -324,4 +418,4 @@ def build_controller(settings: Settings, docker: DockerAPI) -> StudioFailoverCon
     if not settings.failover_frontend_image:
         logger.warning("failover controller not started; pinned frontend image is missing")
         return None
-    return StudioFailoverController(settings, docker=docker)
+    return StudioFailoverController(settings, docker=docker, maintenance=maintenance)

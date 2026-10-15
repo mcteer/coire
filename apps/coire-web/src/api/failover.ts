@@ -2,7 +2,7 @@ import type { components as FailoverComponents } from "./failover-schema";
 import type { components as CoreComponents } from "./schema";
 import { api, ApiError } from "./client";
 
-export type FailoverStatus = FailoverComponents["schemas"]["FailoverStatus"];
+export type FailoverStatus = FailoverComponents["schemas"]["FailoverPublicStatus"];
 export type ResidentModel = FailoverComponents["schemas"]["GatewayModel"];
 export type CompletionRequest = CoreComponents["schemas"]["ChatCompletionRequest"];
 
@@ -46,25 +46,48 @@ export async function streamFailoverCompletion(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let completed = false;
   const consume = (frame: string) => {
     const data = frame
       .split("\n")
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trim())
       .join("\n");
-    if (!data || data === "[DONE]") return;
+    if (!data) return;
+    if (data === "[DONE]") {
+      completed = true;
+      return;
+    }
     const parsed: unknown = JSON.parse(data);
+    if (typeof parsed === "object" && parsed !== null) {
+      if ("coire_interrupted" in parsed || "error" in parsed || "reason" in parsed) {
+        throw new ApiError(503, "Inference was interrupted; your message was not saved.", parsed);
+      }
+      if ("choices" in parsed && Array.isArray(parsed.choices)) {
+        completed ||= parsed.choices.some((choice: unknown) =>
+          typeof choice === "object" && choice !== null && "finish_reason" in choice &&
+          typeof choice.finish_reason === "string",
+        );
+      }
+    }
     onContent(contentFromEvent(parsed));
   };
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    buffer = buffer.replaceAll("\r\n", "\n");
-    const frames = buffer.split("\n\n");
-    buffer = frames.pop() ?? "";
-    for (const frame of frames) consume(frame);
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      if (buffer.length > 1_048_576) throw new Error("Inference stream exceeded its bound");
+      buffer = buffer.replaceAll("\r\n", "\n");
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) consume(frame);
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) consume(buffer);
+    if (!completed) throw new Error("Inference was interrupted before completion");
+  } finally {
+    await reader.cancel();
+    reader.releaseLock();
   }
-  buffer += decoder.decode();
-  if (buffer.trim()) consume(buffer);
 }

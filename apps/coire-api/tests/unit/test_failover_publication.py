@@ -17,6 +17,8 @@ from pydantic import SecretStr
 
 from coire_api.failover.publication import CoreSnapshotService, configured_membership
 from coire_core.failover_snapshot import load_verified_snapshot
+from coire_core.models.adapters import InferenceTarget
+from coire_core.models.failover import FailoverSinglePlacement
 from coire_core.settings import Settings
 
 
@@ -53,11 +55,18 @@ async def test_publisher_signs_a_fresh_registry_snapshot(
         failover_snapshot_path=str(path),
         cloudflare_access_issuer="https://access.example.test",
         cloudflare_access_audience="test-audience",
+        failover_access_subjects={
+            "eligible-subject": "user@example.test",
+            "disabled-subject": "disabled@example.test",
+        },
     )
     model_id = uuid4()
 
     class _Session:
         async def scalars(self, _query: object) -> SimpleNamespace:
+            if "FROM users" in str(_query):
+                assert "users.active IS true" in str(_query)
+                return SimpleNamespace(all=lambda: [SimpleNamespace(email="user@example.test")])
             assert "models.kind" in str(_query)
             row = SimpleNamespace(
                 id=model_id,
@@ -85,12 +94,30 @@ async def test_publisher_signs_a_fresh_registry_snapshot(
         yield _Session()
 
     monkeypatch.setattr("coire_api.failover.publication.session_scope", _session)
+
+    async def placements(*_args: object) -> dict[object, object]:
+        return {
+            model_id: FailoverSinglePlacement(
+                instance_id=uuid4(),
+                engine_id=uuid4(),
+                node="coire-edge-a",
+                generation="a" * 64,
+                target=InferenceTarget(
+                    model_id=model_id, variant_id=uuid4(), base_manifest_sha256="b" * 64
+                ),
+            )
+        }
+
+    monkeypatch.setattr("coire_api.failover.publication.resident_placements", placements)
     membership = configured_membership(settings)
     assert membership is not None
     published = await CoreSnapshotService(settings, membership).publish_once(datetime.now(UTC))
+    assert [subject.subject for subject in published.subjects] == ["eligible-subject"]
     verified = load_verified_snapshot(path, core_public)
     assert verified.snapshot_id == published.snapshot_id
     assert [model.id for model in verified.models] == [model_id]
+    assert verified.models[0].capabilities == {"text_chat"}
+    assert verified.models[0].placement is not None
     assert verified.access_verifier.audience == "test-audience"
 
 

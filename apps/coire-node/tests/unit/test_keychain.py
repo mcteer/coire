@@ -54,6 +54,26 @@ def test_configured_values_win_over_the_keychain(monkeypatch) -> None:  # type: 
     assert settings.hf_token.get_secret_value() == "hf-from-env"
 
 
+def test_failover_lifecycle_and_monitor_are_loaded_without_node_token_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    values = {
+        "coire-node-token": "normal-node",
+        "coire-failover-relay-token": "peer-relay",
+        "coire-failover-monitor-token": "edge-monitor",
+        "coire-failover-lifecycle-token": "local-lifecycle",
+    }
+    monkeypatch.setattr(
+        keychain, "read_item", lambda service, **_: SecretStr(values.get(service, ""))
+    )
+    settings = _settings()
+    keychain.load_node_secrets(settings)
+    assert settings.failover_monitor_token.get_secret_value() == "edge-monitor"
+    assert settings.failover_lifecycle_token.get_secret_value() == "local-lifecycle"
+    assert settings.failover_relay_token.get_secret_value() == "peer-relay"
+    assert settings.node_token.get_secret_value() == "normal-node"
+
+
 def test_read_item_strips_the_trailing_newline(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """`security -w` prints a trailing newline; a token carrying one fails every compare."""
     import subprocess

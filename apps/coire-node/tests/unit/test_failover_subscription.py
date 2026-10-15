@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -13,6 +14,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import SecretStr
 
+from coire_core.errors import UpgradeUnavailable
 from coire_core.failover_crypto import sign_ed25519, verify_ed25519
 from coire_core.failover_election import ServiceRole
 from coire_core.models.failover import (
@@ -22,8 +24,10 @@ from coire_core.models.failover import (
     FailoverMembershipConfig,
     FailoverSnapshot,
 )
+from coire_core.models.upgrades import NodeMaintenanceCommand, UpgradeMaintenance
 from coire_core.settings import Settings
 from coire_node.failover.poller import StudioFailoverController
+from coire_node.maintenance import NodeMaintenance
 
 
 def _key() -> tuple[str, str]:
@@ -217,3 +221,144 @@ async def test_frontend_runs_only_for_elected_or_draining_role(tmp_path: Path) -
     await controller.stop()
     assert not (tmp_path / "proof.json").exists()
     assert docker.actions == ["start", "stop", "stop"]
+
+
+async def test_frontend_start_holds_019_admission_across_docker_io(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    gate = NodeMaintenance(tmp_path / "maintenance", "coire-edge-a")
+    image = "example@sha256:" + "a" * 64
+    docker = Mock()
+    docker.inspect_container = AsyncMock(
+        return_value={
+            "Config": {"Image": image, "User": "65532:65532"},
+            "HostConfig": {"ReadonlyRootfs": True, "CapDrop": ["ALL"]},
+            "State": {"Running": False},
+        }
+    )
+    starting = asyncio.Event()
+    finish_start = asyncio.Event()
+
+    async def start(_name: str) -> None:
+        assert gate._admitting == 1, "019 must inventory a frontend start while Docker awaits"
+        starting.set()
+        await finish_start.wait()
+
+    docker.start_container = AsyncMock(side_effect=start)
+    controller = StudioFailoverController(
+        Settings(_secrets_dir="/nonexistent", failover_frontend_image=image),  # type: ignore[call-arg]
+        docker=docker,
+        maintenance=gate,
+    )
+    controller._poller = SimpleNamespace(participant=SimpleNamespace(role=ServiceRole.ELECTED))  # type: ignore[assignment]
+    now = datetime.now(UTC)
+    maintenance = UpgradeMaintenance(
+        job_id="01ARZ3NDEKTSV4RRFFQ69G5FAV",
+        generation=1,
+        targets=("coire-edge-a",),
+        state="draining",
+        updated_at=now,
+        drain_deadline_at=now + timedelta(seconds=30),
+    )
+    pending = asyncio.create_task(controller._sync_frontend())
+    try:
+        await asyncio.wait_for(starting.wait(), timeout=2)
+        gate.apply(NodeMaintenanceCommand(action="apply", maintenance=maintenance))
+        inventory = gate.inventory(maintenance.job_id, maintenance.generation, "a" * 64)
+        assert next(item for item in inventory.owners if item.owner == "requests").entries
+        assert gate.current() == maintenance
+    finally:
+        finish_start.set()
+        await pending
+    assert gate._admitting == 0
+    with pytest.raises(UpgradeUnavailable):
+        await controller._sync_frontend()
+    assert docker.start_container.await_count == 1
+    assert gate.current() == maintenance
+
+
+async def test_stopped_frontend_inspection_never_authorizes_promotion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    from coire_node.failover import poller as module
+
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock.now))
+    image = "example@sha256:" + "a" * 64
+    configuration = {"Image": image, "User": "65532:65532"}
+    state = {"Running": False}
+    container = {
+        "Config": configuration,
+        "HostConfig": {"ReadonlyRootfs": True, "CapDrop": ["ALL"]},
+        "State": state,
+    }
+    docker = Mock()
+    docker.inspect_container = AsyncMock(return_value=container)
+    docker.start_container = AsyncMock()
+    docker.stop_container = AsyncMock()
+    controller = StudioFailoverController(
+        Settings(_secrets_dir="/nonexistent", failover_frontend_image=image),  # type: ignore[call-arg]
+        docker=docker,
+    )
+    member = SimpleNamespace(role=ServiceRole.STANDBY)
+    controller._poller = SimpleNamespace(participant=member)  # type: ignore[assignment]
+    try:
+        await controller._sync_frontend()
+        clock.now += 2
+        await controller._sync_frontend()
+        assert docker.inspect_container.await_count == 1
+        state["Running"] = True
+        assert (await controller.upgrade_inventory()).entries
+        state["Running"] = False
+        # Even inside the stopped interval, promotion must inspect current policy.
+        configuration["Image"] = "foreign-image"
+        member.role = ServiceRole.ELECTED
+        with pytest.raises(ValueError, match="approved image and policy"):
+            await controller._sync_frontend()
+        docker.start_container.assert_not_awaited()
+        assert docker.inspect_container.await_count == 3
+        configuration["Image"] = image
+        await controller._sync_frontend()
+        docker.start_container.assert_awaited_once()
+        # A role change after starting must stop promptly, even inside the old interval.
+        state["Running"] = True
+        member.role = ServiceRole.STANDBY
+        await controller._sync_frontend()
+        docker.stop_container.assert_awaited_once()
+        # Unexpected external starts are reconciled by the bounded standby audit.
+        clock.now += 30
+        await controller._sync_frontend()
+        assert docker.stop_container.await_count == 2
+    finally:
+        await controller._client.aclose()
+
+
+async def test_uncertain_frontend_state_is_never_retained() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    image = "example@sha256:" + "a" * 64
+    docker = Mock()
+    docker.inspect_container = AsyncMock(
+        return_value={
+            "Config": {"Image": image, "User": "65532:65532"},
+            "HostConfig": {"ReadonlyRootfs": True, "CapDrop": ["ALL"]},
+            "State": {},
+        }
+    )
+    controller = StudioFailoverController(
+        Settings(_secrets_dir="/nonexistent", failover_frontend_image=image),  # type: ignore[call-arg]
+        docker=docker,
+    )
+    controller._poller = SimpleNamespace(participant=SimpleNamespace(role=ServiceRole.STANDBY))  # type: ignore[assignment]
+    try:
+        for _ in range(2):
+            with pytest.raises(ValueError, match="running state is uncertain"):
+                await controller._sync_frontend()
+        assert docker.inspect_container.await_count == 2
+    finally:
+        await controller._client.aclose()

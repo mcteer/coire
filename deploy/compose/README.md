@@ -338,9 +338,14 @@ they are not node registration tokens and must not be reused for any other route
 value must match on both Studios because either frontend may relay to the other's node listener.
 It is mounted only into the failover frontend as `failover_relay_token`. The release job supplies the exact
 digest-pinned `COIRE_FAILOVER_IMAGE` to the Studio compose deployment.
-On each Studio run `deploy/compose/coire-studio-failover-create` after setting the image and
-both relay URLs. It reads the relay credential from the System Keychain, writes the
-Compose file secret under `/opt/coire/secrets`, and creates only the failover container.
+On each Studio run `deploy/compose/coire-studio-failover-create` after setting the image,
+`COIRE_FAILOVER_MEMBER_NAME` to that Studio's exact name, and both relay URLs. The script
+rejects execution on Core or a mismatched host. Provision separate System Keychain items
+`coire-failover-monitor-token` (edge readiness only) and `coire-failover-lifecycle-token`
+(local in-flight accounting only), distinct from the relay credential and each other.
+It writes these three Compose secrets under the existing 0700 `/opt/coire/secrets`
+directory and creates only the failover container. Node startup loads the same items;
+missing lifecycle authentication is treated as unknown/busy accounting, never proven idle.
 `coire-node` starts and stops that precreated container according to its election role.
 Set `COIRE_FAILOVER_LOCAL_RELAY_URL` and `COIRE_FAILOVER_PEER_RELAY_URL` to the local and
 other Studio's control-listener DNS names (port 9400), reachable from the frontend container.
@@ -355,6 +360,54 @@ than promotion. Set `FAILOVER_MEMBER_NAME` to this host's name (`coire-core`, `c
 than `FAILOVER_HEARTBEAT_LATENCY_BUDGET_MS` (default 50) is degraded. Three missed beats mark a
 peer unreachable. Changing any is a reviewed
 recovery operation. See `docs/runbooks/control-plane-failover.md` for activation and break-glass.
+
+Core also reads `coire-failover-monitor-token` from its login Keychain; armed `coire-up`
+requires it and mounts it only into `coire-api`. Monitor requests carry
+`X-Coire-Failover-Monitor`; the relay and local lifecycle credentials cannot substitute for
+it. Browser surfaces require approved Access assertions, including direct-origin assets.
+Do not broaden Access policies or network bindings without separate approval.
+
+Additional settings (runtime names; secret values must not be exported):
+
+| Runtime setting | Default / Compose input |
+| --- | --- |
+| `FAILOVER_MEMBERSHIP_EPOCH` | `1`; `COIRE_FAILOVER_MEMBERSHIP_EPOCH` on Core/frontend, matching node settings |
+| `FAILOVER_ACCESS_SUBJECTS` | `{}`; `COIRE_FAILOVER_ACCESS_SUBJECTS`, JSON Access subject-to-registered-user-email map on Core only; empty means no eligible degraded users |
+| `FAILOVER_CONTROL_HOSTS` | fixed member map to `coire-core.lab`, `coire-edge-a.lab`, `coire-edge-b.lab`; control DNS only, no data-fabric names or raw IPs |
+| `FAILOVER_SAFETY_PATH` | empty derives a member-specific file beside the snapshot/proof; never use `/tmp` |
+| `FAILOVER_MONITOR_TOKEN` | Keychain/file secret `failover_monitor_token`, readiness scope only |
+| `FAILOVER_LIFECYCLE_TOKEN` | per-Studio Keychain/file secret `failover_lifecycle_token`, local lifecycle scope only |
+
+Core's `/opt/coire/failover` is a dedicated durable `coire-failover-state` volume,
+seeded with uid/gid 65532 and mode 0700 in the bare API image. It is **not tmpfs**.
+Studios keep member safety records (0600), signed snapshots/proofs, and bounded journals
+in their persistent host directory; the frontend mount stays read-only. Preserve safety
+records and all unacknowledged journal/terminal records during upgrades and rollback.
+Missing/corrupt safety state quarantines authority for the maximum prior supported
+300-second lifetime plus 1-second uncertainty, even when the new configured TTL is lower.
+Only committed-ID, signed Core acknowledgements allow journal compaction.
+
+Protocol-v2 rollout is coordinated, not mixed-version live activation. Drain/disarm both
+Studio frontends/controllers first; remove serving proofs but preserve safety and audit
+files. Retain the prior deployment/artifacts through the 019-owned update. Update all
+participants and frontend schemas/configuration to the matching protocol and trusted
+epoch/key set; old unbound overrides, old heartbeats and mismatched epochs fail closed.
+Wait out first-boot quarantine where applicable, obtain fresh (at most 120-second) signed
+snapshots, then re-arm and validate before restoring edge eligibility. Never extend a
+snapshot/override or weaken scopes to bridge a rollout. Rollback must also disarm first;
+do not roll back trusted epoch, overwrite safety records or discard audit receipts.
+The corrected feature remains unqualified until the required feature-020 release/live
+gates pass; configuration or passing unit tests alone do not authorize activation.
+
+Frontend telemetry sets runtime `OTLP_ENDPOINT=http://coire-core.lab:4317`, using the existing
+approved Studio control path. `COIRE_DIAGNOSTICS_ENABLED` maps to `DIAGNOSTICS_ENABLED=false`
+by default; metrics remain enabled with bounded one-second export deadlines, and diagnostic
+traces use a bounded 256-entry queue. Collector loss does not extend serving authority.
+
+Cloudflare deployment/public-edge qualification is deferred by the owner. The Cloudflare LB
+manifest is design-only and must not be applied as a provider API payload. Authenticated local
+origin qualification remains required; production activation still requires the pending live
+resource, recovery and ingress gates in the feature execution record.
 
 ## SFT training settings (feature 016 implementation)
 

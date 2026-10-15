@@ -133,7 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if snapshot_service is not None:
             await snapshot_service.start()
         app.state.failover_snapshot_service = snapshot_service
-        failover_poller = build_poller(settings)
+        failover_poller = build_poller(settings, app.state.upgrade_admissions)
         if failover_poller is not None:
             await failover_poller.start()
         app.state.failover_poller = failover_poller
@@ -374,6 +374,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 headers={"WWW-Authenticate": "Bearer"},
                 content={"detail": "valid identity or API key required"},
             )
+        if (
+            settings.failover_member_name == "coire-core"
+            and settings.failover_peer_key.get_secret_value()
+            and request.url.path.startswith(("/v1/", "/api/v1/chat/", "/api/v1/runs", "/mcp"))
+        ):
+            from coire_api.routes.failover import get_participant
+            from coire_core.models.failover import FailoverProblem
+
+            participant = get_participant()
+            if participant is None or not participant.frontend_ready():
+                return JSONResponse(
+                    status_code=503,
+                    media_type="application/problem+json",
+                    headers={"Cache-Control": "no-store", "Retry-After": "2"},
+                    content=FailoverProblem(
+                        status=503,
+                        reason="not_elected",
+                        detail="Core inference authority is unavailable",
+                    ).model_dump(mode="json"),
+                )
         token = bind_principal(principal)
         try:
             return await call_next(request)

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,6 +33,7 @@ from coire_core.models.failover import (
     FailoverEventKind,
     FailoverMember,
     FailoverMembershipConfig,
+    HandbackAcknowledgement,
     HandbackNotice,
 )
 from coire_core.settings import Settings
@@ -101,10 +104,25 @@ def _elect(edge_a: StudioParticipant, edge_b: ElectionParticipant, now: datetime
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tamper",
+    [
+        None,
+        "signature",
+        "request_id",
+        "host",
+        "epoch",
+        "expires_at",
+        "accepted",
+        "fenced",
+        "term",
+        "successor",
+    ],
+)
 async def test_recovered_core_sends_signed_handback_to_both_studios(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str | None
 ) -> None:
-    edge_a, _, core_key, now = _pair(tmp_path)
+    edge_a, edge_b, core_key, now = _pair(tmp_path)
     settings = Settings(  # type: ignore[call-arg]
         _secrets_dir="/nonexistent",
         failover_peer_key=SecretStr(core_key),
@@ -134,13 +152,48 @@ async def test_recovered_core_sends_signed_handback_to_both_studios(
             notice.canonical_bytes(), notice.signature, edge_a.member_public_key("coire-core")
         )
         seen.append(notice.holder)
-        return httpx.Response(204)
+        acknowledgement = HandbackAcknowledgement(
+            request_id=notice.request_id,
+            host=notice.holder,
+            epoch=notice.epoch,
+            term=notice.term,
+            successor=notice.successor,
+            accepted=True,
+            fenced=True,
+            expires_at=notice.expires_at,
+            signature="unsigned",
+        )
+        changes: dict[str, object] = {
+            "request_id": uuid4(),
+            "host": "coire-core",
+            "epoch": 2,
+            "expires_at": notice.expires_at + timedelta(seconds=1),
+            "accepted": False,
+            "fenced": False,
+            "term": notice.term + 1,
+            "successor": notice.holder,
+        }
+        if tamper is not None and tamper != "signature":
+            acknowledgement = acknowledgement.model_copy(update={tamper: changes[tamper]})
+        signer = edge_a if notice.holder == edge_a.name else edge_b
+        acknowledgement = acknowledgement.model_copy(
+            update={"signature": signer.sign_payload(acknowledgement.canonical_bytes())}
+        )
+        if tamper == "signature":
+            acknowledgement = acknowledgement.model_copy(update={"signature": "invalid"})
+        return httpx.Response(200, json=acknowledgement.model_dump(mode="json"))
 
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "coire_api.failover.poller.authoritative_cohort_ready", AsyncMock(return_value=True)
+    )
     monkeypatch.setattr(FailoverPoller, "tick", pretend_tick)
     await poller._handback_client.aclose()
     poller._handback_client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     await poller.tick(now)
     assert seen == ["coire-edge-a", "coire-edge-b"]
+    assert poller._acked == ({"coire-edge-a", "coire-edge-b"} if tamper is None else set())
     await poller.stop()
 
 
@@ -161,6 +214,7 @@ def test_flapping_core_does_not_drain_before_the_demotion_threshold(tmp_path: Pa
         term=edge_a.term,
         holder="coire-edge-a",
         successor="coire-core",
+        issued_at=now,
         expires_at=now + timedelta(seconds=30),
         signature="unsigned",
     )
@@ -189,6 +243,10 @@ async def test_reconcile_replays_a_journal_without_duplicating_audit(
 
         async def flush(self) -> None:
             return None
+
+        @asynccontextmanager
+        async def begin_nested(self) -> AsyncIterator[None]:
+            yield
 
     async def fake_write_audit(*_args: object, **_kwargs: object) -> SimpleNamespace:
         return SimpleNamespace(id=uuid4())

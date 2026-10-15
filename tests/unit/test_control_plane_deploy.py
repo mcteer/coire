@@ -190,6 +190,8 @@ def test_generation_is_complete_private_and_distinct(tmp_path: Path) -> None:
         "file_worker_service_token",
         "failover_peer_key",
         "failover_relay_token",
+        "failover_monitor_token",
+        "failover_lifecycle_token",
         "openai_api_key",
         "anthropic_api_key",
     }

@@ -29,6 +29,13 @@ def affected_services(method: str, path: str) -> tuple[str, ...]:
         # Revocation, the admin kill switch and owner image cancellation still
         # execute their ordinary route authentication, scope and audit checks.
         return ()
+    if method == "POST" and path in {
+        "/api/v1/failover/heartbeat",
+        "/api/v1/failover/votes",
+    }:
+        # Authenticated, non-DB safety exchanges are liveness, not user work.
+        # Snapshot publication and event reconciliation retain their writer guards.
+        return ()
     # Completion/cleanup/control commands remain callable during drain.
     if path.endswith(("/cancel", "/stop", "/cleanup", "/lease", "/renew", "/release")):
         return ()

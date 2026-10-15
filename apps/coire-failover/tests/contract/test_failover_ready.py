@@ -33,8 +33,19 @@ async def test_ready_is_success_only_for_a_current_proof() -> None:
         load_lease=lambda: current,
     )
     app = create_app(runtime)
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        assert (await client.get("/ready")).status_code == 200
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers={"X-Coire-Failover-Monitor": "isolated-monitor"},
+    ) as client:
+        healthy = await client.get("/ready")
+        assert healthy.status_code == 200
+        assert healthy.headers["cache-control"] == "no-store"
+        # Even an elected origin cannot use the monitor identity for inference.
+        assert (await client.get("/v1/models")).status_code == 401
+        assert (
+            await client.get("/ready", headers={"X-Coire-Failover-Monitor": "wrong"})
+        ).status_code == 401
         runtime.load_lease = lambda: None
         assert (await client.get("/ready")).status_code == 503
         proof = current.proof
@@ -54,6 +65,15 @@ async def test_ready_is_success_only_for_a_current_proof() -> None:
             }
         )
         runtime.load_lease = lambda: expired
+        stale = await client.get("/ready")
+        assert stale.status_code == 503
+        assert stale.headers["cache-control"] == "no-store"
+        # Valid signatures also fail when their original authority has expired.
+        signed_expired = _HELPERS._lease(private, now - timedelta(minutes=6))
+        runtime.load_lease = lambda: signed_expired
+        assert (await client.get("/ready")).status_code == 503
+        runtime.load_lease = lambda: current
+        runtime.load_snapshot = lambda: _HELPERS._snapshot(private, membership, model, expired=True)
         assert (await client.get("/ready")).status_code == 503
 
 
@@ -68,8 +88,93 @@ async def test_root_serves_the_degraded_app_without_a_redirect_loop(
 ) -> None:
     (tmp_path / "index.html").write_text('<html lang="en"><head></head><body>Coire</body></html>')
     monkeypatch.setattr(failover_app, "_STATIC_ROOT", tmp_path)
-    app = create_app(FailoverRuntime())
+    private, _, membership = _HELPERS._cluster()
+    access, key = _HELPERS._access_client()
+    model = _HELPERS._model()
+    app = create_app(
+        FailoverRuntime(
+            load_snapshot=lambda: _HELPERS._snapshot(private, membership, model),
+            load_lease=lambda: None,
+            access_client=access,
+        )
+    )
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        response = await client.get("/")
+        response = await client.get("/", headers={"Cf-Access-Jwt-Assertion": _HELPERS._token(key)})
+    await access.aclose()
     assert response.status_code == 200
     assert 'data-coire-tier="failover"' in response.text
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/", "/assets/main.js", "/ready", "/failover/tier", "/v1/models", "/v1/chat/completions"],
+)
+@pytest.mark.parametrize("credential", [None, "browser", "monitor", "lifecycle"])
+async def test_every_route_enforces_its_identity_scope(
+    path: str,
+    credential: str | None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "assets" / "main.js").write_text("void 0;", encoding="utf-8")
+    (tmp_path / "index.html").write_text("<html>isolated frontend</html>", encoding="utf-8")
+    monkeypatch.setattr(failover_app, "_STATIC_ROOT", tmp_path)
+    private, _, membership = _HELPERS._cluster()
+    access, key = _HELPERS._access_client()
+    model = _HELPERS._model()
+    runtime = FailoverRuntime(
+        load_snapshot=lambda: _HELPERS._snapshot(private, membership, model),
+        load_lease=lambda: None,
+        access_client=access,
+    )
+    runtime.in_flight = 3
+    headers = {
+        None: {},
+        "browser": {"Cf-Access-Jwt-Assertion": _HELPERS._token(key)},
+        "monitor": {"X-Coire-Failover-Monitor": "isolated-monitor"},
+        "lifecycle": {"X-Coire-Failover-Lifecycle": "isolated-lifecycle"},
+    }[credential]
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app(runtime)), base_url="http://direct-origin"
+    ) as client:
+        response = await client.request(
+            "POST" if path == "/v1/chat/completions" else "GET",
+            path,
+            headers=headers,
+            json={"model": str(model.id), "messages": [{"role": "user", "content": "hi"}]},
+        )
+    await access.aclose()
+    expected = 401
+    if credential == "monitor" and path == "/ready":
+        expected = 503
+    elif credential == "lifecycle" and path == "/failover/tier":
+        expected = 200
+        assert response.json()["in_flight"] == 3
+    elif credential == "browser" and path != "/ready":
+        expected = 503 if path.startswith("/v1/") else 200
+        if path == "/failover/tier":
+            assert "in_flight" not in response.json()
+            assert response.json()["admission_available"] is False
+    assert response.status_code == expected
+    assert response.headers["cache-control"] == "no-store"
+
+
+async def test_valid_access_subject_not_approved_by_snapshot_is_refused() -> None:
+    private, _, membership = _HELPERS._cluster()
+    model = _HELPERS._model()
+    access, key = _HELPERS._access_client()
+    runtime = FailoverRuntime(
+        load_snapshot=lambda: _HELPERS._snapshot(private, membership, model),
+        load_lease=lambda: _HELPERS._lease(private, datetime.now(UTC)),
+        access_client=access,
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app(runtime)), base_url="http://direct-origin"
+    ) as client:
+        response = await client.get(
+            "/v1/models",
+            headers={"Cf-Access-Jwt-Assertion": _HELPERS._token(key, sub="unapproved")},
+        )
+    await access.aclose()
+    assert response.status_code == 401

@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from sqlalchemy import select
@@ -44,6 +45,28 @@ _scope: ContextVar[_ServingScope | None] = ContextVar("upgrade_gateway_serving",
 def current_loading_smoke() -> CoreNodeSmokeScope | None:
     scope = _scope.get()
     return scope.body if scope is not None and scope.loading else None
+
+
+def serving_smoke_transport(engine_url: str, settings: Settings) -> bool:
+    """Identify only the task-local executor smoke after ordinary lease admission.
+
+    The node independently verifies the payload's retained upgrade scope. A public
+    request cannot set this context, and loading scopes grant no serving exemption.
+    """
+    scope = _scope.get()
+    if scope is None or scope.loading:
+        return False
+    body = scope.body
+    return (
+        scope.settings is settings
+        and scope.principal.kind is PrincipalKind.UPGRADE_EXECUTOR
+        and datetime.now(UTC) < body.deadline_at
+        and urlsplit(engine_url)
+        == urlsplit(
+            f"http://{body.node}.lab:{settings.node_listen_port}"
+            f"/node/engines/{body.engine_id}/proxy"
+        )
+    )
 
 
 @contextmanager

@@ -1,24 +1,100 @@
-openapi: 3.1.0
-info:
-  title: Coire Failover API
-  version: 1.0.0
-paths:
-  /ready:
-    get:
-      responses:
-        '200': {description: This host is the elected, safe serving tier.}
-        '503': {description: Standby, fenced, draining, or unsafe to serve.}
-  /failover/tier:
-    get:
-      responses:
-        '200': {description: Current failover tier and explicit unavailable capabilities.}
-  /v1/models:
-    get:
-      responses:
-        '200': {description: Snapshot-authorised, currently resident model list.}
-  /v1/chat/completions:
-    post:
-      responses:
-        '200': {description: Authenticated resident-model completion.}
-        '401': {description: Missing, invalid, stale, or unverifiable identity.}
-        '503': {description: Unelected tier, unavailable snapshot, or nonresident model.}
+# Design contract inventory, not hand-written production OpenAPI.
+# Runtime schemas MUST be implemented in coire-core and exported from the applications.
+contract_version: 2
+status: planned-corrective-contracts
+model_source: packages/coire-core/src/coire_core/models/failover.py
+openapi_outputs:
+  - apps/coire-api/openapi.json
+  - apps/coire-failover/openapi.json
+node_schema: generated_FastAPI_OpenAPI_asserted_by_node_contract_tests
+web_types:
+  - apps/coire-web/src/api/schema.d.ts
+  - apps/coire-web/src/api/failover-schema.d.ts
+compatibility:
+  unsupported_version: fail_closed
+  legacy_unbound_override: refused
+  rollout: drain_disarm_update_all_rearm_with_fresh_epoch
+  rollback: disarm_restore_compatible_source_preserve_audit
+surfaces:
+  browser:
+    identity: Cloudflare_Access_browser_assertion
+    routes:
+      - {method: GET, path: /, response: static_frontend}
+      - {method: GET, path: /assets/*, response: static_asset}
+      - {method: GET, path: /failover/tier, response: FailoverStatus}
+      - {method: GET, path: /v1/models, response: GatewayModelList}
+      - {method: POST, path: /v1/chat/completions, request: ChatCompletionRequest, response: OpenAI_completion_or_SSE}
+    required_checks:
+      - exact_supported_text_target_and_bounded_request
+      - fresh_signed_snapshot_and_Access_identity
+      - local_holder_and_current_authority_at_admission
+      - authority_rechecked_through_request_lifetime
+    refusals:
+      - identity_invalid
+      - snapshot_unavailable
+      - not_elected
+      - model_not_resident
+      - unsupported_capability
+      - exact_target_unavailable
+      - maintenance_active
+      - audit_unavailable
+      - request_limit_exceeded
+    statuses: {identity_invalid: 401, malformed_request: 422, forbidden_scope: 403, request_limit_exceeded: 429, unavailable: 503}
+  monitor:
+    identity: dedicated_monitor_credential_with_Service_Auth_at_edge
+    routes:
+      - {host: core, method: GET, path: /failover/ready}
+      - {host: elected_studio, method: GET, path: /ready}
+    responses: {ready: 200, no_authority_or_other_prerequisite_failed: 503, missing_identity: 401}
+    policy: no_store_no_redirects_no_inference_authority
+  local_lifecycle:
+    identity: dedicated_node_lifecycle_credential
+    route: {method: GET, path: /failover/tier, response: FailoverStatus}
+    scope: in_flight_and_drain_status_only
+    listener: existing_loopback_publication
+  core_peer:
+    identity: signed_declared_member_fresh_challenge_or_request
+    prefix: /api/v1/failover
+    routes:
+      - {method: POST, path: /heartbeat, request: FailoverHeartbeat, response: FailoverHeartbeat}
+      - {method: POST, path: /votes, request: ElectionVoteRequest, response: ElectionVoteGrant}
+      - {method: POST, path: /snapshot, request: FailoverHeartbeat, response: FailoverSnapshot}
+      - {method: POST, path: /events, request: FailoverEventBatch, response: FailoverEventAcknowledgement}
+    maintenance: safety_exchange_preserved_but_database_writes_require_019_authority
+  node_peer:
+    identity: signed_declared_member_or_host_bound_core_signed_override
+    prefix: /node/failover
+    routes:
+      - {method: POST, path: /heartbeat, request: FailoverHeartbeat, response: FailoverHeartbeat}
+      - {method: POST, path: /election/votes, request: ElectionVoteRequest, response: ElectionVoteGrant}
+      - {method: POST, path: /election/handback, request: HandbackNotice, response: HandbackAcknowledgement}
+      - {method: POST, path: /election/override, request: FailoverOverride, response: typed_activation_acknowledgement}
+    listener: declared_control_only
+  relay:
+    identity: separate_relay_credential_plus_request_bound_authority
+    prefix: /node/failover
+    routes:
+      - {method: GET, path: /resident, response: list_of_FailoverResidentEngine}
+      - {method: POST, path: "/engines/{engine_id}/chat/completions", request: FailoverRelayRequest, response: OpenAI_completion_or_SSE}
+    checks: [known_snapshot, correct_holder_epoch_and_request, exact_residency, all_sharded_ranks_and_link_current_when_applicable, maintenance_admission, request_limits, authority_deadline]
+    forbidden: [load, acquire, convert, place, create_request_lease, unapproved_target_fallback]
+  core_admin:
+    identity: authenticated_human_admin_with_matching_actor
+    route: {method: POST, path: /api/v1/admin/failover/overrides, request: FailoverOverride, response: typed_delivery_acknowledgement}
+    ordering: persist_audit_intent_then_deliver_to_single_target_then_record_outcome
+    offline: preauthorised_signed_artifact_delivered_via_authenticated_node_path
+forbidden_studio_surfaces:
+  - admin
+  - mutation_API
+  - MCP
+  - image_generation
+  - training
+  - acquisition
+  - user_runs
+  - scheduler
+  - database
+notes:
+  - All new acknowledgements and refusal shapes need strict coire-core models before service edits.
+  - The core and node control APIs are distinct from the Studio frontend route allowlist.
+  - Existing normal-core health routes remain under their own contracts; these monitor rules concern failover readiness.
+  - Snapshot authority expires even during break-glass; no implicit offline extension exists.

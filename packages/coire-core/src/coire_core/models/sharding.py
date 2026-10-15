@@ -8,6 +8,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from coire_core.models.adapters import InferenceTarget
 from coire_core.models.link import LinkState, RdmaState
 
 
@@ -134,6 +135,7 @@ class ShardGroupCommand(BaseModel):
     group_id: uuid.UUID
     instance_id: uuid.UUID
     variant_id: uuid.UUID
+    target: InferenceTarget | None = None
     slug: str = Field(pattern=r"^[A-Za-z0-9_.-]+--[A-Za-z0-9_.-]+$")
     mode: ShardingMode
     ranks: list[ShardRank] = Field(min_length=2, max_length=2)
@@ -142,6 +144,10 @@ class ShardGroupCommand(BaseModel):
 
     @model_validator(mode="after")
     def exactly_two_distinct_ranks(self) -> ShardGroupCommand:
+        if self.target is not None and (
+            self.target.variant_id != self.variant_id or self.target.adapter_id is not None
+        ):
+            raise ValueError("sharded target must bind the base variant")
         if {rank.rank for rank in self.ranks} != {0, 1}:
             raise ValueError("a shard group requires ranks 0 and 1")
         if len({rank.node_name for rank in self.ranks}) != 2:
@@ -160,6 +166,8 @@ class ShardGroupStatus(BaseModel):
 
     group_id: uuid.UUID
     instance_id: uuid.UUID
+    command_id: uuid.UUID | None = None
+    target: InferenceTarget | None = None
     mode: ShardingMode
     state: ShardGroupState
     ranks: list[ShardRank]

@@ -385,6 +385,14 @@ the accepted job's fixed prompt, immutable model/variant/manifest, exact Studio
 runtime and original deadline. Startup and generation use separate lifecycle
 checks; revocation prevents a delayed load from reopening an old engine.
 
+During maintenance, this task-local executor smoke may forward to its exact
+engine without a public serving election lease. The ordinary request lease still
+rechecks accepted authority and fences, and the node independently verifies the
+fixed smoke scope. A caller-supplied payload never establishes this exemption.
+Wrong node/engine/port, loading-only, expired and unrelated request contexts stay
+fenced. Gateway engine URLs use the configured node listener port, including in
+isolated acceptance deployments; do not redirect a probe to production port 9400.
+
 Before pinning a Studio, the serving probe checks the existing image/chat
 coexistence measurement gate for its verified tiny-model variant. A Studio
 with an unmeasured resident image mix is ineligible; an eligible verified peer

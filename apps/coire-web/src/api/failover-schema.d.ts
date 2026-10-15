@@ -11,7 +11,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Tier */
+        /**
+         * Tier
+         * @description Browser view excludes lifecycle counters; scoped lifecycle credentials select the extended view.
+         */
         get: operations["tier_failover_tier_get"];
         put?: never;
         post?: never;
@@ -59,8 +62,46 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** FailoverStatus */
+        AdapterSelector: string;
+        /** FailoverPublicStatus */
+        FailoverPublicStatus: {
+            /**
+             * Admission Available
+             * @default false
+             */
+            admission_available: boolean;
+            /** Authority Expires At */
+            authority_expires_at?: string | null;
+            /** Elected Host */
+            elected_host?: string | null;
+            /** Reachable Members */
+            reachable_members?: string[];
+            /**
+             * Reason
+             * @default not_elected
+             */
+            reason: string;
+            /** Snapshot Expires At */
+            snapshot_expires_at?: string | null;
+            tier: components["schemas"]["FailoverTier"];
+            /**
+             * Unavailable Capabilities
+             * @default []
+             */
+            unavailable_capabilities: string[];
+        };
+        /**
+         * FailoverStatus
+         * @description Scoped lifecycle view; browser clients only receive the public base.
+         */
         FailoverStatus: {
+            /**
+             * Admission Available
+             * @default false
+             */
+            admission_available: boolean;
+            /** Authority Expires At */
+            authority_expires_at?: string | null;
             /** Elected Host */
             elected_host?: string | null;
             /**
@@ -70,6 +111,11 @@ export interface components {
             in_flight: number;
             /** Reachable Members */
             reachable_members?: string[];
+            /**
+             * Reason
+             * @default not_elected
+             */
+            reason: string;
             /** Snapshot Expires At */
             snapshot_expires_at?: string | null;
             tier: components["schemas"]["FailoverTier"];
@@ -86,6 +132,10 @@ export interface components {
         FailoverTier: "full" | "degraded_inference" | "minimal";
         /** GatewayModel */
         GatewayModel: {
+            /** Coire Adapter Id */
+            coire_adapter_id?: string | null;
+            /** Coire Base Model Id */
+            coire_base_model_id?: string | null;
             /** Coire Context Window */
             coire_context_window?: number | null;
             /** Coire Description */
@@ -99,13 +149,16 @@ export interface components {
             coire_source: components["schemas"]["ModelSource"];
             /** Coire Tags */
             coire_tags?: string[];
+            /** Coire Variant Id */
+            coire_variant_id?: string | null;
+            /**
+             * Coire Verified
+             * @default false
+             */
+            coire_verified: boolean;
             /** Created */
             created: number;
-            /**
-             * Id
-             * Format: uuid
-             */
-            id: string;
+            id: components["schemas"]["ModelSelector"];
             /**
              * Object
              * @default model
@@ -130,29 +183,12 @@ export interface components {
              */
             object: "list";
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
+        ModelSelector: string | components["schemas"]["AdapterSelector"];
         /**
          * ModelSource
          * @enum {string}
          */
         ModelSource: "studio" | "openai" | "anthropic";
-        /** ValidationError */
-        ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-        };
     };
     responses: never;
     parameters: never;
@@ -177,7 +213,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FailoverStatus"];
+                    "application/json": components["schemas"]["FailoverPublicStatus"] | components["schemas"]["FailoverStatus"];
                 };
             };
         };
@@ -185,9 +221,7 @@ export interface operations {
     completions_v1_chat_completions_post: {
         parameters: {
             query?: never;
-            header?: {
-                "cf-access-jwt-assertion"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -202,23 +236,12 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
         };
     };
     models_v1_models_get: {
         parameters: {
             query?: never;
-            header?: {
-                "cf-access-jwt-assertion"?: string | null;
-            };
+            header?: never;
             path?: never;
             cookie?: never;
         };
@@ -231,15 +254,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GatewayModelList"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

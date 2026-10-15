@@ -169,6 +169,10 @@ def test_lone_survivor_fails_closed_until_break_glass(tmp_path: Path) -> None:
     assert not edge_b.proof_path.exists()
     unsigned = FailoverOverride(
         kind=FailoverOverrideKind.BREAK_GLASS_PROMOTE,
+        target_host="coire-edge-b",
+        epoch=1,
+        issued_at=now,
+        fencing_evidence="other public origins fenced in isolated fixture",
         actor_id=uuid4(),
         reason="both peers are down",
         expires_at=now + timedelta(minutes=5),
@@ -179,12 +183,45 @@ def test_lone_survivor_fails_closed_until_break_glass(tmp_path: Path) -> None:
     )
     assert edge_b.observe(alone, now, override=override) is ServiceRole.ELECTED
     assert edge_b.serving(now)
+    assert ElectionJournal(tmp_path / "coire-edge-b.json").entries()[-1].override == override
     expired = override.model_copy(update={"expires_at": now - timedelta(seconds=1)})
     assert edge_b.observe(alone, now, override=expired) is ServiceRole.STANDBY
 
 
 def _held(participant: StudioParticipant) -> bool:
     return participant.reservation_held
+
+
+def test_drain_stops_at_grant_expiry_even_when_accounting_stays_busy(tmp_path: Path) -> None:
+    private, _, membership = _material()
+    edge_a = _studio("coire-edge-a", private, membership, tmp_path / "a.json")
+    edge_b = _studio("coire-edge-b", private, membership, tmp_path / "b.json")
+    edge_a.timings = ElectionTimings(
+        promotion=timedelta(seconds=10),
+        demotion=timedelta(seconds=30),
+        lease=timedelta(seconds=15),
+        drain=timedelta(seconds=30),
+    )
+    edge_b.timings = edge_a.timings
+    now = datetime.now(UTC)
+    down = _seen(now, edge_a.name, frozenset({"coire-core"}))
+    edge_a.observe(down, now)
+    edge_b.observe(down, now)
+    grant = edge_b.vote(1, edge_a.term, edge_a.name, now)
+    assert grant is not None and edge_a.receive_grant(grant, now)
+    assert edge_a.observe(down, now) is ServiceRole.ELECTED
+    recovered = _seen(now, edge_a.name, frozenset())
+    recovered[0] = MemberObservation(
+        name="coire-core", health=MemberHealth.HEALTHY, since=now - timedelta(seconds=30)
+    )
+    assert edge_a.observe(recovered, now, in_flight=1) is ServiceRole.DRAINING
+    lease = FailoverLease.model_validate_json(edge_a.proof_path.read_text())
+    assert lease.drain_deadline == now + timedelta(seconds=15)
+    assert (
+        edge_a.observe(recovered, now + timedelta(seconds=16), in_flight=1) is ServiceRole.STANDBY
+    )
+    assert not edge_a.proof_path.exists()
+    assert _held(edge_a)
 
 
 def test_hand_back_keeps_the_reservation_until_in_flight_work_finishes(tmp_path: Path) -> None:
@@ -205,7 +242,12 @@ def test_hand_back_keeps_the_reservation_until_in_flight_work_finishes(tmp_path:
     )
     assert edge_a.observe(recovered, now, in_flight=2) is ServiceRole.DRAINING
     assert _held(edge_a)
-    assert not edge_a.proof_path.exists()
+    assert not edge_a.serving(now)
+    draining = FailoverLease.model_validate_json(edge_a.proof_path.read_text())
+    assert draining.phase == "draining"
+    assert draining.drain_deadline == now + timedelta(seconds=30)
+    assert draining.proof is not None and draining.proof.is_valid_for(membership, now)
+    assert draining.drain_deadline <= draining.authority_expires_at
     assert edge_a.observe(recovered, now, in_flight=0) is ServiceRole.STANDBY
     assert _held(edge_a)
     journal = ElectionJournal(tmp_path / "coire-edge-a.json")

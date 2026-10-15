@@ -24,8 +24,10 @@ from coire_core.models.engine import (
 )
 from coire_core.models.gateway import EngineChatRequest
 from coire_core.net import shared_http_ssl_context
-from coire_node.deps import EngineDep, StoreDep
+from coire_node.deps import EngineDep, SettingsDep, StoreDep
 from coire_node.engines import BackendMismatch, BudgetExceeded, CopyMissing, NoFreePort
+from coire_node.failover.core_authority import core_authority_guard
+from coire_node.failover.lifetime import bounded_response
 from coire_node.maintenance import require_admission
 
 logger = logging.getLogger(__name__)
@@ -114,8 +116,16 @@ async def proxy_chat_completion(
     engines: EngineDep,
     store: StoreDep,
     transport_request: Request,
+    settings: SettingsDep,
 ) -> Response:
     """Carry one authenticated gateway request to a loopback-only bare engine."""
+    allowed = core_authority_guard(
+        settings,
+        transport_request.headers.get("X-Coire-Core-Failover"),
+        guarded_upgrade_smoke=request.coire_upgrade_scope is not None,
+    )
+    if not allowed():
+        raise HTTPException(503, "not_elected")
     parent = extract(transport_request.headers)
     with tracer.start_as_current_span("coire.node.engine.proxy.lookup", context=parent) as span:
         span.set_attribute("engine_id", str(engine_id))
@@ -150,13 +160,19 @@ async def proxy_chat_completion(
                 status.HTTP_503_SERVICE_UNAVAILABLE, "adapter artifact unavailable"
             ) from exc
         payload["adapters"] = str(adapter_path)
+    if not allowed():
+        raise HTTPException(503, "not_elected")
     if not request.stream:
-        try:
-            response = await _engine_client().post(url, json=payload, timeout=300)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise HTTPException(status.HTTP_502_BAD_GATEWAY, "engine request failed") from exc
-        return JSONResponse(status_code=response.status_code, content=response.json())
+
+        async def buffered() -> Response:
+            try:
+                response = await _engine_client().post(url, json=payload, timeout=300)
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise HTTPException(status.HTTP_502_BAD_GATEWAY, "engine request failed") from exc
+            return JSONResponse(status_code=response.status_code, content=response.json())
+
+        return await bounded_response(buffered(), allowed, lambda: None)
 
     async def relay() -> AsyncIterator[bytes]:
         timeout = httpx.Timeout(300, read=None)
@@ -171,9 +187,12 @@ async def proxy_chat_completion(
                 async for chunk in response.aiter_bytes():
                     yield chunk
 
-    return StreamingResponse(
-        relay(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}
-    )
+    async def streaming() -> Response:
+        return StreamingResponse(
+            relay(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}
+        )
+
+    return await bounded_response(streaming(), allowed, lambda: None)
 
 
 @router.delete("/{engine_id}", response_model=EngineStatus, status_code=status.HTTP_202_ACCEPTED)

@@ -1092,6 +1092,30 @@ class EngineManager:
             engine = self._engines.get(str(engine_id))
             return engine.status() if engine else None
 
+    def failover_status(self, engine_id: uuid.UUID) -> EngineStatus | None:
+        """Return only a currently live, exactly identified bare base-model process."""
+        with self._lock:
+            engine = self._engines.get(str(engine_id))
+            if (
+                engine is None
+                or engine.state is not EngineState.READY
+                or engine.target is None
+                or engine.target.adapter_id is not None
+                or engine.pid is None
+                or engine.create_time is None
+            ):
+                return None
+            try:
+                proc = psutil.Process(engine.pid)
+                if (
+                    proc.create_time() != engine.create_time
+                    or proc.status() == psutil.STATUS_ZOMBIE
+                ):
+                    return None
+            except (psutil.Error, OSError):
+                return None
+            return engine.status()
+
     def attested_engine_version(
         self,
         engine_id: uuid.UUID,

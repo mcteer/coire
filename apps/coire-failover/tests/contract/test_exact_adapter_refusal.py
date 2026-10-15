@@ -17,6 +17,7 @@ async def test_pair_selector_refused_before_resident_slug_lookup(
 ) -> None:
     snapshot = MagicMock(spec=FailoverSnapshot)
     snapshot.is_fresh.return_value = True
+    snapshot.membership = MagicMock(epoch=1)
     local, peer, relay = AsyncMock(), AsyncMock(), AsyncMock()
     runtime = frontend.FailoverRuntime(
         settings=Settings(),
@@ -27,7 +28,7 @@ async def test_pair_selector_refused_before_resident_slug_lookup(
         relay=relay,
     )
     monkeypatch.setattr(frontend, "_identity", AsyncMock())
-    monkeypatch.setattr(frontend, "_lease_serves", lambda *args: True)
+    monkeypatch.setattr(frontend, "_lease_serves", lambda *args, **kwargs: True)
     monkeypatch.setattr(
         frontend,
         "_status_for",
@@ -38,6 +39,7 @@ async def test_pair_selector_refused_before_resident_slug_lookup(
     ) as client:
         response = await client.post(
             "/v1/chat/completions",
+            headers={"Cf-Access-Jwt-Assertion": "isolated-mocked-identity"},
             json={
                 "model": f"{uuid.uuid4()}@adapter",
                 "messages": [{"role": "user", "content": "hi"}],

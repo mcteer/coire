@@ -500,8 +500,19 @@ class MetricsCollector:
             _data_link_latency.record(latency_ms, attributes)
 
         rdma_state = RdmaState.UNKNOWN
+        controller = shutil.which("rdma_ctl")
         profiler = shutil.which("system_profiler")
-        if profiler:
+        if controller:
+            try:
+                result = run_probe([controller, "status"], timeout=0.5)
+                state = result.stdout.decode("utf-8", "replace").strip().lower()
+                if result.returncode == 0 and state == "enabled":
+                    rdma_state = RdmaState.UP
+                elif result.returncode == 0 and state == "disabled":
+                    rdma_state = RdmaState.DOWN
+            except (OSError, subprocess.SubprocessError):
+                pass
+        elif profiler:
             try:
                 result = run_probe(
                     [profiler, "SPThunderboltDataType"],
