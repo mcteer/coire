@@ -66,7 +66,12 @@ async def worker() -> None:
     name = initial["name"]
     assert os.uname().nodename.split(".")[0] == name
     root = Path(initial["root"])
-    await asyncio.to_thread(root.mkdir, mode=0o700, parents=True, exist_ok=False)
+    await asyncio.to_thread(
+        root.mkdir, mode=0o700, parents=True, exist_ok=initial.get("resume", False)
+    )
+    details = await asyncio.to_thread(root.lstat)
+    assert not await asyncio.to_thread(root.is_symlink) and details.st_uid == os.getuid()
+    assert details.st_mode & 0o077 == 0
     configure_node_telemetry(
         "020-resource-acceptance",
         "http://127.0.0.1:1",
@@ -277,6 +282,7 @@ async def run() -> None:
         ],
     )
     workers = {}
+    initials = {}
     forwards = []
     logs = []
     log_stack = ExitStack()
@@ -314,19 +320,15 @@ async def run() -> None:
             workers[name] = await asyncio.create_subprocess_exec(
                 *command, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=log
             )
-            workers[name].stdin.write(
-                json.dumps(
-                    {
-                        "name": name,
-                        "root": str(root),
-                        "key": keys[name],
-                        "membership": membership.model_dump(mode="json"),
-                        "diagnostics": diagnostics,
-                        "source_identity": selected_source,
-                    }
-                ).encode()
-                + b"\n"
-            )
+            initials[name] = {
+                "name": name,
+                "root": str(root),
+                "key": keys[name],
+                "membership": membership.model_dump(mode="json"),
+                "diagnostics": diagnostics,
+                "source_identity": selected_source,
+            }
+            workers[name].stdin.write(json.dumps(initials[name]).encode() + b"\n")
             await workers[name].stdin.drain()
             assert (await receive(name))["ready"]
         for name in NAMES[1:]:
@@ -357,6 +359,69 @@ async def run() -> None:
             samples = await asyncio.gather(*(rpc(name, "arm") for name in NAMES[1:]))
             assert all(sample["role"] != "unarmed" for sample in samples)
             print("signed snapshot/subscriber preflight passed on both Studios", flush=True)
+            return
+        if "--faults" in sys.argv:
+            await rpc(NAMES[0], "arm")
+            await asyncio.gather(*(rpc(name, "arm") for name in NAMES[1:]))
+            transitions = []
+
+            async def wait_roles(expected: dict[str, str], bound: float) -> float:
+                started_at = time.monotonic()
+                while True:
+                    samples = await asyncio.gather(*(rpc(name, "sample") for name in expected))
+                    roles = {
+                        name: item["role"] for name, item in zip(expected, samples, strict=True)
+                    }
+                    assert sum(role == "elected" for role in roles.values()) <= 1, roles
+                    elapsed = time.monotonic() - started_at
+                    transitions.append({"elapsed_s": elapsed, "roles": roles})
+                    if roles == expected:
+                        return elapsed
+                    assert elapsed < bound, {"expected": expected, "observed": roles}
+                    await asyncio.sleep(2)
+
+            healthy = {name: "elected" if name == NAMES[0] else "standby" for name in NAMES}
+            # Setup includes the 301 s missing-record guard, then Core's 45 s reclaim
+            # confirmation. Neither interval belongs to the subsequent fault deadline.
+            await wait_roles(healthy, 390)
+            # Fault immediately after a genuine periodic publication; never renew offline.
+            while True:
+                snapshot = json.loads((root / "snapshot.json").read_text())
+                issued = datetime.fromisoformat(snapshot["issued_at"].replace("Z", "+00:00"))
+                if (datetime.now(UTC) - issued).total_seconds() < 3:
+                    break
+                await asyncio.sleep(0.5)
+            workers[NAMES[0]].kill()
+            await workers[NAMES[0]].wait()
+            promotion = await wait_roles({NAMES[1]: "elected", NAMES[2]: "standby"}, 60)
+            print(json.dumps({"Core_process_loss_promotion_s": promotion}), flush=True)
+            # Restart only the owned fixture, retaining its real durable safety/journal files.
+            workers[NAMES[0]] = await asyncio.create_subprocess_exec(
+                sys.executable,
+                SCRIPT,
+                "--worker",
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=logs[0],
+            )
+            workers[NAMES[0]].stdin.write(
+                json.dumps({**initials[NAMES[0]], "resume": True}).encode() + b"\n"
+            )
+            await workers[NAMES[0]].stdin.drain()
+            assert (await receive(NAMES[0]))["ready"]
+            await rpc(NAMES[0], "arm")
+            recovery = await wait_roles(healthy, 90)
+            result = {
+                "scope": "real-host signed participant HTTP; owned Core process SIGKILL/restart",
+                "physical_power_loss": False,
+                "frontend_or_public_ingress": False,
+                "promotion_s": promotion,
+                "handback_s": recovery,
+                "transitions": transitions,
+                "source_identity": selected_source,
+            }
+            await asyncio.to_thread(output.write_text, json.dumps(result, indent=2))
+            print(json.dumps({"Core_process_restart_handback_s": recovery}), flush=True)
             return
         for phase in ("baseline", "armed"):
             if phase == "armed":

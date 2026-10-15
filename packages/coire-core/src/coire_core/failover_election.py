@@ -661,6 +661,15 @@ class ElectionParticipant:
             return None
         if self.eligible_leader(self._now) != self.name:
             return None
+        if (
+            self.role is ServiceRole.ELECTED
+            and self.proof is not None
+            and all(grant.expires_at - now > self.timings.lease / 3 for grant in self.proof.grants)
+            and self._proof_ok(now)
+        ):
+            # Voters retain these same grants until their final third. Heartbeats and
+            # observe() still run each poll; asking again only repeats signatures/I/O.
+            return None
         unsigned = ElectionVoteRequest(
             epoch=self.membership.epoch,
             term=self.term,

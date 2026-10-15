@@ -217,6 +217,19 @@ async def worker() -> None:
             ).strip(),
         }
     )
+
+    def terminate_rank(group_id: str) -> int:
+        from uuid import UUID
+
+        import psutil
+
+        rank = agent.shard_groups.local_rank(UUID(group_id))
+        assert rank and rank.pid and rank.process_create_time
+        process = psutil.Process(rank.pid)
+        assert process.create_time() == rank.process_create_time
+        process.terminate()  # Only this run's exact owned native worker.
+        return rank.rank
+
     try:
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://node"
@@ -254,16 +267,52 @@ async def worker() -> None:
                         }
                     )
                 elif operation == "kill_rank":
-                    from uuid import UUID
-
-                    import psutil
-
-                    rank = agent.shard_groups.local_rank(UUID(command["group_id"]))
-                    assert rank and rank.pid and rank.process_create_time
-                    process = psutil.Process(rank.pid)
-                    assert process.create_time() == rank.process_create_time
-                    process.terminate()  # exact owned qualification worker, never an arbitrary PID
-                    output({"terminated_rank": rank.rank})
+                    output({"terminated_rank": terminate_rank(command["group_id"])})
+                elif operation == "interrupt_stream":
+                    # A real socket is required here: ASGITransport buffers SSE bodies.
+                    partial = 0
+                    fault_started = None
+                    done = False
+                    async with (
+                        httpx.AsyncClient(
+                            transport=httpx.AsyncHTTPTransport(uds=str(uds)), base_url="http://node"
+                        ) as streaming,
+                        streaming.stream(
+                            "POST",
+                            command["path"],
+                            json=command["body"],
+                            headers=command["headers"],
+                            timeout=10,
+                        ) as response,
+                    ):
+                        assert response.status_code == 200, await response.aread()
+                        async for line in response.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+                            if line == "data: [DONE]":
+                                done = True
+                                continue
+                            event = json.loads(line[6:])
+                            choices = event.get("choices", [])
+                            delta = choices[0].get("delta", {}) if choices else {}
+                            if any(
+                                delta.get(key)
+                                for key in ("content", "reasoning_content", "reasoning")
+                            ):
+                                partial += 1
+                                if fault_started is None:
+                                    fault_started = time.monotonic()
+                                    output({"stream_started": True})
+                                    if command["fault_rank"] == 0:
+                                        terminate_rank(command["group_id"])
+                    assert fault_started is not None, "stream produced no text before fault"
+                    output(
+                        {
+                            "partial_chunks": partial,
+                            "done": done,
+                            "interruption_s": time.monotonic() - fault_started,
+                        }
+                    )
                 elif operation == "swap":
                     output(
                         {
@@ -557,8 +606,48 @@ def run() -> None:
                 ), message
                 assert completion["usage"]["completion_tokens"] > 0
                 results["buffered_completion_tokens"] = completion["usage"]["completion_tokens"]
+        body = {
+            "model": model_id,
+            "messages": [{"role": "user", "content": "Count from 1 to 100, one number per line."}],
+            "max_tokens": 128,
+            "stream": True,
+            "coire_wait_for_model": False,
+        }
+        authority = request(
+            NAMES[1],
+            "POST",
+            "/node/failover/authority",
+            {"engine_id": group_id, "request": body, "access_assertion": assertion},
+            headers,
+        )
+        workers[NAMES[1]].stdin.write(
+            json.dumps(
+                {
+                    "operation": "interrupt_stream",
+                    "fault_rank": FAULT_RANK,
+                    "group_id": group_id,
+                    "path": f"/node/failover/engines/{group_id}/chat/completions",
+                    "headers": headers,
+                    "body": {
+                        "engine_id": group_id,
+                        "model_slug": model.slug,
+                        "request": body,
+                        "authority": authority,
+                        "access_assertion": assertion,
+                    },
+                }
+            )
+            + "\n"
+        )
+        workers[NAMES[1]].stdin.flush()
+        assert receive(NAMES[1])["stream_started"]
         started = time.monotonic()
-        rpc(NAMES[FAULT_RANK + 1], operation="kill_rank", group_id=group_id)
+        if FAULT_RANK == 1:
+            rpc(NAMES[2], operation="kill_rank", group_id=group_id)
+        interrupted = receive(NAMES[1])
+        assert interrupted["partial_chunks"] > 0 and not interrupted["done"], interrupted
+        assert interrupted["interruption_s"] < 3, interrupted
+        results["interrupted_stream"] = interrupted
         while request(NAMES[1], "GET", "/node/failover/resident", headers=headers):
             assert time.monotonic() - started < 3, "failed rank remained admissible"
             time.sleep(0.05)

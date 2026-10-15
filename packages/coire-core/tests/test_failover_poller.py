@@ -86,14 +86,18 @@ class _Bus:
     def __init__(self, members: dict[str, ElectionParticipant]) -> None:
         self.members = members
         self.down: set[str] = set()
+        self.heartbeats = 0
+        self.vote_requests = 0
 
     async def heartbeat(self, peer: str, body: FailoverHeartbeat) -> tuple[bool, float]:
         del body
+        self.heartbeats += 1
         if peer in self.down:
             return False, 0
         return True, 1
 
     async def request_vote(self, peer: str, body: ElectionVoteRequest) -> ElectionVoteGrant | None:
+        self.vote_requests += 1
         if peer in self.down:
             return None
         voter = self.members[peer]
@@ -102,6 +106,60 @@ class _Bus:
         ):
             return None
         return voter.vote(body.epoch, body.term, body.candidate, voter._now)
+
+
+async def test_current_lease_avoids_redundant_votes_but_keeps_renewal_and_fencing() -> None:
+    private, membership = _material()
+    timings = ElectionTimings(
+        promotion=timedelta(seconds=15),
+        demotion=timedelta(seconds=45),
+        lease=timedelta(seconds=15),
+        drain=timedelta(seconds=30),
+    )
+    members = {
+        name: ElectionParticipant(
+            name=name, membership=membership, private_key_b64=private[name], timings=timings
+        )
+        for name in NAMES
+    }
+    bus = _Bus(members)
+    settings = Settings(_secrets_dir="/nonexistent")  # type: ignore[call-arg]
+    pollers = {name: FailoverPoller(member, settings, bus) for name, member in members.items()}
+    now = datetime.now(UTC)
+    core = members["coire-core"]
+
+    async def tick(seconds: int) -> None:
+        for name in reversed(NAMES):
+            await pollers[name].tick(now + timedelta(seconds=seconds))
+
+    await tick(0)
+    assert core.serving(now)
+    proof = core.proof
+    requests = bus.vote_requests
+    beats = bus.heartbeats
+    for seconds in (2, 4, 6, 8):
+        await tick(seconds)
+        assert core.serving(now + timedelta(seconds=seconds))
+        assert core.proof == proof
+    assert bus.heartbeats == beats + 24
+    assert bus.vote_requests == requests
+
+    # Renew inside the existing lease's final third, before any authority gap.
+    for seconds in range(10, 32, 2):
+        await tick(seconds)
+        assert core.serving(now + timedelta(seconds=seconds))
+    assert bus.vote_requests > requests
+    assert core.proof is not None and proof is not None
+    assert min(grant.expires_at for grant in core.proof.grants) > max(
+        grant.expires_at for grant in proof.grants
+    )
+
+    # Skipping redundant votes must never skip fresh quorum observations.
+    bus.down.update(NAMES[1:])
+    for seconds in (32, 34, 36):
+        await pollers["coire-core"].tick(now + timedelta(seconds=seconds))
+    assert not core.serving(now + timedelta(seconds=36))
+    assert core.role is ServiceRole.STANDBY
 
 
 async def test_core_loss_elects_only_edge_a() -> None:

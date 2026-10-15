@@ -243,7 +243,8 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
         memory_available=lambda: min(8 * 1024**3, psutil.virtual_memory().available),
         disk_available=lambda: shutil.disk_usage(tmp_path).free,
     )
-    supervisor.processes = SourceProcesses()
+    source_processes = SourceProcesses()
+    supervisor.processes = source_processes
     wire = prepared.model_dump(
         mode="json",
         exclude={
@@ -298,6 +299,19 @@ async def test_node_owned_native_preference_probe_counts_reference_and_serializa
                     # complete observation; every resource/result assertion
                     # below still applies. A guard stop never becomes success.
                     status = supervisor.measurement_status(prepared.attempt_id)
+                    child = (
+                        source_processes.children.get(status.status.pid)
+                        if status.status.pid is not None
+                        else None
+                    )
+                    if not status.stopped and child is not None and child.poll() == 0:
+                        # The owned leader can finish before its native process group
+                        # disappears. Stop renewing and keep observing within the
+                        # original test deadline. Success still requires positive group
+                        # death and the complete validated measurement below.
+                        renew_at = deadline
+                        await asyncio.sleep(0.1)
+                        continue
                     if not status.stopped or not isinstance(
                         status.observation, PreferenceMeasurementObservation
                     ):

@@ -23,9 +23,10 @@ fault coverage; physical link qualification remains in T073. T065 remains open f
 armed-020 upgrade-success/failed-candidate rollback matrix: full application maintenance fencing,
 frontend-start admission, cohort recovery and SQL handover ownership checks pass, but these do
 not establish the entire live operation. T056/T057 provider-dependent work is owner-deferred.
-T073/T036 remain open: temporary RDMA aliases are approved but need interactive OS sudo; Core
-power-off needs independently verified recovery. Real PP buffered/streaming and both rank faults
-pass with zero swap; participant resource windows are running. Deployed coexistence/public timing
+T073/T036 remain open: real TP/PP buffered/streaming and both rank faults pass with zero swap;
+all four mid-stream interruption cases pass. Temporary en5 aliases were applied and removed by
+the owner, with cleanup readback. Core auto-restart is confirmed; physical power loss is untested.
+Participant resource windows failed the Studio CPU budget; the renewal correction is under retest. Deployed coexistence/public timing
 trials are not claimed. All passing and failed attempts are recorded without counting skips as passes.
 
 ## Phase 1: Setup

@@ -578,3 +578,53 @@ Live TP still requires the approved en5 addresses to be applied with interactive
 cannot supply that password; neither address has been applied by the agent. Physical Core power-loss
 acceptance still requires an independently controlled recovery path. Cloudflare remains owner-deferred.
 T036/T065/T073 stay open for their remaining mandatory evidence.
+
+
+### Live TP and mid-stream faults — 2026-10-15
+
+The owner applied the approved temporary en5 aliases. Readback confirmed both exact addresses.
+TP over the real Studio JACCL fabric then passed buffered/streaming inference with the acquired
+Qwen2.5-0.5B asset. The runner now also waits for actual SSE text, faults the exact owned rank,
+and verifies that the interrupted response never reports `[DONE]`. All four live cases pass:
+
+| Placement / fault | Stream interruption | Subsequent empty residency |
+| --- | ---: | ---: |
+| TP / rank 0 | 0.0635 s | 0.6357 s |
+| TP / rank 1 | 0.3333 s | 0.5394 s |
+| PP / rank 0 | 0.0274 s | 0.3496 s |
+| PP / rank 1 | 0.0748 s | 0.4497 s |
+
+The stream clock starts on the native observer before fault dispatch; the residency clock starts
+on Core at the stream-start notification and includes the remaining stream/peer fault exchange.
+Every case generated real text first and completed within the unchanged three-second limit;
+all actual before/after swap readings were zero. Owned groups and model copies were cleaned.
+Logs: `data/qualification/020/484b3861/coire-020-{tp,pp}-stream-rank{0,1}.log`.
+The owner removed both aliases afterward; agent readback confirmed neither remains.
+Core `pmset -g` confirms `autorestart 1`; no physical power interruption was performed.
+
+### 2026-10-15 sustained participant CPU correction
+
+The completed 900-second baseline/900-second armed trials failed the CPU budget. Lean deltas
+were Core **0.799%**, edge-a **1.141%**, edge-b **1.168%**; diagnostic deltas were **0.810%**,
+**1.223%**, **1.193%**. RSS increments were 3.03–4.81 MiB and actual swap growth was zero.
+The raw failed measurements are retained in `data/qualification/020/484b3861/` as
+`coire-020-resources-final-{lean,diagnostic}.json`; these are not passing acceptance.
+
+The elected participant requested signed votes every two seconds even while voters retained the
+same grants. It now requests renewal only in the existing lease's final third. Signed heartbeats,
+quorum observation, immediate request-path proof checks and all timing defaults remain unchanged.
+A regression first reproduced the redundant requests, then passed continuous renewal and quorum-loss
+fencing. The affected election/API/node/frontend/process/SQL boundary suite passes **234 tests,
+zero skips, 27.87 s**; strict mypy passes **1,302 sources**. Fresh full resource windows are running
+as `/tmp/coire-020-resources-renewal-{lean,diagnostic}.json`; no result is claimed yet.
+
+Hosted CI 38745986426 found a native DPO fixture completion race: the owned worker exited zero while
+its process group was still being observed as unknown. The test now waits within its original
+90-second bound for positive group death and a validated observation; errors and resource guards
+remain failures. The corrected DPO case passes on edge-a (**1 test, 7.29 s**). Final hosted
+confirmation remains required.
+
+The new real-host process-fault runner initially exhausted its setup allowance: the missing-record
+301-second guard is followed by Core's 45-second recovery confirmation. Setup now includes both;
+the separate 60/90-second fault/recovery assertions are unchanged. A new trial is running. It stops
+only its owned Core participant process and does not claim physical power loss or public ingress.
