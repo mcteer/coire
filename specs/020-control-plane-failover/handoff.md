@@ -52,4 +52,10 @@ engine gates. Its new failover engine test exposed a test setup mismatch: the fa
 used 30 seconds while this test and the existing evaluation fixture allow 120 seconds for model
 warm-up. The fixture now sets that same 120-second setup bound and includes redacted diagnostics;
 all failover deadline assertions remain unchanged. The corrected test passed on edge-a with the
-existing verified Qwen Coder 0.5B asset. Hosted CI still needs to confirm the correction.
+existing verified Qwen Coder 0.5B asset. Hosted CI confirmed it, plus 6,069 unit/contract and 245 web
+tests. A subsequent existing extraction test exposed retained hard links from our new fixture;
+native/operator qualification now uses independent model copies, preserving acquisition inode
+identity. Owned links were removed on both Studios with source link count one verified. Sequential
+failover and training/extraction/evaluation now pass on edge-a (2 tests, 51.45 s); hosted CI must
+confirm this final fixture correction. Persistent private evidence is in
+`data/qualification/020/484b3861/`, with a SHA-256 manifest. Runtime images still correspond to 484b3861.

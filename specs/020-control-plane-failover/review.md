@@ -496,3 +496,22 @@ but the Agent helper defaulted to 30 seconds. The test now explicitly selects th
 failover lease, request, drain or fencing deadline changed. The corrected test passed with the
 already acquired/verified Qwen Coder 0.5B fabric-acceptance asset on edge-a: **1 passed, 3.00 s**
 (`/tmp/coire-020-native-coder-final.log`). Hosted CI confirmation remains pending.
+
+Hosted CI on `2bbae266837f63e64b7f2e990a89c4233243dc33` confirmed the failover native test,
+installed-node/SIGKILL recovery, **6,069 unit/contract tests** and **245 web tests**. The 79 optional
+skips and 654 deselections in the broad suite are not feature acceptance. Its later existing
+training/extraction test exposed a side effect of the new failover fixture: retained model hard
+links correctly failed the extractor's unlinked-input guard. The runtime extractor was unchanged.
+Qualification fixtures now use independent copies, and the native failover test asserts distinct
+inodes and single-link copies. All owned qualification links on both Studios were removed after
+checking that no process used those stores; the affected acquired source files have link count one.
+The exact failure reproduced in isolation on edge-a; with independent copies, sequential failover
+and training/extraction/evaluation tests passed: **2 passed, 51.45 s**. Temporary diagnostic
+instrumentation only added error reporting and explicit fixture-engine cleanup. No production
+extraction validation or timing assertion was loosened. Logs: `/tmp/coire-020-ci-unit-current.log`,
+`/tmp/coire-020-ci-evaluation-current.log`, `/tmp/coire-020-linked-fixture-regression.log`, and
+`/tmp/coire-020-edge-{a,b}-link-cleanup.log`. Hosted confirmation of this fixture correction is pending.
+
+Selected raw evidence, scans, SBOMs and their SHA-256 manifest are retained outside Git under
+`data/qualification/020/484b3861/` so they survive an interruption. Runtime image/source identities
+above remain unchanged by these test-only corrections.

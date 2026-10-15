@@ -63,7 +63,7 @@ async def worker() -> None:
     shutil.copytree(
         source,
         agent.store.path_for(source.name),
-        copy_function=os.link,
+        copy_function=shutil.copy2,
         ignore=shutil.ignore_patterns(".cache"),
     )
     shutil.copyfile(

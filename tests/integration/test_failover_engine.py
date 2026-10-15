@@ -75,7 +75,9 @@ def test_real_resident_failover_completion_and_stale_process_refusal(
     shutil.copytree(
         source,
         agent.store.path_for(source.name),
-        copy_function=os.link,
+        # Keep the acquired source's inode/link identity intact for later extraction
+        # qualification, which correctly rejects multiply-linked model inputs.
+        copy_function=shutil.copy2,
         ignore=shutil.ignore_patterns(".cache"),
     )
     shutil.copyfile(
@@ -83,6 +85,10 @@ def test_real_resident_failover_completion_and_stale_process_refusal(
     )
     manifest = agent.store.read_manifest(source.name)
     assert manifest is not None
+    for entry in manifest.files:
+        copied = agent.store.path_for(source.name) / entry.path
+        assert copied.stat().st_nlink == 1
+        assert not copied.samefile(source / entry.path), "fixture changed acquired source identity"
     target = InferenceTarget(
         model_id=uuid4(), variant_id=uuid4(), base_manifest_sha256=manifest.sha256()
     )
