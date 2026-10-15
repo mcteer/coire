@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import tempfile
+import time
 from contextlib import nullcontext, suppress
 from datetime import UTC, datetime
 from pathlib import Path
@@ -57,6 +58,7 @@ class StudioFailoverController:
         self._maintenance = maintenance
         self._last_issued_at: datetime | None = None
         self._last_epoch = 0
+        self._stopped_frontend_until = 0.0
 
     async def upgrade_inventory(self) -> UpgradeOwnerInventory:
         poller = self._poller
@@ -269,6 +271,7 @@ class StudioFailoverController:
             )
 
     async def _disarm(self) -> None:
+        self._stopped_frontend_until = 0.0
         lifecycle = self._lifecycle_task
         self._lifecycle_task = None
         if lifecycle is not None:
@@ -305,6 +308,13 @@ class StudioFailoverController:
         docker = self._docker
         if poller is None or docker is None:
             return
+        needed = poller.participant.role in (ServiceRole.ELECTED, ServiceRole.DRAINING)
+        if not needed and time.monotonic() < self._stopped_frontend_until:
+            return
+        # Only a positively stopped container may defer idle inspection. Every
+        # promotion and running/draining check still reads Docker's current policy.
+        # No lease, signature, maintenance or admission decision is retained here.
+        self._stopped_frontend_until = 0.0
         container = await docker.inspect_container("coire-failover")
         if container is None:
             logger.error("precreated coire-failover container is missing")
@@ -321,7 +331,9 @@ class StudioFailoverController:
             raise ValueError(
                 "precreated failover container does not match the approved image and policy"
             )
-        running = state.get("Running") is True
+        if type(state.get("Running")) is not bool:
+            raise ValueError("precreated failover container running state is uncertain")
+        running = state["Running"]
         needed = poller.participant.role in (ServiceRole.ELECTED, ServiceRole.DRAINING)
         if needed and not running:
             # Hold the existing 019 admission permit across Docker I/O. Its inventory
@@ -331,6 +343,10 @@ class StudioFailoverController:
                 await docker.start_container("coire-failover")
         elif running and not needed:
             await docker.stop_container("coire-failover")
+        if not needed:
+            # A stopped standby has no serving authority. Audit unexpected external
+            # starts at most thirty seconds later; role changes bypass this delay.
+            self._stopped_frontend_until = time.monotonic() + 30.0
 
     async def _in_flight(self) -> int:
         poller = self._poller

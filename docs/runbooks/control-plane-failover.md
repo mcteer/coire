@@ -16,7 +16,7 @@ no-cache headers. Core `/ready` remains process liveness, not election readiness
 
 Browser/API/assets require a valid approved Access JWT; local testing may use an isolated signed
 identity fixture but production has no anonymous bypass. `X-Coire-Failover-Lifecycle` permits only
-local in-flight accounting on `/api/v1/failover/status`. Relay credentials do not grant inference
+local in-flight accounting on `/failover/tier`. Relay credentials do not grant inference
 by themselves: the node verifies a signed, request-bound authority and the original user JWT.
 Peer control uses signed, challenge-bound messages and separate host keys. Do not print credentials.
 
@@ -41,6 +41,11 @@ seconds, drain 30 seconds, polling 2 seconds. Snapshot refresh stops with Core; 
 signed horizon bounds the outage service, including break-glass. There is no local renewal or
 cached-user fallback after expiry. Prompt, output, rate and concurrency use the stricter signed
 subject/model limits. No failover path loads a model, acquires an artifact or replaces placement.
+
+A positively stopped standby container is inspected at most every 30 seconds. Promotion always
+performs a fresh Docker image/policy check; running and draining containers retain the two-second
+inspection loop. Upgrade inventory always reads current Docker state. Unexpected external starts
+are stopped at the next standby inspection and cannot admit requests without current authority.
 
 Single-node residency binds instance, immutable artifact, PID and process creation time. Sharded
 residency binds the exact group/command generation and both owned workers, with authenticated

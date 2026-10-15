@@ -334,6 +334,7 @@ async def run() -> None:
     logs = []
     log_stack = ExitStack()
     measurements = {name: {} for name in NAMES}
+    warmup = []
     selected_source = await asyncio.to_thread(source_identity)
 
     def open_log(name: str):
@@ -492,6 +493,42 @@ async def run() -> None:
             if phase == "armed":
                 await rpc(NAMES[0], "arm")
                 await asyncio.gather(*(rpc(name, "arm") for name in NAMES[1:]))
+                # SC-014 measures idle operation. Complete the real 301-second
+                # missing-record guard and Core recovery before starting that
+                # window; campaign/restart costs remain separately recorded.
+                setup_started = time.monotonic()
+                stable_since = None
+                while True:
+                    samples = await asyncio.gather(*(rpc(name, "sample") for name in NAMES))
+                    roles = {
+                        name: sample["role"] for name, sample in zip(NAMES, samples, strict=True)
+                    }
+                    healthy = roles == {
+                        NAMES[0]: "elected",
+                        NAMES[1]: "standby",
+                        NAMES[2]: "standby",
+                    }
+                    moment = time.monotonic()
+                    stable_since = (stable_since or moment) if healthy else None
+                    warmup.append({"elapsed_s": moment - setup_started, "samples": samples})
+                    await asyncio.to_thread(
+                        output.write_text,
+                        json.dumps(
+                            {
+                                "diagnostics": diagnostics,
+                                "phase": "armed_warmup",
+                                "root": str(root),
+                                "measurements": measurements,
+                                "warmup": warmup,
+                                "source_identity": selected_source,
+                            },
+                            indent=2,
+                        ),
+                    )
+                    if stable_since is not None and moment - stable_since >= 15:
+                        break
+                    assert moment - setup_started < 390, "idle resource precondition did not settle"
+                    await asyncio.sleep(2)
             start = time.monotonic()
             while True:
                 samples = await asyncio.gather(*(rpc(name, "sample") for name in NAMES))
@@ -505,6 +542,7 @@ async def run() -> None:
                             "phase": phase,
                             "root": str(root),
                             "measurements": measurements,
+                            "warmup": warmup,
                             "source_identity": selected_source,
                         },
                         indent=2,
@@ -543,6 +581,7 @@ async def run() -> None:
                     "phase": "complete",
                     "root": str(root),
                     "measurements": measurements,
+                    "warmup": warmup,
                     "summary": summary,
                     "source_identity": selected_source,
                 },

@@ -708,3 +708,39 @@ Hosted CI `38751556045` passed 34 jobs but failed composed integration's existin
 deadline: **12.746 s** against **10 s**. That limit is unchanged; this run is not green and the
 remaining stream step did not execute. The failure log is retained for investigation and the
 final source requires a new CI run.
+
+### 2026-10-15 steady idle measurement and real container inference
+
+Runtime `084db8cf` was built and scanned as frontend image
+`sha256:8349e7b70c073b7b67d414d7f3cf6ad1f76a1821fd80321829464ec3f448f23c`,
+API `sha256:5faa90ef944c9a20def12c2df347bf2b8b09797a28b752afa4a2c552702e4300`,
+and scheduler `sha256:1d294992e2bdd37604d3e624938f21ce2773a02007e9d962b6af357e377dd772`.
+All seven image-policy rules, zero-CRITICAL scans, SPDX output and locked native wheels passed.
+
+The first full windows included the 301-second cold-start guard in the armed measurement;
+retain those startup-inclusive failures separately. The corrected runner waits for actual Core
+election and fifteen seconds of stable standby before a full 900-second idle window. Both corrected
+trials completed: lean incremental CPU was **0.6633% / 1.0035% / 0.9943%** (Core/A/B), diagnostic
+**0.7027% / 1.0601% / 1.0575%**. RSS stayed below **3.49 MiB** and actual swap growth was zero.
+The CPU gate failed; its 1% bound is unchanged. Raw results are
+`data/qualification/020/084db8cf/coire-020-resources-steady-{lean,diagnostic}.json`.
+
+The next controller change retains only a positively stopped container observation for at most
+30 seconds during standby. Promotion always inspects current image/policy; running/draining
+checks remain every two seconds, and 019 inventory always reads Docker. Unknown state is refused.
+All **37** affected controller, election, poller and node contract tests pass; strict changed-module
+typing and lint pass. Full resource measurement of this change remains required.
+
+With that node change and the immutable frontend image above, actual container HTTP requests now
+reach native `mlx_lm.server` on edge-a: buffered and streamed requests both returned **200**, with
+stream completion and unchanged engine PID/creation time. The approved temporary network/listeners
+used local TLS identity and signed quorum fixtures; this is not a physical outage or Cloudflare
+test. The independently copied, previously admin-acquired Qwen2.5 0.5B asset has manifest
+`a28a67a75ff6df6574ef74caaa26a0bb091a5cc3add4c5686aa68072b9430072`.
+Frontend RSS was **150.55 MiB / 256 MiB**, actual swap growth **0 bytes**, anonymous access refused.
+Cleanup and independent readback confirmed the engine, container, network, temporary model/secrets
+and listeners **19440/19441** were gone. Result: `/tmp/coire-020-native-container-result.json`.
+
+Core still has `autorestart=1`, and FileVault is enabled. No independent power controller has been
+identified, so physical power-loss acceptance remains open. The old 019 live fixture paths are
+absent; a fresh isolated armed cohort is being prepared for actual executor handover/restoration.

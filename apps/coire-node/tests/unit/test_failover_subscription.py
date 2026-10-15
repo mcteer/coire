@@ -276,3 +276,89 @@ async def test_frontend_start_holds_019_admission_across_docker_io(tmp_path: Pat
         await controller._sync_frontend()
     assert docker.start_container.await_count == 1
     assert gate.current() == maintenance
+
+
+async def test_stopped_frontend_inspection_never_authorizes_promotion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    from coire_node.failover import poller as module
+
+    clock = SimpleNamespace(now=100.0)
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock.now))
+    image = "example@sha256:" + "a" * 64
+    configuration = {"Image": image, "User": "65532:65532"}
+    state = {"Running": False}
+    container = {
+        "Config": configuration,
+        "HostConfig": {"ReadonlyRootfs": True, "CapDrop": ["ALL"]},
+        "State": state,
+    }
+    docker = Mock()
+    docker.inspect_container = AsyncMock(return_value=container)
+    docker.start_container = AsyncMock()
+    docker.stop_container = AsyncMock()
+    controller = StudioFailoverController(
+        Settings(_secrets_dir="/nonexistent", failover_frontend_image=image),  # type: ignore[call-arg]
+        docker=docker,
+    )
+    member = SimpleNamespace(role=ServiceRole.STANDBY)
+    controller._poller = SimpleNamespace(participant=member)  # type: ignore[assignment]
+    try:
+        await controller._sync_frontend()
+        clock.now += 2
+        await controller._sync_frontend()
+        assert docker.inspect_container.await_count == 1
+        state["Running"] = True
+        assert (await controller.upgrade_inventory()).entries
+        state["Running"] = False
+        # Even inside the stopped interval, promotion must inspect current policy.
+        configuration["Image"] = "foreign-image"
+        member.role = ServiceRole.ELECTED
+        with pytest.raises(ValueError, match="approved image and policy"):
+            await controller._sync_frontend()
+        docker.start_container.assert_not_awaited()
+        assert docker.inspect_container.await_count == 3
+        configuration["Image"] = image
+        await controller._sync_frontend()
+        docker.start_container.assert_awaited_once()
+        # A role change after starting must stop promptly, even inside the old interval.
+        state["Running"] = True
+        member.role = ServiceRole.STANDBY
+        await controller._sync_frontend()
+        docker.stop_container.assert_awaited_once()
+        # Unexpected external starts are reconciled by the bounded standby audit.
+        clock.now += 30
+        await controller._sync_frontend()
+        assert docker.stop_container.await_count == 2
+    finally:
+        await controller._client.aclose()
+
+
+async def test_uncertain_frontend_state_is_never_retained() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    image = "example@sha256:" + "a" * 64
+    docker = Mock()
+    docker.inspect_container = AsyncMock(
+        return_value={
+            "Config": {"Image": image, "User": "65532:65532"},
+            "HostConfig": {"ReadonlyRootfs": True, "CapDrop": ["ALL"]},
+            "State": {},
+        }
+    )
+    controller = StudioFailoverController(
+        Settings(_secrets_dir="/nonexistent", failover_frontend_image=image),  # type: ignore[call-arg]
+        docker=docker,
+    )
+    controller._poller = SimpleNamespace(participant=SimpleNamespace(role=ServiceRole.STANDBY))  # type: ignore[assignment]
+    try:
+        for _ in range(2):
+            with pytest.raises(ValueError, match="running state is uncertain"):
+                await controller._sync_frontend()
+        assert docker.inspect_container.await_count == 2
+    finally:
+        await controller._client.aclose()

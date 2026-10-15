@@ -99,7 +99,10 @@ redacted measurements and references. Runbook must explain how to observe, fence
 SSH Unix sockets on Core and both Studios. The source tree under `/tmp/coire-020-qualification`
 on each Studio must match Core; the runner checks runtime and fixture hashes. Set
 `COIRE_RESOURCE_RESULT` to a private JSON output path. Normal execution takes a full fifteen-minute
-baseline and fifteen-minute armed window; `--diagnostics` enables the diagnostic profile.
+baseline, the real cold-start/recovery guard, and a separate fifteen-minute armed idle window;
+`--diagnostics` enables the diagnostic profile. The idle window begins only after Core is elected
+and both Studios remain standby for fifteen seconds. Setup samples are retained separately;
+startup/campaign CPU must not be presented as the steady idle measurement.
 Both Studio windows include the normal native metrics collector and OTLP export. Actual host
 swap comes from the kernel through psutil, without launching a subprocess inside the instrumented
 worker. Supply
@@ -118,3 +121,11 @@ path is unavailable, deliberately exercising conservative drain accounting.
 admin-acquired checksum-verified assets. It covers TP/PP buffered and streaming output plus either
 rank's mid-stream loss. The approved temporary RDMA address setup is an operator prerequisite;
 remove it after the run. Never place commands inside question widgets.
+
+`validation/native_frontend.py` sends buffered and streamed requests through the actual hardened
+frontend container to an authenticated native node listener and its owned tiny engine on edge-a.
+It uses the already-approved temporary control listeners 19440/19441 and outbound qualification
+network, with a local TLS identity issuer and signed quorum fixture. Supply the approved-network
+flag, checksum-verified model path, pinned image, source identity manifest and private result path.
+The fixture removes its container/network, stops its engine and closes both listeners. This proves
+the container-to-engine path; real election timing, physical faults and Cloudflare remain separate.
