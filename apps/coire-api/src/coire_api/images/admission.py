@@ -24,7 +24,7 @@ from coire_api.images.resolution import resolve_basic_image_spec
 from coire_api.images.safety import ensure_image_content_allowed
 from coire_api.images.telemetry import ImageOperation, image_span
 from coire_core.errors import ImageConflict, ImageForbidden, ImageValidationError
-from coire_core.image_assets import FLUX_FILL_REPO_ID
+from coire_core.image_assets import FLUX_FILL_REPO_ID, QWEN_EDIT_REPO_IDS
 from coire_core.models.audit import AuditOutcome
 from coire_core.models.images import (
     GENERATION_INPUT_MAX_BYTES,
@@ -95,6 +95,11 @@ def _ready_image_base(row: ModelRow | None) -> ImageCapabilityProfile:
     fill_repo = getattr(row, "repo_id", None) == FLUX_FILL_REPO_ID
     if (fill_repo and profile.modes != (ImageMode.FILL,)) or (
         not fill_repo and ImageMode.FILL in profile.modes
+    ):
+        raise ImageValidationError("image model mode differs from reviewed source")
+    edit_repo = getattr(row, "repo_id", None) in QWEN_EDIT_REPO_IDS
+    if (edit_repo and profile.modes != (ImageMode.EDIT,)) or (
+        not edit_repo and ImageMode.EDIT in profile.modes
     ):
         raise ImageValidationError("image model mode differs from reviewed source")
     return profile
@@ -244,6 +249,7 @@ async def _retain_generation_inputs(
             or row.normalized_height < 1
             or (
                 purpose != "control"
+                and spec.mode is not ImageMode.EDIT
                 and (row.normalized_width != spec.width or row.normalized_height != spec.height)
             )
         ):

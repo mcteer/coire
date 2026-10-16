@@ -10,6 +10,13 @@ SEEDVR2_3B_REPO_ID = "numz/SeedVR2_comfyUI"
 SEEDVR2_3B_FILES = frozenset({"seedvr2_ema_3b_fp16.safetensors", "ema_vae_fp16.safetensors"})
 CONTROL_UNION_REPO_ID = "alibaba-pai/Z-Image-Turbo-Fun-Controlnet-Union-2.1"
 CONTROL_UNION_FILE = "Z-Image-Turbo-Fun-Controlnet-Union-2.1.safetensors"
+QWEN_EDIT_REPO_IDS = frozenset(
+    {
+        "Qwen/Qwen-Image-Edit-2509",
+        "mflux-community/qwen-image-edit-2509-mflux-q8",
+    }
+)
+
 FLUX_FILL_REPO_ID = "black-forest-labs/FLUX.1-Fill-dev"
 
 
@@ -32,4 +39,18 @@ def include_image_asset_path(repo_id: str, kind: ModelKind, path: str) -> bool:
         and repo_id == SEEDVR2_3B_REPO_ID
         and path.endswith(".safetensors")
         and path not in SEEDVR2_3B_FILES
+    )
+
+
+def has_qwen_edit_layout(repo_id: str, files: Container[str]) -> bool:
+    """Only reviewed native Qwen edit artifacts may use component-index configuration."""
+    return repo_id in QWEN_EDIT_REPO_IDS and all(
+        name in files
+        for name in (
+            "transformer/model.safetensors.index.json",
+            "text_encoder/model.safetensors.index.json",
+            "vae/model.safetensors.index.json",
+            "tokenizer/tokenizer.json",
+            "tokenizer/tokenizer_config.json",
+        )
     )

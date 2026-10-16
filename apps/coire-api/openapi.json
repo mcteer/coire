@@ -11502,7 +11502,7 @@
             "items": {
               "$ref": "#/components/schemas/ImageMode"
             },
-            "maxItems": 4,
+            "maxItems": 5,
             "minItems": 1,
             "title": "Modes",
             "type": "array"
@@ -12748,7 +12748,8 @@
           "txt2img",
           "img2img",
           "fill",
-          "control"
+          "control",
+          "edit"
         ],
         "title": "ImageMode",
         "type": "string"

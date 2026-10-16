@@ -560,6 +560,7 @@ def _qualification_memory_guard(job: JobFile, reservation_bytes: int) -> Iterato
 
 def run_image_validate(job: JobFile) -> int:
     """Validate a pinned local image copy inside a credential-free acquisition worker."""
+    from coire_core.image_assets import QWEN_EDIT_REPO_IDS
     from coire_core.models.image_worker import ImageValidationBase
     from coire_core.models.images import ImageResolutionBounds
     from coire_node.image_runtime.pipeline import ImagePipelineUnavailable
@@ -586,7 +587,9 @@ def run_image_validate(job: JobFile) -> int:
     job.status.stage = JobStage.RESOLVING
     job.save(force=True)
     try:
-        if request.resolution_bounds is not None:
+        if request.resolution_bounds is not None or request.slug in {
+            repo.replace("/", "--") for repo in QWEN_EDIT_REPO_IDS
+        }:
             with _qualification_memory_guard(job, int(job.params["reservation_bytes"])):
                 result = validate_image_asset(
                     _store(job), request, reservation_bytes=int(job.params["reservation_bytes"])

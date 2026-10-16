@@ -27,7 +27,14 @@ def resolve_basic_image_spec(
     if (
         request.model_id is None
         or request.mode
-        not in (None, ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.FILL, ImageMode.CONTROL)
+        not in (
+            None,
+            ImageMode.TXT2IMG,
+            ImageMode.IMG2IMG,
+            ImageMode.FILL,
+            ImageMode.CONTROL,
+            ImageMode.EDIT,
+        )
         or request.variant_id is not None
     ):
         raise ImageValidationError("unsupported image setting")
@@ -40,7 +47,7 @@ def resolve_basic_image_spec(
         raise ImageValidationError("image model defaults unavailable")
     values = {
         "model_id": request.model_id,
-        "mode": request.mode or ImageMode.TXT2IMG,
+        "mode": request.mode or profile.modes[0],
         "prompt": request.prompt,
         "negative_prompt": request.negative_prompt,
         "width": request.width if request.width is not None else profile.default_width,
@@ -70,7 +77,9 @@ def resolve_basic_image_spec(
         raise ImageValidationError(f"invalid {field} setting") from exc
     except ValueError as exc:
         raise ImageValidationError(str(exc)) from exc
-    if (spec.guidance != 0 and spec.mode is not ImageMode.FILL) or spec.negative_prompt is not None:
+    if (
+        spec.guidance != 0 and spec.mode not in (ImageMode.FILL, ImageMode.EDIT)
+    ) or spec.negative_prompt is not None:
         raise ImageValidationError("unsupported image setting")
     if spec.mode is ImageMode.FILL and (spec.loras or spec.strength is not None):
         raise ImageValidationError("fill does not support LoRAs or strength")

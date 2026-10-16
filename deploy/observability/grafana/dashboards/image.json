@@ -1043,6 +1043,28 @@
       ],
       "title": "Image resolution qualification",
       "type": "timeseries"
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Base image and photo-edit qualification",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 240,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "expr": "sum by (outcome) (rate(coire_image_validation_total{kind=\"image_model\"}[5m]))",
+          "legendFormat": "{{outcome}} /s",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,

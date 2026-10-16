@@ -319,3 +319,27 @@ def test_flux_fill_custom_licence_requires_exact_card_name_and_link(
     result = hub.inspect("black-forest-labs/FLUX.1-Fill-dev")
     assert result.license_id == "flux-1-dev-non-commercial-license"
     assert hub.inspect("other/fill").license_id == "other"
+
+
+def test_native_qwen_edit_requires_reviewed_repo_and_complete_component_indexes() -> None:
+    names = [
+        "transformer/model.safetensors.index.json",
+        "text_encoder/model.safetensors.index.json",
+        "vae/model.safetensors.index.json",
+        "tokenizer/tokenizer.json",
+        "tokenizer/tokenizer_config.json",
+    ]
+    files = [RepoFile(path=name, bytes=100) for name in names]
+    files.append(RepoFile(path="transformer/0.safetensors", bytes=1024, upstream_sha256=WEIGHT_SHA))
+    repo = _repo(files=files).model_copy(
+        update={"repo_id": "mflux-community/qwen-image-edit-2509-mflux-q8"}
+    )
+    assert hub.image_asset_files(repo, ModelKind.IMAGE_MODEL) == tuple(
+        sorted(item.path for item in files)
+    )
+    for bad in [
+        repo.model_copy(update={"repo_id": "other/model"}),
+        repo.model_copy(update={"files": files[1:]}),
+    ]:
+        with pytest.raises(ValueError):
+            hub.image_asset_files(bad, ModelKind.IMAGE_MODEL)

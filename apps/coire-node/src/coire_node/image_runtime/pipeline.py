@@ -15,7 +15,7 @@ from typing import Protocol, cast
 
 from PIL import Image
 
-from coire_core.image_assets import FLUX_FILL_REPO_ID
+from coire_core.image_assets import FLUX_FILL_REPO_ID, QWEN_EDIT_REPO_IDS
 from coire_core.image_safety import ensure_image_content_allowed
 from coire_core.models.image_worker import ImageWorkerLoadRequest
 from coire_core.models.images import ImageMode, ResolvedImageSpec, image_canvas_dimensions
@@ -66,6 +66,21 @@ class _NativeModel(Protocol):
         negative_prompt: None,
         image_path: Path | None = None,
         image_strength: float | None = None,
+    ) -> object: ...
+
+
+class _EditModel(Protocol):
+    def generate_image(
+        self,
+        *,
+        seed: int,
+        prompt: str,
+        image_paths: list[str],
+        num_inference_steps: int,
+        height: int,
+        width: int,
+        guidance: float,
+        negative_prompt: None,
     ) -> object: ...
 
 
@@ -130,6 +145,7 @@ def _load_native(
     path: Path,
     *,
     fill: bool = False,
+    edit: bool = False,
     lora_paths: tuple[Path, ...] = (),
     lora_scales: tuple[float, ...] = (),
 ) -> _NativeModel:
@@ -137,9 +153,13 @@ def _load_native(
     _require_offline()
     config_module = importlib.import_module("mflux.models.common.config.model_config")
     config = (
-        config_module.ModelConfig.dev_fill() if fill else config_module.ModelConfig.z_image_turbo()
+        config_module.ModelConfig.qwen_image_edit()
+        if edit
+        else config_module.ModelConfig.dev_fill()
+        if fill
+        else config_module.ModelConfig.z_image_turbo()
     )
-    if config.supports_guidance is not fill:
+    if not edit and config.supports_guidance is not fill:
         raise ImagePipelineUnavailable()
     if (
         (fill and lora_paths)
@@ -147,7 +167,12 @@ def _load_native(
         or any(not item.is_file() for item in lora_paths)
     ):
         raise ImagePipelineUnavailable()
-    if fill:
+    if edit:
+        if lora_paths or fill:
+            raise ImagePipelineUnavailable()
+        module = importlib.import_module("mflux.models.qwen.variants.edit.qwen_image_edit")
+        model = module.QwenImageEdit(model_path=str(path), model_config=config)
+    elif fill:
         module = importlib.import_module("mflux.models.flux.variants.fill.flux_fill")
         model = module.Flux1Fill(model_path=str(path), model_config=config)
     else:
@@ -286,12 +311,14 @@ class MfluxTxt2ImgPipeline:
         prompt_cache_max_bytes: int = _DEFAULT_PROMPT_CACHE_BYTES,
         store: Store | None = None,
         fill: bool = False,
+        edit: bool = False,
         enforce_memory: bool = False,
     ) -> None:
         self._model = model
         self._request = request
         self._store = store
         self._fill = fill
+        self._edit = edit
         self._enforce_memory = enforce_memory
         self._broken = False
         self._callback = _ProgressCallback()
@@ -315,7 +342,7 @@ class MfluxTxt2ImgPipeline:
             )
         self._native_encoder_hook = False
         self._original_encoder = None
-        native_encoder = getattr(model, "_encode_prompts", None)
+        native_encoder = None if self._edit else getattr(model, "_encode_prompts", None)
         if callable(native_encoder):
             encoder = cast(Callable[..., tuple[object, object | None]], native_encoder)
             self._original_encoder = encoder
@@ -360,12 +387,18 @@ class MfluxTxt2ImgPipeline:
         path = verify_image_copy(store, request)
         manifest = store.read_manifest(request.slug)
         fill = manifest is not None and manifest.repo_id == FLUX_FILL_REPO_ID
+        edit = manifest is not None and manifest.repo_id in QWEN_EDIT_REPO_IDS
         return cls(
-            _load_native(path, fill=True) if fill else _load_native(path),
+            _load_native(path, edit=True)
+            if edit
+            else _load_native(path, fill=True)
+            if fill
+            else _load_native(path),
             request,
             prompt_cache_max_bytes=prompt_cache_max_bytes,
             store=store,
             fill=fill,
+            edit=edit,
             enforce_memory=True,
         )
 
@@ -376,7 +409,7 @@ class MfluxTxt2ImgPipeline:
     @property
     def cache_status(self) -> str | None:
         """Last observed prompt lookup for the active job; absent means unmeasured."""
-        if self._active_control:
+        if self._active_control or self._edit:
             return None
         if self._native_encoder_hook or self._fill:
             return self.encoder_cache.last_outcome
@@ -399,7 +432,7 @@ class MfluxTxt2ImgPipeline:
             return
         spec = resolved.spec
         ensure_image_content_allowed(spec.prompt, explicit=spec.content_mode == "explicit")
-        if self._fill and spec.loras:
+        if (self._fill or self._edit) and spec.loras:
             raise ImagePipelineUnavailable()
         if len(spec.loras) + int(spec.upscale is not None) + int(spec.control is not None) != len(
             resolved.dependencies
@@ -537,7 +570,17 @@ class MfluxTxt2ImgPipeline:
         init_path: Path | None = None
         mask_path: Path | None = None
         control_path: Path | None = None
-        if spec.mode is ImageMode.IMG2IMG:
+        if spec.mode is ImageMode.EDIT:
+            if (
+                not self._edit
+                or spec.init_image_id is None
+                or input_paths is None
+                or set(input_paths) != {spec.init_image_id}
+                or {item.input_id for item in resolved.inputs} != {spec.init_image_id}
+            ):
+                raise ImagePipelineUnavailable()
+            init_path = input_paths[spec.init_image_id]
+        elif spec.mode is ImageMode.IMG2IMG:
             if (
                 spec.init_image_id is None
                 or spec.strength is None
@@ -578,9 +621,16 @@ class MfluxTxt2ImgPipeline:
             or spec.model_id != self._request.model_id
             or spec.variant_id != self._request.variant_id
             or spec.mode
-            not in {ImageMode.TXT2IMG, ImageMode.IMG2IMG, ImageMode.FILL, ImageMode.CONTROL}
+            not in {
+                ImageMode.TXT2IMG,
+                ImageMode.IMG2IMG,
+                ImageMode.FILL,
+                ImageMode.CONTROL,
+                ImageMode.EDIT,
+            }
             or (self._fill != (spec.mode is ImageMode.FILL))
-            or (not self._fill and spec.guidance != 0)
+            or (self._edit != (spec.mode is ImageMode.EDIT))
+            or (not self._fill and not self._edit and spec.guidance != 0)
             or spec.negative_prompt is not None
             or (not self._fill and spec.mask_id is not None)
             or (spec.mode is ImageMode.TXT2IMG and resolved.inputs)
@@ -610,7 +660,7 @@ class MfluxTxt2ImgPipeline:
                     self._adapter_id or "",
                     *(dependency.sha256 for dependency in resolved.dependencies),
                 )
-            elif control_path is None:
+            elif control_path is None and not self._edit:
                 self.encode_prompt(resolved)
             control_stage: LocalCannyControlStage | None = None
             if control_path is not None:
@@ -715,6 +765,17 @@ class MfluxTxt2ImgPipeline:
                     generated = (
                         control_stage.generate(seed=seed, prompt=spec.prompt, steps=spec.steps)
                         if control_stage is not None
+                        else cast("_EditModel", self._model).generate_image(
+                            seed=seed,
+                            prompt=spec.prompt,
+                            image_paths=[str(init_path)],
+                            num_inference_steps=spec.steps,
+                            height=native_height,
+                            width=native_width,
+                            guidance=float(spec.guidance),
+                            negative_prompt=None,
+                        )
+                        if self._edit and init_path is not None
                         else cast("_FillModel", self._model).generate_image(
                             seed=seed,
                             prompt=spec.prompt,
