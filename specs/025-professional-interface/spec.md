@@ -96,3 +96,18 @@ colors automatically. Keep existing light/dark toggle and all functional safegua
 Acceptance: restore previous live layout first; verify native dialog keyboard access, preset
 persistence, custom create/edit/cancel/delete/reset, invalid/stale preference fallback,
 blocked storage, readable derived text and real desktop/mobile/dark WebKit screenshots.
+
+## Owner revision: familiar conversational interface (2026-10-16)
+
+The chat interaction must use a unified composer comparable to mainstream chat tools:
+message field, attachment action, selected-file chips and send/stop belong to one
+control. User messages are compact and right aligned; assistant responses use a
+readable open column. Attachment details and PDF page controls remain available
+inside the composer without a separate page panel. Ready uploads are included in the
+next message explicitly through visible removable chips; no hidden model/file choice.
+Drafts remain editable during generation, Enter sends and Shift+Enter adds a line,
+IME composition must not submit. Sending shows a visible waiting/working indication
+and the send button becomes Stop while a response is active. Long conversations
+keep the composer available and scroll newly arriving content only when the reader
+is already near the end. Preserve authorization, file limits, PDF mode selection,
+model capabilities, code mode, recovery, and feedback privacy behavior.

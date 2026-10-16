@@ -579,6 +579,7 @@ export function useConversation(ownerId: string) {
     if (selection.current !== generation) return;
     setConversation(detail.conversation);
     setAttachments(detail.attachments ?? []);
+    return detail;
   };
 
   const uploadFile = async (file: File) => {
@@ -600,7 +601,21 @@ export function useConversation(ownerId: string) {
       const uploaded = await uploadChatFile(current.id, file, current.revision);
       if (selection.current !== generation) return;
       setAttachments((rows) => [...rows.filter((row) => row.id !== uploaded.id), uploaded]);
-      await refreshFiles(current.id, generation);
+      const detail = await refreshFiles(current.id, generation);
+      const ready = detail?.attachments?.find((item) => item.id === uploaded.id) ?? uploaded;
+      // Inclusion is visible while processing; the existing readiness gate prevents
+      // sending until the worker finishes, and polling keeps the chip up to date.
+      if (ready.state !== "failed" && selection.current === generation) {
+        const next = [...selections.filter((item) => item.file_id !== ready.id)];
+        if (next.length < 10) {
+          next.push({
+            file_id: ready.id,
+            mode: ready.detected_type.startsWith("image/") ? "visual" : "text",
+          });
+          setSelections(next);
+          remember(current.id, draft, selectedId, next);
+        }
+      }
     } catch (cause) {
       if (selection.current === generation) {
         reportError(cause);
@@ -707,7 +722,7 @@ export function useConversation(ownerId: string) {
         restored.length !== (saved?.files?.length ?? 0)
           ? "Some saved file choices are no longer available. Check the selection before sending."
           : detail.conversation.active_turn_id
-            ? "A response is still running. Refresh this conversation to see saved progress."
+            ? "Response in progress…"
             : null,
       );
     } catch (cause) {
@@ -825,7 +840,7 @@ export function useConversation(ownerId: string) {
       setHistory((rows) =>
         rows.map((row) => (row.id === event.conversation_id ? detail.conversation : row)),
       );
-      setStatus(detail.conversation.active_turn_id ? "A response is still running." : null);
+      setStatus(detail.conversation.active_turn_id ? "Response in progress…" : null);
       return;
     }
     if (refreshTimer.current !== null) {
@@ -846,7 +861,7 @@ export function useConversation(ownerId: string) {
             setAttachments(detail.attachments ?? []);
             setOlderPosition(detail.next_message_position ?? null);
             setHistory((rows) => rows.map((row) => (row.id === id ? detail.conversation : row)));
-            setStatus(detail.conversation.active_turn_id ? "A response is still running." : null);
+            setStatus(detail.conversation.active_turn_id ? "Response in progress…" : null);
           })
           .catch((cause) => {
             if (selection.current === generation) reportError(cause);

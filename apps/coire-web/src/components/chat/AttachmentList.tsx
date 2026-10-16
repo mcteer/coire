@@ -7,6 +7,7 @@ import {
 } from "../../api/chat";
 
 export function AttachmentList({
+  embedded = false,
   conversationId,
   attachments,
   selections,
@@ -15,6 +16,7 @@ export function AttachmentList({
   onProcess,
   onSelect,
 }: {
+  embedded?: boolean;
   conversationId: string | null;
   attachments: ChatAttachment[];
   selections: ChatAttachmentSelection[];
@@ -30,21 +32,25 @@ export function AttachmentList({
   };
   return (
     <section className="chat-files glass" aria-label="Conversation files">
-      <div className="chat-files-heading">
-        <strong>Files</strong>
-        <label className="button" htmlFor="chat-file-upload">
-          Add file
-        </label>
-        <input
-          id="chat-file-upload"
-          type="file"
-          accept=".txt,.md,.csv,.json,.py,.ts,.tsx,.js,.jsx,.rs,.go,.pdf,image/png,image/jpeg,image/webp"
-          onChange={chooseFile}
-          disabled={busy}
-        />
-      </div>
-      <p className="muted">Text, code, PDFs and PNG, JPEG or WebP images. Up to 10 MiB each.</p>
-      {attachments.length === 0 && <p className="muted">No files in this conversation.</p>}
+      {!embedded && (
+        <>
+          <div className="chat-files-heading">
+            <strong>Files</strong>
+            <label className="button" htmlFor="chat-file-upload">
+              Add file
+            </label>
+            <input
+              id="chat-file-upload"
+              type="file"
+              accept=".txt,.md,.csv,.json,.py,.ts,.tsx,.js,.jsx,.rs,.go,.pdf,image/png,image/jpeg,image/webp"
+              onChange={chooseFile}
+              disabled={busy}
+            />
+          </div>
+          <p className="muted">Text, code, PDFs and PNG, JPEG or WebP images. Up to 10 MiB each.</p>
+          {attachments.length === 0 && <p className="muted">No files in this conversation.</p>}
+        </>
+      )}
       <ul className="chat-file-list">
         {attachments.map((attachment) => {
           const selected = selections.find((item) => item.file_id === attachment.id);
