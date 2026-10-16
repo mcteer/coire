@@ -358,7 +358,12 @@ async def admit_image_job(
             preset_revision=policy.preset_revision,
             reservation_ids=[],
             queued_at=now,
-            deadline_at=now + _QUEUE_DEADLINE,
+            deadline_at=now
+            + (
+                timedelta(seconds=settings.image_edit_job_timeout_s)
+                if spec.mode is ImageMode.EDIT
+                else _QUEUE_DEADLINE
+            ),
             progress=0.0,
             receipt_state="pending",
             cleanup_state="pending",

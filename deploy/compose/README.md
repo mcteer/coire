@@ -188,6 +188,7 @@ pipeline and operator gates pass.
 | `COIRE_IMAGE_GLOBAL_STORAGE_QUOTA_BYTES` | 50 GiB | 50 GiB |
 | `COIRE_IMAGE_DISK_SAFETY_FLOOR_BYTES` | 2 GiB | Cannot be lowered |
 | `COIRE_IMAGE_WORKER_IDLE_TTL_S` | 900 s | 86,400 s |
+| `COIRE_IMAGE_EDIT_JOB_TIMEOUT_S` | 7,200 s | 14,400 s |
 | `COIRE_IMAGE_EVENT_RETENTION_HOURS` | 24 h | 24 h |
 | `COIRE_IMAGE_OUTPUT_RETENTION_HOURS` | Unset: owner deletion only | Optional 1–8,760 h |
 | `COIRE_IMAGE_COMPATIBLE_WAIT_S` | 90 s | 90 s |
@@ -619,3 +620,7 @@ The optional `compose.local-tls.yaml` overlay preserves node HTTP traffic and ad
 HTTPS only after operator approval for the additional listener. TLS key material is
 Keychain-backed. See [local sign-in operations](../../docs/runbooks/local-signin.md) for
 certificate trust, password provisioning/reset, revocation, observability and rollback.
+
+Qwen photo edits (`mode=edit`) use the bounded `COIRE_IMAGE_EDIT_JOB_TIMEOUT_S` deadline
+(default two hours), including queue time. The existing thirty-minute deadline remains
+for other image modes. Cancellation and authorization checks remain active throughout.

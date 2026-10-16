@@ -337,6 +337,7 @@ class Settings(BaseSettings):
     image_global_storage_quota_bytes: int = Field(default=50 * 1024**3, ge=1, le=50 * 1024**3)
     image_disk_safety_floor_bytes: int = Field(default=2 * 1024**3, ge=2 * 1024**3)
     image_worker_idle_ttl_s: int = Field(default=900, ge=60, le=86_400)
+    image_edit_job_timeout_s: int = Field(default=7200, ge=300, le=14_400)
     image_event_retention_hours: int = Field(default=24, ge=1, le=24)
     image_output_retention_hours: int | None = Field(default=None, ge=1, le=8760)
     image_compatible_wait_s: int = Field(default=90, ge=1, le=90)

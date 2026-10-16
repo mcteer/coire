@@ -19,7 +19,9 @@ only capability measured on both Studio copies, including 1980×1980 and both no
 orientations. Four-step expanded-size samples exercise bounds and memory; they are not a
 quality recommendation. Use the default 40 steps for actual photo editing. Cancellation,
 queue/progress feedback, saved recipe reuse, preview/download, history deletion and output
-bulk deletion use the existing owner-scoped image paths.
+bulk deletion use the existing owner-scoped image paths. Photo edits have a bounded two-hour
+queue/execution deadline (`COIRE_IMAGE_EDIT_JOB_TIMEOUT_S`); other image modes retain
+their existing thirty-minute limit. Cancel from job progress at any time.
 
 ## Reviewed model and native runtime
 
