@@ -35,3 +35,16 @@ refused but lacked an audit row. Amend scope to roll back admission locks before
 the existing independent content-free refusal audit helper. Add a route contract regression,
 run relevant backend image tests/type/format/schema gates, build/policy/scan/SBOM and replace
 only the API image after web acceptance. No schema, migration, permission or listener change.
+
+## Literal reference correction
+Remove the desktop sidebar and branded hero treatments. Reuse existing nav/guards in a
+64px horizontal masthead; retain mobile keyboard drawer. Place Chat and sign-in in the
+measured672px column, masthead brand at144px on1440px viewport, main heading32px/40px.
+Admin subnavigation becomes a horizontal text rail; operational data uses open ruled
+sections and wider breakouts only where tables/forms need space. Copy measured CSS values
+for both themes, including brown/gold buttons rather than invented inverse gold buttons.
+A dedicated reference stylesheet applies the canonical theme after existing feature layout
+styles; preserve generated contracts and all explicit image controls/permissions. Add
+meaningful system-theme and accessible-history behavior tests where behavior changes.
+Produce real headless WebKit comparisons and a measured style parity receipt; deploy web
+only after build/tests/lint/image checks, preserving the installed API audit fix.

@@ -77,3 +77,18 @@ image ID and compose file, replace only `services.coire-api.image`, and recreate
 with `--no-deps`. No migration is needed. The qualification snapshots under
 `~/.coire/qualification/025/audit-activation` retain the prior API image for API-only rollback.
 Do not restore a whole older compose file if a newer web image must remain installed.
+
+## Literal reference theme correction
+
+The owner rejected the previous sidebar/card composition. The current visual authority is
+the supplied Andrei Nita page itself; `styles/reference.css` applies its horizontal masthead,
+centered672px column, measured32/40 headings,16/25.6 prose, quiet rules and actual brown/gold
+actions. Admin tables can use the reference's1152px breakout. History is now an explicit
+Conversations control at desktop as well as mobile; Escape restores its toggle focus. New
+visitors follow system theme unless an explicit preference exists. Check sign-in wordmark
+visibility, mobile masthead and gallery action wrapping in actual WebKit screenshots.
+
+For this correction replace **only web**. Retain the installed API audit fix and the owner's
+explicit entitlement. Use a new current-image/config snapshot; never apply a whole earlier
+rollback manifest that would unintentionally revert the API fix. Evidence under
+`~/.coire/qualification/025/literal-*` includes matching-viewport captures and measured parity.

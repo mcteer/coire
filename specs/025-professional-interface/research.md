@@ -31,3 +31,17 @@ and private verified download. Issue #102 records an existing late-refusal audit
 probe. The implementation scope was amended to close it: rollback request locks before the
 existing independent refusal helper. Live restricted-key403 now has a matching audit row;
 authorization remains enforced, and successful operations/grants have audit evidence.
+
+## Literal styling authority after second rejection
+The owner explicitly rejects the previous result. Root cause: we substituted a generic
+sidebar/dashboard shell and focused on palette tokens rather than copying the page's visual
+structure and actual component styling. The reference is now the sole visual authority.
+Loaded its scripts/fonts in actual headless WebKit and measured both themes at1440×1000:
+672px column,left384px,h1 origin214px, Cormorant50032/40, Inter16/25.6, support14/22.4,
+64px horizontal masthead, source CTA #6b4e1a/#e6cb9a. Prior inverse gold buttons and marketing
+hero were inventions. Apply the open ruled composition, numbered rows, subtle radial wash,
+text wordmark and reference button treatment. Business data/controls remain Coire's.
+
+Preview measured those column/heading/header properties directly in both themes. Brand
+left143.984px differs by1/64 CSS pixel from nominal144; use0.1px tolerance only for that
+WebKit subpixel rounding. Actual screenshots are inspected separately from these assertions.

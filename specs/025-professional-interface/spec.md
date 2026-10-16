@@ -2,7 +2,7 @@
 
 **Feature Branch**: `feat/025-professional-interface`
 **Created**: 2026-10-16
-**Status**: Implemented and locally activated
+**Status**: Literal-reference correction locally activated; owner visual acceptance not asserted
 **Input**: Follow https://andreinita.co/learning/pydantic-ai/ and professional dashboard/chat references to significantly redesign the local interface.
 
 ## User Scenarios & Testing
@@ -65,3 +65,14 @@ Live negative acceptance additionally requires issue102's late admission refusal
 release the rejected request transaction before writing a content-free independent audit row,
 retain403 enforcement, contract-test ordering/privacy and verify it live without changing
 the owner's entitlement. Existing wire contracts and generated types remain unchanged.
+
+## Owner rejection: literal theme match
+The owner rejects both previous interpretations. The supplied site is the styling authority,
+not a source of inspiration alongside other dashboard products. Replace the desktop sidebar
+and dashboard-card composition with the reference's slim horizontal navigation, centered
+672px editorial column, open sections, fine rules, 32px/40px serif headings, 16px/25.6px body,
+14px/22.4px supporting text, and its actual button/surface/ink styling in both themes. Dense
+operational tables may use the reference's wider1200px breakout, with the same heading and
+component system. Sign-in must share that structure rather than a split marketing screen.
+Compare matching-viewport screenshots and measured styles in headless Playwright WebKit.
+Passing functional tests or matching several colors does not establish visual acceptance.

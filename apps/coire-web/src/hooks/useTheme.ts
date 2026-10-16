@@ -4,7 +4,9 @@ export type Theme = "light" | "dark";
 const key = "coire.theme";
 function initialTheme(): Theme {
   try {
-    return window.localStorage.getItem(key) === "dark" ? "dark" : "light";
+    const saved = window.localStorage.getItem(key);
+    if (saved === "light" || saved === "dark") return saved;
+    return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   } catch {
     return "light";
   }

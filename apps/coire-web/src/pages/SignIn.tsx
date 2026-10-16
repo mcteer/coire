@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { CoireMark, Icon } from "../components/Icons";
+import { Icon } from "../components/Icons";
 import { useTheme } from "../hooks/useTheme";
 import { api } from "../api/client";
 import type { components } from "../api/schema";
@@ -39,24 +39,9 @@ export function SignIn({ onSignedIn }: { onSignedIn: (user: Session["user"]) => 
   };
   return (
     <main className="signin-page">
-      <aside className="signin-story" aria-label="About Coire">
-        <div className="signin-brand">
-          <CoireMark size={36} />
-          <span>Coire</span>
-        </div>
-        <div>
-          <h2>
-            Your models.
-            <br />
-            <em>Your possibilities.</em>
-          </h2>
-          <p>
-            A considered space to think, create, and build with AI. Powered by the infrastructure
-            you control.
-          </p>
-        </div>
-        <footer>Intelligence, on your terms.</footer>
-      </aside>
+      <header className="signin-site-header">
+        <a href="/">Coire</a>
+      </header>
       <section className="signin-form-region">
         <button
           className="icon-button theme-toggle"
@@ -67,7 +52,9 @@ export function SignIn({ onSignedIn }: { onSignedIn: (user: Session["user"]) => 
           <Icon name={theme === "light" ? "moon" : "sun"} />
         </button>
         <div className="signin-card">
-          <div className="eyebrow">Welcome back</div>
+          <a className="reference-trail" href="/">
+            ← Workspace
+          </a>
           <h1>Sign in to Coire</h1>
           <p>Continue to your private workspace.</p>
           {error && (

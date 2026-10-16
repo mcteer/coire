@@ -25,3 +25,9 @@ Dependencies: T001 → T002 → T003/T004 → T005/T006 → T007 → T008 → T0
 - [x] T014 Complete web checks, image build/policy/scan/SBOM, web-only redeploy/live WebKit acceptance, rollback documentation and fixture cleanup.
 
 - [x] T015 Fix issue102 late explicit-admission refusal audit; contract-test rollback-before-audit/content privacy and validate/redeploy only API plus repeat live negative evidence.
+
+## Literal reference correction after owner rejection
+- [x] T016 Measure the live reference in headless WebKit and document exact visual criteria.
+- [x] T017 Replace sidebar/card and marketing treatments with reference masthead, centered typography/spacing, open ruled sections and matching controls in both themes.
+- [x] T018 Inspect matching-viewport reference/Coire light/dark/mobile screenshots and verify measured style parity plus navigation/history access.
+- [x] T019 Pass web checks and image policy/scan/SBOM, activate only web, verify live WebKit and clean owned resources; update PR/evidence without asserting owner approval.

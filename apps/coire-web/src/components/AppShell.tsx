@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ConsoleSnapshot } from "../api/client";
 import { useTheme } from "../hooks/useTheme";
-import { CoireMark, Icon, type IconName } from "./Icons";
+import { Icon, type IconName } from "./Icons";
 
 export type AdminTab =
   "overview" | "models" | "instances" | "activity" | "identity" | "audit" | "upgrades";
@@ -117,12 +117,7 @@ export function AppShell({
           onClick={dismissNavigation}
           aria-label="Coire home"
         >
-          <span className="brand-mark">
-            <CoireMark />
-          </span>
-          <span>
-            Coire<small>YOUR AI WORKSPACE</small>
-          </span>
+          <span>Coire</span>
         </a>
         <div className="nav-section-label">Workspace</div>
         <nav className="workspace-primary" aria-label="Primary">
@@ -164,17 +159,12 @@ export function AppShell({
             </nav>
           </div>
         )}
-        <div className="sidebar-footer">
-          <span className="sidebar-workspace-icon">
-            <CoireMark size={22} />
-          </span>
-          <span>
-            Private workspace<small>Powered by your infrastructure</small>
-          </span>
-        </div>
       </aside>
       <div className="workspace-body">
         <header className="workspace-header">
+          <a className="mobile-brand" href="/#chat">
+            Coire
+          </a>
           <div className="workspace-breadcrumb">
             <button
               ref={menu}
@@ -227,6 +217,9 @@ export function AppShell({
           </div>
         </header>
         <div id="workspace-content" className="workspace-content" tabIndex={-1}>
+          <div className="reference-trail">
+            <a href="/#chat">← Workspace</a>
+          </div>
           {children}
         </div>
       </div>

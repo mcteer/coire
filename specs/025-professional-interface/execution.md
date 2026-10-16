@@ -1,4 +1,56 @@
-# Feature025 execution — owner revision, 2026-10-16
+# Feature025 — literal reference correction,2026-10-16
+
+The owner rejected the previous two interpretations. This record describes the new correction;
+the earlier functional/image qualification record is retained below as historical evidence.
+No owner visual approval is inferred from tests or screenshots.
+
+## What changed
+Replaced the desktop sidebar and card-heavy shell with the supplied site's64px horizontal
+masthead, text wordmark, centered672px editorial column, open ruled sections and measured
+component styling. Removed custom chat emblem/marketing slogan and split sign-in hero.
+Chat suggestions use numbered ruled rows; history is an explicit accessible disclosure at
+all widths. Data-heavy sections use the reference's1152px breakout. Preserved existing
+image content-mode controls, canonical entitlement and installed API audit fix.
+
+## Direct reference and live comparison
+Actual supplied page loaded with scripts/fonts in headless Playwright WebKit26/build2215.
+Captured light/dark at1440×1000, then compared actual Coire at identical viewports:
+
+| Property | Reference | Actual Coire |
+|---|---|---|
+| Heading position | x384,y214 | x384,y214 |
+| Heading column | 672px | 672px |
+| Heading font | Cormorant Garamond50032px/40px | Same |
+| Body | Inter16px/25.6px | Same |
+| Masthead height | 64px | 64px |
+| Wordmark left | 144px | 143.984px (1/64px WebKit rounding) |
+| Light background / heading ink | #faf8f5 / #040810 | Same |
+| Dark background / heading ink | #081027 / #e8edf8 | Same |
+| Primary button fill / ink | #6b4e1a / #e6cb9a | Same |
+
+Inspected actual reference/Coire screenshots beyond these numeric checks: sign-in, both chat
+themes, admin overview/tables, image controls/library, Training, tablet, mobile menu, phone
+chat and long conversation/code. Fixed native select sizing, wordmark stacking and gallery
+button wrapping. No global horizontal overflow or page exceptions in20 preview scenarios
+or18 actual deployed scenarios. Desktop history open/Escape/focus, draft prefill, theme reload,
+owner login/navigation/logout and refused revoked-cookie replay verified.
+
+## Delivery
+-265 web tests /64 files passed,no skips; strict TypeScript/Vite, ESLint, Prettier and whitespace
+checks passed. No API/schema/DB/dependency change in this correction; existing backend gates
+and explicit-content qualification remain unchanged.
+-Web image hardened policy passed, Trivy CRITICAL findings0 including unfixed, SPDX SBOM.
+-Current web: `sha256:22004171a50d6d52b37782cf63183ea293037ce4cce1b36cd811a7ec83683668`.
+-Rollback web: `sha256:135c7a20e711a95a3a6bb86efc501b89ce812972bdac7efa3e90ccfb359ce6e9`.
+-Only web recreated with --no-deps; all14 other container identities/images retained, including
+API audit-fix image73a0fd0. Existing TLS8443 retained; no credential/entitlement changes.
+-Private screenshots/measurements, before/after maps and rollback snapshot:
+`~/.coire/qualification/025/literal-*`. A side-by-side standalone comparison uses unaltered
+reference/live screenshots. No screenshots or test/generated artifacts committed to Git.
+-Preview server/browser processes stopped; isolated visual fixture dist files removed;
+no persistent test container or volume created.
+
+## Historical qualification before the owner's second rejection
 
 The initial a67ad30 pass was rejected for composition and typography/color/spacing. This
 record describes the corrected, locally activated version, following the owner clarification.

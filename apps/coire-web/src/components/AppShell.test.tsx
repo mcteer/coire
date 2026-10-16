@@ -183,3 +183,18 @@ test("active alerts prevent a healthy banner even when every host is reachable",
   expect(screen.getByLabelText("Cluster status")).toHaveTextContent("Needs attention");
   expect(screen.queryByText("All systems healthy")).not.toBeInTheDocument();
 });
+
+test("uses the system theme when no explicit preference has been saved", async () => {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn(() => ({ matches: true })),
+  );
+  render(
+    <AppShell view="chat">
+      <main>Content</main>
+    </AppShell>,
+  );
+  await waitFor(() => expect(document.documentElement.dataset.theme).toBe("dark"));
+  expect(screen.getByRole("button", { name: "Switch to light theme" })).toBeInTheDocument();
+  vi.unstubAllGlobals();
+});

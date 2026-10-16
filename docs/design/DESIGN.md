@@ -1,91 +1,55 @@
-# Coire interface — professional workspace
+# Coire interface — reference theme
 
-Feature [025](../../specs/025-professional-interface/spec.md) supersedes the historical Glass
-mockups and their floating dock. This document and `tokens.css` are the current visual source
-of truth; the architecture and typed contracts remain authoritative for behavior.
+The visual authority is the owner's exact page:
+https://andreinita.co/learning/pydantic-ai/ . The owner rejected the earlier sidebar,
+card-heavy workspace and marketing welcome. Those interpretations are superseded.
+Do not introduce another dashboard product's visual system as an alternative authority.
 
-## Direction and references
+## Measured styling
 
-The owner's [Andrei Nita reference](https://andreinita.co/learning/pydantic-ai/) supplies warm
-ivory, deep navy, muted gold, Inter body type and Cormorant Garamond editorial headings.
-[Linear's redesign study](https://linear.app/now/how-we-redesigned-the-linear-ui) informs
-navigation hierarchy, alignment and restrained density. The official
-[Vercel chatbot](https://github.com/vercel/ai-chatbot) informs a focused conversation/composer
-layout. No reference content or branded asset is copied into Coire.
+Headless Playwright WebKit,1440×1000, identical light/dark viewports:
 
-## Visual system
+| Property | Reference | Coire |
+|---|---|---|
+| Masthead | 64px, horizontal links, text wordmark | Same; role-aware application links |
+| Wordmark left | 144px | 143.984px WebKit subpixel rounding |
+| Editorial column | 672px, centered, left384px | Same |
+| Page heading | Cormorant Garamond500,32px/40px | Same |
+| Heading origin | x384,y214 | Same |
+| Primary prose | Inter400,16px/25.6px | Same |
+| Supporting prose | Inter400,14px/22.4px | Same |
+| Light background/ink | #faf8f5 / #040810 | Same |
+| Dark background/ink | #081027 / #e8edf8 | Same |
+| Action fill/text | #6b4e1a / #e6cb9a | Same |
 
-- Default light: ivory `#faf8f5`, paper `#f2eee8` raised surfaces, near-black `#040810` text and visible warm `#c2b8a4` hairlines.
-- Navigation: tonal paper in light mode and navy in dark mode, readable labels and a gold active rule. It anchors
-  the workspace rather than floating above content.
-- Gold is reserved for primary actions, selected states and small brand accents. Repeated
-  table actions use quieter outlined buttons; dangerous actions retain red labels.
-- Dark mode uses navy surfaces, light ivory text and softened gold. Explicit user preference
-  is stored as `coire.theme`; storage failures must never block sign-in or navigation.
-- Inter is the UI/body face. Cormorant Garamond is limited to page titles, sign-in and the
-  conversational welcome. Operational numbers and code use system monospace. Body text is 16px, controls 14px and editorial headings 32–42px. Both font
-  assets are self-hosted; sources, SHA256 hashes and full OFL1.1 notices live in `public/fonts`.
-- Corners are restrained (7–12px), dividers are subtle, and shadows only establish surface
-  hierarchy. Do not restore translucent cards, bright gradients or a floating bottom dock.
+Use the reference's open sections, fine rules, subdued surfaces and subtle gold radial wash.
+Primary actions follow the measured source-banner button; secondary actions remain quiet.
+No desktop sidebar, giant welcome headline, floating dock, custom emblem or split sign-in hero.
+`apps/coire-web/src/styles/reference.css` is the canonical applied theme, loaded after feature
+layout styles. `tokens.css` defines the shared palette/fonts. `docs/design/tokens.css` mirrors
+runtime tokens; the applied stylesheet resolves feature-specific legacy presentation.
 
-## Shell and navigation
+## Functional adaptation
 
-Desktop uses a 240px sidebar and a 64px top header. The header contains breadcrumbs, theme
-control, sign-out and truthful cluster state on Admin. Unknown state says Connecting; never
-infer health from the absence of a snapshot. Primary routes retain role checks. Admin subviews
-sit in the sidebar and Upgrades remains capability-gated. Content is aligned to a shared grid.
+Chat and sign-in use the measured centered column and hierarchy. Chat history is an explicit
+Conversations disclosure at every width; Escape closes it and restores focus. Suggested drafts
+remain simple numbered rows and only prefill. Actual model selection, file/code/feedback,
+streaming, cancellation and authentication behavior remain unchanged.
 
-Below 760px the sidebar becomes a labelled drawer, opened through a real button. Escape
-closes it, focus returns to the toggle, and Tab stays inside while open. Primary and admin
-navigation close the drawer after selection. Icons without visible text require accessible
-names. A skip link reaches the main workspace content.
+Administrative headings use the same column, with data tables/node summaries in the site's
+1152px breakout where required. Admin subnavigation is a horizontal text rail on desktop;
+mobile uses the existing keyboard-accessible drawer. Image generation and library use open
+ruled sections with actual image/entitlement controls. Training keeps its working controls.
+Dense data remains real and owner/admin scoped. Unknown/stale/alert states never imply health.
 
-## Conversation
+New visitors follow their system color preference, as the reference does; an explicit saved
+light/dark choice takes precedence. Preference storage is guarded and separate from private
+drafts. Fonts remain self-hosted Inter/Cormorant Garamond with existing OFL notices and hashes.
 
-History shares the desktop navigation column. On phones it is an explicit Conversations
-control. Model selection is a native disclosure showing the selected model and provider;
-all exact-target and capability checks remain. The selected provider must remain visible.
+## Acceptance
 
-The empty conversation uses a readable editorial heading and three suggested drafts. These
-only fill and focus the composer: they never submit, switch model, or enable permissions.
-Chat/Code, attachments and feedback privacy remain real controls. Secondary settings live in
-labelled disclosures rather than occupying the entire first screen.
-
-Messages use a restrained user surface and an open assistant surface. Markdown, code-copy,
-reasoning disclosure, attribution and file selections keep their existing semantics. Long
-code scrolls within its block, never widening the page. The composer preserves Enter/Shift+
-Enter, IME handling, disabled states, progress and server cancellation behavior.
-
-## Dashboards, images and training
-
-The overview leads with actual online Studios, available placement memory and active
-instances. Stopped/failed instance history belongs in Instances; it must not inflate the live
-count or produce an endlessly scrolling overview. Every number comes from the current typed
-snapshot. Node cards retain actual resource/heartbeat/health data. Long tables scroll inside
-their panel with a sticky header.
-
-On wide screens Images places generation controls beside the library; jobs and presets stay
-reachable. Training keeps runs, the working panel and supporting details responsive. All
-forms, empty/loading/error states, confirmation dialogs and destructive actions share the
-same tokens. Do not add fake trend charts, counts, time-series or decorative controls.
-
-## Accessibility and acceptance
-
-Maintain 4.5:1 normal-text contrast, visible focus, semantic labels, textual status and
-reduced-motion support. Verify real 1440px, 1024px and 390px browser layouts in light/dark.
-Inspect sign-in, empty and filled chat, long code/identifiers, model selection, admin tables,
-Images and Training. Screenshots are private execution artifacts outside Git. Presentation
-work must not weaken authentication, API contracts, entitlement checks or safety gates.
-
-## WebKit acceptance and explicit images
-
-Owner correction requires actual **headless Playwright WebKit** visual inspection, including
-the supplied reference, sign-in, empty/long chat, dashboard tables, Images/Training, desktop,
-phone and dark mode. Inspect rendered screenshots, not only dimensions or a passing build.
-Native selects use a consistent code-native chevron and minimum42px height in WebKit.
-Images leads with model, prompt, content mode and Generate before secondary settings.
-Standard/Explicit uses the existing generated content_mode contract. Explicit selection
-requires the current user's canonical `explicit` entitlement; an explicit preset cannot be
-downgraded by the form, and restored explicit settings are blocked without current access.
-The admin console grants/revokes `explicit` through the audited existing API and refreshes
-the current identity. Backend admission remains authoritative at every action boundary.
+Use **headless Playwright WebKit**, inspect both the reference and actual application screenshots
+at matching viewport sizes, and compare measured styles. Check1440px desktop,1024px tablet,
+390px phone, both themes, sign-in, chat/history/long code, admin, Images and Training. Passing
+functional tests or token similarity alone is not visual acceptance. Do not record owner approval
+without owner feedback. Credentials, screenshots and generated outputs stay outside Git.
