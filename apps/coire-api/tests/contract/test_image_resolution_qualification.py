@@ -181,3 +181,81 @@ async def test_terminal_cleanup_retries_after_node_connection_loss() -> None:
     await reconciler._cleanup_resolution_holds(cast(Any, client), job)
     assert dict(job.image_validation or {})["reservation_cleanup_pending"] is False
     assert release.await_count == 3
+
+
+async def test_completed_qwen_copy_releases_only_its_hold_and_does_not_repeat_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime
+
+    from coire_core.models.jobs import JobKind, JobStage, JobStatus
+
+    session = Session()
+    model = session.model
+    model.repo_id = "mflux-community/qwen-image-edit-2509-mflux-q8"
+    model.slug = "mflux-community--qwen-image-edit-2509-mflux-q8"
+    job = DownloadJobRow(
+        id=uuid.uuid4(),
+        model_id=model.id,
+        stage=DownloadStage.VERIFY_REPLICA,
+        image_validation={
+            "origin": {
+                "validated": True,
+                "kind": "image_model",
+                "manifest_sha256": "a" * 64,
+                "source_revision": "b" * 40,
+                "validator_version": "qwen-edit-v1",
+                "peak_rss_bytes": 1000,
+                "peak_physical_bytes": 2000,
+                "peak_physical_delta_bytes": 1900,
+                "thumbnail_sha256": "c" * 64,
+                "image_capability_profile": {
+                    **PROFILE,
+                    "modes": ["edit"],
+                    "min_guidance": "4",
+                    "max_guidance": "4",
+                },
+            }
+        },
+    )
+    origin, replica = session.nodes
+    replica_id = uuid.uuid5(job.id, "image-validation:replica")
+    now = datetime.now(UTC)
+    status = JobStatus(
+        job_id=replica_id,
+        kind=JobKind.IMAGE_VALIDATE,
+        slug=model.slug,
+        stage=JobStage.RESOLVING,
+        started_at=now,
+        updated_at=now,
+    )
+    client = SimpleNamespace(
+        release_reservation=AsyncMock(),
+        hold_reservation=AsyncMock(),
+        start_image_validate=AsyncMock(return_value=status),
+        get_job=AsyncMock(return_value=status),
+    )
+    audit = AsyncMock()
+    monkeypatch.setattr("coire_api.registry.reconciler.write_audit", audit)
+    reconciler = RegistryReconciler(cast(Any, SimpleNamespace(registry_reconcile_interval_s=30)))
+    assert not await reconciler._validate_image_copies(
+        cast(Any, session), cast(Any, client), job, model, origin, replica
+    )
+    client.release_reservation.assert_awaited_once_with(
+        origin.name, uuid.uuid5(job.id, "image-validation:origin")
+    )
+    assert job.image_validation and job.image_validation["origin_reservation_released"] is True
+    client.start_image_validate.assert_not_awaited()
+    assert (
+        audit.await_args
+        and audit.await_args.kwargs["action"] == "image.photo_edit.copy_reservation_released"
+    )
+    assert not await reconciler._validate_image_copies(
+        cast(Any, session), cast(Any, client), job, model, origin, replica
+    )
+    client.release_reservation.assert_awaited_once()
+    assert (
+        client.start_image_validate.await_args
+        and client.start_image_validate.await_args.args[0] == replica.name
+    )
+    assert audit.await_count == 1

@@ -498,7 +498,7 @@ class RegistryReconciler:
         origin: NodeRow,
         replica: NodeRow,
     ) -> bool:
-        """Persist two reserved offline smoke results before releasing either hold."""
+        """Persist copy evidence before releasing its completed qualification hold."""
         if not model.manifest_sha256 or not model.source_revision:
             await self._fail(session, job, model, "image source evidence is incomplete")
             return False
@@ -534,6 +534,24 @@ class RegistryReconciler:
         resolution = qualification_request(job)
         for role, node in (("origin", origin), ("replica", replica)):
             if role in evidence:
+                if getattr(model, "repo_id", None) in QWEN_EDIT_REPO_IDS and not evidence.get(
+                    f"{role}_reservation_released"
+                ):
+                    await client.release_reservation(
+                        node.name, uuid.uuid5(job.id, f"image-validation:{role}")
+                    )
+                    evidence[f"{role}_reservation_released"] = True
+                    job.image_validation = evidence
+                    job.updated_at = datetime.now(UTC)
+                    await write_audit(
+                        session,
+                        actor=ACTOR,
+                        action="image.photo_edit.copy_reservation_released",
+                        target_type="model",
+                        target_id=str(model.id),
+                        detail={"job_id": str(job.id), "role": role},
+                    )
+                    return False
                 continue
             validation_id = uuid.uuid5(job.id, f"image-validation:{role}")
             await client.hold_reservation(
@@ -635,6 +653,17 @@ class RegistryReconciler:
                 return False
             model.image_capability_profile = origin_result.image_capability_profile.model_dump(
                 mode="json"
+            )
+        if getattr(model, "repo_id", None) in QWEN_EDIT_REPO_IDS:
+            model.memory_estimate_bytes = max(
+                model.memory_estimate_bytes,
+                int(
+                    max(
+                        origin_result.peak_physical_delta_bytes or 0,
+                        replica_result.peak_physical_delta_bytes or 0,
+                    )
+                    * 1.2
+                ),
             )
         if resolution is not None:
             model.memory_estimate_bytes = max(

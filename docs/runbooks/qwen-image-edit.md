@@ -41,7 +41,10 @@ their existing thirty-minute limit. Cancel from job progress at any time.
 
 ## Operations and rollback
 
-Acquisition reserves memory and validates both existing replicas before publication. The
+Acquisition reserves memory and validates both existing replicas before publication. A copy’s
+reservation is released and audited after its validated evidence is durable; unfinished
+copies retain their own holds. Publication still requires both complete results. The
+serving reservation keeps at least 20% above the larger measured physical-memory delta. The
 validator runs a 40-step 1024px edit and 4-step 1980px square/landscape/portrait edits using an
 owned geometric reference with different dimensions. Every sample checks RGB content,
 nondegenerate pixels and exact output size. A physical-memory watchdog terminates only
