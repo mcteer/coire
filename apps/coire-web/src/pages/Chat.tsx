@@ -8,12 +8,14 @@ import { FeedbackSettings } from "../components/chat/FeedbackSettings";
 import { FeedbackControls } from "../components/chat/FeedbackControls";
 import { Comparison } from "../components/chat/Comparison";
 import { Composer } from "../components/chat/Composer";
+import { Icon } from "../components/Icons";
 import { AttachmentList } from "../components/chat/AttachmentList";
 import { ConversationHistory } from "../components/chat/ConversationHistory";
 import { MessageList } from "../components/chat/MessageList";
 import { ModelPicker } from "../components/chat/ModelPicker";
 import { CodeControls } from "../components/chat/CodeControls";
 import { RunActivity } from "../components/chat/RunActivity";
+import { useChatScroll } from "../hooks/useChatScroll";
 import { useConversation } from "../hooks/useConversation";
 import { AskCoire } from "./admin/AskCoire";
 import "../styles/chat.css";
@@ -50,6 +52,13 @@ function ChatSession({
   const [exactConfirmed, setExactConfirmed] = useState(false);
   const chat = useConversation(ownerId);
   const [preference, setPreference] = useState<FeedbackPreference | null>(null);
+  const lastMessage = chat.messages.at(-1);
+  const scroll = useChatScroll(
+    chat.conversation?.id ?? null,
+    lastMessage
+      ? `${chat.messages.length}:${lastMessage.id}:${lastMessage.text.length}:${lastMessage.reasoning?.length ?? 0}`
+      : "",
+  );
   const [feedback, setFeedback] = useState<ConversationFeedbackPage | null>(null);
   const [feedbackError, setFeedbackError] = useState<string | null>(null);
   const cid = chat.conversation?.id;
@@ -389,30 +398,6 @@ function ChatSession({
               disabled={chat.active || Boolean(chat.conversation?.active_turn_id)}
             />
           )}
-          {(chat.mode === "chat" || chat.mode === "code") && (
-            <details
-              className="chat-attachments"
-              open={chat.attachments.length > 0 || chat.selections.length > 0}
-            >
-              <summary>Attach files</summary>
-              <AttachmentList
-                conversationId={chat.conversation?.id ?? null}
-                attachments={chat.attachments}
-                selections={chat.selections}
-                busy={
-                  !chat.selectedId ||
-                  chat.active ||
-                  chat.fileBusy ||
-                  Boolean(chat.conversation?.active_turn_id)
-                }
-                onUpload={(file) => void chat.uploadFile(file)}
-                onProcess={(fileId, operation, pages) =>
-                  void chat.processFile(fileId, operation, pages)
-                }
-                onSelect={chat.selectFile}
-              />
-            </details>
-          )}
           {chat.selections.length > 0 && !chat.canSendSelections && (
             <div className="chat-selection-remedy" role="status">
               <p className="muted">{chat.selectionIssue}</p>
@@ -423,32 +408,109 @@ function ChatSession({
               )}
             </div>
           )}
-          <Composer
-            value={chat.draft}
-            onChange={chat.setDraft}
-            onSend={() => void chat.send()}
-            disabled={
-              !chat.selectedId ||
-              pendingComparison ||
-              chat.active ||
-              chat.fileBusy ||
-              !chat.canSendSelections ||
-              !chat.codeReady ||
-              Boolean(chat.conversation?.active_turn_id)
-            }
-            status={chat.status}
-            mode={chat.mode}
-          />
-          {chat.conversation?.active_turn_id && (
-            <button
-              className="button"
-              type="button"
-              onClick={() => void chat.stop()}
-              disabled={chat.stopPending}
-            >
-              {chat.stopPending ? "Stopping…" : chat.mode === "code" ? "Stop run" : "Stop response"}
+          <div ref={scroll.end} className="chat-scroll-anchor" />
+          {scroll.away && (
+            <button className="chat-jump-latest" type="button" onClick={scroll.jump}>
+              Jump to latest ↓
             </button>
           )}
+          <div className="chat-composer-dock">
+            <Composer
+              onUpload={(file) => void chat.uploadFile(file)}
+              uploadDisabled={
+                !chat.selectedId ||
+                chat.active ||
+                chat.fileBusy ||
+                Boolean(chat.conversation?.active_turn_id)
+              }
+              active={Boolean(chat.conversation?.active_turn_id)}
+              stopping={chat.stopPending}
+              onStop={() => void chat.stop()}
+              files={
+                chat.attachments.length > 0 ? (
+                  <div className="composer-files">
+                    <div className="composer-file-chips">
+                      {chat.attachments
+                        .filter(
+                          (file) =>
+                            chat.selections.some((s) => s.file_id === file.id) ||
+                            file.state !== "ready",
+                        )
+                        .map((file) => (
+                          <div className="composer-file-chip" key={file.id}>
+                            <Icon name="paperclip" size={17} />
+                            <span>
+                              <strong>{file.filename}</strong>
+                              <small>
+                                {file.state === "ready"
+                                  ? "Included in next message"
+                                  : file.state === "processing"
+                                    ? "Processing…"
+                                    : file.state === "failed"
+                                      ? "Processing failed"
+                                      : file.state}
+                              </small>
+                            </span>
+                            {chat.selections.some((s) => s.file_id === file.id) && (
+                              <button
+                                type="button"
+                                aria-label={`Remove ${file.filename} from message`}
+                                disabled={
+                                  chat.active ||
+                                  chat.fileBusy ||
+                                  Boolean(chat.conversation?.active_turn_id)
+                                }
+                                onClick={() => chat.selectFile(null, file.id)}
+                              >
+                                <Icon name="close" size={14} />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                    <details className="composer-file-manager">
+                      <summary>Manage files ({chat.attachments.length})</summary>{" "}
+                      <AttachmentList
+                        embedded
+                        conversationId={chat.conversation?.id ?? null}
+                        attachments={chat.attachments}
+                        selections={chat.selections}
+                        busy={
+                          !chat.selectedId ||
+                          chat.active ||
+                          chat.fileBusy ||
+                          Boolean(chat.conversation?.active_turn_id)
+                        }
+                        onUpload={(file) => void chat.uploadFile(file)}
+                        onProcess={(fileId, operation, pages) =>
+                          void chat.processFile(fileId, operation, pages)
+                        }
+                        onSelect={chat.selectFile}
+                      />
+                    </details>
+                  </div>
+                ) : chat.fileBusy ? (
+                  <p className="composer-upload-status" role="status">
+                    Uploading file…
+                  </p>
+                ) : null
+              }
+              value={chat.draft}
+              onChange={chat.setDraft}
+              onSend={() => void chat.send()}
+              disabled={
+                !chat.selectedId ||
+                pendingComparison ||
+                chat.active ||
+                chat.fileBusy ||
+                !chat.canSendSelections ||
+                !chat.codeReady ||
+                Boolean(chat.conversation?.active_turn_id)
+              }
+              status={chat.fileBusy ? "Preparing file…" : chat.status}
+              mode={chat.mode}
+            />
+          </div>
         </div>
       </div>
     </main>

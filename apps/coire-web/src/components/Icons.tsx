@@ -1,4 +1,6 @@
 export type IconName =
+  | "paperclip"
+  | "stop"
   | "chat"
   | "images"
   | "training"
@@ -22,6 +24,8 @@ export type IconName =
   | "palette"
   | "chevron";
 const paths: Record<IconName, string> = {
+  paperclip: "m8 12 6-6a3 3 0 0 1 4 4l-8 8a5 5 0 0 1-7-7l9-9M6 14l8-8",
+  stop: "M5 5h14v14H5z",
   chat: "M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z",
   images:
     "M4 3h16a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm-1 13 5-5 5 5 4-4 4 4M8 7h.01",

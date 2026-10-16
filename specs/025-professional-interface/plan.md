@@ -61,3 +61,19 @@ No API/wire shape, DB, dependency, entitlement, image setting, service or listen
 Meaningful pure color/validation and UI lifecycle regressions plus actual headless WebKit
 preview, persistence, cancel, edit/delete/reset and mobile inspection. Build/policy/scan/SBOM
 and deploy only web with rollback; record source/live restoration and clean fixtures.
+
+## Unified chat composer revision
+Branch `feat/025-chat-composer`, stacked on the activated issue105 layout fixes.
+Use existing generated chat types and hooks; introduce composer slots for file chips,
+file management and the integrated upload action. Keep AttachmentList's full PDF
+controls reusable with an embedded mode. Auto-select a successfully uploaded ready
+file within the existing ten-file limit and existing capability validation. Keep drafts
+editable during generation; integrate cancellation into the send action. Style a
+bounded sticky composer, right-aligned compact user bubbles and open assistant
+answers. Add near-bottom scrolling without pulling a reader away from older messages.
+Regression tests cover uploads/selections, send/stop/IME and composer containment;
+headless WebKit validates long chats, attachments, pending, stopped/failed states,
+keyboard and mobile/light/dark on actual components. No API/engine/schema/dependency
+change. Constitution I–V unchanged; VI existing stream/status/telemetry retained;
+VII amended spec/plan/tasks before implementation, regression and visual gates.
+Build/policy/scan/SBOM and activate web only with rollback and fixture cleanup.

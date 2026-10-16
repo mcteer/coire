@@ -489,13 +489,16 @@ test("creates a conversation before uploading and sends an explicit ready text s
   fireEvent.change(screen.getByLabelText("Add file"), {
     target: { files: [new File(["hello"], "notes.txt", { type: "text/plain" })] },
   });
-  await waitFor(() => expect(screen.getByText("notes.txt")).toBeInTheDocument());
-  await waitFor(() => expect(screen.getByLabelText("notes.txt")).toBeEnabled());
+  await waitFor(() =>
+    expect(screen.getByRole("checkbox", { name: "notes.txt", hidden: true })).toBeChecked(),
+  );
+  expect(
+    screen.getByRole("button", { name: "Remove notes.txt from message" }).closest("form"),
+  ).toHaveAttribute("aria-label", "Message composer");
   expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/v1/chat/conversations");
   expect(fetchMock.mock.calls[3]?.[0]).toBe(`/api/v1/chat/conversations/${conversationId}/files`);
   const form = fetchMock.mock.calls[3]?.[1]?.body as FormData;
   expect(form.get("expected_revision")).toBe("1");
-  fireEvent.click(screen.getByLabelText("notes.txt"));
   fireEvent.change(screen.getByRole("textbox", { name: "Message" }), {
     target: { value: "Read it" },
   });
@@ -1082,7 +1085,8 @@ test("reopens saved partial output with model attribution and older messages", a
   fireEvent.click(await screen.findByRole("button", { name: /Saved notes/ }));
   expect(await screen.findByText("Saved partial")).toBeInTheDocument();
   expect(screen.getByText("Saved partial").closest("article")).toHaveTextContent("Earlier model");
-  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Stop response" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "Load older messages" }));
   expect(await screen.findByText("Older answer")).toBeInTheDocument();
 });

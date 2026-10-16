@@ -122,3 +122,21 @@ Text, accent labels, sidebar labels and button text are derived for at least4.5:
 against their generated surfaces. Reject incompatible page/panel combinations rather than
 allow unreadable text. Existing semantic health/danger labels keep their meanings. This is
 a palette text-contrast target, not a claim of complete accessibility certification.
+
+### Unified conversational surface — current chat revision
+
+Chat uses a single rounded composer containing the draft, selected-file chips,
+attachment button, preparation/response status and the circular send/stop action.
+File metadata and explicit PDF mode/page choices are disclosed within that same
+composer. File chips identify inclusion in the next message and can be removed;
+processing is shown truthfully and existing readiness/capability checks gate Send.
+The draft grows up to 200px and remains editable during an active response. Enter
+sends, Shift+Enter adds a line, and IME composition never submits. Attachment picker,
+drop and paste reuse the same authenticated upload path; one file at a time.
+
+User messages are compact, right-aligned bubbles (85% maximum width on desktop,
+92% on mobile) with no visually repeated You heading. Assistant answers occupy an
+open 800px reading column with discreet model attribution, existing safe markdown,
+code copy and feedback. The composer stays at the viewport bottom when scrolling
+long threads. Output follows only near the end; Jump to latest returns a reader who
+has scrolled back. Recovery and code-mode controls retain their existing behavior.

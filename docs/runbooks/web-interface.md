@@ -156,3 +156,20 @@ partial interrupted turns, and a completed answer with feedback and a code block
 Use headless Playwright WebKit in both appearances across desktop and mobile; check
 word wrapping, element bounds/overlaps and nested scroll regions as well as page
 overflow. Screenshot fixtures must be labelled separately from live API evidence.
+
+### Unified chat composer
+
+Use the paperclip in the composer to attach one file, or drop/paste a file into it.
+A chip shows processing or inclusion in the next message; its × removes inclusion,
+not the stored conversation file. Manage files inside the composer retains explicit
+file selection, PDF text/page-image settings, preparation retries and downloads.
+Uploads become visibly selected, including while processing, and Send remains gated
+on readiness, context limits and the selected model's capabilities. The upload limit
+and private authenticated storage path are unchanged.
+
+Enter sends and Shift+Enter inserts a line; IME input is preserved. The circular Send
+action becomes Stop after the server accepts a response. The draft stays editable
+while generation runs. A long thread keeps the composer available; scrolling back
+preserves the reading position and exposes Jump to latest. These are web changes,
+with existing chat/file APIs, scopes, audit and telemetry. Roll back the web image
+with --no-deps; do not replace API services or delete conversation volumes.

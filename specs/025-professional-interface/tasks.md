@@ -38,3 +38,9 @@ Dependencies: T001 → T002 → T003/T004 → T005/T006 → T007 → T008 → T0
 - [x] T022 Add accessible preset/custom editor with light/dark colors, preview/save/edit/cancel/delete/reset and integrate on sign-in/workspace; test lifecycle/storage boundaries.
 - [x] T023 Inspect and verify themes in actual headless Playwright WebKit on desktop/mobile, preserving layout and private drafts.
 - [x] T024 Pass scoped checks and hardened web image gates, deploy web only, verify live themes, update evidence/runbook/PR and retire fixtures.
+
+## Owner revision: unified conversational interface
+- [x] T025 Unify attachment upload, removable selected-file chips, file/PDF management, draft and send/stop in the composer; preserve file guards and add regressions.
+- [x] T026 Refine user/assistant message layout, sticky composer and considerate near-bottom scrolling with tests.
+- [x] T027 Inspect completed/streaming/error/attachment/long-chat states in headless WebKit at desktop/mobile widths and both appearances; fix visual findings.
+- [x] T028 Pass web/image gates, activate web only with rollback, verify production visuals and record cleanup/evidence/PR.

@@ -280,3 +280,40 @@ created. Browser contexts close after each run and fixture routes die with them.
 Activated only `coire-web:105-interface-layout` (`sha256:aec8260220f925cbe14c3b3346dd38b0df07a04b6fad25fa90cde6a4a54c5ffd`). All 14 other
 container identities/images are preserved; rollback is the preceding
 `coire-web:103-image-progress` image.
+
+## Unified composer revision (2026-10-16)
+
+Owner requested familiar Claude/ChatGPT-style chat interaction and attachments inside
+chat. Updated spec/plan/tasks before implementation on `feat/025-chat-composer`,
+stacked on the activated issue105 fixes. One composer now contains file chips,
+file/PDF management, upload/paste/drop, growing draft, status and circular send/stop.
+Visible inclusion begins during processing; existing polling and readiness/model
+capability gates prevent premature sending. Draft remains editable while active;
+Enter/Shift+Enter/IME are preserved. Compact right-aligned user bubbles and open
+assistant answers replace the form-like message styling. Sticky composer and
+near-bottom follow preserve older-message reading; Jump to latest is explicit.
+
+Validation: 294 tests / 67 files, no skips; strict TypeScript/Vite, ESLint, Prettier
+and diff checks pass. Regressions cover composer containment, upload inclusion,
+active Send→Stop, editable drafts, IME, paste/drop, multi-file refusal and scroll
+follow/reading position. Existing PDF/page and authorization tests remain intact.
+All seven production image policy rules pass; Trivy CRITICAL zero including unfixed;
+SPDX SBOM generated. No API/schema/database/dependency or inference change.
+Constitution I–V boundaries unchanged, III existing generated types, VI existing
+chat/file spans/metrics/audit/status/alerts retained, VII amended spec and regression
+plus actual headless WebKit acceptance. Engine integration is unaffected.
+
+Headless Playwright WebKit preview and deployed runs inspect desktop/mobile/light/
+dark, actual populated conversation data and a real uploaded text file. File chip
+is inside the composer, removal/reselection and multiline draft pass; the temporary
+conversation is deleted via authenticated owner API in finally. Long 24-message
+active-response, completed code/feedback and partial recovery use labelled read-only
+API/SSE fixtures on the actual components without writing answers to storage or
+starting inference. Incoming fixture snapshots verify that new output follows near
+the end and does not move an older-message reading position. Active draft and sticky
+composer bounds are checked. No page errors or horizontal overflow in checked states.
+Screenshots were opened/inspected; private artifacts are under
+`~/.coire/qualification/025/composer-{preview,production,activation}/`.
+Browser contexts close; no persistent fixture service/container/volume or API key.
+Only web was replaced by `coire-web:025-chat-composer`; all other 14 container IDs/
+images are unchanged. Rollback compose preserves preceding `coire-web:105-interface-layout`.
