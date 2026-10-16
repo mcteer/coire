@@ -206,30 +206,31 @@ test("requires two clicks before deleting an image output", async () => {
   expect(await screen.findByText("No images yet.")).toBeInTheDocument();
 });
 
-test("signs out through same-origin Access after clearing the verified owner's draft", async () => {
+test("local logout revokes the server session before clearing the owner's draft", async () => {
   loadChatDrafts(user.id);
   saveChatDrafts(user.id, new Map([["new", { text: "Private draft", modelId: null }]]));
-  vi.stubGlobal(
-    "fetch",
-    vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ ...user, role: "user" }),
-      })
-      .mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ data: [] }) })
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({ data: [], next_cursor: null }),
-      }),
+  const fetchMock = vi.fn().mockImplementation((path: string) =>
+    Promise.resolve({
+      ok: true,
+      status: path.endsWith("/logout") ? 204 : 200,
+      json: async () =>
+        path === "/api/v1/me"
+          ? { ...user, role: "user" }
+          : path === "/api/v1/auth/local"
+            ? { enabled: true, access_enabled: false }
+            : { data: [], next_cursor: null },
+    }),
   );
+  vi.stubGlobal("fetch", fetchMock);
   render(<App />);
-  const link = await screen.findByRole("link", { name: "Sign out" });
-  expect(link).toHaveAttribute("href", "/cdn-cgi/access/logout");
-  link.addEventListener("click", (event) => event.preventDefault());
-  fireEvent.click(link);
+  fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+  await waitFor(() =>
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/auth/local/logout",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+  expect(await screen.findByRole("heading", { name: "Sign in to Coire" })).toBeInTheDocument();
   expect(sessionStorage.getItem("coire.chat.drafts." + user.id)).toBeNull();
   expect(sessionStorage.getItem("coire.chat.draft-owner")).toBeNull();
 });
@@ -258,13 +259,52 @@ test("surfaces an authentication failure", async () => {
 test("offers same-origin reauthentication when the edge session expires", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ title: "Unauthorized" }), {
-        status: 401,
-        headers: { "content-type": "application/problem+json" },
-      }),
+    vi.fn().mockImplementation((path: string) =>
+      Promise.resolve(
+        path === "/api/v1/auth/local"
+          ? new Response(JSON.stringify({ enabled: false, access_enabled: true }))
+          : new Response(JSON.stringify({ title: "Unauthorized" }), {
+              status: 401,
+              headers: { "content-type": "application/problem+json" },
+            }),
+      ),
     ),
   );
   render(<App />);
-  expect(await screen.findByRole("link", { name: "Sign in again" })).toHaveAttribute("href", "/");
+  expect(await screen.findByRole("link", { name: "Sign in with Access" })).toHaveAttribute(
+    "href",
+    "/",
+  );
+});
+
+test("preserves provider logout when local sign-in is also enabled", async () => {
+  const previousLocation = window.location;
+  const assign = vi.fn();
+  vi.stubGlobal("location", { hash: "", pathname: "/", assign });
+  try {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((path: string) => {
+        if (path === "/api/v1/auth/local/logout")
+          return Promise.resolve(
+            new Response(JSON.stringify({ detail: "local session required" }), { status: 401 }),
+          );
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () =>
+            path === "/api/v1/me"
+              ? { ...user, role: "user" }
+              : path === "/api/v1/auth/local"
+                ? { enabled: true, access_enabled: true }
+                : { data: [], next_cursor: null },
+        });
+      }),
+    );
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/cdn-cgi/access/logout"));
+  } finally {
+    vi.stubGlobal("location", previousLocation);
+  }
 });

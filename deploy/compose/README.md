@@ -609,3 +609,13 @@ supplies them from its accepted plan. Without either value the image performs or
 installation migrations. Managed execution requires enabled upgrades, the retained
 consumed migration grant, exact source schema, current actor/fences and restore-validated
 backup; uncertain attempts remain recorded and cannot rerun automatically.
+
+### Local browser sign-in
+
+`COIRE_LOCAL_AUTH_ENABLED` defaults to `false`; `COIRE_LOCAL_AUTH_ORIGIN` defaults empty.
+Local sessions require an exact HTTPS browser origin (loopback HTTP is development-only),
+an existing active user with an operator-provisioned password, and migration 0035.
+The optional `compose.local-tls.yaml` overlay preserves node HTTP traffic and adds local
+HTTPS only after operator approval for the additional listener. TLS key material is
+Keychain-backed. See [local sign-in operations](../../docs/runbooks/local-signin.md) for
+certificate trust, password provisioning/reset, revocation, observability and rollback.

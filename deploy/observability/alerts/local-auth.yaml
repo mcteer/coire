@@ -1,0 +1,10 @@
+groups:
+  - name: coire-local-auth
+    rules:
+      - alert: CoireLocalSignInFailures
+        expr: sum(increase(coire_local_auth_attempts_total{outcome=~"refused|limited"}[5m])) >= 10
+        for: 0m
+        labels: {severity: warning}
+        annotations:
+          summary: Repeated local browser sign-in refusals
+          description: Check identity.local.login audit outcomes; never collect passwords or session cookies.

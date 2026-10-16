@@ -52,6 +52,7 @@ from coire_api.routes import (
     internal_ops,
     internal_training,
     internal_upgrades,
+    local_auth,
     mcp_artifacts,
     me,
     models,
@@ -198,6 +199,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(workspaces.router)
     app.include_router(mcp_artifacts.router)
     app.include_router(me.router)
+    app.include_router(local_auth.router)
     app.include_router(admin_acquisitions.router)
     app.include_router(admin_console.router)
     app.include_router(admin_datasets.router)
@@ -249,9 +251,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             reset_principal,
         )
         from coire_api.identity.limits import MonthlyQuotaExceeded, RateLimitExceeded
+        from coire_api.identity.local import cookie_name, correct_origin
         from coire_api.images.transfer import require_node_credential
 
-        anonymous_paths = {"/ready", "/health", "/failover/ready"}
+        if (
+            request.cookies.get(cookie_name(settings))
+            and not request.headers.get("authorization")
+            and not request.headers.get("x-api-key")
+            and not request.headers.get("cf-access-jwt-assertion")
+            and request.method not in {"GET", "HEAD", "OPTIONS"}
+            and not correct_origin(request)
+        ):
+            await audit_authentication_failure(request, reason="local_origin")
+            return JSONResponse(
+                status_code=403, content={"detail": "same-origin session request required"}
+            )
+        anonymous_paths = {
+            "/ready",
+            "/health",
+            "/failover/ready",
+            "/api/v1/auth/local",
+            "/api/v1/auth/local/login",
+        }
         separately_authenticated_paths = {
             "/api/v1/nodes/register",
             "/api/v1/failover/votes",
@@ -476,6 +497,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         """Account malformed inference requests before returning FastAPI's normal 422."""
+        if request.url.path == "/api/v1/auth/local/login":
+            from coire_api.auth import audit_authentication_failure
+
+            await audit_authentication_failure(request, reason="local_login_invalid")
+            return JSONResponse(
+                status_code=401, content={"detail": "email or password is incorrect"}
+            )
         if request.url.path.startswith(
             (
                 "/api/v1/admin/datasets",
