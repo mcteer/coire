@@ -1,8 +1,7 @@
 # Web interface operations
 
-The local interface uses the existing authenticated HTTPS address on Core. Feature 025 changes
-only React/CSS/font presentation; it adds no API shape, database migration, external runtime
-request or network listener. The reference theme is light ivory/navy/gold with an explicit dark
+The local interface uses the existing authenticated HTTPS address on Core. Feature 025 revises React/CSS/font presentation and fixes late image-admission refusal
+auditing. It adds no API shape, database migration, external runtime request or network listener. The reference theme is light ivory/navy/gold with an explicit dark
 option. The theme preference `coire.theme` is non-sensitive and independent of private drafts.
 
 ## Inspect and validate
@@ -43,3 +42,38 @@ API/database state, credentials and conversations require no rollback for this f
 Keep browser screenshot fixtures separate from production data. Stop the owned loopback
 preview server, remove temporary browser fixtures, and verify no test containers/volumes
 remain before reporting completion. Never record credentials in screenshots, Git or logs.
+
+## Explicit image access
+
+In Admin → Users & keys, grant **explicit** to the intended active human account. The wire
+entitlement is exactly `explicit`, not `explicit_image`; browser grants/revocations use the
+existing audited admin route. The current identity refreshes after a console change.
+In Images choose **Content mode → Explicit · anatomy & figure studies**, enter a prompt
+and Generate. Human anatomy and nonsexual figure studies are supported; outputs remain
+private and carry their recorded explicit tag. Existing service-token refusal and personal
+key `images` + `images:explicit` requirements remain enforced by the backend. Do not
+change scopes, classifier or entitlement checks to make a test pass.
+
+Acceptance uses a nonsexual adult fine-art anatomy prompt at the published model's actual
+512px/four-step limits, then checks successful job, explicit recipe/tag, owner download grant,
+PNG SHA256 and grant/submit/dispatch/completion audit rows. No fixed model guarantee beyond
+the installed registry profile is implied. Keep the qualification output outside Git.
+
+Use headless Playwright WebKit for owner-directed visual acceptance. Verify the installed
+local certificate/hostname using the exact CA file before a browser-context-only TLS test
+exception; never change OS trust or widen production networking. Capture settled transitions,
+local fonts, desktop/dark/phone and long-content layouts and inspect the actual screenshots.
+
+## Late image-admission refusal auditing
+
+Issue102 fixes a refusal occurring after the route guard: admission's ImageForbidden now
+rolls back provisional job/quota state and releases row locks before committing the existing
+independent `image.refused` audit. Inspect action `image.refused`, target `POST /api/v1/images`,
+actor/key identity and fixed authorization reason; prompts and credentials must be absent.
+The guard's early refusals continue using their existing audit path. No permission is relaxed.
+
+This small backend fix requires the separately validated API image. Save the current API
+image ID and compose file, replace only `services.coire-api.image`, and recreate only API
+with `--no-deps`. No migration is needed. The qualification snapshots under
+`~/.coire/qualification/025/audit-activation` retain the prior API image for API-only rollback.
+Do not restore a whole older compose file if a newer web image must remain installed.

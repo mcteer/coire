@@ -50,8 +50,9 @@ export function AppShell({
   const healthy = Boolean(
     snapshot &&
     snapshot.core?.health === "healthy" &&
+    (snapshot.alerts?.length ?? 0) === 0 &&
     snapshot.cluster.nodes.length &&
-    snapshot.cluster.nodes.every((node) => node.reachability === "healthy"),
+    snapshot.cluster.nodes.every((node) => node.reachability === "healthy" && !node.stale),
   );
   const status = !snapshot ? "Connecting" : healthy ? "All systems healthy" : "Needs attention";
   const primary: { id: typeof view; label: string; icon: IconName; href: string }[] = [

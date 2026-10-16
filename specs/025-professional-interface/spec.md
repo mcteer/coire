@@ -47,3 +47,21 @@ The owner authorizes a significant visual redesign and local deployment on the a
 - SC-002: Existing web regression tests pass; added keyboard/navigation/theme and draft-suggestion tests pass with no feature skips.
 - SC-003: Real desktop, dark and phone browser screenshots are inspected and corrected; no overlapping navigation/composer or page overflow remains.
 - SC-004: Existing owner signs in, navigates actual pages, changes theme and signs out on the deployed local interface; all temporary resources are retired.
+
+## Owner correction — 2026-10-16
+The first pass does not sufficiently match the reference. Revise composition and typography,
+colors and spacing: use the reference's tonal paper surfaces throughout light navigation,
+near-black/navy ink, warm visible hairlines, readable 14–16px body/control text and restrained
+32–40px editorial headings. Inspect the actual reference and application using **headless
+Playwright WebKit**, including desktop, phone, dark and real operational states. Palette
+similarity alone is not acceptance. Preserve existing navigation/controls and user data.
+
+Restore the existing feature015 explicit generation UI path: use the canonical audited
+`explicit` admin entitlement, show standard/explicit content mode with entitlement-aware
+feedback, preserve explicit preset/recipe requirements, and verify a nonsexual adult human
+anatomy study using the real image pipeline. No authorization bypass or schema change.
+
+Live negative acceptance additionally requires issue102's late admission refusal audit fix:
+release the rejected request transaction before writing a content-free independent audit row,
+retain403 enforcement, contract-test ordering/privacy and verify it live without changing
+the owner's entitlement. Existing wire contracts and generated types remain unchanged.

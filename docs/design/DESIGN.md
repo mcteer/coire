@@ -15,22 +15,22 @@ layout. No reference content or branded asset is copied into Coire.
 
 ## Visual system
 
-- Default light: ivory `#faf8f5`, white raised surfaces, navy `#152033` text, quiet warm borders.
-- Navigation: navy `#101a2c`, readable muted labels and a gold active indicator. It anchors
+- Default light: ivory `#faf8f5`, paper `#f2eee8` raised surfaces, near-black `#040810` text and visible warm `#c2b8a4` hairlines.
+- Navigation: tonal paper in light mode and navy in dark mode, readable labels and a gold active rule. It anchors
   the workspace rather than floating above content.
 - Gold is reserved for primary actions, selected states and small brand accents. Repeated
   table actions use quieter outlined buttons; dangerous actions retain red labels.
 - Dark mode uses navy surfaces, light ivory text and softened gold. Explicit user preference
   is stored as `coire.theme`; storage failures must never block sign-in or navigation.
 - Inter is the UI/body face. Cormorant Garamond is limited to page titles, sign-in and the
-  conversational welcome. Operational numbers and code use system monospace. Both font
+  conversational welcome. Operational numbers and code use system monospace. Body text is 16px, controls 14px and editorial headings 32–42px. Both font
   assets are self-hosted; sources, SHA256 hashes and full OFL1.1 notices live in `public/fonts`.
 - Corners are restrained (7–12px), dividers are subtle, and shadows only establish surface
   hierarchy. Do not restore translucent cards, bright gradients or a floating bottom dock.
 
 ## Shell and navigation
 
-Desktop uses a 232px sidebar and a 68px top header. The header contains breadcrumbs, theme
+Desktop uses a 240px sidebar and a 64px top header. The header contains breadcrumbs, theme
 control, sign-out and truthful cluster state on Admin. Unknown state says Connecting; never
 infer health from the absence of a snapshot. Primary routes retain role checks. Admin subviews
 sit in the sidebar and Upgrades remains capability-gated. Content is aligned to a shared grid.
@@ -76,3 +76,16 @@ reduced-motion support. Verify real 1440px, 1024px and 390px browser layouts in 
 Inspect sign-in, empty and filled chat, long code/identifiers, model selection, admin tables,
 Images and Training. Screenshots are private execution artifacts outside Git. Presentation
 work must not weaken authentication, API contracts, entitlement checks or safety gates.
+
+## WebKit acceptance and explicit images
+
+Owner correction requires actual **headless Playwright WebKit** visual inspection, including
+the supplied reference, sign-in, empty/long chat, dashboard tables, Images/Training, desktop,
+phone and dark mode. Inspect rendered screenshots, not only dimensions or a passing build.
+Native selects use a consistent code-native chevron and minimum42px height in WebKit.
+Images leads with model, prompt, content mode and Generate before secondary settings.
+Standard/Explicit uses the existing generated content_mode contract. Explicit selection
+requires the current user's canonical `explicit` entitlement; an explicit preset cannot be
+downgraded by the form, and restored explicit settings are blocked without current access.
+The admin console grants/revokes `explicit` through the audited existing API and refreshes
+the current identity. Backend admission remains authoritative at every action boundary.

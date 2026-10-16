@@ -120,3 +120,66 @@ test("mobile navigation opens with focus and Escape restores its toggle", async 
   expect(toggle).toHaveAttribute("aria-expanded", "false");
   expect(toggle).toHaveFocus();
 });
+
+test("active alerts prevent a healthy banner even when every host is reachable", () => {
+  const at = "2026-09-01T00:00:00Z";
+  const snapshot = consoleSnapshot({
+    core: {
+      host_name: "core",
+      source: "core-control-plane-runtime",
+      health: "healthy",
+      memory_total_bytes: 100,
+      memory_free_bytes: 50,
+      disk_total_bytes: 100,
+      disk_free_bytes: 50,
+      observed_at: at,
+    },
+    cluster: {
+      observed_at: at,
+      instances: [],
+      nodes: [
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          name: "coire-edge-a",
+          reachability: "healthy",
+          thermal_state: "nominal",
+          health_observed_at: at,
+          stale: false,
+          memory_total_bytes: 100,
+          memory_free_bytes: 50,
+          disk_total_bytes: 100,
+          disk_free_bytes: 50,
+          budget_bytes: 90,
+          reserved_bytes: 0,
+          reservations: [],
+        },
+      ],
+    },
+  });
+  const { rerender } = render(
+    <AppShell view="admin" canAdmin snapshot={snapshot}>
+      <main>Content</main>
+    </AppShell>,
+  );
+  expect(screen.getByLabelText("Cluster status")).toHaveTextContent("All systems healthy");
+  rerender(
+    <AppShell
+      view="admin"
+      canAdmin
+      snapshot={{
+        ...snapshot,
+        alerts: [
+          {
+            severity: "warning",
+            title: "Ledger drift",
+            detail: "Measured memory differs from the ledger",
+          },
+        ],
+      }}
+    >
+      <main>Content</main>
+    </AppShell>,
+  );
+  expect(screen.getByLabelText("Cluster status")).toHaveTextContent("Needs attention");
+  expect(screen.queryByText("All systems healthy")).not.toBeInTheDocument();
+});

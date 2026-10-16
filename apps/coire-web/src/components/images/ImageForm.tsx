@@ -23,6 +23,7 @@ export function ImageForm({
   onSubmit,
   reuse,
   limits = null,
+  canGenerateExplicit = false,
 }: {
   models: ImageModelList["items"];
   presets: ImagePresetList["items"];
@@ -30,10 +31,13 @@ export function ImageForm({
   onSubmit: (request: ImageSubmitRequest) => Promise<void>;
   reuse?: { request: ImageSubmitRequest; revision: number } | null;
   limits?: ImageModelList["limits"];
+  canGenerateExplicit?: boolean;
 }) {
   const [modelId, setModelId] = useState(models[0]?.id ?? "");
   const [presetId, setPresetId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
+  const [contentMode, setContentMode] =
+    useState<NonNullable<ImageSubmitRequest["content_mode"]>>("standard");
   const [width, setWidth] = useState<number | null>(null);
   const [height, setHeight] = useState<number | null>(null);
   const [steps, setSteps] = useState<number | null>(null);
@@ -66,6 +70,7 @@ export function ImageForm({
     setPresetId(null);
     setModelId(request.model_id ?? "");
     setPrompt(request.prompt ?? "");
+    setContentMode(request.content_mode ?? "standard");
     setWidth(request.width ?? null);
     setHeight(request.height ?? null);
     setSteps(request.steps ?? null);
@@ -87,6 +92,9 @@ export function ImageForm({
     promptRef.current?.focus();
   }, [reuse]);
   const preset = presets.find((item) => item.id === presetId) ?? null;
+  const presetRequiresExplicit = preset?.defaults.content_mode === "explicit";
+  const effectiveContentMode = presetRequiresExplicit ? "explicit" : contentMode;
+  const explicitDenied = effectiveContentMode === "explicit" && !canGenerateExplicit;
   const model =
     models.find((item) => item.id === modelId) ?? (reusedRequest ? undefined : models[0]);
   const capability = preset ? null : capabilityOf(model);
@@ -116,7 +124,8 @@ export function ImageForm({
   );
   const tooManyLoras = Boolean(capability && loras.length > capability.max_loras);
   const invalidLoraScale = loras.some(
-    (item) => !Number.isFinite(Number(item.scale)) || Number(item.scale) < -2 || Number(item.scale) > 2,
+    (item) =>
+      !Number.isFinite(Number(item.scale)) || Number(item.scale) < -2 || Number(item.scale) > 2,
   );
   const unavailableUpscale = Boolean(
     upscale && !model?.upscalers?.some((available) => available.id === upscale.model_id),
@@ -125,11 +134,11 @@ export function ImageForm({
   const sourceHeight = height ?? capability?.default_height ?? null;
   const upscaleExceedsBounds = Boolean(
     upscale &&
-      sourceWidth &&
-      sourceHeight &&
-      (sourceWidth * upscale.factor > 4096 ||
-        sourceHeight * upscale.factor > 4096 ||
-        sourceWidth * sourceHeight * upscale.factor ** 2 > 16_000_000),
+    sourceWidth &&
+    sourceHeight &&
+    (sourceWidth * upscale.factor > 4096 ||
+      sourceHeight * upscale.factor > 4096 ||
+      sourceWidth * sourceHeight * upscale.factor ** 2 > 16_000_000),
   );
   const missingInput =
     preset === null &&
@@ -140,6 +149,7 @@ export function ImageForm({
 
   const cannotSubmit =
     disabled ||
+    explicitDenied ||
     !limits ||
     prompt.trim() === "" ||
     missingModel ||
@@ -180,6 +190,7 @@ export function ImageForm({
         preset_id: preset.id,
         preset_revision: preset.revision,
         prompt: text,
+        content_mode: effectiveContentMode,
         ...overrides,
       });
       return;
@@ -191,6 +202,7 @@ export function ImageForm({
         model_id: modelId,
         mode,
         prompt: text,
+        content_mode: effectiveContentMode,
         negative_prompt: negativePrompt || null,
         guidance,
         width,
@@ -212,6 +224,7 @@ export function ImageForm({
       model_id: modelId,
       mode,
       prompt: text,
+      content_mode: effectiveContentMode,
       negative_prompt: negativePrompt || null,
       guidance,
       init_image_id: mode === "img2img" || mode === "fill" ? initImageId : null,
@@ -269,6 +282,49 @@ export function ImageForm({
           </select>
         </label>
       )}
+      <label>
+        Prompt
+        <textarea
+          ref={promptRef}
+          aria-label="Image prompt"
+          value={prompt}
+          maxLength={4000}
+          required
+          onChange={(event) => setPrompt(event.target.value)}
+        />
+      </label>
+      <div className="image-content-policy">
+        <label>
+          Content mode
+          <select
+            aria-label="Image content mode"
+            aria-describedby="image-content-help"
+            value={effectiveContentMode}
+            disabled={presetRequiresExplicit}
+            onChange={(event) =>
+              setContentMode(event.target.value as NonNullable<ImageSubmitRequest["content_mode"]>)
+            }
+          >
+            <option value="standard">Standard</option>
+            <option value="explicit" disabled={!canGenerateExplicit}>
+              Explicit · anatomy &amp; figure studies
+            </option>
+          </select>
+        </label>
+        <p id="image-content-help" className="muted">
+          {presetRequiresExplicit
+            ? "This preset requires explicit mode."
+            : canGenerateExplicit
+              ? "Explicit mode is enabled for your account, including human anatomy and figure studies. Outputs stay private."
+              : "Explicit mode requires an administrator to grant your account image access in Users & keys."}
+        </p>
+        {explicitDenied && (
+          <p role="alert">Explicit image access is required for these settings.</p>
+        )}
+      </div>
+      <button className="button" type="submit" disabled={cannotSubmit}>
+        {disabled ? "Submitting…" : "Generate"}
+      </button>
       {capability && (
         <div className="image-settings-grid">
           <label>
@@ -412,7 +468,9 @@ export function ImageForm({
                   <button
                     type="button"
                     aria-label={`Remove LoRA ${index + 1}`}
-                    onClick={() => setLoras((current) => current.filter((_, position) => position !== index))}
+                    onClick={() =>
+                      setLoras((current) => current.filter((_, position) => position !== index))
+                    }
                   >
                     Remove
                   </button>
@@ -578,17 +636,6 @@ export function ImageForm({
           )}
         </div>
       )}
-      <label>
-        Prompt
-        <textarea
-          ref={promptRef}
-          aria-label="Image prompt"
-          value={prompt}
-          maxLength={4000}
-          required
-          onChange={(event) => setPrompt(event.target.value)}
-        />
-      </label>
       {limits ? (
         <aside aria-label="Image storage and retention">
           <p>
@@ -625,15 +672,14 @@ export function ImageForm({
         <p role="alert">A compatible control model is unavailable for selection.</p>
       )}
       {unavailableControl && <p role="alert">The selected control model is no longer available.</p>}
-      {invalidControlSettings && <p role="alert">Control strength or Canny thresholds are invalid.</p>}
+      {invalidControlSettings && (
+        <p role="alert">Control strength or Canny thresholds are invalid.</p>
+      )}
       {tooManyLoras && <p role="alert">This model no longer supports this LoRA stack.</p>}
       {unavailableLora && <p role="alert">A selected LoRA is no longer available.</p>}
       {unavailableUpscale && <p role="alert">The selected upscale model is no longer available.</p>}
       {upscaleExceedsBounds && <p role="alert">Upscale exceeds the final image size limit.</p>}
       {invalidLoraScale && <p role="alert">Each LoRA scale must be between -2 and 2.</p>}
-      <button className="button" type="submit" disabled={cannotSubmit}>
-        {disabled ? "Submitting…" : "Generate"}
-      </button>
     </form>
   );
 }

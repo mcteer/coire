@@ -709,7 +709,7 @@ export function DataPage({ kind }: { kind: "models" | "instances" }) {
     </main>
   );
 }
-export function IdentityPage() {
+export function IdentityPage({ onIdentityChanged }: { onIdentityChanged?: () => void } = {}) {
   const [users, setUsers] = useState<User[]>([]),
     [error, setError] = useState("");
   const [email, setEmail] = useState("");
@@ -771,10 +771,16 @@ export function IdentityPage() {
     load();
   };
   const updateEntitlement = async (user: User, grant: boolean) => {
-    await api(`/api/v1/admin/users/${user.id}/entitlements/explicit_image`, {
-      method: grant ? "PUT" : "DELETE",
-    });
-    load();
+    setError("");
+    try {
+      await api(`/api/v1/admin/users/${user.id}/entitlements/explicit`, {
+        method: grant ? "PUT" : "DELETE",
+      });
+      load();
+      onIdentityChanged?.();
+    } catch (cause) {
+      setError(String(cause));
+    }
   };
   const revokeKey = async (user: User, key: ApiKey) => {
     await api(`/api/v1/admin/keys/${key.id}`, { method: "DELETE" });
@@ -865,15 +871,10 @@ export function IdentityPage() {
                   <button
                     className="button"
                     onClick={() =>
-                      void updateEntitlement(
-                        u,
-                        !(u.entitlements?.includes("explicit_image") ?? false),
-                      )
+                      void updateEntitlement(u, !(u.entitlements?.includes("explicit") ?? false))
                     }
                   >
-                    {u.entitlements?.includes("explicit_image")
-                      ? "Revoke explicit"
-                      : "Grant explicit"}
+                    {u.entitlements?.includes("explicit") ? "Revoke explicit" : "Grant explicit"}
                   </button>
                 </div>
                 {keys[u.id]?.map((key) => (
@@ -1278,7 +1279,10 @@ export function App() {
   if (images)
     return (
       <AppShell view="images" canAdmin={me.role === "admin"} onSignOut={signOut}>
-        <Images canEditPresets={me.role === "admin"} />
+        <Images
+          canEditPresets={me.role === "admin"}
+          canGenerateExplicit={!!me.entitlements?.includes("explicit")}
+        />
       </AppShell>
     );
   if (training)
@@ -1318,7 +1322,13 @@ export function App() {
       ) : tab === "instances" ? (
         <DataPage kind="instances" />
       ) : tab === "identity" ? (
-        <IdentityPage />
+        <IdentityPage
+          onIdentityChanged={() =>
+            void api<User>("/api/v1/me")
+              .then(setMe)
+              .catch((error) => setAuthError(String(error)))
+          }
+        />
       ) : tab === "upgrades" ? (
         <UpgradesPage
           enabled={!!stream.data?.capabilities.upgrades}

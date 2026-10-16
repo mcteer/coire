@@ -7,3 +7,27 @@ Professional structure: https://linear.app/now/how-we-redesigned-the-linear-ui e
 Fonts: Google Fonts Inter and Cormorant Garamond are licensed SIL OFL1.1, confirmed at https://github.com/google/fonts/blob/main/ofl/inter/OFL.txt and https://github.com/google/fonts/blob/main/ofl/cormorantgaramond/OFL.txt. Bundle unmodified Latin WOFF2 assets, full notices and source/hash inventory. No runtime font/CDN requests.
 
 Decisions: default light reference theme; explicit persisted dark mode; navy navigation shell; gold limited to active/primary affordances; serif only for editorial page/empty-state headings, sans-serif for forms/data. Keep existing truthful data and permission controls. Historical Glass mockups are superseded by feature025 and updated canonical design documentation. Mobile drawer restores toggle focus and closes with Escape or navigation. Theme failures never block authentication.
+
+## Owner correction and WebKit comparison
+The owner identified composition and typography/color/spacing as the mismatches. Revisited
+the actual source in headless Playwright WebKit26.0 (build2215). Its light navigation and
+surfaces are paper100 `#f2eee8`, overlay `#e7e1d8`, border `#c2b8a4`, primary ink `#040810`,
+secondary ink `#313762` and text-link gold `#6b4e1a`; the first pass's dark sidebar/white cards
+did not carry this through. Revised those exact core colors and dark navy800/900 values,
+14–16px reading/control sizes and 32–42px editorial scale. Retained accessible contrast
+for muted text rather than copying low-contrast reference placeholder values.
+
+Playwright's Node26 download extractor stalled; the official downloaded WebKit archive was
+extracted with Python preserving symlinks/modes, then successfully launched headless through
+Playwright. No application package/dependency was added. WebKit native selects require
+explicit appearance/size/chevron styling for the intended control treatment. Real browser
+screenshots—not Chromium-only or overflow checks—were inspected in both themes.
+
+Issue #101 tracks the image form/entitlement mismatch. Image API supports content_mode
+already; no wire-schema or backend change is needed. Existing canonical entitlement is
+`explicit`. Real owner account initially lacked it; unauthorized admission403 was measured,
+then the authenticated audited admin grant enabled a successful Studio anatomical image
+and private verified download. Issue #102 records an existing late-refusal audit gap discovered during that negative
+probe. The implementation scope was amended to close it: rollback request locks before the
+existing independent refusal helper. Live restricted-key403 now has a matching audit row;
+authorization remains enforced, and successful operations/grants have audit evidence.

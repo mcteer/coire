@@ -20,12 +20,8 @@ export function MessageList({
         <div className="chat-welcome-mark">
           <CoireMark size={48} />
         </div>
-        <div className="eyebrow">A little curiosity goes a long way</div>
-        <h2>
-          What would you like
-          <br />
-          to explore?
-        </h2>
+        <div className="eyebrow">Your workspace, your ideas</div>
+        <h2>What would you like to explore?</h2>
         <p>Choose a model, then start a conversation.</p>
         {onPromptSelect && (
           <div className="chat-suggestions">

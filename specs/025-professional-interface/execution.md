@@ -1,45 +1,73 @@
-# Feature 025 execution evidence — 2026-10-16
+# Feature025 execution — owner revision, 2026-10-16
 
-Implemented the reference ivory/navy/gold palette, self-hosted Inter/Cormorant Garamond,
-persistent role-aware sidebar, responsive keyboard-accessible drawer, shared workspace
-components, focused chat/history/model picker/composer, sign-in and explicit persisted themes.
-Suggestions only fill drafts. Overview excludes historical stopped/failed instances from active
-counts. Existing authentication, API contracts, mutation guards and inference paths are retained.
+The initial a67ad30 pass was rejected for composition and typography/color/spacing. This
+record describes the corrected, locally activated version, following the owner clarification.
 
-## Validation
-- Entire web suite: **64 files, 257 tests passed**, no skipped tests.
-- Strict TypeScript/Vite production build, ESLint, Prettier and git diff whitespace checks passed.
-- Ruff check/format (2393 files), strict mypy (1308 sources), OpenAPI freshness passed.
-- Browser preview: 20 desktop/tablet/phone/light/dark/long-conversation scenarios;
-  no page overflow and no browser exceptions. Long code fixture uses actual components
-  with synthetic messages; no production conversation or inference was created.
-- Actual deployed owner browser walkthrough: sign-in, Chat, Models, Instances, Users & keys,
-  Runs & jobs, Images, Training, Admin, theme reload, suggestion prefill, mobile menu/Escape,
-  sign-out and rejected revoked-cookie replay. 18 screenshots, no page overflow/page errors.
-  Screenshot timing allows CSS transitions to settle before capture.
-- Normal text token pairs measured 4.91–15.90:1; button text 5.48:1 light / 8.30:1 dark.
-  This measures the documented core pairs, not an exhaustive WCAG certification.
-- Hardened web image: all seven image-policy rules passed; Trivy CRITICAL findings **0**
-  (including unfixed); SPDX SBOM produced. No package dependency was added. Two static
-  font assets use SIL OFL1.1; full notices, sources and SHA256 hashes accompany the assets.
+## Visual revision and WebKit evidence
+- Reinspected the actual Andrei Nita reference in **headless Playwright WebKit26.0/build2215**.
+- Matched light paper100/200/400 surfaces, near-black/navy ink and warm gold rather than
+  retaining the initial heavy navy sidebar/white cards. Dark mode uses the reference's
+  navy800/900 and gold palette. Readable14–16px controls/body, restrained32–42px headings,
+  stronger hairlines, aligned spacing and consistent native select rendering in WebKit.
+- Images leads with model, prompt, content mode and Generate, before secondary settings.
+- Final visual review also fixed the healthy banner: active alerts or stale nodes now prevent
+  All systems healthy. A real-ledger-alert regression covers the reachable-host case.
+- Inspected actual screenshots: reference light/dark, sign-in, empty chat, long conversation/
+  reasoning/code, admin overview/tables, Images, Training, mobile navigation and phone chat.
+- Preview:20 scenarios, no page overflow or page exceptions. Deployed WebKit:19 scenarios
+  including generated output, then18 final scenarios after the API audit fix. Theme reload,
+  draft prefill, mobile Escape/focus, sign-in/logout and revoked-cookie replay passed.
+- Screenshots wait for fonts and transitions. Long content uses isolated real-component
+  fixtures rather than creating production chat conversations. Actual routes use real data.
+- Measured core normal-text/sidebar/button token pairs: minimum5.12:1, both themes. This is
+  a token contrast audit, not a claim of exhaustive WCAG certification.
 
-## Activation and rollback
-Activated only `coire-web` on the existing approved https://coire-core.lab:8443 listener.
-Image: `sha256:d55ed127a05ad8d597ac60859d64735b16420afa5ecb576638c38059fc891253`.
-Previous web: `sha256:28866623610db50c87ad9b4aa8925ddc48c79ecd88e02a1bb39ff8eaf3ec0971`.
-All other 14 Compose container identities/images were preserved. Web healthy; HTTPS root200,
-HTTP browser redirect308 and original machine health200. No API/db migration or Studio action.
-Training's existing disabled responses remain visible; this redesign does not enable training.
+## Explicit image capability — issues101/102
+- Fixed admin console's incorrect `explicit_image` grant/revoke target to canonical `explicit`;
+  retained audited admin authority and refreshed the current identity after a change.
+- Added content_mode selector using existing generated contracts. Fresh and reused requests
+  carry mode, explicit presets cannot be downgraded, and restored explicit recipes cannot
+  submit without current account access. Backend remains authoritative.
+- Owner initially had no explicit grant. Measured explicit submission403, then granted through
+  authenticated admin API. The owner's requested entitlement remains enabled.
+- Real Studio anatomy job `01M52MTFJNAFMKN25RX966Z1DB` succeeded: nonsexual adult classical
+  figure study,512×512/four steps, explicit recipe and tag,274080-byte PNG with matching SHA256.
+- Submitted a second adult fine-art anatomy study **through the deployed form in WebKit**:
+  job `01M52N35X17GQB5Z1B3TH3AA5P`, output `6f200529-04d1-4dc6-9367-c3ae30a06f83`.
+  Verified form POST202 carried content_mode=explicit, Studio completion, explicit tag,
+  browser Download action's successful authenticated content response and PNG SHA256.
+- Browser harness was corrected to wait for published outputs and use the actual accessible
+  Download label. It reused its submitted receipt on retries; no duplicate job was generated.
+- Successful grant/submit/dispatch/completion audit rows were verified. Negative testing found
+  a pre-existing missing late-refusal audit. Fixed by rolling back admission locks before
+  writing the existing independent content-free `image.refused` row. Contract test proves
+  rollback→audit ordering and no rejected transaction commit or prompt leakage.
+- Live restricted personal key (images scope, no images:explicit) refused403 with matching
+  late-refusal audit. Temporary qualification keys revoked immediately; owner access retained.
+  No classifier, auth/scope, visibility or entitlement enforcement was weakened.
 
-Private receipts/screenshots/SBOM and exact web-only rollback manifest are under
-`~/.coire/qualification/025/`. Follow `docs/runbooks/web-interface.md` to restore only the
-previous web image. The older pre-sign-in rollback file is not appropriate for this feature.
-Owned loopback preview server stopped; temporary visual-fixture dist files removed.
-Browser processes closed and image-policy containers removed; no persistent test volume created.
+## Checks and activation
+- Web:64 files / **264 tests passed**, no skips; ESLint, Prettier, strict TypeScript/Vite build.
+- Backend: **29 relevant authorization/guard/refusal contract tests passed**, no skips;
+  Ruff check and format (2395 files), strict mypy (1310 sources), OpenAPI freshness passed.
+- Web and API hardened image policy passed, Trivy CRITICAL findings **0** including unfixed,
+  SPDX SBOMs generated. No new package dependency, schema, migration or network setting.
+  Existing OFL1.1 self-hosted font notices/source hashes retained.
+- Current web: `sha256:135c7a20e711a95a3a6bb86efc501b89ce812972bdac7efa3e90ccfb359ce6e9`.
+- Current API audit fix: `sha256:73a0fd0f6e9dcc9d0a7a243e02f41651ab2bff38f86516ebec375937cbbb62ee`.
+- Web revision rollback: `sha256:d55ed127a05ad8d597ac60859d64735b16420afa5ecb576638c38059fc891253`.
+- API rollback: `sha256:8ac5d38c86aaf5067c969b8248d21044f4d9611baf3608aa403346551fd93000`.
+- Replaced web, then API for the audit fix, each with --no-deps and its own before/after
+  snapshot. All other13 container identities/images preserved. Existing approved TLS8443
+  remains; HTTPS200, browser HTTP308, machine health200 and both containers healthy.
+- Private qualification screenshots/logs/SBOMs/rollback manifests: `~/.coire/qualification/025/`.
+  Generated anatomy images, credentials and test fixtures are excluded from Git.
+- Owned preview server and browser processes retired; isolated visual dist fixture removed.
+  No persistent test container/volume or native engine outside coire-node was created.
 
 ## Constitution
-I/II/V: no engine, model lifecycle or placement changes. II-a: existing separate hardened web
-container only. III: generated wire contracts unchanged. IV: existing authentication/scopes,
-confirmation and Keychain credentials retained, no external runtime asset requests. VI:
-existing route telemetry/dashboard/alerts retained; no new service/backend path. VII:
-spec/plan/tasks precede implementation, complete frontend regression and live acceptance gates.
+I/II/V: no engine/placement/acquisition change; Studio workloads use registry-owned native
+pipeline. II-a: existing hardened separate web/API services. III: generated contracts unchanged.
+IV: canonical audited entitlement and refusal evidence; secrets remain Keychain-sourced.
+VI: existing route metrics/spans/alerts retained, refusal uses the established content-free
+audit helper. VII: amended spec/plan/tasks, regression/contract and real Studio/browser gates.

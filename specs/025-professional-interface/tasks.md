@@ -16,3 +16,12 @@
 - [x] T009 Deploy only validated web image with rollback on existing local TLS; verify actual owner walkthrough, document results and remove all fixtures.
 
 Dependencies: T001 → T002 → T003/T004 → T005/T006 → T007 → T008 → T009. Presentation changes reuse existing typed contracts and service observability. Independent lint and browser checks may run concurrently; no sub-agent work is requested.
+
+## Owner revision
+- [x] T010 Reinspect reference with headless WebKit and revise overall composition, exact tonal palette, typography and spacing.
+- [x] T011 Correct canonical explicit entitlement grant/revoke; add entitlement-aware content mode preserving presets/reuse, with regression tests.
+- [x] T012 Verify actual owner entitlement/audit and nonsexual adult anatomy generation/output access on the real Studio path.
+- [x] T013 Inspect corrected desktop/mobile/dark/long-content screenshots with headless Playwright WebKit and fix defects.
+- [x] T014 Complete web checks, image build/policy/scan/SBOM, web-only redeploy/live WebKit acceptance, rollback documentation and fixture cleanup.
+
+- [x] T015 Fix issue102 late explicit-admission refusal audit; contract-test rollback-before-audit/content privacy and validate/redeploy only API plus repeat live negative evidence.

@@ -893,3 +893,118 @@
   max-width: 100%;
   overflow-x: auto;
 }
+
+/* Match the reference's editorial scale rather than a marketing hero. */
+.chat-topline h1 {
+  font-size: 36px;
+}
+.chat-topline p,
+.chat-topline .button {
+  font-size: 14px;
+}
+.chat-welcome {
+  min-height: 280px;
+  padding: 28px 0;
+  align-items: flex-start;
+  text-align: left;
+}
+.chat-welcome-mark {
+  margin-bottom: 16px;
+}
+.chat-welcome .eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+.chat-welcome h2 {
+  font-size: clamp(32px, 3.2vw, 42px);
+  line-height: 1.12;
+}
+.chat-welcome h2 br {
+  display: none;
+}
+.chat-welcome > p {
+  font-size: 16px;
+  margin: 16px 0 28px;
+}
+.chat-suggestions button {
+  font-size: 13px;
+  background: var(--surface);
+  padding: 16px;
+}
+.chat-history-panel h2 {
+  font-size: 11px;
+}
+.chat-history-panel .empty,
+.chat-history-panel .chat-history-items small {
+  font-size: 13px;
+}
+.chat-model-menu > summary,
+.chat-model > span,
+.chat-mode-switch .button {
+  font-size: 13px;
+}
+.chat-model small,
+.chat-model-menu > summary small,
+.chat-privacy-disclosure,
+.chat-attachments-disclosure > summary {
+  font-size: 12px;
+}
+.chat-message-body {
+  font-size: 16px;
+  line-height: 1.7;
+}
+.chat-message-body pre {
+  font-size: 13px;
+  background: var(--surface-2);
+}
+.chat-composer {
+  border-radius: 8px;
+  background: var(--surface);
+}
+.chat-composer textarea {
+  font-size: 16px;
+}
+.chat-composer .muted {
+  font-size: 12px;
+}
+@media (max-width: 760px) {
+  .chat-topline h1 {
+    font-size: 32px;
+  }
+  .chat-topline p {
+    font-size: 14px;
+  }
+  .chat-welcome {
+    min-height: 0;
+    padding: 8px 0;
+  }
+  .chat-welcome-mark {
+    display: none;
+  }
+  .chat-welcome h2 {
+    font-size: 32px;
+  }
+  .chat-welcome > p {
+    font-size: 14px;
+    margin: 12px 0 18px;
+  }
+  .chat-suggestions button {
+    font-size: 12px;
+  }
+}
+
+.chat-thread > label {
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.chat-thread > label small {
+  font-size: 12px;
+}
+.chat-composer-bottom [role="status"],
+.chat-composer-bottom > span,
+.chat-attachments > summary {
+  font-size: 12px;
+}

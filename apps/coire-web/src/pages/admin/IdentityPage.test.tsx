@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { IdentityPage } from "../../App";
 import { adminUser } from "../../test/fixtures";
@@ -37,3 +37,26 @@ test("shows a newly issued secret once and clears it from browser state", async 
   fireEvent.click(screen.getByRole("button", { name: "I have stored it" }));
   expect(screen.queryByText(issued.secret)).not.toBeInTheDocument();
 });
+
+test.each([false, true])(
+  "uses the canonical audited explicit entitlement when already granted=%s",
+  async (granted) => {
+    const onIdentityChanged = vi.fn();
+    const user = { ...adminUser, entitlements: granted ? ["explicit"] : [] };
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async () => new Response(JSON.stringify([user]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<IdentityPage onIdentityChanged={onIdentityChanged} />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: granted ? "Revoke explicit" : "Grant explicit" }),
+    );
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        `/api/v1/admin/users/${adminUser.id}/entitlements/explicit`,
+        expect.objectContaining({ method: granted ? "DELETE" : "PUT" }),
+      ),
+    );
+    await waitFor(() => expect(onIdentityChanged).toHaveBeenCalledTimes(1));
+  },
+);

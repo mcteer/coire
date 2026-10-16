@@ -95,7 +95,7 @@ svg {
   gap: 12px;
   min-height: 104px;
   padding: 0 10px;
-  color: #f5efe2;
+  color: var(--ink);
   text-decoration: none;
   font: 500 28px/1 var(--font-heading);
 }
@@ -623,7 +623,7 @@ pre {
   justify-content: space-between;
   padding: 44px 52px;
   background: var(--sidebar-bg);
-  color: #f3eadb;
+  color: var(--ink);
   position: relative;
   overflow: hidden;
 }
@@ -864,4 +864,108 @@ pre {
   color: var(--bad-ink);
   border-color: var(--bad-soft);
   background: var(--bad-soft);
+}
+
+/* Reference-aligned paper workspace: readable type and quiet structural rules. */
+.workspace-brand {
+  min-height: 96px;
+  font-size: 30px;
+}
+.workspace-brand small {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+}
+.nav-section-label,
+.workspace-footer small {
+  font-size: 11px;
+}
+.workspace-primary a,
+.workspace-admin-nav button {
+  font-size: 14px;
+  min-height: 44px;
+}
+.workspace-primary .active,
+.workspace-admin-nav .active {
+  box-shadow: inset 2px 0 var(--accent);
+  border-radius: 0 6px 6px 0;
+}
+.workspace-header {
+  min-height: 64px;
+}
+.workspace-breadcrumb,
+.workspace-header .button,
+.workspace-status {
+  font-size: 13px;
+}
+.panel,
+.overview-metric {
+  border-radius: 8px;
+  box-shadow: none;
+}
+.panel > h2 {
+  font: 500 26px/1.2 var(--font-heading);
+  margin-top: 0;
+}
+.panel label,
+.button {
+  font-size: 14px;
+}
+.panel .muted,
+.overview-metric span,
+.node-stats dt {
+  font-size: 13px;
+}
+.overview-metric {
+  padding: 24px;
+}
+.overview-metric strong {
+  font-size: 32px;
+}
+.eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+th {
+  font-size: 12px;
+}
+td {
+  font-size: 14px;
+}
+.actions .button {
+  color: var(--ink-2);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+.actions .button.danger {
+  color: var(--bad-ink);
+  border-color: var(--bad);
+  background: var(--bad-soft);
+}
+.signin-card form > p,
+.signin-card > p,
+.signin-card footer {
+  font-size: 14px;
+}
+
+.signin-story {
+  border-right: 1px solid var(--border);
+}
+.signin-story h2 {
+  font-size: clamp(42px, 4.2vw, 64px);
+}
+.signin-story p {
+  font-size: 16px;
+}
+.signin-story footer {
+  color: var(--ink-3);
+  font-size: 11px;
+}
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%238a6830' stroke-width='1.5'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  min-height: 42px;
 }

@@ -16,3 +16,22 @@ I/II/V: no engines, model ownership, placement or registry behavior changes. II-
 
 ## Validation and rollout
 Run entire web suite, strict TS production build, ESLint and Prettier; API schema freshness unchanged. Run meaningful browser keyboard/mobile/light/dark/navigation/streaming/long-content checks with real authenticated local read paths; representative long chat uses isolated route fixtures without creating production conversations. Build/policy/critical scan/SBOM web image, stage rollback, recreate only web on already approved TLS, verify actual owner login and all pages. No full backend test rerun required for CSS/React presentation-only changes. Remove owned test containers/volumes/processes.
+
+## Revision plan
+Reinspect the supplied reference in WebKit. Replace heavy dark light-theme navigation and
+white cards with exact paper100/200/400 surfaces and ink tokens; increase undersized
+control/label typography, reduce marketing-scale chat headline and align page spacing.
+Use consistent outlined secondary actions and bounded readable content widths. Verify
+screenshots in headless WebKit with actual auth/data plus isolated long-content fixtures.
+Correct the explicit entitlement UI bug using existing admin/API contracts, add model-form
+content mode with inherited preset policy and restored recipe safeguards, then test those
+boundaries and perform an adult nonsexual anatomy generation through coire-node.
+Rebuild/scan/redeploy web only with a fresh rollback snapshot; no backend or node changes
+expected. Record any actual generation prerequisite precisely rather than claim support
+from a selector alone.
+
+Live negative acceptance exposed issue102: late admission ImageForbidden was correctly
+refused but lacked an audit row. Amend scope to roll back admission locks before invoking
+the existing independent content-free refusal audit helper. Add a route contract regression,
+run relevant backend image tests/type/format/schema gates, build/policy/scan/SBOM and replace
+only the API image after web acceptance. No schema, migration, permission or listener change.
